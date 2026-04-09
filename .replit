@@ -1,0 +1,68 @@
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
+[agent]
+expertMode = true
+integrations = ["github:1.0.0"]
+
+[nix]
+channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "postgresql://postgres.fdeoeucexckpvsxozjkh:30051977Zakir$@aws-0-us-east-1.pooler.supabase.com:6543/postgres"
+
+[userenv.production]
+PORT = "5000"
+NODE_ENV = "production"
+
+[userenv.development]
+NODE_ENV = "development"
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/api-server && PORT=3000 node --enable-source-maps ./dist/index.mjs & cd artifacts/edge-tracker && PORT=5000 pnpm run dev"
+waitForPort = 5000
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[ports]]
+localPort = 3000
+externalPort = 3000
+
+[[ports]]
+localPort = 5000
+externalPort = 80
+
+[[ports]]
+localPort = 5001
+externalPort = 3001
+
+[[ports]]
+localPort = 8080
+externalPort = 8080
+
+[[ports]]
+localPort = 24402
+externalPort = 3002
+
+[deployment]
+deploymentTarget = "autoscale"
+run = ["sh", "start.sh"]
+build = ["pnpm", "run", "build:prod"]

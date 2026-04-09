@@ -1,0 +1,296 @@
+Плейбук
+27 сетапов · 14 папок
+
+Последнее:
+MSFT
+· Short Setups
+Действия
+Свернуть
+Новый сетап
+Все
+Без папки
+News Trupm
+1
+
+XOM, CVX, CNQ, BP, SHEL, EQNR, COP macro (2026-04-08)
+Событие #9
+Gap Down
+News
+Sector Move
+
+
+Pricing
+1
+
+Pricing strategy
+Другой
+Gap Down
+Pricing
+Reversal
+VWAP
+Imbalance
+OPG
+Relative Strength
+70%
+
+
+2 Day long
+1
+
+AEHR
+Second Day Play
+Offering
+Second Day
+All Time High
+Market Weak
+High Volatility
+News Risk
+70%
+
+
+NEWS, partnership
+1
+
+INTC
+Breakout
+Gap Down
+News
+60%
+
+
+Earning gap up, break out all time high
+1
+
+AEHR
+Earnings Gap Up
+Earnings Gap Up
+Gap Up
+Breakout
+Liquidity Sweep
+Trend Continuation
+Flag
+Earnings
+All Time High
+Relative Strength
+Market Weak
+High Volatility
+70%
+
+
+2 day Gap down Short
+1
+
+PLTR other (2026-04-09)
+other
+Трейд #87
+Gap Down
+Breakout
+Liquidity Sweep
+Sector Move
+Yesterday Low
+Yesterday Close
+Open Price
+Daily Support
+Market Weak
+High Volatility
+Sector Weak
+70%
+
+
+Short Setups
+2
+
+Parabolic Short — Blow-Off Top
+Reversal
+short
+parabolic
+high-risk
+blow-off
+65%
+
+
+Weak Open Short — Gap Up Fail
+Earnings Gap Up
+short
+gap-fail
+morning
+reliable
+74%
+
+
+Intraday Momentum
+3
+
+Red to Green Move
+Reversal
+reversal
+red-to-green
+relative-strength
+77%
+
+
+VWAP Reclaim — Mean Reversion Long
+Reversal
+vwap
+mean-reversion
+long
+reliable
+80%
+
+
+Opening Drive — Momentum Ignition
+Intraday Momentum
+momentum
+opening
+speed
+A-setup
+75%
+
+
+Earnings Plays
+3
+1 трейдов
+100% WR
+
+Earnings Winner — Day 2 Continuation
+Second Day Play
+earnings
+continuation
+day-2
+momentum
+78%
+
+
+Earnings Gap Down — Short the Failed Bounce
+Earnings Gap Down Short
+earnings
+gap-down
+short
+reversal
+82%
+
+
+Earnings Gap Up — First Pullback Long
+Earnings Gap Up
+earnings
+gap-up
+momentum
+A+
+90%
+
+
+Sector Move
+1
+
+Healthcare (2026-04-07)
+Дневная лента #17
+Reversal
+Gap Up
+Breakout
+News
+Sector Move
+Relative Strength
+Wide Spread
+High Volatility
+News Risk
+Market Weak
+
+
+Risk Management
+2
+
+Trade Review Checklist
+Другой
+review
+process
+discipline
+must-do
+100%
+
+
+Position Sizing Framework
+Другой
+risk
+sizing
+rules
+critical
+95%
+
+
+Macro / Event Plays
+2
+
+CPI Morning Gap — Trend Day Trade
+Другой
+cpi
+macro
+trend-day
+morning
+73%
+
+
+FOMC Fade — Post-Decision Reversal
+Другой
+fomc
+macro
+fade
+event-driven
+70%
+
+
+IPO / SPO Plays
+1
+
+IPO Day 1 — Opening Range Breakout
+IPO Day Trade
+ipo
+day-1
+opening-range
+high-vol
+68%
+
+
+Breakout Patterns
+2
+
+Range Break — Consolidation Squeeze
+Breakout
+breakout
+squeeze
+range
+patience
+72%
+
+
+Flag Pattern Breakout
+Breakout
+breakout
+flag
+continuation
+clean
+82%
+
+
+Без папки
+VWAP Support Bounce
+Support
+7%
+
+
+Low Float Runner
+Runner
+5%
+
+
+HOD Failure Short
+Short
+7%
+
+
+Scalping 1-Min Bounce
+Scalp
+6%
+
+
+Earnings Gap and Go
+Gap
