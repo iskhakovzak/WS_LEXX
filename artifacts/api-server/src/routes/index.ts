@@ -1,0 +1,40 @@
+import { Router, type IRouter } from "express";
+import healthRouter from "./health";
+import tradesRouter from "./trades";
+import eventsRouter from "./events";
+import researchRouter from "./research";
+import dailyfeedRouter from "./dailyfeed";
+import discussionsRouter from "./discussions";
+import dashboardRouter from "./dashboard";
+import adminRouter from "./admin";
+import watchlistRouter from "./watchlist";
+import playbookRouter from "./playbook";
+import seedRouter from "./seed";
+import activityRouter from "./activity";
+import errorsRouter from "./errors";
+import big7levelsRouter from "./big7levels";
+import big7catalystsRouter from "./big7catalysts";
+import ratingsRouter from "./ratings";
+import usersRouter from "./users";
+
+const router: IRouter = Router();
+
+router.use(healthRouter);
+router.use(tradesRouter);
+router.use(eventsRouter);
+router.use(researchRouter);
+router.use(dailyfeedRouter);
+router.use(discussionsRouter);
+router.use(dashboardRouter);
+router.use(adminRouter);
+router.use(watchlistRouter);
+router.use(playbookRouter);
+router.use(seedRouter);
+router.use(activityRouter);
+router.use(errorsRouter);
+router.use(big7levelsRouter);
+router.use(big7catalystsRouter);
+router.use(ratingsRouter);
+router.use(usersRouter);
+
+export default router;
