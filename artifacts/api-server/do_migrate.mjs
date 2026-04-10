@@ -1,9 +1,13 @@
 import pg from 'pg';
 const { Pool } = pg;
 
-const SUPABASE_URL = 'https://egrxucyrgcqaubjnzzxs.supabase.co';
+const SUPABASE_URL = process.env.SUPABASE_URL;
 const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
-if (!SERVICE_KEY) throw new Error('SUPABASE_SERVICE_KEY environment variable is not set');
+
+if (!SUPABASE_URL || !SERVICE_KEY) {
+  console.error('Missing required environment variables: SUPABASE_URL and SUPABASE_SERVICE_KEY');
+  process.exit(1);
+}
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
