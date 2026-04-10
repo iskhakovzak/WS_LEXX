@@ -38,6 +38,3 @@ channel = "stable-25_05"
 
 [userenv.production]
 USE_SUPABASE = "true"
-
-[userenv.shared]
-SUPABASE_URL = "https://egrxucyrgcqaubjnzzxs.supabase.co"
