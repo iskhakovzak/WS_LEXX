@@ -695,11 +695,32 @@ GET: `WHERE deleted_at IS NULL`. DELETE: `SET deleted_at = NOW()`.
 
 ### 10.12 Playbook Seed Стратегии
 В `migrate.ts` содержатся автоматические seed'ы:
-- **8 пользователей** (трейдеры + кураторы)
-- **20 SMB Capital стратегий** (папки: SMB Capital — Offering/Gap/IPO/Intraday/Short/Momentum/Reversal/Swing/Frameworks)
-- **24 дополнительных стратегий** (папки: Pre-Market & After Hours, Advanced Tape Reading, Mean Reversion Plays, Gap Trading, Swing Trading Setups, Earnings Strategies, Macro & Sector Plays, Position Management)
-- **12 OPG/IMBX/MOC стратегий** (папки: OPG / Auction Plays, Imbalance (IMBX) Strategies, MOC / Closing Auction)
-- Каждый seed проверяет `COUNT(*) WHERE folder LIKE/= ...` перед вставкой — не дублирует при повторном запуске.
+- **8 пользователей** (трейдеры + кураторы) — проверка `COUNT(*) FROM users`
+- **55 стратегий плейбука** в едином seed-блоке:
+  - 20 SMB Capital стратегий (9 папок: Offering/Gap/IPO/Intraday/Short/Momentum/Reversal/Swing/Frameworks)
+  - 24 дополнительных стратегий (8 папок: Pre-Market & After Hours, Advanced Tape Reading, Mean Reversion, Gap Trading, Swing Trading, Earnings, Macro & Sector, Position Management)
+  - 11 OPG/IMBX/MOC стратегий (3 папки: OPG / Auction Plays, Imbalance (IMBX) Strategies, MOC / Closing Auction)
+- **Дедупликация по имени**: каждая стратегия вставляется через `INSERT ... WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1 AND deleted_at IS NULL)` — не создаёт дубликатов при повторных запусках.
+- **ВАЖНО**: НЕ проверять по папке — имена папок могут отличаться (дефис/тире). Проверять ТОЛЬКО по `name`.
+
+### 10.13 Инвалидация кеша React Query
+После ЛЮБОЙ мутации данных (POST, PATCH, DELETE) обязательно вызывать `qc.invalidateQueries()`:
+```ts
+const qc = useQueryClient();
+qc.invalidateQueries({ queryKey: ["playbook"] });
+qc.invalidateQueries({ queryKey: ["playbook-children"] });
+qc.invalidateQueries({ queryKey: ["trades"] });
+```
+- В sub-компонентах (TradeActions, PlaybookChildren) нужен свой `const qc = useQueryClient()`
+- Прямые fetch-мутации (без useMutation) тоже ОБЯЗАНЫ инвалидировать кеш
+- Без инвалидации UI не обновляется после изменений — пользователь не видит свои действия
+
+### 10.14 GitHub Backup
+- Репо: `iskhakovzak/WS_LEXX` (приватный)
+- Ветки: `main`, `release-v1.0`
+- Release v1.0: содержит node_modules.tar.gz, dist.tar.gz, cache.tar.gz
+- Для загрузки на GitHub используется GitHub API через Replit integration (token из `listConnections('github')`)
+- Деструктивные git-команды заблокированы в main agent — использовать GitHub API через code_execution
 
 ## 11. ФАЙЛОВАЯ СТРУКТУРА
 

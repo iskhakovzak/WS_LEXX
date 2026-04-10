@@ -348,63 +348,23 @@ export async function runMigrations() {
     { name: "MOC + Options Expiration — Pin Risk Play", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 62, conditions: "On options expiration (monthly/weekly), stocks tend to 'pin' to strike prices with maximum open interest. Trade the pin into the close.", checklist: "- Identify max pain / highest OI strike price\n- After 2:00 PM on OPEX day, monitor price vs strike\n- If stock near high-OI strike, expect pinning action\n- Trade toward the pin strike (mean reversion to strike)\n- MOC order at the pin strike if profitable\n- Size small — pinning is not guaranteed\n- Works best on large-cap with high options volume\n- Close all positions at market close", notes: "Options expiration pinning occurs because market makers hedge their delta by buying/selling stock. As options expire, this hedging creates mean-reversion toward the highest open interest strike. This effect is strongest in the last 2 hours of OPEX day." },
   ];
 
-  const opgFolders = ['OPG / Auction Plays', 'Imbalance (IMBX) Strategies', 'MOC / Closing Auction'];
-  const { rows: existingOpg } = await pool.query(
-    `SELECT COUNT(*) as cnt FROM playbook WHERE folder = ANY($1) AND deleted_at IS NULL`,
-    [opgFolders]
-  );
-  if (Number(existingOpg[0]?.cnt) === 0) {
-    logger.info("Seeding OPG/IMBX/MOC strategies...");
-    for (const s of opgImbxMocStrategies) {
-      try {
-        await pool.query(
-          `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel]
-        );
-      } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
-    }
-    logger.info(`Seeded ${opgImbxMocStrategies.length} OPG/IMBX/MOC strategies`);
-  } else {
-    logger.info(`OPG/IMBX/MOC strategies already exist (${existingOpg[0]?.cnt}), skipping seed`);
+  const allSeedStrategies = [...smbStrategies, ...additionalStrategies, ...opgImbxMocStrategies];
+  let seeded = 0;
+  for (const s of allSeedStrategies) {
+    try {
+      const { rowCount } = await pool.query(
+        `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level)
+         SELECT $1, $2, $3, $4, $5, $6, $7
+         WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1 AND deleted_at IS NULL)`,
+        [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel]
+      );
+      if (rowCount && rowCount > 0) seeded++;
+    } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
   }
-
-  const { rows: existingPlaybook } = await pool.query(`SELECT COUNT(*) as cnt FROM playbook WHERE folder LIKE 'SMB Capital%' AND deleted_at IS NULL`);
-  if (Number(existingPlaybook[0]?.cnt) === 0) {
-    logger.info("Seeding SMB Capital playbook strategies...");
-    for (const s of smbStrategies) {
-      try {
-        await pool.query(
-          `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel]
-        );
-      } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
-    }
-    logger.info(`Seeded ${smbStrategies.length} SMB Capital strategies`);
+  if (seeded > 0) {
+    logger.info(`Seeded ${seeded} new playbook strategies (${allSeedStrategies.length - seeded} already existed)`);
   } else {
-    logger.info(`SMB Capital strategies already exist (${existingPlaybook[0]?.cnt}), skipping seed`);
-  }
-
-  const additionalFolders = ['Pre-Market & After Hours', 'Advanced Tape Reading', 'Mean Reversion Plays', 'Gap Trading', 'Swing Trading Setups', 'Earnings Strategies', 'Macro & Sector Plays', 'Position Management'];
-  const { rows: existingAdditional } = await pool.query(
-    `SELECT COUNT(*) as cnt FROM playbook WHERE folder = ANY($1) AND deleted_at IS NULL`,
-    [additionalFolders]
-  );
-  if (Number(existingAdditional[0]?.cnt) === 0) {
-    logger.info("Seeding additional prop trading strategies...");
-    for (const s of additionalStrategies) {
-      try {
-        await pool.query(
-          `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level)
-           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-          [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel]
-        );
-      } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
-    }
-    logger.info(`Seeded ${additionalStrategies.length} additional strategies`);
-  } else {
-    logger.info(`Additional strategies already exist (${existingAdditional[0]?.cnt}), skipping seed`);
+    logger.info(`All ${allSeedStrategies.length} playbook strategies already exist, skipping seed`);
   }
 
   logger.info("Database migrations completed");

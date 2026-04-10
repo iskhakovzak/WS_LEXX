@@ -85,14 +85,25 @@ cd artifacts/api-server && PORT=3000 node --enable-source-maps ./dist/index.mjs 
 `trade_reviews`, `playbook_trade_ideas`, `big7_levels`, `big7_catalysts`, `trader_ratings`
 
 Миграции: `migrate.ts` — `CREATE TABLE IF NOT EXISTS` + `ALTER TABLE ADD COLUMN IF NOT EXISTS`
-Seed: запускается только если `trades` таблица пустая
+Seed: пользователи (если пусто) + 55 стратегий плейбука (дедупликация по name через `WHERE NOT EXISTS`)
+
+## КРИТИЧНО: Dev vs Production = ДВЕ РАЗНЫЕ БД
+- Dev БД и Production БД — отдельные! Данные в dev не попадают в production автоматически
+- Все seed'ы ОБЯЗАНЫ быть в `migrate.ts` — иначе production их не получит
+- Seed проверяет каждую стратегию по name (`WHERE NOT EXISTS`) — безопасен от дубликатов
+- После изменения seed — пересобрать и задеплоить
 
 ## Текущее состояние (апрель 2026)
-- 47 записей в плейбуке: 20 SMB Capital стратегий (IDs 29-48) + 27 других
-- Дочерние сетапы работают полностью (создание, редактирование, скрины)
-- Теговая система: 8 категорий шаблонов + ручной ввод + drag-reorder
+- **82 стратегии в dev** (55 из seed + 27 пользовательских): 29 папок
+- 55 seed-стратегий: 20 SMB Capital + 24 дополнительных + 11 OPG/IMBX/MOC
+- SETUP_TYPES в playbook.tsx содержит все типы включая OPG, Imbalance, MOC
+- Дочерние сетапы, теги (8 категорий), скриншоты
+- Система рейтинга трейдеров с 6 категориями
 - Все API роуты возвращают camelCase
-- Система рейтинга трейдеров с 6 категориями оценки
+
+## GitHub Backup
+- Репо: `iskhakovzak/WS_LEXX` (приватный)
+- Release v1.0: node_modules.tar.gz + dist.tar.gz + cache.tar.gz
 
 ## Полный промт восстановления
 Смотри файл `PROJECT_RECOVERY_PROMPT.md` — там всё детально.
