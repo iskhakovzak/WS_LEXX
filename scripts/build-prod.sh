@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 echo "==> Building frontend..."
-pnpm --filter @workspace/edge-tracker run build
+BASE_PATH=/ pnpm --filter @workspace/edge-tracker run build
 
 echo "==> Building API server..."
 pnpm --filter @workspace/api-server run build
