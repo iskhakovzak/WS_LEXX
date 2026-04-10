@@ -1,8 +1,8 @@
-# Workspace
+# WS_LEXX — Prop Trading Desk
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом и Express 5 API.
 
 ## Stack
 
@@ -10,18 +10,50 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 - **Node.js version**: 24
 - **Package manager**: pnpm
 - **TypeScript version**: 5.9
+- **Frontend**: React 18 + Vite + TailwindCSS + Wouter
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM
+- **Database**: PostgreSQL + Drizzle ORM (встроенный Replit PostgreSQL)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
 
+## Artifacts
+
+- `artifacts/edge-tracker` — React/Vite фронтенд, порт 24402, путь `/`
+- `artifacts/api-server` — Express 5 API сервер, порт 8080, путь `/api`
+
 ## Key Commands
 
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
+- `pnpm install` — установить зависимости
+- `pnpm --filter @workspace/api-server run build` — собрать API сервер
+- `pnpm --filter @workspace/api-server run dev` — запустить API в dev режиме
+- `pnpm --filter @workspace/edge-tracker run dev` — запустить фронтенд
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
 
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+## Auth (фронтенд только)
+
+Сессия в `localStorage["ws_lexx_session"]`. Трейдеры:
+- Закир / `0101`
+- Антон / `61725` (куратор)
+- Артур / `93547`
+- Рахматулло / `5555`
+- Умид / `15964`
+- Максат / `82374`
+- Тимур / `39156` (куратор)
+- Ариф / `07770` (куратор)
+- Admin / `0987`
+
+## Критические правила
+
+1. Использовать ТОЛЬКО встроенную Replit PostgreSQL (Supabase НЕ работает — IPv6)
+2. Миграции запускаются автоматически при старте сервера через `runMigrations()` в `migrate.ts`
+3. Raw SQL ОБЯЗАТЕЛЬНО camelCase — иначе фронтенд не видит данные
+4. API mount point: `app.use("/api", router)` — т.е. `/api/trades` и т.д.
+5. Soft delete — `deleted_at`, GET фильтрует `WHERE deleted_at IS NULL`
+
+## Backups
+
+В `artifacts/backups/`:
+- `replit_postgres_full_dump.sql` — полный SQL дамп
+- JSON по каждой таблице

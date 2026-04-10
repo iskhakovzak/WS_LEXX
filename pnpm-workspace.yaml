@@ -33,6 +33,8 @@ minimumReleaseAgeExclude:
   # this setting guards against does not apply to our own packages.
   - '@replit/*'
   - stripe-replit-sync
+  # Security patch release — exclude until 24h minimum age window passes
+  - vite
 
 packages:
   - artifacts/*
@@ -62,7 +64,7 @@ catalog:
   tailwind-merge: ^3.3.1
   tailwindcss: ^4.1.14
   tsx: ^4.21.0
-  vite: ^7.3.0
+  vite: ^7.3.2
   zod: ^3.25.76
 
 autoInstallPeers: false
@@ -74,6 +76,11 @@ onlyBuiltDependencies:
   - unrs-resolver
 
 overrides:
+  # Security: force minimum safe versions for vulnerable transitive dependencies
+  lodash: ">=4.18.0"
+  path-to-regexp: ">=8.4.0"
+  "picomatch@^2.0.0": "2.3.2"
+  "picomatch@^4.0.0": "4.0.4"
   # replit uses linux-x64 only, we can exclude all other platforms
   "esbuild>@esbuild/darwin-arm64": "-"
   "esbuild>@esbuild/darwin-x64": "-"
