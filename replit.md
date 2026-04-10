@@ -12,7 +12,7 @@ pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом
 - **TypeScript version**: 5.9
 - **Frontend**: React 18 + Vite + TailwindCSS + Wouter
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM (встроенный Replit PostgreSQL)
+- **Database**: PostgreSQL + Drizzle ORM (Supabase via Connection Pooler)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
 - **Build**: esbuild (CJS bundle)
@@ -46,7 +46,7 @@ pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом
 
 ## Критические правила
 
-1. Использовать ТОЛЬКО встроенную Replit PostgreSQL (Supabase НЕ работает — IPv6)
+1. База данных — Supabase PostgreSQL через Connection Pooler (`SUPABASE_DB_PASSWORD` env var). Подключение через `aws-1-ap-northeast-1.pooler.supabase.com:5432`
 2. Миграции запускаются автоматически при старте сервера через `runMigrations()` в `migrate.ts`
 3. Raw SQL ОБЯЗАТЕЛЬНО camelCase — иначе фронтенд не видит данные
 4. API mount point: `app.use("/api", router)` — т.е. `/api/trades` и т.д.
