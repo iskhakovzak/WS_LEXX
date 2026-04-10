@@ -183,7 +183,7 @@ function TradingViewChart({ symbol, exchange, theme: colorTheme, interval, heigh
     script.src = "https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js";
     script.async = true;
     const isDark = colorTheme === "dark";
-    script.innerHTML = JSON.stringify({
+    script.textContent = JSON.stringify({
       symbol: `${exchange}:${symbol}`,
       interval,
       timezone: "America/New_York",
