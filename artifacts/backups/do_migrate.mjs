@@ -3,8 +3,8 @@ const require = createRequire('/home/runner/workspace/node_modules/.pnpm/pg@8.20
 const pg = require('/home/runner/workspace/node_modules/.pnpm/pg@8.20.0/node_modules/pg');
 const { Pool } = pg;
 
-const SUPABASE_URL = 'https://egrxucyrgcqaubjnzzxs.supabase.co';
-const SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImVncnh1Y3lyZ2NxYXViam56enhzIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTgyNDk0OCwiZXhwIjoyMDkxNDAwOTQ4fQ.Fy5nUnkZUDtdVK8PCwKtLQK2hiYsEZCDo5BypURig6g';
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
