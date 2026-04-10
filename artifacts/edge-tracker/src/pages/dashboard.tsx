@@ -51,14 +51,17 @@ function StatCard({ title, icon: Icon, value, valueClass, subtitle, accentColor 
   accentColor: string;
 }) {
   return (
-    <div className={`bg-card border border-border rounded-none shadow-none border-l-[3px] ${accentColor}`}>
+    <div className={`group relative bg-card border border-border/50 rounded-lg overflow-hidden transition-all duration-300 hover:border-border hover:shadow-lg`}>
+      <div className={`absolute top-0 left-0 w-full h-0.5 ${accentColor.replace("border-l-", "bg-")}`} />
       <div className="flex flex-row items-center justify-between px-4 pt-4 pb-2">
-        <div className="text-[10px] font-mono uppercase text-muted-foreground tracking-wider">{title}</div>
-        <Icon className="h-4 w-4 text-muted-foreground/50" />
+        <div className="text-[10px] font-mono uppercase text-muted-foreground tracking-wider font-semibold">{title}</div>
+        <div className="w-8 h-8 rounded-lg bg-muted/30 flex items-center justify-center group-hover:bg-muted/50 transition-colors">
+          <Icon className="h-4 w-4 text-muted-foreground/60" />
+        </div>
       </div>
       <div className="px-4 pb-4">
         <div className={`text-2xl font-bold font-mono ${valueClass || "text-foreground"}`}>{value}</div>
-        {subtitle && <div className="text-xs font-mono text-muted-foreground mt-1">{subtitle}</div>}
+        {subtitle && <div className="text-xs font-mono text-muted-foreground mt-1.5">{subtitle}</div>}
       </div>
     </div>
   );
@@ -102,11 +105,14 @@ export default function Dashboard() {
       <MarketTicker />
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight">Дашборд</h1>
-          <p className="text-xs text-muted-foreground font-mono mt-0.5">{allTrades.length} трейдов · {new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}</p>
+          <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight flex items-center gap-2.5">
+            <div className="w-2 h-2 bg-primary rounded-full" />
+            Дашборд
+          </h1>
+          <p className="text-xs text-muted-foreground font-mono mt-1">{allTrades.length} трейдов · {new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}</p>
         </div>
         {streak.count > 0 && (
-          <div className={`flex items-center gap-2 px-3 py-1.5 border ${isWinStreak ? "border-emerald-500/30 bg-emerald-500/5" : "border-red-500/30 bg-red-500/5"}`}>
+          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border backdrop-blur-sm ${isWinStreak ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
             <StreakIcon className={`h-4 w-4 ${streakColor}`} />
             <span className={`font-mono text-sm font-bold ${streakColor}`}>{streak.count}</span>
             <span className={`font-mono text-xs ${streakColor}`}>{isWinStreak ? "win streak" : "loss streak"}</span>
@@ -150,11 +156,11 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="col-span-2 space-y-4">
-          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-widest flex items-center gap-2">
+          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-[0.15em] flex items-center gap-2">
             <div className="w-1.5 h-1.5 bg-primary rounded-full" />
             Недавние Трейды
           </h2>
-          <div className="bg-card border border-border rounded-none overflow-hidden">
+          <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-sm font-mono text-left">
                 <thead className="bg-muted text-muted-foreground">
@@ -196,25 +202,25 @@ export default function Dashboard() {
         </div>
 
         <div className="space-y-4">
-          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-widest flex items-center gap-2">
+          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-[0.15em] flex items-center gap-2">
             <div className="w-1.5 h-1.5 bg-amber-400 rounded-full" />
             Market Context
           </h2>
-          <div className="bg-card border border-border rounded-none shadow-none">
-            <div className="p-4 space-y-4">
-              <div className="bg-muted/20 border border-border/50 p-3">
+          <div className="bg-card border border-border/50 rounded-lg">
+            <div className="p-4 space-y-3">
+              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
                 <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Режим рынка</div>
                 <div className="text-sm font-mono font-bold text-foreground">{summary?.marketRegime || "Не определен"}</div>
               </div>
-              <div className="bg-muted/20 border border-border/50 p-3">
+              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
                 <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Топ Setup</div>
                 <div className="text-sm font-mono font-bold text-primary">{summary?.topSetup || "-"}</div>
               </div>
-              <div className="bg-muted/20 border border-border/50 p-3">
+              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
                 <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Лучшие тикеры</div>
                 <div className="text-sm font-mono text-foreground">{summary?.bestTickers || "-"}</div>
               </div>
-              <div className="pt-2 border-t border-border">
+              <div className="pt-3 border-t border-border/30">
                 <div className="text-[10px] font-mono text-muted-foreground uppercase mb-3 tracking-wider">Быстрые ссылки</div>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
@@ -225,7 +231,7 @@ export default function Dashboard() {
                     { href: "/calculator", label: "Калькулятор" },
                     { href: "/events", label: "События" },
                   ].map(({ href, label }) => (
-                    <a key={href} href={href} className="text-xs font-mono text-muted-foreground hover:text-primary hover:bg-primary/5 transition-colors px-2 py-1.5 border border-transparent hover:border-primary/20">
+                    <a key={href} href={href} className="text-xs font-mono text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all duration-200 px-2.5 py-2 rounded-md border border-transparent hover:border-primary/15">
                       → {label}
                     </a>
                   ))}

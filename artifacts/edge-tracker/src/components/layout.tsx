@@ -16,7 +16,7 @@ import {
 import {
   LineChart, LayoutDashboard, List, Activity, BookOpen, Clock,
   MessageSquare, Settings, Eye, BookMarked, Calculator, LogOut, User, Rss,
-  AlertTriangle, Sun, Moon, Compass, Radar, Trophy
+  AlertTriangle, Sun, Moon, Compass, Radar, Trophy, ChevronRight
 } from "lucide-react";
 import { GlobalSearch } from "@/components/global-search";
 import { useAuth } from "@/contexts/auth-context";
@@ -72,24 +72,32 @@ export function Layout({ children }: { children: React.ReactNode }) {
   return (
     <SidebarProvider>
       <div className="min-h-screen w-full flex text-sm text-foreground bg-background">
-        <Sidebar className="border-r border-border bg-card">
-          <SidebarHeader className="border-b border-border p-4">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 bg-primary rounded-full animate-pulse" />
-              <h2 className="text-primary font-bold text-lg font-mono tracking-tight">WS_LEXX</h2>
-            </div>
-            <div className="flex items-center justify-between mt-2">
-              <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
-                <div className="w-5 h-5 bg-primary/15 border border-primary/30 flex items-center justify-center">
-                  <User className="h-3 w-3 text-primary" />
-                </div>
-                <span className="text-foreground/80">{displayName}</span>
+        <Sidebar className="border-r border-border/50 bg-sidebar">
+          <SidebarHeader className="border-b border-border/50 p-4">
+            <div className="flex items-center gap-2.5">
+              <div className="relative">
+                <div className="w-2.5 h-2.5 bg-primary rounded-full" />
+                <div className="absolute inset-0 w-2.5 h-2.5 bg-primary rounded-full animate-ping opacity-20" />
               </div>
-              <div className="flex items-center gap-1">
+              <h2 className="text-gradient font-black text-xl font-mono tracking-tighter">WS_LEXX</h2>
+            </div>
+            <div className="flex items-center justify-between mt-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 rounded-md bg-primary/10 border border-primary/20 flex items-center justify-center">
+                  <User className="h-3.5 w-3.5 text-primary" />
+                </div>
+                <div>
+                  <span className="text-xs font-medium text-foreground block leading-tight">{displayName}</span>
+                  <span className="text-[9px] font-mono text-muted-foreground uppercase tracking-wider">
+                    {user?.role === "trader" ? "trader" : "guest"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-0.5">
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-primary"
+                  className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all duration-200"
                   onClick={toggleTheme}
                   title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
                 >
@@ -98,7 +106,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-6 w-6 text-muted-foreground hover:text-destructive"
+                  className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/5 transition-all duration-200"
                   onClick={logout}
                   title="Logout"
                 >
@@ -107,10 +115,10 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </div>
             </div>
           </SidebarHeader>
-          <SidebarContent>
+          <SidebarContent className="py-2">
             {navGroups.map((group) => (
-              <SidebarGroup key={group.label}>
-                <SidebarGroupLabel className="text-[10px] font-mono uppercase tracking-widest text-muted-foreground/60 px-4 py-1.5">
+              <SidebarGroup key={group.label} className="px-2">
+                <SidebarGroupLabel className="text-[9px] font-mono font-semibold uppercase tracking-[0.2em] text-muted-foreground/50 px-3 py-2">
                   {group.label}
                 </SidebarGroupLabel>
                 <SidebarGroupContent>
@@ -122,13 +130,16 @@ export function Layout({ children }: { children: React.ReactNode }) {
                           <SidebarMenuButton
                             asChild
                             isActive={isActive}
-                            className={`text-foreground/70 hover:bg-muted hover:text-foreground font-mono transition-colors rounded-none h-9 ${
-                              isActive ? "bg-primary/10 text-primary border-l-2 border-l-primary" : "border-l-2 border-l-transparent"
+                            className={`group/nav font-mono transition-all duration-200 rounded-md h-9 mx-1 ${
+                              isActive
+                                ? "bg-primary/10 text-primary border border-primary/15 shadow-sm shadow-primary/5"
+                                : "text-foreground/60 hover:bg-muted/50 hover:text-foreground border border-transparent"
                             }`}
                           >
-                            <Link href={item.href} className="flex items-center gap-3">
-                              <item.icon className={`h-4 w-4 ${isActive ? "text-primary" : ""}`} />
-                              <span className="text-xs">{item.name}</span>
+                            <Link href={item.href} className="flex items-center gap-3 px-2.5">
+                              <item.icon className={`h-4 w-4 transition-colors ${isActive ? "text-primary" : "text-muted-foreground group-hover/nav:text-foreground/80"}`} />
+                              <span className="text-xs flex-1">{item.name}</span>
+                              {isActive && <ChevronRight className="h-3 w-3 text-primary/50" />}
                             </Link>
                           </SidebarMenuButton>
                         </SidebarMenuItem>
@@ -139,12 +150,20 @@ export function Layout({ children }: { children: React.ReactNode }) {
               </SidebarGroup>
             ))}
           </SidebarContent>
+          <div className="mt-auto border-t border-border/50 p-3">
+            <div className="flex items-center gap-1.5 text-[9px] font-mono text-muted-foreground/40">
+              <div className="w-1.5 h-1.5 bg-emerald-500/70 rounded-full" />
+              <span>v2.0</span>
+              <span className="mx-1">·</span>
+              <span>PROP TRADING DESK</span>
+            </div>
+          </div>
         </Sidebar>
         <main className="flex-1 overflow-auto flex flex-col relative">
-          <div className="flex h-12 items-center justify-between border-b border-border bg-card/80 backdrop-blur-sm px-4 shrink-0 sticky top-0 z-30">
+          <div className="flex h-14 items-center justify-between border-b border-border/50 bg-card/60 backdrop-blur-xl px-5 shrink-0 sticky top-0 z-30">
             <div className="flex items-center gap-3 lg:hidden">
               <SidebarTrigger className="text-foreground hover:text-primary transition-colors" />
-              <h1 className="font-bold text-primary font-mono text-sm tracking-tight">WS_LEXX</h1>
+              <h1 className="font-black text-gradient font-mono text-sm tracking-tighter">WS_LEXX</h1>
             </div>
             <div className="hidden lg:block" />
             <GlobalSearch />

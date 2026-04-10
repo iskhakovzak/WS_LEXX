@@ -79,6 +79,14 @@ cd artifacts/api-server && PORT=3000 node --enable-source-maps ./dist/index.mjs 
 - Настройки тикеров в localStorage (`big7_custom_tickers`)
 - Фильтр "In Play Only" + режим Compact/Full
 
+## Stock Data Proxy (Auto-fetched market data)
+- API: `GET /api/stockdata/quote?symbols=AAPL,MSFT` — returns live price, change%, gap%, RVOL, ATR(14), 52w H/L, volume
+- API: `GET /api/stockdata/chart?symbol=AAPL&range=5d&interval=1d` — returns OHLCV candles + ATR
+- Source: Yahoo Finance v8 chart API (query1.finance.yahoo.com)
+- Cache: 60s for quotes, 5min for charts
+- Big7 page auto-fetches quotes every 60s, shows LiveDataBadge (price/change/gap/RVOL) and LiveDataPanel (Open/High/Low/PrevClose/Volume/AvgVol/ATR/52w range)
+- Route: `artifacts/api-server/src/routes/stockdata.ts`
+
 ## БД — главные таблицы
 `playbook`, `trades`, `market_events`, `research`, `daily_feed`, `discussions`,
 `comments`, `watchlist`, `activity_log`, `trade_reactions`, `trading_errors`,

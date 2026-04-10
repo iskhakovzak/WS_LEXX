@@ -348,18 +348,96 @@ export async function runMigrations() {
     { name: "MOC + Options Expiration — Pin Risk Play", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 62, conditions: "On options expiration (monthly/weekly), stocks tend to 'pin' to strike prices with maximum open interest. Trade the pin into the close.", checklist: "- Identify max pain / highest OI strike price\n- After 2:00 PM on OPEX day, monitor price vs strike\n- If stock near high-OI strike, expect pinning action\n- Trade toward the pin strike (mean reversion to strike)\n- MOC order at the pin strike if profitable\n- Size small — pinning is not guaranteed\n- Works best on large-cap with high options volume\n- Close all positions at market close", notes: "Options expiration pinning occurs because market makers hedge their delta by buying/selling stock. As options expire, this hedging creates mean-reversion toward the highest open interest strike. This effect is strongest in the last 2 hours of OPEX day." },
   ];
 
+  const seedTags: Record<string, string> = {
+    "ATM Offering Play — Short": "Offering Play,ATM Offering,Fade Trade,VWAP Rejection,Offering,ATM,S-1 Filing,High Relative Volume,Volume Spike",
+    "Pricing Play — Long Bounce": "Offering Play,Post-Offering Bounce,Reversal,VWAP Bounce,Offering,Pricing,Offering Price",
+    "Gap and Go — Earnings Momentum": "Gap and Go,Earnings Gap Up,ORB,Trend Continuation,Earnings Beat,Revenue Beat,VWAP,Opening Range High,High Relative Volume",
+    "IPO Day Trade — First Day Play": "IPO Trade,ORB,Breakout,Opening Range High,Opening Range Low,IPO Stock,Recent IPO (<6mo),High Relative Volume",
+    "Second Day Play — Momentum Continuation": "Second Day Play,Trend Continuation,Breakout,Gap Up,HOD,Yesterday High,High Relative Volume",
+    "VWAP Trend Trade — Intraday": "VWAP Trend,VWAP Bounce,VWAP Hold Long,Pullback Trade,Intraday Momentum,VWAP,Trending Day",
+    "Parabolic Short — Extended Stock": "Parabolic Short,Blow-Off Top Short,Exhaustion Short,Reversal,HOD,Low Float (<10M),High Relative Volume,Volume Spike",
+    "Opening Range Breakout (ORB)": "ORB,ORB 5min,ORB 15min,Breakout,Opening Range High,Opening Range Low,First 15min,First 30min,Volume Spike",
+    "Low Float Momentum — Float Rotation": "Intraday Momentum,Runner,Breakout,Bull Flag,Low Float (<10M),Extremely Low Float (<2M),High Relative Volume,Volume Spike",
+    "Failed Follow Through — Bear Flag Short": "Failed Follow Through,Bear Flag,Reversal,Dead Cat Bounce,Short,Yesterday High,Low Volume",
+    "Short Squeeze Play": "Short Squeeze,Intraday Momentum,Breakout,High Short Interest (>20%),High Relative Volume,Volume Spike,Gap Up",
+    "Sympathy Play — Sector Follower": "Sympathy Play,Sector Rotation Play,Intraday Momentum,Breakout,Sector Leading,Sector Rotation",
+    "Halt & Resume Play": "Halt & Resume,Breakout,Reversal,High Relative Volume,Volume Spike,High Volatility",
+    "Anchored VWAP — Earnings / IPO Level": "VWAP Bounce,VWAP Rejection,Breakout,Anchored VWAP,Earnings Beat,IPO Stock,Daily Support,Daily Resistance",
+    "9 EMA Daily — Swing Entry на Trend": "Pullback Trade,Swing Hold,Trend Continuation,EMA9,Daily Support,Trending Day",
+    "Dead Cat Bounce — Short the Recovery": "Dead Cat Bounce,Reversal,Fade Trade,Short,Earnings Miss,Analyst Downgrade,VWAP,Daily Resistance",
+    "High of Day Break — Momentum Ignition": "Breakout,Momentum Ignition,HOD,Flat Top Breakout,Volume Spike,High Relative Volume,Trending Day",
+    "News Fade — Sell/Short the News": "Fade Trade,News Spike Fade,Reversal,Short,Breaking News,Analyst Upgrade,VWAP",
+    "In Play Stock Framework — Отбор акций": "Gap Up,Gap Down,High Relative Volume,Volume Spike,Breaking News,Earnings Beat",
+    "Power Hour Momentum — 3:00–4:00 PM": "Intraday Momentum,VWAP Trend,Trend Continuation,Power Hour,Last Hour,VWAP",
+    "Pre-Market Gap Scan — Watchlist Build": "Gap Up,Gap Down,Premarket,Premarket High,Premarket Low,High Relative Volume",
+    "After Hours Earnings React — Next Day Prep": "Earnings Gap Up,Earnings Gap Down,Second Day Play,After Hours,Earnings Beat,Earnings Miss",
+    "Overnight Hold — Swing Catalyst": "Swing Hold,Overnight Hold Gap,Multi-Day Momentum,Earnings Beat,FDA Approval",
+    "Tape Reading — Order Flow Entry": "Tape Reading Entry,Level 2 Entry,Dark Pool Print,Block Trade Follow,High Relative Volume",
+    "Dark Pool Print — Hidden Liquidity": "Dark Pool Print,Block Trade Follow,Tape Reading Entry,Dark Pool Level,Dark Pool Volume",
+    "Level 2 / Order Book Reading": "Tape Reading Entry,Level 2 Entry,Full Size,High Relative Volume",
+    "Exhaustion Print — Volume Climax": "Exhaustion Short,Blow-Off Top Short,Reversal,Volume Spike,HOD,High Volatility",
+    "RSI Oversold Bounce — Mean Reversion": "RSI Oversold Bounce,Mean Reversion,Reversal,Bollinger Band Bounce,Daily Support,LOD,Low Volatility",
+    "Bollinger Band Squeeze → Expansion": "Bollinger Band Bounce,Mean Reversion,Breakout,Range Expansion,Low Volatility,Narrow Range Break (NR7)",
+    "Pairs Trade — Long / Short Hedge": "Pairs Trade,Relative Value,ETF Arbitrage,Hedged Swing,Sector Rotation",
+    "Gap Fill Strategy — Intraday Reversion": "Gap Fill,Mean Reversion,Gap Up,Gap Down,VWAP,Gap Fill Level,Open Price",
+    "Gap Up Continuation — Trend Follow": "Gap and Go,Gap and Go Long,Trend Continuation,Breakout,Gap Up,Earnings Beat,VWAP,Opening Range High",
+    "Gap Down Reversal — Catch the Bounce": "Gap Fill,Reversal,Red to Green,Gap Down,LOD,VWAP Reclaim,Volume Spike",
+    "Earnings Gap Down Short — Continuation": "Earnings Gap Down,Gap and Go Short,Trend Continuation,Short,Earnings Miss,Guidance Down,VWAP,Daily Resistance",
+    "Swing Breakout — Weekly Range": "Weekly Breakout,Breakout,Swing Hold,Multi-Day Momentum,52-Week High,Weekly Resistance,High Relative Volume",
+    "Swing Pullback — 20 SMA Bounce": "Pullback Trade,Swing Hold,Trend Continuation,SMA20,Daily Support,Normal Volume",
+    "Swing Reversal — Double Bottom": "Double Bottom,Reversal,Swing Hold,V-Bottom Reversal,Daily Support,52-Week Low,Volume Spike",
+    "Post-Earnings Drift (PEAD)": "Earnings Drift (PEAD),Post-Earnings Continuation,Trend Continuation,Swing Hold,Earnings Beat,Earnings Miss,High Relative Volume",
+    "Pre-Earnings Volatility Play": "Pre-Earnings Run,Catalyst Anticipation,Swing Hold,Earnings Season,Unusual Options Activity",
+    "Earnings Straddle — Volatility Capture": "Catalyst Anticipation,Pre-Earnings Run,Earnings Season,Unusual Options Activity,High Volatility",
+    "Sector Rotation — Follow the Flow": "Sector Rotation Play,Relative Strength Trade,Macro Play,Sector Leading,Sector Lagging,Sector Rotation",
+    "Macro Catalyst Trade — FOMC / CPI / NFP": "Macro Play,Fundamental / Catalyst Trade,FOMC,CPI,NFP,Interest Rate,Fed Day,VIX Spike",
+    "Correlation Trade — Sector ETF + Stock": "Pairs Trade,ETF Arbitrage,Relative Value,Sector Rotation,SPY Above VWAP,QQQ Leading",
+    "Scaling — Pyramid Into Winners": "Pyramid Into Winner,Add to Winner,Scale In,Pyramided In,Added on Confirmation,Trending Day",
+    "Risk Unit Framework — Max Loss / Day": "Cut Loss Fast,Stopped Out,No Stop Set,Over-Sized,Bad Risk/Reward,Discipline Win",
+    "Partial Profit — Trail Stop System": "Scale Out,Partial Profit,Trail Stop,Scaled Out Well,Let Runner Run,Full Target Hit",
+    "OPG — Стандартный Opening Imbalance": "Opening Imbalance (OPG),Imbalance,ORB,Open Drive,First 15min,Volume Spike,High Relative Volume",
+    "OPG — Fade Large Imbalance": "Opening Imbalance (OPG),Imbalance,Fade Trade,Reversal,Open Drive,First 15min,VWAP",
+    "OPG — Index Arbitrage at Open": "Opening Imbalance (OPG),ETF Arbitrage,Pairs Trade,Open Drive,SPY Above VWAP,First 15min",
+    "OPG — Sector ETF Imbalance": "Opening Imbalance (OPG),Sector Rotation Play,ETF Arbitrage,Sector Leading,First 15min",
+    "IMBX — Continuous Book Imbalance": "Imbalance,Tape Reading Entry,Level 2 Entry,Intraday Momentum,Trending Day",
+    "IMBX — Bid Stack Fade (Large Passive Seller)": "Imbalance,Fade Trade,Tape Reading Entry,Level 2 Entry,Dark Pool Print",
+    "IMBX — Ask Stack Break (Hidden Buyer)": "Imbalance,Breakout,Tape Reading Entry,Level 2 Entry,Dark Pool Print,Volume Spike",
+    "IMBX + VWAP Confluence": "Imbalance,VWAP Bounce,VWAP Rejection,Tape Reading Entry,VWAP,Trending Day",
+    "MOC — Standard Closing Imbalance Trade": "MOC Imbalance,Closing Cross Play,Imbalance,Last Hour,Power Hour",
+    "MOC — Large Imbalance Fade (Next Day)": "MOC Imbalance,Closing Cross Play,Fade Trade,Reversal,Last Hour,Gap Down",
+    "MOC Fade — Closing Reversal": "MOC Imbalance,Closing Cross Play,Fade Trade,Reversal,Last Hour,Power Hour",
+    "MOC + Options Expiration — Pin Risk Play": "MOC Imbalance,Closing Cross Play,Imbalance,OPEX Day,Last Hour,Round Number",
+  };
+
   const allSeedStrategies = [...smbStrategies, ...additionalStrategies, ...opgImbxMocStrategies];
   let seeded = 0;
   for (const s of allSeedStrategies) {
     try {
+      const tags = seedTags[s.name] || null;
       const { rowCount } = await pool.query(
-        `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level)
-         SELECT $1, $2, $3, $4, $5, $6, $7
+        `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level, tags)
+         SELECT $1, $2, $3, $4, $5, $6, $7, $8
          WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1 AND deleted_at IS NULL)`,
-        [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel]
+        [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel, tags]
       );
       if (rowCount && rowCount > 0) seeded++;
     } catch (e: any) { logger.warn({ error: e.message }, `Seed playbook: ${s.name}`); }
+  }
+
+  if (seeded === 0) {
+    let tagUpdated = 0;
+    for (const s of allSeedStrategies) {
+      const tags = seedTags[s.name];
+      if (!tags) continue;
+      try {
+        const { rowCount } = await pool.query(
+          `UPDATE playbook SET tags = $1 WHERE name = $2 AND (tags IS NULL OR tags = '') AND deleted_at IS NULL`,
+          [tags, s.name]
+        );
+        if (rowCount && rowCount > 0) tagUpdated++;
+      } catch (e: any) { logger.warn({ error: e.message }, `Update tags: ${s.name}`); }
+    }
+    if (tagUpdated > 0) logger.info(`Updated tags for ${tagUpdated} existing strategies`);
   }
   if (seeded > 0) {
     logger.info(`Seeded ${seeded} new playbook strategies (${allSeedStrategies.length - seeded} already existed)`);

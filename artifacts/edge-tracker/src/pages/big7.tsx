@@ -882,6 +882,77 @@ function TickerSettingsModal({ tickers, onSave, onClose }: {
   );
 }
 
+type StockQuote = {
+  price: number | null;
+  change: number | null;
+  open: number | null;
+  high: number | null;
+  low: number | null;
+  prevClose: number | null;
+  volume: number | null;
+  avgVolume: number | null;
+  relativeVolume: number | null;
+  preMarketPrice: number | null;
+  preMarketChange: number | null;
+  high52w: number | null;
+  low52w: number | null;
+  marketCap: number | null;
+  name: string;
+  gapPct: number | null;
+  atr: number | null;
+};
+
+function LiveDataBadge({ quote }: { quote?: StockQuote }) {
+  if (!quote?.price) return null;
+  const ch = quote.change ?? 0;
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="font-bold text-sm font-mono">${quote.price.toFixed(2)}</span>
+      <span className={`text-[10px] font-mono px-1.5 py-0.5 border ${ch >= 0 ? "text-emerald-400 border-emerald-500/30 bg-emerald-500/10" : "text-red-400 border-red-500/30 bg-red-500/10"}`}>
+        {ch >= 0 ? "+" : ""}{ch.toFixed(2)}%
+      </span>
+      {quote.gapPct != null && Math.abs(quote.gapPct) > 0.1 && (
+        <span className={`text-[10px] font-mono px-1.5 py-0.5 border ${quote.gapPct >= 0 ? "text-amber-400 border-amber-500/30 bg-amber-500/10" : "text-orange-400 border-orange-500/30 bg-orange-500/10"}`}>
+          GAP {quote.gapPct > 0 ? "+" : ""}{quote.gapPct.toFixed(1)}%
+        </span>
+      )}
+      {quote.relativeVolume != null && (
+        <span className={`text-[10px] font-mono px-1.5 py-0.5 border ${quote.relativeVolume >= 1.5 ? "text-primary border-primary/30 bg-primary/10" : "text-muted-foreground border-border"}`}>
+          RVOL {quote.relativeVolume.toFixed(1)}x
+        </span>
+      )}
+      {quote.preMarketPrice != null && (
+        <span className={`text-[10px] font-mono px-1.5 py-0.5 border ${(quote.preMarketChange ?? 0) >= 0 ? "text-blue-400 border-blue-500/30 bg-blue-500/10" : "text-orange-400 border-orange-500/30 bg-orange-500/10"}`}>
+          PM ${quote.preMarketPrice.toFixed(2)}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function LiveDataPanel({ quote }: { quote?: StockQuote }) {
+  if (!quote?.price) return null;
+  return (
+    <div className="border border-primary/20 bg-primary/5 p-2 space-y-1">
+      <div className="flex items-center gap-1.5 mb-1">
+        <Activity className="h-3 w-3 text-primary" />
+        <span className="text-[10px] font-mono uppercase text-primary font-bold">Live Market Data</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-1 text-[10px] font-mono">
+        <div><span className="text-muted-foreground">Open:</span> <span className="text-foreground">${quote.open?.toFixed(2) ?? "—"}</span></div>
+        <div><span className="text-muted-foreground">High:</span> <span className="text-foreground">${quote.high?.toFixed(2) ?? "—"}</span></div>
+        <div><span className="text-muted-foreground">Low:</span> <span className="text-foreground">${quote.low?.toFixed(2) ?? "—"}</span></div>
+        <div><span className="text-muted-foreground">Prev Close:</span> <span className="text-foreground">${quote.prevClose?.toFixed(2) ?? "—"}</span></div>
+        <div><span className="text-muted-foreground">Volume:</span> <span className="text-foreground">{quote.volume ? (quote.volume / 1e6).toFixed(1) + "M" : "—"}</span></div>
+        <div><span className="text-muted-foreground">Avg Vol:</span> <span className="text-foreground">{quote.avgVolume ? (quote.avgVolume / 1e6).toFixed(1) + "M" : "—"}</span></div>
+        <div><span className="text-muted-foreground">ATR(14):</span> <span className="text-foreground">{quote.atr ? "$" + quote.atr.toFixed(2) : "—"}</span></div>
+        <div><span className="text-muted-foreground">52w High:</span> <span className="text-foreground">${quote.high52w?.toFixed(2) ?? "—"}</span></div>
+        <div><span className="text-muted-foreground">52w Low:</span> <span className="text-foreground">${quote.low52w?.toFixed(2) ?? "—"}</span></div>
+      </div>
+    </div>
+  );
+}
+
 export default function Big7() {
   const { theme } = useTheme();
   const [tickers, setTickers] = useState(getCustomTickers);
@@ -889,6 +960,15 @@ export default function Big7() {
   const [expandedCharts, setExpandedCharts] = useState<Set<string>>(() => new Set(getCustomTickers().map(t => t.symbol)));
   const [viewMode, setViewMode] = useState<"full" | "compact">("full");
   const [filterInPlay, setFilterInPlay] = useState(false);
+
+  const symbols = useMemo(() => tickers.map(t => t.symbol).join(","), [tickers]);
+  const { data: liveQuotes = {} } = useQuery<Record<string, StockQuote>>({
+    queryKey: ["stockdata-quote", symbols],
+    queryFn: () => fetch(`${BASE}/api/stockdata/quote?symbols=${symbols}`).then(r => r.ok ? r.json() : {}),
+    staleTime: 60_000,
+    refetchInterval: 60_000,
+    retry: 1,
+  });
 
   const { data: catalysts = [], refetch: refetchCatalysts } = useQuery<Catalyst[]>({
     queryKey: ["big7-catalysts"],
@@ -982,6 +1062,7 @@ export default function Big7() {
           const chartOpen = expandedCharts.has(symbol);
           const isInPlay = day.inPlay;
           const tickerCatalysts = catalysts.filter(c => c.ticker === symbol && c.date >= TODAY);
+          const quote = liveQuotes[symbol];
 
           return (
             <Card key={symbol} className={`bg-card rounded-none shadow-none overflow-hidden transition-colors ${
@@ -1014,9 +1095,11 @@ export default function Big7() {
                     </button>
                   </div>
                 </div>
+                <LiveDataBadge quote={quote} />
               </CardHeader>
               <CardContent className="p-0">
                 <CatalystBadges ticker={symbol} catalysts={catalysts} />
+                <LiveDataPanel quote={quote} />
                 {chartOpen && (
                   <TradingViewMiniChart symbol={symbol} exchange={exchange} theme={theme} />
                 )}

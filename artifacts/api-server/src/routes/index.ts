@@ -16,6 +16,7 @@ import big7levelsRouter from "./big7levels";
 import big7catalystsRouter from "./big7catalysts";
 import ratingsRouter from "./ratings";
 import usersRouter from "./users";
+import stockdataRouter from "./stockdata";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(big7levelsRouter);
 router.use(big7catalystsRouter);
 router.use(ratingsRouter);
 router.use(usersRouter);
+router.use(stockdataRouter);
 
 export default router;

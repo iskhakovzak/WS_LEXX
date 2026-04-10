@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
-import { WriteOnly } from "@/contexts/auth-context";
+import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
@@ -1033,9 +1033,12 @@ function saveFolderOrder(order: string[]) {
 export default function Playbook() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState<PlaybookEntry | null>(null);
   const [deleting, setDeleting] = useState<PlaybookEntry | null>(null);
+  const [deletingFolder, setDeletingFolder] = useState<string | null>(null);
+  const [deleteFolderPwd, setDeleteFolderPwd] = useState("");
   const [expanded, setExpanded] = useState<number | null>(null);
   const [form, setForm] = useState<FormData>(blank());
   const [creatingNewFolder, setCreatingNewFolder] = useState(false);
@@ -1054,19 +1057,13 @@ export default function Playbook() {
     queryKey: ["playbook"],
     queryFn: async () => {
       const r = await fetch(`${BASE}/api/playbook`);
-      const data = await r.json();
-      console.log("[Playbook] API returned", data.length, "entries");
-      return data;
+      return r.json();
     },
     staleTime: 0,
     gcTime: 0,
   });
 
-  const topLevel = useMemo(() => {
-    const result = entries.filter((e) => !e.parentId);
-    console.log("[Playbook] topLevel:", result.length, "of", entries.length);
-    return result;
-  }, [entries]);
+  const topLevel = useMemo(() => entries.filter((e) => !e.parentId), [entries]);
 
   const grouped = useMemo(() => {
     const folders = new Map<string, PlaybookEntry[]>();
@@ -1157,7 +1154,7 @@ export default function Playbook() {
     mutationFn: ({ from, to }: { from: string; to: string }) =>
       fetch(`${BASE}/api/playbook/rename-folder`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ from, to }),
+        body: JSON.stringify({ from, to, trader: user?.name ?? "system" }),
       }).then((r) => r.json()),
     onSuccess: (_, { from, to }) => {
       qc.invalidateQueries({ queryKey: ["playbook"] });
@@ -1181,13 +1178,14 @@ export default function Playbook() {
     renameFolderMut.mutate({ from, to });
   }
 
+  const traderName = user?.name ?? "system";
   const createMut = useMutation({
     mutationFn: (data: FormData) => {
       const { screenshotUrls, screenshotNotes: sNotes, ...rest } = data;
       const folder = creatingNewFolder ? newFolderName.trim() : data.folder;
       return fetch(`${BASE}/api/playbook`, {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null }),
+        body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null, trader: traderName }),
       }).then((r) => r.json());
     },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["playbook"] }); setOpen(false); setCreatingNewFolder(false); setNewFolderName(""); toast({ title: "Добавлено в плейбук" }); },
@@ -1198,7 +1196,7 @@ export default function Playbook() {
       const folder = creatingNewFolder ? newFolderName.trim() : data.folder;
       return fetch(`${BASE}/api/playbook/${id}`, {
         method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null }),
+        body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null, trader: traderName }),
       }).then((r) => r.json());
     },
     onSuccess: () => {
@@ -1208,8 +1206,21 @@ export default function Playbook() {
     },
   });
   const deleteMut = useMutation({
-    mutationFn: (id: number) => fetch(`${BASE}/api/playbook/${id}`, { method: "DELETE" }).then((r) => r.json()),
+    mutationFn: (id: number) => fetch(`${BASE}/api/playbook/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trader: traderName }) }).then((r) => r.json()),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["playbook"] }); setDeleting(null); },
+  });
+  const deleteFolderMut = useMutation({
+    mutationFn: (data: { folder: string; password: string }) =>
+      fetch(`${BASE}/api/playbook/delete-folder`, {
+        method: "DELETE", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...data, trader: traderName }),
+      }).then(async (r) => { if (!r.ok) { const e = await r.json(); throw new Error(e.error); } return r.json(); }),
+    onSuccess: (_d, v) => {
+      qc.invalidateQueries({ queryKey: ["playbook"] });
+      setDeletingFolder(null); setDeleteFolderPwd("");
+      toast({ title: `Папка «${v.folder}» удалена` });
+    },
+    onError: (err: Error) => { toast({ title: "Ошибка", description: err.message, variant: "destructive" }); },
   });
 
   function set(k: keyof FormData, v: string) { setForm((f) => ({ ...f, [k]: v })); }
@@ -1408,13 +1419,22 @@ export default function Playbook() {
                 <div className="flex-1" />
                 <WriteOnly>
                   {renamingFolder !== folderName && (
-                    <button
-                      onClick={(e) => startRename(folderName, e)}
-                      className="p-0.5 text-muted-foreground/40 hover:text-primary transition-colors shrink-0"
-                      title="Переименовать папку"
-                    >
-                      <Pencil className="h-3 w-3" />
-                    </button>
+                    <>
+                      <button
+                        onClick={(e) => startRename(folderName, e)}
+                        className="p-0.5 text-muted-foreground/40 hover:text-primary transition-colors shrink-0"
+                        title="Переименовать папку"
+                      >
+                        <Pencil className="h-3 w-3" />
+                      </button>
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeletingFolder(folderName); setDeleteFolderPwd(""); }}
+                        className="p-0.5 text-muted-foreground/40 hover:text-red-400 transition-colors shrink-0"
+                        title="Удалить папку"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
                   )}
                 </WriteOnly>
                 {isCollapsed ? <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" /> : <ChevronUp className="h-3 w-3 text-muted-foreground shrink-0" />}
@@ -1536,6 +1556,37 @@ export default function Playbook() {
           <AlertDialogFooter>
             <AlertDialogCancel className="font-mono text-xs uppercase">Отмена</AlertDialogCancel>
             <AlertDialogAction onClick={() => deleting && deleteMut.mutate(deleting.id)} className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700">Удалить</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog open={!!deletingFolder} onOpenChange={(v) => { if (!v) { setDeletingFolder(null); setDeleteFolderPwd(""); } }}>
+        <AlertDialogContent className="bg-card border-border font-mono">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-sm uppercase text-red-400">Удалить папку «{deletingFolder}»?</AlertDialogTitle>
+            <AlertDialogDescription className="text-xs space-y-2">
+              <span className="block">Все стратегии внутри этой папки будут удалены. Это действие нельзя отменить.</span>
+              <span className="block text-muted-foreground">Введите пароль для подтверждения:</span>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <Input
+            type="password"
+            value={deleteFolderPwd}
+            onChange={(e) => setDeleteFolderPwd(e.target.value)}
+            placeholder="Пароль"
+            className="font-mono bg-background h-8 text-xs"
+            onKeyDown={(e) => { if (e.key === "Enter" && deletingFolder && deleteFolderPwd) deleteFolderMut.mutate({ folder: deletingFolder, password: deleteFolderPwd }); }}
+            autoFocus
+          />
+          <AlertDialogFooter>
+            <AlertDialogCancel className="font-mono text-xs uppercase" onClick={() => { setDeletingFolder(null); setDeleteFolderPwd(""); }}>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deletingFolder && deleteFolderPwd && deleteFolderMut.mutate({ folder: deletingFolder, password: deleteFolderPwd })}
+              disabled={!deleteFolderPwd || deleteFolderMut.isPending}
+              className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700"
+            >
+              {deleteFolderMut.isPending ? "Удаляем..." : "Удалить папку"}
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

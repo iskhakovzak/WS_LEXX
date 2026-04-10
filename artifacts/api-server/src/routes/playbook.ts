@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, desc, isNull } from "drizzle-orm";
 import { db, pool, playbookTable, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { logActivity } from "../lib/activity";
 
 const router: IRouter = Router();
 
@@ -35,14 +36,27 @@ router.get("/playbook/folders", asyncHandler(async (_req, res): Promise<void> =>
 }));
 
 router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<void> => {
-  const { from: fromName, to: toName } = req.body as { from: string; to: string };
+  const { from: fromName, to: toName, trader } = req.body as { from: string; to: string; trader?: string };
   if (!fromName || !toName) { res.status(400).json({ error: "from and to required" }); return; }
   await db.update(playbookTable).set({ folder: toName.trim() }).where(eq(playbookTable.folder, fromName));
+  await logActivity({ action: "updated", section: "playbook", entityTitle: fromName, trader: trader ?? "system", details: `Папка переименована: "${fromName}" → "${toName.trim()}"` });
   res.json({ success: true });
 }));
 
+router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<void> => {
+  const { folder, password, trader } = req.body as { folder: string; password?: string; trader?: string };
+  if (!folder) { res.status(400).json({ error: "folder required" }); return; }
+  if (password !== "1212") { res.status(403).json({ error: "Неверный пароль" }); return; }
+  const { rowCount } = await pool.query(
+    `UPDATE playbook SET deleted_at = NOW() WHERE folder = $1 AND deleted_at IS NULL`,
+    [folder]
+  );
+  await logActivity({ action: "deleted", section: "playbook", entityTitle: folder, trader: trader ?? "system", details: `Папка удалена (${rowCount} стратегий)` });
+  res.json({ success: true, deleted: rowCount });
+}));
+
 router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
-  const { name, folder, setupType, conditions, checklist, notes, confidenceLevel, screenshotUrl, screenshotNotes, tags, sourceType, sourceId, parentId } = req.body as Record<string, unknown>;
+  const { name, folder, setupType, conditions, checklist, notes, confidenceLevel, screenshotUrl, screenshotNotes, tags, sourceType, sourceId, parentId, trader } = req.body as Record<string, unknown>;
   if (!name) { res.status(400).json({ error: "name required" }); return; }
   const { rows } = await pool.query<any>(
     `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level, screenshot_url, screenshot_notes, tags, source_type, source_id, parent_id)
@@ -69,12 +83,14 @@ router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
       parentId ? Number(parentId) : null,
     ]
   );
-  res.json(rows[0]);
+  const row = rows[0];
+  await logActivity({ action: "created", section: "playbook", entityId: String(row.id), entityTitle: String(name), trader: trader ? String(trader) : "system", details: folder ? `Папка: ${folder}` : undefined });
+  res.json(row);
 }));
 
 router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  const { name, folder, setupType, conditions, checklist, notes, confidenceLevel, screenshotUrl, screenshotNotes, tags, parentId } = req.body as Record<string, unknown>;
+  const { name, folder, setupType, conditions, checklist, notes, confidenceLevel, screenshotUrl, screenshotNotes, tags, parentId, trader } = req.body as Record<string, unknown>;
   const fields: string[] = [];
   const vals: unknown[] = [];
   let i = 1;
@@ -102,6 +118,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
     vals
   );
   if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: trader ? String(trader) : "system", details: `Обновлён сетап` });
   res.json(rows[0]);
 }));
 
@@ -131,7 +148,10 @@ router.get("/playbook/:id/children", asyncHandler(async (req, res): Promise<void
 
 router.delete("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
+  const { rows } = await pool.query<any>(`SELECT name, folder FROM playbook WHERE id = $1`, [id]);
   await db.update(playbookTable).set({ deletedAt: new Date() }).where(eq(playbookTable.id, id));
+  const trader = (req.body as any)?.trader;
+  await logActivity({ action: "deleted", section: "playbook", entityId: String(id), entityTitle: rows[0]?.name ?? `#${id}`, trader: trader ?? "system", details: rows[0]?.folder ? `Папка: ${rows[0].folder}` : undefined });
   res.json({ success: true });
 }));
 
@@ -140,6 +160,8 @@ router.post("/playbook/:id/restore", asyncHandler(async (req, res): Promise<void
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const [row] = await db.update(playbookTable).set({ deletedAt: null }).where(eq(playbookTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  const trader = (req.body as any)?.trader;
+  await logActivity({ action: "created", section: "playbook", entityId: String(id), entityTitle: row.name ?? `#${id}`, trader: trader ?? "system", details: "Восстановлен из корзины" });
   res.json({ success: true });
 }));
 
