@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "sMb4nkSiamXpEbpL6Wuok"
+uri = "file://edge-tracker-clean.tar.gz"
+type = "unspecified"
+title = "Edge Tracker - чистый архив (420KB)"
