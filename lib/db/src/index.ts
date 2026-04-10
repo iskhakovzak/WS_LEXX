@@ -2,7 +2,13 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema";
 
-const { Pool } = pg;
+const { Pool, types } = pg;
+
+types.setTypeParser(20, parseInt);
+types.setTypeParser(21, parseInt);
+types.setTypeParser(23, parseInt);
+types.setTypeParser(26, parseInt);
+types.setTypeParser(1700, parseFloat);
 
 function resolveDbUrl(): string {
   if (process.env.SUPABASE_DB_PASSWORD) {
