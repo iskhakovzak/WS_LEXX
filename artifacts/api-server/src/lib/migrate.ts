@@ -299,7 +299,7 @@ export async function runMigrations() {
       { name: "Умид", password: "15964", role: "trader" },
       { name: "Максат", password: "82374", role: "trader" },
       { name: "Тимур", password: "39156", role: "curator" },
-      { name: "Ориф", password: "07770", role: "curator" },
+      { name: "Ариф", password: "07770", role: "curator" },
     ];
     for (const u of defaultUsers) {
       try {
