@@ -46,7 +46,7 @@ pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом
 
 ## Критические правила
 
-1. База данных — Supabase PostgreSQL через Connection Pooler (`SUPABASE_DB_PASSWORD` env var). Подключение через `aws-1-ap-northeast-1.pooler.supabase.com:5432`
+1. База данных — локальный PostgreSQL Replit (`DATABASE_URL` env var). Подключение через `PGHOST=helium`.
 2. Миграции запускаются автоматически при старте сервера через `runMigrations()` в `migrate.ts`
 3. Raw SQL ОБЯЗАТЕЛЬНО camelCase — иначе фронтенд не видит данные
 4. API mount point: `app.use("/api", router)` — т.е. `/api/trades` и т.д.
