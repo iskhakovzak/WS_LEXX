@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Pencil, Trash2, CheckSquare, ChevronDown, ChevronUp, Tag, Folder, FolderOpen, FolderPlus, Link2, Unlink, TrendingUp, GripVertical, ChevronsDown, ChevronsUp, ExternalLink, BookOpen, X, Check, Clock, Activity, Search, Copy } from "lucide-react";
+import { Plus, Pencil, Trash2, CheckSquare, ChevronDown, ChevronUp, Tag, Folder, FolderOpen, FolderPlus, Link2, Unlink, TrendingUp, GripVertical, ChevronsDown, ChevronsUp, ExternalLink, BookOpen, X, Check, Clock, Activity, Search, Copy, Palette } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { ScreenshotFields, ScreenshotDisplay, screenshotUrlsToString, stringToScreenshotUrls, screenshotNotesToString, stringToScreenshotNotes } from "@/components/screenshot-fields";
 import { TRADE_TAGS, type TagSubgroup } from "@/lib/tags";
@@ -97,6 +97,29 @@ const FOLDER_ICON_COLORS: Record<string, string> = {
   "Macro / Event Plays": "text-blue-400",
   "Risk Management": "text-yellow-400",
 };
+
+const FOLDER_COLOR_PALETTE = [
+  { label: "Янтарный",    border: "border-l-amber-500",       icon: "text-amber-400",       dot: "bg-amber-400" },
+  { label: "Изумрудный",  border: "border-l-emerald-500",     icon: "text-emerald-400",     dot: "bg-emerald-400" },
+  { label: "Голубой",     border: "border-l-cyan-500",        icon: "text-cyan-400",        dot: "bg-cyan-400" },
+  { label: "Красный",     border: "border-l-red-500",         icon: "text-red-400",         dot: "bg-red-400" },
+  { label: "Фиолетовый",  border: "border-l-purple-500",      icon: "text-purple-400",      dot: "bg-purple-400" },
+  { label: "Синий",       border: "border-l-blue-500",        icon: "text-blue-400",        dot: "bg-blue-400" },
+  { label: "Розовый",     border: "border-l-pink-500",        icon: "text-pink-400",        dot: "bg-pink-400" },
+  { label: "Индиго",      border: "border-l-indigo-500",      icon: "text-indigo-400",      dot: "bg-indigo-400" },
+  { label: "Жёлтый",     border: "border-l-yellow-500",      icon: "text-yellow-400",      dot: "bg-yellow-400" },
+  { label: "Оранжевый",   border: "border-l-orange-500",      icon: "text-orange-400",      dot: "bg-orange-400" },
+  { label: "Чал",         border: "border-l-teal-500",        icon: "text-teal-400",        dot: "bg-teal-400" },
+  { label: "Серый",       border: "border-l-muted-foreground",icon: "text-muted-foreground", dot: "bg-muted-foreground" },
+];
+
+function loadFolderColors(): Record<string, number> {
+  try { return JSON.parse(localStorage.getItem("playbook-folder-colors") || "{}"); }
+  catch { return {}; }
+}
+function saveFolderColors(colors: Record<string, number>) {
+  localStorage.setItem("playbook-folder-colors", JSON.stringify(colors));
+}
 
 type PlaybookEntry = {
   id: number; name: string; folder: string | null; setupType: string | null; conditions: string | null;
@@ -1133,10 +1156,36 @@ export default function Playbook() {
       if (globalSearchOpen && globalSearchRef.current && !globalSearchRef.current.contains(e.target as Node)) {
         setGlobalSearchOpen(false);
       }
+      if (coloringFolder !== null) {
+        const target = e.target as HTMLElement;
+        if (!target.closest("[data-palette-popup]")) {
+          setColoringFolder(null);
+        }
+      }
     }
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
-  }, [folderPanelOpen, tagPanelOpen, globalSearchOpen]);
+  }, [folderPanelOpen, tagPanelOpen, globalSearchOpen, coloringFolder]);
+
+  const [isDraft, setIsDraft] = useState(false);
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [folderColors, setFolderColors] = useState<Record<string, number>>(loadFolderColors);
+  const [coloringFolder, setColoringFolder] = useState<string | null>(null);
+
+  function draftKey(editId?: number | null) {
+    return editId ? `playbook-draft-${editId}` : "playbook-draft-new";
+  }
+
+  function getFolderBorderColor(name: string): string {
+    const idx = folderColors[name];
+    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].border;
+    return FOLDER_COLORS[name] || "border-l-amber-500";
+  }
+  function getFolderIconColor(name: string): string {
+    const idx = folderColors[name];
+    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].icon;
+    return FOLDER_ICON_COLORS[name] || "text-amber-400";
+  }
 
   const dragSrc = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
@@ -1320,6 +1369,16 @@ export default function Playbook() {
     setTimeout(() => navigateToEntry(entry), 200);
   }, [pendingHighlight, entries]);
 
+  useEffect(() => {
+    if (!open) return;
+    if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current);
+    draftSaveTimer.current = setTimeout(() => {
+      localStorage.setItem(draftKey(editing?.id), JSON.stringify(form));
+      setIsDraft(true);
+    }, 800);
+    return () => { if (draftSaveTimer.current) clearTimeout(draftSaveTimer.current); };
+  }, [form, open, editing?.id]);
+
   const allTopLevelIds = useMemo(() => filteredTopLevel.map((e) => e.id), [filteredTopLevel]);
   const { data: allLinkedTrades = [] } = useQuery<{ entryId: number; trades: LinkedTrade[] }[]>({
     queryKey: ["all-playbook-trades-stats", allTopLevelIds.join(",")],
@@ -1385,6 +1444,15 @@ export default function Playbook() {
       qc.invalidateQueries({ queryKey: ["playbook"] });
       setFolderOrder((prev) => { const next = prev.map((f) => f === from ? to : f); saveFolderOrder(next); return next; });
       if (folderFilter === from) setFolderFilter(to);
+      setFolderColors((prev) => {
+        if (prev[from] !== undefined) {
+          const next = { ...prev, [to]: prev[from] };
+          delete next[from];
+          saveFolderColors(next);
+          return next;
+        }
+        return prev;
+      });
       setRenamingFolder(null);
       setRenameDraft("");
       toast({ title: `Папка переименована в «${to}»` });
@@ -1413,7 +1481,13 @@ export default function Playbook() {
         body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null, trader: traderName }),
       }).then((r) => r.json());
     },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["playbook"] }); setOpen(false); setCreatingNewFolder(false); setNewFolderName(""); toast({ title: "Добавлено в плейбук" }); },
+    onSuccess: () => {
+      localStorage.removeItem(draftKey(null));
+      qc.invalidateQueries({ queryKey: ["playbook"] });
+      setOpen(false); setCreatingNewFolder(false); setNewFolderName("");
+      setIsDraft(false);
+      toast({ title: "Добавлено в плейбук" });
+    },
   });
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: FormData }) => {
@@ -1424,10 +1498,12 @@ export default function Playbook() {
         body: JSON.stringify({ ...rest, folder: folder || null, confidenceLevel: data.confidenceLevel ? Number(data.confidenceLevel) : null, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, screenshotNotes: screenshotNotesToString(sNotes) || null, trader: traderName }),
       }).then((r) => r.json());
     },
-    onSuccess: () => {
+    onSuccess: (_, { id }) => {
+      localStorage.removeItem(draftKey(id));
       qc.invalidateQueries({ queryKey: ["playbook"] });
       qc.invalidateQueries({ queryKey: ["playbook-children"] });
       setOpen(false); setEditing(null); setCreatingNewFolder(false); setNewFolderName("");
+      setIsDraft(false);
     },
   });
   const deleteMut = useMutation({
@@ -1449,8 +1525,24 @@ export default function Playbook() {
   });
 
   function set(k: keyof FormData, v: string) { setForm((f) => ({ ...f, [k]: v })); }
-  function openCreate() { setForm(blank()); setEditing(null); setCreatingNewFolder(false); setNewFolderName(""); setOpen(true); }
-  function openEdit(e: PlaybookEntry) { setForm(entryToForm(e)); setEditing(e); setCreatingNewFolder(false); setNewFolderName(""); setOpen(true); }
+  function openCreate() {
+    setEditing(null); setCreatingNewFolder(false); setNewFolderName("");
+    const saved = localStorage.getItem(draftKey(null));
+    if (saved) {
+      try { setForm(JSON.parse(saved)); setIsDraft(true); }
+      catch { setForm(blank()); setIsDraft(false); }
+    } else { setForm(blank()); setIsDraft(false); }
+    setOpen(true);
+  }
+  function openEdit(e: PlaybookEntry) {
+    setEditing(e); setCreatingNewFolder(false); setNewFolderName("");
+    const saved = localStorage.getItem(draftKey(e.id));
+    if (saved) {
+      try { setForm(JSON.parse(saved)); setIsDraft(true); }
+      catch { setForm(entryToForm(e)); setIsDraft(false); }
+    } else { setForm(entryToForm(e)); setIsDraft(false); }
+    setOpen(true);
+  }
 
   function toggleTagFilter(tag: string) {
     setTagFilter((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
@@ -1788,7 +1880,7 @@ export default function Playbook() {
           return (
             <div
               key={folderName}
-              className={`border border-border bg-card/50 border-l-[3px] transition-all ${FOLDER_COLORS[folderName] || "border-l-muted-foreground"} ${isOver ? "opacity-60" : ""}`}
+              className={`border border-border bg-card/50 border-l-[3px] transition-all relative ${getFolderBorderColor(folderName)} ${isOver ? "opacity-60" : ""}`}
               onDragOver={(e) => handleDragOver(e, idx)}
               onDrop={() => handleDrop(idx)}
             >
@@ -1806,9 +1898,9 @@ export default function Playbook() {
                   <GripVertical className="h-3.5 w-3.5" />
                 </div>
                 {isCollapsed ? (
-                  <Folder className={`h-4 w-4 shrink-0 ${FOLDER_ICON_COLORS[folderName] || "text-amber-400"}`} />
+                  <Folder className={`h-4 w-4 shrink-0 ${getFolderIconColor(folderName)}`} />
                 ) : (
-                  <FolderOpen className={`h-4 w-4 shrink-0 ${FOLDER_ICON_COLORS[folderName] || "text-amber-400"}`} />
+                  <FolderOpen className={`h-4 w-4 shrink-0 ${getFolderIconColor(folderName)}`} />
                 )}
                 {renamingFolder === folderName ? (
                   <div className="flex items-center gap-1 flex-1" onClick={(e) => e.stopPropagation()}>
@@ -1831,6 +1923,37 @@ export default function Playbook() {
                 <WriteOnly>
                   {renamingFolder !== folderName && (
                     <>
+                      <div className="relative" data-palette-popup>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setColoringFolder(coloringFolder === folderName ? null : folderName); }}
+                          className="p-0.5 text-muted-foreground/40 hover:text-primary transition-colors shrink-0"
+                          title="Цвет папки"
+                        >
+                          <Palette className="h-3 w-3" />
+                        </button>
+                        {coloringFolder === folderName && (
+                          <div
+                            data-palette-popup
+                            className="absolute top-full right-0 mt-1 z-50 bg-card border border-border shadow-lg p-2 grid grid-cols-4 gap-1.5 w-[120px]"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="col-span-4 text-[9px] font-mono text-muted-foreground/50 uppercase mb-0.5">Цвет папки</div>
+                            {FOLDER_COLOR_PALETTE.map((c, i) => (
+                              <button
+                                key={i}
+                                onClick={() => {
+                                  const next = { ...folderColors, [folderName]: i };
+                                  setFolderColors(next);
+                                  saveFolderColors(next);
+                                  setColoringFolder(null);
+                                }}
+                                className={`w-5 h-5 rounded-sm ${c.dot} ${folderColors[folderName] === i ? "ring-2 ring-offset-1 ring-offset-card ring-foreground" : ""} hover:opacity-80 transition-opacity`}
+                                title={c.label}
+                              />
+                            ))}
+                          </div>
+                        )}
+                      </div>
                       <button
                         onClick={(e) => startRename(folderName, e)}
                         className="p-0.5 text-muted-foreground/40 hover:text-primary transition-colors shrink-0"
@@ -1876,7 +1999,14 @@ export default function Playbook() {
       <Dialog open={open} onOpenChange={(v) => { if (!v) { setOpen(false); setEditing(null); } }}>
         <DialogContent className="max-w-[90vw] w-full max-h-[90vh] overflow-y-auto bg-card border-border font-mono">
           <DialogHeader>
-            <DialogTitle className="uppercase text-sm tracking-tight">{editing ? "Редактировать сетап" : "Новый сетап"}</DialogTitle>
+            <DialogTitle className="uppercase text-sm tracking-tight flex items-center gap-2">
+            {editing ? "Редактировать сетап" : "Новый сетап"}
+            {isDraft && (
+              <span className="text-[9px] font-mono px-1.5 py-0.5 bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center gap-1 normal-case tracking-normal">
+                <Clock className="h-2.5 w-2.5" /> Черновик
+              </span>
+            )}
+          </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 text-xs">
             <div className="space-y-1">
