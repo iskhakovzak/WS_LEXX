@@ -39,7 +39,36 @@ router.patch("/playbook/rename-folder", asyncHandler(async (req, res): Promise<v
   const { from: fromName, to: toName, trader } = req.body as { from: string; to: string; trader?: string };
   if (!fromName || !toName) { res.status(400).json({ error: "from and to required" }); return; }
   await db.update(playbookTable).set({ folder: toName.trim() }).where(eq(playbookTable.folder, fromName));
+  await pool.query(
+    `UPDATE playbook_folder_settings SET folder_name = $1, updated_at = NOW() WHERE folder_name = $2`,
+    [toName.trim(), fromName]
+  );
   await logActivity({ action: "updated", section: "playbook", entityTitle: fromName, trader: trader ?? "system", details: `Папка переименована: "${fromName}" → "${toName.trim()}"` });
+  res.json({ success: true });
+}));
+
+router.get("/playbook/folder-settings", asyncHandler(async (_req, res): Promise<void> => {
+  const { rows } = await pool.query<{ folder_name: string; color_index: number | null; sort_order: number }>(
+    `SELECT folder_name, color_index, sort_order FROM playbook_folder_settings ORDER BY sort_order ASC`
+  );
+  res.json(rows.map(r => ({ folderName: r.folder_name, colorIndex: r.color_index, sortOrder: r.sort_order })));
+}));
+
+router.patch("/playbook/folder-settings", asyncHandler(async (req, res): Promise<void> => {
+  const updates = req.body as { folderName: string; colorIndex?: number | null; sortOrder?: number }[];
+  if (!Array.isArray(updates) || updates.length === 0) { res.status(400).json({ error: "array required" }); return; }
+  for (const u of updates) {
+    if (!u.folderName) continue;
+    await pool.query(
+      `INSERT INTO playbook_folder_settings (folder_name, color_index, sort_order, updated_at)
+       VALUES ($1, $2, $3, NOW())
+       ON CONFLICT (folder_name) DO UPDATE
+       SET color_index = COALESCE($2, playbook_folder_settings.color_index),
+           sort_order  = COALESCE($3, playbook_folder_settings.sort_order),
+           updated_at  = NOW()`,
+      [u.folderName, u.colorIndex ?? null, u.sortOrder ?? 0]
+    );
+  }
   res.json({ success: true });
 }));
 

@@ -1197,6 +1197,59 @@ export default function Playbook() {
     staleTime: 15_000,
   });
 
+  type FolderSetting = { folderName: string; colorIndex: number | null; sortOrder: number };
+  const { data: folderSettingsData } = useQuery<FolderSetting[]>({
+    queryKey: ["playbook-folder-settings"],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/playbook/folder-settings`);
+      return r.json();
+    },
+    staleTime: 30_000,
+  });
+
+  useEffect(() => {
+    if (!folderSettingsData || folderSettingsData.length === 0) return;
+    const colors: Record<string, number> = {};
+    for (const s of folderSettingsData) {
+      if (s.colorIndex !== null && s.colorIndex !== undefined) colors[s.folderName] = s.colorIndex;
+    }
+    if (Object.keys(colors).length > 0) {
+      setFolderColors(colors);
+      saveFolderColors(colors);
+    }
+    const orderedFromServer = [...folderSettingsData]
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(s => s.folderName);
+    if (orderedFromServer.length > 0) {
+      setFolderOrder(prev => {
+        const newOnes = prev.filter(n => !orderedFromServer.includes(n));
+        const merged = [...orderedFromServer, ...newOnes];
+        saveFolderOrder(merged);
+        return merged;
+      });
+    }
+  }, [folderSettingsData]);
+
+  async function saveFolderColorToServer(folderName: string, colorIdx: number) {
+    try {
+      await fetch(`${BASE}/api/playbook/folder-settings`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify([{ folderName, colorIndex: colorIdx }]),
+      });
+      qc.invalidateQueries({ queryKey: ["playbook-folder-settings"] });
+    } catch {}
+  }
+
+  async function saveFolderOrderToServer(order: string[]) {
+    try {
+      const updates = order.map((name, idx) => ({ folderName: name, sortOrder: idx }));
+      await fetch(`${BASE}/api/playbook/folder-settings`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates),
+      });
+    } catch {}
+  }
+
   const topLevel = useMemo(() => entries.filter((e) => !e.parentId), [entries]);
 
   const allUsedTags = useMemo(() => {
@@ -1410,6 +1463,7 @@ export default function Playbook() {
     next.splice(toIdx, 0, item);
     setFolderOrder(next);
     saveFolderOrder(next);
+    saveFolderOrderToServer(next);
   }
 
   function handleDragStart(idx: number) { dragSrc.current = idx; }
@@ -1440,6 +1494,7 @@ export default function Playbook() {
       }).then((r) => r.json()),
     onSuccess: (_, { from, to }) => {
       qc.invalidateQueries({ queryKey: ["playbook"] });
+      qc.invalidateQueries({ queryKey: ["playbook-folder-settings"] });
       setFolderOrder((prev) => { const next = prev.map((f) => f === from ? to : f); saveFolderOrder(next); return next; });
       if (folderFilter === from) setFolderFilter(to);
       setFolderColors((prev) => {
@@ -1943,6 +1998,7 @@ export default function Playbook() {
                                   const next = { ...folderColors, [folderName]: i };
                                   setFolderColors(next);
                                   saveFolderColors(next);
+                                  saveFolderColorToServer(folderName, i);
                                   setColoringFolder(null);
                                 }}
                                 className={`w-5 h-5 rounded-sm ${c.dot} ${folderColors[folderName] === i ? "ring-2 ring-offset-1 ring-offset-card ring-foreground" : ""} hover:opacity-80 transition-opacity`}

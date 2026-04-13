@@ -227,6 +227,12 @@ export async function runMigrations() {
       "label" TEXT NOT NULL,
       "type" TEXT NOT NULL
     )`,
+    `CREATE TABLE IF NOT EXISTS "playbook_folder_settings" (
+      "folder_name" TEXT PRIMARY KEY,
+      "color_index" INTEGER,
+      "sort_order" INTEGER NOT NULL DEFAULT 0,
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
   ];
 
   for (const sql of createStatements) {
