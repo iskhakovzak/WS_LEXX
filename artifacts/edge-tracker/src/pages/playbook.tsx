@@ -1141,6 +1141,24 @@ export default function Playbook() {
   const [tagPanelSearch, setTagPanelSearch] = useState("");
   const [globalSearch, setGlobalSearch] = useState("");
   const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
+  const [isDraft, setIsDraft] = useState(false);
+  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [folderColors, setFolderColors] = useState<Record<string, number>>(loadFolderColors);
+  const [coloringFolder, setColoringFolder] = useState<string | null>(null);
+
+  function draftKey(editId?: number | null) {
+    return editId ? `playbook-draft-${editId}` : "playbook-draft-new";
+  }
+  function getFolderBorderColor(name: string): string {
+    const idx = folderColors[name];
+    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].border;
+    return FOLDER_COLORS[name] || "border-l-amber-500";
+  }
+  function getFolderIconColor(name: string): string {
+    const idx = folderColors[name];
+    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].icon;
+    return FOLDER_ICON_COLORS[name] || "text-amber-400";
+  }
 
   const folderPanelRef = useRef<HTMLDivElement>(null);
   const tagPanelRef = useRef<HTMLDivElement>(null);
@@ -1166,26 +1184,6 @@ export default function Playbook() {
     document.addEventListener("mousedown", onClickOutside);
     return () => document.removeEventListener("mousedown", onClickOutside);
   }, [folderPanelOpen, tagPanelOpen, globalSearchOpen, coloringFolder]);
-
-  const [isDraft, setIsDraft] = useState(false);
-  const draftSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [folderColors, setFolderColors] = useState<Record<string, number>>(loadFolderColors);
-  const [coloringFolder, setColoringFolder] = useState<string | null>(null);
-
-  function draftKey(editId?: number | null) {
-    return editId ? `playbook-draft-${editId}` : "playbook-draft-new";
-  }
-
-  function getFolderBorderColor(name: string): string {
-    const idx = folderColors[name];
-    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].border;
-    return FOLDER_COLORS[name] || "border-l-amber-500";
-  }
-  function getFolderIconColor(name: string): string {
-    const idx = folderColors[name];
-    if (idx !== undefined && FOLDER_COLOR_PALETTE[idx]) return FOLDER_COLOR_PALETTE[idx].icon;
-    return FOLDER_ICON_COLORS[name] || "text-amber-400";
-  }
 
   const dragSrc = useRef<number | null>(null);
   const [dragOver, setDragOver] = useState<number | null>(null);
