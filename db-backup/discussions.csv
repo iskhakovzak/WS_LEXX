@@ -1,0 +1,8 @@
+id,topic,type,trader,notes,tags,created_at,deleted_at
+7,partnership,general,Закир,"avgo, mrvl, crwv, ",,2026-04-09 18:56:04.788+00,
+6,Кто что добавит сегодня,general,Закир,,,2026-04-09 12:43:52.392+00,
+3,VWAP Trading Techniques,analysis,Артур,Let's break down different VWAP approaches. I use VWAP as support/resistance but curious about other traders' methods. Anyone use VWAP crosses?,"vwap, technical",2026-04-09 10:30:06.758+00,
+1,Best Scalping Setups for Low Float Stocks,strategy,Закир,What are your go-to scalp setups? Been working on sub-minute entries on 1-5M floats with high RVOL. Thinking about risk management - do you scale in or all-in?,"scalping, low-float",2026-04-09 10:30:06.758+00,
+5,Risk Management in Day Trading,risk,Умид,Most important rule - always know your exit before entry. Position sizing formula: 2% per trade max. Fixed dollar stops beat percent stops always.,risk-management,2026-04-09 10:30:06.758+00,
+4,Fade Trading and HOD Failures,strategy,Рахматулло,How do you identify which fades work? I see a lot of HOD failures that turn into runners. Any specific criteria you use to filter?,"fade, short",2026-04-09 10:30:06.758+00,
+2,Earnings Gap and Go Strategy,setup,Антон,"Discussing the classic gap and go setup. Looking at historical data, what time frame do these usually consolidate in? Pre-market moves vs open moves?","earnings, gap-up",2026-04-09 10:30:06.758+00,

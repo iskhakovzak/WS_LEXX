@@ -1,0 +1,5 @@
+id,ticker,catalyst,target_price,stop_price,status,notes,sector,screenshot_url,tags,created_at,deleted_at
+1,MSTR,"Bitcoin movement, May earnings",450.0000,370.0000,Active,Watch for BTC correlation and capitulation dips for entries,,,,2026-04-09 10:30:06.804+00,
+2,COIN,"Crypto adoption news, macro developments",145.0000,120.0000,Active,"Strong earnings surprise potential, SEC clarity",,,,2026-04-09 10:30:06.804+00,
+3,RIOT,"Bitcoin miner performance, hash rate growth",18.5000,15.0000,Active,"Setup for scalping on BTC moves, high RVOL",,,,2026-04-09 10:30:06.804+00,
+4,AVGO,"AI server demand, earnings next month",155.0000,130.0000,Active,"Semiconductor strength indicator, supply chain check",,,,2026-04-09 10:30:06.804+00,
