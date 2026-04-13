@@ -12,24 +12,25 @@ pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом
 - **TypeScript version**: 5.9
 - **Frontend**: React 18 + Vite + TailwindCSS + Wouter
 - **API framework**: Express 5
-- **Database**: PostgreSQL + Drizzle ORM (Supabase via Connection Pooler)
+- **Database**: PostgreSQL + Drizzle ORM (локальный Replit PostgreSQL)
 - **Validation**: Zod (`zod/v4`), `drizzle-zod`
 - **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+- **Build**: esbuild (ESM bundle)
 
 ## Artifacts
 
-- `artifacts/edge-tracker` — React/Vite фронтенд, порт 24402, путь `/`
+- `artifacts/edge-tracker` — React/Vite фронтенд, порт из `PORT` env, путь `/`
 - `artifacts/api-server` — Express 5 API сервер, порт 8080, путь `/api`
 
 ## Key Commands
 
-- `pnpm install` — установить зависимости
-- `pnpm --filter @workspace/api-server run build` — собрать API сервер
-- `pnpm --filter @workspace/api-server run dev` — запустить API в dev режиме
-- `pnpm --filter @workspace/edge-tracker run dev` — запустить фронтенд
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+```bash
+pnpm install                                       # установить зависимости
+pnpm --filter @workspace/api-server run dev        # запустить API (dev)
+pnpm --filter @workspace/edge-tracker run dev      # запустить фронтенд (dev)
+pnpm --filter @workspace/api-spec run codegen      # regenerate API hooks из OpenAPI spec
+bash scripts/build-prod.sh                         # production build (frontend + API)
+```
 
 ## Auth (фронтенд только)
 
@@ -46,14 +47,23 @@ pnpm workspace monorepo — Prop Trading Desk с React/Vite фронтендом
 
 ## Критические правила
 
-1. База данных — локальный PostgreSQL Replit (`DATABASE_URL` env var). Подключение через `PGHOST=helium`.
-2. Миграции запускаются автоматически при старте сервера через `runMigrations()` в `migrate.ts`
-3. Raw SQL ОБЯЗАТЕЛЬНО camelCase — иначе фронтенд не видит данные
-4. API mount point: `app.use("/api", router)` — т.е. `/api/trades` и т.д.
-5. Soft delete — `deleted_at`, GET фильтрует `WHERE deleted_at IS NULL`
+1. База данных — локальный PostgreSQL (`DATABASE_URL` env var). На Replit автоматически выставляется через built-in PostgreSQL.
+2. Миграции (`CREATE TABLE IF NOT EXISTS`) запускаются автоматически при старте через `runMigrations()` — данные НЕ перетираются.
+3. Никакого автосида, никакого seed/reset при старте — данные сохраняются через рестарты и переопубликование.
+4. API mount point: `app.use("/api", router)` — т.е. `/api/trades`, `/api/events` и т.д.
+5. Soft delete — поле `deleted_at`, GET запросы фильтруют `WHERE deleted_at IS NULL`.
+6. В продакшене API сервер раздаёт статику фронтенда из `dist/public/`.
 
-## Backups
+## Структура
 
-В `artifacts/backups/`:
-- `replit_postgres_full_dump.sql` — полный SQL дамп
-- JSON по каждой таблице
+```
+artifacts/
+  edge-tracker/     # React/Vite фронтенд
+  api-server/       # Express 5 API + production static serving
+lib/
+  db/               # Drizzle ORM схемы и подключение к БД
+  api-zod/          # Zod схемы для API (генерируются через Orval)
+  api-spec/         # OpenAPI спецификация
+scripts/
+  build-prod.sh     # production build script
+```
