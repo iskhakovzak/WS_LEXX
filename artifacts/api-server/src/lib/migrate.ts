@@ -1,8 +1,5 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
-import { readFileSync } from "fs";
-import { resolve, dirname } from "path";
-import { fileURLToPath } from "url";
 
 export async function runMigrations() {
   logger.info("Running database migrations...");
@@ -464,44 +461,6 @@ export async function runMigrations() {
     logger.info(`Seeded ${seeded} new playbook strategies (${allSeedStrategies.length - seeded} already existed)`);
   } else {
     logger.info(`All ${allSeedStrategies.length} playbook strategies already exist, skipping seed`);
-  }
-
-  try {
-    const { rows: tradeCountRows } = await pool.query(`SELECT COUNT(*) as cnt FROM trades`);
-    const tradeCount = Number(tradeCountRows[0]?.cnt ?? 0);
-    if (tradeCount > 0) {
-      logger.info(`Seed sync skipped: database already has ${tradeCount} trades, preserving user data`);
-    } else {
-      const __filename = fileURLToPath(import.meta.url);
-      const __dirname = dirname(__filename);
-      const seedPath = resolve(__dirname, "seed-sync.sql");
-      const seedSQL = readFileSync(seedPath, "utf-8");
-      const statements: string[] = [];
-      let current = "";
-      for (const line of seedSQL.split('\n')) {
-        if (line.trim().startsWith('--') && !current) continue;
-        current += (current ? '\n' : '') + line;
-        if (current.trimEnd().endsWith(';')) {
-          statements.push(current);
-          current = "";
-        }
-      }
-      if (current.trim()) statements.push(current);
-      let syncCount = 0;
-      for (const stmt of statements) {
-        try {
-          const result = await pool.query(stmt);
-          if (result.rowCount && result.rowCount > 0) syncCount++;
-        } catch (e: any) {
-          if (!e.message?.includes('duplicate key')) {
-            logger.warn({ error: e.message }, "Seed sync statement error");
-          }
-        }
-      }
-      logger.info(`Seed sync completed: ${syncCount} new rows inserted`);
-    }
-  } catch (e: any) {
-    logger.warn({ error: e.message }, "Seed sync file not found or failed, skipping");
   }
 
   logger.info("Database migrations completed");

@@ -119,16 +119,7 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
 }
 
 buildAll()
-  .then(async () => {
-    const srcSeed = path.resolve(artifactDir, "src/lib/seed-sync.sql");
-    const distSeed = path.resolve(artifactDir, "dist/seed-sync.sql");
-    try {
-      await cp(srcSeed, distSeed);
-      console.log("Copied seed-sync.sql to dist/");
-    } catch (e) {
-      console.warn("No seed-sync.sql found, skipping copy");
-    }
-  })
+  .then(async () => {})
   .catch((err) => {
     console.error(err);
     process.exit(1);
