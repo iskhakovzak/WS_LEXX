@@ -42,7 +42,7 @@ const FALLBACK_TRADERS: DbUser[] = [
   { id: 5, name: "Умид", password: "15964", role: "trader", active: true, createdAt: "" },
   { id: 6, name: "Максат", password: "82374", role: "trader", active: true, createdAt: "" },
   { id: 7, name: "Тимур", password: "39156", role: "curator", active: true, createdAt: "" },
-  { id: 8, name: "Ариф", password: "07770", role: "curator", active: true, createdAt: "" },
+  { id: 8, name: "Ориф", password: "07770", role: "curator", active: true, createdAt: "" },
 ];
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
