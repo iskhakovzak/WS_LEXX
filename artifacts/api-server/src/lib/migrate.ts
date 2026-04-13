@@ -288,6 +288,8 @@ export async function runMigrations() {
     }
   }
 
+  await pool.query(`UPDATE users SET name = 'Ориф' WHERE name = 'Ариф'`).catch(() => {});
+
   const { rows: existingUsers } = await pool.query(`SELECT COUNT(*) as cnt FROM users`);
   if (Number(existingUsers[0]?.cnt) === 0) {
     logger.info("Seeding default users...");
