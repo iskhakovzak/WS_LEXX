@@ -277,6 +277,7 @@ export async function runMigrations() {
     { table: "discussions", column: "deleted_at", type: "TIMESTAMPTZ" },
     { table: "trades", column: "playbook_id", type: "INTEGER" },
     { table: "playbook", column: "parent_id", type: "INTEGER" },
+    { table: "users", column: "theme", type: "TEXT DEFAULT 'dark'" },
   ];
 
   for (const m of addColumns) {

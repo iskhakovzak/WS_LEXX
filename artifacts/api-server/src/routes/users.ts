@@ -8,7 +8,7 @@ const router: IRouter = Router();
 
 router.get("/users", asyncHandler(async (_req, res): Promise<void> => {
   const { rows } = await pool.query<any>(`
-    SELECT id, name, password, role, active, created_at AS "createdAt"
+    SELECT id, name, password, role, active, COALESCE(theme, 'dark') AS theme, created_at AS "createdAt"
     FROM users
     WHERE active = true
     ORDER BY created_at ASC
@@ -18,11 +18,20 @@ router.get("/users", asyncHandler(async (_req, res): Promise<void> => {
 
 router.get("/users/all", asyncHandler(async (_req, res): Promise<void> => {
   const { rows } = await pool.query<any>(`
-    SELECT id, name, password, role, active, created_at AS "createdAt"
+    SELECT id, name, password, role, active, COALESCE(theme, 'dark') AS theme, created_at AS "createdAt"
     FROM users
     ORDER BY created_at ASC
   `);
   res.json(rows);
+}));
+
+router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
+  const { name, theme } = req.body as { name?: string; theme?: string };
+  if (!name || !theme) { res.status(400).json({ error: "name and theme required" }); return; }
+  const allowed = ["dark", "dim", "sepia", "light"];
+  if (!allowed.includes(theme)) { res.status(400).json({ error: "Invalid theme" }); return; }
+  await pool.query(`UPDATE users SET theme = $1 WHERE name = $2`, [theme, name]);
+  res.json({ success: true });
 }));
 
 router.post("/users", asyncHandler(async (req, res): Promise<void> => {

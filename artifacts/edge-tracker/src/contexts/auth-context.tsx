@@ -13,6 +13,7 @@ export type DbUser = {
   password: string;
   role: string;
   active: boolean;
+  theme: string;
   createdAt: string;
 };
 

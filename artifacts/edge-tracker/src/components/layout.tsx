@@ -16,8 +16,9 @@ import {
 import {
   LineChart, LayoutDashboard, List, Activity, BookOpen, Clock,
   MessageSquare, Settings, Eye, BookMarked, Calculator, LogOut, User, Rss,
-  AlertTriangle, Sun, Moon, Compass, Radar, Trophy, ChevronRight, Shield
+  AlertTriangle, Sun, Moon, CloudMoon, Coffee, Compass, Radar, Trophy, ChevronRight, Shield
 } from "lucide-react";
+import type { Theme } from "@/contexts/theme-context";
 import { GlobalSearch } from "@/components/global-search";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
@@ -62,10 +63,23 @@ const navGroups = [
   },
 ];
 
+const THEME_ICONS: Record<Theme, React.ElementType> = {
+  dark: Moon,
+  dim: CloudMoon,
+  sepia: Coffee,
+  light: Sun,
+};
+const THEME_NEXT_LABEL: Record<Theme, string> = {
+  dark: "Сумеречная (Dim)",
+  dim: "Тёплая (Sepia)",
+  sepia: "Светлая (Light)",
+  light: "Тёмная (Dark)",
+};
+
 export function Layout({ children, onWarRoomToggle }: { children: React.ReactNode; onWarRoomToggle?: () => void }) {
   const [location] = useLocation();
   const { user, logout } = useAuth();
-  const { theme, toggleTheme } = useTheme();
+  const { theme, cycleTheme, themeLabel } = useTheme();
 
   const displayName = user?.role === "trader" ? user.traderName : "Guest";
 
@@ -98,10 +112,10 @@ export function Layout({ children, onWarRoomToggle }: { children: React.ReactNod
                   variant="ghost"
                   size="icon"
                   className="h-7 w-7 text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all duration-200"
-                  onClick={toggleTheme}
-                  title={theme === "dark" ? "Светлая тема" : "Тёмная тема"}
+                  onClick={cycleTheme}
+                  title={`${themeLabel} → ${THEME_NEXT_LABEL[theme]}`}
                 >
-                  {theme === "dark" ? <Sun className="h-3.5 w-3.5" /> : <Moon className="h-3.5 w-3.5" />}
+                  {React.createElement(THEME_ICONS[theme], { className: "h-3.5 w-3.5" })}
                 </Button>
                 <Button
                   variant="ghost"

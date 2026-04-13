@@ -192,6 +192,84 @@
   --shadow-2xl: 0 25px 50px -12px rgb(0 0 0 / 0.6);
 }
 
+.dim {
+  --background: 220 9% 18%;
+  --foreground: 215 22% 90%;
+  --border: 220 7% 27%;
+  --card: 222 9% 22%;
+  --card-foreground: 215 22% 90%;
+  --card-border: 220 7% 27%;
+  --sidebar: 222 10% 14%;
+  --sidebar-foreground: 215 22% 90%;
+  --sidebar-border: 220 7% 22%;
+  --sidebar-accent: 220 7% 27%;
+  --sidebar-accent-foreground: 215 22% 90%;
+  --popover: 222 9% 22%;
+  --popover-foreground: 215 22% 90%;
+  --popover-border: 220 7% 27%;
+  --secondary: 220 7% 27%;
+  --secondary-foreground: 215 22% 90%;
+  --muted: 220 7% 27%;
+  --muted-foreground: 218 12% 58%;
+  --input: 220 7% 30%;
+  --button-outline: rgba(255,255,255, .07);
+  --badge-outline: rgba(255,255,255, .04);
+  --elevate-1: rgba(255,255,255, .025);
+  --elevate-2: rgba(255,255,255, .05);
+  --shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.2);
+  --shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.25);
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.25), 0 2px 4px 0 rgb(0 0 0 / 0.2);
+  --shadow: 0 2px 4px -2px rgb(0 0 0 / 0.25), 0 4px 8px -1px rgb(0 0 0 / 0.2);
+  --shadow-md: 0 4px 6px -4px rgb(0 0 0 / 0.25), 0 10px 20px -3px rgb(0 0 0 / 0.22);
+}
+
+.sepia {
+  --button-outline: rgba(0,0,0, .10);
+  --badge-outline: rgba(0,0,0, .05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0,0,0, .03);
+  --elevate-2: rgba(0,0,0, .07);
+  --background: 38 28% 94%;
+  --foreground: 28 22% 18%;
+  --border: 34 16% 80%;
+  --card: 38 22% 98%;
+  --card-foreground: 28 22% 18%;
+  --card-border: 34 16% 80%;
+  --sidebar: 36 18% 89%;
+  --sidebar-foreground: 28 22% 18%;
+  --sidebar-border: 34 14% 78%;
+  --sidebar-primary: 199 89% 42%;
+  --sidebar-primary-foreground: 0 0% 100%;
+  --sidebar-accent: 35 14% 84%;
+  --sidebar-accent-foreground: 28 22% 18%;
+  --sidebar-ring: 199 89% 42%;
+  --popover: 38 22% 98%;
+  --popover-foreground: 28 22% 18%;
+  --popover-border: 34 16% 80%;
+  --primary: 199 89% 42%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 35 14% 84%;
+  --secondary-foreground: 28 22% 18%;
+  --muted: 35 14% 84%;
+  --muted-foreground: 30 12% 50%;
+  --accent: 199 89% 42%;
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 100%;
+  --input: 34 16% 80%;
+  --ring: 199 89% 42%;
+  --chart-1: 199 89% 42%;
+  --chart-2: 142 71% 40%;
+  --chart-3: 38 92% 50%;
+  --chart-4: 0 84% 60%;
+  --chart-5: 30 12% 50%;
+  --shadow-2xs: 0 1px 2px 0 rgb(0 0 0 / 0.04);
+  --shadow-xs: 0 1px 3px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 0.06), 0 1px 3px 0 rgb(0 0 0 / 0.06);
+  --shadow: 0 2px 4px -2px rgb(0 0 0 / 0.06), 0 4px 6px -1px rgb(0 0 0 / 0.06);
+  --shadow-md: 0 4px 6px -4px rgb(0 0 0 / 0.07), 0 10px 15px -3px rgb(0 0 0 / 0.07);
+}
+
 @layer base {
   * {
     @apply border-border;
