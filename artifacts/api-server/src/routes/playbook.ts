@@ -84,6 +84,17 @@ router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<
   res.json({ success: true, deleted: rowCount });
 }));
 
+router.post("/playbook/restore-deleted", asyncHandler(async (req, res): Promise<void> => {
+  const { adminPassword, since } = req.body as { adminPassword?: string; since?: string };
+  if (adminPassword !== "0987") { res.status(403).json({ error: "Forbidden" }); return; }
+  const sinceTs = since ?? "2026-04-22T17:35:00Z";
+  const { rowCount } = await pool.query(
+    `UPDATE playbook SET deleted_at = NULL WHERE deleted_at >= $1`,
+    [sinceTs]
+  );
+  res.json({ success: true, restored: rowCount });
+}));
+
 router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
   const { name, folder, setupType, conditions, checklist, notes, confidenceLevel, screenshotUrl, screenshotNotes, tags, sourceType, sourceId, parentId, trader } = req.body as Record<string, unknown>;
   if (!name) { res.status(400).json({ error: "name required" }); return; }

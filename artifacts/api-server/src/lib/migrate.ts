@@ -290,6 +290,11 @@ export async function runMigrations() {
 
   await pool.query(`UPDATE users SET name = 'Ориф' WHERE name = 'Ариф'`).catch(() => {});
 
+  const { rowCount: restored } = await pool.query(
+    `UPDATE playbook SET deleted_at = NULL WHERE deleted_at >= '2026-04-22T17:35:00Z' AND deleted_at <= '2026-04-22T17:40:00Z'`
+  ).catch(() => ({ rowCount: 0 })) as any;
+  if (restored > 0) logger.info(`Restored ${restored} accidentally deleted playbook entries`);
+
   const { rows: existingUsers } = await pool.query(`SELECT COUNT(*) as cnt FROM users`);
   if (Number(existingUsers[0]?.cnt) === 0) {
     logger.info("Seeding default users...");
