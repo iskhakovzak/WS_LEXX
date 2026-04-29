@@ -449,7 +449,7 @@ export async function runMigrations() {
       const { rowCount } = await pool.query(
         `INSERT INTO playbook (name, folder, setup_type, conditions, checklist, notes, confidence_level, tags)
          SELECT $1, $2, $3, $4, $5, $6, $7, $8
-         WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1 AND deleted_at IS NULL)`,
+         WHERE NOT EXISTS (SELECT 1 FROM playbook WHERE name = $1)`,
         [s.name, s.folder, s.setupType, s.conditions, s.checklist, s.notes, s.confidenceLevel, tags]
       );
       if (rowCount && rowCount > 0) seeded++;
