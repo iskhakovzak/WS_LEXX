@@ -1,83 +1,112 @@
 # WS_LEXX — Prop Trading Desk
 
-Внутренний инструмент для prop trading desk: трекер сделок, журнал событий, плейбук стратегий, war room, обсуждения.
+Внутренняя операционная платформа для проп-трейдинг деска.
 
-## Быстрый старт на Replit
-
-### 1. Создай новый Replit
-
-Создай новый Replit с типом **"Import from GitHub"** или **"Blank Repl"** с Node.js 24.
-
-### 2. Добавь PostgreSQL базу данных
-
-В Replit: **Database → Create PostgreSQL Database**. Переменная `DATABASE_URL` выставится автоматически.
-
-### 3. Установи зависимости и запусти
-
-```bash
-pnpm install
-```
-
-Затем запусти оба workflow (API Server и Frontend) — они уже настроены в `.replit`.
-
-### 4. Готово
-
-Миграции запускаются автоматически при первом старте — создадут все таблицы.
-Пользователи добавятся автоматически (если таблица `users` пуста).
+**v5.0** · Node.js 24 · pnpm monorepo · React 18 / Vite · Express 5 · PostgreSQL · Drizzle ORM · TypeScript 5.9
 
 ---
 
-## Промпт для ИИ-агента (запуск с нуля)
+## Что включено
 
-Если нужно передать этот проект другому ИИ для запуска — скопируй этот промпт:
+| Модуль | Описание |
+|---|---|
+| **Trade Journal** | Журнал сделок с multi-fill экзекуциями и intraday-графиком |
+| **Playbook Engine** | База стратегий и edge компании |
+| **Performance Analytics** | Win rate, expectancy, ошибки, рейтинги трейдеров |
+| **Trade Ideas** | Pipeline: черновик → публикация → конвертация в сделку |
+| **Pre-Trade Checklist** | Шаблонный чеклист перед входом в позицию |
+| **AI Trade Review** | Claude Sonnet анализирует каждую сделку с рыночным контекстом |
+| **Daily Feed** | Что работает прямо сейчас |
+| **Watchlist** | Список акций с уровнями и автоматическим скорингом |
+| **Research** | Паттерны и исследования |
+| **Big7 / Hot Stocks** | Ключевые уровни по крупным тикерам + дневные hot stocks |
+| **War Room** | Совместные торговые сессии в реальном времени |
+| **Discussions** | Внутренние обсуждения и комментарии |
+| **Options Calculator** | Black-Scholes, греки, диаграмма выплат, сценарии |
+| **FX Calculator** | Живые курсы (Yahoo Finance) для 11 валют |
+| **Psychology / Emotional State** | Еженедельные отчёты, трекер эмоций |
+| **Analyst Actions** | Парсинг и отображение апгрейдов/даунгрейдов |
+| **Digest** | Email-рассылка дайджеста (утро / вечер) |
+| **DB Backups** | Автоматический pg_dump → Object Storage каждые 48h |
+| **PropReports Import** | Импорт сделок из XLS PropReports через UI или CLI |
 
+**Роли:** trader · curator · admin
+
+---
+
+## Быстрый старт на новом Replit
+
+### 1. Клонируй репозиторий
+
+```bash
+git clone https://github.com/iskhakovzak/WS_LEXX.git .
+pnpm install
 ```
-Ты работаешь с проектом WS_LEXX Prop Trading Desk.
-Это pnpm monorepo с двумя artifacts:
-- artifacts/edge-tracker — React 18 + Vite + TailwindCSS фронтенд
-- artifacts/api-server — Express 5 API сервер
 
-СТЕК:
-- Node.js 24, pnpm, TypeScript 5.9
-- PostgreSQL через Drizzle ORM
-- Zod v4 валидация, Orval codegen из OpenAPI spec
-- Wouter для роутинга на фронте
+### 2. Создай PostgreSQL базу данных
 
-БАЗА ДАННЫХ:
-- Только PostgreSQL, через DATABASE_URL env var
-- На Replit: создай built-in PostgreSQL через Database tab — DATABASE_URL выставится сам
-- Никаких SQLite, better-sqlite3, lowdb, local.db, db.sqlite, JSON файлов
-- Миграции запускаются автоматически при старте (CREATE TABLE IF NOT EXISTS — безопасно)
-- Никакого автосида, никакого reset/truncate при старте
-- Данные сохраняются через все рестарты и переопубликования
+В Replit: **Database → Create PostgreSQL database**
+Переменная `DATABASE_URL` выставится автоматически.
 
-ПРАВИЛА КОДА:
-- API маршруты монтируются на /api (т.е. /api/trades, /api/events и т.д.)
-- Soft delete — поле deleted_at, GET запросы фильтруют WHERE deleted_at IS NULL
-- В продакшене Express раздаёт фронтенд из dist/public/
-- BASE_PATH=/ при production build фронтенда (scripts/build-prod.sh)
-- pg.types.setTypeParser для int OIDs (20,21,23,26) — возвращает числа, не строки
+### 3. Добавь обязательные секреты
 
-ЗАПУСК DEV:
-- API: pnpm --filter @workspace/api-server run dev (порт 8080)
-- Frontend: pnpm --filter @workspace/edge-tracker run dev (порт из PORT env)
+В Replit **Secrets** (`Tools → Secrets`):
 
-PRODUCTION BUILD:
-- bash scripts/build-prod.sh
-- Собирает фронт, копирует в artifacts/api-server/dist/public/
-- Запуск: node --enable-source-maps artifacts/api-server/dist/index.mjs
+| Секрет | Описание |
+|---|---|
+| `JWT_SECRET` | Случайная строка 32+ символов (обязательно — без неё сервер не стартует) |
+| `PLAYBOOK_PASSWORD` | Пароль для просмотра плейбука |
 
-АУТЕНТИФИКАЦИЯ (только фронтенд, без JWT):
-- Сессия в localStorage["ws_lexx_session"]
-- Трейдеры: Закир/0101, Антон/61725, Артур/93547, Рахматулло/5555, Умид/15964, Максат/82374, Тимур/39156, Ариф/07770, Admin/0987
+Опционально:
+- `DEFAULT_OBJECT_STORAGE_BUCKET_ID` — для автоматических pg_dump бекапов (Replit Object Storage)
+- `GITHUB_PERSONAL_ACCESS_TOKEN` — для push в GitHub из Replit
 
-ЧТО НЕ ДЕЛАТЬ:
-- Не менять тип id колонок (они SERIAL — не трогать)
-- Не добавлять SQLite/Supabase/Prisma fallback
-- Не делать seed/reset на старте
-- Не хардкодить DATABASE_URL
-- Не добавлять отдельные env для dev и prod
+### 4. Запусти оба workflow
+
+Оба workflow уже прописаны в `.replit`. Нажми **Run** или запусти через Workflows.
+
+Дождись в логах API сервера:
 ```
+Server listening  port: 8080
+Database migrations completed
+dbBackup cron started  intervalH: 48, keepLast: 10, delayMin: 3
+```
+
+### 5. Готово
+
+Миграции создают все 40+ таблиц автоматически.
+Пользователи сидятся при первом старте (если таблица `users` пустая).
+
+---
+
+## Восстановление базы из бекапа
+
+```bash
+# Из .sql.gz (автоматический бекап из Object Storage):
+gunzip backup-file.sql.gz
+psql "$DATABASE_URL" < backup-file.sql
+
+# Из .sql напрямую:
+psql "$DATABASE_URL" < db_backup_v5.sql
+```
+
+Бекапы также доступны через **Админку → Инструменты → Бекапы БД** (скачать .sql.gz).
+
+---
+
+## Пользователи
+
+| Трейдер | Пароль | Роль |
+|---|---|---|
+| Закир | `0101` | trader |
+| Артур | `93547` | trader |
+| Рахматулло | `5555` | trader |
+| Умид | `15964` | trader |
+| Максат | `82374` | trader |
+| Антон | `61725` | curator |
+| Тимур | `39156` | curator |
+| Ариф | `07770` | curator |
+| Admin | `0987` | admin |
 
 ---
 
@@ -85,25 +114,242 @@ PRODUCTION BUILD:
 
 ```
 artifacts/
-  edge-tracker/          # React/Vite фронтенд
+  edge-tracker/              # React 18 + Vite + TailwindCSS v4 фронтенд
     src/
-      pages/             # страницы (dashboard, trades, events, playbook, etc.)
-      components/        # UI компоненты
-      hooks/             # API хуки (сгенерированы Orval)
-  api-server/            # Express 5 API
+      pages/                 # 25+ страниц (dashboard, trades, playbook, ...)
+      components/            # UI компоненты
+      hooks/                 # Orval-сгенерированные React Query хуки
+      contexts/              # AuthContext (JWT + роли), ThemeContext
+  api-server/                # Express 5 API сервер
     src/
-      routes/            # маршруты API
+      routes/                # 40+ маршрутов
       lib/
-        migrate.ts       # автомиграции при старте
-        logger.ts        # pino логгер
+        migrate.ts           # Автомиграции (CREATE TABLE IF NOT EXISTS)
+        dbBackupCron.ts      # pg_dump → Object Storage каждые 48h
+        dailyQuoteCron.ts    # Дневная цитата
+        marketContext.ts     # Снэпшот рынка для AI
+        objectStorage.ts     # Replit Object Storage client
+        logger.ts            # pino логгер
+        audit.ts             # Аудит лог
 lib/
-  db/                    # Drizzle ORM схемы и подключение
-  api-zod/               # Zod схемы (сгенерированы из OpenAPI)
-  api-spec/              # OpenAPI 3.0 спецификация
+  db/                        # Drizzle ORM схемы и подключение к БД
+  api-zod/                   # Zod схемы (Orval codegen)
+  api-spec/                  # OpenAPI 3.0 спецификация
+  api-client-react/          # React Query хуки (Orval codegen)
 scripts/
-  build-prod.sh          # production build
+  build-prod.sh              # Production build
+  src/import-propreports.ts  # CLI импорт XLS PropReports
+  src/lib/parse-propreports.ts
 ```
 
-## Таблицы БД
+---
 
-`trades`, `market_events`, `research`, `daily_feed`, `discussions`, `comments`, `watchlist`, `playbook`, `users`, `activity_log`, `trade_reactions`, `trade_reviews`, `trading_errors`, `big7_levels`, `big7_catalysts`, `trader_ratings`, `war_room_sessions`, `war_room_levels`
+## Ключевые команды
+
+```bash
+pnpm install                                        # Установить зависимости
+pnpm run typecheck                                  # Typecheck всех пакетов
+pnpm --filter @workspace/api-spec run codegen       # Regenerate API хуки из OpenAPI
+bash scripts/build-prod.sh                          # Production build
+
+# PropReports импорт (CLI):
+npx tsx scripts/src/import-propreports.ts <path.xls> [--dry-run] [--trader=Закир]
+```
+
+---
+
+## Промпт для AI-агента (быстрый старт / передача контекста)
+
+Если нужно передать проект другому AI или поднять с нуля — скопируй этот промпт целиком:
+
+```
+Ты работаешь с проектом WS_LEXX Prop Trading Desk (v5.0).
+GitHub: https://github.com/iskhakovzak/WS_LEXX
+
+MONOREPO СТРУКТУРА:
+- artifacts/edge-tracker — React 18 + Vite + TailwindCSS v4 + Wouter фронтенд
+- artifacts/api-server — Express 5 API сервер (порт 8080, путь /api)
+
+СТЕК:
+- Node.js 24, pnpm workspaces, TypeScript 5.9
+- PostgreSQL (Replit built-in) + Drizzle ORM + drizzle-zod
+- Zod v4, Orval codegen из OpenAPI spec → React Query хуки
+- esbuild (ESM bundle) для API сервера
+- pino логгер (НИКОГДА console.log в серверном коде — только req.log / logger)
+- TailwindCSS v4 на фронте
+
+БАЗА ДАННЫХ (КРИТИЧЕСКИ ВАЖНО):
+- Только Replit PostgreSQL через DATABASE_URL env var
+- На Replit: создай built-in PostgreSQL через вкладку Database — DATABASE_URL выставится сам
+- НИКАКИХ SQLite / Supabase / Prisma / lowdb / JSON файлов
+- Миграции: raw SQL через runMigrations() в artifacts/api-server/src/lib/migrate.ts
+  Запускаются при каждом старте. CREATE TABLE / ADD COLUMN IF NOT EXISTS — безопасно.
+- НИКАКОГО drizzle-kit, db:push, migrate:generate
+- НИКАКОГО автосида и reset/truncate при старте — данные сохраняются через рестарты
+- Добавление новых таблиц: только через migrate.ts (новый блок IF NOT EXISTS)
+
+АУТЕНТИФИКАЦИЯ:
+- JWT HS256 30 дней, подписывается JWT_SECRET из env
+- Без JWT_SECRET сервер не стартует
+- Token revoke: claim "tv" + users.token_version. POST /api/auth/logout инкрементирует версию → все токены пользователя сразу невалидны
+- Кэш token_version в памяти, TTL 30s
+- Роли: trader / curator / admin (список в auth-context.tsx и в middleware)
+- Пользователи (пароли в bcrypt в users.password_hash):
+  Закир/0101, Антон/61725(curator), Артур/93547, Рахматулло/5555,
+  Умид/15964, Максат/82374, Тимур/39156(curator), Ариф/07770(curator), Admin/0987(admin)
+
+API ПРАВИЛА:
+- Все маршруты: app.use("/api", router) → /api/trades, /api/events и т.д.
+- Soft delete: поле deleted_at, GET фильтруют WHERE deleted_at IS NULL
+- В продакшене Express раздаёт фронтенд из dist/public/
+- requireAuthOnMutation middleware на все POST/PATCH/PUT/DELETE (allowlist: /auth/login)
+- requireAdmin / requireCurator для защищённых эндпоинтов
+- getActor(req): ТОЛЬКО из JWT (req.authUser.name) — не из query/body
+- Rate limit /api/auth/login: 10 попыток / 15 мин на IP
+
+БЕЗОПАСНОСТЬ:
+- helmet без CSP (Replit iframe), cors ограничен REPLIT_DOMAINS в prod
+- Пароли: bcrypt в users.password_hash. Колонки users.password НЕТ.
+- Тикеры/range/interval валидируются regex перед запросом к Yahoo Finance
+
+OBJECT STORAGE (Replit):
+- objectStorageClient из lib/objectStorage.ts (GCS через Replit sidecar http://127.0.0.1:1106)
+- Bucket: DEFAULT_OBJECT_STORAGE_BUCKET_ID env var
+- Автобекапы: ws-lexx-backups/ префикс, pg_dump | gzip, каждые 48h, хранится последних 10
+- Первый бекап: через 3 минуты после старта сервера
+
+ФРОНТЕНД:
+- Токен в localStorage["ws_lexx_token"]
+- installFetchAuth() перехватывает все fetch('/api/*') → добавляет Authorization: Bearer
+- Orval хуки: setAuthTokenGetter для авто-auth
+- isAdmin / isCurator / me — из useAuth() хука (auth-context.tsx)
+
+DEV ЗАПУСК (НЕ запускай pnpm dev в корне — там нет такого скрипта):
+- API: pnpm --filter @workspace/api-server run dev (порт 8080)
+- Frontend: pnpm --filter @workspace/edge-tracker run dev (порт из PORT env)
+
+PRODUCTION BUILD:
+- bash scripts/build-prod.sh
+- Собирает фронт → artifacts/api-server/dist/public/
+- Запуск: node --enable-source-maps artifacts/api-server/dist/index.mjs
+
+TYPECHECK:
+- pnpm run typecheck (typecheck:libs + все пакеты)
+- Доверяй CLI, не editor/LSP если они расходятся
+
+ЗАПРЕЩЕНО:
+- console.log в серверном коде
+- Менять тип id колонок (SERIAL)
+- Добавлять SQLite/Supabase/Prisma/Sequelize
+- Seed/reset при старте
+- Хардкодить DATABASE_URL
+- CSP в helmet
+- Редактировать artifact.toml и .replit напрямую (используй artifacts skill)
+- Запускать pnpm dev в корне монорепо
+```
+
+---
+
+## API маршруты
+
+```
+GET  /api/healthz
+
+POST /api/auth/login
+POST /api/auth/logout
+GET  /api/auth/me
+
+GET/POST/PATCH/DELETE  /api/trades
+GET/POST/DELETE        /api/trades/:id/executions
+POST/GET               /api/trades/:id/ai-review
+
+GET/POST/PATCH/DELETE  /api/events
+GET/POST/PATCH/DELETE  /api/watchlist
+GET/POST/PATCH/DELETE  /api/playbook
+GET/POST/PATCH/DELETE  /api/research
+GET/POST/PATCH/DELETE  /api/daily-feed
+GET/POST/PATCH/DELETE  /api/discussions · /api/comments
+
+GET/POST/PATCH/DELETE  /api/trade-ideas
+POST                   /api/trade-ideas/:id/publish
+POST                   /api/trade-ideas/:id/convert
+GET                    /api/trade-ideas/stats
+
+GET/POST/PATCH/DELETE  /api/checklist-template
+POST/GET               /api/checklist-responses
+
+GET/POST/PATCH/DELETE  /api/big7/tickers · /api/big7/levels · /api/big7/catalysts
+GET/POST/PATCH/DELETE  /api/trading-rules · /api/rule-violations
+GET/POST/PATCH/DELETE  /api/war-room-sessions · /api/war-room-levels
+GET/POST/PATCH/DELETE  /api/emotional-state-log
+GET/POST               /api/voice-notes
+GET/POST/PATCH/DELETE  /api/trade-reactions
+
+GET  /api/candles/:ticker
+GET  /api/stockdata/quote · /api/stockdata/chart
+GET  /api/fx/rates
+GET  /api/news · /api/analyst-actions
+GET  /api/market-conditions/dna
+GET  /api/market-brief
+GET  /api/sectors/strength
+GET  /api/leaderboard
+GET  /api/dashboard/stats
+GET  /api/daily-quotes
+
+GET  /api/admin/backups
+POST /api/admin/backups/trigger
+GET  /api/admin/backups/:name/download
+GET  /api/admin/db-export
+POST /api/admin/import-propreports
+GET  /api/admin/users · PATCH /api/admin/users/:id
+GET  /api/admin/audit-log
+GET  /api/admin/content-reports
+```
+
+---
+
+## Таблицы базы данных
+
+`trades` · `market_events` · `research` · `daily_feed` · `discussions` · `comments`
+`watchlist` · `playbook` · `users` · `activity_log` · `audit_log` · `trade_reactions`
+`trade_reviews` · `trading_errors` · `big7_levels` · `big7_catalysts` · `big7_tickers`
+`trader_ratings` · `war_room_sessions` · `war_room_levels` · `playbook_folder_settings`
+`ticker_data_cache` · `news_cache` · `candles_cache` · `trade_executions`
+`sector_strength_cache` · `holiday_calendar` · `market_open_brief_cache`
+`analyst_actions_cache` · `pre_trade_checklist_template` · `pre_trade_checklist_responses`
+`trade_ideas` · `trade_idea_reactions` · `ai_trade_reviews` · `ai_review_rate_limit`
+`emotional_state_log` · `voice_notes` · `digest_subscriptions`
+`weekly_psychology_reports` · `daily_quotes` · `discussion_votes`
+`trading_rules` · `rule_violations` · `content_reports`
+
+---
+
+## Changelog
+
+### v5.0 (2026-05-05)
+- **Автоматические бекапы БД** — `pg_dump | gzip` → Replit Object Storage каждые 48h
+  - Первый бекап через 3 минуты после старта сервера
+  - Хранится последних 10 (~20 дней покрытие), старые автоудаляются
+  - Аудит каждого бекапа в `audit_log` (actor=system, action=db.backup)
+  - Admin UI: список, ручной запуск (admin), скачать .sql.gz (admin, signed URL 15 мин)
+  - Кураторы: видят список бекапов
+- **PropReports XLS импорт** — импорт сделок из бинарных XLS
+  - Через UI: Админка → Инструменты → «Импорт сделок из PropReports»
+  - Через CLI: `npx tsx scripts/src/import-propreports.ts <file> [--dry-run] [--trader=Имя]`
+  - Дедупликация идемпотентна по `source + dedupKey`
+  - 383 сделки Закира (фев–апр 2026) уже импортированы
+
+### v4.0 (2026-04-30)
+- AI Trade Review (Claude Sonnet-4-6) с кэшем по input-hash и rate limit 30/час
+- Market Context DNA snapshot при создании трейда (SPY/QQQ/VIX + режим рынка)
+- Pre-Trade Checklist (шаблоны + ответы per-трейд)
+- Trade Ideas pipeline + stats страница + OutcomeBadge
+- JWT auth с token revocation (token_version)
+- Security hardening: helmet, cors, rate-limit, bcrypt для всех паролей
+- Intraday chart (Yahoo Finance candles) + multi-fill executions с маркерами
+
+### v3.0 (2026-04-10)
+- Переход на pnpm monorepo
+- Express 5 + Drizzle ORM
+- Replit PostgreSQL (Supabase полностью удалён)
+- War Room, Psychology reports, Emotional State tracker, Digest
