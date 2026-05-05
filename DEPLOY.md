@@ -1,4 +1,4 @@
-# WS_LEXX Edge Tracker — Deploy Guide v3.0
+# WS_LEXX Edge Tracker — Deploy Guide v5.0
 
 Полная инструкция для развёртывания системы на новом Replit с нуля.
 
@@ -6,35 +6,25 @@
 
 ## Что это за система
 
-**Edge Tracker** — внутренняя операционная платформа для проп-трейдинг деска.
+**WS_LEXX Edge Tracker** — внутренняя операционная платформа для проп-трейдинг деска.
 
-Включает:
-- Trade Journal — структурированный журнал сделок
-- Playbook Engine — база стратегий и edge компании
-- Performance Analytics — win rate, expectancy, ошибки
-- Daily Feed — что работает прямо сейчас
-- Watchlist — список акций с уровнями
-- Research — паттерны и исследования
-- Discussions — обсуждения внутри команды
-- Big7 — ключевые уровни по крупным тикерам
-- War Room — совместные торговые сессии
-- Система ролей: trader / curator / admin
+Включает: Trade Journal · Playbook · Analytics · Trade Ideas · AI Review · Watchlist · Big7 · War Room · Research · Discussions · Calculator · Psychology · Digest · Backups
 
-**Стек:** React + Vite (frontend) · Express 5 + Node.js (backend) · PostgreSQL (база данных) · pnpm monorepo
+**Стек:** React 18 + Vite (frontend) · Express 5 + Node.js 24 (backend) · PostgreSQL (база данных) · pnpm monorepo · TypeScript 5.9
 
 ---
 
-## ЧАСТЬ 1 — Подготовка нового Replit
+## ЧАСТЬ 1 — Код
 
 ### Шаг 1: Создай новый Repl
 
-1. Зайди на replit.com
-2. Create Repl → выбери **Blank Repl** (или Node.js)
-3. Назови его как угодно (например `WS-LEXX-v3`)
+1. Зайди на [replit.com](https://replit.com)
+2. Create Repl → **Blank Repl** (Node.js)
+3. Назови его (например `WS-LEXX-v5`)
 
 ### Шаг 2: Импортируй код из GitHub
 
-В Shell нового Replit выполни:
+В Shell нового Replit:
 
 ```bash
 git clone https://github.com/iskhakovzak/WS_LEXX.git .
@@ -57,79 +47,65 @@ pnpm install
 
 ## ЧАСТЬ 2 — База данных
 
-### Шаг 4: Создай PostgreSQL базу данных в Replit
+### Шаг 4: Создай PostgreSQL в Replit
 
-1. В левой панели Replit найди **Database** (иконка цилиндра)
+1. В левой панели Replit: **Database** (иконка цилиндра)
 2. Нажми **Create a PostgreSQL database**
-3. Replit автоматически установит переменную `DATABASE_URL`
+3. Replit автоматически выставит `DATABASE_URL`, `PGHOST`, `PGUSER`, `PGPASSWORD`, `PGDATABASE`
 
-### Шаг 5: Восстанови дамп базы данных
+### Шаг 5: Восстанови данные (если есть бекап)
 
-Из архива релиза скачай файл `db_backup_v3.sql` и загрузи его в Replit Shell, затем:
-
+**Вариант A — из автобекапа (.sql.gz из Object Storage):**
 ```bash
-# Проверь что переменные базы данных есть
-echo $DATABASE_URL
-
-# Восстанови дамп
-psql $DATABASE_URL < db_backup_v3.sql
+# Скачай через Админку → Инструменты → Бекапы БД → скачать
+gunzip backup-file.sql.gz
+psql "$DATABASE_URL" < backup-file.sql
 ```
 
-Если нужно восстановить через отдельные переменные:
+**Вариант B — из .sql файла:**
 ```bash
-PGPASSWORD=$PGPASSWORD psql -h $PGHOST -U $PGUSER -d $PGDATABASE < db_backup_v3.sql
+psql "$DATABASE_URL" < db_backup_v5.sql
 ```
 
-**Если не хочешь восстанавливать дамп** — база создастся автоматически при первом запуске сервера (миграции + базовый сид данных).
+**Вариант C — с нуля (без бекапа):**
+Пропусти этот шаг. Миграции создадут все таблицы при первом старте. Пользователи сидятся автоматически если таблица пустая.
 
 ---
 
-## ЧАСТЬ 3 — Настройка Workflows
+## ЧАСТЬ 3 — Секреты
 
-### Шаг 6: Настрой два workflow
+### Шаг 6: Добавь секреты в Replit Secrets
 
-В Replit нужно создать два workflow для запуска приложений.
+В Replit: **Tools → Secrets**
 
-**Workflow 1 — API Server (backend):**
+| Переменная | Значение | Обязательно |
+|---|---|---|
+| `JWT_SECRET` | случайная строка 32+ символов | **ДА** (без неё сервер не стартует) |
+| `PLAYBOOK_PASSWORD` | пароль для плейбука | **ДА** |
+| `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | ID бакета Replit Object Storage | для автобекапов |
+| `GITHUB_PERSONAL_ACCESS_TOKEN` | токен GitHub | для push из Replit |
+
+Переменные которые Replit выставляет автоматически после создания БД:
+`DATABASE_URL` · `PGHOST` · `PGPORT` · `PGUSER` · `PGPASSWORD` · `PGDATABASE`
+
+---
+
+## ЧАСТЬ 4 — Workflows
+
+### Шаг 7: Workflows уже настроены в `.replit`
+
+Оба workflow прописаны автоматически. Просто нажми **Run** или запусти их через вкладку Workflows.
+
+Если workflow нужно создать вручную:
+
+**Workflow 1 — API Server:**
 - Name: `artifacts/api-server: API Server`
-- Command: `PORT=8080 pnpm --filter @workspace/api-server run dev`
-- Wait for port: `8080`
-- Output type: `console`
+- Command: `pnpm --filter @workspace/api-server run dev`
+- Port: `8080`
 
 **Workflow 2 — Edge Tracker (frontend):**
 - Name: `artifacts/edge-tracker: web`
 - Command: `pnpm --filter @workspace/edge-tracker run dev`
-- Wait for port: `5000`
-- Output type: `webview`
-
-Либо через Replit Agent введи:
-
-```
-Настрой два workflow:
-1. Название "artifacts/api-server: API Server", команда "PORT=8080 pnpm --filter @workspace/api-server run dev", порт 8080, тип console
-2. Название "artifacts/edge-tracker: web", команда "pnpm --filter @workspace/edge-tracker run dev", порт 5000, тип webview
-```
-
----
-
-## ЧАСТЬ 4 — Переменные окружения
-
-### Шаг 7: Проверь переменные
-
-Переменные которые нужны (большинство Replit ставит автоматически):
-
-| Переменная | Значение | Откуда |
-|---|---|---|
-| `DATABASE_URL` | `postgresql://...` | Replit Database (авто) |
-| `PGHOST` | hostname | Replit Database (авто) |
-| `PGPORT` | `5432` | Replit Database (авто) |
-| `PGUSER` | username | Replit Database (авто) |
-| `PGPASSWORD` | password | Replit Database (авто) |
-| `PGDATABASE` | dbname | Replit Database (авто) |
-| `PORT` | `8080` | задаём в команде workflow |
-
-Опционально (если нужен GitHub sync):
-- `GITHUB_PERSONAL_ACCESS_TOKEN` — токен доступа к репозиторию
 
 ---
 
@@ -137,36 +113,42 @@ PGPASSWORD=$PGPASSWORD psql -h $PGHOST -U $PGUSER -d $PGDATABASE < db_backup_v3.
 
 ### Шаг 8: Запусти оба workflow
 
-Запусти сначала API Server, подожди пока в логах появится:
+Сначала **API Server**, дождись в логах:
 ```
-Server listening port: 8080
+Server listening  port: 8080
 Database migrations completed
+dbBackup cron started  intervalH: 48, keepLast: 10, delayMin: 3
 ```
 
-Потом запусти Edge Tracker.
+Потом **Edge Tracker**.
 
 ### Шаг 9: Проверь работу
 
-- Frontend: открой превью в Replit (должен показать страницу логина)
-- Backend: `curl localhost:80/api/healthz` должен вернуть `{"status":"ok"}`
+```bash
+# API healthcheck:
+curl localhost:80/api/healthz
+# Ответ: {"status":"ok","timestamp":"..."}
+```
+
+Frontend: открой превью в Replit — должна открыться страница логина.
 
 ---
 
 ## ЧАСТЬ 6 — Пользователи
 
-### Дефолтные аккаунты (если использовал дамп БД — они уже есть)
-
 | Имя | Пароль | Роль |
 |---|---|---|
-| Закир | 0101 | trader |
-| Антон | 61725 | curator |
-| Артур | 93547 | trader |
-| Рахматулло | 5555 | trader |
-| Умид | 15964 | trader |
-| Максат | 82374 | trader |
-| Тимур | 39156 | curator |
-| Ориф | 07770 | curator |
-| Admin | 0987 | admin |
+| Закир | `0101` | trader |
+| Антон | `61725` | curator |
+| Артур | `93547` | trader |
+| Рахматулло | `5555` | trader |
+| Умид | `15964` | trader |
+| Максат | `82374` | trader |
+| Тимур | `39156` | curator |
+| Ариф | `07770` | curator |
+| Admin | `0987` | admin |
+
+Пароли хранятся в bcrypt (таблица `users.password_hash`).
 
 ---
 
@@ -174,87 +156,83 @@ Database migrations completed
 
 ### Опубликовать приложение
 
-1. В Replit нажми кнопку **Publish** (или Deploy)
-2. Выбери **Reserved VM** для постоянной работы
-3. Приложение будет доступно по адресу вида `ws-lexx.username.replit.app`
+1. В Replit нажми **Publish** → **Reserved VM**
+2. Приложение будет доступно по `https://ws-lexx.username.replit.app`
 
-### Production отличия от development
+### Production сборка (делается автоматически при Publish)
 
-В продакшене сервер запускается иначе (через `artifact.toml`):
-- Build: `bash scripts/build-prod.sh`
-- Run: `node --enable-source-maps artifacts/api-server/dist/index.mjs`
-- PORT задаётся Replit автоматически (8080)
-
----
-
-## Структура проекта
-
-```
-WS_LEXX/
-├── artifacts/
-│   ├── api-server/          # Express 5 backend
-│   │   ├── src/
-│   │   │   ├── routes/      # API endpoints (trades, playbook, users, ...)
-│   │   │   ├── lib/
-│   │   │   │   ├── migrate.ts   # DB migrations + seeding (20 таблиц)
-│   │   │   │   ├── db.ts        # PostgreSQL connection pool
-│   │   │   │   └── logger.ts    # Pino logger
-│   │   │   └── index.ts     # Server entry point
-│   │   └── build.mjs        # esbuild config
-│   └── edge-tracker/        # React + Vite frontend
-│       ├── src/
-│       │   ├── pages/       # Все страницы (Trades, Playbook, Watchlist, ...)
-│       │   ├── components/  # Layout, навигация
-│       │   └── contexts/    # Auth, Theme
-│       └── vite.config.ts
-├── lib/                     # Общие библиотеки (api-spec, shared types)
-├── scripts/                 # Utility скрипты
-├── db_backup_v3.sql         # Дамп базы данных v3.0
-├── pnpm-workspace.yaml      # Workspace config
-└── DEPLOY.md                # Этот файл
+```bash
+bash scripts/build-prod.sh
+# Собирает фронтенд → артефакты/api-server/dist/public/
+# Запуск: node --enable-source-maps artifacts/api-server/dist/index.mjs
 ```
 
 ---
 
-## Быстрый промпт для Replit Agent на новом Repl
+## ЧАСТЬ 8 — Автобекапы
 
-Если хочешь поднять через Replit Agent — дай ему этот промпт:
+Бекапы запускаются автоматически. **Ничего настраивать не нужно** если выставлен `DEFAULT_OBJECT_STORAGE_BUCKET_ID`.
 
-```
-Я хочу поднять проект WS_LEXX Edge Tracker на этом Replit.
+- Первый бекап: через 3 минуты после старта сервера
+- Периодичность: каждые 48 часов
+- Формат: `pg_dump | gzip` → `ws-lexx-backups/YYYY-MM-DDTHH-mm-ssZ.sql.gz`
+- Хранится: последних 10 файлов (~20 дней)
 
-1. Сделай git clone https://github.com/iskhakovzak/WS_LEXX.git . (или git pull если уже склонировано)
-2. Запусти pnpm install
-3. Создай PostgreSQL базу данных через Replit Database
-4. Восстанови дамп: psql $DATABASE_URL < db_backup_v3.sql
-5. Настрой два workflow:
-   - "artifacts/api-server: API Server" → PORT=8080 pnpm --filter @workspace/api-server run dev → port 8080, console
-   - "artifacts/edge-tracker: web" → pnpm --filter @workspace/edge-tracker run dev → port 5000, webview
-6. Запусти оба workflow
-7. Убедись что API отвечает на /api/healthz и фронтенд открывается
+**Управление:** Войди как admin → **Админка → Инструменты → Бекапы БД**
+- Список всех бекапов (curators+)
+- Кнопка «Создать сейчас» (admin)
+- Скачать .sql.gz (admin, signed URL на 15 мин)
 
-Пароли пользователей и остальные детали в файле DEPLOY.md
+**Восстановление:**
+```bash
+gunzip backup.sql.gz
+psql "$DATABASE_URL" < backup.sql
 ```
 
 ---
 
 ## Troubleshooting
 
+**"JWT_SECRET not set — server cannot start"**
+→ Добавь `JWT_SECRET` в Replit Secrets (Tools → Secrets)
+
 **"PORT environment variable is required"**
-→ Добавь `PORT=8080` перед командой запуска API
+→ Workflow уже настроен правильно. Перезапусти через Workflows.
 
-**"node_modules missing"**
-→ Запусти `pnpm install` в корне проекта
-
-**"vite: not found"**
+**"node_modules missing" / "vite: not found"**
 → Запусти `pnpm install` в корне проекта
 
 **База данных не подключается**
-→ Проверь что Replit Database создана и переменная `DATABASE_URL` установлена
+→ Проверь что Replit Database создана. Переменная `DATABASE_URL` должна быть в Secrets.
 
 **Фронтенд открывается но API не отвечает**
-→ Проверь что API Server workflow запущен и слушает port 8080
+→ Убедись что workflow `artifacts/api-server: API Server` запущен и показывает `Server listening port: 8080`
+
+**Бекапы не создаются**
+→ Проверь что `DEFAULT_OBJECT_STORAGE_BUCKET_ID` выставлен в Secrets и Replit Object Storage добавлен
 
 ---
 
-*WS_LEXX Edge Tracker v3.0 — Release 2026*
+## Быстрый промпт для Replit Agent на новом Repl
+
+```
+Я хочу поднять проект WS_LEXX Edge Tracker (v5.0) на этом Replit.
+
+1. git clone https://github.com/iskhakovzak/WS_LEXX.git . (или git pull если уже склонировано)
+2. pnpm install
+3. Создай PostgreSQL базу данных через Replit Database tab
+4. Добавь в Secrets: JWT_SECRET (случайная строка 32+ символов), PLAYBOOK_PASSWORD (любой пароль)
+5. Если есть файл дампа: psql $DATABASE_URL < db_backup_v5.sql
+6. Запусти оба workflow (они уже прописаны в .replit):
+   - artifacts/api-server: API Server
+   - artifacts/edge-tracker: web
+7. Дождись "Server listening port: 8080" и "Database migrations completed" в логах API
+8. Проверь: curl localhost:80/api/healthz → {"status":"ok"}
+
+Пользователи: Admin/0987 (admin), Антон/61725 (curator), Закир/0101 (trader)
+Подробности в файле DEPLOY.md и README.md
+```
+
+---
+
+*WS_LEXX Edge Tracker v5.0 — 2026-05-05*
