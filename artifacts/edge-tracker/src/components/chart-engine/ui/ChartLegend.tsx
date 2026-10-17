@@ -3,11 +3,12 @@ import { cn } from "@/lib/utils";
 import type { Bar, PositionState, Side } from "../types";
 import { fmtEtDateTime, formatDuration } from "../lib/time";
 import { fmtMoney, fmtPct, fmtPrice, fmtR, fmtVol } from "../lib/format";
+import { fmtPerShare } from "../lib/trade-summary";
 
 export type LegendInfo = {
   bar: Bar;
   idx: number;
-  /** Whether the legend follows the mouse (vs. the replay cursor). */
+  /** Whether the legend follows the mouse (vs. the replay cursor / last bar). */
   hovered: boolean;
   position: PositionState | null;
   /** Seconds since the entry fill at this bar (null before entry). */
@@ -18,54 +19,61 @@ export type LegendInfo = {
   risk: number | null;
   side: Side;
   prevClose: number | null;
+  /** Another trader's trade: no $ — per share and R only. */
+  redacted: boolean;
 };
 
-const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || n === 0 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
+const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-12 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
 
-/** OHLCV + position readout at the crosshair (or the replay cursor). */
-export function ChartLegend({ info, ticker, className }: { info: LegendInfo | null; ticker: string; className?: string }) {
+/**
+ * TradingView-style legend: plain text in the top-left corner (no box over the candles), OHLC + change + volume on the
+ * first line, VWAP and the open position (per share · R · $ for own trades) on the second.
+ */
+export function ChartLegend({ info, ticker, tfLabel, className }: { info: LegendInfo | null; ticker: string; tfLabel: string; className?: string }) {
   if (!info) return null;
   const { bar, position: pos } = info;
   const chg = bar.c - bar.o;
   const chgPct = bar.o ? (chg / bar.o) * 100 : null;
   const vsPrev = info.prevClose ? ((bar.c - info.prevClose) / info.prevClose) * 100 : null;
-  const unreal = pos?.unrealized ?? null;
-  const r = unreal != null && info.risk && pos && pos.qty > 0 ? unreal / (info.risk * pos.qty) : null;
+  const dir = info.side === "short" ? -1 : 1;
+  const open = !!pos && pos.avg != null;
+  const perShare = open ? dir * (bar.c - (pos!.avg as number)) : null;
+  const r = perShare != null && info.risk ? perShare / info.risk : null;
+  const usd = !info.redacted && open ? pos!.total : null;
   return (
     <div
       className={cn(
-        // One line only: at narrow widths the tail is clipped with a fade instead of wrapping over the chart.
-        "pointer-events-none absolute left-2 top-2 z-raised flex max-w-[calc(100%-1rem)] items-center gap-x-3 overflow-hidden whitespace-nowrap rounded-xl border border-[var(--glass-border)] bg-background/80 px-2.5 py-1.5 text-xs tabular-nums text-muted-foreground shadow-[var(--glass-shadow-sm)] backdrop-blur [&>*]:shrink-0 [mask-image:linear-gradient(to_right,black_calc(100%-28px),transparent)]",
+        "pointer-events-none absolute left-2.5 top-2 z-raised flex max-w-[calc(100%-5rem)] flex-col gap-0.5 text-xs tabular-nums text-muted-foreground",
+        "[text-shadow:0_0_2px_hsl(var(--background)),0_0_6px_hsl(var(--background)),0_0_10px_hsl(var(--background))]",
         className,
       )}
-      aria-live="polite"
+      aria-live="off"
     >
-      <span className="font-semibold text-foreground">{ticker}</span>
-      <span className="text-foreground">{fmtEtDateTime(bar.t)}</span>
-      <span>O <b className="text-foreground">{fmtPrice(bar.o)}</b></span>
-      <span>H <b className="text-foreground">{fmtPrice(bar.h)}</b></span>
-      <span>L <b className="text-foreground">{fmtPrice(bar.l)}</b></span>
-      <span>C <b className={tone(chg)}>{fmtPrice(bar.c)}</b> <span className={tone(chg)}>{fmtPct(chgPct)}</span></span>
-      {vsPrev != null && <span title="К закрытию предыдущего дня">Δпред <b className={tone(vsPrev)}>{fmtPct(vsPrev)}</b></span>}
-      <span>V <b className="text-foreground">{fmtVol(bar.v)}</b>{info.rvol != null && <span className={cn("ml-1", info.rvol >= 2 ? "text-[hsl(var(--chart-3))]" : "")} title="Относительный объём к среднему того же времени в другие дни">RVOL {info.rvol.toFixed(2)}</span>}</span>
-      {info.vwap && <span>VWAP <b className="text-[hsl(var(--chart-5))]">{fmtPrice(info.vwap.vwap)}</b> <span title="±1σ">σ {fmtPrice(info.vwap.sd)}</span></span>}
-      {info.avwap != null && <span>AVWAP <b className="text-primary">{fmtPrice(info.avwap)}</b></span>}
-      {pos && pos.fillsSoFar > 0 && (
-        <span className="inline-flex items-center gap-1.5 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-foreground">
-          {pos.avg != null ? (
-            <>
-              <span>{info.side === "short" ? "Шорт" : "Лонг"} {pos.qty > 0 ? `${pos.qty.toLocaleString("en-US")} шт.` : ""}{pos.qtyAssumed ? "≈" : ""}</span>
-              <span>ср. {fmtPrice(pos.avg)}</span>
-              <b className={tone(unreal)}>{unreal != null ? fmtMoney(unreal) : "—"}{r != null ? ` · ${fmtR(r)}` : ""}</b>
-              {pos.realized !== 0 && <span className={tone(pos.realized)}>реализ. {fmtMoney(pos.realized)}</span>}
-            </>
-          ) : (
-            <span>закрыто · итог <b className={tone(pos.realized)}>{fmtMoney(pos.realized)}</b></span>
-          )}
-          {info.sinceEntry != null && info.sinceEntry >= 0 && <span className="text-muted-foreground">· {formatDuration(info.sinceEntry)} от входа</span>}
-        </span>
-      )}
-      {info.hovered && <span className="opacity-70">(курсор)</span>}
+      <div className="flex flex-wrap items-center gap-x-2.5 whitespace-nowrap sm:flex-nowrap sm:overflow-hidden [&>*]:shrink-0">
+        <span className="font-semibold text-foreground">{ticker} <span className="font-normal text-muted-foreground">· {tfLabel}</span></span>
+        <span className={cn(info.hovered ? "text-foreground" : "")}>{fmtEtDateTime(bar.t)}</span>
+        <span>O <b className="font-medium text-foreground">{fmtPrice(bar.o)}</b></span>
+        <span>H <b className="font-medium text-foreground">{fmtPrice(bar.h)}</b></span>
+        <span>L <b className="font-medium text-foreground">{fmtPrice(bar.l)}</b></span>
+        <span>C <b className={cn("font-medium", tone(chg))}>{fmtPrice(bar.c)}</b> <span className={tone(chg)}>{fmtPct(chgPct)}</span></span>
+        <span className="hidden sm:inline">V <b className="font-medium text-foreground">{fmtVol(bar.v)}</b>{info.rvol != null && info.rvol >= 1.5 && <span className="ml-1 text-[hsl(var(--chart-3))]" title="Объём относительно того же времени в другие дни">×{info.rvol.toFixed(1)}</span>}</span>
+      </div>
+      <div className="flex items-center gap-x-2.5 overflow-hidden whitespace-nowrap [&>*]:shrink-0">
+        {vsPrev != null && <span className="hidden sm:inline" title="К закрытию предыдущего дня">к вчера <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
+        {info.vwap && <span>VWAP <b className="font-medium text-[hsl(var(--chart-5))]">{fmtPrice(info.vwap.vwap)}</b></span>}
+        {info.avwap != null && <span className="hidden sm:inline">AVWAP <b className="font-medium text-primary">{fmtPrice(info.avwap)}</b></span>}
+        {pos && pos.fillsSoFar > 0 && (open ? (
+          <span className="text-foreground">
+            {info.side === "short" ? "Шорт" : "Лонг"} ср. {fmtPrice(pos.avg)}{" "}
+            <b className={tone(perShare)}>{fmtPerShare(perShare)}</b>
+            {r != null && <b className={cn("ml-1", tone(r))}>{fmtR(r)}</b>}
+            {usd != null && <b className={cn("ml-1", tone(usd))}>{fmtMoney(usd)}</b>}
+            {info.sinceEntry != null && info.sinceEntry >= 0 && <span className="ml-1 text-muted-foreground">· {formatDuration(info.sinceEntry)}</span>}
+          </span>
+        ) : (
+          <span>позиция закрыта</span>
+        ))}
+      </div>
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { logger } from "../lib/logger";
 import { scopeTrader } from "../lib/auth";
 import { can, readScope } from "../lib/permissions";
 import { num } from "../lib/tradeMath";
+import { refreshTradeStructures } from "../lib/tradeStructureStore";
 import {
   PAGE_SORT_COLS,
   PAGE_OUTCOMES,
@@ -725,6 +726,10 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   const resultChanged = Object.prototype.hasOwnProperty.call(req.body ?? {}, "result");
   if (resultChanged) {
     maybeAutoGenerateReview({ tradeId: trade.id, result: trade.result, trader: trade.trader });
+  }
+  // Stop / risk / side / symbol / day feed the fill roles (Стоп, Перезаход …) — recompute in the background.
+  if (["stop", "riskUsd", "side", "ticker", "date", "qty"].some((f) => Object.prototype.hasOwnProperty.call(req.body ?? {}, f))) {
+    void refreshTradeStructures([trade.id]).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId: trade.id }, "trade structure refresh failed"));
   }
   logActivity({ action: "updated", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined });
   invalidateDashboardCache();

@@ -46,6 +46,8 @@ export interface SimTrade {
   fills?: number | null;
   /** Secondary order inside the day when entry times tie / are unknown (import order). */
   seq: number;
+  /** Trader's own grade of the trade (A+, A, B, C); null / absent when not graded. */
+  grade?: string | null;
 }
 
 export type Rule =
@@ -66,13 +68,25 @@ export type Rule =
   /** Keep only trades whose size (shares) is inside [min, max]. */
   | { type: "sizeRange"; min?: number | null; max?: number | null }
   /** Skip entries taken within `minutes` after a losing trade closed the same day («после убытка», revenge trades). */
-  | { type: "afterLoss"; minutes: number };
+  | { type: "afterLoss"; minutes: number }
+  /** Skip trades of these setups (case-insensitive). Trades without a setup are kept. */
+  | { type: "excludeSetups"; setups: string[] }
+  /** Keep only trades graded at least `grade` (A+ > A > B > C); ungraded trades are dropped. */
+  | { type: "minGrade"; grade: Grade };
+
+export const GRADES = ["A+", "A", "B", "C"] as const;
+export type Grade = (typeof GRADES)[number];
+/** 0 = best (A+); null when the value is not a known grade. */
+export function gradeRank(g: string | null | undefined): number | null {
+  const i = GRADES.indexOf(String(g ?? "").trim().toUpperCase() as Grade);
+  return i < 0 ? null : i;
+}
 
 export type RuleType = Rule["type"];
 
 export type ExclusionReason =
   | "dailyLossLimit" | "maxTradesPerDay" | "stopAfterLosses" | "timeWindow" | "priceRange" | "minHold" | "excludeTickers" | "excludeSide"
-  | "sizeRange" | "afterLoss";
+  | "sizeRange" | "afterLoss" | "excludeSetups" | "minGrade";
 export type ChangeReason = "commissionPlan" | "capLoss";
 
 export interface ExcludedTrade {
@@ -141,6 +155,10 @@ export interface Metrics {
   feePerTrade: number | null;
   shares: number;
   feePerShare: number | null;
+  /** Σ R of the trades that have an R (stop / risk known); null when none has. Money rules (capLoss) do not change R. */
+  totalR: number | null;
+  /** Trades with a known R. */
+  rCount: number;
 }
 
 export interface BootstrapSummary {
@@ -269,7 +287,7 @@ export function maxDrawdownOf(values: number[]): number {
 export function computeMetrics(input: SimTrade[]): Metrics {
   const trades = sortSim(input).filter((t) => t.gross != null);
   let wins = 0, losses = 0, be = 0, gross = 0, fees = 0, posNet = 0, negNet = 0, shares = 0;
-  let streak = 0, maxLossStreak = 0;
+  let streak = 0, maxLossStreak = 0, sumR = 0, rCount = 0;
   const nets: number[] = [];
   for (const t of trades) {
     const net = netOf(t)!;
@@ -277,6 +295,7 @@ export function computeMetrics(input: SimTrade[]): Metrics {
     gross += t.gross!;
     fees += Math.abs(t.fees);
     shares += Math.abs(t.qty ?? 0);
+    if (t.r != null && Number.isFinite(t.r)) { sumR += t.r; rCount++; }
     // Result by net money: the broker's win/loss label can disagree with the net after fees.
     const kind: ResultKind = net > 0 ? "win" : net < 0 ? "loss" : "be";
     if (kind === "win") { wins++; posNet += net; streak = 0; }
@@ -316,6 +335,8 @@ export function computeMetrics(input: SimTrade[]): Metrics {
     feePerTrade: trades.length ? fees / trades.length : null,
     shares,
     feePerShare: shares > 0 ? fees / shares : null,
+    totalR: rCount ? round2(sumR) : null,
+    rCount,
   };
 }
 
@@ -372,6 +393,8 @@ export function describeRule(r: Rule): string {
       return "Размер позиции";
     }
     case "afterLoss": return `Пауза ${r.minutes} мин после убыточной сделки`;
+    case "excludeSetups": return `Без сетапов: ${r.setups.join(", ")}`;
+    case "minGrade": return r.grade === "A+" ? "Только сделки A+" : `Только сделки ${r.grade} и лучше`;
   }
 }
 
@@ -421,6 +444,15 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
   const sr = get("sizeRange");
   if (sr && sr.min == null && sr.max == null) skipped.push({ rule: "sizeRange", reason: "границы размера не заданы" });
   if (sr && (sr.min != null || sr.max != null) && !base.some((t) => t.qty != null)) skipped.push({ rule: "sizeRange", reason: "в сделках нет количества акций" });
+  const xs = get("excludeSetups");
+  const xsSet = new Set((xs?.setups ?? []).map((v) => v.trim().toLowerCase()).filter(Boolean));
+  if (xs && !xsSet.size) skipped.push({ rule: "excludeSetups", reason: "сетапы не заданы" });
+  else if (xs && !base.some((t) => t.setup)) skipped.push({ rule: "excludeSetups", reason: "в сделках не размечены сетапы" });
+  const mg = get("minGrade");
+  const mgRank = mg ? gradeRank(mg.grade) : null;
+  const mgActive = mg != null && mgRank != null && base.some((t) => gradeRank(t.grade) != null);
+  if (mg && mgRank == null) skipped.push({ rule: "minGrade", reason: "неизвестная оценка" });
+  else if (mg && !mgActive) skipped.push({ rule: "minGrade", reason: "в сделках нет оценок A+…C" });
 
   for (const t of base) {
     if (tw && t.entryMin != null) {
@@ -437,6 +469,12 @@ export function runScenario(input: SimTrade[], rules: Rule[], opts: { bootstrap?
     if (sr && t.qty != null) {
       if (sr.min != null && t.qty < sr.min) { exclude(t, "sizeRange", `${t.qty} акц. < ${sr.min}`); continue; }
       if (sr.max != null && t.qty > sr.max) { exclude(t, "sizeRange", `${t.qty} акц. > ${sr.max}`); continue; }
+    }
+    if (xsSet.size && t.setup && xsSet.has(t.setup.trim().toLowerCase())) { exclude(t, "excludeSetups", `сетап ${t.setup}`); continue; }
+    if (mgActive) {
+      const g = gradeRank(t.grade);
+      if (g == null) { exclude(t, "minGrade", "без оценки"); continue; }
+      if (g > (mgRank as number)) { exclude(t, "minGrade", `оценка ${t.grade}`); continue; }
     }
     kept.push({ ...t });
   }
@@ -600,6 +638,27 @@ export interface Suggestion {
   removedNet: number;
 }
 
+/**
+ * Losing setups (≥ `minTrades` trades, negative net), worst first: the single worst, then the worst two together.
+ * Empty when the trades carry no setups.
+ */
+export function worstSetups(trades: SimTrade[], minTrades = 10): string[][] {
+  const by = new Map<string, { name: string; net: number; n: number }>();
+  for (const t of trades) {
+    const net = netOf(t);
+    if (net == null || !t.setup?.trim()) continue;
+    const k = t.setup.trim().toLowerCase();
+    const e = by.get(k) ?? { name: t.setup.trim(), net: 0, n: 0 };
+    e.net += net; e.n++;
+    by.set(k, e);
+  }
+  const losing = [...by.values()].filter((e) => e.n >= minTrades && e.net < 0).sort((a, b) => a.net - b.net);
+  const out: string[][] = [];
+  if (losing[0]) out.push([losing[0].name]);
+  if (losing[1]) out.push([losing[0].name, losing[1].name]);
+  return out;
+}
+
 export function suggestionGrid(trades: SimTrade[]): Rule[] {
   const grid: Rule[] = [];
   const hasTime = trades.some((t) => t.entryMin != null);
@@ -651,6 +710,7 @@ export function suggestionGrid(trades: SimTrade[]): Rule[] {
   }
   const worst = [...byTicker.entries()].filter(([, e]) => e.n >= 10 && e.net < 0).sort((a, b) => a[1].net - b[1].net).slice(0, 5);
   for (const [ticker] of worst) grid.push({ type: "excludeTickers", tickers: [ticker] });
+  for (const setups of worstSetups(trades)) grid.push({ type: "excludeSetups", setups });
   return grid;
 }
 
@@ -694,7 +754,7 @@ export function findSuggestions(trades: SimTrade[], opts: { limit?: number; minT
 /** Rule types this engine understands (the UI hides builder fields the running server does not support). */
 export const RULE_TYPES: RuleType[] = [
   "dailyLossLimit", "maxTradesPerDay", "stopAfterLosses", "timeWindow", "priceRange", "minHold", "excludeTickers", "excludeSide",
-  "commissionPlan", "capLoss", "sizeRange", "afterLoss",
+  "commissionPlan", "capLoss", "sizeRange", "afterLoss", "excludeSetups", "minGrade",
 ];
 
 /* ───────────────────────── Commission optimizer ───────────────────────── */

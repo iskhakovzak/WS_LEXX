@@ -8,6 +8,11 @@ import { requireAuth } from "../lib/auth";
 import { nyDate } from "../lib/tradingDate";
 import { netPnl, netPnlSql, signedR, signedRSql } from "../lib/tradeMath";
 import { handleAiNotConfigured } from "../lib/aiErrors";
+import { loadMoneyViewer } from "../lib/playbookAccess";
+import {
+  buildAudience, daySnapshot, groupTradesByDay, isAudienceStage,
+  type AudienceMemberInput, type AudienceStage, type SnapshotTrade,
+} from "../lib/authorNotesLogic";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -43,6 +48,42 @@ function ensureReadsTable(): Promise<void> {
 }
 
 // Looking at another author's day context / read receipts = journal.read.team (permissions matrix, DB role).
+
+async function tableExists(name: string): Promise<boolean> {
+  const { rows } = await pool.query<{ ok: string | null }>(`SELECT to_regclass($1)::text AS ok`, [name]);
+  return !!rows[0]?.ok;
+}
+
+/**
+ * Academy stage per member, same precedence as routes/academy-path.ts loadStageInfo (not exported there):
+ * academy_trader_stage → active academy_enrollments → trader_risk_limits.tier. Every source is optional.
+ */
+async function loadStages(names: string[]): Promise<Map<string, AudienceStage>> {
+  const out = new Map<string, AudienceStage>();
+  if (!names.length) return out;
+  const fill = (rows: { name: unknown; stage: unknown }[]) => {
+    for (const r of rows) {
+      const n = String(r.name);
+      if (!out.has(n) && isAudienceStage(r.stage)) out.set(n, r.stage);
+    }
+  };
+  const sources: [string, string][] = [
+    ["academy_trader_stage", `SELECT user_name AS name, stage FROM academy_trader_stage WHERE user_name = ANY($1::text[])`],
+    ["academy_enrollments", `SELECT DISTINCT ON (user_name) user_name AS name, stage FROM academy_enrollments
+                              WHERE archived_at IS NULL AND COALESCE(status, 'active') IN ('active','paused') AND user_name = ANY($1::text[])
+                              ORDER BY user_name, joined_on DESC NULLS LAST, id DESC`],
+    ["trader_risk_limits", `SELECT trader AS name, tier AS stage FROM trader_risk_limits WHERE trader = ANY($1::text[])`],
+  ];
+  for (const [table, sql] of sources) {
+    try {
+      if (!(await tableExists(table))) continue;
+      fill((await pool.query(sql, [names])).rows);
+    } catch (err) {
+      logger.warn({ err, table }, "author-notes: stage source read failed");
+    }
+  }
+  return out;
+}
 
 function addDaysIso(dateStr: string, days: number): string {
   const d = new Date(dateStr + "T12:00:00Z");
@@ -159,9 +200,31 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
      LIMIT 300`,
     params,
   );
-  res.json(rows.map((r: { trader: string; reads: { reader: string }[] }) => ({
+  // The author's trading day per note (counts / W-L / Σ R / tickers) so readers see what the lesson is about.
+  // $ only for the owner or staff (lib/playbookPrivacy) — a junior reading a senior's note gets R, never money.
+  // Guests (no name) get no snapshot at all.
+  const viewer = await loadMoneyViewer(req);
+  const authors = Array.from(new Set(rows.map((r: { trader: string }) => r.trader)));
+  let byDay = new Map<string, SnapshotTrade[]>();
+  if (authors.length && viewer.name) {
+    try {
+      const { rows: trades } = await pool.query(
+        `SELECT trader, date, ticker, side, result, pnl, fees, r_multiple, entry, exit, stop, risk_usd
+         FROM trades
+         WHERE trader = ANY($1::text[]) AND date >= $2 AND date <= $3 AND deleted_at IS NULL
+         ORDER BY date ASC, created_at ASC
+         LIMIT 5000`,
+        [authors, from, to],
+      );
+      byDay = groupTradesByDay(trades);
+    } catch (err) {
+      logger.warn({ err }, "author-notes feed: day snapshot failed");
+    }
+  }
+  res.json(rows.map((r: { trader: string; note_date: string; reads: { reader: string }[] }) => ({
     ...r,
     read_by_me: r.trader === me || r.reads.some(x => x.reader === me),
+    day: daySnapshot(byDay.get(`${r.trader}|${r.note_date}`) ?? [], viewer, r.trader),
   })));
 }));
 
@@ -254,6 +317,30 @@ router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res)
     [id],
   );
   res.json(rows);
+}));
+
+// Reach of a note: every active member except the author, read or not, with academy stage (trainees first).
+// Same access as /reads: the author, or a curator/admin with journal.read.team.
+router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, res): Promise<void> => {
+  const auth = req.authUser!;
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  await ensureReadsTable();
+  const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
+  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  const author = noteRows[0].trader as string;
+  if (author !== auth.name && !(await can(req, "journal.read.team", { trader: author }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  const [{ rows: users }, { rows: reads }] = await Promise.all([
+    pool.query<{ name: string; role: string }>(
+      `SELECT name, role FROM users
+       WHERE active = true AND COALESCE(banned, false) = false AND role IN ('trader', 'curator', 'admin')
+       ORDER BY name`,
+    ),
+    pool.query<{ reader: string; read_at: string }>(`SELECT reader, read_at FROM author_note_reads WHERE note_id = $1`, [id]),
+  ]);
+  const stages = await loadStages(users.map(u => u.name));
+  const members: AudienceMemberInput[] = users.map(u => ({ name: u.name, role: u.role, stage: stages.get(u.name) ?? null }));
+  res.json(buildAudience(members, reads, author));
 }));
 
 router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res): Promise<void> => {

@@ -2,14 +2,17 @@
  * Plain-SVG charts of the benchmark (no chart lib): multi-series equity lines and a percentile radar.
  */
 import { useMemo, useState } from "react";
+import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
+import { PERIOD_HINT, dayHref, usePeriodNav } from "@/lib/period-links";
 import type { DayPoint } from "./api";
 import { fmtDay, fmtR, fmtUsd } from "./format";
 
 export type EquitySeries = { name: string; color: string; unit: "usd" | "r" | null; points: DayPoint[] };
 
 /**
- * Cumulative equity of one or more traders on a shared day axis (union of their trading days). Hover shows values.
+ * Cumulative equity of one or more traders on a shared day axis (union of their trading days). Hover shows values;
+ * click a day (or focus + ←/→ + Enter) opens that trader's «Разбор дня» — with several lines, of the nearest one.
  */
 export function EquityLines({ series, height = 260, className }: { series: EquitySeries[]; height?: number; className?: string }) {
   const W = 760, H = height, PL = 64, PR = 12, PT = 12, PB = 26;
@@ -33,6 +36,14 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
     return { days, idx, lines, min, max };
   }, [series]);
   const { days, lines, min, max } = model;
+  const [, navigate] = useLocation();
+  const nav = usePeriodNav({
+    kind: "day",
+    dates: days,
+    trader: series.length === 1 ? series[0].name : null,
+    label: `Кривая капитала: ${series.map((s) => s.name).join(", ")}`,
+    describe: (i) => fmtDay(days[i]),
+  });
   if (days.length < 2) {
     return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>Недостаточно дней для кривой</div>;
   }
@@ -42,14 +53,30 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
   const fmt = (v: number) => (unit === "r" ? fmtR(v) : fmtUsd(v));
   const ticks = [min, (min + max) / 2, max];
   const xTicks = [0, Math.floor((days.length - 1) / 2), days.length - 1];
-  const onMove = (e: React.MouseEvent<SVGRectElement>) => {
+  const pointAt = (e: React.MouseEvent<SVGRectElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
     const px = ((e.clientX - r.left) / r.width) * W;
-    const i = Math.round(((px - PL) / (W - PL - PR)) * (days.length - 1));
-    setHover(Math.max(0, Math.min(days.length - 1, i)));
+    const py = ((e.clientY - r.top) / r.height) * (H - PT - PB) + PT;
+    const i = Math.max(0, Math.min(days.length - 1, Math.round(((px - PL) / (W - PL - PR)) * (days.length - 1))));
+    return { i, py };
   };
+  const onMove = (e: React.MouseEvent<SVGRectElement>) => setHover(pointAt(e).i);
+  const onClick = (e: React.MouseEvent<SVGRectElement>) => {
+    const { i, py } = pointAt(e);
+    // Several traders: open the line closest to the pointer.
+    let best: string | null = null, bestD = Infinity;
+    for (const l of lines) {
+      const v = l.vals[i];
+      if (v == null) continue;
+      const d = Math.abs(y(v) - py);
+      if (d < bestD) { bestD = d; best = l.name; }
+    }
+    if (best == null) return;
+    navigate(dayHref(days[i], best));
+  };
+  const shown = hover ?? (nav.active >= 0 ? nav.active : null);
   return (
-    <div className={cn("relative", className)}>
+    <div {...nav.wrapperProps} className={cn("relative", nav.wrapperProps.className, className)}>
       <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`Кривая капитала: ${series.map((s) => s.name).join(", ")}`}>
         {ticks.map((t, i) => (
           <g key={i}>
@@ -66,24 +93,28 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
           l.vals.forEach((v, i) => { if (v == null) return; d += `${d ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`; });
           return <path key={l.name} d={d} fill="none" stroke={l.color} strokeWidth={1.8} strokeLinejoin="round" />;
         })}
-        {hover != null && (
+        {shown != null && (
           <g>
-            <line x1={x(hover)} x2={x(hover)} y1={PT} y2={H - PB} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
-            {lines.map((l) => (l.vals[hover] != null ? <circle key={l.name} cx={x(hover)} cy={y(l.vals[hover] as number)} r={3} fill={l.color} /> : null))}
+            <line x1={x(shown)} x2={x(shown)} y1={PT} y2={H - PB} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
+            {lines.map((l) => (l.vals[shown] != null ? <circle key={l.name} cx={x(shown)} cy={y(l.vals[shown] as number)} r={3} fill={l.color} /> : null))}
           </g>
         )}
-        <rect x={PL} y={PT} width={W - PL - PR} height={H - PT - PB} fill="transparent" onMouseMove={onMove} onMouseLeave={() => setHover(null)} />
+        <rect
+          x={PL} y={PT} width={W - PL - PR} height={H - PT - PB} fill="transparent" className="cursor-pointer"
+          onMouseMove={onMove} onMouseLeave={() => setHover(null)} onClick={onClick}
+        />
       </svg>
-      {hover != null && (
+      {shown != null && (
         <div className="glass-panel pointer-events-none absolute right-2 top-2 rounded-lg px-2.5 py-1.5 text-xs tabular-nums">
-          <div className="font-medium text-foreground">{fmtDay(days[hover])}</div>
+          <div className="font-medium text-foreground">{fmtDay(days[shown])}</div>
           {lines.map((l) => (
             <div key={l.name} className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: l.color }} aria-hidden="true" />
               <span className="text-muted-foreground">{l.name}</span>
-              <span className="ml-auto pl-2 text-foreground">{l.vals[hover] == null ? "—" : fmt(l.vals[hover] as number)}</span>
+              <span className="ml-auto pl-2 text-foreground">{l.vals[shown] == null ? "—" : fmt(l.vals[shown] as number)}</span>
             </div>
           ))}
+          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? "Клик" : "Enter"} — {PERIOD_HINT.day.toLowerCase()} →</div>
         </div>
       )}
       <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">

@@ -21,7 +21,8 @@ export class LevelsPrimitive extends SeriesPrimitiveBase {
 
   set(levels: readonly LevelLine[]): void {
     this.levels = levels.filter((l) => Number.isFinite(l.price) && l.price > 0);
-    this.setAxisLabels(this.levels.map((l) => ({ price: l.price, text: fmtPrice(l.price), color: l.color })));
+    // No price-axis labels: the in-pane labels already name each level, and axis tags for 5–9 levels piled up
+    // over the price scale and hid the last price.
     this.requestUpdate();
   }
 

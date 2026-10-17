@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
 import { fmtCompact, fmtValue, heatBg, parseKey, pluralTrades, toKey, type DayStat, type Metric } from "./metrics";
 import { TradeLinkRow } from "./trade-link-row";
 
@@ -20,9 +22,10 @@ const cmp = (a: Month, b: Month) => a.y * 12 + a.m - (b.y * 12 + b.m);
 
 /**
  * Month P&L calendar (TradeZella-style): Mon–Fri cells tinted by the day's result + weekly totals column.
- * Weekend trades are folded into the week total. Click a day to list its trades.
+ * Weekend trades are folded into the week total. Click a day to list its trades (and open its «Разбор дня»);
+ * the week total opens the weekly review.
  */
-export function CalendarPanel({ days, metric }: { days: DayStat[]; metric: Metric }) {
+export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metric: Metric; trader?: string | null }) {
   const byKey = useMemo(() => new Map(days.map((d) => [d.key, d])), [days]);
   const latest = days.at(-1)?.key;
   const first = days[0]?.key;
@@ -129,16 +132,31 @@ export function CalendarPanel({ days, metric }: { days: DayStat[]; metric: Metri
                   </button>
                 );
               })}
-              <div
-                role="gridcell"
-                className="flex aspect-square flex-col justify-center rounded-lg bg-[var(--glass-bg)] p-1 text-center sm:aspect-[4/3]"
-                aria-label={`Неделя: ${wCnt} ${pluralTrades(wCnt)}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`}
-              >
-                <span className={cn("truncate text-2xs font-semibold tabular-nums sm:text-xs", wVal == null ? "text-muted-foreground" : wVal > 0 ? "text-up" : wVal < 0 ? "text-down" : "text-foreground")}>
-                  {wCnt ? (wVal != null ? fmtCompact(wVal, metric) : "—") : ""}
-                </span>
-                {wCnt > 0 && <span className="text-2xs text-muted-foreground">{wCnt} сд.</span>}
-              </div>
+              {(() => {
+                const weekLabel = `Неделя: ${wCnt} ${pluralTrades(wCnt)}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`;
+                const body = (
+                  <>
+                    <span className={cn("truncate text-2xs font-semibold tabular-nums sm:text-xs", wVal == null ? "text-muted-foreground" : wVal > 0 ? "text-up" : wVal < 0 ? "text-down" : "text-foreground")}>
+                      {wCnt ? (wVal != null ? fmtCompact(wVal, metric) : "—") : ""}
+                    </span>
+                    {wCnt > 0 && <span className="text-2xs text-muted-foreground">{wCnt} сд.</span>}
+                  </>
+                );
+                const cls = "flex aspect-square flex-col justify-center rounded-lg bg-[var(--glass-bg)] p-1 text-center sm:aspect-[4/3]";
+                return wCnt > 0 ? (
+                  <Link
+                    role="gridcell"
+                    href={weekHref(toKey(w.days[0]), trader)}
+                    aria-label={`${weekLabel} — ${PERIOD_HINT.week.toLowerCase()}`}
+                    title={PERIOD_HINT.week}
+                    className={cn(cls, "transition-colors hover:ring-1 hover:ring-[hsl(var(--border))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
+                  >
+                    {body}
+                  </Link>
+                ) : (
+                  <div role="gridcell" className={cls} aria-label={weekLabel}>{body}</div>
+                );
+              })()}
             </div>
           );
         })}
@@ -154,7 +172,7 @@ export function CalendarPanel({ days, metric }: { days: DayStat[]; metric: Metri
         <span className="inline-flex items-center gap-2">
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-up/50" aria-hidden="true" />плюс</span>
           <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-down/50" aria-hidden="true" />минус</span>
-          <span>· нажмите на день</span>
+          <span>· нажмите на день или неделю</span>
         </span>
       </div>
 
@@ -165,9 +183,14 @@ export function CalendarPanel({ days, metric }: { days: DayStat[]; metric: Metri
               {parseKey(sel.key).getDate()} {MONTHS_GEN[parseKey(sel.key).getMonth()]}
               <Pill tone={toneOf(sel.value)} className="ml-2">{sel.value != null ? fmtValue(sel.value, metric) : `${sel.count} сд.`}</Pill>
             </div>
-            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Закрыть список дня" onClick={() => setSelected(null)}>
-              <X className="h-4 w-4" />
-            </Button>
+            <span className="flex items-center gap-1">
+              <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-primary">
+                <Link href={dayHref(sel.key, trader)}>{PERIOD_HINT.day} <ArrowRight aria-hidden="true" /></Link>
+              </Button>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Закрыть список дня" onClick={() => setSelected(null)}>
+                <X className="h-4 w-4" />
+              </Button>
+            </span>
           </div>
           <ul className="flex flex-col">
             {sel.trades.map((t) => <TradeLinkRow key={t.id} trade={t} metric={metric} showDate={false} />)}

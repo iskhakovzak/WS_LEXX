@@ -23,7 +23,7 @@ import { nyMinutes } from "../lib/tradingDate";
 import { logger } from "../lib/logger";
 import {
   type SimTrade, type Rule, type Side, type Horizon,
-  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, PRESETS, RULE_TYPES,
+  computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, PRESETS, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
 
 const router: IRouter = Router();
@@ -56,6 +56,8 @@ const ruleSchema: z.ZodType<Rule> = z.discriminatedUnion("type", [
   z.object({ type: z.literal("capLoss"), usd: z.coerce.number().positive().max(1e7) }),
   z.object({ type: z.literal("sizeRange"), min: z.coerce.number().nonnegative().max(1e7).nullish(), max: z.coerce.number().positive().max(1e7).nullish() }),
   z.object({ type: z.literal("afterLoss"), minutes: z.coerce.number().positive().max(24 * 60) }),
+  z.object({ type: z.literal("excludeSetups"), setups: z.array(z.string().trim().min(1).max(80)).max(50) }),
+  z.object({ type: z.literal("minGrade"), grade: z.enum(GRADES) }),
 ]);
 
 const runSchema = rangeSchema.extend({
@@ -82,7 +84,7 @@ function normQuery(q: Request["query"]): Record<string, string> {
 
 type Row = {
   id: number; ticker: string; date: string; side: string | null; qty: unknown; entry: unknown; exit: unknown; stop: unknown;
-  result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null;
+  result: string; pnl: unknown; fees: unknown; r_multiple: unknown; risk_usd: unknown; hold_time: string | null; setup: string | null; confidence_grade: string | null;
   tags: string | null; horizon: string | null; context_snapshot: Record<string, unknown> | null;
   first_entry: Date | string | null; last_exit: Date | string | null;
 };
@@ -171,6 +173,7 @@ export function rowToSim(r: Row, seq: number): SimTrade {
     feeBreakdown: breakdown,
     fills,
     seq,
+    grade: r.confidence_grade?.trim() || null,
   };
 }
 
@@ -189,7 +192,7 @@ export async function loadSimTrades(scope: string | null, from?: string, to?: st
       FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
     )
     SELECT t.id, t.ticker, t.date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
-           t.hold_time, t.setup, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
+           t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
     FROM trades t LEFT JOIN exec e ON e.trade_id = t.id
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;

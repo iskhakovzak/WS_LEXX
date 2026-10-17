@@ -333,7 +333,7 @@ export default function Stats() {
           </div>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <CalendarPanel days={days} metric={metric} />
+            <CalendarPanel days={days} metric={metric} trader={prefs.trader} />
             <TimeHeatmap trades={trades} metric={metric} />
           </div>
 

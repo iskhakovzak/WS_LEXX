@@ -1,6 +1,8 @@
 import * as React from "react";
+import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { SECTION_GROUPS, SECTIONS, parseNote } from "./author-model";
+import { splitTickers } from "./author-plan";
 
 /** Wraps case-insensitive matches of `query` in <mark>. */
 export function Highlight({ text, query }: { text: string; query?: string }) {
@@ -15,6 +17,29 @@ export function Highlight({ text, query }: { text: string; query?: string }) {
           <mark key={i} className="rounded-[4px] bg-primary/25 px-0.5 text-foreground">{p}</mark>
         ) : (
           <React.Fragment key={i}>{p}</React.Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+/** Text with `$TICKER` mentions rendered as small links to the ticker's research page, the rest highlighted. */
+export function RichText({ text, query }: { text: string; query?: string }) {
+  const parts = splitTickers(text);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.ticker ? (
+          <Link
+            key={i}
+            href={`/research?ticker=${encodeURIComponent(p.ticker)}`}
+            className="mx-px inline-flex items-center rounded-md bg-primary/12 px-1 font-mono text-[0.92em] font-semibold text-accent-soft hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            title={`Открыть ${p.ticker} в «Ресерч»`}
+          >
+            <Highlight text={p.text} query={query} />
+          </Link>
+        ) : (
+          <Highlight key={i} text={p.text} query={query} />
         ),
       )}
     </>
@@ -40,7 +65,7 @@ export function AuthorMarkdown({ text, query, className }: { text: string; query
               j % 2 === 1 ? (
                 <strong key={j} className="font-semibold text-foreground"><Highlight text={p} query={query} /></strong>
               ) : (
-                <Highlight key={j} text={p} query={query} />
+                <RichText key={j} text={p} query={query} />
               ),
             )}
           </p>
@@ -56,14 +81,14 @@ export function NoteReader({ raw, query, compact }: { raw: string; query?: strin
   if (!p.structured) {
     return (
       <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-        <Highlight text={p.free.trim() || "—"} query={query} />
+        <RichText text={p.free.trim() || "—"} query={query} />
       </p>
     );
   }
   return (
     <div className={cn("flex flex-col", compact ? "gap-3" : "gap-4")}>
       {p.free.trim() && (
-        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"><Highlight text={p.free.trim()} query={query} /></p>
+        <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90"><RichText text={p.free.trim()} query={query} /></p>
       )}
       {SECTION_GROUPS.map((g) => {
         const defs = SECTIONS.filter((s) => s.group === g.id && p.sections[s.key].trim());
@@ -77,7 +102,7 @@ export function NoteReader({ raw, query, compact }: { raw: string; query?: strin
                   <span className="text-xs font-medium text-muted-foreground">{s.label}</span>
                 ) : null}
                 <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">
-                  <Highlight text={p.sections[s.key].trim()} query={query} />
+                  <RichText text={p.sections[s.key].trim()} query={query} />
                 </p>
               </div>
             ))}

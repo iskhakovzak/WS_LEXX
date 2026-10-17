@@ -7,7 +7,7 @@
  *   discipline: clean streak, rule violations     own + staff        trading_rules / rule_violations
  *   risk-limit breach                             staff (risk team)  trader_risk_limits.daily_loss_limit + risk_alert_log
  *   curator feedback: trade review, day/week      own + staff        trade_reviews / eod_days / weekly_reviews / trader_ratings
- *   desk: published ideas, playbook, threads      everyone           trade_ideas / playbook / discussions
+ *   desk: published ideas, playbook, threads      everyone (threads: their audience, lib/discussionAudience)
  *   announcements: premarket game plan            everyone           game_plans (manual posts stay in daily_feed)
  *   market: catalysts logged for the day          everyone           market_events (flag: one of «my» tickers)
  *   weekly summary (Friday after the close)       own (+ desk: staff)
@@ -19,6 +19,7 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { closeDateSql, netPnlSql, resultSql } from "./tradeMath";
 import { addDays, nyDate, nyMinutes } from "./tradingDate";
+import { ANONYMOUS_VIEWER, audienceSql, audienceViewerByName } from "./discussionAudience";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
@@ -232,6 +233,13 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
   const isMine = (trader: string | null) => !!me && trader === me;
   const ownCats = (trader: string | null, ...extra: FeedCategory[]): FeedCategory[] => [isMine(trader) ? "mine" : "desk", ...extra];
   const D = `substring(${closeDateSql("t")}, 1, 10)`;
+  // Threads with a restricted audience reach only that audience (+ author, moderators); the cache key has the name.
+  const threadViewer = await audienceViewerByName(me).catch((err) => {
+    logger.warn({ err }, "feedStream: discussion audience viewer failed");
+    return ANONYMOUS_VIEWER;
+  });
+  const threadParams: unknown[] = [from, to];
+  const threadVis = audienceSql(threadViewer, (v) => { threadParams.push(v); return `$${threadParams.length}`; });
 
   const [
     days, bestTrades, violations, rulesFor, limits, alerts,
@@ -343,7 +351,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
       `SELECT d.id, d.topic, d.type, d.trader, UPPER(d.ticker) AS ticker, d.created_at AS at, ${nyDay("d.created_at")} AS d,
               (SELECT COUNT(*)::int FROM comments c WHERE c.discussion_id = d.id) AS comments
          FROM discussions d
-        WHERE d.deleted_at IS NULL AND ${nyDay("d.created_at")} BETWEEN $1 AND $2`, [from, to]),
+        WHERE d.deleted_at IS NULL AND ${nyDay("d.created_at")} BETWEEN $1 AND $2 AND ${threadVis}`, threadParams),
     safe<Record<string, unknown>>(
       "game-plans",
       `SELECT id, date AS d, author, market_view, bias, risk_mode, in_play, COALESCE(updated_at, created_at) AS at

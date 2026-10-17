@@ -1,4 +1,4 @@
-/** Attention badges for nav items: curator open reports and the trader's own risk status. */
+/** Attention badges for nav items: curator open reports, the trader's own risk status, new discussions for the viewer. */
 import { useQuery } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
@@ -43,7 +43,35 @@ export function useShellBadges(): Record<string, NavBadge | undefined> {
     retry: false,
   });
 
+  // Discussions: topics addressed to the viewer they have not opened yet (new in 7 days) + unread threads that mention them.
+  // The server only counts threads the viewer is allowed to read (audience-filtered).
+  const { data: disc } = useQuery<{ attention: number; mentions: number } | null>({
+    queryKey: ["shell", "discussions-unread", name],
+    queryFn: async () => {
+      const r = await fetch(`${BASE}/api/discussions/unread-count`);
+      if (!r.ok) return null;
+      const d = await r.json().catch(() => null);
+      if (typeof d?.attention !== "number") return null;
+      return { attention: d.attention, mentions: typeof d.mentions === "number" ? d.mentions : 0 };
+    },
+    enabled: !!name,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    retry: false,
+  });
+
   return {
+    "/discussions":
+      disc && disc.attention > 0
+        ? {
+            count: disc.attention,
+            tone: disc.mentions > 0 ? "warn" : "up",
+            label: disc.mentions > 0
+              ? `Обсуждения: ${disc.attention} новых для вас, есть упоминания`
+              : `Обсуждения: ${disc.attention} новых тем для вас`,
+          }
+        : undefined,
     "/admin": reports && reports > 0 ? { count: reports, tone: "down", label: `${reports} открытых жалоб` } : undefined,
     "/risk":
       risk?.status === "breach"

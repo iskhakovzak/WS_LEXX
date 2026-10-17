@@ -1,19 +1,30 @@
 /**
- * Replay & training page for one trade: /chart-lab?trade=<id>&mode=replay|training
- * Renders <WsChart/> (analysis / replay / training), the session's training results with the exit score,
- * and recent trades as sparklines to switch quickly. Reads only: GET /api/trades, GET /api/trades/:id.
+ * Chart workspace for one trade: /chart-lab?trade=<id>&mode=analysis|replay|training&tf=1m
+ * or any ticker and day without a trade: /chart-lab?ticker=AAPL&date=2026-10-14
+ *
+ * Full-height on desktop (the chart takes the space, the page does not scroll, so the wheel always zooms the chart).
+ * The header has the trade picker (search by ticker / day, recent trades) and «Случайная задача» — a random trade
+ * opened in training. Mode and timeframe live in the chart toolbar and are mirrored to the URL.
+ * Reads only: GET /api/trades/:id, GET /api/trades/page.
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { CandlestickChart, PlayCircle } from "lucide-react";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid } from "@/components/ds";
+import { CandlestickChart, ChevronDown, Dices, Search } from "lucide-react";
+import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BASE } from "@/lib/api";
-import { TradeSparkline, WsChart, fmtEtTime, fmtMoney, fmtPrice, formatDuration, type ChartMode, type Timeframe, type TradeLike, type TrainingResult } from "@/components/chart-engine";
+import { cn } from "@/lib/utils";
+import { WsChart, TIMEFRAMES, fmtMoney, fmtR, type ChartMode, type Timeframe, type TradeLike } from "@/components/chart-engine";
 
-type TradeRow = TradeLike & { trader?: string | null };
+type TradeRow = TradeLike & { rMultiple?: number | string | null };
+type PageResp = { items?: TradeRow[] };
+
+const MODES: ChartMode[] = ["analysis", "replay", "training"];
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
@@ -21,16 +32,124 @@ async function getJson<T>(url: string): Promise<T> {
   return r.json() as Promise<T>;
 }
 
+/** Stable negative id for a ticker + day chart without a trade (keeps its drawings apart, never fetches fills). */
+function adHocId(ticker: string, date: string): number {
+  let h = 0;
+  for (const ch of `${ticker}|${date}`) h = (h * 31 + ch.charCodeAt(0)) | 0;
+  return -Math.max(1, Math.abs(h));
+}
+
+/** «AAPL», «2026-10-14» or «AAPL 2026-10-14» → /api/trades/page filters. */
+function searchParams(text: string): URLSearchParams {
+  const p = new URLSearchParams({ limit: "40", sort: "date", dir: "desc" });
+  const parts = text.trim().split(/\s+/).filter(Boolean);
+  const date = parts.find((x) => YMD.test(x));
+  const rest = parts.filter((x) => x !== date).join(" ");
+  if (date) p.set("date", date);
+  if (rest) p.set("q", rest);
+  return p;
+}
+
+const rOf = (t: TradeRow) => {
+  const n = Number(t.rMultiple);
+  return t.rMultiple != null && Number.isFinite(n) ? n : null;
+};
+
+/** Result as the viewer may see it: $ for own trades, R for others' (the API nulls their $). */
+function ResultText({ t }: { t: TradeRow }) {
+  const r = rOf(t);
+  if (!t.redacted && t.pnl != null) return <span className={t.pnl >= 0 ? "text-up" : "text-down"}>{fmtMoney(t.pnl)}</span>;
+  if (r != null) return <span className={r >= 0 ? "text-up" : "text-down"}>{fmtR(r)}</span>;
+  return <span className="text-muted-foreground">—</span>;
+}
+
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = React.useState(value);
+  React.useEffect(() => { const id = window.setTimeout(() => setV(value), ms); return () => window.clearTimeout(id); }, [value, ms]);
+  return v;
+}
+
+function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; onPick: (t: TradeRow) => void; onTickerDay: (ticker: string, date: string) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [text, setText] = React.useState("");
+  const q = useDebounced(text, 250);
+  const list = useQuery<TradeRow[], Error>({
+    queryKey: ["chart-lab", "search", q],
+    queryFn: async () => (await getJson<PageResp>(`${BASE}/api/trades/page?${searchParams(q)}`)).items ?? [],
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const parts = text.trim().toUpperCase().split(/\s+/);
+  const tdTicker = parts.find((x) => /^[A-Z][A-Z.\-]{0,9}$/.test(x)) ?? null;
+  const tdDate = parts.find((x) => YMD.test(x)) ?? null;
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="outline" className="h-9 min-w-0 max-w-full flex-1 justify-between gap-2 px-3 sm:flex-none" aria-label="Выбрать сделку">
+          <span className="min-w-0 truncate">{label}</span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-60" aria-hidden="true" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(26rem,calc(100vw-1.5rem))] p-0">
+        <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <Input
+            autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Тикер, день (2026-10-14) или оба"
+            className="h-8 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0" aria-label="Поиск сделки"
+            onKeyDown={(e) => { if (e.key === "Enter" && list.data?.[0]) { onPick(list.data[0]); setOpen(false); } }}
+          />
+        </div>
+        {tdTicker && tdDate && (
+          <button type="button" className="flex w-full items-center gap-2 border-b border-[var(--glass-border)] px-3 py-2 text-left text-sm hover:bg-[var(--glass-hover-bg)]" onClick={() => { onTickerDay(tdTicker, tdDate); setOpen(false); }}>
+            <CandlestickChart className="h-4 w-4 text-primary" aria-hidden="true" /> Открыть график {tdTicker} за {tdDate} без сделки
+          </button>
+        )}
+        <div className="max-h-[min(22rem,60svh)] overflow-y-auto py-1">
+          {list.isLoading ? (
+            <div className="flex flex-col gap-1.5 p-3">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-8 rounded-lg" />)}</div>
+          ) : list.error ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">Не удалось загрузить: {list.error.message}</p>
+          ) : !list.data?.length ? (
+            <p className="px-3 py-4 text-sm text-muted-foreground">{text.trim() ? "Ничего не нашлось. Для графика без сделки введи тикер и день: AAPL 2026-10-14" : "Сделок нет."}</p>
+          ) : (
+            <ul>
+              {list.data.map((t) => (
+                <li key={t.id}>
+                  <button type="button" className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-2 px-3 py-1.5 text-left text-sm tabular-nums hover:bg-[var(--glass-hover-bg)]" onClick={() => { onPick(t); setOpen(false); }}>
+                    <span className="font-semibold">{t.ticker}</span>
+                    <span className="truncate text-xs text-muted-foreground">{t.date.slice(0, 10)} · {String(t.side ?? "").toLowerCase() === "short" ? "шорт" : "лонг"}{t.trader ? ` · ${t.trader}` : ""}</span>
+                    <ResultText t={t} />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+        <p className="border-t border-[var(--glass-border)] px-3 py-1.5 text-2xs text-muted-foreground">Чужие сделки — в R, без долларов.</p>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export default function ChartLabPage() {
   const search = useSearch();
   const [, navigate] = useLocation();
   const params = React.useMemo(() => new URLSearchParams(search), [search]);
   const tradeId = Number(params.get("trade")) || null;
-  const initialMode = (params.get("mode") as ChartMode | null) ?? "analysis";
-  const initialTf = (params.get("tf") as Timeframe | null) ?? "1m";
-  const [mode, setMode] = React.useState<ChartMode>(initialMode);
-  const [height, setHeight] = React.useState<"420" | "560" | "720">("560");
-  const [results, setResults] = React.useState<TrainingResult[]>([]);
+  const adTicker = params.get("ticker")?.trim().toUpperCase() || null;
+  const adDate = params.get("date") && YMD.test(params.get("date") as string) ? (params.get("date") as string) : null;
+  const modeParam = params.get("mode");
+  const mode: ChartMode = MODES.includes(modeParam as ChartMode) ? (modeParam as ChartMode) : "analysis";
+  const tfParam = params.get("tf");
+  const tf: Timeframe = TIMEFRAMES.includes(tfParam as Timeframe) ? (tfParam as Timeframe) : "1m";
+
+  const setParams = React.useCallback((patch: Record<string, string | null>, replace = true) => {
+    const p = new URLSearchParams(search);
+    for (const [k, v] of Object.entries(patch)) { if (v == null) p.delete(k); else p.set(k, v); }
+    if (p.get("mode") === "analysis") p.delete("mode");
+    if (p.get("tf") === "1m") p.delete("tf");
+    navigate(`/chart-lab${p.toString() ? `?${p}` : ""}`, { replace });
+  }, [search, navigate]);
 
   const trade = useQuery<TradeRow, Error>({
     queryKey: ["chart-lab", "trade", tradeId],
@@ -38,96 +157,73 @@ export default function ChartLabPage() {
     enabled: tradeId != null,
     retry: false,
   });
-  const recent = useQuery<TradeRow[], Error>({
-    queryKey: ["chart-lab", "recent"],
-    queryFn: async () => {
-      const r = await getJson<unknown>(`${BASE}/api/trades?limit=12`);
-      const list = Array.isArray(r) ? r : (r as { trades?: unknown; items?: unknown })?.trades ?? (r as { items?: unknown })?.items;
-      return (Array.isArray(list) ? list : []).filter((t): t is TradeRow => !!t && typeof (t as TradeRow).ticker === "string").slice(0, 12);
-    },
-    staleTime: 60_000,
+  const pool = useQuery<TradeRow[], Error>({
+    queryKey: ["chart-lab", "pool"],
+    queryFn: async () => (await getJson<PageResp>(`${BASE}/api/trades/page?limit=300&sort=date&dir=desc`)).items ?? [],
+    staleTime: 5 * 60_000,
   });
 
-  const scored = results.filter((r) => r.score != null);
-  const open = (id: number) => navigate(`/chart-lab?trade=${id}${mode !== "analysis" ? `&mode=${mode}` : ""}`);
+  const adHoc: TradeLike | null = React.useMemo(() => (tradeId == null && adTicker && adDate ? { id: adHocId(adTicker, adDate), ticker: adTicker, date: adDate } : null), [tradeId, adTicker, adDate]);
+  const current: TradeRow | null = tradeId != null ? trade.data ?? null : adHoc;
+
+  const pickRandom = React.useCallback(() => {
+    const list = (pool.data ?? []).filter((t) => t.id !== tradeId && t.entry != null && t.exit != null);
+    if (!list.length) return;
+    const t = list[Math.floor(Math.random() * list.length)];
+    navigate(`/chart-lab?trade=${t.id}&mode=training${tf !== "1m" ? `&tf=${tf}` : ""}`);
+  }, [pool.data, tradeId, tf, navigate]);
+
+  const training = mode === "training";
+  const label = current ? (
+    <span className="inline-flex items-center gap-2 tabular-nums">
+      <span className="font-semibold">{current.ticker}</span>
+      <span className="text-muted-foreground">{current.date.slice(0, 10)}</span>
+      {/* No side / result in training: that is what the trader has to find out. */}
+      {tradeId != null && !training && <><span className="text-muted-foreground">{String(current.side ?? "").toLowerCase() === "short" ? "шорт" : "лонг"}</span><ResultText t={current} /></>}
+      {current.trader && current.redacted && <span className="hidden text-muted-foreground sm:inline">· {current.trader}</span>}
+    </span>
+  ) : <span className="text-muted-foreground">Выбрать сделку</span>;
 
   return (
-    <Page>
-      <PageHeader
-        title="Реплей сделки"
-        description="Проиграй сделку бар за баром или потренируйся: реши, где выйти, и сравни с тем, что было на самом деле."
-        icon={PlayCircle}
-        actions={
-          <div className="flex flex-wrap items-center gap-2">
-            <Segmented size="sm" ariaLabel="Режим" value={mode} onChange={setMode} options={[{ value: "analysis", label: "Анализ" }, { value: "replay", label: "Реплей" }, { value: "training", label: "Тренировка" }]} />
-            <Segmented size="sm" ariaLabel="Высота" value={height} onChange={setHeight} options={[{ value: "420", label: "420" }, { value: "560", label: "560" }, { value: "720", label: "720" }]} />
-          </div>
-        }
-      />
+    <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-2 md:-mb-[2.25rem] md:h-[calc(100svh-6.25rem)] md:min-h-[520px]">
+      <header className="flex items-center gap-2">
+        <h1 className="sr-only text-lg font-semibold tracking-tight sm:not-sr-only sm:mr-1">{training ? "Тренировка" : mode === "replay" ? "Реплей" : "График"}</h1>
+        <TradePicker
+          label={label}
+          onPick={(t) => navigate(`/chart-lab?trade=${t.id}${mode !== "analysis" ? `&mode=${mode}` : ""}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
+          onTickerDay={(tk, d) => navigate(`/chart-lab?ticker=${encodeURIComponent(tk)}&date=${d}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
+        />
+        <Button variant={training ? "default" : "outline"} className="h-9 gap-2" onClick={pickRandom} disabled={!pool.data?.length} title="Случайная сделка в режиме тренировки: будущее скрыто, решаешь сам">
+          <Dices className="h-4 w-4" aria-hidden="true" /> <span className="hidden sm:inline">Случайная задача</span><span className="sm:hidden">Задача</span>
+        </Button>
+      </header>
 
-      {tradeId == null ? (
-        <EmptyState icon={CandlestickChart} title="Выбери сделку" description="Открой реплей из карточки сделки или выбери одну из последних ниже." />
-      ) : trade.isLoading ? (
-        <Skeleton className="rounded-2xl" style={{ height: Number(height) + 80 }} />
-      ) : trade.error || !trade.data ? (
+      {tradeId == null && !adHoc ? (
+        <EmptyState
+          icon={CandlestickChart}
+          title="Выбери сделку"
+          description="Найди сделку по тикеру или дню, открой график любого тикера за день или возьми случайную задачу — потренируйся принимать решения бар за баром."
+          action={<Button onClick={pickRandom} disabled={!pool.data?.length}><Dices className="mr-2 h-4 w-4" /> Случайная задача</Button>}
+        />
+      ) : tradeId != null && trade.isLoading ? (
+        <Skeleton className="min-h-[420px] flex-1 rounded-2xl" />
+      ) : tradeId != null && (trade.error || !trade.data) ? (
         <EmptyState icon={CandlestickChart} title={`Сделка #${tradeId} недоступна`} description={trade.error?.message ?? "Не найдена"} />
-      ) : (
-        <Panel
-          title={<span className="inline-flex items-center gap-2">{trade.data.ticker} <Pill tone={(trade.data.pnl ?? 0) >= 0 ? "up" : "down"}>{fmtMoney(trade.data.pnl)}</Pill> <span className="text-xs font-normal text-muted-foreground">#{trade.data.id} · {trade.data.date.slice(0, 10)} · {trade.data.side ?? "long"} · {trade.data.qty ?? "?"} шт. · вход {fmtPrice(Number(trade.data.entry))} → выход {fmtPrice(Number(trade.data.exit))}{trade.data.stop != null ? ` · стоп ${fmtPrice(Number(trade.data.stop))}` : ""}</span></span>}
-        >
-          <WsChart
-            key={`${trade.data.id}:${mode}`}
-            trade={trade.data}
-            mode={mode}
-            initialTimeframe={initialTf}
-            height={Number(height)}
-            onTrainingResult={(r) => setResults((xs) => [r, ...xs].slice(0, 10))}
-          />
-        </Panel>
-      )}
-
-      {results.length > 0 && (
-        <Panel title="Результаты тренировки" description="Последние попытки «я бы вышел здесь» за эту сессию. Оценка: 100 — лучший возможный выход между входом и реальным выходом, 0 — худший.">
-          <StatGrid>
-            <StatCard label="Попыток" value={String(results.length)} />
-            <StatCard label="Лучше реального" value={String(results.filter((r) => (r.diffUsd ?? 0) > 0).length)} tone="up" />
-            <StatCard label="Хуже реального" value={String(results.filter((r) => (r.diffUsd ?? 0) < 0).length)} tone="down" />
-            <StatCard label="Средняя разница с фактом" value={fmtMoney(results.reduce((s, r) => s + (r.diffUsd ?? 0), 0) / results.length)} />
-            {scored.length > 0 && <StatCard label="Средняя оценка выхода" value={`${Math.round(scored.reduce((s, r) => s + (r.score ?? 0), 0) / scored.length)}/100`} />}
-          </StatGrid>
-          <ul className="mt-3 divide-y divide-[var(--glass-border)] text-xs tabular-nums">
-            {results.map((r, i) => (
-              <li key={i} className="flex flex-wrap items-center gap-x-4 gap-y-1 py-1.5">
-                {r.score != null && <span className="font-semibold">{r.score}/100</span>}
-                <span>выход {fmtPrice(r.userExitPrice)} в {fmtEtTime(r.userExitTime)} ET</span>
-                <span className="text-muted-foreground">реальный {fmtPrice(r.actualExitPrice)}</span>
-                <Pill tone={(r.diffUsd ?? 0) > 0 ? "up" : (r.diffUsd ?? 0) < 0 ? "down" : "neutral"}>{fmtMoney(r.diffUsd)}</Pill>
-                {r.diffSeconds != null && <span className="text-muted-foreground">{r.diffSeconds < 0 ? "раньше" : "позже"} на {formatDuration(Math.abs(r.diffSeconds))}</span>}
-              </li>
-            ))}
-          </ul>
-        </Panel>
-      )}
-
-      <Panel title="Последние сделки" description="Клик — открыть сделку в реплее.">
-        {recent.isLoading ? (
-          <Skeleton className="h-24 rounded-xl" />
-        ) : !recent.data?.length ? (
-          <EmptyState icon={CandlestickChart} title="Сделок нет" description="Список /api/trades пуст." />
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {recent.data.map((t) => (
-              <Button key={t.id} variant="outline" className="h-auto justify-between gap-3 px-3 py-2" onClick={() => open(t.id)} aria-label={`Открыть сделку ${t.ticker} #${t.id}`}>
-                <span className="flex flex-col items-start text-left">
-                  <span className="text-sm font-semibold">{t.ticker} <span className="text-xs font-normal text-muted-foreground">#{t.id}</span></span>
-                  <span className="text-xs text-muted-foreground">{t.date.slice(0, 10)} · {t.side ?? "long"} · <span className={(t.pnl ?? 0) >= 0 ? "text-up" : "text-down"}>{fmtMoney(t.pnl)}</span></span>
-                </span>
-                <TradeSparkline trade={t} width={120} height={36} />
-              </Button>
-            ))}
-          </div>
-        )}
-      </Panel>
-    </Page>
+      ) : current ? (
+        <WsChart
+          key={`${current.id}`}
+          className={cn("md:min-h-0 md:flex-1")}
+          layout="workspace"
+          trade={current}
+          executions={adHoc ? [] : undefined}
+          mode={adHoc && mode === "training" ? "replay" : mode}
+          onModeChange={(m) => setParams({ mode: m })}
+          initialTimeframe={tf}
+          onTimeframeChange={(t) => setParams({ tf: t })}
+          onNextTask={pool.data?.length ? pickRandom : undefined}
+          showModes
+        />
+      ) : null}
+    </div>
   );
 }

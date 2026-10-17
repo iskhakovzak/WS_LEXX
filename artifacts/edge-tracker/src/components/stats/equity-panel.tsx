@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useReducedMotion } from "framer-motion";
 import { LineChart as LineIcon } from "lucide-react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
-import { EquityCandles, type EquityTradeInput } from "@/components/equity-candles";
+import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
 import { fmtCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
 
 export const CHART_TOOLTIP = {
@@ -31,7 +31,7 @@ export function EquityPanel({
   equity: EquityPoint[];
   monthly: { month: string; value: number; count: number }[];
   metric: Metric;
-  /** Trades of the period: when given, the curve is drawn as daily candles (hover — day details, click — «Разбор дня»). */
+  /** Trades of the period: when given, the curve is drawn on the equity engine (hover — day details, click — «Разбор дня»). */
   trades?: EquityTradeInput[];
   /** Trader for the day-report link (null / "all" — derived from the trades). */
   trader?: string | null;
@@ -40,6 +40,8 @@ export function EquityPanel({
   const reduce = useReducedMotion();
   const unit = metric === "r" ? "R" : "$";
   const last = equity.at(-1)?.equity ?? null;
+  const eqUnit = metric === "r" ? "r" : metric === "usd" ? "gross" : "net";
+  const days = useMemo(() => (trades ? buildDayCandles(trades, eqUnit) : []), [trades, eqUnit]);
 
   return (
     <Panel
@@ -47,7 +49,7 @@ export function EquityPanel({
       description={
         view === "equity"
           ? trades
-            ? `Накопленный ${unit}: свеча — день или неделя, фитили — лучшая и худшая точка внутри`
+            ? `Накопленный ${unit} по дням, неделям или месяцам · клик по дню — разбор дня`
             : `Накопленный ${unit} по закрытым сделкам и просадка от пика`
           : `Сумма ${unit} за каждый месяц периода`
       }
@@ -62,13 +64,12 @@ export function EquityPanel({
       }
     >
       {view === "equity" && trades ? (
-        <EquityCandles
-          trades={trades}
-          unit={metric === "r" ? "r" : metric === "usd" ? "gross" : "net"}
-          trader={trader && trader !== "all" ? trader : undefined}
+        <EquityChart
+          days={days}
+          unit={eqUnit}
+          trader={trader && trader !== "all" ? trader : soleTrader(trades)}
           storageKey="stats.equity"
-          showPeriod={false}
-          height={320}
+          height={400}
         />
       ) : view === "equity" ? (
         equity.length >= 2 ? (

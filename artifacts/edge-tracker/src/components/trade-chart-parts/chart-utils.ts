@@ -34,6 +34,9 @@ export type Execution = {
   id: number;
   tradeId: number;
   kind: ExecutionKind;
+  /** Recognised role (Вход / Перезаход / Переворот / Добор / Частичный фикс / Выход / Стоп), when the API sent one. */
+  role?: import("@/components/chart-engine/types").TradeRole | null;
+  roleInferred?: boolean;
   price: string;
   qty: string | null;
   executedAt: string | null;

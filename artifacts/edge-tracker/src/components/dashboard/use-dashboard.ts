@@ -8,8 +8,8 @@ import { nyDate } from "@/lib/trading-date";
 import type { Horizon } from "@/lib/trade-math";
 
 export type Scope = "me" | "team";
-/** The dashboard shows week / month only; the full range lives in Analytics. */
-export type EquityPeriod = "week" | "30d";
+/** Server window of the dashboard equity curve (GET /api/dashboard/equity?period=). */
+export type EquityPeriod = "week" | "30d" | "90d" | "ytd" | "all";
 export type EquityMetric = "r" | "pnl";
 export type { Horizon };
 
@@ -472,7 +472,7 @@ export type SectionId =
 
 export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean }> = {
   attention: { label: "Что важно сейчас", hint: "Следующий шаг, риск, разбор дня, события по моим тикерам" },
-  equity: { label: "Кривая капитала", hint: "Неделя или месяц, нетто" },
+  equity: { label: "Кривая капитала", hint: "От недели до всего времени, нетто или R" },
   recent: { label: "Последние сделки", hint: "Короткая лента → карточка сделки" },
   desk: { label: "Деск сегодня", hint: "Каждый трейдер: день, неделя, лимит", staffOnly: true },
   streaks: { label: "Серии", hint: "Текущая серия и последние 20 сделок" },
@@ -528,7 +528,7 @@ function defaultPrefs(scope: Scope): DashboardPrefs {
   };
 }
 
-const PERIODS: EquityPeriod[] = ["week", "30d"];
+const PERIODS: EquityPeriod[] = ["week", "30d", "90d", "ytd", "all"];
 
 function sanitize(raw: unknown, fallbackScope: Scope): DashboardPrefs {
   const base = defaultPrefs(fallbackScope);

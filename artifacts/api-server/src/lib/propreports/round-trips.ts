@@ -201,7 +201,7 @@ export function buildRoundTrips(fillsIn: Fill[], opts: BuildOptions = {}): Build
         t.entryQty += q;
         t.entryNotional += f.price * q;
         const part = feePart(q);
-        t.executions.push({ kind: t.executions.length ? "add" : "entry", side: f.side, qty: q, price: f.price, at: isoSeconds(f.dateTime), fees: round4(feeTotal * (q / f.qty)), feesByType: part, fillId: f.fillId });
+        t.executions.push({ kind: t.executions.length ? "add" : "entry", side: f.side, qty: q, price: f.price, at: isoSeconds(f.dateTime), fees: round4(feeTotal * (q / f.qty)), feesByType: part, fillId: f.fillId, orderId: f.orderId });
         addFees(t, part);
         t.fillCount++;
         t.lastAt = f.dateTime; t.lastTradeDate = f.tradeDate;
@@ -215,7 +215,7 @@ export function buildRoundTrips(fillsIn: Fill[], opts: BuildOptions = {}): Build
         t.exitNotional += f.price * q;
         const closesAll = Math.abs(t.pos) < 1e-9;
         const part = feePart(q);
-        t.executions.push({ kind: closesAll ? "exit" : "trim", side: f.side, qty: q, price: f.price, at: isoSeconds(f.dateTime), fees: round4(feeTotal * (q / f.qty)), feesByType: part, fillId: f.fillId });
+        t.executions.push({ kind: closesAll ? "exit" : "trim", side: f.side, qty: q, price: f.price, at: isoSeconds(f.dateTime), fees: round4(feeTotal * (q / f.qty)), feesByType: part, fillId: f.fillId, orderId: f.orderId });
         addFees(t, part);
         t.fillCount++;
         t.lastAt = f.dateTime; t.lastTradeDate = f.tradeDate;

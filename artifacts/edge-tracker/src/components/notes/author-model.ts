@@ -19,9 +19,29 @@ export type AuthorNote = {
 
 export type NoteRead = { reader: string; read_at: string };
 
+/** The author's trading day attached to a feed note. `pnlNet` is null (redacted) for readers who may not see their $. */
+export type DaySnapshot = {
+  count: number;
+  wins: number;
+  losses: number;
+  rSum: number | null;
+  tickers: string[];
+  pnlNet: number | null;
+  redacted: boolean;
+};
+
+export type AudienceStage = "trainee" | "junior" | "trader" | "senior";
+export type AudienceMember = { name: string; role: string; stage: AudienceStage | null; readAt: string | null };
+/** GET /author-notes/:id/audience — who of the team has / has not read the note (unread first, trainees first). */
+export type Audience = { total: number; read: number; members: AudienceMember[] };
+
+export const STAGE_LABEL: Record<AudienceStage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+
 export type FeedNote = AuthorNote & {
   reads: NoteRead[];
   read_by_me: boolean;
+  /** Absent on older servers; null when the author had no trades that day. */
+  day?: DaySnapshot | null;
   /** true when served by the old /team endpoint (server without read receipts yet). */
   legacy?: boolean;
 };
@@ -48,6 +68,8 @@ export type DayTrade = {
   pnl: number | null;
   pnlNet: number | null;
   rMultiple: number | null;
+  /** Signed R (sign from result), null while open. */
+  rSigned: number | null;
   fees: number | null;
   horizon: Horizon;
   exitDate: string | null;
@@ -392,6 +414,7 @@ export const AN_KEYS = {
   day: (date: string) => ["author-notes", "day-context", date] as const,
   weekly: (trader: string, week: string) => ["author-notes", "weekly", trader, week] as const,
   reads: (id: number) => ["author-notes", "reads", id] as const,
+  audience: (id: number) => ["author-notes", "audience", id] as const,
 };
 
 /** Team feed with read receipts; falls back to the per-day /team list on servers without /feed. */

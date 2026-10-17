@@ -36,6 +36,7 @@ export const NOTIFICATION_TYPES: readonly NotificationTypeMeta[] = [
   { type: "mention", label: "Упоминание", group: "team", severity: "info", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },
   { type: "reply", label: "Ответ", group: "team", severity: "info", description: "Ответ на ваш пост или в вашем обсуждении, отметка «решение»" },
   { type: "review_request", label: "Запрос разбора", group: "team", severity: "info", description: "Трейдер просит куратора разобрать сделку или тему" },
+  { type: "thread_new", label: "Новая тема", group: "team", severity: "info", description: "В «Обсуждениях» появилась тема для вас (для всех, вашей ступени, кураторов или вашей когорты)" },
   // ideas
   { type: "idea_submitted", label: "Новая идея", group: "ideas", severity: "info", description: "Трейдер опубликовал идею на ревью" },
   { type: "idea_review", label: "Решение по идее", group: "ideas", severity: "info", description: "Куратор одобрил, отклонил или вернул идею на доработку" },

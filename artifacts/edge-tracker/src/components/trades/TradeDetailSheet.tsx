@@ -371,7 +371,7 @@ export function TradeDetailSheet(p: Props) {
                     )}
                   </TabsContent>
                   <TabsContent value="executions">
-                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} />
+                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} onOpenTradeId={(id) => { const x = p.allTrades.find((a) => a.id === id); if (x) p.onOpenTrade(x); }} />
                   </TabsContent>
                   {!redacted && (
                   <TabsContent value="ai">

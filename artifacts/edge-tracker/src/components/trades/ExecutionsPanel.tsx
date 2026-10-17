@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Trash2 } from "lucide-react";
 import { Pill, toneOf, toneText, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,20 +12,30 @@ import { BASE } from "@/lib/api";
 import { invalidateTradeDependents } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, fmtEtTimeSec, sessionOfEt } from "@/components/trade-chart-parts/chart-utils";
+import { ROLE_LABEL, roleOf } from "@/components/chart-engine/lib/structure";
+import type { StructureLeg, TradeRole, TradeStructureDto } from "@/components/chart-engine/types";
 import { fmtMoney, fmtPrice } from "./trade-utils";
 
-type Execution = { id: number; tradeId: number; kind: Kind; price: string; qty: string | null; executedAt: string | null; note: string | null; sortOrder: number };
+type Execution = {
+  id: number; tradeId: number; kind: Kind; price: string; qty: string | null; executedAt: string | null; note: string | null; sortOrder: number;
+  /** Recognised role in the trade's structure (Вход / Добор / Частичный фикс / Перезаход / Переворот / Выход / Стоп). */
+  role?: TradeRole | null; roleInferred?: boolean; legIndex?: number | null;
+};
 type Kind = "entry" | "add" | "trim" | "exit" | "stop";
 
 const KINDS: { value: Kind; label: string; tone: Tone }[] = [
   { value: "entry", label: "Вход", tone: "accent" },
   { value: "add", label: "Добор", tone: "accent" },
-  { value: "trim", label: "Частичный выход", tone: "warn" },
+  { value: "trim", label: "Частичный фикс", tone: "warn" },
   { value: "exit", label: "Выход", tone: "up" },
   { value: "stop", label: "Стоп", tone: "down" },
 ];
 const KIND = Object.fromEntries(KINDS.map((k) => [k.value, k])) as Record<Kind, (typeof KINDS)[number]>;
 const isOpening = (k: Kind) => k === "entry" || k === "add";
+
+const ROLE_TONE: Record<TradeRole, Tone> = { entry: "accent", reentry: "accent", flip: "warn", add: "accent", partial_exit: "warn", exit: "up", stop: "down" };
+const fmtQ = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
+const signedR = (r: number) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(2)}R`;
 
 async function jsonOrThrow(r: Response) {
   if (!r.ok) {
@@ -59,17 +69,19 @@ type Props = {
   fees?: number | null;
   qty?: number | null;
   pnl?: number | null;
+  /** Open another trade of the session (re-entry chain links). */
+  onOpenTradeId?: (id: number) => void;
 };
 
 /**
  * Fills/partials for a trade. Shares the ["trade-executions", id] query key with TradeChart,
  * so markers on the chart update as soon as an execution is added or removed.
  */
-export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: tradeQty, pnl: tradePnl }: Props) {
+export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: tradeQty, pnl: tradePnl, onOpenTradeId }: Props) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const key = ["trade-executions", tradeId];
-  const q = useQuery<{ tradeId: number; executions: Execution[] }>({
+  const q = useQuery<{ tradeId: number; executions: Execution[]; structure?: TradeStructureDto | null }>({
     queryKey: key,
     queryFn: () => fetch(`${BASE}/api/trades/${tradeId}/executions`).then(jsonOrThrow),
     staleTime: 60_000,
@@ -111,6 +123,14 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
     return allTimed ? [...rows].sort((a, b) => (epoch(a.executedAt) as number) - (epoch(b.executedAt) as number) || a.sortOrder - b.sortOrder) : rows;
   }, [q.data]);
   const dir = (side ?? "").trim().toLowerCase().startsWith("s") ? -1 : 1;
+  const structure = q.data?.structure ?? null;
+  const legByIndex = React.useMemo(() => new Map<number, StructureLeg>((structure?.legs ?? []).map((l) => [l.index, l])), [structure]);
+  // A leg spans the pieces of one order: its numbers are shown once, on its last piece.
+  const lastOfLeg = React.useMemo(() => {
+    const m = new Map<number, number>();
+    for (const e of list) if (e.legIndex != null) m.set(e.legIndex, e.id);
+    return m;
+  }, [list]);
 
   // Average entry / exit, realised P&L, fees and hold time from the fills.
   const summary = React.useMemo(() => {
@@ -154,6 +174,7 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
         </p>
       ) : (
         <>
+          {structure && <StructureHeader structure={structure} tradeId={tradeId} onOpenTradeId={onOpenTradeId} />}
           <ul className="divide-y divide-border/60 rounded-xl border border-border/70">
             {list.map((e) => {
               const at = epoch(e.executedAt);
@@ -162,10 +183,18 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
               const n = e.qty ? Number(e.qty) : null;
               const p = Number(e.price);
               // Per-share result of a closing fill against the average entry known so far.
-              const closePs = !isOpening(e.kind) && summary.avgIn != null ? (p - summary.avgIn) * dir : null;
+              const role = roleOf(e);
+              const leg = e.legIndex != null ? legByIndex.get(e.legIndex) ?? null : null;
+              const legEnd = leg != null && lastOfLeg.get(leg.index) === e.id;
+              // Per-share result of a closing fill: the leg's (vs the average at that moment), else vs the overall average entry.
+              const closePs = leg ? (legEnd && !leg.opening ? leg.perShare : null) : !isOpening(e.kind) && summary.avgIn != null ? (p - summary.avgIn) * dir : null;
               return (
                 <li key={e.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 text-sm">
-                  <Pill tone={KIND[e.kind]?.tone ?? "neutral"} className="w-[118px] justify-center">{KIND[e.kind]?.label ?? e.kind}</Pill>
+                  <span title={leg?.reason ?? (e.roleInferred ? "Определено по косвенным признакам" : undefined)}>
+                    <Pill tone={ROLE_TONE[role] ?? KIND[e.kind]?.tone ?? "neutral"} className="w-[128px] justify-center">
+                      {ROLE_LABEL[role] ?? KIND[e.kind]?.label ?? e.kind}{e.roleInferred ? "?" : ""}
+                    </Pill>
+                  </span>
                   <span className="font-medium tabular-nums">{fmtPrice(p)}</span>
                   <span className="tabular-nums text-muted-foreground">{n ? `× ${n}` : ""}</span>
                   <span className="tabular-nums text-muted-foreground" title={at != null ? `${new Date(at * 1000).toISOString()} · ${session ? ET_SESSION_LABEL[session] : ""}` : "время исполнения не указано"}>
@@ -174,7 +203,14 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
                   {session && session !== "regular" && <Pill tone={session === "premarket" ? "accent" : "warn"} className="px-1.5 text-2xs">{ET_SESSION_LABEL[session]}</Pill>}
                   {closePs != null && (
                     <span className={cn("tabular-nums text-xs", toneText(toneOf(closePs)))} title="Результат на акцию относительно среднего входа">
-                      {closePs >= 0 ? "+" : "−"}${Math.abs(closePs).toFixed(2)}/акц.{n ? ` · ${fmtMoney(closePs * n)}` : ""}
+                      {closePs >= 0 ? "+" : "−"}${Math.abs(closePs).toFixed(2)}/акц.{leg ? (leg.realized != null ? ` · ${fmtMoney(leg.realized)}` : "") : n ? ` · ${fmtMoney(closePs * n)}` : ""}
+                    </span>
+                  )}
+                  {legEnd && leg?.r != null && !leg.opening && <span className={cn("tabular-nums text-xs font-medium", toneText(toneOf(leg.r)))}>{signedR(leg.r)}</span>}
+                  {legEnd && leg && leg.pieces > 1 && <span className="text-xs text-muted-foreground" title="Один ордер исполнился несколькими кусками">{leg.pieces} куска</span>}
+                  {legEnd && leg?.positionAfter != null && (
+                    <span className="tabular-nums text-xs text-muted-foreground" title="Позиция после исполнения">
+                      {leg.positionAfter > 0 ? `→ в позиции ${fmtQ(leg.positionAfter)}${leg.opening && leg.avgAfter != null ? ` · ср. ${fmtPrice(leg.avgAfter)}` : ""}` : "→ позиция закрыта"}
                     </span>
                   )}
                   {fee != null && <span className="tabular-nums text-xs text-muted-foreground" title="Комиссии исполнения">комисс. {fmtMoney(-fee)}</span>}
@@ -261,6 +297,58 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
           </div>
         </form>
       )}
+    </div>
+  );
+}
+
+/** «Вход частями · перезаход №1» chips, notes about the data, and links to the other trades of the session on this ticker. */
+function StructureHeader({ structure, tradeId, onOpenTradeId }: { structure: TradeStructureDto; tradeId: number; onOpenTradeId?: (id: number) => void }) {
+  const st = structure.stats;
+  const sibs = structure.siblings ?? [];
+  const idx = sibs.findIndex((x) => x.id === tradeId);
+  const chips: { text: string; tone: Tone; title?: string }[] = [];
+  if (st.flipIn) chips.push({ text: "Переворот", tone: "warn", title: "Позиция открыта переворотом из противоположной" });
+  else if (st.reentryIndex > 0) chips.push({ text: `Перезаход №${st.reentryIndex}`, tone: "accent" });
+  if (st.adds > 0) chips.push({ text: `Доборов: ${st.adds}`, tone: "accent" });
+  if (st.partials > 0) chips.push({ text: `Частичных фиксов: ${st.partials}`, tone: "warn" });
+  if (st.stopHit) chips.push({ text: st.stopInferred ? "Стоп?" : "Стоп", tone: "down", title: st.stopReason ?? undefined });
+  if (st.scaledEntryLikely) chips.push({ text: "Вход частями", tone: "neutral", title: "В отчёте только средняя цена входа, и она не совпадает с ценой одного исполнения" });
+  if (st.scaledExitLikely) chips.push({ text: "Выход частями", tone: "neutral", title: "В отчёте только средняя цена выхода, и она не совпадает с ценой одного исполнения" });
+  if (st.flipOut) chips.push({ text: "Закрыта переворотом", tone: "warn" });
+  if (st.carriedIn) chips.push({ text: "Перенос с прошлого дня", tone: "neutral" });
+  const chain = sibs.length > 1 && idx >= 0;
+  if (!chips.length && !chain && !st.notes?.length) return null;
+  return (
+    <div className="space-y-2 rounded-xl border border-border/70 p-3">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="micro-label mr-1">Структура</span>
+        {chips.map((c) => <span key={c.text} title={c.title}><Pill tone={c.tone}>{c.text}</Pill></span>)}
+        {!chips.length && <span className="text-xs text-muted-foreground">вход → выход</span>}
+        {st.rTotal != null && <span className={cn("ml-auto text-sm font-semibold tabular-nums", toneText(toneOf(st.rTotal)))}>{signedR(st.rTotal)}</span>}
+      </div>
+      {chain && (
+        <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+          <span className="mr-0.5">Сделки по тикеру за день:</span>
+          {sibs.map((x, i) => (
+            <button
+              key={x.id}
+              type="button"
+              disabled={x.id === tradeId || !onOpenTradeId}
+              onClick={() => onOpenTradeId?.(x.id)}
+              title={x.summary || undefined}
+              className={cn(
+                "inline-flex items-center gap-1 rounded-full border px-2 py-0.5 tabular-nums",
+                x.id === tradeId ? "border-primary/60 bg-primary/10 text-foreground" : "border-border/70 hover:bg-[var(--glass-hover-bg)] disabled:hover:bg-transparent",
+              )}
+            >
+              {i < idx && <ArrowLeft className="h-3 w-3" aria-hidden />}
+              №{i + 1} {x.side === "short" ? "шорт" : "лонг"}{x.legs[0] ? ` ${fmtPrice(x.legs[0].price)}` : ""}
+              {i > idx && <ArrowRight className="h-3 w-3" aria-hidden />}
+            </button>
+          ))}
+        </div>
+      )}
+      {st.notes?.length ? <ul className="list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">{st.notes.map((n) => <li key={n}>{n}</li>)}</ul> : null}
     </div>
   );
 }

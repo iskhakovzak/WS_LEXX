@@ -228,7 +228,7 @@ export function JuniorHistory({
                       <MoodPill mood={n.mood} />
                       {n.reviewed_at && (
                         <Pill tone={unread ? "accent" : "neutral"} dot={unread}>
-                          {unread ? "Новый ответ куратора" : "Ответ куратора"}
+                          {unread ? "Новый разбор сводки" : "Разбор сводки"}
                         </Pill>
                       )}
                       <ScoreStars score={n.curator_score} className="ml-auto" />

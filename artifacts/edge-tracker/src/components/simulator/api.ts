@@ -30,6 +30,8 @@ export type SimTrade = {
   feeBreakdown?: Record<string, number> | null;
   fills?: number | null;
   seq: number;
+  /** Own grade A+…C; absent on older API builds. */
+  grade?: string | null;
 };
 
 export type DayResult = { day: string; net: number; gross: number; fees: number; trades: number };
@@ -45,6 +47,8 @@ export type Metrics = {
   dailyMean: number | null; dailyStd: number | null; sharpe: number | null;
   maxLossStreak: number;
   feePctOfGross: number | null; feePerTrade: number | null; shares: number; feePerShare: number | null;
+  /** Σ R of trades with a known R (absent on older API builds). */
+  totalR?: number | null; rCount?: number;
 };
 
 export type Ci = { mean: number; lo: number; hi: number };

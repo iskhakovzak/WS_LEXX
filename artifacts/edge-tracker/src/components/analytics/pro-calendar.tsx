@@ -1,10 +1,11 @@
 import { useMemo } from "react";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
-import { ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ArrowRight, ArrowUpRight, CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, Segmented, EmptyState, toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
 import {
   type DaySummary, type Metric, type ValueFn,
   MONTH_NAMES, dateOnly, fmtDayLong, monthMatrix, ymd,
@@ -45,6 +46,11 @@ export function ProCalendar({
 }) {
   const byDate = useMemo(() => new Map(days.map((d) => [d.date, d])), [days]);
   const today = ymd(new Date());
+  // One trader in the filtered trades → day / week links open that trader's reports.
+  const trader = useMemo(() => {
+    const names = new Set(trades.map((t) => t.trader).filter(Boolean));
+    return names.size === 1 ? ([...names][0] as string) : null;
+  }, [trades]);
 
   const shift = (dir: -1 | 1) => {
     if (focus.view === "year") onFocus({ ...focus, year: focus.year + dir, day: null });
@@ -95,7 +101,7 @@ export function ProCalendar({
           onDay={(d) => onFocus({ view: "month", year: focus.year, month: Number(d.slice(5, 7)) - 1, day: d })}
         />
       ) : (
-        <MonthView year={focus.year} month={focus.month} byDate={byDate} metric={metric} today={today}
+        <MonthView year={focus.year} month={focus.month} byDate={byDate} metric={metric} today={today} trader={trader}
           selected={focus.day}
           onDay={(d) => onFocus({ ...focus, day: focus.day === d ? null : d })}
         />
@@ -108,6 +114,7 @@ export function ProCalendar({
           trades={trades.filter((t) => dateOnly(t.date) === focus.day)}
           metric={metric}
           val={val}
+          trader={trader}
           onClose={() => onFocus({ ...focus, day: null })}
         />
       )}
@@ -226,13 +233,14 @@ function Legend({ metric }: { metric: Metric }) {
 /* ── Month: broker-statement grid ─────────────────────────────────────── */
 
 function MonthView({
-  year, month, byDate, metric, today, selected, onDay,
+  year, month, byDate, metric, today, selected, onDay, trader,
 }: {
   year: number;
   month: number;
   byDate: Map<string, DaySummary>;
   metric: Metric;
   today: string;
+  trader: string | null;
   selected: string | null;
   onDay: (d: string) => void;
 }) {
@@ -248,7 +256,7 @@ function MonthView({
   if (!monthDays.length) {
     return (
       <>
-        <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} />
+        <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} trader={trader} />
         <p className="mt-3 text-center text-sm text-muted-foreground">В этом месяце нет сделок по выбранным фильтрам.</p>
       </>
     );
@@ -256,7 +264,7 @@ function MonthView({
 
   return (
     <div className="flex flex-col gap-3">
-      <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} />
+      <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} trader={trader} />
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <MiniStat label="Итог месяца" value={valued.length ? fmtVal(metric, total, { sign: true }) : "—"} className={toneText(toneOf(total))} />
         <MiniStat label="Торговых дней" value={`${monthDays.length}`} hint={pluralTrades(tradesTotal)} />
@@ -280,8 +288,9 @@ function MiniStat({ label, value, hint, className }: { label: string; value: Rea
 }
 
 function MonthGrid({
-  weeks, byDate, metric, today, selected, onDay, max,
+  weeks, byDate, metric, today, selected, onDay, max, trader,
 }: {
+  trader: string | null;
   weeks: (string | null)[][];
   byDate: Map<string, DaySummary>;
   metric: Metric;
@@ -357,20 +366,23 @@ function MonthGrid({
                 <div key={d} className={cn(base, "bg-transparent")}>{content}</div>
               );
             })}
-            <div className={cn(
-              "hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right sm:flex",
-            )}>
-              {wTrades > 0 ? (
-                <>
-                  <span className={cn("text-sm font-semibold tabular-nums", wValued ? toneText(toneOf(wNet)) : "text-muted-foreground")}>
-                    {wValued ? fmtVal(metric, wNet, { sign: true, compact: Math.abs(wNet) >= 10000 }) : "—"}
-                  </span>
-                  <span className="text-2xs tabular-nums text-muted-foreground">{pluralTrades(wTrades)}</span>
-                </>
-              ) : (
+            {wTrades > 0 ? (
+              <Link
+                href={weekHref(week.find(Boolean) as string, trader)}
+                title={PERIOD_HINT.week}
+                aria-label={`Неделя: ${wValued ? fmtVal(metric, wNet, { sign: true }) : "без результата"}, ${pluralTrades(wTrades)} — ${PERIOD_HINT.week.toLowerCase()}`}
+                className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right transition-colors hover:border-primary/60 hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
+              >
+                <span className={cn("text-sm font-semibold tabular-nums", wValued ? toneText(toneOf(wNet)) : "text-muted-foreground")}>
+                  {wValued ? fmtVal(metric, wNet, { sign: true, compact: Math.abs(wNet) >= 10000 }) : "—"}
+                </span>
+                <span className="text-2xs tabular-nums text-muted-foreground">{pluralTrades(wTrades)}</span>
+              </Link>
+            ) : (
+              <div className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right sm:flex">
                 <span className="text-xs text-muted-foreground">—</span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
         );
       })}
@@ -381,8 +393,9 @@ function MonthGrid({
 /* ── Day drill-down ───────────────────────────────────────────────────── */
 
 function DayDetail({
-  date, summary, trades, metric, val, onClose,
+  date, summary, trades, metric, val, trader, onClose,
 }: {
+  trader: string | null;
   date: string;
   summary: DaySummary | undefined;
   trades: Trade[];
@@ -401,9 +414,14 @@ function DayDetail({
           )}
           <span className="text-xs text-muted-foreground">{pluralTrades(trades.length)}</span>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Закрыть детали дня">
-          <X aria-hidden="true" />
-        </Button>
+        <span className="flex items-center gap-1">
+          <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-primary">
+            <Link href={dayHref(date, trader)}>{PERIOD_HINT.day} <ArrowRight aria-hidden="true" /></Link>
+          </Button>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onClose} aria-label="Закрыть детали дня">
+            <X aria-hidden="true" />
+          </Button>
+        </span>
       </div>
       {sorted.length === 0 ? (
         <EmptyState title="Сделок нет" description="В этот день нет сделок по текущим фильтрам." className="py-6" />

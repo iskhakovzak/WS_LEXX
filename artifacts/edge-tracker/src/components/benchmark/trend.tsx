@@ -1,6 +1,8 @@
 import { TrendingUp } from "lucide-react";
 import { DataTable, Delta, EmptyState, Pill } from "@/components/ds";
+import { Link } from "wouter";
 import { cn } from "@/lib/utils";
+import { PERIOD_HINT, weekHref } from "@/lib/period-links";
 import type { TrendResult, TrendSlice } from "./api";
 import { fmtDay, fmtNum, fmtPct, fmtR, fmtUsd } from "./format";
 
@@ -25,22 +27,26 @@ const COLS: Col[] = [
   { key: "totalR", label: "Σ R", fmt: (v) => fmtR(v), delta: { scale: 1, suffix: "R", precision: 2 } },
 ];
 
-/** Weekly bars of the 8-week window (net $, else R). */
-function WeekBars({ weeks }: { weeks: TrendResult["weeks"] }) {
+/** Weekly bars of the 8-week window (net $, else R). Each bar opens that week's review of the trader. */
+function WeekBars({ weeks, trader }: { weeks: TrendResult["weeks"]; trader: string }) {
   const vals = weeks.map((w) => w.net ?? w.r ?? 0);
   const max = Math.max(1e-9, ...vals.map(Math.abs));
   const W = 8 * weeks.length + 2 * (weeks.length - 1), H = 28;
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Недели: ${weeks.map((w) => `${fmtDay(w.week)} ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)}`).join("; ")}`}>
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`${trader}, недели: ${weeks.map((w) => `${fmtDay(w.week)} ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)}`).join("; ")}`} className="overflow-visible">
       <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="hsl(var(--border))" />
       {weeks.map((w, i) => {
         const v = vals[i];
         const h = (Math.abs(v) / max) * (H / 2 - 1);
+        const title = `${fmtDay(w.week)}: ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)} · ${w.trades} сд. — ${PERIOD_HINT.week.toLowerCase()}`;
         return (
-          <rect key={w.week} x={i * 10} width={8} y={v >= 0 ? H / 2 - h : H / 2} height={Math.max(h, w.trades ? 1 : 0)} rx={1}
-            fill={i < weeks.length - 4 ? "hsl(var(--muted-foreground) / 0.45)" : v >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"}>
-            <title>{`${fmtDay(w.week)}: ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)} · ${w.trades} сд.`}</title>
-          </rect>
+          <Link key={w.week} href={weekHref(w.week, trader)} aria-label={title} className="group cursor-pointer outline-none">
+            <title>{title}</title>
+            {/* Full-height hit area: thin bars are hard to hit; the ring shows keyboard focus. */}
+            <rect x={i * 10 - 1} width={10} y={0} height={H} rx={2} className="fill-transparent group-hover:fill-[hsl(var(--muted-foreground)/0.12)] group-focus-visible:fill-[hsl(var(--ring)/0.25)]" />
+            <rect x={i * 10} width={8} y={v >= 0 ? H / 2 - h : H / 2} height={Math.max(h, w.trades ? 1 : 0)} rx={1}
+              fill={i < weeks.length - 4 ? "hsl(var(--muted-foreground) / 0.45)" : v >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"} />
+          </Link>
         );
       })}
     </svg>
@@ -70,7 +76,7 @@ export function TrendView({ trend }: { trend: TrendResult[] }) {
               <tr key={t.trader}>
                 <td className="font-medium text-foreground">{t.trader}</td>
                 <td><Pill tone={VERDICT[t.verdict].tone} dot>{VERDICT[t.verdict].label}</Pill></td>
-                <td><WeekBars weeks={t.weeks} /></td>
+                <td><WeekBars weeks={t.weeks} trader={t.trader} /></td>
                 {COLS.map((c) => {
                   const cur = t.curM[c.key] as number | null;
                   const prev = t.prevM[c.key] as number | null;

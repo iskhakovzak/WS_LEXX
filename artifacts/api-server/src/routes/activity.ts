@@ -16,6 +16,7 @@ import { can, requireCap } from "../lib/permissions";
 import { signedRSql, netPnlSql, closeDateSql, closedSql, decidedSql, resultSql } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
 import { logActivity } from "../lib/activity";
+import { audienceSql, loadAudienceViewer } from "../lib/discussionAudience";
 
 const GetActivityQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
@@ -104,6 +105,17 @@ function memberVisibleSql(v: Visibility, p: (x: unknown) => string): string {
   return `(trader = ${me} OR owner = ${me} OR (section = ANY(${p(PUBLIC_SECTIONS)}::text[]) AND action NOT IN ('reviewed','rated')))`;
 }
 
+/**
+ * Discussion rows (log entries, comments) only for threads in the caller's audience (lib/discussionAudience);
+ * "TRUE" for moderators. Applies to staff too — trades.read.team does not open restricted threads.
+ */
+async function discussionsVisibleSql(req: Parameters<typeof loadAudienceViewer>[0], p: (x: unknown) => string): Promise<string> {
+  const av = await loadAudienceViewer(req);
+  if (av.moderator) return "TRUE";
+  return `(section <> 'discussions' OR EXISTS (SELECT 1 FROM discussions d
+            WHERE d.id = CASE WHEN entity_id ~ '^[0-9]{1,9}$' THEN entity_id::int END AND ${audienceSql(av, p)}))`;
+}
+
 router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
   const parsed = FeedQuery.safeParse(req.query);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
@@ -126,6 +138,7 @@ router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
   } else {
     where.push(memberVisibleSql(v, p));
   }
+  where.push(await discussionsVisibleSql(req, p));
   if (q && q.trim()) {
     const like = `%${q.trim().replace(/[\\%_]/g, (m) => "\\" + m)}%`;
     const ph = p(like);
@@ -184,7 +197,7 @@ router.get("/activity/summary", asyncHandler(async (req, res): Promise<void> => 
   // Feed visibility predicate ($3.. for the feed queries), trade scope for the trades block.
   const feedParams: unknown[] = [from, to];
   const fp = (x: unknown) => { feedParams.push(x); return `$${feedParams.length}`; };
-  const feedWhere = v.staff ? (v.filterTrader ? `AND trader = ${fp(v.filterTrader)}` : "") : `AND ${memberVisibleSql(v, fp)}`;
+  const feedWhere = `${v.staff ? (v.filterTrader ? `AND trader = ${fp(v.filterTrader)}` : "") : `AND ${memberVisibleSql(v, fp)}`} AND ${await discussionsVisibleSql(req, fp)}`;
   const tradeScope = v.staff ? v.filterTrader : v.me;
   const CLOSE = closeDateSql();
   const R = signedRSql();

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertCircle, BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Eye, LayoutTemplate, Loader2,
+  AlertCircle, AlertTriangle, BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Eye, LayoutTemplate, Loader2,
   Mic, MicOff, MoreHorizontal, NotebookPen, RefreshCw, Sparkles, Trash2, X,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -28,10 +27,15 @@ import { AuthorHistory } from "@/components/notes/author-history";
 import { AuthorFeed, feedRange, useAuthorFeed, type FeedRange } from "@/components/notes/author-feed";
 import { AuthorMarkdown } from "@/components/notes/author-reader";
 import { useDictation } from "@/components/notes/author-dictation";
+import { AuthorAudience } from "@/components/notes/author-audience";
+import { AuthorPrevPlan } from "@/components/notes/author-prev-plan";
+import {
+  FOLLOW_HEADER, findPrevPlan, followThroughBlock, moneyMentions, sectionForDigit, type FollowItem,
+} from "@/components/notes/author-plan";
 import {
   AN_KEYS, BUILTIN_TEMPLATES, HttpError, MOODS, SECTIONS, addDays, api, appendText, applyTemplate,
   fmtDayLong, isIsoDate, loadCustomTemplates, localToday, parseNote, relTime, saveCustomTemplates, serializeNote,
-  type AuthorNote, type DayContext, type DayTrade, type NoteRead, type NoteTemplate, type SectionKey,
+  type Audience, type AuthorNote, type DayContext, type DayTrade, type NoteTemplate, type SectionKey,
 } from "@/components/notes/author-model";
 
 type View = "write" | "feed" | "history";
@@ -169,13 +173,18 @@ export default function AuthorNotesPage() {
     retry: (n, e) => !(e instanceof HttpError && e.status < 500) && n < 2,
   });
 
-  const readsQ = useQuery({
-    queryKey: AN_KEYS.reads(note?.id ?? 0),
-    queryFn: () => api<NoteRead[]>(`/author-notes/${note!.id}/reads`),
+  // Reach of the open note (who read / who not yet); refreshed while the author keeps the page open.
+  const audienceQ = useQuery({
+    queryKey: AN_KEYS.audience(note?.id ?? 0),
+    queryFn: () => api<Audience>(`/author-notes/${note!.id}/audience`),
     enabled: !!note?.id && view === "write",
-    staleTime: 60_000,
+    staleTime: 30_000,
+    refetchInterval: 60_000,
     retry: false,
   });
+
+  // The last earlier note's «План на завтра» — shown beside the editor to grade follow-through.
+  const prevPlan = useMemo(() => findPrevPlan(historyNotes, date), [historyNotes, date]);
 
   const unreadRange = feedRange(today, "week");
   const unreadQ = useAuthorFeed(unreadRange.from, unreadRange.to, !!trader);
@@ -373,6 +382,36 @@ export default function AuthorNotesPage() {
     });
   };
 
+  /* ── Jump to a block (Alt+1…7, nudges) ── */
+  const focusSection = (k: SectionKey) => {
+    if (mode !== "sections") setMode("sections");
+    setActiveKey(k); // makes folded overnight / swing blocks visible
+    setTimeout(() => {
+      const el = document.getElementById(`author-s-${k}`) as HTMLTextAreaElement | null;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    }, 40);
+  };
+
+  /* ── «План vs факт» from the previous note into «Уроки» ── */
+  const insertFollowThrough = (items: FollowItem[]) => {
+    if (!prevPlan) return;
+    if (parseNote(rawRef.current).sections.lessons.includes(FOLLOW_HEADER)) {
+      toast({ title: "«План vs факт» уже в уроках" });
+      focusSection("lessons");
+      return;
+    }
+    const block = followThroughBlock(prevPlan.date, items);
+    setMode("sections");
+    edit((prev) => {
+      const p = parseNote(prev);
+      const cur = p.sections.lessons.replace(/\s+$/, "");
+      return serializeNote({ ...p.sections, lessons: cur ? `${cur}\n\n${block}` : block }, p.free);
+    });
+    focusSection("lessons");
+  };
+
   /* ── AI improve (user-triggered) ── */
   const improve = async () => {
     if (!raw.trim()) { toast({ title: "Сначала запиши мысли", variant: "destructive" }); return; }
@@ -439,6 +478,12 @@ export default function AuthorNotesPage() {
         return;
       }
       if (e.key === "Escape" && dictation.recording) { dictation.stop(); return; }
+      // Alt+1…7 jumps to a block, also while typing in another one (e.code: layout-independent).
+      if (e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-7]$/.test(e.code)) {
+        const k = sectionForDigit(Number(e.code.slice(5)));
+        if (k && view === "write" && canEdit && loadState === "ok") { e.preventDefault(); focusSection(k); }
+        return;
+      }
       if (e.ctrlKey || e.metaKey || e.altKey || isTyping(e.target)) return;
       if (e.code === "BracketLeft" && view !== "history") { e.preventDefault(); changeDate(addDays(dateRef.current, -1)); }
       else if (e.code === "BracketRight" && view !== "history") { e.preventDefault(); changeDate(addDays(dateRef.current, 1)); }
@@ -457,6 +502,8 @@ export default function AuthorNotesPage() {
   const words = raw.trim() ? raw.trim().split(/\s+/).length : 0;
   const filled = parseNote(raw);
   const filledCount = SECTIONS.filter((s) => filled.sections[s.key].trim()).length;
+  const money = moneyMentions(raw);
+  const planEmpty = mode === "sections" && filledCount >= 2 && !filled.sections.hold.trim() && !filled.sections.open.trim();
 
   const viewOptions = [
     ...(canEdit ? [{ value: "write", label: <span className="inline-flex items-center gap-1.5">Запись</span> }] : []),
@@ -527,15 +574,10 @@ export default function AuthorNotesPage() {
                   <h2 id="author-editor-title" className="text-lg font-semibold capitalize tracking-tight">{fmtDayLong(date)}</h2>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <SaveIndicator status={status} savedAt={savedAt} now={now} onRetry={() => void save({ force: true })} />
-                    {readsQ.data && readsQ.data.length > 0 && (
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <span tabIndex={0} className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                            <Eye className="h-3 w-3" aria-hidden="true" />Прочитали: {readsQ.data.length}
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent className="whitespace-pre-line">{readsQ.data.map((r) => r.reader).join("\n")}</TooltipContent>
-                      </Tooltip>
+                    {audienceQ.data && audienceQ.data.total > 0 && (
+                      <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
+                        <Eye className="h-3 w-3" aria-hidden="true" />Прочитали {audienceQ.data.read} из {audienceQ.data.total}
+                      </span>
                     )}
                   </div>
                 </div>
@@ -661,6 +703,30 @@ export default function AuthorNotesPage() {
                 </div>
               </div>
 
+              {/* Nudges: $ in a team-read note, empty plan */}
+              {loadState === "ok" && (money.length > 0 || planEmpty) && (
+                <div className="flex flex-col gap-1.5" role="note">
+                  {money.length > 0 && (
+                    <p className="flex items-start gap-1.5 text-xs text-warn">
+                      <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                      <span>
+                        В тексте есть суммы в $ ({money.slice(0, 3).join(", ")}{money.length > 3 ? "…" : ""}) — сводку читает вся команда,
+                        для джунов и стажёров лучше в R.
+                      </span>
+                    </p>
+                  )}
+                  {planEmpty && (
+                    <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
+                      План на завтра пуст — джуны читают его первым.
+                      <button type="button" onClick={() => focusSection("open")} className="font-medium text-primary underline-offset-2 hover:underline">
+                        Заполнить
+                      </button>
+                      <span className="hidden md:inline"><Kbd>Alt</Kbd> <Kbd>7</Kbd></span>
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Body */}
               {loadState === "loading" ? (
                 <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка сводки">
@@ -693,6 +759,7 @@ export default function AuthorNotesPage() {
 
               <p className="hidden flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground md:flex">
                 <span><Kbd>Ctrl</Kbd> <Kbd>S</Kbd> сохранить</span>
+                <span><Kbd>Alt</Kbd> <Kbd>1</Kbd>–<Kbd>7</Kbd> к блоку</span>
                 <span><Kbd>[</Kbd> <Kbd>]</Kbd> день назад / вперёд</span>
                 <span><Kbd>N</Kbd> к записи</span>
                 <span><Kbd>1</Kbd>–<Kbd>3</Kbd> разделы</span>
@@ -718,6 +785,15 @@ export default function AuthorNotesPage() {
           </div>
 
           <aside className="flex min-w-0 flex-col gap-4" aria-label="Контекст дня">
+            {prevPlan && (
+              <AuthorPrevPlan
+                plan={prevPlan}
+                trades={dayQ.data?.trades}
+                canInsert={!editorDisabled}
+                onInsert={insertFollowThrough}
+                onOpenDay={changeDate}
+              />
+            )}
             <AuthorDayContext
               date={date}
               data={dayQ.data}
@@ -726,6 +802,12 @@ export default function AuthorNotesPage() {
               canInsert={!editorDisabled}
               onInsertTrades={insertTrades}
               onInsertHeld={insertHeld}
+            />
+            <AuthorAudience
+              hasNote={!!note?.id}
+              data={audienceQ.data}
+              loading={audienceQ.isLoading}
+              error={audienceQ.isError}
             />
             <AuthorWeeklyCard
               trader={trader}

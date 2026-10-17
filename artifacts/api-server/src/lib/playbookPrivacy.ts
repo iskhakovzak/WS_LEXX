@@ -154,6 +154,17 @@ export function redactExecutions<T extends { note?: string | null }>(rows: T[], 
   });
 }
 
+/** $ / size fields of a trade-structure leg (lib/tradeStructure). Role, price, time, fraction of max size and R stay. */
+export const STRUCTURE_LEG_MONEY_FIELDS = ["qty", "positionBefore", "positionAfter", "realized"] as const;
+/** $ / size fields of trade-structure stats. */
+export const STRUCTURE_STATS_MONEY_FIELDS = ["maxPosition", "openQty", "realized"] as const;
+
+/** A trade structure ({ legs, stats }) with share counts and $ nulled for viewers who may not see the trade's $. */
+export function redactStructure<T extends { legs: object[]; stats: object }>(s: T, v: MoneyViewer, trader: string | null | undefined): T {
+  if (canSeeTradeMoney(v, trader)) return s;
+  return { ...s, legs: s.legs.map((l) => nullFields(l, STRUCTURE_LEG_MONEY_FIELDS)), stats: nullFields(s.stats, STRUCTURE_STATS_MONEY_FIELDS) };
+}
+
 /** Cumulative signed R by close day — the $-free equity curve shown when the $ curve is hidden. */
 export function equityByR(trades: { closeDate: string; r: number | null }[]): { day: string; r: number; cum: number }[] {
   const byDay = new Map<string, number>();

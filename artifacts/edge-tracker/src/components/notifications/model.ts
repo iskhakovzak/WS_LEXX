@@ -5,7 +5,7 @@
  */
 import type { LucideIcon } from "lucide-react";
 import {
-  AtSign, MessageSquareReply, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
+  AtSign, MessageSquareReply, MessageSquarePlus, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
   Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert,
 } from "lucide-react";
@@ -52,6 +52,7 @@ export const TYPES: TypeMeta[] = [
   { type: "mention", label: "Упоминание", group: "team", severity: "info", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },
   { type: "reply", label: "Ответ", group: "team", severity: "info", description: "Ответ на ваш пост или в вашем обсуждении, отметка «решение»" },
   { type: "review_request", label: "Запрос разбора", group: "team", severity: "info", description: "Трейдер просит куратора разобрать сделку или тему" },
+  { type: "thread_new", label: "Новая тема", group: "team", severity: "info", description: "В «Обсуждениях» появилась тема для вас (для всех, вашей ступени, кураторов или вашей когорты)" },
   { type: "idea_submitted", label: "Новая идея", group: "ideas", severity: "info", description: "Трейдер опубликовал идею на ревью" },
   { type: "idea_review", label: "Решение по идее", group: "ideas", severity: "info", description: "Куратор одобрил, отклонил или вернул идею на доработку" },
   { type: "idea_comment", label: "Комментарий к идее", group: "ideas", severity: "info", description: "Публичный комментарий или личный ответ к идее" },
@@ -99,7 +100,7 @@ export function typeMeta(type: string | null | undefined): TypeMeta {
 }
 
 export const TYPE_ICONS: Record<string, LucideIcon> = {
-  mention: AtSign, reply: MessageSquareReply, review_request: HelpCircle,
+  mention: AtSign, reply: MessageSquareReply, review_request: HelpCircle, thread_new: MessageSquarePlus,
   idea_submitted: Lightbulb, idea_review: ClipboardCheck, idea_comment: MessageSquare,
   eod_review_request: CalendarCheck, eod_overdue: AlarmClock, eod_reviewed: CheckCircle2, weekly_review: CalendarRange,
   rating: Star, rating_ack: BadgeCheck,

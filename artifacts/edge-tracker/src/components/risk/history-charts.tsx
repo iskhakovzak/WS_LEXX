@@ -3,6 +3,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, Res
 import { LineChart as LineIcon } from "lucide-react";
 import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
+import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { useRiskHistory } from "./use-risk";
 import { AXIS, CHART_TOOLTIP_STYLE, fmtR, fmtSignedUsd, fmtUsd, useStoredState } from "./primitives";
 
@@ -31,6 +32,15 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
     [h, usd],
   );
   const ddLimit = usd && h?.limits?.maxDrawdown ? -h.limits.maxDrawdown : null;
+  // Every point / bar is a trading day: click (or focus + ←/→ + Enter) opens its «Разбор дня».
+  const nav = usePeriodNav({
+    kind: "day",
+    dates: data.map((d) => d.date),
+    trader,
+    label: "История трейдера по дням",
+    describe: (i) => `${shortDate(data[i].date)} · день ${data[i].day == null ? "—" : fmt(data[i].day)} · капитал ${fmt(data[i].equity)}`,
+  });
+  const dayLabel = (l: unknown) => <>{typeof l === "string" ? `${shortDate(l)}.${l.slice(0, 4)}` : String(l)}<PeriodHint kind="day" /></>;
   const chartH = compact ? 150 : 200;
 
   return (
@@ -65,7 +75,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
       ) : data.length === 0 ? (
         <EmptyState icon={LineIcon} title="Нет сделок за период" description="Кривая капитала и просадка построятся по закрытым сделкам." className="py-8" />
       ) : (
-        <>
+        <div {...nav.wrapperProps} className={`flex flex-col gap-4 ${nav.wrapperProps.className}`}>
           <div>
             <div className="mb-1 flex items-baseline justify-between">
               <span className="micro-label">Капитал (накопленный P&L)</span>
@@ -73,7 +83,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
             </div>
             <div style={{ height: chartH }}>
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                   <defs>
                     <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
                       <stop offset="0%" stopColor="hsl(var(--chart-1))" stopOpacity={0.35} />
@@ -83,7 +93,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
                   <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} {...AXIS} minTickGap={24} />
                   <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
-                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={(l) => String(l)} formatter={(v: number) => [fmt(v), "Капитал"]} />
+                  <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), "Капитал"]} />
                   <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
                   <Area type="monotone" dataKey="equity" stroke="hsl(var(--chart-1))" strokeWidth={2} fill={`url(#${gid})`} isAnimationActive={false} />
                 </AreaChart>
@@ -96,13 +106,19 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
               <span className="micro-label">Результат дня</span>
               <div className="mt-1" style={{ height: compact ? 100 : 120 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={48} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }} formatter={(v: number) => [v == null ? "нет $ P&L" : fmt(v), "День"]} />
+                    <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }} labelFormatter={dayLabel} formatter={(v: number) => [v == null ? "нет $ P&L" : fmt(v), "День"]} />
                     <ReferenceLine y={0} stroke="hsl(var(--border))" />
                     <Bar dataKey="day" radius={[3, 3, 0, 0]} isAnimationActive={false}>
-                      {data.map((d) => <Cell key={d.date} fill={(d.day ?? 0) >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"} />)}
+                      {data.map((d, i) => (
+                        <Cell
+                          key={d.date}
+                          fill={(d.day ?? 0) >= 0 ? "hsl(var(--up))" : "hsl(var(--down))"}
+                          fillOpacity={nav.active < 0 || nav.active === i ? 1 : 0.35}
+                        />
+                      ))}
                     </Bar>
                   </BarChart>
                 </ResponsiveContainer>
@@ -115,10 +131,10 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
               </div>
               <div className="mt-1" style={{ height: compact ? 100 : 120 }}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }}>
+                  <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={48} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => [fmt(v), "Просадка"]} />
+                    <YAxis {...AXIS} width={56} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), "Просадка"]} />
                     {ddLimit != null && <ReferenceLine y={ddLimit} stroke="hsl(var(--down))" strokeDasharray="4 3" />}
                     <Area type="stepAfter" dataKey="dd" stroke="hsl(var(--down))" fill="hsl(var(--down) / 0.18)" strokeWidth={1.5} isAnimationActive={false} />
                   </AreaChart>
@@ -126,6 +142,8 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
               </div>
             </div>
           </div>
+
+          {nav.caption}
 
           {h && (
             <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
@@ -135,7 +153,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
               <div><dt className="text-xs text-muted-foreground">Худшая серия</dt><dd className="font-medium tabular-nums">{h.stats.worstRedStreak} дн.</dd></div>
             </dl>
           )}
-        </>
+        </div>
       )}
     </div>
   );

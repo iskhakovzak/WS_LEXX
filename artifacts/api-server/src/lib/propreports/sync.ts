@@ -24,6 +24,7 @@ type PoolClient = { query: (typeof pool)["query"]; release: (err?: Error | boole
 import { logger } from "../logger";
 import { logAudit } from "../audit";
 import { invalidateDashboardCache } from "../hotCache";
+import { refreshTradeStructures } from "../tradeStructureStore";
 import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
@@ -405,15 +406,36 @@ async function insertTrade(client: PoolClient, t: RoundTrip, trader: string): Pr
   return Number(rows[0].id);
 }
 
+/** Roles of the fills (Вход / Добор / Частичный фикс / …) and re-entry links; a failure never fails the sync. */
+/**
+ * Recompute the structure (roles, re-entry links) of the written trades in the background: the sync never waits for
+ * it and never fails because of it (the trade sheet computes the structure live anyway). Chunked, one chunk at a time,
+ * so a big first import of the whole desk does not hold many pool connections at once.
+ */
+function refreshStructures(tradeIds: number[]): void {
+  if (!tradeIds.length) return;
+  const ids = [...new Set(tradeIds)];
+  void (async () => {
+    for (let i = 0; i < ids.length; i += STRUCTURE_CHUNK) {
+      try {
+        await refreshTradeStructures(ids.slice(i, i + STRUCTURE_CHUNK));
+      } catch (e) {
+        logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: trade structure refresh failed");
+      }
+    }
+  })();
+}
+const STRUCTURE_CHUNK = 300;
+
 /** Replace the broker-sourced executions of a trade (manual ones — note not starting with "PropReports" — are kept). */
 async function writeExecutions(client: PoolClient, tradeId: number, t: RoundTrip): Promise<void> {
   await client.query(`DELETE FROM trade_executions WHERE trade_id = $1 AND note LIKE 'PropReports%'`, [tradeId]);
   let i = 0;
   for (const e of t.executions) {
     await client.query(
-      `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order)
-       VALUES ($1, $2, $3, $4, ($5::text || ' America/New_York')::timestamptz, $6, $7)`,
-      [tradeId, e.kind, e.price, e.qty, e.at.replace("T", " "), `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`, i++],
+      `INSERT INTO trade_executions (trade_id, kind, price, qty, executed_at, note, sort_order, order_id)
+       VALUES ($1, $2, $3, $4, ($5::text || ' America/New_York')::timestamptz, $6, $7, $8)`,
+      [tradeId, e.kind, e.price, e.qty, e.at.replace("T", " "), `PropReports ${e.side}${e.fillId ? ` #${e.fillId}` : ""}${e.fees ? ` · fees ${round2(e.fees)}` : ""}`, i++, e.orderId ?? null],
     );
   }
 }
@@ -434,12 +456,14 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
 
     await client.query("BEGIN");
     const touchedAccounts = new Map<string, string>(); // account → max fill datetime
+    const writtenTrades: number[] = [];
     for (const it of plan.items) {
       try {
         switch (it.action) {
           case "insert": {
             const id = await insertTrade(client, it.trip, it.trader!);
             await writeExecutions(client, id, it.trip);
+            writtenTrades.push(id);
             if (it.pendingId) await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [it.pendingId]);
             res.inserted++;
             break;
@@ -448,6 +472,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
           case "adopt": {
             await client.query(TRADE_UPDATE_SQL, updateParams(it.tradeId!, it.trip));
             await writeExecutions(client, it.tradeId!, it.trip);
+            writtenTrades.push(it.tradeId!);
             res.updated++;
             break;
           }
@@ -482,6 +507,7 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
       );
     }
     await client.query("COMMIT");
+    refreshStructures(writtenTrades);
   } catch (e) {
     await client.query("ROLLBACK").catch(() => {});
     res.errors++;
@@ -605,6 +631,7 @@ export async function mergePending(pendingId: number, tradeId: number, actor: st
     await writeExecutions(client, tradeId, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
     await client.query("COMMIT");
+    refreshStructures([tradeId]);
     await logAudit({ actor, action: "propreports.merge", targetType: "trades", targetId: String(tradeId), details: { externalId: trip.externalId } });
     invalidateDashboardCache();
     return { ok: true, tradeId };
@@ -631,6 +658,7 @@ export async function keepPendingSeparate(pendingId: number, actor: string): Pro
     await writeExecutions(client, id, trip);
     await client.query(`DELETE FROM propreports_pending_trades WHERE id = $1`, [pendingId]);
     await client.query("COMMIT");
+    refreshStructures([id]);
     await logAudit({ actor, action: "propreports.keep_separate", targetType: "trades", targetId: String(id), details: { externalId: trip.externalId } });
     invalidateDashboardCache();
     return { ok: true, tradeId: id };

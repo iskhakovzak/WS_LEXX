@@ -9,6 +9,7 @@ import { fmtUsd, pluralRu, sdeal } from "@/components/analytics-page/metrics";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { FeeGroupRow, FeesResponse, Preset } from "./api";
+import { TARIFF_EXAMPLES } from "./presets";
 import { type CommissionPlan, type PreviewTrade, type Rule, isApplied, planSummary } from "./rules";
 
 function pct(v: number | null | undefined): string {
@@ -26,11 +27,8 @@ function heat(v: number | null): string | undefined {
 type PlanParams = Omit<CommissionPlan, "type">;
 type PlanRow = { id: string; label: string; note?: string; plan: PlanParams | null };
 
-/** Generic example tariffs for the comparison (keep regulatory fees, as the presets do). */
-const EXAMPLE_PLANS: PlanRow[] = [
-  { id: "ex-share", label: "Поштучный дешёвый", note: "$0.002 за акцию, мин. $0.25 за ордер, ECN $0.001", plan: { perShare: 0.002, minPerOrder: 0.25, ecnPerShare: 0.001, keepRegulatory: true } },
-  { id: "ex-flat", label: "Фикс за ордер", note: "$1 за ордер без ECN", plan: { perShare: 0, minPerOrder: 1, ecnPerShare: 0, keepRegulatory: true } },
-];
+/** Generic example tariffs for the comparison (shared with the «Другой тариф» question). */
+const EXAMPLE_PLANS: PlanRow[] = TARIFF_EXAMPLES;
 
 /**
  * Fees block: one clear headline («комиссии съедают X% брутто»), the break-even move per share, a plan comparison

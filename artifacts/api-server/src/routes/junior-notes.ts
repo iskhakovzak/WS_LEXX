@@ -2,12 +2,17 @@ import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { asyncHandler } from "../lib/asyncHandler";
-import { requireCap } from "../lib/permissions";
+import { getEffectiveMatrix, resolveActor } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { nyDate } from "../lib/tradingDate";
-import { netPnlSql, signedRSql } from "../lib/tradeMath";
+import { horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { handleAiNotConfigured } from "../lib/aiErrors";
+import { canSeeTradeMoney } from "../lib/playbookPrivacy";
+import {
+  attentionOf, buildDayTrades, buildReviewScope, canReviewTrader, missedRun, repeatedMistakes, reviewTraderFilter, scoreTrend,
+  type ContextTradeRow, type ReviewScope,
+} from "../lib/juniorReview";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -105,7 +110,83 @@ function cleanMood(v: unknown): string | null {
   return typeof v === "string" && v.trim() ? v.trim().slice(0, 32) : null;
 }
 
-// Curator views / reviews / reminders = journal.review (permissions matrix; DB role, active & not banned).
+/* ------------------------------------------------------------------ */
+/* Reviewer scope (lib/juniorReview.ts).                               */
+/* journal.review (desk) → every junior; journal.review (assigned) or  */
+/* an academy mentor (trader included) → only their juniors.           */
+/* ------------------------------------------------------------------ */
+type ReviewCtx = { me: string; scope: ReviewScope; staff: boolean };
+
+declare global {
+  namespace Express {
+    interface Request {
+      juniorReview?: ReviewCtx | null;
+    }
+  }
+}
+
+/** Live academy mentees of `me`: users.assigned_mentor + enrollments of active cohorts `me` mentors. */
+async function menteesOf(me: string): Promise<string[]> {
+  const out = new Set<string>();
+  const { rows } = await pool.query<{ name: string }>(
+    `SELECT name FROM users WHERE assigned_mentor = $1 AND active = true AND COALESCE(banned, false) = false`,
+    [me],
+  );
+  rows.forEach((r) => out.add(r.name));
+  // Academy tables are created lazily by routes/academy-cohorts.ts — absent on a fresh DB.
+  const t = await pool.query<{ ok: boolean }>(
+    `SELECT to_regclass('academy_cohorts') IS NOT NULL AND to_regclass('academy_enrollments') IS NOT NULL AS ok`,
+  );
+  if (t.rows[0]?.ok) {
+    const { rows: e } = await pool.query<{ name: string }>(
+      `SELECT DISTINCT e.user_name AS name
+       FROM academy_enrollments e JOIN academy_cohorts c ON c.id = e.cohort_id
+       JOIN users u ON u.name = e.user_name AND u.active = true AND COALESCE(u.banned, false) = false
+       WHERE c.mentor = $1 AND c.archived_at IS NULL AND e.archived_at IS NULL AND e.status IN ('active','paused')`,
+      [me],
+    );
+    e.forEach((r) => out.add(r.name));
+  }
+  return [...out];
+}
+
+/** Reviewer context of the caller (memoised per request); null = anonymous / inactive. */
+async function reviewCtx(req: import("express").Request): Promise<ReviewCtx | null> {
+  if (req.juniorReview !== undefined) return req.juniorReview;
+  const actor = await resolveActor(req);
+  if (!actor) return (req.juniorReview = null);
+  if (actor.guest) return (req.juniorReview = { me: actor.name, scope: { kind: "none" }, staff: false });
+  const cell = (await getEffectiveMatrix())[actor.role]?.["journal.review"];
+  const [mentees, curated] = await Promise.all([
+    menteesOf(actor.name),
+    pool.query<{ name: string }>(
+      `SELECT name FROM users WHERE assigned_curator = $1 AND active = true AND COALESCE(banned, false) = false`,
+      [actor.name],
+    ).then((r) => r.rows.map((x) => x.name)),
+  ]);
+  const scope = buildReviewScope({
+    me: actor.name,
+    guest: false,
+    capAllowed: !!cell?.allowed,
+    capScope: cell?.scope ?? null,
+    wards: actor.wards,
+    mentees,
+    curated,
+  });
+  return (req.juniorReview = { me: actor.name, scope, staff: actor.role === "curator" || actor.role === "admin" });
+}
+
+/** Sends 401/403 and returns null unless the caller reviews someone. */
+async function requireReviewer(
+  req: import("express").Request, res: import("express").Response, message = "Только для кураторов и наставников",
+): Promise<ReviewCtx | null> {
+  const ctx = await reviewCtx(req);
+  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
+  if (ctx.scope.kind === "none") { res.status(403).json({ error: message, code: "FORBIDDEN" }); return null; }
+  return ctx;
+}
+
+const mineOnly = (v: unknown) => v === "mine" || v === "1";
 
 /* Trading-day helpers (Mon–Fri; exchange holidays are not modelled). */
 function addDays(iso: string, n: number): string {
@@ -144,15 +225,32 @@ router.get("/junior-notes/team", requireAuth, asyncHandler(async (req, res): Pro
   res.json(rows);
 }));
 
+/** What the caller may review: drives the senior's UI (tabs, «Мои джуны», review form, money columns). */
+router.get("/junior-notes/reviewer", requireAuth, asyncHandler(async (req, res): Promise<void> => {
+  const ctx = await reviewCtx(req);
+  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  const s = ctx.scope;
+  res.json({
+    kind: s.kind,
+    via: s.kind === "scoped" ? s.via : s.kind === "desk" ? "desk" : null,
+    traders: s.kind === "scoped" ? s.traders : null,
+    mine: s.kind === "none" ? [] : s.mine,
+    money: ctx.staff,
+  });
+}));
+
 /**
- * Curator desk overview for one day: every active trader, whether they wrote, streak,
- * review state and pending in-app reminder.
+ * Senior desk overview for one day: every junior in the reviewer's scope — whether they wrote, streak, missed run,
+ * review state, score trend, repeated mistakes, attention flags (sorted client-side by `priority`) and reminder.
+ * `?scope=mine` narrows a desk reviewer to their own juniors (assigned curator / mentor).
  */
 router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
-  if (!(await requireCap(req, res, "journal.review", null, "Только для кураторов"))) return;
+  const ctx = await requireReviewer(req, res);
+  if (!ctx) return;
   const date = (req.query["date"] as string | undefined) || todayNy();
   if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  const filter = reviewTraderFilter(ctx.scope, mineOnly(req.query["scope"]));
   const from = addDays(date, -90);
 
   const [usersRes, notesRes, remindersRes] = await Promise.all([
@@ -160,15 +258,17 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
       `SELECT name FROM users WHERE role = 'trader' AND active = true AND COALESCE(banned, false) = false ORDER BY name`,
     ),
     pool.query<{
-      id: number; trader: string; note_date: string; mood: string | null; raw_text: string;
-      curator_score: number | null; reviewed_at: string | null; reviewed_by: string | null; updated_at: string;
+      id: number; trader: string; note_date: string; mood: string | null; raw_text: string; mistakes: string | null;
+      has_sections: boolean; curator_score: number | null; reviewed_at: string | null; reviewed_by: string | null; updated_at: string;
     }>(
       `SELECT id, trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, mood, raw_text,
+              sections->>'mistakes' AS mistakes, (sections IS NOT NULL) AS has_sections,
               curator_score, reviewed_at, reviewed_by, updated_at
        FROM junior_notes
        WHERE note_date BETWEEN $1 AND $2 AND LENGTH(TRIM(raw_text)) > 0
+         AND ($3::text[] IS NULL OR trader = ANY($3::text[]))
        ORDER BY note_date DESC`,
-      [from, date],
+      [from, date, filter],
     ),
     pool.query<{ id: number; trader: string; curator: string; created_at: string; dismissed_at: string | null }>(
       `SELECT id, trader, curator, created_at, dismissed_at FROM junior_note_reminders WHERE note_date = $1`,
@@ -182,9 +282,12 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
     list.push(n);
     byTrader.set(n.trader, list);
   }
-  const names = new Set(usersRes.rows.map((u) => u.name));
-  for (const n of notesRes.rows) if (n.note_date === date) names.add(n.trader);
+  // Desk (all): active traders + anyone who wrote that day. Scoped / «мои»: exactly that list.
+  const names = new Set(filter ?? usersRes.rows.map((u) => u.name));
+  if (!filter) for (const n of notesRes.rows) if (n.note_date === date) names.add(n.trader);
+  names.delete(ctx.me);
   const reminders = new Map(remindersRes.rows.map((r) => [r.trader, r]));
+  const mine = new Set(ctx.scope.kind === "none" ? [] : ctx.scope.mine);
 
   const rows = [...names].sort((a, b) => a.localeCompare(b, "ru")).map((trader) => {
     const notes = byTrader.get(trader) ?? [];
@@ -193,8 +296,25 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
     const last14 = addDays(date, -14);
     const scores = notes.filter((n) => n.curator_score != null).map((n) => n.curator_score!);
     const r = reminders.get(trader);
+    const trend = scoreTrend(notes, 10);
+    // «Ошибки» of structured notes; legacy free-form notes are scanned whole.
+    const repeated = repeatedMistakes(
+      notes.slice(0, 20).map((n) => ({ note_date: n.note_date, text: n.has_sections ? n.mistakes : n.raw_text })),
+    );
+    const unreviewed14 = notes.filter((n) => n.note_date > last14 && !n.reviewed_at).length;
+    const missed = missedRun(dates, date, 10);
+    const attention = attentionOf({
+      wrote: !!today,
+      reviewed: !!today?.reviewed_at,
+      unreviewed14,
+      missed,
+      everWrote: notes.length > 0,
+      trend,
+      repeated,
+    });
     return {
       trader,
+      mine: mine.has(trader),
       note: today && {
         id: today.id,
         mood: today.mood,
@@ -206,31 +326,125 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
         updated_at: today.updated_at,
       },
       streak: streakEndingAt(dates, date),
+      missed_run: missed,
       last_note_date: notes[0]?.note_date ?? null,
       notes_30d: notes.filter((n) => n.note_date > addDays(date, -30)).length,
-      unreviewed_14d: notes.filter((n) => n.note_date > last14 && !n.reviewed_at).length,
+      unreviewed_14d: unreviewed14,
       avg_score: scores.length ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10 : null,
+      trend,
+      repeated,
+      attention: attention.flags,
+      priority: attention.priority,
       reminder: r && !r.dismissed_at ? { id: r.id, curator: r.curator, created_at: r.created_at } : null,
     };
   });
-  res.json({ date, rows });
+  res.json({ date, scope: mineOnly(req.query["scope"]) && ctx.scope.kind === "desk" ? "mine" : "all", rows });
 }));
 
-/** Curator review queue: written notes without a curator answer over the last N days, oldest first. */
+/** Review queue: written notes without an answer over the last N days, oldest first (reviewer's scope). */
 router.get("/junior-notes/queue", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
-  if (!(await requireCap(req, res, "journal.review", null, "Только для кураторов"))) return;
+  const ctx = await requireReviewer(req, res);
+  if (!ctx) return;
   const days = parseLimit(req.query["days"], 14, 60);
+  const filter = reviewTraderFilter(ctx.scope, mineOnly(req.query["scope"]));
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM junior_notes
      WHERE reviewed_at IS NULL AND LENGTH(TRIM(raw_text)) > 0
        AND note_date >= $3::date - $1::int AND trader <> $2
+       AND ($4::text[] IS NULL OR trader = ANY($4::text[]))
      ORDER BY note_date ASC, trader ASC
      LIMIT 100`,
-    [days, req.authUser!.name, todayNy()],
+    [days, ctx.me, todayNy(), filter],
   );
   res.json(rows);
+}));
+
+/**
+ * Everything a reviewer needs next to one note: the junior's trades that day (R always; $ only for staff / the
+ * owner — lib/playbookPrivacy), the previous summary's «Фокус на завтра» + mistakes (follow-through check),
+ * recent answers, score trend and repeated mistakes. Owner or a reviewer of that junior only.
+ */
+router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, res): Promise<void> => {
+  await ensureSchema();
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const ctx = await reviewCtx(req);
+  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  const { rows: noteRows } = await pool.query<{ trader: string; note_date: string }>(
+    `SELECT trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date FROM junior_notes WHERE id = $1`,
+    [id],
+  );
+  const note = noteRows[0];
+  if (!note) { res.status(404).json({ error: "Not found" }); return; }
+  if (note.trader !== ctx.me && !canReviewTrader(ctx.scope, note.trader, ctx.me)) {
+    res.status(403).json({ error: "Контекст сводки доступен куратору или наставнику этого трейдера", code: "FORBIDDEN" });
+    return;
+  }
+  const { trader, note_date: date } = note;
+
+  const [tradesRes, historyRes] = await Promise.all([
+    pool.query<ContextTradeRow>(
+      `SELECT t.id, t.trader, t.ticker, t.side, t.setup, ${horizonSql("t")} AS horizon, ${resultSql("t")} AS result,
+              LEFT(t.date::text, 10) AS date, NULLIF(LEFT(COALESCE(t.exit_date::text, ''), 10), '') AS exit_date,
+              ROUND((${signedRSql("t")})::numeric, 2)::float8 AS r,
+              ROUND((${netPnlSql("t")})::numeric, 2)::float8 AS pnl_net
+       FROM trades t
+       WHERE t.trader = $1 AND t.deleted_at IS NULL
+         AND LEFT(t.date::text, 10) BETWEEN $3 AND $2
+         AND (LEFT(t.date::text, 10) = $2 OR ${horizonSql("t")} <> 'intraday')
+       ORDER BY t.date, t.created_at
+       LIMIT 200`,
+      [trader, date, addDays(date, -45)],
+    ),
+    pool.query<{
+      id: number; note_date: string; sections: Record<string, unknown> | null; raw_text: string;
+      curator_feedback: string | null; curator_score: number | null; reviewed_by: string | null; reviewed_at: string | null;
+    }>(
+      `SELECT id, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, sections, raw_text,
+              curator_feedback, curator_score, reviewed_by, reviewed_at
+       FROM junior_notes
+       WHERE trader = $1 AND note_date <= $2 AND LENGTH(TRIM(raw_text)) > 0
+       ORDER BY note_date DESC
+       LIMIT 30`,
+      [trader, date],
+    ),
+  ]);
+
+  const day = buildDayTrades(tradesRes.rows, date, trader, { name: ctx.me, staff: ctx.staff }, canSeeTradeMoney);
+  const hist = historyRes.rows;
+  const before = hist.filter((n) => n.note_date < date);
+  const prev = before[0] ?? null;
+  const sec = (n: (typeof hist)[number] | null, k: string): string | null => {
+    const v = n?.sections && typeof n.sections === "object" ? n.sections[k] : null;
+    return typeof v === "string" && v.trim() ? v.trim() : null;
+  };
+  res.json({
+    note_id: id,
+    trader,
+    date,
+    trades: day,
+    prev: prev && {
+      id: prev.id,
+      note_date: prev.note_date,
+      focus: sec(prev, "focus"),
+      mistakes: sec(prev, "mistakes"),
+      lessons: sec(prev, "lessons"),
+      curator_feedback: prev.curator_feedback,
+      curator_score: prev.curator_score,
+      reviewed_by: prev.reviewed_by,
+    },
+    recent_feedback: before
+      .filter((n) => n.reviewed_at)
+      .slice(0, 3)
+      .map((n) => ({ note_date: n.note_date, score: n.curator_score, feedback: n.curator_feedback, reviewed_by: n.reviewed_by })),
+    trend: scoreTrend(hist, 10),
+    repeated: repeatedMistakes(
+      hist.slice(0, 20).map((n) => ({ note_date: n.note_date, text: n.sections ? sec(n, "mistakes") : n.raw_text })),
+    ),
+    streak: streakEndingAt(new Set(hist.map((n) => n.note_date)), date),
+  });
 }));
 
 router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): Promise<void> => {
@@ -331,13 +545,23 @@ router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> =
   res.json(rows[0]);
 }));
 
-/** Curator review: written feedback + 1–5 score. Empty feedback and no score clears the review. */
+/**
+ * Review: written feedback + 1–5 score. Empty feedback and no score clears the review.
+ * Curators/admins review anyone; a mentor (trader included) only their own mentees; nobody their own note.
+ */
 router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
-  const curator = req.authUser!.name;
-  if (!(await requireCap(req, res, "journal.review", null, "Только куратор может оценивать сводки"))) return;
+  const ctx = await requireReviewer(req, res, "Оценивать сводки может куратор или наставник");
+  if (!ctx) return;
+  const curator = ctx.me;
   const id = Number(req.params["id"]);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  const owner = await pool.query<{ trader: string }>(`SELECT trader FROM junior_notes WHERE id = $1`, [id]);
+  if (!owner.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!canReviewTrader(ctx.scope, owner.rows[0].trader, ctx.me)) {
+    res.status(403).json({ error: "Можно оценивать только сводки своих джунов", code: "FORBIDDEN" });
+    return;
+  }
   const body = req.body as { feedback?: unknown; score?: unknown };
   const feedback = typeof body.feedback === "string" ? body.feedback.trim().slice(0, 4000) : "";
   let score: number | null = null;
@@ -378,16 +602,21 @@ router.post("/junior-notes/:id/seen", asyncHandler(async (req, res): Promise<voi
   res.json(rows[0]);
 }));
 
-/** Curator → junior in-app reminder for a missing summary (no external sends). */
+/** Reviewer → junior in-app reminder for a missing summary (no external sends). Mentors: own mentees only. */
 router.post("/junior-notes/reminders", asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
-  const curator = req.authUser!.name;
-  if (!(await requireCap(req, res, "journal.review", null, "Только для кураторов"))) return;
+  const ctx = await requireReviewer(req, res);
+  if (!ctx) return;
+  const curator = ctx.me;
   const body = req.body as { trader?: unknown; date?: unknown; message?: unknown };
   const trader = typeof body.trader === "string" ? body.trader.trim() : "";
   const date = isIsoDate(body.date) ? body.date : todayNy();
   const message = typeof body.message === "string" && body.message.trim() ? body.message.trim().slice(0, 300) : null;
   if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!canReviewTrader(ctx.scope, trader, ctx.me)) {
+    res.status(403).json({ error: "Напоминать можно только своим джунам", code: "FORBIDDEN" });
+    return;
+  }
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [trader]);
   if (!exists.rows.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
   const { rows } = await pool.query(
@@ -491,6 +720,8 @@ ${text.slice(0, 3000)}
 }));
 
 router.post("/junior-notes/team-summary", asyncHandler(async (req, res): Promise<void> => {
+  const ctx = await requireReviewer(req, res);
+  if (!ctx) return;
   const raw = (req.body as { note_ids?: unknown }).note_ids;
   const note_ids = Array.isArray(raw) ? raw.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 100) : [];
   if (note_ids.length === 0) {
@@ -501,9 +732,11 @@ router.post("/junior-notes/team-summary", asyncHandler(async (req, res): Promise
      FROM junior_notes WHERE id = ANY($1) ORDER BY trader, note_date`,
     [note_ids],
   );
-  if (rows.length === 0) { res.status(400).json({ error: "Записи не найдены" }); return; }
+  // Mentors summarise only their own mentees' notes.
+  const scoped = rows.filter((n: { trader: string }) => ctx.scope.kind === "desk" || canReviewTrader(ctx.scope, n.trader, ctx.me));
+  if (scoped.length === 0) { res.status(400).json({ error: "Записи не найдены" }); return; }
 
-  const notesText = rows.map((n: any) =>
+  const notesText = scoped.map((n: any) =>
     `### ${n.trader} (${n.note_date}${n.mood ? `, настроение: ${n.mood}` : ""})\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 

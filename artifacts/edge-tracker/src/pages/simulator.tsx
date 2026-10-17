@@ -21,11 +21,15 @@ import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/simulat
 import { RuleBuilder } from "@/components/simulator/rule-builder";
 import { FeesBlock } from "@/components/simulator/fees-tab";
 import { ExcludedTable } from "@/components/simulator/excluded-table";
+import { ChangedDays, QuestionsBar } from "@/components/simulator/questions-bar";
+import { type Question, buildQuestions, changedDays } from "@/components/simulator/presets";
+import { useLocation } from "wouter";
 
 /**
  * /simulator — «Что если»: the trader's own closed trades re-run under other rules (server engine
- * api-server/src/lib/whatIf.ts). One page, top to bottom: ready-made suggestions → the scenario (chips) and
- * its result (two equity curves + key numbers) → own rule builder → fees. The scenario, period and trader
+ * api-server/src/lib/whatIf.ts). One page, top to bottom: questions («а что если бы я…», one click each) → the
+ * result first (before → after in $ and R, the difference big, equity curves, the days that change most — each
+ * opens /day-report) → suggestions found in the data → own rule builder → fees. The scenario, period and trader
  * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
  * a scenario is saved explicitly.
  */
@@ -75,6 +79,7 @@ function initialState(me: string) {
 export default function Simulator() {
   const { user, isCurator, canEdit, dbUsers } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const me = user?.role !== "guest" ? user?.traderName ?? "" : "";
 
   const [init] = useState(() => initialState(me));
@@ -134,6 +139,13 @@ export default function Simulator() {
 
   const addRule = (r: Rule) => setRules((rs) => mergeRule(rs, r));
   const toggleSuggestion = (s: Suggestion, applied: boolean) => setRules((rs) => (applied ? subtractRule(rs, s.rule) : mergeRule(rs, s.rule)));
+  const toggleQuestion = (q: Question, applied: boolean) => { if (q.rule) { const rule = q.rule; setRules((rs) => (applied ? subtractRule(rs, rule) : mergeRule(rs, rule))); } };
+  const questions = useMemo(
+    () => buildQuestions(base.data?.trades ?? [], base.data?.presets ?? []).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: "сервер ещё не умеет такое правило" } : q)),
+    [base.data?.trades, base.data?.presets, supported],
+  );
+  const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
+  const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
 
   const recalculating = hasRules && (run.isFetching || pendingRecalc);
   const controls = (
@@ -227,18 +239,10 @@ export default function Simulator() {
     <Page>
       {header}
 
-      <section aria-labelledby="sim-suggestions" className="flex flex-col gap-3">
-        <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
-            <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Что дало бы больше всего
-          </h2>
-          <p className="text-xs text-muted-foreground">Подбираем по твоим сделкам {periodPhrase}. Это история, а не обещание.</p>
-        </div>
-        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
-        {suggestions.isError && <p className="text-xs text-down">Подсказки не загрузились — собери сценарий вручную ниже.</p>}
-      </section>
+      <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
 
-      <Panel title="Как было и как стало" icon={TrendingUp} aria-busy={recalculating || undefined}>
+
+      <Panel title="Результат" icon={TrendingUp} aria-busy={recalculating || undefined}>
         <div className="flex flex-col gap-4">
           <ScenarioBar
             rules={rules}
@@ -273,12 +277,24 @@ export default function Simulator() {
             {hasRules && !r ? (
               <ChartSkeleton />
             ) : (
-              <EquityChart base={r?.baselineEquity ?? b.equity} scenario={r?.scenarioEquity ?? []} hasScenario={showScenario} />
+              <EquityChart base={r?.baselineEquity ?? b.equity} scenario={r?.scenarioEquity ?? []} hasScenario={showScenario} onDay={openDay} />
             )}
             <KeyMetrics baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} />
+            {showScenario && <ChangedDays days={changedDays(r!.baselineDaily, r!.scenarioDaily)} trader={dayTrader} />}
           </div>
         </div>
       </Panel>
+
+      <section aria-labelledby="sim-suggestions" className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
+            <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Что ещё дало бы больше всего
+          </h2>
+          <p className="text-xs text-muted-foreground">Подбираем по твоим сделкам {periodPhrase}. Это история, а не обещание.</p>
+        </div>
+        <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
+        {suggestions.isError && <p className="text-xs text-down">Подсказки не загрузились — собери сценарий вручную ниже.</p>}
+      </section>
 
       <Panel title="Свой сценарий" icon={SlidersHorizontal} description="Опиши правило словами — сразу видно, сколько сделок оно заденет">
         <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={b.presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />

@@ -54,7 +54,7 @@ export function ScenarioBar({
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-medium text-muted-foreground">Сценарий:</span>
       {rules.length === 0 ? (
-        <span className="text-sm text-muted-foreground">пока как было — примени подсказку выше или собери своё правило ниже</span>
+        <span className="text-sm text-muted-foreground">пока как было — задай вопрос выше, возьми подсказку или собери своё правило ниже</span>
       ) : (
         <ul className="flex flex-wrap items-center gap-1.5" aria-label="Правила сценария">
           {rules.map((r) => {

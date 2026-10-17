@@ -5,6 +5,7 @@ import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, X
 import { Check, Crosshair, Flame, Lightbulb, MessageSquareQuote, Star, Trophy, UserRound } from "lucide-react";
 import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
+import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,6 +56,16 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
     onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
   });
 
+  const chartData = card?.series.map((s) => ({ date: s.week, week: weekLabel(s.week).split(" – ")[0], composite: s.composite, overall: s.overall })) ?? [];
+  // Each point is a week: click / Enter opens that week's review.
+  const weekNav = usePeriodNav({
+    kind: "week",
+    dates: chartData.map((d) => d.date),
+    trader: me,
+    label: "Оценки по неделям",
+    describe: (i) => `Неделя ${weekLabel(chartData[i].date)} · критерии ${chartData[i].composite?.toFixed(1) ?? "—"}`,
+  });
+
   if (!me) {
     return (
       <Panel>
@@ -63,7 +74,6 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
     );
   }
 
-  const chartData = card?.series.map((s) => ({ week: weekLabel(s.week).split(" – ")[0], composite: s.composite, overall: s.overall })) ?? [];
   const weakest = card?.weakest && card.latest ? { key: card.weakest, now: card.latest[card.weakest] } : null;
   const curatorFocus = card?.lastFocus ?? null;
 
@@ -170,19 +180,22 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
         <div className="flex flex-col gap-4 lg:col-span-3">
           <Panel title="Динамика оценок" description="Средний балл по критериям и общая оценка куратора, по неделям">
             {chartData.length >= 2 ? (
-              <div className="h-56 w-full" role="img" aria-label="График оценок по неделям">
+              <>
+              <div {...weekNav.wrapperProps} className={cn("h-56 w-full", weekNav.wrapperProps.className)}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -20 }}>
+                  <LineChart data={chartData} margin={{ top: 8, right: 8, bottom: 0, left: -20 }} {...weekNav.chartProps}>
                     <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                     <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP} formatter={(v: number, n: string) => [v.toFixed(1), n === "overall" ? "Общая" : "Критерии"]} />
+                    <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [v.toFixed(1), n === "overall" ? "Общая" : "Критерии"]} />
                     <Legend formatter={(v: string) => <span className="text-xs text-muted-foreground">{v === "overall" ? "Общая оценка" : "Среднее критериев"}</span>} />
                     <Line dataKey="composite" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
                     <Line dataKey="overall" stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
+              {weekNav.caption}
+              </>
             ) : (
               <p className="rounded-xl bg-[var(--glass-bg)] p-4 text-sm text-muted-foreground">График появится после двух недель оценок.</p>
             )}

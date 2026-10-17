@@ -185,7 +185,7 @@ export function JuniorBanners({
         >
           <MessageSquareQuote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">Ответ куратора</span> на сводку за {fmtDayShort(n.note_date)}
+            <span className="font-medium">Разбор</span> сводки за {fmtDayShort(n.note_date)}
             {unread.length > 1 ? ` и ещё ${unread.length - 1}` : ""} — {n.reviewed_by}
           </span>
           <span className="text-sm font-medium text-primary">Прочитать</span>

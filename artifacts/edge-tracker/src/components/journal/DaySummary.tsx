@@ -10,6 +10,7 @@ import { links } from "@/lib/links";
 import { useDayReport, type DayReport } from "@/components/day-report/api";
 import { dayHints, type DayHint, type HintTone } from "./day-hints";
 import { fmtMoney, fmtPct, fmtR, netPnl, plural, type DayStats } from "./utils";
+import { dayHref } from "@/lib/period-links";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -23,9 +24,7 @@ const TOOLTIP_STYLE: CSSProperties = {
 
 /** «Разбор дня» page (/day-report) for this trader + date. */
 export function dayReportHref(date: string, trader?: string | null): string {
-  const q = new URLSearchParams({ date });
-  if (trader) q.set("trader", trader);
-  return `/day-report?${q.toString()}`;
+  return dayHref(date, trader);
 }
 
 /**
