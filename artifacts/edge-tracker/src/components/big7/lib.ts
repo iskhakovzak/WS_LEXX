@@ -17,8 +17,14 @@ export function localDateStr(d = new Date()) {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 }
-/** Trading date (New York) — the desk convention; the browser's local date jumps a day for Asian time zones. */
-export const TODAY = nyDate();
+/**
+ * Trading date (New York) — the desk convention; the browser's local date jumps a day for Asian time zones.
+ * Read at call time (not once at module load): a tab left open overnight must roll over to the new day.
+ * Components re-render on the NY date change through useBig7Today() (use-big7.ts).
+ */
+export function big7Today(): string {
+  return nyDate();
+}
 
 export function parseLocalDate(s: string): Date {
   const [y, m, d] = s.split("-").map(Number);
@@ -40,7 +46,7 @@ export function addTradingDays(from: string, n: number): string {
   return localDateStr(d);
 }
 /** Trading days from `from` to `to` (0 = same day, negative if past). */
-export function tradingDaysUntil(to: string, from = TODAY): number {
+export function tradingDaysUntil(to: string, from = big7Today()): number {
   if (to === from) return 0;
   const sign = to > from ? 1 : -1;
   const d = parseLocalDate(from);
@@ -75,9 +81,10 @@ export function dayMonth(dateStr: string) {
   return `${d}.${m}`;
 }
 export function relDayLabel(dateStr: string): string {
-  if (dateStr === TODAY) return "сегодня";
-  const n = tradingDaysUntil(dateStr);
-  if (dateStr === addTradingDays(TODAY, 1)) return "завтра";
+  const today = big7Today();
+  if (dateStr === today) return "сегодня";
+  const n = tradingDaysUntil(dateStr, today);
+  if (dateStr === addTradingDays(today, 1)) return "завтра";
   if (n > 0) return `через ${n} т.д.`;
   return `${Math.abs(n)} т.д. назад`;
 }
@@ -149,11 +156,11 @@ export const DEFAULT_DAY: TickerDay = {
   sessionScore: 0, sessionNotes: "", openPrice: "", prevClose: "",
 };
 export function getTickerDay(ticker: string): TickerDay {
-  return { ...DEFAULT_DAY, ...ls<Partial<TickerDay>>(`big7_day_${ticker}_${TODAY}`, {}) };
+  return { ...DEFAULT_DAY, ...ls<Partial<TickerDay>>(`big7_day_${ticker}_${big7Today()}`, {}) };
 }
 export function updateTickerDayField<K extends keyof TickerDay>(ticker: string, key: K, val: TickerDay[K]): TickerDay {
   const next = { ...getTickerDay(ticker), [key]: val };
-  lsSet(`big7_day_${ticker}_${TODAY}`, next);
+  lsSet(`big7_day_${ticker}_${big7Today()}`, next);
   notifyDayChange();
   return next;
 }
@@ -169,10 +176,10 @@ export function saveTickerStats(ticker: string, stats: TickerStats) {
 
 export type MarketCtx = { spyBias: Bias; qqBias: Bias; vixLevel: string; marketNotes: string; gapDirection: string };
 export function getMarketContext(): MarketCtx {
-  return { spyBias: "", qqBias: "", vixLevel: "", marketNotes: "", gapDirection: "", ...ls<Partial<MarketCtx>>(`big7_market_${TODAY}`, {}) };
+  return { spyBias: "", qqBias: "", vixLevel: "", marketNotes: "", gapDirection: "", ...ls<Partial<MarketCtx>>(`big7_market_${big7Today()}`, {}) };
 }
 export function saveMarketContext(ctx: MarketCtx) {
-  lsSet(`big7_market_${TODAY}`, ctx);
+  lsSet(`big7_market_${big7Today()}`, ctx);
   notifyDayChange();
 }
 

@@ -71,7 +71,7 @@ export function AuthorPrevPlan({
       title="План с прошлой сводки"
       icon={History}
       description={
-        <button type="button" onClick={() => onOpenDay(plan.date)} className="capitalize hover:text-foreground hover:underline">
+        <button type="button" onClick={() => onOpenDay(plan.date)} className="inline-block hover:text-foreground hover:underline first-letter:uppercase">
           {fmtDayLong(plan.date)}
         </button>
       }

@@ -19,6 +19,7 @@ import { cn } from "@/lib/utils";
 import { ActivityStrip } from "./ActivityStrip";
 import { ROLE_LABEL, downloadCsv, isTypingTarget, timeAgo, type DeskPulse, type PulseUser } from "./api";
 import { useUserActions } from "./useUserActions";
+import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
 export type TraderFilter = "all" | "traders" | "staff" | "nojournal" | "violations" | "stale" | "banned";
 
@@ -164,10 +165,11 @@ export function TradersTable({
     for (const f of FILTERS) c[f.value] = users.filter((u) => matches(u, f.value)).length;
     return c;
   }, [users]);
+  const aliases = usePeopleAliases();
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return users.filter((u) => matches(u, filter) && (!needle || u.name.toLowerCase().includes(needle)));
-  }, [users, filter, q]);
+    const pq = prepareQuery(q);
+    return users.filter((u) => matches(u, filter) && (pq.empty || matchPerson(pq, u.name, aliases)));
+  }, [users, filter, q, aliases]);
   const { rows, thProps } = useTableSort(filtered, ACCESSORS, "lastSeen");
   const open = openName ? users.find((u) => u.name === openName) ?? null : null;
 

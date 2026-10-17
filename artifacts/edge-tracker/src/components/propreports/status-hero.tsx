@@ -53,9 +53,9 @@ export function StatusHero({ status, actions }: { status: Status; actions?: Reac
 
       <StatGrid className="mt-4">
         <StatCard icon={Clock} label="Последняя синхронизация" value={lastSync ? agoText(lastSync) : "ещё не было"} hint={lastRun ? `${lastRun.source === "api" ? "API" : "файл"} · ${lastRun.status === "ok" ? "успешно" : lastRun.status === "partial" ? "частично" : lastRun.status === "error" ? "ошибка" : "идёт"}` : undefined} tone={lastRun?.status === "error" ? "down" : "neutral"} />
-        <StatCard icon={Server} label="Следующий авто-синк" value={scheduler.enabled ? untilText(scheduler.nextRunAt) : "выключен"} hint={scheduler.enabled ? `каждые ${scheduler.minutes} мин` : "PROPREPORTS_SYNC_MINUTES не задан"} />
+        <StatCard icon={Server} label="Следующий авто-синк" value={scheduler.enabled ? untilText(scheduler.nextRunAt) : "выключен"} hint={scheduler.enabled ? `каждые ${scheduler.minutes} мин` : "не настроен"} />
         <StatCard label="Счета" value={`${accounts.mapped} / ${accounts.total}`} hint={accounts.unmapped.length ? `без трейдера: ${accounts.unmapped.join(", ")}` : "все привязаны"} tone={accounts.unmapped.length ? "warn" : "neutral"} />
-        <StatCard label="Сделок из брокера" value={trades.imported} hint={trades.legacyWithoutId ? `${trades.legacyWithoutId} из старого импорта без ключа — привяжутся при следующем импорте` : status.pendingCount ? `${status.pendingCount} ждут сверки` : "всё синхронизировано"} tone={status.pendingCount ? "warn" : "neutral"} />
+        <StatCard label="Сделок из брокера" value={Number(trades.imported).toLocaleString("ru-RU")} hint={trades.legacyWithoutId ? `${trades.legacyWithoutId} из старого импорта без ключа — привяжутся при следующем импорте` : status.pendingCount ? `${status.pendingCount} ждут сверки` : "всё синхронизировано"} tone={status.pendingCount ? "warn" : "neutral"} />
       </StatGrid>
     </section>
   );

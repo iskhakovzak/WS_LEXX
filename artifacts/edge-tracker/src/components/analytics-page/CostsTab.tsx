@@ -5,7 +5,7 @@ import { Panel, StatCard, StatGrid, Segmented, EmptyState, SortableTh, TableScro
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, fmtUsd, fmtPct, sdeal, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { type AnalyticsFilters, fmtUsd, fmtPct, sdeal, sdealDat, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
 import { type EdgeCostGroup, type EdgeCostRow, useEdgeCosts, edgeKeyLabel } from "./edge-api";
 
 const GROUP_LABEL: Record<EdgeCostGroup, string> = { trader: "Трейдер", account: "Счёт", month: "Месяц", setup: "Сетап", horizon: "Горизонт" };
@@ -38,7 +38,7 @@ export function CostsTab({ filters, isCurator }: { filters: AnalyticsFilters; is
             <StatCard label="P&L нетто" value={fmtUsd(t.net)} tone={toneOf(t.net)} hint="брутто − комиссии" />
             <StatCard label="Съедено от прибыли" value={fmtPct(t.feePctOfGrossWins, 1)} tone={t.feePctOfGrossWins == null ? "neutral" : t.feePctOfGrossWins > 0.3 ? "down" : t.feePctOfGrossWins > 0.15 ? "warn" : "up"} hint={t.feePctOfGrossWins == null ? "нет прибыльных сделок" : `комиссии / Σ прибыльных брутто · от |итога| ${fmtPct(t.feePctOfGross, 1)}`} />
             <StatCard label="На сделку / на акцию" value={`${money(t.feePerTrade)} · ${t.feePerShare != null ? `${(t.feePerShare * 100).toFixed(2)}¢` : "—"}`} hint={t.shares ? `${Math.round(t.shares).toLocaleString("en-US")} акций` : "объём (qty) не заполнен"} />
-            <StatCard label="Проскальзывание" value={t.slippageAvg != null ? `${t.slippageAvg.toFixed(2)}` : "—"} hint={t.slippageN ? `среднее по ${sdeal(t.slippageN)} · Σ ${t.slippageSum.toFixed(2)}` : "поле slippage пустое"} />
+            <StatCard label="Проскальзывание" value={t.slippageAvg != null ? `${t.slippageAvg.toFixed(2)}` : "—"} hint={t.slippageN ? `среднее по ${sdealDat(t.slippageN)} · Σ ${t.slippageSum.toFixed(2)}` : "нет данных о проскальзывании"} />
           </StatGrid>
 
           <Panel title="Брутто против нетто" description="Сколько комиссии забирают из результата в каждой группе" icon={Receipt}>
@@ -57,9 +57,9 @@ export function CostsTab({ filters, isCurator }: { filters: AnalyticsFilters; is
                       <YAxis {...AXIS} tickFormatter={(v: number) => fmtUsd(v)} width={64} />
                       <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} formatter={(v: number) => fmtUsd(v)} />
                       <ReferenceLine y={0} stroke={GRID} />
-                      <Bar dataKey="Брутто" fill="hsl(var(--muted-foreground) / 0.45)" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Нетто" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
-                      <Bar dataKey="Комиссии" fill="hsl(var(--down))" radius={[0, 0, 4, 4]} />
+                      <Bar isAnimationActive={false} dataKey="Брутто" fill="hsl(var(--muted-foreground) / 0.45)" radius={[4, 4, 0, 0]} />
+                      <Bar isAnimationActive={false} dataKey="Нетто" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                      <Bar isAnimationActive={false} dataKey="Комиссии" fill="hsl(var(--down))" radius={[0, 0, 4, 4]} />
                     </BarChart>
                   </ResponsiveContainer>
                 </div>

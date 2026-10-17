@@ -24,8 +24,8 @@ export function TierCompare({
       <thead>
         <tr className="text-left text-xs text-muted-foreground">
           <th scope="col" className="py-1.5 font-medium">Лимит</th>
-          <th scope="col" className="py-1.5 text-right font-medium">{current ? current.name : "Сейчас"}</th>
-          <th scope="col" className="py-1.5 text-right font-medium text-primary">{next ? next.name : "Следующий тир"}</th>
+          <th scope="col" className="py-1.5 pl-3 text-right font-medium">{current ? current.name : "Сейчас"}</th>
+          <th scope="col" className="py-1.5 pl-3 text-right font-medium text-primary">{next ? next.name : "Следующий тир"}</th>
         </tr>
       </thead>
       <tbody>
@@ -36,8 +36,8 @@ export function TierCompare({
           return (
             <tr key={f.key} className="border-t border-border/50">
               <td className="py-1.5 pr-2 text-muted-foreground">{f.label}</td>
-              <td className="py-1.5 text-right text-foreground">{a}</td>
-              <td className={cn("py-1.5 text-right", changed ? "font-semibold text-primary" : "text-muted-foreground")}>{b}</td>
+              <td className="whitespace-nowrap py-1.5 pl-3 text-right text-foreground">{a}</td>
+              <td className={cn("whitespace-nowrap py-1.5 pl-3 text-right", changed ? "font-semibold text-primary" : "text-muted-foreground")}>{b}</td>
             </tr>
           );
         })}

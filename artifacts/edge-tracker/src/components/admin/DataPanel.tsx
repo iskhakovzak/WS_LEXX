@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { useRuns, useStatus } from "@/components/propreports/api";
 import { adminUrl, downloadBlob, errorFrom, fmtDateTime, timeAgo } from "./api";
 import { useDataQuality, useHealth, type DataCheck } from "./console-api";
+import { pluralRu } from "@/components/rules/constants";
 
 const EXPORT_TABLES: { key: string; label: string }[] = [
   { key: "trades", label: "Сделки" },
@@ -37,12 +38,12 @@ const EXPORT_TABLES: { key: string; label: string }[] = [
 export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
         <IntegrationStatusCard />
         <ImportHistoryCard />
       </div>
       <DataQualityCard />
-      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
+      <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
         <ExportCard actor={actor} />
         <BackupsCard actor={actor} isAdmin={isAdmin} />
       </div>
@@ -78,6 +79,7 @@ function IntegrationStatusCard() {
     <Panel
       title="PropReports: статус и расписание"
       icon={Plug}
+      fill
       description="Только просмотр. Импорт, счета и сверка — в «Интеграциях»."
       actions={<Button asChild variant="outline" size="sm"><Link href="/integrations">Интеграции <ArrowRight /></Link></Button>}
     >
@@ -110,7 +112,7 @@ function IntegrationStatusCard() {
               <StatRow label="Следующий запуск" value={st.scheduler.running ? "идёт сейчас" : st.scheduler.nextRunAt ? fmtDateTime(st.scheduler.nextRunAt) : "—"} />
             )}
             <StatRow label="Последний синк" value={st.lastRun ? `${timeAgo(st.lastRun.startedAt)} · ${st.lastRun.source === "file" ? "файл" : "API"}` : "ещё не было"} />
-            <StatRow label="Сделок из брокера" value={st.trades.imported} />
+            <StatRow label="Сделок из брокера" value={Number(st.trades.imported).toLocaleString("ru-RU")} />
             <StatRow
               label="Счета"
               value={`${st.accounts.mapped}/${st.accounts.total} привязано${st.settings.unmatched.length ? ` · новых ${st.settings.unmatched.length}` : ""}`}
@@ -153,6 +155,7 @@ function ImportHistoryCard() {
     <Panel
       title="История импорта"
       icon={History}
+      fill
       description="Последние 10 загрузок сделок"
       actions={<Button asChild variant="ghost" size="sm"><Link href="/integrations?tab=history">Вся история <ArrowRight /></Link></Button>}
     >
@@ -167,12 +170,11 @@ function ImportHistoryCard() {
           <table>
             <thead>
               <tr>
-                <th scope="col">Когда</th>
-                <th scope="col">Источник</th>
+                <th scope="col">Когда · источник</th>
                 <th scope="col">Итог</th>
-                <th scope="col" className="text-right">Новых</th>
-                <th scope="col" className="text-right">Обновлено</th>
-                <th scope="col" className="text-right">Сверка</th>
+                <th scope="col" className="text-right" title="Новых сделок">Новых</th>
+                <th scope="col" className="text-right" title="Обновлённых сделок">Обнов.</th>
+                <th scope="col" className="text-right" title="Отправлено на сверку">Сверка</th>
               </tr>
             </thead>
             <tbody>
@@ -180,10 +182,11 @@ function ImportHistoryCard() {
                 const s = RUN_STATUS[r.status] ?? { label: r.status, tone: "neutral" as Tone };
                 return (
                   <tr key={r.id}>
-                    <td className="whitespace-nowrap tabular-nums" title={new Date(r.startedAt).toLocaleString("ru-RU")}>{fmtDateTime(r.startedAt)}</td>
-                    <td className="max-w-[14rem] truncate" title={r.fileName ?? undefined}>
-                      {r.source === "file" ? (r.fileName ?? "файл") : "API"}
-                      {r.actor ? <span className="text-muted-foreground"> · {r.actor}</span> : null}
+                    <td className="max-w-[11rem]">
+                      <div className="whitespace-nowrap tabular-nums" title={new Date(r.startedAt).toLocaleString("ru-RU")}>{fmtDateTime(r.startedAt)}</div>
+                      <div className="truncate text-2xs text-muted-foreground" title={[r.fileName, r.actor].filter(Boolean).join(" · ") || undefined}>
+                        {r.source === "file" ? (r.fileName ?? "файл") : "API"}{r.actor ? ` · ${r.actor}` : ""}
+                      </div>
                     </td>
                     <td>
                       <Pill tone={s.tone} dot>{s.label}</Pill>
@@ -219,7 +222,7 @@ const CHECK_LINK: Record<string, { href: string; label: string }> = {
 
 function sampleText(row: Record<string, unknown>): string {
   if (Array.isArray(row.ids)) return `${row.trader ?? "?"} · ${row.ticker ?? ""} · ${row.date ?? ""} · ${row.n} шт (#${(row.ids as unknown[]).join(", #")})`;
-  if (row.account && row.n != null) return `Счёт ${row.account}: ${row.n} сделок`;
+  if (row.account && row.n != null) return `Счёт ${row.account}: ${row.n} ${pluralRu(Number(row.n), "сделка", "сделки", "сделок")}`;
   const parts = [row.date, row.ticker, row.trader ?? "без трейдера"];
   if (row.openedDate) parts.push(`открыта ${row.openedDate}`);
   if (row.exitDate) parts.push(`выход ${row.exitDate}`);
@@ -322,7 +325,7 @@ function ExportCard({ actor }: { actor: string }) {
       try {
         const j = JSON.parse(text) as { summary?: Record<string, number> };
         const total = Object.values(j.summary ?? {}).reduce((s, v) => s + v, 0);
-        summary = `${total.toLocaleString("ru-RU")} записей`;
+        summary = `${total.toLocaleString("ru-RU")} ${pluralRu(total, "запись", "записи", "записей")}`;
       } catch { /* ignore */ }
       qc.invalidateQueries({ queryKey: ["admin-audit"] });
       toast({ title: "Экспорт готов", description: summary || undefined });
@@ -338,6 +341,7 @@ function ExportCard({ actor }: { actor: string }) {
       title="Экспорт данных"
       description="JSON-выгрузка таблиц БД. Полный набор — совместим с импортом бэкапа в «Настройках»."
       icon={FileJson}
+      fill
     >
       <div className="flex flex-col gap-4">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label="Таблицы для экспорта">
@@ -420,10 +424,11 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
       title="Бэкапы БД"
       description="pg_dump автоматически каждые 48 ч, хранятся последние 10"
       icon={Database}
+      fill
       actions={
         <>
           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Обновить список бэкапов" onClick={() => refetch()} disabled={isFetching}>
-            <RefreshCw className={cn(isFetching && "animate-spin")} />
+            <RefreshCw className={cn(isFetching && "animate-spin motion-reduce:animate-none")} />
           </Button>
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={trigger} disabled={triggering} data-testid="button-trigger-backup">
@@ -442,7 +447,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
         </div>
       ) : !backups || backups.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Бэкапов пока нет. Первый создастся автоматически через 3 минуты после старта сервера{isAdmin ? " — или нажмите «Создать сейчас»" : ""}.
+          Бэкапов пока нет. Автобэкап запускается через 3 минуты после старта сервера{isAdmin ? " — или нажмите «Создать сейчас»" : ""}. Если список так и пуст, проверьте, что на сервере установлен pg_dump.
           {!isAdmin && <span className="mt-1 block text-xs">Скачивание доступно только администраторам.</span>}
         </p>
       ) : (
@@ -455,7 +460,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
                     {fmtMsk(b.createdAt)}
                     {i === 0 && <Pill tone="up">последний</Pill>}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{b.sizeKb.toLocaleString("ru-RU")} KB · {b.name}.sql.gz</div>
+                  <div className="truncate text-xs text-muted-foreground">{b.sizeKb.toLocaleString("ru-RU")} КБ · {b.name}.sql.gz</div>
                 </div>
                 {isAdmin && (
                   <Button

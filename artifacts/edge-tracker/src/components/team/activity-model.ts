@@ -135,25 +135,32 @@ export function actionTone(action: string): Tone {
 }
 
 type Forms = [string, string, string];
-const NOUNS: Record<string, { one: string; forms: Forms }> = {
-  trades: { one: "сделку", forms: ["сделку", "сделки", "сделок"] },
-  "trade-ideas": { one: "идею", forms: ["идею", "идеи", "идей"] },
-  playbook: { one: "сетап", forms: ["сетап", "сетапа", "сетапов"] },
-  discussions: { one: "обсуждение", forms: ["обсуждение", "обсуждения", "обсуждений"] },
-  research: { one: "исследование", forms: ["исследование", "исследования", "исследований"] },
-  events: { one: "событие", forms: ["событие", "события", "событий"] },
-  watchlist: { one: "тикер", forms: ["тикер", "тикера", "тикеров"] },
-  dailyfeed: { one: "запись", forms: ["запись", "записи", "записей"] },
-  journal: { one: "запись журнала", forms: ["запись журнала", "записи журнала", "записей журнала"] },
-  eod: { one: "торговый день", forms: ["торговый день", "торговых дня", "торговых дней"] },
-  risk: { one: "лимит", forms: ["лимит", "лимита", "лимитов"] },
-  "game-plan": { one: "game plan", forms: ["game plan", "game plan", "game plan"] },
-  ratings: { one: "оценку", forms: ["оценку", "оценки", "оценок"] },
-  sync: { one: "синхронизацию", forms: ["синхронизацию", "синхронизации", "синхронизаций"] },
-  scaling: { one: "шаг масштабирования", forms: ["шаг масштабирования", "шага масштабирования", "шагов масштабирования"] },
-  "weekly-review": { one: "недельный разбор", forms: ["недельный разбор", "недельных разбора", "недельных разборов"] },
-  offerings: { one: "офферинг", forms: ["офферинг", "офферинга", "офферингов"] },
+type Gender = "m" | "f" | "n";
+/**
+ * Nouns of the feed: nominative singular + gender (for the passive participle) and nominative plural forms (bursts).
+ * The feed never conjugates a verb by the actor — we don't know anyone's gender, so phrases read
+ * «Ольга Н.: добавлена сделка», «Закир: закрыт торговый день».
+ */
+const NOUNS: Record<string, { nom: string; g: Gender; forms: Forms }> = {
+  trades: { nom: "сделка", g: "f", forms: ["сделка", "сделки", "сделок"] },
+  "trade-ideas": { nom: "идея", g: "f", forms: ["идея", "идеи", "идей"] },
+  playbook: { nom: "сетап", g: "m", forms: ["сетап", "сетапа", "сетапов"] },
+  discussions: { nom: "обсуждение", g: "n", forms: ["обсуждение", "обсуждения", "обсуждений"] },
+  research: { nom: "исследование", g: "n", forms: ["исследование", "исследования", "исследований"] },
+  events: { nom: "событие", g: "n", forms: ["событие", "события", "событий"] },
+  watchlist: { nom: "тикер", g: "m", forms: ["тикер", "тикера", "тикеров"] },
+  dailyfeed: { nom: "запись", g: "f", forms: ["запись", "записи", "записей"] },
+  journal: { nom: "запись журнала", g: "f", forms: ["запись журнала", "записи журнала", "записей журнала"] },
+  eod: { nom: "торговый день", g: "m", forms: ["торговый день", "торговых дня", "торговых дней"] },
+  risk: { nom: "лимит", g: "m", forms: ["лимит", "лимита", "лимитов"] },
+  "game-plan": { nom: "game plan", g: "m", forms: ["game plan", "game plan", "game plan"] },
+  ratings: { nom: "оценка", g: "f", forms: ["оценка", "оценки", "оценок"] },
+  sync: { nom: "синхронизация", g: "f", forms: ["синхронизация", "синхронизации", "синхронизаций"] },
+  scaling: { nom: "шаг масштабирования", g: "m", forms: ["шаг масштабирования", "шага масштабирования", "шагов масштабирования"] },
+  "weekly-review": { nom: "недельный разбор", g: "m", forms: ["недельный разбор", "недельных разбора", "недельных разборов"] },
+  offerings: { nom: "офферинг", g: "m", forms: ["офферинг", "офферинга", "офферингов"] },
 };
+const NOUN_FALLBACK: { nom: string; g: Gender; forms: Forms } = { nom: "запись", g: "f", forms: ["запись", "записи", "записей"] };
 
 export function plural(n: number, forms: Forms): string {
   const m10 = n % 10, m100 = n % 100;
@@ -162,93 +169,128 @@ export function plural(n: number, forms: Forms): string {
   return forms[2];
 }
 
-const VERBS: Record<string, string> = {
-  created: "добавил",
-  updated: "обновил",
-  deleted: "удалил",
-  published: "опубликовал",
-  converted: "перевёл в сделку",
-  resubmitted: "пересдал",
-  acknowledged: "подтвердил",
-  rated: "оценил",
-  synced: "синхронизировал",
-  reconciled: "сверил",
-  conflict: "обнаружил расхождение",
-  closed: "закрыл",
-  reopened: "переоткрыл",
-  reviewed: "разобрал",
-  approved: "утвердил",
-  rejected: "отклонил",
-  violation: "нарушил правило",
-  halted: "остановлен по лимиту",
-  limit_warning: "приблизился к лимиту",
+/** Short passive participles [м, ж, ср]; the neuter form also serves counts («добавлено 12 сделок»). */
+const PARTICIPLES: Record<string, [string, string, string]> = {
+  created: ["добавлен", "добавлена", "добавлено"],
+  updated: ["обновлён", "обновлена", "обновлено"],
+  deleted: ["удалён", "удалена", "удалено"],
+  published: ["опубликован", "опубликована", "опубликовано"],
+  resubmitted: ["пересдан", "пересдана", "пересдано"],
+  acknowledged: ["подтверждён", "подтверждена", "подтверждено"],
+  rated: ["оценён", "оценена", "оценено"],
+  synced: ["синхронизирован", "синхронизирована", "синхронизировано"],
+  reconciled: ["сверен", "сверена", "сверено"],
+  closed: ["закрыт", "закрыта", "закрыто"],
+  reopened: ["переоткрыт", "переоткрыта", "переоткрыто"],
+  reviewed: ["разобран", "разобрана", "разобрано"],
+  approved: ["утверждён", "утверждена", "утверждено"],
+  rejected: ["отклонён", "отклонена", "отклонено"],
 };
+const G_IDX: Record<Gender, 0 | 1 | 2> = { m: 0, f: 1, n: 2 };
 
-/** Human sentence (without the actor) for a single feed item, e.g. "добавил сделку". */
+/** «добавлена сделка» — the participle agrees with the noun, never with the actor. */
+function passive(action: string, section: string): string {
+  const noun = NOUNS[section] ?? NOUN_FALLBACK;
+  const v = PARTICIPLES[action]?.[G_IDX[noun.g]];
+  return v ? `${v} ${noun.nom}` : `${action}: ${noun.nom}`;
+}
+
+/** Playbook rows that are really about a setup's examples («Эталоны (Tier 1): +2», «Эталон убран …»), not the setup. */
+export function isExampleChange(item: Pick<FeedItem, "section" | "details">): boolean {
+  return item.section === "playbook" && /^Эталон/.test(item.details ?? "");
+}
+
+const RATING_LABEL: Record<string, string> = { excellent: "отлично", good: "хорошо", needs_work: "есть над чем работать", poor: "плохо" };
+/** Curator rating key → Russian (unknown values pass through). */
+export function ratingLabel(r: string): string {
+  return RATING_LABEL[r] ?? r;
+}
+
+const REACTION_LABEL: Record<string, string> = { thumbs_up: "👍 За", thumbs_down: "👎 Против", warning: "⚠️ Осторожно" };
+/** Idea reactions are logged as «thumbs_down: comment» — show the reaction in Russian. */
+export function detailsText(item: Pick<FeedItem, "action" | "details">): string | null {
+  const d = item.details;
+  if (!d || item.action !== "reacted") return d;
+  const m = /^(thumbs_up|thumbs_down|warning)(?::\s*(.*))?$/s.exec(d);
+  if (!m) return d;
+  return m[2] ? `${REACTION_LABEL[m[1]!]}: ${m[2]}` : REACTION_LABEL[m[1]!]!;
+}
+
+/**
+ * Phrase shown after «Имя:» for a single feed item, e.g. «добавлена сделка».
+ * Gender-neutral by construction: passive participles agree with the noun, never with the actor.
+ */
 export function describe(item: FeedItem): string {
-  const noun = NOUNS[item.section]?.one ?? "запись";
   const s = item.section;
+  if (isExampleChange(item)) {
+    if (item.action === "created") return "добавлен эталон в сетап";
+    if (item.action === "deleted") return "убран эталон из сетапа";
+    if (item.action === "updated") return "изменён эталон в сетапе";
+  }
   switch (item.action) {
     case "reviewed":
-      if (s === "trades") return "оставил ревью на сделку";
-      if (s === "eod" || s === "journal") return "разобрал торговый день";
-      if (s === "weekly-review") return "провёл недельный разбор";
-      return `разобрал ${noun}`;
-    case "liked": return "отреагировал на сделку";
-    case "reacted": return "отреагировал на идею";
-    case "commented": return "прокомментировал обсуждение";
-    case "converted": return "перевёл идею в сделку";
+      if (s === "trades") return "ревью на сделку";
+      if (s === "eod" || s === "journal") return "разобран торговый день";
+      if (s === "weekly-review") return "проведён недельный разбор";
+      return passive("reviewed", s);
+    case "liked": return "реакция на сделку";
+    case "reacted": return "реакция на идею";
+    case "commented": return "комментарий в обсуждении";
+    case "converted": return "идея переведена в сделку";
     case "digest_evening_sent": return "отправлен вечерний дайджест";
     case "digest_morning_sent": return "отправлен утренний дайджест";
     case "created":
-      if (s === "discussions") return "открыл обсуждение";
-      if (s === "game-plan") return "написал game plan";
-      if (s === "journal") return "заполнил журнал дня";
-      return `${VERBS.created} ${noun}`;
+      if (s === "discussions") return "открыто обсуждение";
+      if (s === "game-plan") return "написан game plan";
+      if (s === "journal") return "заполнен журнал дня";
+      return passive("created", s);
     case "closed":
-      if (s === "eod" || s === "journal") return "закрыл торговый день";
-      if (s === "trades") return "закрыл сделку";
-      return `закрыл ${noun}`;
+      if (s === "eod" || s === "journal") return "закрыт торговый день";
+      return passive("closed", s);
     case "reopened":
-      if (s === "eod" || s === "journal") return "переоткрыл торговый день";
-      return `переоткрыл ${noun}`;
+      if (s === "eod" || s === "journal") return "переоткрыт торговый день";
+      return passive("reopened", s);
     case "acknowledged":
-      if (s === "game-plan") return "прочитал game plan";
-      if (s === "risk") return "подтвердил нарушение";
-      return `подтвердил ${noun}`;
+      if (s === "game-plan") return "прочитан game plan";
+      if (s === "risk") return "подтверждено нарушение";
+      return passive("acknowledged", s);
     case "rated":
-      return s === "ratings" || s === "trades" ? "поставил оценку" : `оценил ${noun}`;
+      return s === "ratings" || s === "trades" ? "поставлена оценка" : passive("rated", s);
     case "synced":
-      return s === "sync" ? "синхронизировал сделки из PropReports" : `синхронизировал ${noun}`;
-    case "reconciled": return "сверил сделки с брокером";
+      return s === "sync" ? "сделки синхронизированы из PropReports" : passive("synced", s);
+    case "reconciled": return "сделки сверены с брокером";
     case "conflict": return "найдено расхождение с брокером";
-    case "violation": return "нарушил правило";
-    case "halted": return "остановлен: дневной лимит";
-    case "limit_warning": return "приблизился к лимиту";
+    case "violation": return "нарушение правила";
+    case "halted": return "остановка: дневной лимит";
+    case "limit_warning": return "близко к лимиту";
     case "approved":
-      if (s === "scaling") return "утвердил масштабирование";
-      return `утвердил ${noun}`;
+      if (s === "scaling") return "утверждено масштабирование";
+      return passive("approved", s);
     case "rejected":
-      if (s === "scaling") return "отклонил масштабирование";
-      return `отклонил ${noun}`;
-    case "resubmitted": return `пересдал ${noun}`;
+      if (s === "scaling") return "отклонено масштабирование";
+      return passive("rejected", s);
     default:
-      return VERBS[item.action] ? `${VERBS[item.action]} ${noun}` : item.action;
+      return PARTICIPLES[item.action] ? passive(item.action, s) : item.action;
   }
 }
 
-/** Sentence for a collapsed burst of N identical actions. */
-export function describeBurst(action: string, section: string, n: number): string {
-  const forms = NOUNS[section]?.forms ?? (["запись", "записи", "записей"] as Forms);
+/** Phrase for a collapsed burst of N identical actions («добавлено 12 сделок»). */
+export function describeBurst(action: string, section: string, n: number, examples = false): string {
+  const forms = (NOUNS[section] ?? NOUN_FALLBACK).forms;
+  if (examples && action === "created") return `добавлено эталонов: ${n}`;
+  if (examples && action === "deleted") return `убрано эталонов: ${n}`;
   switch (action) {
-    case "reviewed": return `оставил ${n} ${plural(n, ["ревью", "ревью", "ревью"])}`;
-    case "rated": return `поставил ${n} ${plural(n, ["оценку", "оценки", "оценок"])}`;
+    case "reviewed": return section === "trades" ? `${n} ревью на сделки` : `разобрано: ${n} ${plural(n, forms)}`;
+    case "rated": return `поставлено оценок: ${n}`;
     case "liked":
-    case "reacted": return `поставил ${n} ${plural(n, ["реакцию", "реакции", "реакций"])}`;
-    case "commented": return `оставил ${n} ${plural(n, ["комментарий", "комментария", "комментариев"])}`;
-    case "synced": return `синхронизировал ${n} ${plural(n, ["сделку", "сделки", "сделок"])}`;
+    case "reacted": return `${n} ${plural(n, ["реакция", "реакции", "реакций"])}`;
+    case "commented": return `${n} ${plural(n, ["комментарий", "комментария", "комментариев"])}`;
+    case "synced": return `синхронизировано сделок: ${n}`;
     case "violation": return `${n} ${plural(n, ["нарушение правил", "нарушения правил", "нарушений правил"])}`;
-    default: return `${VERBS[action] ?? action} ${n} ${plural(n, forms)}`;
+    default: {
+      const v = PARTICIPLES[action]?.[2];
+      return v ? `${v}: ${n} ${plural(n, forms)}` : `${action}: ${n} ${plural(n, forms)}`;
+    }
   }
 }
 
@@ -273,8 +315,11 @@ export function itemHref(item: FeedItem): string | null {
     case "discussions":
       return numId != null ? links.thread(numId) : meta.path;
     case "journal":
-    case "eod":
-      return YMD.test(id) ? links.journalDay(id, item.trader ?? undefined) : meta.path;
+    case "eod": {
+      // A curator's review is logged as «YYYY-MM-DD|трейдер»: the actor is the curator, the day is the trader's.
+      const [day = "", owner = ""] = id.split("|");
+      return YMD.test(day) ? links.journalDay(day, owner || (item.trader ?? undefined)) : meta.path;
+    }
     case "game-plan":
       return YMD.test(id) ? links.gamePlan(id) : links.gamePlan();
     case "risk":
@@ -351,6 +396,7 @@ export function groupFeed(items: FeedItem[]): DayGroup[] {
       prev.trader === it.trader &&
       prev.action === it.action &&
       prev.section === it.section &&
+      isExampleChange(prev) === isExampleChange(it) &&
       !it.section.startsWith("digest") &&
       Math.abs(new Date(prev.createdAt).getTime() - new Date(it.createdAt).getTime()) <= BURST_WINDOW_MS;
     if (sameRun) last.items.push(it);

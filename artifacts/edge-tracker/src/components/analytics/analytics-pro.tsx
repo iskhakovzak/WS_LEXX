@@ -18,6 +18,7 @@ import { EquityPanel } from "./pro-equity";
 import { BreakdownPanel } from "./pro-breakdown";
 import { ExtremesPanel, KpiGrid, TradingDaysInfo, WeeksPanel, type JumpKind } from "./pro-stats";
 import { loadPref, savePref } from "./pro-format";
+import { pluralRu } from "@/components/rules/constants";
 
 type Props = { trades: Trade[] };
 
@@ -163,8 +164,8 @@ export default function AnalyticsPro({ trades }: Props) {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <p className="text-sm text-muted-foreground">
             <span className="font-semibold tabular-nums text-foreground">{filtered.length}</span> из{" "}
-            <span className="tabular-nums">{trades.length}</span> сделок ·{" "}
-            <span className="tabular-nums">{days.length}</span> торговых дней
+            <span className="tabular-nums">{trades.length}</span> {pluralRu(trades.length, "сделки", "сделок", "сделок")} ·{" "}
+            <span className="tabular-nums">{days.length}</span> {pluralRu(days.length, "торговый день", "торговых дня", "торговых дней")}
             {filterCount > 0 && <> · фильтров: <span className="tabular-nums">{filterCount}</span></>}
           </p>
           <Segmented

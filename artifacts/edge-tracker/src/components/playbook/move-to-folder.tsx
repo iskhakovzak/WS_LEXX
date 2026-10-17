@@ -2,10 +2,10 @@
 import { useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Check, FolderInput, FolderPlus } from "lucide-react";
-import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { invalidatePlaybook, pbRequest } from "./api";
@@ -14,11 +14,11 @@ import { folderSwatch, type PlaybookEntry } from "./model";
 export function useMoveToFolder() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { user } = useAuth();
   return async (entry: PlaybookEntry, folder: string | null, opts?: { silent?: boolean }) => {
     const prev = entry.folder ?? null;
     if ((folder ?? null) === prev) return true;
-    const apply = (f: string | null) => pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { folder: f, trader: user?.traderName ?? "system" } });
+    // No `trader` here: on PATCH the API treats a staff-sent `trader` as re-assigning the owner of a personal setup.
+    const apply = (f: string | null) => pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { folder: f } });
     try {
       await apply(folder);
       invalidatePlaybook(qc, entry.id);
@@ -26,6 +26,14 @@ export function useMoveToFolder() {
         toast({
           title: folder ? `Перемещено в «${folder}»` : "Перемещено в «Без папки»",
           description: entry.name,
+          action: (
+            <ToastAction
+              altText="Вернуть в прежнюю папку"
+              onClick={() => apply(prev).then(() => invalidatePlaybook(qc, entry.id), (e) => toast({ title: "Не удалось вернуть", description: e?.message, variant: "destructive" }))}
+            >
+              Вернуть
+            </ToastAction>
+          ),
         });
       }
       return true;

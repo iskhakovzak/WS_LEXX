@@ -40,7 +40,7 @@ describe("describeAudit", () => {
 
   it("uses tier names from config, then the built-in ladder", () => {
     const e = entry("scaling.assign", { toTier: "junior", fromTier: "trainee" }, { targetType: "trader", targetId: "Умид" });
-    expect(describeAudit(e, { junior: "Джуниор" }).text).toBe("назначил тир Джуниор трейдеру Умид");
+    expect(describeAudit(e, { junior: "Джун" }).text).toBe("назначил тир Джун трейдеру Умид");
     expect(describeAudit(e).detail).toBe("был: Стажёр");
   });
 
@@ -62,6 +62,8 @@ describe("describeAudit", () => {
     const r = describeAudit(entry("risk.limits.template", { tierKey: "junior", fromTier: "junior", resync: true, changes: [] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
     expect(r.text).toBe("сверил лимиты Умид с шаблоном тира Джун");
     expect(r.detail).toBe("лимиты уже совпадали");
+    const k = describeAudit(entry("risk.limits.template", { tierKey: "trainee", changes: ["позиций нет → 2", "тир нет → trainee"] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
+    expect(k.detail).toBe("позиций нет → 2, тир нет → Стажёр");
   });
 
   it("describes the soft queue archive and stage changes", () => {

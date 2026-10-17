@@ -15,6 +15,8 @@ export type PersonStatus = "active" | "frozen" | "archived";
 export interface Person {
   id: number;
   name: string;
+  /** Optional Latin alias (users.name_latin) for cross-script search; absent on older API builds. */
+  nameLatin?: string | null;
   role: string;
   status: PersonStatus;
   active: boolean;
@@ -404,6 +406,21 @@ export function usePeopleAction(actor: string) {
     },
     onSettled: () => {
       for (const k of [consoleKeys.people, consoleKeys.audit, ["admin-desk-pulse"], ["admin-overview"], ["admin-audit"]]) qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
+/** Latin alias for search (users.name_latin). Not a rename: the Cyrillic name stays the identifier everywhere. */
+export function useSetNameLatin() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true; name: string; nameLatin: string | null }, Error, { id: number; nameLatin: string | null }>({
+    mutationFn: async ({ id, nameLatin }) => {
+      const r = await send<{ ok: true; name: string; nameLatin: string | null }>("POST", `/admin/console/people/${id}/name-latin`, { nameLatin }, "Не удалось сохранить латинское имя");
+      if (isNotFound(r)) throw new NotDeployedError("Латинское имя");
+      return r;
+    },
+    onSettled: () => {
+      for (const k of [consoleKeys.people, consoleKeys.audit, ["people-directory"]]) qc.invalidateQueries({ queryKey: k });
     },
   });
 }

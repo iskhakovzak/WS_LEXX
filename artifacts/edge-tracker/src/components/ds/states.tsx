@@ -30,6 +30,7 @@ export function ErrorState({
   message,
   compact = false,
   inset = false,
+  retryLabel,
   className,
 }: {
   error?: unknown;
@@ -40,6 +41,8 @@ export function ErrorState({
   compact?: boolean;
   /** Render without its own glass card (when already inside a Panel). */
   inset?: boolean;
+  /** Retry button text (default «Повторить»). */
+  retryLabel?: string;
   className?: string;
 }) {
   return (
@@ -49,6 +52,7 @@ export function ErrorState({
       title={title}
       message={message}
       compact={compact}
+      retryLabel={retryLabel}
       className={cn(inset && !compact && "border-0 bg-transparent bg-none py-8 shadow-none", className)}
     />
   );

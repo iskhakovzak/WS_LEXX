@@ -99,6 +99,8 @@ export function TypeSelect({ id, value, onChange }: { id?: string; value: string
   );
 }
 
+const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
+
 export function EventFormDialog({
   open, onOpenChange, editing, initial, onSubmit, saving,
 }: {
@@ -133,14 +135,16 @@ export function EventFormDialog({
     });
   }
 
-  const valid = form.ticker.trim() !== "" && form.headline.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(form.date);
+  // Legacy notes may carry a list («XOM, CVX, …») — editing keeps it valid while the ticker is untouched.
+  const tickerOk = TICKER_RE.test(form.ticker.trim()) || (!!editing && form.ticker === editing.ticker);
+  const valid = tickerOk && form.headline.trim() !== "" && /^\d{4}-\d{2}-\d{2}$/.test(form.date);
   const submit = () => { if (valid && !saving) onSubmit(formToBody(form)); };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] w-full max-w-3xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{editing ? `Редактировать: ${editing.ticker}` : "Новое событие"}</DialogTitle>
+          <DialogTitle>{editing ? `Заметка: ${editing.ticker}` : "Новая заметка"}</DialogTitle>
           <DialogDescription>Катализатор, время выхода и реакция рынка. Ctrl+Enter — сохранить.</DialogDescription>
         </DialogHeader>
 
@@ -148,12 +152,16 @@ export function EventFormDialog({
           className="flex flex-col gap-4"
           onKeyDown={(ev) => { if (ev.key === "Enter" && (ev.ctrlKey || ev.metaKey)) { ev.preventDefault(); submit(); } }}
         >
-          {form.ticker.trim().length >= 1 && <TickerFundamentalsBar ticker={form.ticker.trim()} onLoaded={handleFundamentalsLoaded} />}
+          {TICKER_RE.test(form.ticker.trim()) && <TickerFundamentalsBar ticker={form.ticker.trim()} onLoaded={handleFundamentalsLoaded} />}
 
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <div className="space-y-1.5">
               <Label htmlFor="ev-ticker">Тикер *</Label>
-              <Input id="ev-ticker" autoFocus value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase())} placeholder="NVDA" className="uppercase" />
+              <Input
+                id="ev-ticker" autoFocus value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="NVDA" className="uppercase"
+                aria-invalid={form.ticker.trim() !== "" && !tickerOk} aria-describedby={form.ticker.trim() !== "" && !tickerOk ? "ev-ticker-err" : undefined}
+              />
+              {form.ticker.trim() !== "" && !tickerOk && <p id="ev-ticker-err" className="text-xs text-down">Тикер латиницей: NVDA, BRK.B</p>}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="ev-date">Дата *</Label>

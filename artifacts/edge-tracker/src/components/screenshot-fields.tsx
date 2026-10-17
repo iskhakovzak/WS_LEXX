@@ -510,7 +510,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
       role="dialog"
       aria-modal="true"
       aria-label={`Просмотр скриншота ${idx + 1} из ${urls.length}`}
-      className="pointer-events-auto fixed inset-0 z-modal select-none overflow-hidden bg-background/95 backdrop-blur-xl"
+      className="pointer-events-auto fixed inset-0 z-modal select-none overflow-hidden bg-background/95"
       onClick={onClose}
       onMouseMove={onMouseMove}
       onMouseUp={onMouseUp}

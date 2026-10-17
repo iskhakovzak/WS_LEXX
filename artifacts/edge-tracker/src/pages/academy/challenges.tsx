@@ -13,6 +13,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { type ChallengeStatus, useChallenges, usePathConfig } from "@/components/academy/path/api";
 import { selectCls } from "@/components/academy/path/bits";
 import { ChallengeCard, ChallengeDetailView, CreateChallengeDialog } from "@/components/academy/path/challenge-views";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Filter = "all" | "active" | "done" | "archived";
 const DONE: ChallengeStatus[] = ["passed", "failed", "expired"];
@@ -63,10 +64,7 @@ export default function AcademyChallengesPage() {
           {isCurator && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>Ученик</span>
-              <select className={selectCls} value={who} onChange={(e) => { setWho(e.target.value); setSelected(null); }}>
-                <option value="">Все</option>
-                {people.map((n) => <option key={n} value={n}>{n}</option>)}
-              </select>
+              <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={people} allLabel="Все" ariaLabel="Ученик" className="h-9 w-48" />
             </label>
           )}
         </div>

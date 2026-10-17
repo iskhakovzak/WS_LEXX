@@ -11,7 +11,7 @@
  * ?tags= (comma list); gallery filters gt/gp/gs/gtr live in gallery.tsx. ?q= and ?highlight= are one-shot.
  * Example trades can be dragged from the «Эталоны» board onto a setup row in the tree to move them.
  */
-import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/lib/playbook-export";
 import {
   invalidateExamples, invalidatePlaybook, notLiveMessage, pbRequest, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  type InboxTrade,
 } from "@/components/playbook/api";
 import {
   LS, accessOf, matchesQuickFilter, searchHaystack, sortEntries, spaceTabOf, splitTags,
@@ -54,6 +55,7 @@ import { TradePickerDialog } from "@/components/playbook/trade-picker-dialog";
 import { ShareDialog } from "@/components/playbook/share-dialog";
 import { hasExampleDrag, patchExample, readExampleDrag } from "@/components/playbook/examples-board";
 import { ActivitySheet, DeleteFolderDialog, DeleteSetupDialog, RenameFolderDialog } from "@/components/playbook/page-dialogs";
+import { useMoveToFolder } from "@/components/playbook/move-to-folder";
 
 type View = "library" | "gallery" | "grid";
 const VIEWS: View[] = ["library", "gallery", "grid"];
@@ -92,7 +94,9 @@ const HOTKEYS: [string[], string][] = [
   [["/"], "Быстрый поиск"],
   [["J", "K"], "Следующий / предыдущий сетап"],
   [["N"], "Новый сетап"],
+  [["Ctrl", "S"], "Сохранить форму сетапа (или Ctrl+Enter)"],
   [["E"], "Редактировать открытый"],
+  [["A"], "Добавить эталоны в открытый"],
   [["C"], "Сравнить сетапы"],
   [["Esc"], "Закрыть сетап"],
   [["1", "2", "3"], "Эталон: сменить тир (на карточке)"],
@@ -123,7 +127,7 @@ export default function Playbook() {
   const searchStr = useSearch();
 
   /* ---------- data ---------- */
-  const { data: entries = [], isLoading, isError, error, refetch } = usePlaybookEntries();
+  const { data: entries = [], isLoading, isError, error, refetch, isFetching } = usePlaybookEntries();
   const summaryQ = usePlaybookSummary();
   const summary = summaryQ.map;
   const { data: folderSettings } = useFolderSettings();
@@ -134,6 +138,8 @@ export default function Playbook() {
   // The URL wins (shared links, back / forward), then the remembered choice.
   const [view, setViewState] = useState<View>(() => {
     const u = urlParam("view"); if (isView(u)) return u;
+    // A link to one setup (?id= / ?highlight=, e.g. from the feed) must show it — not a remembered grid / gallery.
+    if (urlParam("id") || urlParam("highlight")) return "library";
     const v = lsGet<string>(LS.view, "library"); return isView(v) ? v : "library";
   });
   const [space, setSpaceState] = useState<Scope>(() => {
@@ -240,7 +246,9 @@ export default function Playbook() {
     return [...m.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], "ru"));
   }, [spaceEntries]);
 
-  const q = query.trim().toLowerCase();
+  // The box updates at once; filtering the tree / grid follows at a lower priority (no lag while typing).
+  const deferredQuery = useDeferredValue(query);
+  const q = deferredQuery.trim().toLowerCase();
   const passes = useCallback(
     (e: PlaybookEntry) => {
       if (!matchesQuickFilter(e, quick, summary)) return false;
@@ -403,6 +411,43 @@ export default function Playbook() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, entries.length]);
 
+  // ?folder=Name — a link to a folder: library view, folder order, that folder open and scrolled into view (one-shot).
+  const urlFolder = params.get("folder");
+  useEffect(() => {
+    if (!urlFolder || !entries.length) return;
+    const inFolder = entries.filter((e) => !e.parentId && e.folder === urlFolder);
+    const next = patchSearch(window.location.search, { folder: null });
+    if (!inFolder.length) {
+      navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
+      toast({ title: "Папка не найдена", description: `«${urlFolder}» пуста, удалена или недоступна.` });
+      return;
+    }
+    const tabs = new Set(inFolder.map((e) => tabOf.get(e.id) ?? "office"));
+    if (!tabs.has(activeSpace)) {
+      const t = (["mine", "office", "shared", "team"] as SpaceTab[]).find((x) => tabs.has(x) && (x !== "team" || viewer.isCurator));
+      if (t) setSpace(t);
+    }
+    setView("library");
+    if (sort !== "folder") setSort("folder");
+    if (quick !== "all") setQuick("all");
+    setQuery("");
+    setOpenFolders((prev) => { if (prev.has(urlFolder)) return prev; const n = new Set(prev); n.add(urlFolder); lsSet(LS.openFolders, [...n]); return n; });
+    navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
+    window.setTimeout(() => {
+      document.querySelector(`[data-folder-key="${CSS.escape(urlFolder)}"]`)?.scrollIntoView({ block: "start", behavior: "smooth" });
+    }, 120);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlFolder, entries.length]);
+  function copyFolderLink(folder: string) {
+    const qs = new URLSearchParams({ folder });
+    if (activeSpace !== "office") qs.set("space", activeSpace);
+    const url = `${window.location.origin}/playbook?${qs.toString()}`;
+    navigator.clipboard?.writeText(url).then(
+      () => toast({ title: "Ссылка на папку скопирована", description: folder }),
+      () => toast({ title: "Не удалось скопировать ссылку", variant: "destructive" }),
+    );
+  }
+
   // Same-page navigation from the global search.
   useEffect(() => {
     function onNav(e: Event) {
@@ -441,8 +486,24 @@ export default function Playbook() {
   };
   /** Folder actions: office folders — curators; «Мой» — the owner. Shared / team folders are read-only here. */
   const canManageFolders = activeSpace === "office" ? viewer.isCurator : activeSpace === "mine" ? viewer.canEdit : false;
+  const moveToFolder = useMoveToFolder();
+  const canDragSetup = useCallback((e: PlaybookEntry) => accessOf(e, viewer).canEdit, [viewer]);
+  async function moveSetupToFolder(id: number, folder: string | null) {
+    const e = byId.get(id);
+    if (!e || (e.folder ?? null) === folder || !accessOf(e, viewer).canEdit) return;
+    // Optimistic: the row jumps to its new folder right away; the hook toasts with «Вернуть».
+    qc.setQueryData<PlaybookEntry[]>(["playbook"], (old) => old?.map((x) => (x.id === id ? { ...x, folder } : x)));
+    const key = folder ?? UNFILED;
+    setOpenFolders((prev) => { if (prev.has(key)) return prev; const next = new Set(prev); next.add(key); lsSet(LS.openFolders, [...next]); return next; });
+    const ok = await moveToFolder(e, folder);
+    if (!ok) invalidatePlaybook(qc, id);
+  }
+  const selectInTree = useCallback((id: number) => openSetup(id, { tab: setupTab }), [openSetup, setupTab]);
 
+  /** Folder colour / order are desk-wide settings: only staff may write them (the API answers 403 to traders). */
+  const canFolderSettings = viewer.isCurator;
   async function saveFolderSettings(body: { folderName: string; colorIndex?: number; sortOrder?: number }[], errTitle: string) {
+    if (!canFolderSettings) return;
     try {
       await pbRequest("/api/playbook/folder-settings", { method: "PATCH", json: body });
       qc.invalidateQueries({ queryKey: ["playbook-folder-settings"] });
@@ -452,7 +513,9 @@ export default function Playbook() {
   }
   function setFolderColor(folder: string, idx: number) {
     setFolderColors((prev) => { const next = { ...prev, [folder]: idx }; lsSet(LS.folderColors, next); return next; });
-    saveFolderSettings([{ folderName: folder, colorIndex: idx }], "Не удалось сохранить цвет папки");
+    // The API writes sort_order = 0 when it is omitted — send the current position so a colour change doesn't move the folder.
+    const pos = allFolders.indexOf(folder);
+    saveFolderSettings([{ folderName: folder, colorIndex: idx, ...(pos >= 0 ? { sortOrder: pos } : {}) }], "Не удалось сохранить цвет папки");
   }
   function moveFolder(folder: string, delta: -1 | 1) {
     const order = [...allFolders];
@@ -460,11 +523,23 @@ export default function Playbook() {
     const to = from + delta;
     if (from < 0 || to < 0 || to >= order.length) return;
     order.splice(to, 0, order.splice(from, 1)[0]);
+    applyFolderOrder(order);
+  }
+  /** Drag & drop: the dragged folder takes the target's place. */
+  function reorderFolder(folder: string, target: string | null) {
+    const order = allFolders.filter((f) => f !== folder);
+    const to = target ? allFolders.indexOf(target) : order.length;
+    if (to < 0 || allFolders.indexOf(folder) < 0 || folder === target) return;
+    order.splice(Math.min(to, order.length), 0, folder);
+    applyFolderOrder(order);
+  }
+  function applyFolderOrder(order: string[]) {
     const rest = folderOrder.filter((f) => !order.includes(f));
     const merged = [...order, ...rest];
     setFolderOrder(merged);
     lsSet(LS.folderOrder, merged);
-    saveFolderSettings(merged.map((f, i) => ({ folderName: f, sortOrder: i })), "Не удалось сохранить порядок папок");
+    // Only this space's folders: their relative order is what the tree shows (another space keeps its own numbers).
+    saveFolderSettings(order.map((f, i) => ({ folderName: f, sortOrder: i })), "Не удалось сохранить порядок папок");
   }
   function onFolderRenamed(from: string, to: string, merged: boolean) {
     setFolderOrder((prev) => {
@@ -621,6 +696,11 @@ export default function Playbook() {
     [canCreate, newSpace],
   );
   const newLabel = newSpace === "office" ? "Новый в «Офис»" : "Новый в «Мой»";
+  /** Inbox «Новый сетап из сделки»: a personal setup (office for curators on the office tab) with the trade as its first example. */
+  const newSetupFromTrade = useCallback(
+    (t: InboxTrade) => { if (canCreate) setFormMode({ kind: "create", space: newSpace, fromTrade: { id: t.id, ticker: t.ticker, date: t.closeDate ?? t.date, tier: t.suggestedTier } }); },
+    [canCreate, newSpace],
+  );
 
   /* ---------- keyboard ---------- */
   // Ctrl/⌘+K inside the section opens the playbook's own quick find (capture phase, before the global palette).
@@ -647,6 +727,7 @@ export default function Playbook() {
       if (k === "Escape" && selected) { e.preventDefault(); openSetup(null); return; }
       if ((k === "e" || k === "у") && selected && accessOf(selected, viewer).canEdit) { e.preventDefault(); setFormMode({ kind: "edit", entry: selected }); return; }
       if ((k === "c" || k === "с") && selected) { e.preventDefault(); setCompareFor(selected); return; }
+      if ((k === "a" || k === "ф") && selected && live && accessOf(selected, viewer).canAddExamples) { e.preventDefault(); setPickerFor(selected); return; }
       if (k === "j" || k === "k" || k === "о" || k === "л") {
         if (!navOrder.length) return;
         e.preventDefault();
@@ -660,13 +741,13 @@ export default function Playbook() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [canCreate, selected, selectedId, navOrder, openSetup, newSetup, view, viewer, setupTab]);
+  }, [canCreate, selected, selectedId, navOrder, openSetup, newSetup, view, viewer, setupTab, live]);
 
   /* ---------- render pieces ---------- */
   const helpPopover = (
     <Popover open={helpOpen} onOpenChange={setHelpOpen}>
       <PopoverTrigger asChild>
-        <IconAction aria-label="Горячие клавиши" aria-keyshortcuts="?" className="h-10 w-10"><HelpCircle /></IconAction>
+        <IconAction aria-label="Горячие клавиши" aria-keyshortcuts="?" className="h-9 w-9"><HelpCircle /></IconAction>
       </PopoverTrigger>
       <PopoverContent align="end" className="w-80">
         <p className="mb-2 text-sm font-semibold text-foreground">Горячие клавиши</p>
@@ -678,7 +759,7 @@ export default function Playbook() {
             </div>
           ))}
         </dl>
-        <p className="mt-3 text-xs text-muted-foreground">Эталон можно перетащить мышью между тирами или на сетап в списке слева.</p>
+        <p className="mt-3 text-xs text-muted-foreground">Мышью: эталон — между тирами или на сетап в списке слева; сетап — на папку, чтобы переместить; папку — на другую, чтобы поменять порядок.</p>
       </PopoverContent>
     </Popover>
   );
@@ -707,7 +788,7 @@ export default function Playbook() {
           {helpPopover}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <IconAction aria-label="Ещё" className="h-10 w-10"><MoreHorizontal /></IconAction>
+              <IconAction aria-label="Ещё" className="h-9 w-9"><MoreHorizontal /></IconAction>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-60">
               <DropdownMenuItem onSelect={() => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null)} disabled={!entries.length}>
@@ -828,7 +909,7 @@ export default function Playbook() {
       <Select value={quick} onValueChange={(v) => setQuick(v as QuickFilter)}>
         <SelectTrigger className={cn("h-9 min-w-0", quick !== "all" && "border-primary/60")} aria-label="Фильтр" title="Фильтр"><SelectValue>{FILTERS.find((f) => f.value === quick)?.short}</SelectValue></SelectTrigger>
         <SelectContent>
-          {FILTERS.map((f) => (
+          {FILTERS.filter((f) => f.value !== "unreviewed" || activeSpace === "office" || quick === "unreviewed").map((f) => (
             <SelectItem key={f.value} value={f.value}>
               {f.value === "all" ? f.label : `${f.label} · ${quickCounts[f.value]}`}
             </SelectItem>
@@ -989,9 +1070,11 @@ export default function Playbook() {
       </div>
     );
   } else {
+    // An empty space with nothing proposed: no sidebar — the empty state takes the full width.
+    const showAside = topLevel.length > 0 || !!proposedBlock || !!selected;
     body = (
-      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[320px_minmax(0,1fr)]">
-        <aside
+      <div className={cn("grid grid-cols-1 items-start gap-[var(--grid-gap)]", showAside && "lg:grid-cols-[320px_minmax(0,1fr)]")}>
+        {showAside && <aside
           aria-label="Сетапы"
           className={cn("glass-panel flex min-w-0 flex-col gap-3 rounded-2xl p-3 lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:max-h-[calc(100dvh-7rem)]", selected ? "hidden lg:flex" : "max-h-[60dvh]")}
           onDragOver={onTreeDragOver}
@@ -1009,22 +1092,26 @@ export default function Playbook() {
                   groups={groups}
                   flat={flat}
                   selectedId={selectedId}
-                  onSelect={(id) => openSetup(id, { tab: setupTab })}
+                  onSelect={selectInTree}
                   openFolders={filtering ? new Set(groups.map((g) => g.folder ?? UNFILED)) : openFolders}
                   onToggleFolder={toggleFolder}
                   summary={summary}
                   folderColors={folderColors}
                   childrenOf={childrenOf}
-                  query={query}
+                  query={deferredQuery}
                   canEdit={canManageFolders}
                   folderOrder={allFolders}
                   showOwner={showOwner}
                   dropTargetId={dropTarget}
+                  canDragSetup={canManageFolders ? canDragSetup : undefined}
                   actions={{
                     onNewIn: (f) => newSetup(f),
                     onRename: setRenameFolder,
-                    onColor: setFolderColor,
-                    onMove: moveFolder,
+                    onColor: canFolderSettings ? setFolderColor : undefined,
+                    onMove: canFolderSettings ? moveFolder : undefined,
+                    onReorder: canFolderSettings ? reorderFolder : undefined,
+                    onMoveSetup: moveSetupToFolder,
+                    onCopyLink: copyFolderLink,
                     onDelete: activeSpace === "office" ? setDeleteFolder : undefined,
                   }}
                 />
@@ -1036,7 +1123,7 @@ export default function Playbook() {
               <p className="px-1 py-2 text-sm text-muted-foreground">В этом пространстве пока нет сетапов.</p>
             </>
           )}
-        </aside>
+        </aside>}
 
         <div className="min-w-0">
           {selected ? (
@@ -1067,12 +1154,23 @@ export default function Playbook() {
               onAddExamples={setPickerFor}
               onShare={setShareFor}
             />
+          ) : selectedId && isFetching ? (
+            // Just created / opened from a link before the list refetched: wait instead of flashing «не найден».
+            <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true">
+              <Skeleton className="h-44 rounded-2xl" />
+              <Skeleton className="h-9 w-2/3 rounded-xl" />
+              <Skeleton className="h-72 rounded-2xl" />
+            </div>
           ) : selectedId ? (
             <div className="glass-panel rounded-2xl">
               <EmptyState icon={BookOpen} title="Сетап не найден" description="Возможно, он удалён, доступ к нему закрыт или ссылка устарела." action={<Button variant="outline" onClick={() => openSetup(null)}>К обзору</Button>} />
             </div>
           ) : topLevel.length === 0 ? (
-            spaceEmpty
+            // An empty «Мой» is where a trader starts: the inbox of own trades is the quickest way in.
+            <div className="flex flex-col gap-[var(--grid-gap)]">
+              {spaceEmpty}
+              {activeSpace === "mine" && <PlaybookInbox onNewSetup={newSetupFromTrade} />}
+            </div>
           ) : (
             <Overview
               entries={topLevel}
@@ -1081,9 +1179,10 @@ export default function Playbook() {
               onOpen={(id) => openSetup(id)}
               onQuickFilter={(f) => { setQuick(f); if (sort === "folder" && f !== "all") setSort("name"); }}
               showHealth={activeSpace === "office" && viewer.isCurator}
+              showReview={activeSpace === "office"}
               before={
                 <>
-                  <PlaybookInbox />
+                  <PlaybookInbox onNewSetup={newSetupFromTrade} />
                   <Tier1Strip
                     scope={activeSpace}
                     entries={entries}
@@ -1112,6 +1211,9 @@ export default function Playbook() {
         mode={formMode}
         onClose={() => setFormMode(null)}
         folders={everyFolder}
+        entries={entries}
+        live={live}
+        onOpenExisting={(id) => openFromElsewhere(id)}
         onSaved={(id) => { if (id && formMode?.kind !== "edit") openSetup(id); }}
       />
       <DeleteSetupDialog name={deleting?.name ?? null} open={!!deleting} onClose={() => setDeleting(null)} onConfirm={confirmDelete} pending={deletePending} />

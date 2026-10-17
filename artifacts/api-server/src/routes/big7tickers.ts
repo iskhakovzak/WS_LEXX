@@ -5,6 +5,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { netPnlSql, resultSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyDate, addDays as nyAddDays } from "../lib/tradingDate";
 
 const router: IRouter = Router();
@@ -377,13 +378,9 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
   }
   const from = days > 0 ? nyAddDays(nyDate(), -days) : null;
   const { rows } = await pool.query<{ ticker: string; side: string | null; net: string | number | null; res: string | null; entry_min: number | null; d: string }>(
-    `WITH exec AS (
-       SELECT trade_id, MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry
-       FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-     )
-     SELECT UPPER(t.ticker) AS ticker, t.side, ${netPnlSql("t")} AS net, ${resultSql("t")} AS res,
+    `SELECT UPPER(t.ticker) AS ticker, t.side, ${netPnlSql("t")} AS net, ${resultSql("t")} AS res,
             ${ENTRY_MIN_SQL} AS entry_min, substring(t.date from 1 for 10) AS d
-     FROM trades t LEFT JOIN exec e ON e.trade_id = t.id
+     FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND t.pnl IS NOT NULL
        AND UPPER(t.ticker) = ANY($2::text[])
        AND ($3::text IS NULL OR substring(t.date from 1 for 10) >= $3)`,

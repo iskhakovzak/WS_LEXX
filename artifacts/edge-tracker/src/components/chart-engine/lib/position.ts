@@ -180,11 +180,12 @@ export function positionAt(fills: readonly Fill[], cursor: number, side: Side, m
   const realized = scale != null ? acc.realized * scale : 0;
   const unrealized = unrealPerShare != null && scale != null ? unrealPerShare * acc.qty * scale : null;
   return {
-    qty: scale != null ? acc.qty * scale : acc.qty,
+    // Unknown size (no fill qty and no trade qty): no share count and no $ — only per-share moves are meaningful.
+    qty: scale != null ? acc.qty * scale : 0,
     avg,
     realized,
     unrealized,
-    total: unrealized != null ? unrealized + realized : acc.n ? realized : null,
+    total: scale == null ? null : unrealized != null ? unrealized + realized : acc.n ? realized : null,
     fillsSoFar: acc.n,
     qtyAssumed: anyNoQty,
   };

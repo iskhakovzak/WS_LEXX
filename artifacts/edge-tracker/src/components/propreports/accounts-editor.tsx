@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { agoText, useDeleteAccount, useRefreshAccounts, useSaveAccounts, useUsers, type AccountMapping } from "./api";
+import { PersonSelect } from "@/components/people/person-select";
 
 const NONE = "__none";
 
@@ -132,14 +133,15 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
                   <td className="text-xs text-muted-foreground">{[r.accountId, r.accountName].filter(Boolean).join(" · ") || "—"}</td>
                   <td>
                     {staff ? (
-                      <Select value={r.trader ?? NONE} onValueChange={(v) => update(i, { trader: v === NONE ? null : v })}>
-                        <SelectTrigger className={cn("h-8 w-44 text-xs", !r.trader && "text-[hsl(var(--chart-3))]")}><SelectValue placeholder="Не привязан" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value={NONE}>Не привязан</SelectItem>
-                          {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                          {r.trader && !traders.includes(r.trader) && <SelectItem value={r.trader}>{r.trader}</SelectItem>}
-                        </SelectContent>
-                      </Select>
+                      <PersonSelect
+                        value={r.trader ?? NONE}
+                        onValueChange={(v) => update(i, { trader: v === NONE ? null : v })}
+                        allValue={NONE}
+                        allLabel="Не привязан"
+                        options={r.trader && !traders.includes(r.trader) ? [...traders, r.trader] : traders}
+                        ariaLabel={`Трейдер для счёта ${r.account}`}
+                        className={cn("h-8 w-44 text-xs", !r.trader && "text-[hsl(var(--chart-3))]")}
+                      />
                     ) : (
                       r.trader ?? <span className="text-[hsl(var(--chart-3))]">не привязан</span>
                     )}

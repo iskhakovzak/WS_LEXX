@@ -1,4 +1,5 @@
 import type { SeverityMeta } from "./types";
+import { selectPlural } from "@/i18n/core";
 
 export const SEVERITY: Record<string, SeverityMeta> = {
   low: { label: "Низкая", tone: "neutral", bar: "bg-muted-foreground/50" },
@@ -107,12 +108,12 @@ export function fmtDay(d: string | null | undefined): string {
   return dt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
-/** Russian plural form: 1 нарушение, 2 нарушения, 5 нарушений (11–14 → many). */
+/**
+ * Russian plural form: 1 нарушение, 2 нарушения, 5 нарушений (11–14 → many); fractions (1,5) take the `few` form.
+ * @deprecated Thin wrapper over the i18n plural API, kept so old call sites compile. New code: a plural entry in
+ * a dictionary (`t("units.trades", { count })`), which also works in EN/UZ.
+ */
 export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const a = Math.abs(n) % 100, b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b === 1) return one;
-  if (b >= 2 && b <= 4) return few;
-  return many;
+  return selectPlural("ru", { one, few, many, other: few }, n);
 }
 export const violationsWord = (n: number) => pluralRu(n, "нарушение", "нарушения", "нарушений");

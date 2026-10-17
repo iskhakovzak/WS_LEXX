@@ -784,7 +784,7 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
     inBackground("weekly-review.submit", async () => {
       await notifyUsers(await staffOrFallback(trader), {
         type: "weekly_review", actor: trader, source: "weekly-review",
-        title: `${trader} отправил отчёт недели ${week}`,
+        title: `Отчёт недели ${week}: ${trader}`,
         message: `${b.mood != null ? `Настроение ${b.mood}/5. ` : ""}${b.focus ? `Фокус: «${textPreview(b.focus, 100)}»` : "Самооценка ждёт разбора"}`,
         link: notifLinks.weeklyReview({ trader, week }), entityType: "weekly_review", entityId: `${trader}:${week}`,
       }, trader);

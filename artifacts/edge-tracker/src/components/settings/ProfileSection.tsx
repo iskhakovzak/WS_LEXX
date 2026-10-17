@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, LogOut, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette } from "lucide-react";
+import { KeyRound, LogOut, Send, ShieldCheck, UserRound, Users, ChevronRight, Palette, Languages } from "lucide-react";
 import { Panel, Pill, StatCard } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,20 @@ import { BASE } from "@/lib/api";
 import { Avatar, Callout, HttpError, ROLE_LABEL, ROLE_TONE, fetchJson, fmtDate, fmtDaysAgo, readApiError } from "./shared";
 import type { SectionId } from "./SettingsNav";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
+import { pluralRu } from "@/components/rules/constants";
+import { LanguageSelect } from "@/i18n/language-switcher";
+import { commonI18n } from "@/i18n/ns/common";
+
+/** Interface language (also in the top bar and the login screen); saved to the profile by i18n/locale-sync. */
+function LanguagePanel() {
+  const { t } = commonI18n.useT();
+  return (
+    <Panel title={t("language.interface")} description={t("language.hint")} icon={Languages}>
+      <label htmlFor="profile-language" className="sr-only">{t("language.interface")}</label>
+      <LanguageSelect id="profile-language" />
+    </Panel>
+  );
+}
 
 export type MyProfile = {
   id: number;
@@ -163,15 +177,22 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
 
   if (!isMember) {
     return (
-      <Panel title="Профиль" icon={UserRound}>
-        <Callout icon={UserRound}>Вы в гостевом режиме. Войдите под своим именем, чтобы настроить профиль, уведомления и торговые параметры.</Callout>
-      </Panel>
+      <div className="flex flex-col gap-4">
+        <Panel title="Профиль" icon={UserRound}>
+          <Callout icon={UserRound}>Вы в гостевом режиме. Войдите под своим именем, чтобы настроить профиль, уведомления и торговые параметры.</Callout>
+        </Panel>
+        <LanguagePanel />
+      </div>
     );
   }
 
   const name = user!.traderName!;
   const role = profile?.role ?? user!.role;
   const stats = profile?.stats;
+  // Staff who don't trade (partners / curators with no own trades) don't need empty trade tiles and an empty
+  // broker report on their profile; a trader always sees them (an empty state is the useful hint there).
+  const trades = role === "trader" || isLoading || (stats?.total ?? 0) > 0;
+  const staff = role !== "trader";
 
   return (
     <div className="flex flex-col gap-4">
@@ -203,8 +224,10 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
         </div>
       </Panel>
 
+      <LanguagePanel />
+
       {/* Activity tiles */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      {trades && <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {isLoading ? (
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
@@ -212,25 +235,25 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
             <StatCard label="Сделок в журнале" value={stats ? stats.total.toLocaleString("ru-RU") : "—"}
               hint={stats?.firstTrade ? `с ${fmtDate(stats.firstTrade)}` : undefined} />
             <StatCard label="За 30 дней" value={stats ? stats.last30.toLocaleString("ru-RU") : "—"}
-              tone={stats && stats.last30 > 0 ? "accent" : "neutral"} hint="сделок" />
+              tone={stats && stats.last30 > 0 ? "accent" : "neutral"} hint={stats ? pluralRu(stats.last30, "сделка", "сделки", "сделок") : "сделок"} />
             <StatCard label="Последняя сделка" value={stats ? fmtDaysAgo(stats.lastTrade) : "—"}
               hint={stats?.lastTrade ? fmtDate(stats.lastTrade) : undefined} />
           </>
         )}
-      </div>
+      </div>}
 
       {/* Broker statistics from PropReports (Trade Performance report) */}
-      <PerformanceReportPanel trader={name} compact />
+      {trades && <PerformanceReportPanel trader={name} compact />}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <Panel title="Моя команда" description="Кто ведёт вас на деске" icon={Users}>
+        <Panel title="Моя команда" description={staff ? "Назначения и подопечные" : "Кто ведёт вас на деске"} icon={Users} fill>
           {isLoading ? (
             <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-8 rounded-xl" />)}</div>
           ) : profile ? (
             <div className="divide-y divide-border">
-              <TeamLine label="Куратор" name={profile.assignedCurator} />
-              <TeamLine label="Риск-менеджер" name={profile.assignedRiskManager} />
-              <TeamLine label="Ментор" name={profile.assignedMentor} />
+              {(!staff || profile.assignedCurator) && <TeamLine label="Куратор" name={profile.assignedCurator} />}
+              {(!staff || profile.assignedRiskManager) && <TeamLine label="Риск-менеджер" name={profile.assignedRiskManager} />}
+              {(!staff || profile.assignedMentor) && <TeamLine label="Ментор" name={profile.assignedMentor} />}
               {can("users.read.team") && (
                 <div className="pt-3">
                   <div className="micro-label mb-2">Мои подопечные</div>
@@ -249,7 +272,7 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
           )}
         </Panel>
 
-        <Panel title="Безопасность" description="Пароль и активные сессии" icon={ShieldCheck}>
+        <Panel title="Безопасность" description="Пароль и активные сессии" icon={ShieldCheck} fill>
           <div className="flex flex-col gap-2">
             <button type="button" onClick={() => setPwOpen(true)}
               className="lift flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-3 text-left hover:bg-[var(--glass-hover-bg)]">

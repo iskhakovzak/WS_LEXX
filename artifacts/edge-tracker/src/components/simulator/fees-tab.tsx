@@ -18,6 +18,8 @@ function pct(v: number | null | undefined): string {
   return v == null || !Number.isFinite(v) ? "—" : `${Math.round(v * 100)}%`;
 }
 const cents = (v: number | null | undefined) => (v == null ? "—" : `${v.toFixed(1)} ¢`);
+/** Fees in dollars with cents and thousands separators: «$106,170.95». */
+export const usd2 = (v: number) => `$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 /** 0 → transparent, 1+ → full warn tint. Colour plus the number, never colour alone. */
 function heat(v: number | null): string | undefined {
@@ -80,12 +82,12 @@ export function FeesBlock({
             {grossPositive && eatenPct != null ? (
               <>Комиссии съедают <span className={cn("tabular-nums", eatenPct >= 0.5 ? "text-down" : eatenPct >= 0.25 ? "text-warn" : "text-foreground")}>{pct(eatenPct)}</span> <TermTooltip term="gross">брутто</TermTooltip></>
             ) : (
-              <>Комиссии за период: <span className="tabular-nums">${fact.fees.toFixed(2)}</span></>
+              <>Комиссии за период: <span className="tabular-nums">{usd2(fact.fees)}</span></>
             )}
           </p>
           <p className="mt-1 text-sm text-muted-foreground tabular-nums">
-            Брутто {fmtUsd(fact.gross)} → нетто <span className={cn("font-medium", toneOf(fact.net) === "down" ? "text-down" : "text-foreground")}>{fmtUsd(fact.net)}</span>: брокер забрал ${fact.fees.toFixed(2)} за {sdeal(fact.trades)}
-            {fact.trades ? ` (≈ $${(fact.fees / fact.trades).toFixed(2)} на сделку)` : ""}
+            Брутто {fmtUsd(fact.gross)} → нетто <span className={cn("font-medium", toneOf(fact.net) === "down" ? "text-down" : "text-foreground")}>{fmtUsd(fact.net)}</span>: брокер забрал {usd2(fact.fees)} за {sdeal(fact.trades)}
+            {fact.trades ? ` (≈ ${usd2(fact.fees / fact.trades)} на сделку)` : ""}
           </p>
         </div>
       </div>
@@ -195,7 +197,7 @@ function PlanTr({
         {row.note && <span className="block text-xs text-muted-foreground">{row.note}</span>}
         {editor}
       </td>
-      <td className="text-right">${s.fees.toFixed(2)}</td>
+      <td className="text-right">{usd2(s.fees)}</td>
       <td className={cn("text-right font-medium", s.net > 0 ? "text-up" : s.net < 0 ? "text-down" : "")}>{fmtUsd(s.net)}</td>
       <td className="text-right">{s.gross > 0 ? pct(s.feePctOfGross) : "—"}</td>
       <td className="text-right">{cents(s.breakEvenCents)}</td>
@@ -260,7 +262,7 @@ function GroupTable({ title, rows, description, keyLabel, defaultSort = "order",
                   <td className="whitespace-nowrap font-medium">{r.key}</td>
                   <td className="text-right">{r.trades}</td>
                   <td className={cn("text-right", r.gross > 0 ? "text-up" : r.gross < 0 ? "text-down" : "")}>{fmtUsd(r.gross)}</td>
-                  <td className="text-right">${r.fees.toFixed(2)}</td>
+                  <td className="text-right">{usd2(r.fees)}</td>
                   <td className={cn("text-right font-medium", r.net > 0 ? "text-up" : r.net < 0 ? "text-down" : "")}>{fmtUsd(r.net)}</td>
                   <td className="text-right" style={{ backgroundColor: heat(r.feePctOfGross) }}>{pct(r.feePctOfGross)}</td>
                   <td className="text-right">{cents(r.breakEvenCents)}</td>
@@ -314,7 +316,7 @@ function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoa
         )}
         {data && data.byType.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {data.byType.map((b) => <Pill key={b.key} tone="neutral">{b.label} ${b.amount.toFixed(2)} · {pct(b.share)}</Pill>)}
+            {data.byType.map((b) => <Pill key={b.key} tone="neutral">{b.label} {usd2(b.amount)} · {pct(b.share)}</Pill>)}
           </div>
         )}
       </CollapsibleContent>
@@ -353,7 +355,7 @@ function EatenTable({ rows }: { rows: EatenRow[] }) {
               <td><Link href={links.trade(e.id)} className="font-medium text-primary underline-offset-4 hover:underline">{e.ticker}</Link></td>
               <td className="text-right">{e.qty ?? "—"}</td>
               <td className="text-right text-up">{fmtUsd(e.gross)}</td>
-              <td className="text-right">${e.fees.toFixed(2)}</td>
+              <td className="text-right">{usd2(e.fees)}</td>
               <td className="text-right font-medium text-down">{fmtUsd(e.net)}</td>
             </tr>
           ))}

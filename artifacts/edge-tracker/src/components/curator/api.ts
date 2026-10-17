@@ -57,15 +57,28 @@ export type TraderSignal = {
   eod: { prevDay: string; prevTraded: boolean; prevClosed: boolean; todayTraded: boolean; todayClosed: boolean; pending: number; lastClosed: string | null; lastReviewedAt: string | null; lastScore: number | null };
   weekly: { currentStatus: string | null; submittedPending: boolean; lastReviewedWeek: string | null; lastReviewedAt: string | null };
   academy: { openActions: number; overdueActions: number; lastOneOnOne: string | null; daysSinceOneOnOne: number | null; pendingSubmissions: number; activeGoals: number };
-  breaches: { unreviewed: number; last30: number; lastDate: string | null };
+  /** week — breach alerts since Monday (NY); absent on older API builds. */
+  breaches: { unreviewed: number; last30: number; week?: number; lastDate: string | null };
   lastNote: { body: string; author: string; createdAt: string } | null;
   lastTradeDate: string | null;
   nextAction: NextAction;
+  /** users.assigned_curator — the trader's group; null = «Без куратора». Absent on older API builds. */
+  curator?: string | null;
+  /** users.name_latin — Latin alias for search. */
+  nameLatin?: string | null;
+  /** Month to date (NY): net P&L and trades. */
+  month?: { pnl: number | null; trades: number };
+  /** Latest sign of life (activity, closed day, weekly report, trade day). */
+  lastActivityAt?: string | null;
 };
 
 export type RiskBrief = { trader: string; state: string; label: string; message: string; pnlNet: number | null; dailyPct: number | null; weeklyPct: number | null; drawdownPct: number | null };
 export type QueueKind = "eod" | "weekly" | "academy" | "breach";
-export type QueueItem = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; overdue: boolean; slaHours: number; old?: boolean };
+/** `eodId` + `date` (closed days) let the cabinet open the review sheet in place; absent on older API builds. */
+export type QueueItem = {
+  kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string;
+  overdue: boolean; slaHours: number; old?: boolean; date?: string | null; eodId?: number;
+};
 
 export type TodayPayload = {
   date: string; prevDay: string; phase: Phase; nyMinutes: number; scope: Scope; wards: number; traders: string[]; plansAvailable: boolean;
@@ -116,6 +129,8 @@ export type ProfilePayload = {
     alerts: { kind: string; label: string; level: "warn" | "breach"; used: number; limit: number | null; pct: number | null; detail?: string }[];
   } | null;
   breaches: Breach[];
+  /** Closed, unreviewed and not archived days (oldest first) — reviewed right from the profile. Absent on older API builds. */
+  eodPending?: { id: number; date: string; closedAt: string | null; hoursWaiting: number }[];
   eodDays: { id: number; date: string; closedAt: string | null; reviewedAt: string | null; reviewedBy: string | null; discipline: number | null; curatorScore: number | null; curatorComment: string | null }[];
   weeks: { id: number; week: string; weekStart: string; status: string; submittedAt: string | null; reviewedAt: string | null; score: number | null }[];
   actions: { id: number; owner: string; title: string; dueOn: string | null; status: string; overdue: boolean }[];
@@ -180,7 +195,9 @@ export const curatorApi = {
     fetch(apiUrl(`/api/curator/today${scopeQ(scope)}${includeOld ? `${scope === "auto" ? "?" : "&"}old=1` : ""}`)).then((r) => asJson<TodayPayload>(r)),
   archiveOldQueue: (scope: Scope | "auto", olderThanDays?: number) =>
     fetch(apiUrl(`/api/curator/queue/archive-old`), json("POST", { ...(scope === "auto" ? {} : { scope }), ...(olderThanDays ? { olderThanDays } : {}) }))
-      .then((r) => asJson<{ archived: number; byKind: Record<string, number>; olderThanDays: number }>(r)),
+      .then((r) => asJson<{ archived: number; byKind: Record<string, number>; olderThanDays: number; ids?: string[] }>(r)),
+  restoreQueue: (ids: string[]) =>
+    fetch(apiUrl(`/api/curator/queue/restore`), json("POST", { ids })).then((r) => asJson<{ restored: number }>(r)),
   traders: (scope: Scope | "auto") => fetch(apiUrl(`/api/curator/traders${scopeQ(scope)}`)).then((r) => asJson<TradersPayload>(r)),
   profile: (trader: string) => fetch(apiUrl(`/api/curator/trader/${enc(trader)}`)).then((r) => asJson<ProfilePayload>(r)),
   addNote: (body: { trader: string; body: string; kind: NoteKind; pinned?: boolean }) =>
@@ -188,6 +205,7 @@ export const curatorApi = {
   patchNote: (id: number, body: { body?: string; kind?: NoteKind; pinned?: boolean }) =>
     fetch(apiUrl(`/api/curator/notes/${id}`), json("PATCH", body)).then((r) => asJson<CuratorNote>(r)),
   archiveNote: (id: number) => fetch(apiUrl(`/api/curator/notes/${id}/archive`), { method: "POST" }).then((r) => asJson<{ ok: true }>(r)),
+  restoreNote: (id: number) => fetch(apiUrl(`/api/curator/notes/${id}/restore`), { method: "POST" }).then((r) => asJson<CuratorNote>(r)),
   breaches: (trader: string | null, days = 90) =>
     fetch(apiUrl(`/api/risk/breaches?days=${days}${trader ? `&trader=${enc(trader)}` : ""}`)).then((r) => asJson<BreachesPayload>(r)),
   review: (alertId: number, body: { reason: string; comment: string | null; actions: { id?: string; title: string; dueOn: string | null; status?: string }[]; consequence: string }) =>
@@ -211,8 +229,9 @@ const retryUnlessMissing = (count: number, err: unknown) => !(err instanceof Not
 export function useCuratorToday(scope: Scope | "auto") {
   return useQuery({ queryKey: curatorKeys.today(scope), queryFn: () => curatorApi.today(scope), refetchInterval: 60_000, retry: retryUnlessMissing });
 }
-export function useCuratorTraders(scope: Scope | "auto") {
-  return useQuery({ queryKey: curatorKeys.traders(scope), queryFn: () => curatorApi.traders(scope), staleTime: 30_000, retry: retryUnlessMissing });
+/** `enabled` — only the «Мои трейдеры» list needs it (the tab count comes from /today), so «Сегодня» doesn't pay for a second roster build. */
+export function useCuratorTraders(scope: Scope | "auto", enabled = true) {
+  return useQuery({ queryKey: curatorKeys.traders(scope), queryFn: () => curatorApi.traders(scope), enabled, staleTime: 30_000, retry: retryUnlessMissing });
 }
 export function useCuratorProfile(trader: string | null) {
   return useQuery({ queryKey: curatorKeys.profile(trader ?? ""), queryFn: () => curatorApi.profile(trader!), enabled: !!trader, retry: retryUnlessMissing });
@@ -226,6 +245,34 @@ export function useRiskTemplates(enabled = true) {
 export function useIdpMetrics(enabled: boolean) {
   return useQuery({ queryKey: curatorKeys.idpMetrics, queryFn: curatorApi.idpMetrics, enabled, staleTime: 10 * 60_000, retry: retryUnlessMissing });
 }
+export type PatternBrief = { key: string; title: string; n: number; cost: number | null; severity: string | null };
+
+/**
+ * Top behaviour patterns for many traders in ONE request (GET /api/behavior/top-patterns) — the card grid used to
+ * fire a full /api/behavior report per card. Returns null for the map on an API build without the endpoint.
+ */
+export function useTopPatterns(traders: readonly string[], from: string, to: string, enabled: boolean) {
+  const list = [...traders].sort();
+  return useQuery({
+    queryKey: [...curatorKeys.all, "top-patterns", from, to, list.join(",")],
+    queryFn: async (): Promise<Record<string, PatternBrief[]> | null> => {
+      const r = await fetch(apiUrl(`/api/behavior/top-patterns?traders=${enc(list.join(","))}&from=${from}&to=${to}&limit=2`));
+      if (r.status === 404) return null;
+      const body = await asJson<{ traders: Record<string, PatternBrief[]> }>(r);
+      return body.traders ?? {};
+    },
+    enabled: enabled && list.length > 0,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+}
+
+/** Reassign a trader to another curator's group (audited admin-console route; users.manage). */
+export async function reassignCurator(userId: number, curator: string | null, reason: string): Promise<{ ok: true; name: string }> {
+  const r = await fetch(apiUrl(`/api/admin/console/people/${userId}/curator`), json("POST", { curator, reason }));
+  return asJson<{ ok: true; name: string }>(r);
+}
+
 export function useBehaviorPatterns(trader: string, from: string, to: string, enabled: boolean) {
   return useQuery({ queryKey: [...curatorKeys.behavior(trader), from, to], queryFn: () => curatorApi.behavior(trader, from, to), enabled, staleTime: 5 * 60_000, retry: false });
 }

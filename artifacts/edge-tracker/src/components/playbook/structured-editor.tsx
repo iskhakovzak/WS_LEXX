@@ -10,6 +10,7 @@ import { Check, ImagePlus, LayoutTemplate, Loader2, Split, StickyNote, Target, T
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
 import { InlineMd } from "@/components/playbook-sub/bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
@@ -41,9 +42,11 @@ function useAutosave(entryId: number) {
     pending.current = {};
     setState("saving");
     try {
-      await pbRequest(`/api/playbook/${entryId}`, { method: "PATCH", json: body });
+      // keepalive: the request survives a tab close / navigation that triggered the flush (browser cap ≈ 64 KB).
+      await pbRequest(`/api/playbook/${entryId}`, { method: "PATCH", json: body, keepalive: JSON.stringify(body).length < 60_000 });
       setState("saved");
       qc.invalidateQueries({ queryKey: ["playbook-revisions", entryId] });
+      qc.invalidateQueries({ queryKey: ["playbook-activity", "setup", entryId] });
       qc.invalidateQueries({ queryKey: ["playbook-children"] });
     } catch (e) {
       setState("error");
@@ -61,10 +64,27 @@ function useAutosave(entryId: number) {
   }, [entryId, flush, qc]);
 
   React.useEffect(() => () => { void flush(); }, [flush]);
+  // Draft safety: send pending edits when the tab is hidden; warn before closing the tab with a save in flight.
+  React.useEffect(() => {
+    const onHide = () => { if (document.visibilityState === "hidden") void flush(); };
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (!Object.keys(pending.current).length) return;
+      void flush();
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("beforeunload", onBeforeUnload);
+    };
+  }, [flush]);
   return { queue, flush, state };
 }
 
-const TEMPLATES: { id: string; label: string; fields: Partial<Record<StructuredKey, string>> }[] = [
+/** Starter texts for an empty card (the «Описание» tab and the new-setup form). */
+export const SETUP_TEMPLATES: { id: string; label: string; fields: Partial<Record<StructuredKey, string>> }[] = [
   {
     id: "breakout", label: "Пробой уровня",
     fields: {
@@ -175,7 +195,7 @@ export function StructuredDescription({
   const meta = (
     <div className="flex flex-wrap items-center gap-2">
       <Select value={entry.horizon ?? "__none"} onValueChange={(v) => queue({ horizon: v === "__none" ? null : v }, true)} disabled={!canEdit || !live}>
-        <SelectTrigger className="h-8 w-40 text-sm" aria-label="Горизонт"><SelectValue placeholder="Горизонт" /></SelectTrigger>
+        <SelectTrigger className="h-8 w-44 text-sm" aria-label="Горизонт"><SelectValue placeholder="Горизонт" /></SelectTrigger>
         <SelectContent>
           <SelectItem value="__none">Горизонт: любой</SelectItem>
           {Object.entries(HORIZON_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
@@ -193,8 +213,13 @@ export function StructuredDescription({
   );
 
   return (
-    <div className="grid min-w-0 gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]" onPaste={onPaste}>
-      <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
+    // Sized by its own width, not the viewport: the checklist sits beside the card only when the card keeps ≥ ~700px
+    // (1920 screens). Narrower (1280–1440): one column — card, then checklist / profile side by side, then notes and
+    // screenshots (the left column dissolves via `contents` so `order` can slot the aside under the card).
+    <div className="@container min-w-0" onPaste={onPaste}>
+    <div className="grid min-w-0 gap-[var(--grid-gap)] @[68rem]:grid-cols-[minmax(0,1fr)_340px] @[68rem]:items-start">
+      <div className="contents @[68rem]:flex @[68rem]:min-w-0 @[68rem]:flex-col @[68rem]:gap-[var(--grid-gap)]">
+        <div className="order-1 min-w-0 @[68rem]:order-none">
         {live ? (
           <DocSection title="Карточка сетапа" icon={Target} actions={meta}>
             {canEdit && !anyStructured && (
@@ -208,7 +233,7 @@ export function StructuredDescription({
                   <>
                     <LayoutTemplate className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
                     <span className="text-sm text-muted-foreground">Шаблон:</span>
-                    {TEMPLATES.map((t) => (
+                    {SETUP_TEMPLATES.map((t) => (
                       <button key={t.id} type="button" onClick={() => queue(t.fields, true)} className="chip min-h-7 px-2.5 text-xs">{t.label}</button>
                     ))}
                   </>
@@ -216,20 +241,23 @@ export function StructuredDescription({
               </div>
             )}
             {canEdit ? (
-              <div className="grid gap-3 md:grid-cols-2">
-                {STRUCTURED.map((f) => (
-                  <FieldEditor key={`${entry.id}-${f.key}`} label={f.label} tone={f.tone} placeholder={f.placeholder} value={entry[f.key] ?? ""} onChange={(v) => queue({ [f.key]: v || null })} />
-                ))}
+              // Two columns only when the card itself is wide enough (it shares the row with the checklist aside).
+              <div className="@container">
+                <div className="grid gap-3 @xl:grid-cols-2">
+                  {STRUCTURED.map((f) => (
+                    <FieldEditor key={`${entry.id}-${f.key}`} label={f.label} tone={f.tone} placeholder={f.placeholder} value={entry[f.key] ?? ""} onChange={(v) => queue({ [f.key]: v || null })} />
+                  ))}
+                </div>
               </div>
             ) : anyStructured ? (
-              <div className="grid gap-2 md:grid-cols-2">
+              <div className="@container"><div className="grid gap-2 @xl:grid-cols-2">
                 {filled.map((f) => (
                   <div key={f.key} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
                     <div className={cn("mb-0.5 text-xs font-medium", toneText(f.tone))}>{f.label}</div>
                     <div className="whitespace-pre-wrap text-sm leading-relaxed text-foreground"><InlineMd text={entry[f.key] ?? ""} /></div>
                   </div>
                 ))}
-              </div>
+              </div></div>
             ) : entry.conditions ? (
               <ThesisView text={entry.conditions} />
             ) : (
@@ -253,7 +281,9 @@ export function StructuredDescription({
             render={(t) => <ThesisView text={t} />}
           />
         )}
+        </div>
 
+        <div className="order-3 min-w-0 @[68rem]:order-none">
         {live && canEdit ? (
           <DocSection title="Заметки и типичные ошибки" icon={StickyNote}>
             <FieldEditor label="" tone="neutral" placeholder="Нюансы, типичные ошибки, что отличает эталон от «почти того же»" value={entry.notes ?? ""} onChange={(v) => queue({ notes: v || null })} rows={4} />
@@ -261,9 +291,11 @@ export function StructuredDescription({
         ) : (
           <InlineTextSection entry={entry} field="notes" title="Заметки и типичные ошибки" icon={StickyNote} placeholder="Нюансы, типичные ошибки" empty="Добавьте заметки: нюансы, типичные ошибки." />
         )}
+        </div>
 
         {(entry.screenshotUrl || media.length > 0 || (canEdit && live)) && (
           <DocSection
+            className="order-4 min-w-0 @[68rem]:order-none"
             title="Скриншоты"
             icon={ImagePlus}
             actions={canEdit && live ? (
@@ -277,7 +309,19 @@ export function StructuredDescription({
             {media.length > 0 && (
               <div className={cn("grid grid-cols-2 gap-2 lg:grid-cols-3", entry.screenshotUrl && "mt-3")}>
                 {media.map((m) => (
-                  <MediaTile key={m.id} m={m} canEdit={canEdit && live} onRemove={() => queue({ media: media.filter((x) => x.id !== m.id) }, true)} />
+                  <MediaTile
+                    key={m.id}
+                    m={m}
+                    canEdit={canEdit && live}
+                    onRemove={() => {
+                      const before = media;
+                      queue({ media: media.filter((x) => x.id !== m.id) }, true);
+                      toast({
+                        title: "Скриншот убран",
+                        action: <ToastAction altText="Вернуть скриншот" onClick={() => queue({ media: before }, true)}>Вернуть</ToastAction>,
+                      });
+                    }}
+                  />
                 ))}
               </div>
             )}
@@ -290,7 +334,8 @@ export function StructuredDescription({
           </DocSection>
         )}
       </div>
-      {aside && <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label="Чеклист и профиль">{aside}</aside>}
+      {aside && <aside className="order-2 grid min-w-0 content-start items-start gap-[var(--grid-gap)] @[44rem]:grid-cols-2 @[68rem]:order-none @[68rem]:grid-cols-1" aria-label="Чеклист и профиль">{aside}</aside>}
+    </div>
     </div>
   );
 }

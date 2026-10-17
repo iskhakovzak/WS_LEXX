@@ -54,11 +54,13 @@ function Cell({
     </>
   );
   const cls = "flex min-w-0 flex-col gap-0.5 lg:border-l lg:border-[var(--glass-border)] lg:pl-4";
+  // Narrow cells truncate the hint: keep the full text reachable on hover.
+  const tip = title ?? (typeof hint === "string" ? hint : undefined);
   if (href) {
     return (
       <Link
         href={href}
-        title={title}
+        title={tip}
         className={cn(cls, "rounded-lg transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
       >
         {body}
@@ -66,7 +68,7 @@ function Cell({
     );
   }
   return (
-    <div className={cls} title={title}>
+    <div className={cls} title={tip}>
       {body}
     </div>
   );
@@ -175,7 +177,9 @@ export function DashboardHeader({
   customize: ReactNode;
 }) {
   const now = new Date();
-  const dateLabel = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  const rawDate = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  // «Суббота, 17 октября»: only the first letter is capital (CSS `capitalize` would also give «Октября»).
+  const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
   const t = data?.today;
   const w = data?.week;
   const loading = isLoading && !data;
@@ -200,14 +204,14 @@ export function DashboardHeader({
 
   return (
     <section aria-labelledby="dash-hero-title" className="glass-panel rounded-2xl p-[var(--panel-p)]">
-      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(250px,1.25fr)_repeat(4,minmax(0,1fr))]">
+      <div className="grid items-center gap-x-4 gap-y-4 sm:grid-cols-2 lg:grid-cols-[minmax(270px,1.35fr)_repeat(4,minmax(0,1fr))]">
         <div className="flex min-w-0 items-start justify-between gap-2 sm:col-span-2 lg:col-span-1">
           <div className="min-w-0">
-            <p className="truncate text-xs capitalize text-muted-foreground">
+            <p className="truncate text-xs text-muted-foreground">
               {dateLabel}
               {data && data.market.nyDate !== data.date ? ` · торговый день ${shortDate(data.date)}` : ""}
             </p>
-            <h1 id="dash-hero-title" className="truncate text-xl font-semibold leading-7 tracking-tight">
+            <h1 id="dash-hero-title" className="line-clamp-2 text-xl font-semibold leading-7 tracking-tight [overflow-wrap:anywhere]">
               {greeting(now)}
               {userName ? `, ${userName}` : ""}
             </h1>

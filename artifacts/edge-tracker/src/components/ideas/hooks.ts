@@ -115,7 +115,8 @@ export function useIdeaMutations() {
 
   const remove = useMutation({
     mutationFn: (id: number) => sendJson(`${BASE}/api/trade-ideas/${id}`, "DELETE"),
-    onSuccess: () => { invalidate(); toast({ title: "Идея удалена" }); },
+    // The page shows an undo toast («Идея … удалена · Отменить»), so no second toast here.
+    onSuccess: () => { invalidate(); },
     onError: fail("Ошибка удаления"),
   });
 

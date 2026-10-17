@@ -17,6 +17,7 @@ import { currentWeekKey, fmtDay, isWeekKey, reviewToText, shiftWeek, useWeeklyRe
 import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
+import { PersonSelect } from "@/components/people/person-select";
 
 type View = "trader" | "curator" | "partners";
 const VIEWS: View[] = ["trader", "curator", "partners"];
@@ -150,12 +151,7 @@ export default function WeeklyReviewPage() {
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {staff && perTrader && (
-            <Select value={trader ?? ""} onValueChange={(v) => setTrader(v)}>
-              <SelectTrigger className="w-44" aria-label="Трейдер"><SelectValue placeholder="Трейдер" /></SelectTrigger>
-              <SelectContent>
-                {traders.map((u) => <SelectItem key={u.name} value={u.name}>{u.name}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders.map((u) => u.name)} className="w-44" ariaLabel="Трейдер" />
           )}
           {perTrader && (
             <DropdownMenu>

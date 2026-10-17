@@ -3,7 +3,8 @@ import { ChevronRight } from "lucide-react";
 import type { Trade } from "@workspace/api-client-react";
 import { Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { normalizeResult, resultLabel } from "@/lib/trade-result";
+import { normalizeResult } from "@/lib/trade-result";
+import { EVENT_LABEL, RESULT_LABEL, resultKey } from "@/components/trades/trade-utils";
 import { entryKey, fmtValue, valueOf, type Metric } from "./metrics";
 
 export function resultTone(r: string) {
@@ -14,7 +15,7 @@ export function resultTone(r: string) {
 function sideLabel(side: string | null | undefined): string | null {
   const s = (side ?? "").trim().toLowerCase();
   if (!s) return null;
-  return s.startsWith("s") ? "Short" : s.startsWith("l") ? "Long" : side!.trim();
+  return s.startsWith("s") ? "Шорт" : s.startsWith("l") ? "Лонг" : side!.trim();
 }
 
 /** One compact trade row linking to the trade in the journal (/trades?highlight=id). */
@@ -42,11 +43,11 @@ export function TradeLinkRow({
             <span className="font-semibold text-foreground">{trade.ticker}</span>
             {side && <span className="text-xs text-muted-foreground">{side}</span>}
             <Pill tone={resultTone(trade.result)} className="px-1.5 py-0 text-2xs">
-              {trade.result?.trim().toLowerCase() === "open" ? "Открыта" : resultLabel(trade.result)}
+              {RESULT_LABEL[resultKey(trade.result)]}
             </Pill>
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {[showDate ? date : null, trade.setup || trade.eventType, trade.trader].filter(Boolean).join(" · ") || "—"}
+            {[showDate ? date : null, trade.setup || (trade.eventType ? EVENT_LABEL[trade.eventType] ?? trade.eventType : null), trade.trader].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
         <span className={cn("shrink-0 text-sm font-semibold tabular-nums", v == null ? "text-muted-foreground" : toneOf(v) === "up" ? "text-up" : toneOf(v) === "down" ? "text-down" : "text-foreground")}>

@@ -40,7 +40,7 @@ export function NotificationBell({ className }: { className?: string }) {
           type="button"
           className={cn(iconBtn, className)}
           title="Уведомления"
-          aria-label={unread > 0 ? `Уведомления: ${unread} непрочитанных${critical ? ", есть критичные" : ""}` : "Уведомления"}
+          aria-label={unread > 0 ? `Уведомления: непрочитанных — ${unread}${critical ? ", есть критичные" : ""}` : "Уведомления"}
         >
           <Bell className={cn("h-4 w-4", critical && "text-down")} aria-hidden="true" />
           {unread > 0 && (
@@ -87,7 +87,7 @@ export function NotificationBell({ className }: { className?: string }) {
         <div className="max-h-[70vh] overflow-y-auto overscroll-contain p-1.5">
           {list.isLoading ? (
             <div role="status" className="space-y-2 p-2">
-              {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--glass-bg)]" />)}
+              {[0, 1, 2].map((i) => <div key={i} className="h-12 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
               <span className="sr-only">Загрузка…</span>
             </div>
           ) : list.isError ? (

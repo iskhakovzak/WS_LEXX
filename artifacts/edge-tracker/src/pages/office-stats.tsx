@@ -18,6 +18,7 @@ import {
 import { StrategyMonthMatrix, StrategyMultiples, StrategyTable, TotalNetByStrategy, VolumeShare } from "@/components/office-stats/strategies";
 import { BestWorstDays, DailyHistogram, StreaksPanel, Tickers, TimeOfDay, Underwater, WeekdayProfile } from "@/components/office-stats/time-risk";
 import { CapitalPanel, CsvButton, RulesPopover, TradersTable } from "@/components/office-stats/team";
+import { MonthlyPanel } from "@/components/office-stats/monthly";
 
 type PeriodMode = "ytd" | "quarter" | "month" | "custom";
 
@@ -67,25 +68,34 @@ export default function OfficeStatsPage() {
   const [month, setMonth] = React.useState<number>(focusYear === ty ? Number(today.slice(5, 7)) : 12);
   const [custom, setCustom] = React.useState<{ from: string; to: string }>({ from: `${focusYear}-01-01`, to: minYmd(`${focusYear}-12-31`, today) });
 
+  // A month / quarter picked for an earlier year can lie in the future of the current one (December → 2026 in
+  // October): clamp it to today, otherwise the period would start after it ends.
+  const tm = Number(today.slice(5, 7));
+  const effMonth = focusYear === ty ? Math.min(month, tm) : month;
+  const effQuarter = focusYear === ty ? Math.min(quarter, curQ) : quarter;
+
   const period = React.useMemo(() => {
     const y = focusYear;
+    const quarter = effQuarter;
+    const month = effMonth;
     const cap = (ymd: string) => minYmd(ymd, today);
     if (mode === "quarter") { const m0 = (quarter - 1) * 3 + 1; return { from: `${y}-${pad2(m0)}-01`, to: cap(`${y}-${pad2(m0 + 2)}-${lastDay(y, m0 + 2)}`) }; }
     if (mode === "month") return { from: `${y}-${pad2(month)}-01`, to: cap(`${y}-${pad2(month)}-${lastDay(y, month)}`) };
     if (mode === "custom" && custom.from && custom.to) return custom.from <= custom.to ? custom : { from: custom.to, to: custom.from };
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
-  }, [mode, quarter, month, custom, focusYear, today]);
+  }, [mode, effQuarter, effMonth, custom, focusYear, today]);
 
-  const periodLabel = mode === "quarter" ? `${quarter} кв. ${focusYear}` : mode === "month" ? `${MONTHS_LONG[month - 1]} ${focusYear}` : mode === "custom" ? `${fmtDay(period.from)} – ${fmtDay(period.to)}` : `С начала ${focusYear}`;
+  const periodLabel = mode === "quarter" ? `${effQuarter} кв. ${focusYear}` : mode === "month" ? `${MONTHS_LONG[effMonth - 1]} ${focusYear}` : mode === "custom" ? `${fmtDay(period.from)} – ${fmtDay(period.to)}` : `С начала ${focusYear}`;
 
   const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
   const data = q.data;
   const isAdmin = data?.role === "admin";
 
-  const [unitPref, setUnitPref] = React.useState<Unit | null>(null);
+  const [unitPref, setUnitPref] = usePersistentState<Unit | null>("office-stats.unit", null);
   const focusSetting = isAdmin ? data.settings.find((s) => s.year === focusYear) : undefined;
   const capitalSet = isAdmin ? !!focusSetting?.capital : data?.role === "member" ? !!data.settings.find((s) => s.year === focusYear)?.hasCapital : false;
-  const unit: Unit = isAdmin ? (unitPref ?? (capitalSet ? "pct" : "usd")) : "pct";
+  // The remembered unit wins, except % for a year without capital (nothing to divide by) — then $.
+  const unit: Unit = isAdmin ? (unitPref === "usd" || (unitPref === "pct" && capitalSet) ? unitPref : capitalSet ? "pct" : "usd") : "pct";
   const view = data ? (data.role === "admin" ? (unit === "usd" ? data.usd : data.pct) : data.pct) : undefined;
   const focus = view?.years.find((y) => y.year === focusYear);
 
@@ -184,15 +194,15 @@ export default function OfficeStatsPage() {
             options={[{ value: "ytd", label: "С начала года" }, { value: "quarter", label: "Квартал" }, { value: "month", label: "Месяц" }, { value: "custom", label: "Свой" }]}
           />
           {mode === "quarter" && (
-            <Segmented<string> ariaLabel="Квартал" size="sm" value={String(quarter)} onChange={(v) => setQuarter(Number(v))}
+            <Segmented<string> ariaLabel="Квартал" size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
               options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: `${n} кв.`, disabled: focusYear === ty && n > curQ }))} />
           )}
           {mode === "month" && (
             <select
               aria-label="Месяц"
-              value={month}
+              value={effMonth}
               onChange={(e) => setMonth(Number(e.target.value))}
-              className="glass-field min-h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
+              className="glass-field h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
             >
               {MONTHS_LONG.map((m, i) => (
                 <option key={m} value={i + 1} disabled={focusYear === ty && i + 1 > Number(today.slice(5, 7))}>{m}</option>
@@ -224,9 +234,9 @@ export default function OfficeStatsPage() {
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (
         <nav ref={navRef} aria-label="Разделы страницы" className="sticky top-2 z-sticky -my-1 flex justify-center">
-          <div className="glass-panel scrollbar-none flex max-w-full gap-0.5 overflow-x-auto rounded-full bg-surface-solid/90 p-1 shadow-sm backdrop-blur-md">
+          <div className="glass-panel scrollbar-none flex h-9 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
             {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
-              <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex min-h-8 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+              <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
                 <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.label}
               </button>
             ))}
@@ -276,6 +286,7 @@ export default function OfficeStatsPage() {
               </div>
             </BentoGrid>
             <CalendarHeatmap ctx={ctx} selected={day} onPickDay={pickDay} onPickMonth={pickMonth} />
+            <MonthlyPanel ctx={ctx} today={data.today} onPickMonth={pickMonth} />
           </Section>
 
           <Section id="strategies" title="Стратегии" hint="классификация по времени входа и выхода — см. «Как считается»">

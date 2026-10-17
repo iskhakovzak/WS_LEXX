@@ -111,18 +111,20 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
                   </fieldset>
                 )}
                 <fieldset>
-                  <legend className="mb-1.5 text-xs text-muted-foreground">Люди</legend>
+                  <legend className="mb-1.5 text-xs text-muted-foreground">Люди{users.size > 0 ? ` · выбрано ${users.size}` : ""}</legend>
                   <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Найти по имени" aria-label="Найти по имени" className="mb-2 h-9" />
                   <ul className="flex max-h-[min(45dvh,360px)] flex-col gap-1 overflow-y-auto">
                     {people.map((u) => (
-                      <li key={u.name} className="flex items-center gap-2 text-sm">
+                      <li key={u.name} className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm hover:bg-[var(--glass-hover-bg)]">
                         <Checkbox id={`sh-${u.name}`} checked={users.has(u.name)} onCheckedChange={() => setUsers((s) => toggle(s, u.name))} />
-                        <label htmlFor={`sh-${u.name}`} className="flex-1">{u.name}</label>
+                        <label htmlFor={`sh-${u.name}`} className="flex min-h-9 flex-1 cursor-pointer items-center">{u.name}</label>
                         <span className="text-xs text-muted-foreground">{u.role === "curator" ? "куратор" : u.role === "admin" ? "админ" : ""}</span>
                       </li>
                     ))}
+                    {people.length === 0 && <li className="px-1 py-3 text-sm text-muted-foreground">Никого не найдено</li>}
                   </ul>
                 </fieldset>
+                {nothingPicked && <p className="text-xs text-[hsl(var(--chart-3))]">Выберите людей или поток — иначе сетап останется личным.</p>}
               </>
             )}
           </div>

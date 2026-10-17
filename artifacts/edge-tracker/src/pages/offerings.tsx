@@ -75,8 +75,8 @@ function readUrl(): { day: string | null; ticker: string | null; tab: Tab | null
 }
 
 function isTypingTarget(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
+  if (!(t instanceof HTMLElement)) return false;
+  const el = t;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || el.getAttribute("role") === "combobox";
 }
 
@@ -374,8 +374,8 @@ export default function OfferingsPage() {
         }
         actions={
           <>
-            <div className="glass-field flex items-center gap-0.5 p-1">
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goDay(-1)} aria-label="Предыдущий торговый день ([)">
+            <div className="glass-field flex h-9 items-center gap-0.5 p-[3px]">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(-1)} aria-label="Предыдущий торговый день ([)">
                 <ChevronLeft aria-hidden="true" />
               </Button>
               <label className="relative">
@@ -390,12 +390,12 @@ export default function OfferingsPage() {
                   aria-label="Выбрать дату"
                 />
               </label>
-              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => goDay(1)} disabled={isLatest} aria-label="Следующий торговый день (])">
+              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => goDay(1)} disabled={isLatest} aria-label="Следующий торговый день (])">
                 <ChevronRight aria-hidden="true" />
               </Button>
             </div>
-            {!isLatest && <Button variant="outline" size="sm" onClick={() => { setDay(todayMarket); setActive(0); }}>К последнему дню</Button>}
-            <Button variant="ghost" size="icon" className="h-9 w-9" onClick={() => void hardRefresh()} disabled={busy} aria-busy={busy} aria-label="Обновить (R)" title="Обновить (R)">
+            {!isLatest && <Button variant="outline" onClick={() => { setDay(todayMarket); setActive(0); }}>К последнему дню</Button>}
+            <Button variant="ghost" size="icon" onClick={() => void hardRefresh()} disabled={busy} aria-busy={busy} aria-label="Обновить (R)" title="Обновить (R)">
               <RefreshCw className={cn(busy && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
           </>
@@ -436,7 +436,7 @@ export default function OfferingsPage() {
           <StatCard loading={listLoading} label={tab === "week" ? "Сделок за 5 дней" : "Сделок в игре"} value={kpi.n}
             hint={kpi.raised > 0 ? `привлекают ${fmtM(kpi.raised)}` : tab === "week" ? `${weekLoaded}/5 дней загружено` : "торгуются в эту сессию"} />
           <StatCard loading={listLoading} label="Сильное давление" value={kpi.strong} tone={kpi.strong ? "down" : "neutral"}
-            hint="скор ≥ 65 — нажмите, чтобы оставить их"
+            hint={filters.minScore === 65 ? "скор ≥ 65 · фильтр включён" : "скор ≥ 65 · нажмите — фильтр"}
             onClick={() => setFilters({ ...filters, minScore: filters.minScore === 65 ? null : 65 })} />
           <StatCard loading={listLoading} label="Средний дисконт" value={kpi.avgDisc != null ? `${kpi.avgDisc.toFixed(1)}%` : "—"}
             hint={kpi.deep ? `${kpi.deep} с дисконтом ≥ 15%` : "к закрытию до сделки"} />

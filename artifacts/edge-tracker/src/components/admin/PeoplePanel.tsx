@@ -4,9 +4,10 @@
  * login blocked) / archived (active=false, soft — nothing is deleted).
  */
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Link } from "wouter";
 import {
-  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Link2, LogOut, MoreHorizontal, Search, Snowflake, Sun,
-  UserCog, UserPlus, Users, X,
+  Archive, ArchiveRestore, Download, GraduationCap, KeyRound, Languages, Link2, LogOut, MoreHorizontal, Search, Snowflake, Sun,
+  UserCog, UserPlus, Users, UsersRound, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -27,12 +28,32 @@ import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { ROLE_LABEL, downloadCsv, isTypingTarget, timeAgo, type DeskPulse } from "./api";
 import {
-  NotDeployedError, useCreatePerson, useMapAccount, usePeople, usePeopleAction, useTiers,
+  NotDeployedError, useCreatePerson, useMapAccount, usePeople, usePeopleAction, useSetNameLatin, useTiers,
   type PeopleActionInput, type PeopleActionKind, type Person, type PersonStatus,
 } from "./console-api";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
 import { TradersTable, type RiskStatus, type TraderFilter } from "./TradersTable";
 import { useUserActions } from "./useUserActions";
+import { profileHref } from "@/components/curator/curator-math";
+import { PersonSelect } from "@/components/people/person-select";
+import { Highlight } from "@/components/people/highlight";
+import { matchText, prepareQuery } from "@/components/people/search";
+
+const NL = {
+  menu: "Латинское имя…",
+  title: (name: string) => `Латинское имя: ${name}`,
+  description: "Для поиска: имя найдётся и по-русски, и латиницей. Это не переименование — в журнале и сделках остаётся прежнее имя.",
+  label: "Латиницей",
+  placeholder: "Например: Zakir Ishakov",
+  save: "Сохранить",
+  clear: "Убрать",
+  saved: (name: string) => `Латинское имя для ${name} сохранено`,
+  removed: (name: string) => `Латинское имя для ${name} убрано`,
+  hint: "латиницей — для поиска",
+  group: (n: number) => `группа · ${n}`,
+  groupTitle: (name: string) => `Открыть группу ${name} в кабинете куратора`,
+  searchPlaceholder: "Имя (рус/лат), счёт или куратор",
+} as const;
 
 export type PeopleView = "manage" | "activity";
 type Filter = "all" | "traders" | "staff" | "active" | "frozen" | "archived" | "nocurator" | "noaccount";
@@ -166,13 +187,27 @@ export function PeoplePanel({
     for (const f of FILTERS) c[f.value] = all.filter((p) => matches(p, f.value)).length;
     return c;
   }, [all]);
-  const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase();
-    return all.filter((p) => matches(p, filter) && (!needle
-      || p.name.toLowerCase().includes(needle)
-      || (p.curator ?? "").toLowerCase().includes(needle)
-      || p.accounts.some((a) => a.toLowerCase().includes(needle))));
-  }, [all, filter, q]);
+  // Cross-script search (RU / EN / UZ, wrong keyboard layout, typos): name, Latin alias, curator, accounts.
+  const pq = useMemo(() => prepareQuery(q), [q]);
+  const hitBy = useMemo(() => {
+    const m = new Map<number, { ranges: [number, number][]; latin: boolean }>();
+    if (pq.empty) return m;
+    for (const p of all) {
+      const byName = matchText(pq, p.name);
+      const byLatin = matchText(pq, p.nameLatin);
+      if (byName || byLatin) m.set(p.id, { ranges: (byName ?? byLatin)!.ranges, latin: !byName });
+      else if (matchText(pq, p.curator) || p.accounts.some((a) => matchText(pq, a))) m.set(p.id, { ranges: [], latin: false });
+    }
+    return m;
+  }, [all, pq]);
+  const filtered = useMemo(() => all.filter((p) => matches(p, filter) && (pq.empty || hitBy.has(p.id))), [all, filter, pq, hitBy]);
+  const groupSize = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of all) if (p.role === "trader" && p.status === "active" && p.curator) m.set(p.curator, (m.get(p.curator) ?? 0) + 1);
+    return m;
+  }, [all]);
+  const setLatin = useSetNameLatin();
+  const [latinFor, setLatinFor] = useState<Person | null>(null);
   const { rows, thProps } = useTableSort(filtered, ACCESSORS, "role", "asc");
 
   // Selection only keeps visible rows.
@@ -248,8 +283,8 @@ export function PeoplePanel({
   const isSelf = (p: Person) => p.name === actor;
 
   const exportCsv = () => downloadCsv(
-    ["Имя", "Роль", "Тир", "Куратор", "Счета PropReports", "Статус", "Последняя активность", "Сделок за 30 дн", "Последний день сделок", "Создан"],
-    rows.map((p) => [p.name, ROLE_LABEL[p.role] ?? p.role, p.tier ? tierName[p.tier] ?? p.tier : "", p.curator ?? "", p.accounts.join(" "), STATUS[p.status].label, p.seen ?? "", p.trades30, p.lastTrade ?? "", p.createdAt ?? ""]),
+    ["Имя", "Латиницей", "Роль", "Тир", "Куратор", "Счета PropReports", "Статус", "Последняя активность", "Сделок за 30 дн", "Последний день сделок", "Создан"],
+    rows.map((p) => [p.name, p.nameLatin ?? "", ROLE_LABEL[p.role] ?? p.role, p.tier ? tierName[p.tier] ?? p.tier : "", p.curator ?? "", p.accounts.join(" "), STATUS[p.status].label, p.seen ?? "", p.trades30, p.lastTrade ?? "", p.createdAt ?? ""]),
     `people-${new Date().toISOString().slice(0, 10)}.csv`,
   );
 
@@ -299,6 +334,7 @@ export function PeoplePanel({
               </DropdownMenuSubContent>
             </DropdownMenuSub>
           )}
+          {touch && <DropdownMenuItem onSelect={() => window.setTimeout(() => setLatinFor(p), 0)}><Languages /> {NL.menu}</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => legacy.setPassword(p)}><KeyRound /> Задать пароль</DropdownMenuItem>}
           {touch && <DropdownMenuItem onSelect={() => ask("sessions", [p])}><LogOut /> Сбросить сессии</DropdownMenuItem>}
           {touch && !self && (
@@ -381,7 +417,8 @@ export function PeoplePanel({
                     value={q}
                     onChange={(e) => setQ(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-                    placeholder="Имя, счёт или куратор"
+                    placeholder={NL.searchPlaceholder}
+                    title="Имя можно вводить по-русски, латиницей, по-узбекски и даже в другой раскладке"
                     aria-label="Поиск по людям"
                     className="pl-9 pr-10"
                   />
@@ -400,8 +437,10 @@ export function PeoplePanel({
                 <BulkBar
                   count={selectedRows.length}
                   curators={curators}
+                  tiers={canTier ? tierList : []}
+                  tierEligible={selectedRows.filter((r) => r.role === "trader" && r.status === "active").length}
                   onClear={() => setSelected(new Set())}
-                  onAction={(kind, opts) => ask(kind, selectedRows, opts)}
+                  onAction={(kind, opts) => ask(kind, kind === "tier" ? selectedRows.filter((r) => r.role === "trader" && r.status === "active") : selectedRows, opts)}
                   canManage={canManage}
                 />
               )}
@@ -456,13 +495,29 @@ export function PeoplePanel({
                           )}
                           <td>
                             <div className="flex min-w-0 items-center gap-1.5">
-                              <span className="truncate font-medium text-foreground">{p.name}</span>
+                              {p.role === "trader" ? (
+                                <Link href={profileHref(p.name)} className="truncate rounded font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Профиль ${p.name} в кабинете куратора`}>
+                                  <Highlight text={p.name} ranges={hitBy.get(p.id)?.latin ? null : hitBy.get(p.id)?.ranges} />
+                                </Link>
+                              ) : (
+                                <span className="truncate font-medium text-foreground"><Highlight text={p.name} ranges={hitBy.get(p.id)?.latin ? null : hitBy.get(p.id)?.ranges} /></span>
+                              )}
                               {isSelf(p) && <span className="text-2xs text-muted-foreground">(вы)</span>}
+                              {p.role !== "trader" && (groupSize.get(p.name) ?? 0) > 0 && (
+                                <Link href={`/curator?view=traders&group=${encodeURIComponent(p.name)}`} title={NL.groupTitle(p.name)} className="chip inline-flex h-6 shrink-0 items-center gap-1 px-2 text-2xs tabular-nums">
+                                  <UsersRound className="h-3 w-3" aria-hidden="true" />{NL.group(groupSize.get(p.name) ?? 0)}
+                                </Link>
+                              )}
                             </div>
+                            {p.nameLatin && (
+                              <div className="truncate text-2xs text-muted-foreground" title={NL.hint}>
+                                <Highlight text={p.nameLatin} ranges={hitBy.get(p.id)?.latin ? hitBy.get(p.id)?.ranges : null} />
+                              </div>
+                            )}
                           </td>
                           <td><Pill tone={roleTone(p.role)}>{ROLE_LABEL[p.role] ?? p.role}</Pill></td>
                           <td>{p.role === "trader" ? (p.tier ? <span>{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
-                          <td>{p.role === "trader" ? (p.curator ?? <span className="text-[hsl(var(--chart-3))]">не назначен</span>) : <span className="text-muted-foreground">—</span>}</td>
+                          <td>{p.role === "trader" ? (p.curator ?? <span className="whitespace-nowrap text-[hsl(var(--chart-3))]">не назначен</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>
                             {p.accounts.length
                               ? <span className="font-mono text-xs tabular-nums" title={p.accounts.join(", ")}>{p.accounts.slice(0, 2).join(", ")}{p.accounts.length > 2 ? ` +${p.accounts.length - 2}` : ""}</span>
@@ -487,6 +542,15 @@ export function PeoplePanel({
       )}
 
       <ReasonDialog state={dialog} onClose={() => setDialog(null)} busy={action.isPending || mapAccount.isPending} />
+      <NameLatinDialog
+        person={latinFor}
+        busy={setLatin.isPending}
+        onClose={() => setLatinFor(null)}
+        onSave={(value) => latinFor && setLatin.mutate({ id: latinFor.id, nameLatin: value }, {
+          onSuccess: (r) => { setLatinFor(null); refreshUsers(); toast({ title: r.nameLatin ? NL.saved(r.name) : NL.removed(r.name) }); },
+          onError: (e) => toast({ title: e instanceof NotDeployedError ? "Нужен перезапуск API" : "Ошибка", description: e.message, variant: "destructive" }),
+        })}
+      />
       {legacy.dialog}
       <AddPersonDialog
         open={addOpen}
@@ -510,23 +574,52 @@ function AccountMatchRow({ account, isNew, traders, onMap }: { account: string; 
       <span className="font-mono text-sm tabular-nums">{account}</span>
       <Pill tone={isNew ? "warn" : "neutral"}>{isNew ? "новый в импорте" : "без трейдера"}</Pill>
       <div className="ml-auto flex items-center gap-2">
-        <Select value={trader} onValueChange={setTrader}>
-          <SelectTrigger className="h-9 w-[180px]" aria-label={`Трейдер для счёта ${account}`}><SelectValue placeholder="Чей счёт?" /></SelectTrigger>
-          <SelectContent>{traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-        </Select>
+        <PersonSelect value={trader} onValueChange={setTrader} options={traders} placeholder="Чей счёт?" ariaLabel={`Трейдер для счёта ${account}`} className="h-9 w-[180px]" align="end" />
         <Button size="sm" disabled={!trader} onClick={() => onMap(account, trader)}>Привязать</Button>
       </div>
     </li>
   );
 }
 
+function NameLatinDialog({ person, busy, onClose, onSave }: { person: Person | null; busy: boolean; onClose: () => void; onSave: (value: string | null) => void }) {
+  const [value, setValue] = useState("");
+  useEffect(() => { if (person) setValue(person.nameLatin ?? ""); }, [person]);
+  const trimmed = value.replace(/\s+/g, " ").trim();
+  const changed = trimmed !== (person?.nameLatin ?? "");
+  return (
+    <Dialog open={!!person} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
+      <DialogContent className="sm:max-w-md">
+        <form onSubmit={(e) => { e.preventDefault(); if (changed && !busy) onSave(trimmed || null); }} className="flex flex-col gap-4" autoComplete="off">
+          <DialogHeader>
+            <DialogTitle>{person ? NL.title(person.name) : ""}</DialogTitle>
+            <DialogDescription>{NL.description}</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-1.5">
+            <Label htmlFor="nl-value" className="text-xs text-muted-foreground">{NL.label}</Label>
+            <Input id="nl-value" value={value} onChange={(e) => setValue(e.target.value)} maxLength={80} placeholder={NL.placeholder} autoFocus spellCheck={false} />
+          </div>
+          <DialogFooter className="gap-2">
+            {person?.nameLatin && <Button type="button" variant="ghost" className="mr-auto" disabled={busy} onClick={() => onSave(null)}>{NL.clear}</Button>}
+            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Отмена</Button>
+            <Button type="submit" disabled={!changed || busy}>{busy ? "Сохраняю…" : NL.save}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function BulkBar({
-  count, curators, onClear, onAction, canManage,
+  count, curators, tiers, tierEligible, onClear, onAction, canManage,
 }: {
   count: number;
   curators: string[];
+  /** Tier ladder when the viewer may assign tiers (scaling.approve), else empty. */
+  tiers: { key: string; name: string }[];
+  /** Selected active traders — the only rows a tier applies to. */
+  tierEligible: number;
   onClear: () => void;
-  onAction: (kind: PeopleActionKind, opts?: { curator?: string | null }) => void;
+  onAction: (kind: PeopleActionKind, opts?: { curator?: string | null; tierKey?: string }) => void;
   canManage: boolean;
 }) {
   return (
@@ -548,6 +641,19 @@ function BulkBar({
           <Button variant="outline" size="sm" onClick={() => onAction("restore")}><ArchiveRestore /> Вернуть</Button>
           <Button variant="outline" size="sm" onClick={() => onAction("sessions")}><LogOut /> Сбросить сессии</Button>
         </>
+      )}
+      {tiers.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" disabled={!tierEligible} title={tierEligible ? `Тир для ${tierEligible} активных трейдеров из выбранных` : "Тир назначается только активным трейдерам"}>
+              <GraduationCap /> Тир{tierEligible && tierEligible !== count ? ` · ${tierEligible}` : ""}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent>
+            <DropdownMenuLabel className="text-xs text-muted-foreground">Назначить тир ({tierEligible})</DropdownMenuLabel>
+            {tiers.map((t) => <DropdownMenuItem key={t.key} onSelect={() => onAction("tier", { tierKey: t.key })}>{t.name}</DropdownMenuItem>)}
+          </DropdownMenuContent>
+        </DropdownMenu>
       )}
       <Button variant="ghost" size="sm" className="ml-auto" onClick={onClear}><X /> Снять выделение</Button>
     </div>

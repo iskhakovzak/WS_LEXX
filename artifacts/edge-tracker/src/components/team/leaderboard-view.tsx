@@ -8,6 +8,10 @@ import { TraderAvatar } from "./trader-avatar";
 import { fmtMoney, fmtPct, fmtR } from "./utils";
 import { METRIC_LABEL, SCORE_PART_LABEL, metricValue, type Metric, type ScorePart, type TraderRow } from "./leaderboard";
 
+/** Scaling tier keys from the API → the desk ladder names. */
+const TIER_NAME: Record<string, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор", lead: "Лид" };
+const tierName = (t: string) => TIER_NAME[t] ?? t;
+
 export function fmtMetric(v: number | null | undefined, metric: Metric): string {
   if (v == null || !Number.isFinite(v)) return "—";
   switch (metric) {
@@ -100,7 +104,7 @@ export function Podium({ rows, metric, onSelect }: { rows: TraderRow[]; metric: 
                 {r.tier && (
                   <>
                     <span aria-hidden="true">·</span>
-                    <span>{r.tier}</span>
+                    <span>{tierName(r.tier)}</span>
                   </>
                 )}
               </div>
@@ -202,7 +206,7 @@ export function LeaderboardList({
                 </span>
                 <span className="block truncate text-xs text-muted-foreground tabular-nums">
                   {r.closed} сд. · WR {fmtPct(r.winRate)} · {r.net != null ? `${fmtMoney(r.net)} нетто` : fmtR(r.totalR)}
-                  {r.tier ? ` · ${r.tier}` : ""}
+                  {r.tier ? ` · ${tierName(r.tier)}` : ""}
                 </span>
               </span>
               <span className="relative hidden h-2 sm:block" aria-hidden="true">

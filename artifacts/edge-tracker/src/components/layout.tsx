@@ -1,6 +1,6 @@
 /**
  * App shell: floating glass sidebar (desktop), floating glass header (logo, command search, NY market
- * clock, theme, notifications, user menu), bottom tab bar + "Ещё" sheet (phones), and subtle,
+ * clock, language, theme, notifications, user menu), bottom tab bar + «More» sheet (phones), and subtle,
  * reduced-motion-aware route transitions.
  */
 import React, { useEffect, useRef } from "react";
@@ -11,7 +11,8 @@ import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/componen
 import { GlobalSearch } from "@/components/global-search";
 import { useAuth } from "@/contexts/auth-context";
 import { MarketClock } from "@/components/shell/market-clock";
-import { NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
+import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
+import { shellI18n } from "@/i18n/ns/shell";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 
@@ -46,35 +47,63 @@ function useScrolledFlag(ref: React.RefObject<HTMLDivElement | null>, resetKey: 
   }, [ref, resetKey]);
 }
 
+/**
+ * The scroller reserves a scrollbar gutter (`scrollbar-gutter: stable`), so page content is centred in a box a few px
+ * narrower than the header above it (3px off at 1920, 6px at the right edge at 1440). Mirror the measured gutter as
+ * `--scroller-gutter` on <main>; the header's wrapper pads by it, so both edges line up. No React state, no re-render.
+ */
+function useScrollerGutter(ref: React.RefObject<HTMLDivElement | null>) {
+  useEffect(() => {
+    const el = ref.current;
+    const host = el?.parentElement;
+    if (!el || !host) return;
+    let last = -1;
+    const sync = () => {
+      const g = Math.max(0, el.offsetWidth - el.clientWidth);
+      if (g === last) return;
+      last = g;
+      host.style.setProperty("--scroller-gutter", `${g}px`);
+    };
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+}
+
 function Logo() {
+  const { t } = shellI18n.useT();
   return (
-    <Link href="/" aria-label="WS_LEXX — на дашборд" className="flex shrink-0 items-center gap-2.5 rounded-xl">
+    <Link href="/" aria-label={t("header.logoAria")} className="flex shrink-0 items-center gap-2.5 rounded-xl">
       <span
         aria-hidden="true"
         className="grid h-9 w-9 place-items-center rounded-[11px] bg-primary-solid text-xs font-bold tracking-tight text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25),0_6px_16px_-8px_hsl(var(--primary)/0.8)]"
       >
         WS
       </span>
-      <span className="hidden text-sm font-semibold tracking-tight text-foreground xl:inline">WS_LEXX</span>
+      <span className="hidden text-sm font-semibold tracking-tight text-foreground @[960px]:inline">WS_LEXX</span>
     </Link>
   );
 }
 
 function Header() {
   const { user } = useAuth();
+  const { t } = shellI18n.useT();
   return (
     // Static bar above the scroller (content never slides under it, so no backdrop blur is needed). `app-header`
     // gives it a solid fallback fill; the scroller's top fade band draws the boundary below it.
     // Same max width + gutters as <Page>, so header edges line up with page content.
-    <div className="mx-auto w-full max-w-[calc(var(--page-max)_+_2_*_var(--page-px))] shrink-0 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] md:px-[var(--page-px)] md:pt-[calc(0.75rem+env(safe-area-inset-top))]">
+    // `@container`: the clock and the search size themselves by the header's width (sidebar open or not), not the viewport.
+    <div className="@container mx-auto w-full max-w-[calc(var(--page-max)_+_2_*_var(--page-px))] shrink-0 px-2 pt-[calc(0.5rem+env(safe-area-inset-top))] md:px-[var(--page-px)] md:pt-[calc(0.75rem+env(safe-area-inset-top))]">
     <header className="app-header glass-thick glass-solid relative z-header grid h-[var(--header-h)] grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 rounded-2xl px-2 md:px-2.5">
       <div className="flex min-w-0 items-center gap-2">
-        <SidebarTrigger aria-label="Показать или скрыть меню" className="chip hidden h-10 w-10 shrink-0 hover:text-foreground md:inline-flex" />
+        <SidebarTrigger aria-label={t("header.toggleMenu")} className="chip hidden h-10 w-10 shrink-0 hover:text-foreground md:inline-flex" />
         <Logo />
         <GlobalSearch />
       </div>
-      <MarketClock className="justify-self-center" />
+      <MarketClock fit="container" className="justify-self-center" />
       <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
+        <LanguageMenu className="hidden md:grid" />
         <ThemeToggle className="hidden md:grid" />
         {user?.traderName && <NotificationBell traderName={user.traderName} />}
         <UserMenu />
@@ -88,9 +117,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const reduce = useReducedMotion();
   const scrollerRef = useRef<HTMLDivElement | null>(null);
+  const { t } = shellI18n.useT();
   // Animate on section change only (sub-paths and query strings keep the page mounted).
   const routeKey = "/" + (location.split("/")[1] ?? "");
   useScrolledFlag(scrollerRef, routeKey);
+  useScrollerGutter(scrollerRef);
 
   return (
     <SidebarProvider>
@@ -98,7 +129,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-skip focus:rounded-full focus:bg-primary-solid focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:text-primary-foreground"
       >
-        Перейти к содержимому
+        {t("header.skipToContent")}
       </a>
       <CloseMobileSidebarOnNavigate location={location} />
       {/* Fixed-height shell: #main-content is the only vertical scroller (route changes reset it to top,
@@ -111,7 +142,9 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </div>
         </Sidebar>
         <main className="relative flex min-h-0 min-w-0 flex-1 flex-col">
-          <Header />
+          <div className="shrink-0 pr-[var(--scroller-gutter,0px)]">
+            <Header />
+          </div>
           <div
             id="main-content"
             ref={scrollerRef}

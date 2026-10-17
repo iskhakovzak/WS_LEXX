@@ -25,6 +25,8 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
   const journalQ = useJournalRange(item?.trader ?? "", item?.date ?? "", item?.date ?? "", open && !!item?.trader);
   const journal = journalQ.entries.find((e) => e.trader === item?.trader && e.date === item?.date) ?? null;
   const reviewed = !!item?.reviewedAt || dayQ.data?.status === "reviewed";
+  // The loaded day is the source of truth (callers outside the queue, e.g. the curator cabinet, don't know the count).
+  const tradesN = dayQ.data?.trades?.length ?? item?.trades ?? 0;
   const [comment, setComment] = useState("");
   const [score, setScore] = useState<number | null>(null);
   useEffect(() => {
@@ -58,7 +60,7 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
             {reviewed && <Pill tone="up">проверен{item?.reviewedBy ? ` · ${item.reviewedBy}` : ""}</Pill>}
           </SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-x-3">
-            <span>{item?.trades ?? 0} {plural(item?.trades ?? 0, "сделка", "сделки", "сделок")} · закрыт {item?.closedAt ? new Date(item.closedAt).toLocaleString("ru-RU") : "—"}</span>
+            <span>{tradesN} {plural(tradesN, "сделка", "сделки", "сделок")} · закрыт {item?.closedAt ? new Date(item.closedAt).toLocaleString("ru-RU") : "—"}</span>
             {item && (
               <Link href={links.journalDay(item.date, item.trader)} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={onClose}>
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />открыть в дневнике

@@ -2,7 +2,8 @@
  * <TradeSparkline/> — a tiny canvas price path of a trade with entry/exit dots, for trade lists.
  * Lazy: data is fetched only once the element is near the viewport (IntersectionObserver), results are
  * cached in memory per trade, so scrolling a list back and forth does not refetch.
- * Reads only: GET /api/trades/:id, GET /api/candles/:ticker/range, GET /api/trades/:id/executions.
+ * Reads only: GET /api/trades/:id, GET /api/candles/:ticker/range (shared per URL), GET /api/trade-executions/batch
+ * (fill times of all rows in one request; falls back to GET /api/trades/:id/executions).
  */
 import * as React from "react";
 import { BASE } from "@/lib/api";
@@ -46,12 +47,62 @@ async function getJson<T>(url: string): Promise<T | null> {
   } catch { return null; }
 }
 
+/** Candles are shared by URL: two trades on the same ticker / day draw from one request. */
+const candleCache = new Map<string, Promise<{ candles: Candle[] } | null>>();
+function getCandles(url: string): Promise<{ candles: Candle[] } | null> {
+  const hit = candleCache.get(url);
+  if (hit) return hit;
+  if (candleCache.size >= MAX_CACHE) { const first = candleCache.keys().next().value; if (first !== undefined) candleCache.delete(first); }
+  const p = getJson<{ candles: Candle[] }>(url).then((r) => { if (!r) candleCache.delete(url); return r; });
+  candleCache.set(url, p);
+  return p;
+}
+
+type FillLite = Pick<Execution, "kind" | "price" | "executedAt">;
+/**
+ * Fill times for many rows in one request (GET /api/trade-executions/batch): requests made in the same tick are
+ * merged. Ids the batch does not return (no access this way, or an older API without the route) fall back to the
+ * single GET /api/trades/:id/executions.
+ */
+let batchSupported = true;
+let pending: { id: number; resolve: (v: FillLite[] | null) => void }[] = [];
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+const single = (id: number) => getJson<{ executions: Execution[] }>(`${BASE}/api/trades/${id}/executions`).then((r) => r?.executions ?? null);
+async function flushFills() {
+  flushTimer = null;
+  const queue = pending;
+  pending = [];
+  for (let i = 0; i < queue.length; i += 100) {
+    const chunk = queue.slice(i, i + 100);
+    let items: Record<string, FillLite[]> | null = null;
+    if (batchSupported) {
+      try {
+        const r = await fetch(`${BASE}/api/trade-executions/batch?ids=${[...new Set(chunk.map((q) => q.id))].join(",")}`);
+        if (r.status === 404) batchSupported = false;
+        else if (r.ok) items = ((await r.json()) as { items?: Record<string, FillLite[]> }).items ?? {};
+      } catch { /* network — per-trade fallback below */ }
+    }
+    for (const q of chunk) {
+      const hit = items?.[String(q.id)];
+      if (hit) q.resolve(hit);
+      else void single(q.id).then(q.resolve, () => q.resolve(null));
+    }
+  }
+}
+function getFills(id: number): Promise<FillLite[] | null> {
+  return new Promise((resolve) => {
+    pending.push({ id, resolve });
+    if (!flushTimer) flushTimer = setTimeout(() => void flushFills(), 20);
+  });
+}
+
 async function loadForTrade(trade: TradeLike): Promise<SparkData | null> {
   const { fromKey, toKey, dateKey } = tradeWindow(trade, 0);
-  const [range, ex] = await Promise.all([
-    getJson<{ candles: Candle[] }>(`${BASE}/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
-    trade.id > 0 ? getJson<{ executions: Execution[] }>(`${BASE}/api/trades/${trade.id}/executions`) : Promise.resolve(null),
+  const [range, fills] = await Promise.all([
+    getCandles(`${BASE}/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
+    trade.id > 0 ? getFills(trade.id) : Promise.resolve(null),
   ]);
+  const ex = fills ? { executions: fills } : null;
   const bars = (range?.candles ?? []).filter((c) => Number.isFinite(c.c));
   if (!bars.length) return null;
   const execs = ex?.executions ?? [];

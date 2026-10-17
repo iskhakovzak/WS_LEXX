@@ -77,7 +77,7 @@ export function FiltersBar({
             onKeyDown={(e) => { if (e.key === "Escape") { onSearch(""); (e.target as HTMLInputElement).blur(); } }}
             placeholder="Тикер или фирма"
             aria-label="Поиск по тикеру или фирме"
-            className="h-9 pl-9 pr-10"
+            className="h-8 pl-9 pr-10"
             autoComplete="off"
           />
           <Kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>
@@ -106,11 +106,11 @@ export function FiltersBar({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <FilterChip active={f.mineOnly} onClick={() => onChange({ mineOnly: !f.mineOnly })} count={mineCount || undefined}>
+        <FilterChip size="sm" active={f.mineOnly} onClick={() => onChange({ mineOnly: !f.mineOnly })} count={mineCount || undefined}>
           <UserRound className="h-3.5 w-3.5" aria-hidden="true" /> Мои тикеры
           <Kbd className="ml-0.5 hidden sm:inline-flex">M</Kbd>
         </FilterChip>
-        <FilterChip active={f.todayOnly} onClick={() => onChange({ todayOnly: !f.todayOnly })}>
+        <FilterChip size="sm" active={f.todayOnly} onClick={() => onChange({ todayOnly: !f.todayOnly })}>
           <Sunrise className="h-3.5 w-3.5" aria-hidden="true" /> К сессии
           <Kbd className="ml-0.5 hidden sm:inline-flex">T</Kbd>
         </FilterChip>

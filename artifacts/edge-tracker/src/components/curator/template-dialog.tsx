@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { curatorApi, useCuratorMutation, useRiskTemplates, type TierTemplate } from "./api";
 import { usd } from "./curator-math";
+import { pluralRu } from "@/components/rules/constants";
 
 const LADDER = ["trainee", "junior", "trader", "senior"];
 
@@ -74,7 +75,7 @@ export function TemplateDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Шаблон лимитов по тиру</DialogTitle>
           <DialogDescription>
-            {traders.length === 1 ? `Все лимиты ${traders[0]} станут как в шаблоне тира.` : `Лимиты ${traders.length} трейдеров станут как в шаблоне тира.`} Заметки к лимитам сохраняются, изменение попадёт в журнал лимитов и аудит.
+            {traders.length === 1 ? `Все лимиты ${traders[0]} станут как в шаблоне тира.` : `Лимиты ${traders.length} ${pluralRu(traders.length, "трейдера", "трейдеров", "трейдеров")} станут как в шаблоне тира.`} Заметки к лимитам сохраняются, изменение попадёт в журнал лимитов и аудит.
           </DialogDescription>
         </DialogHeader>
         <QueryState query={q} skeleton={<div className="h-48" />}>

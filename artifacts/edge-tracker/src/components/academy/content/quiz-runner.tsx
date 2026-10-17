@@ -11,9 +11,12 @@ import { Input } from "@/components/ui/input";
 import { Panel, Pill, ProgressRing, StatCard, StatGrid } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { Markdown } from "./markdown";
 import { api, invalidateAcademy, type AttemptState, type Feedback, type GradeSummary, type PublicQuestion, type QuizResponse } from "./api";
 import { DualTime } from "./time";
+
+const ptsText = (n: number) => `${n} ${pluralRu(n, "балл", "балла", "баллов")}`;
 
 type Answers = Record<string, string | string[]>;
 
@@ -56,7 +59,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
       for (const q of quiz.questions) if (answers[q.id] !== undefined) payload[q.id] = answers[q.id];
       const r = await api.attempt(quiz.id, payload);
       setResult({ grade: r.grade, feedback: r.feedback, state: r.state, answers });
-      toast({ title: r.grade.passed ? "Тест сдан" : "Тест не сдан", description: `${r.grade.score} из ${r.grade.maxScore} баллов (${Math.round(r.grade.pct)}%)` });
+      toast({ title: r.grade.passed ? "Тест сдан" : "Тест не сдан", description: `${r.grade.score} из ${r.grade.maxScore} ${pluralRu(r.grade.maxScore, "балла", "баллов", "баллов")} (${Math.round(r.grade.pct)}%)` });
       void invalidateAcademy(qc);
       document.getElementById("main-content")?.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
@@ -72,7 +75,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
     <div className="flex flex-col gap-4">
       <StatGrid>
         <StatCard label="Проходной балл" value={`${quiz.passPct}%`} />
-        <StatCard label="Вопросов" value={quiz.questions.length} hint={`${quiz.questions.reduce((s, q) => s + q.points, 0)} баллов`} />
+        <StatCard label="Вопросов" value={quiz.questions.length} hint={ptsText(quiz.questions.reduce((s, q) => s + q.points, 0))} />
         <StatCard label="Попытки" value={quiz.maxAttempts ? `${state.attempts} / ${quiz.maxAttempts}` : state.attempts} hint={quiz.maxAttempts ? (state.attemptsLeft ? `осталось ${state.attemptsLeft}` : "попытки закончились") : "без ограничений"} />
         <StatCard label="Лучший результат" value={state.bestPct != null ? `${Math.round(state.bestPct)}%` : "—"} tone={state.passed ? "up" : state.bestPct != null ? "down" : "neutral"} hint={state.passed ? "зачтено" : state.bestPct != null ? "ещё не зачтено" : undefined} />
       </StatGrid>
@@ -84,7 +87,7 @@ export function QuizRunner({ data, canAnswer }: { data: QuizResponse; canAnswer:
             <div className="min-w-0 flex-1">
               <p className="text-base font-semibold text-foreground">{result.grade.passed ? "Тест сдан" : "Тест не сдан"}</p>
               <p className="text-sm text-muted-foreground tabular-nums">
-                {result.grade.score} из {result.grade.maxScore} баллов · нужно {quiz.passPct}%
+                {result.grade.score} из {result.grade.maxScore} {pluralRu(result.grade.maxScore, "балла", "баллов", "баллов")} · нужно {quiz.passPct}%
               </p>
               {!result.state.revealAnswers && <p className="mt-1 text-xs text-muted-foreground">Правильные ответы откроются после сдачи теста или когда закончатся попытки.</p>}
             </div>
@@ -161,7 +164,7 @@ function QuestionCard({ n, q, value, onChange, disabled, feedback }: {
             ? <CheckCircle2 className="h-4 w-4 text-up" aria-label="Верно" role="img" />
             : <XCircle className="h-4 w-4 text-down" aria-label="Неверно" role="img" />)}
           <span className="text-xs text-muted-foreground tabular-nums">
-            {feedback ? `${feedback.earned}/${feedback.points}` : q.points} балл.
+            {feedback ? `${feedback.earned}/${feedback.points}` : q.points} {pluralRu(q.points, "балл", "балла", "баллов")}
           </span>
         </span>
       </div>

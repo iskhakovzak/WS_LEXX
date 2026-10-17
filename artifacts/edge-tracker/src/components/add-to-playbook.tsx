@@ -147,7 +147,8 @@ export function AddToPlaybookButton({
   );
 }
 
-function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; onOpenChange: (v: boolean) => void; payload: PlaybookPayload }) {
+/** Full «Новый сетап» dialog for any source (also opened by «Новый сетап из сделки» from the trades list). */
+export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; onOpenChange: (v: boolean) => void; payload: PlaybookPayload }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -193,7 +194,7 @@ function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; o
   const { data: allEntriesRaw } = useQuery<PlaybookEntry[]>({
     queryKey: ["playbook-all-light"],
     queryFn: () =>
-      fetch(`${BASE}/api/playbook`)
+      fetch(`${BASE}/api/playbook?lite=1`)
         .then(r => r.json())
         .then((rows: unknown) => (Array.isArray(rows) ? rows : []).map((r: any) => ({
           id: r.id,
@@ -272,12 +273,24 @@ function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; o
         try { const d = await res.json(); if (d && typeof d.error === "string") msg = d.error; } catch { /* not JSON */ }
         throw new Error(msg);
       }
-      return res.json() as Promise<{ id?: number } | null>;
+      const created = (await res.json()) as { id?: number } | null;
+      // «Новый сетап из сделки»: the trade becomes the new setup's first example (Tier 2 — the trader can re-tier it).
+      if (payload.sourceType === "trade" && typeof created?.id === "number") {
+        await fetch(`${BASE}/api/playbook/${created.id}/examples`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", ...authHdr() },
+          body: JSON.stringify({ tradeIds: [payload.sourceId], tier: 2 }),
+        }).catch(() => null);
+      }
+      return created;
     },
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ["playbook"] });
       qc.invalidateQueries({ queryKey: ["playbook-folders"] });
       qc.invalidateQueries({ queryKey: ["playbook-all-light"] });
+      if (payload.sourceType === "trade") {
+        for (const k of ["playbook-examples", "playbook-for-trade", "playbook-inbox", "playbook-summary", "playbook-gallery"]) qc.invalidateQueries({ queryKey: [k] });
+      }
       writeLastFolder(targetFolder);
       onOpenChange(false);
       const id = created && typeof created.id === "number" ? created.id : null;

@@ -53,6 +53,8 @@ import { useTradesQuality } from "@/components/replay/hooks";
 import { useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { BulkActionBar } from "@/components/trades/BulkActionBar";
 import { AddTradesToPlaybookDialog } from "@/components/playbook/quick-add";
+import { AddToPlaybookDialog } from "@/components/add-to-playbook";
+import { tradePlaybookPayload } from "@/components/trades/trade-utils";
 import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
 import { PRESET_META, hasTag, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
 import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
@@ -191,7 +193,7 @@ export default function Trades() {
     const parts: string[] = [PERIOD_LABEL[filters.period]];
     if (filters.outcome !== "all") parts.push(filters.outcome === "open" ? "открытые позиции" : RESULT_LABEL[filters.outcome].toLowerCase());
     if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
-    if (filters.side) parts.push(filters.side);
+    if (filters.side) parts.push(filters.side === "Long" ? "лонг" : filters.side === "Short" ? "шорт" : filters.side);
     if (filters.setup) parts.push(filters.setup);
     if (filters.ticker) parts.push(filters.ticker);
     const adv = advancedFilterCount(filters) - (filters.period === "custom" ? 1 : 0) - (filters.ticker ? 1 : 0);
@@ -217,6 +219,8 @@ export default function Trades() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   // «В плейбук» from a row icon or the bulk bar (one dialog for the page).
   const [pbTradeIds, setPbTradeIds] = useState<number[] | null>(null);
+  /** «Новый сетап из сделки» from that dialog (single trade) → the full setup dialog, like the trade sheet. */
+  const [newSetupFrom, setNewSetupFrom] = useState<Trade | null>(null);
   const lastToggledRef = useRef<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -586,7 +590,7 @@ export default function Trades() {
     return n === 0 ? "none" : n === selectedTrades.length ? "all" : "some";
   }, [selectedTrades]);
   const canDeleteSelection = selectedTrades.length > 0 && selectedTrades.every((t) => canEditForm(t));
-  const nTrades = (n: number) => `${n} ${plural(n, ["сделка", "сделки", "сделок"])}`;
+  const nTrades = (n: number) => `${n.toLocaleString("ru-RU")} ${plural(n, ["сделка", "сделки", "сделок"])}`;
 
   // ── CSV export of the whole filtered set ────────────────────────────────
   const [exporting, setExporting] = useState(false);
@@ -659,7 +663,7 @@ export default function Trades() {
   const days = summary?.days ?? D.totalDays;
   const headerText = isLoading
     ? "Загрузка…"
-    : `${nTrades(total)}${days ? ` · ${days} ${plural(days, ["торговый день", "торговых дня", "торговых дней"])}` : ""} · ${scopeLabel}`;
+    : `${nTrades(total)}${days ? ` · ${days.toLocaleString("ru-RU")} ${plural(days, ["торговый день", "торговых дня", "торговых дней"])}` : ""} · ${scopeLabel}`;
   const presetMeta = preset ? PRESET_META[preset] : null;
 
   const presetEmpty = (p: Preset) => (
@@ -681,7 +685,7 @@ export default function Trades() {
           <>
             <Popover open={helpOpen} onOpenChange={setHelpOpen}>
               <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Горячие клавиши (?)" title="Горячие клавиши (?)"><Keyboard /></Button>
+                <Button variant="ghost" size="icon-sm" aria-label="Горячие клавиши (?)" title="Горячие клавиши (?)"><Keyboard /></Button>
               </PopoverTrigger>
               <PopoverContent align="end" side="bottom" collisionPadding={12} className="w-72 p-3">
                 <p className="pb-2 text-sm font-semibold">Горячие клавиши</p>
@@ -848,7 +852,19 @@ export default function Trades() {
         open={!!pbTradeIds}
         onOpenChange={(v) => { if (!v) setPbTradeIds(null); }}
         tradeIds={pbTradeIds ?? []}
+        onNewSetup={() => {
+          const id = pbTradeIds?.[0];
+          const t = visibleRows.find((x) => x.id === id) ?? (detached?.id === id ? detached : null);
+          if (t) setNewSetupFrom(t);
+        }}
       />
+      {newSetupFrom && (
+        <AddToPlaybookDialog
+          open
+          onOpenChange={(v) => { if (!v) setNewSetupFrom(null); }}
+          payload={tradePlaybookPayload(newSetupFrom)}
+        />
+      )}
 
       <TradeDetailSheet
         trade={openTrade}

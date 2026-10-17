@@ -8,6 +8,8 @@ import { fileURLToPath } from "url";
 import router from "./routes";
 import { logger } from "./lib/logger";
 import { authMiddleware, apiAuthGate } from "./lib/auth";
+import { jsonCompression } from "./lib/jsonCompression";
+import { requestLang } from "./i18n";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -89,7 +91,10 @@ app.use("/api/auth/init-passwords", initPasswordsLimiter);
 // Every /api/* request needs a valid token (member or guest). The explicit allowlist
 // (method + path) lives next to the gate in lib/auth.ts: PUBLIC_API_ROUTES.
 // Anonymous → 401 «Требуется вход»; guest on any mutation → 403 «Гостевой режим: только просмотр».
-app.use("/api", authMiddleware, apiAuthGate, router);
+// gzip for JSON answers ≥ 16 KB (lib/jsonCompression: res.json only — streams, SSE and files are untouched).
+app.use("/api", jsonCompression());
+// requestLang: req.lang from X-Lang → users.locale → "ru" (src/i18n); adds Vary: X-Lang.
+app.use("/api", authMiddleware, apiAuthGate, requestLang, router);
 
 if (process.env.NODE_ENV === "production") {
   const staticDir = path.resolve(__dirname, "public");

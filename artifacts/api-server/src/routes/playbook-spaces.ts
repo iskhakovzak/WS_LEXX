@@ -5,6 +5,7 @@ import { logActivity } from "../lib/activity";
 import { canAccessTrade, isGuest, scopeTrader } from "../lib/auth";
 import { requireCap } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedR, signedRSql } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes } from "../lib/tradingDate";
 import { sniffImageMime } from "../lib/planMedia";
 import { computeEdge, computeUsdStats, etWallMinutes, slotStats, bucketBy, type EdgeTrade } from "../lib/playbookEdge";
@@ -41,6 +42,8 @@ import {
  *   GET    /playbook-tools/trade-picker                 ?setupId=&trader=&q=&from=&to=&result=win|loss&match=1&limit=
  *   GET    /playbook-tools/for-trade/:tradeId           setups for the 1-click popover (recent, suggested, already in)
  *   GET    /playbook-tools/inbox                        ?days=14&limit= — own recent trades not in any setup yet (+ suggestion)
+ *   POST   /playbook-tools/inbox/dismiss  DELETE same   { tradeIds } — «Не для плейбука» (hide from the inbox) / undo
+ *   GET    /playbook/:id/activity                       the setup's journal (activity_log rows for this setup)
  *   GET    /playbook-tools/share-targets                people + cohorts for the share dialog
  *   POST   /playbook/:id/share                          { visibility: private|all|custom, users?, cohorts? }
  *   POST   /playbook/:id/copy                           copy into «Мой» with attribution
@@ -518,7 +521,7 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
     .filter((x) => x.sc > 0)
     .sort((a, b) => b.sc - a.sc || Number(b.s.canAddExamples) - Number(a.s.canAddExamples) || Number(b.s.mine) - Number(a.s.mine));
   if (trade?.autoSetup) for (const { s } of byLabel(trade.autoSetup)) addSug(s.id, `Автоклассификация: ${trade.autoSetup}`);
-  if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, `Сетап в сделке: ${trade.setup}`);
+  if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, `Название похоже на метку сделки «${trade.setup}»`);
   const { rows: ex } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", tier, note FROM playbook_examples WHERE trade_id = $1 AND deleted_at IS NULL`,
     [tradeId],
@@ -542,7 +545,7 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
  * Feeds «Разобрать сделки» on the playbook home. Trade $ go through redactTradeRow like everywhere else.
  */
 router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void> => {
-  await ensurePlaybookSpaces();
+  await Promise.all([ensurePlaybookSpaces(), ensureInboxExtras()]);
   const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim() : null;
   const scope = await scopeTrader(req, requested, "trades.read.team");
   if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
@@ -559,7 +562,8 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
         AND ${closeDateSql("t")} >= to_char((NOW() AT TIME ZONE 'America/New_York')::date - $2::int, 'YYYY-MM-DD')
         AND NOT EXISTS (
           SELECT 1 FROM playbook_examples e JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
-           WHERE e.trade_id = t.id AND e.deleted_at IS NULL)`;
+           WHERE e.trade_id = t.id AND e.deleted_at IS NULL)
+        AND NOT EXISTS (SELECT 1 FROM playbook_inbox_dismissed d WHERE d.trade_id = t.id)`;
   const [{ rows }, { rows: cnt }] = await Promise.all([
     pool.query<any>(
       `SELECT t.id, t.ticker, t.date, ${closeDateSql("t")} AS "closeDate", t.side, ${resultSql("t")} AS result,
@@ -590,6 +594,76 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
     return redactTradeRow({ ...t, suggestion: suggestSetup(t, setups), suggestedTier: suggestTier(t) }, mv);
   });
   res.json({ trader: who, days, total: Number(cnt[0]?.n ?? shaped.length), trades: rankInbox(shaped) });
+}));
+
+let inboxExtras: Promise<void> | null = null;
+/**
+ * Additive, idempotent: «Не для плейбука» marks for the inbox, and an index for the per-setup journal
+ * (GET /playbook/:id/activity filters activity_log by section + entity_id).
+ */
+function ensureInboxExtras(): Promise<void> {
+  if (!inboxExtras) {
+    inboxExtras = (async () => {
+      await pool.query(`CREATE TABLE IF NOT EXISTS playbook_inbox_dismissed (
+        trade_id INTEGER PRIMARY KEY,
+        dismissed_by TEXT,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())`);
+      await pool.query(`CREATE INDEX IF NOT EXISTS activity_log_section_entity_idx ON activity_log (section, entity_id, created_at DESC)`);
+    })().catch((e) => { inboxExtras = null; throw e; });
+  }
+  return inboxExtras;
+}
+
+/**
+ * POST   /playbook-tools/inbox/dismiss { tradeIds } — «Не для плейбука»: hide own trades from «Разобрать сделки».
+ * DELETE /playbook-tools/inbox/dismiss { tradeIds } — undo. Staff may do it for any trader's trades.
+ */
+async function inboxDismiss(req: Request, res: Response, on: boolean): Promise<void> {
+  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  await ensureInboxExtras();
+  const v = await loadViewer(req);
+  if (!v.name) { res.status(401).json({ error: "Требуется вход" }); return; }
+  const body = req.body as { tradeIds?: unknown };
+  const ids = [...new Set((Array.isArray(body.tradeIds) ? body.tradeIds : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 200);
+  if (!ids.length) { res.status(400).json({ error: "tradeIds required" }); return; }
+  // Own trades only (staff: any) — the same people who see them in the inbox.
+  const { rows } = await pool.query<{ id: number }>(
+    `SELECT id FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL AND (trader = $2 OR $3::boolean)`,
+    [ids, v.name, v.editAny],
+  );
+  const allowed = rows.map((r) => r.id);
+  if (!allowed.length) { res.status(404).json({ error: "Сделки не найдены" }); return; }
+  if (on) {
+    await pool.query(
+      `INSERT INTO playbook_inbox_dismissed (trade_id, dismissed_by) SELECT x, $2 FROM UNNEST($1::int[]) AS x ON CONFLICT (trade_id) DO NOTHING`,
+      [allowed, v.name],
+    );
+  } else {
+    await pool.query(`DELETE FROM playbook_inbox_dismissed WHERE trade_id = ANY($1::int[])`, [allowed]);
+  }
+  res.json({ success: true, tradeIds: allowed });
+}
+router.post("/playbook-tools/inbox/dismiss", asyncHandler((req, res) => inboxDismiss(req, res, true)));
+router.delete("/playbook-tools/inbox/dismiss", asyncHandler((req, res) => inboxDismiss(req, res, false)));
+
+/**
+ * GET /playbook/:id/activity — the setup's own journal (created / edited / examples …) for its «История» tab.
+ * Anyone who may read the setup sees it; the global /api/activity only returns the newest rows (and, for traders,
+ * only their own), so a setup's history used to look empty.
+ */
+router.get("/playbook/:id/activity", asyncHandler(async (req, res): Promise<void> => {
+  const ctx = await setupForRead(req, res, parseId(req.params.id));
+  if (!ctx) return;
+  await ensureInboxExtras();
+  const { rows } = await pool.query<any>(
+    `SELECT id, action, section, entity_id AS "entityId", entity_title AS "entityTitle", trader, details, created_at AS "createdAt"
+       FROM activity_log
+      WHERE section = 'playbook' AND (entity_id = $1 OR (entity_id IS NULL AND entity_title = $2))
+      ORDER BY created_at DESC, id DESC
+      LIMIT 100`,
+    [String(ctx.row.id), ctx.row.name],
+  );
+  res.json(rows.map((r) => ({ ...r, createdAt: iso(r.createdAt) })));
 }));
 
 // ─── Sharing ─────────────────────────────────────────────────────────────────
@@ -734,15 +808,11 @@ router.get("/playbook/:id/stats", asyncHandler(async (req, res): Promise<void> =
   let filter = "";
   if (scope) { params.push(scope); filter = `AND t.trader = $2`; }
   const { rows } = await pool.query<any>(
-    `WITH ex AS (
-       SELECT trade_id, MIN(executed_at) FILTER (WHERE kind IN ('entry', 'add')) AS first_entry
-         FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-     )
-     SELECT t.id, t.result, t.side, t.entry, t.exit, t.stop, t.pnl, t.fees, t.risk_usd AS "riskUsd",
+    `SELECT t.id, t.result, t.side, t.entry, t.exit, t.stop, t.pnl, t.fees, t.risk_usd AS "riskUsd",
             t.r_multiple AS "rMultiple", t.date, NULLIF(t.exit_date, '') AS "exitDate", t.horizon, t.session,
             t.context_snapshot AS "contextSnapshot", t.setup_score AS "setupScore", t.ticker, t.trader,
             ${closeDateSql("t")} AS "closeDate", e.first_entry AS "firstEntry", t.context_snapshot->>'openedAt' AS "openedAt"
-       FROM trades t LEFT JOIN ex e ON e.trade_id = t.id
+       FROM trades t ${execSpanJoin("lateral")}
       WHERE t.playbook_id = $1 AND t.deleted_at IS NULL ${filter}`,
     params,
   );

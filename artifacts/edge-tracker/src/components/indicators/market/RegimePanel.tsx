@@ -65,12 +65,15 @@ function AxisBlock({ axis, label, score, keyName, drivers }: { axis: Axis; label
       <p className="text-xs leading-snug text-muted-foreground">{meaning}</p>
       <ul className="mt-auto flex flex-col gap-1.5 border-t border-border/50 pt-2.5" aria-label={`Что влияет: ${meta.title}`}>
         {drivers.map((d) => (
-          <li key={d.id} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1 text-xs">
-            <span className="truncate text-muted-foreground" title={d.label}>
-              {DRIVER_TERM[d.id] ? <TermTooltip term={DRIVER_TERM[d.id]!}>{d.label}</TermTooltip> : d.label}
+          <li key={d.id} className="flex flex-col gap-1 text-xs">
+            {/* Label and reading share a line when they fit; a long reading («20.0 · 81-й перцентиль») drops under the label instead of squeezing it. */}
+            <span className="flex flex-wrap items-baseline justify-between gap-x-2">
+              <span className="min-w-0 leading-snug text-muted-foreground">
+                {DRIVER_TERM[d.id] ? <TermTooltip term={DRIVER_TERM[d.id]!} className="text-left">{d.label}</TermTooltip> : d.label}
+              </span>
+              <span className="ml-auto whitespace-nowrap font-medium tabular-nums">{d.reading}</span>
             </span>
-            <span className="text-right font-medium tabular-nums">{d.reading}</span>
-            <ImpactBar axis={axis} v={d.impact} className="col-span-2" />
+            <ImpactBar axis={axis} v={d.impact} />
           </li>
         ))}
       </ul>

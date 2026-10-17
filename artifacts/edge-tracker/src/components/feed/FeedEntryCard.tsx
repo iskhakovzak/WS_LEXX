@@ -1,10 +1,11 @@
 import React, { useEffect, useRef, useState } from "react";
-import { motion, useReducedMotion } from "framer-motion";
+import { useReducedMotion } from "framer-motion";
 import { Bookmark, BookmarkCheck, Copy, Pencil, Trash2, TrendingUp, TrendingDown, Circle, CheckCheck, Hash, CheckCircle2, Crosshair, Eye, UserRound } from "lucide-react";
 import { AddToPlaybookButton, type PlaybookPayload } from "@/components/add-to-playbook";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { FeedGallery } from "./FeedGallery";
+import { fmtTime } from "./stream-api";
 import { hasServerAcks, parseShots, parseTickers, pluralRu, splitList, type AckKind, type FeedEntry } from "./feed-utils";
 
 /** «Принято» / «Торгую это» — per-trader acks from the server; names on hover. */
@@ -130,9 +131,8 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
   const acks = hasServerAcks(feed) ? feed.acks : undefined;
   const me = p.me ?? "";
   const readers = acks ? acks.users.read.filter((u) => u !== me && u !== feed.createdBy) : [];
-  const time = (() => {
-    try { return new Date(feed.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }); } catch { return ""; }
-  })();
+  // NY time, like every other row of the feed (local time read as «21:44» next to «15:00 ET» items).
+  const time = fmtTime(feed.createdAt);
 
   // Mark as read once the card has been at least half-visible for ~1.5s.
   const onMarkReadRef = useRef(p.onMarkRead);
@@ -153,13 +153,9 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
   }, [p.focused, reduce]);
 
   return (
-    <motion.article
+    <article
       ref={ref}
       id={`feed-${feed.id}`}
-      layout={reduce ? false : "position"}
-      initial={reduce ? false : { opacity: 0, y: 6 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
       aria-label={`Запись ленты: ${feed.marketTheme || "без темы"}`}
       className={cn(
         "glass-panel relative overflow-hidden rounded-2xl",
@@ -293,6 +289,6 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
           </div>
         )}
       </div>
-    </motion.article>
+    </article>
   );
 }

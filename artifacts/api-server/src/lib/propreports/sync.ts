@@ -552,6 +552,12 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
       void import("../rulesEngine").then(async ({ scanRulesForTrader }) => {
         for (const t of traders) await scanRulesForTrader(t).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), trader: t }, "propreports: rule scan failed"));
       });
+      // Ideas of these traders: link them to the new broker trades (ticker + side + entry in the idea window).
+      void import("../ideaTradeMatch").then(({ relinkIdeasForTraders }) => relinkIdeasForTraders([...traders]))
+        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: idea relink failed"));
+      // Academy challenges of these traders: status + pass/fail notices move here (write path), not on GET.
+      void import("../../routes/academy-path").then(({ refreshChallenges }) => refreshChallenges([...traders]))
+        .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: challenge refresh failed"));
     }
   }
   return res;

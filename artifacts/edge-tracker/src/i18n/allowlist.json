@@ -1,0 +1,7 @@
+{
+  "_comment": "i18n report allowlist (edge-tracker). files: regexes on paths relative to artifacts/edge-tracker; literals: regexes on the literal text. Only for Russian-input parsers, seed data, fixtures and type tests, never for user-facing text. A single line can also be skipped with an `i18n-ignore` comment (same or previous line).",
+  "files": [
+    "^src/i18n/__typecheck__\\.ts$"
+  ],
+  "literals": []
+}

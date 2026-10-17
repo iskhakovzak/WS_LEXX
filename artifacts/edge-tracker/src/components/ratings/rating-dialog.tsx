@@ -19,6 +19,7 @@ import {
   CRITERIA, OVERALL, TIER_LABELS, avgScores, shiftWeek, tierLabel, weekLabel, weekOf,
   type CriterionKey, type Rating, type RatingEvidence, type ScoreKey,
 } from "./scorecard-model";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Form = Record<ScoreKey, number> & { trader: string; week: string; comment: string; focus: string; tier: string };
 
@@ -259,12 +260,7 @@ export function RatingDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rating-trader" className="text-xs text-muted-foreground">Трейдер</label>
-              <Select value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing}>
-                <SelectTrigger id="rating-trader" aria-label="Трейдер"><SelectValue placeholder="Выберите трейдера" /></SelectTrigger>
-                <SelectContent>
-                  {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect id="rating-trader" value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing} options={traders} placeholder="Выберите трейдера" ariaLabel="Трейдер" />
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rating-week" className="text-xs text-muted-foreground">Неделя (понедельник)</label>
@@ -334,7 +330,7 @@ export function RatingDialog({
                 <SelectContent>
                   <SelectItem value="none">—</SelectItem>
                   {Object.entries(TIER_LABELS).map(([k, l]) => <SelectItem key={k} value={k}>{l}</SelectItem>)}
-                  {form.tier && !TIER_LABELS[form.tier] && <SelectItem value={form.tier}>{form.tier}</SelectItem>}
+                  {form.tier && !TIER_LABELS[form.tier] && <SelectItem value={form.tier}>{tierLabel(form.tier)}</SelectItem>}
                 </SelectContent>
               </Select>
             </div>

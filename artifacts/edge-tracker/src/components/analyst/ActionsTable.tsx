@@ -43,15 +43,17 @@ export const ActionsTable = React.forwardRef<HTMLDivElement, ActionsTableProps>(
   const th = (k: SortKey) => ({ active: sortKey === k, dir: sortDir, onSort: () => onSort(k) });
   return (
     <DataTable ref={ref} maxHeight={maxHeight} ariaLabel="Лента действий аналитиков" className="[&_tbody_td]:py-1.5">
-      <table className="table-fixed">
+      {/* Fixed tracks sized to their content (sortable headers need label + sort icon); the firm column takes the rest.
+          min-w keeps the firm column readable at ~1280 px — the table scrolls sideways instead of wrapping rows 5 lines tall. */}
+      <table className="min-w-[1000px] table-fixed">
         <colgroup>
-          <col style={{ width: 76 }} />
+          <col style={{ width: 96 }} />
           <col style={{ width: 128 }} />
           <col style={{ width: 168 }} />
           <col />
-          <col style={{ width: 176 }} />
-          <col style={{ width: 92 }} />
-          <col style={{ width: 92 }} />
+          <col style={{ width: 152 }} />
+          <col style={{ width: 104 }} />
+          <col style={{ width: 88 }} />
           <col style={{ width: 132 }} />
         </colgroup>
         <thead>

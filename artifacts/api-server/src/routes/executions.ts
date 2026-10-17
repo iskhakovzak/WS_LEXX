@@ -183,6 +183,59 @@ router.get(
   })
 );
 
+/**
+ * GET /api/trade-executions/batch?ids=1,2,3 — fill times only (kind / price / executedAt) for many trades in one
+ * request: trade lists draw a sparkline per row and used to fire one /executions request per trade (N+1).
+ * Same read rule as the single endpoint for own / team trades; ids the viewer may not read this way (e.g. a playbook
+ * example of another trader) are simply absent — the client falls back to GET /trades/:id/executions for those.
+ * Response: { items: { [tradeId]: { kind, price, executedAt }[] } } (an empty array = no fills).
+ */
+router.get(
+  "/trade-executions/batch",
+  asyncHandler(async (req: Request, res: Response) => {
+    const ids = [...new Set(String(req.query.ids ?? "").split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 200);
+    const actor = await resolveActor(req);
+    if (!actor) {
+      res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" });
+      return;
+    }
+    if (!ids.length || actor.guest) {
+      res.json({ items: {} });
+      return;
+    }
+    const { rows: trades } = await pool.query<{ id: number; trader: string | null }>(
+      `SELECT id, trader FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL`,
+      [ids],
+    );
+    const teamByTrader = new Map<string | null, boolean>();
+    const allowed: number[] = [];
+    for (const t of trades) {
+      const isOwn = !!t.trader && t.trader === actor.name;
+      let teamAllowed = false;
+      if (!isOwn) {
+        if (!teamByTrader.has(t.trader)) teamByTrader.set(t.trader, await can(req, "trades.read.team", { trader: t.trader }));
+        teamAllowed = teamByTrader.get(t.trader) ?? false;
+      }
+      if (canReadTradeExecutions(actor, t.trader, { teamAllowed, readableExample: false })) allowed.push(Number(t.id));
+    }
+    const items: Record<number, { kind: string; price: string; executedAt: string | null }[]> = {};
+    for (const id of allowed) items[id] = [];
+    if (allowed.length) {
+      const { rows } = await pool.query(
+        `SELECT trade_id, kind, price, executed_at
+           FROM trade_executions
+          WHERE trade_id = ANY($1::int[])
+          ORDER BY trade_id, sort_order ASC, id ASC`,
+        [allowed],
+      );
+      for (const r of rows) {
+        items[r.trade_id]?.push({ kind: r.kind, price: String(r.price), executedAt: r.executed_at ? new Date(r.executed_at).toISOString() : null });
+      }
+    }
+    res.json({ items });
+  })
+);
+
 // POST /api/trades/:tradeId/executions
 router.post(
   "/trades/:tradeId/executions",

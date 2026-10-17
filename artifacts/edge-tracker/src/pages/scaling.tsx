@@ -78,7 +78,7 @@ export default function ScalingPage() {
         icon={TrendingUp}
         actions={me ? (
           <>
-            <UpdatedAgo at={updatedAt} className="hidden sm:inline-flex" />
+            <UpdatedAgo at={updatedAt} className="hidden 2xl:inline-flex" />
             <Button variant="outline" size="icon" onClick={refresh} aria-label="Обновить план" disabled={fetching}>
               <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
@@ -88,8 +88,8 @@ export default function ScalingPage() {
                   <Settings2 className="h-4 w-4" aria-hidden="true" /> Тиры и правила
                 </Button>
                 {view === "desk" && (
-                  <Button onClick={runAuto} disabled={auto.isPending} aria-label="Создать предложения по правилам">
-                    <Sparkles className="h-4 w-4" aria-hidden="true" /> {auto.isPending ? "Проверяем…" : "Предложения по правилам"}
+                  <Button onClick={runAuto} disabled={auto.isPending} aria-label="Создать предложения по правилам" title="Создать предложения повышения / понижения по правилам">
+                    <Sparkles className="h-4 w-4" aria-hidden="true" /> {auto.isPending ? "Проверяем…" : "Предложения"}
                   </Button>
                 )}
                 <Segmented ariaLabel="Режим плана" value={view} onChange={setView} options={[{ value: "desk", label: "Деск" }, { value: "me", label: "Мой план" }]} />

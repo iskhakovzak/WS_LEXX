@@ -519,9 +519,15 @@ router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
 
 // ─── runs ───────────────────────────────────────────────────────────────────
 
+// Desk-wide history (scheduled/API syncs, unmapped account numbers) is staff-only (propreports.read.team);
+// everyone else sees just the runs they started themselves (their own file imports).
 router.get("/propreports/runs", requireAuth, asyncHandler(async (req, res) => {
+  const v = await viewer(req);
   const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 50));
-  const { rows } = await pool.query(`SELECT * FROM propreports_sync_runs ORDER BY started_at DESC LIMIT $1`, [limit]);
+  const { rows } = await pool.query(
+    `SELECT * FROM propreports_sync_runs WHERE ($2::text IS NULL OR actor = $2) ORDER BY started_at DESC LIMIT $1`,
+    [limit, v.staff ? null : v.name],
+  );
   res.json(rows.map(runView));
 }));
 

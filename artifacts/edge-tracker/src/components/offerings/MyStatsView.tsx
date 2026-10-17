@@ -3,6 +3,7 @@ import { BarChart3, ServerCog } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState, useTableSort } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { MiniBar } from "./bits";
 import { isMissingEndpoint, useMyOfferingStats } from "./use-offerings-data";
 import { fmtDay, fmtSignedUsd, type DayBucket } from "./types";
@@ -94,7 +95,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
           options={[{ value: "0", label: "День сделки" }, { value: "1", label: "+ следующая сессия" }]}
         />
         <span className="text-xs text-muted-foreground">
-          {s ? `SEC проверено ${s.coverage.covered} из ${s.coverage.tickers} тикеров · ${s.coverage.trades} сделок` : "Сверяем ваши тикеры с SEC…"}
+          {s ? `SEC проверено ${s.coverage.covered} из ${s.coverage.tickers} ${pluralRu(s.coverage.tickers, "тикера", "тикеров", "тикеров")} · ${s.coverage.trades} ${pluralRu(s.coverage.trades, "сделка", "сделки", "сделок")}` : "Сверяем ваши тикеры с SEC…"}
         </span>
         {pending > 0 && <MiniBar value={s!.coverage.covered} max={s!.coverage.tickers} className="w-32" label="Прогресс проверки SEC" />}
         {s && <UpdatedAgo at={s.fetchedAt} className="ml-auto" />}
@@ -106,12 +107,12 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
         <>
           <StatGrid min="12rem">
             <StatCard loading={!s} label="Net в дни размещений" value={off ? fmtSignedUsd(off.net) : "—"} tone={toneOf(off?.net)}
-              hint={off ? `${off.trades} сделок · ${off.tickers} тикеров` : undefined} />
+              hint={off ? `${off.trades} ${pluralRu(off.trades, "сделка", "сделки", "сделок")} · ${off.tickers} ${pluralRu(off.tickers, "тикер", "тикера", "тикеров")}` : undefined} />
             <StatCard loading={!s} label="Win rate в дни размещений" value={wr(off)}
               delta={diffWr != null ? `${diffWr > 0 ? "+" : ""}${Math.round(diffWr)} п.п. к обычным` : undefined}
               deltaTone={diffWr == null ? "neutral" : diffWr >= 0 ? "up" : "down"} term="winrate" />
             <StatCard loading={!s} label="Net в обычные дни" value={norm ? fmtSignedUsd(norm.net) : "—"} tone={toneOf(norm?.net)}
-              hint={norm ? `${norm.trades} сделок · WR ${wr(norm)}` : undefined} />
+              hint={norm ? `${norm.trades} ${pluralRu(norm.trades, "сделка", "сделки", "сделок")} · WR ${wr(norm)}` : undefined} />
             <StatCard loading={!s} label="Средняя сделка: размещение / обычный"
               value={off && norm ? <span className="text-xl">{fmtSignedUsd(off.avgNet)} <span className="text-muted-foreground">/</span> {fmtSignedUsd(norm.avgNet)}</span> : "—"}
               hint="net на сделку" />

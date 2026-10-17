@@ -20,7 +20,7 @@ import { suggestTagsFromFundamentals } from "@/lib/tags";
 import type { TickerFundamentals } from "@/lib/market-intel";
 import { FilterChip, Pill } from "@/components/ds";
 import { nyDate } from "@/lib/trading-date";
-import { RESEARCH_TEMPLATES, confidenceTone, noteDay } from "./research-utils";
+import { RESEARCH_TEMPLATES, confidencePct, confidenceTone, noteDay } from "./research-utils";
 
 export type ResearchFormData = {
   date: string;
@@ -47,7 +47,7 @@ export function researchToForm(r: Research): ResearchFormData {
     patternName: r.patternName, ticker: r.ticker ?? "", context: r.context ?? "",
     marketCondition: r.marketCondition ?? "", whatWorked: r.whatWorked ?? "",
     whatFailed: r.whatFailed ?? "", repeatCount: String(r.repeatCount ?? 1),
-    confidenceLevel: String(r.confidenceLevel ?? 50),
+    confidenceLevel: String(confidencePct(r.confidenceLevel) ?? 50),
     screenshotUrls: urls, screenshotNotes: stringToScreenshotNotes(r.screenshotNotes, urls.length),
     tags: r.tags ?? "",
     marketCap: r.marketCap ?? "", float: r.float ?? "", adv: r.adv ?? "",

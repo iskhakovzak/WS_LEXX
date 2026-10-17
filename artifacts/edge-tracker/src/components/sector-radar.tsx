@@ -93,7 +93,7 @@ function BarRow({ s, max, metric }: { s: SectorPoint; max: number; metric: "day"
         <span className="absolute inset-y-0 left-1/2 w-px bg-border" />
         {v != null && (
           <span
-            className={cn("absolute inset-y-0.5 rounded-full motion-safe:transition-all motion-safe:duration-300", v >= 0 ? "bg-up/70" : "bg-down/70")}
+            className={cn("absolute inset-y-0.5 rounded-full motion-safe:transition-[width] motion-safe:duration-300", v >= 0 ? "bg-up/70" : "bg-down/70")}
             style={v >= 0 ? { left: "50%", width: `${w}%` } : { right: "50%", width: `${w}%` }}
           />
         )}

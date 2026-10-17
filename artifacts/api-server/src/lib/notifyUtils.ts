@@ -285,8 +285,9 @@ export async function notifyMentions(opts: {
   if (names.length && opts.filter) names = await opts.filter(names);
   if (names.length === 0) return [];
   const preview = (opts.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-  const message = `${opts.authorName} упомянул вас ${opts.context}: «${preview}»`;
-  const tgText = `${message}${opts.link ? ` ${getSiteUrl()}${opts.link}` : ""}`;
+  // Gender-neutral («Ольга Н.: «…»»): the title already says «Упоминание <context>»; Telegram gets the context inline.
+  const message = `${opts.authorName}: «${preview}»`;
+  const tgText = `Упоминание ${opts.context} — ${message}${opts.link ? ` ${getSiteUrl()}${opts.link}` : ""}`;
   for (const name of names) {
     await notifyUser({
       userName: name, type: "mention", title: `Упоминание ${opts.context}`.slice(0, 200), message,
@@ -401,7 +402,7 @@ export async function notifyPublicComment(opts: {
   const { ideaId, ticker, traderName, authorName, commentText, source } = opts;
   const preview = commentText.slice(0, 150);
   const tgMsg = `💬 Публичный комментарий к идее <b>#${ideaId} ${ticker}</b> от <b>${authorName}</b>:\n\n<i>"${preview}${commentText.length > 150 ? "…" : ""}"</i>`;
-  const notifMsg = `${authorName} оставил публичный комментарий к идее ${ticker}: "${commentText.slice(0, 100)}"`;
+  const notifMsg = `Публичный комментарий к идее ${ticker} от ${authorName}: "${commentText.slice(0, 100)}"`;
 
   try {
     // 1. Assigned curator & risk manager (from trader's assignments)

@@ -3,6 +3,7 @@ import { Info, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { MIN_DAYS, type BucketStats, type Dimension, type IndicatorDef } from "./engine";
 import { daysWord, pctText, toneOfMoney, usd } from "./format";
 
@@ -145,7 +146,7 @@ export function EdgeByRegime({
   return (
     <Panel
       title="Где ты зарабатываешь"
-      description={`Твой нетто-результат по дням с разным рынком · ${daysWord(totalDays)}, ${totalTrades} сделок · в среднем ${usd(base.netPerDay)} в день`}
+      description={`Твой нетто-результат по дням с разным рынком · ${daysWord(totalDays)}, ${totalTrades} ${pluralRu(totalTrades, "сделка", "сделки", "сделок")} · в среднем ${usd(base.netPerDay)} в день`}
       actions={
         <Segmented
           size="sm"

@@ -17,6 +17,8 @@ import {
 import { Initial, LoadError, MarkdownText, MoodPill, ScoreStars } from "./junior-ui";
 import { JuniorNoteSheet, type SheetNav } from "./junior-note-sheet";
 import { ScoreTrail, TrendArrow } from "./junior-review-context";
+import { PeopleSearchInput } from "@/components/people/people-search-input";
+import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
 const SCOPE_KEY = "ws_lexx_junior_scope";
 const SORT_KEY = "ws_lexx_junior_roster_sort";
@@ -52,6 +54,8 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const [scopePref, setScopePref] = React.useState<ReviewScopeFilter>(() => readPref(SCOPE_KEY, ["all", "mine"] as const, "all"));
   const [sort, setSort] = React.useState<"attention" | "name">(() => readPref(SORT_KEY, ["attention", "name"] as const, "attention"));
   const [flaggedOnly, setFlaggedOnly] = React.useState(false);
+  const [who, setWho] = React.useState("");
+  const aliases = usePeopleAliases();
   // Mentors review only their mentees anyway — their default view is «Мои джуны».
   const scope: ReviewScopeFilter = canFilterMine ? (isMentor && !localStorageHas(SCOPE_KEY) ? "mine" : scopePref) : "all";
   const setScope = (v: ReviewScopeFilter) => { setScopePref(v); writePref(SCOPE_KEY, v); };
@@ -95,9 +99,10 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const missed = rows.filter((r) => !r.note);
   const flagged = rows.filter((r) => (r.attention ?? []).some((f) => f.kind !== "unanswered"));
   const shownRows = React.useMemo(() => {
-    const base = flaggedOnly ? rows.filter((r) => (r.attention ?? []).length > 0) : rows;
+    const pq = prepareQuery(who);
+    const base = (flaggedOnly ? rows.filter((r) => (r.attention ?? []).length > 0) : rows).filter((r) => pq.empty || matchPerson(pq, r.trader, aliases));
     return sort === "attention" ? byAttention(base) : [...base].sort((a, b) => a.trader.localeCompare(b.trader, "ru"));
-  }, [rows, sort, flaggedOnly]);
+  }, [rows, sort, flaggedOnly, who, aliases]);
   const teamAvg = (() => {
     const s = rows.filter((r) => r.avg_score != null).map((r) => r.avg_score!);
     return s.length ? (s.reduce((a, b) => a + b, 0) / s.length).toFixed(1) : null;
@@ -181,7 +186,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Предыдущий торговый день" onClick={() => setDate(prevTradingDay(date))}>
           <ChevronLeft />
         </Button>
-        <label className="glass-field relative inline-flex min-h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
+        <label className="glass-field relative inline-flex h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
           <span className="first-letter:uppercase">{fmtDayLong(date)}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <input type="date" aria-label="Дата сводок команды" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
@@ -189,8 +194,9 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Следующий торговый день" disabled={nextTradingDay(date) > today} onClick={() => setDate(nextTradingDay(date))}>
           <ChevronRight />
         </Button>
-        {date !== today && <Button size="sm" variant="outline" onClick={() => setDate(today)}>Сегодня</Button>}
+        {date !== today && <Button variant="outline" onClick={() => setDate(today)}>Сегодня</Button>}
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          {rows.length > 6 && <PeopleSearchInput value={who} onChange={setWho} className="sm:w-52" />}
           {isMentor && (
             <Pill tone="purple" title={`Ты наставник: ${mineList.join(", ")}`}>
               <GraduationCap className="h-3 w-3" aria-hidden="true" />Наставник · {mineList.length}
@@ -380,7 +386,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         ) : notes.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={!isReviewer ? "Ты ещё не написал сводку за этот день" : scope === "mine" ? "Твои джуны ещё не написали сводку за этот день" : "Никто ещё не написал сводку за этот день"}
+            title={!isReviewer ? "Твоей сводки за этот день ещё нет" : scope === "mine" ? "От твоих джунов сводок за этот день ещё нет" : "Сводок за этот день ещё нет"}
             description={date === today ? "Сводки появятся здесь, как только трейдеры их сохранят." : undefined}
           />
         ) : (

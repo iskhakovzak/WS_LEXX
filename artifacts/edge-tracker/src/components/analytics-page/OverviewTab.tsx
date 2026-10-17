@@ -8,7 +8,7 @@ import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-ch
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
 import {
   type Unit, type DimensionKey, computeStats, equitySeries, maxDrawdown, rHistogram, streaks, realizedR, median,
-  edgeLeaders, breakdown, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal, pluralRu, reliability, DIMENSIONS,
+  edgeLeaders, breakdown, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal, sdealDat, pluralRu, reliability, DIMENSIONS,
   CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
 } from "./metrics";
 
@@ -104,7 +104,7 @@ export function OverviewTab({
           label={isR ? "Итог, R" : "Итог нетто, $"}
           value={unit ? fmt(total) : "—"}
           tone={toneOf(total)}
-          hint={unit ? `по ${sdeal(isR ? s.rN : s.pnlN)}` : undefined}
+          hint={unit ? `по ${sdealDat(isR ? s.rN : s.pnlN)}` : undefined}
         />
         <StatCard
           label="Макс. просадка"

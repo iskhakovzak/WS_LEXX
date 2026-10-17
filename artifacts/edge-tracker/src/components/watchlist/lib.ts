@@ -287,3 +287,48 @@ export function quoteDateIso(d: string | null | undefined): string | null {
   if (!m) return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
   return `${m[3]}-${m[1].padStart(2, "0")}-${m[2].padStart(2, "0")}`;
 }
+
+const NY_STAMP = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+});
+/** «YYYY-MM-DD HH:mm» in New York for an ISO instant (null when unparsable). */
+export function nyStamp(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  const p = Object.fromEntries(NY_STAMP.formatToParts(d).map((x) => [x.type, x.value]));
+  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+}
+
+/**
+ * Was the row put into «Сегодня» for an earlier session? `prevSession` = the trading day before the session
+ * being prepared; anything moved in before its 16:00 ET close belonged to that (or an older) session.
+ * Rows without a timestamp are not judged.
+ */
+export function isStaleToday(inPlayAt: string | null | undefined, prevSession: string): boolean {
+  const s = nyStamp(inPlayAt);
+  return s != null && s < `${prevSession} 16:00`;
+}
+
+/** Copy text to the clipboard; false when the browser refuses (no permission / insecure context). */
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Unfocused document / no permission: the legacy selection copy still works from a user gesture.
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.cssText = "position:fixed;top:0;left:0;opacity:0;pointer-events:none";
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand("copy");
+      ta.remove();
+      return ok;
+    } catch {
+      return false;
+    }
+  }
+}

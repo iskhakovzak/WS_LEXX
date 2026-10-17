@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseAsk, type ParseContext } from "@/lib/ask/parse";
-import { askBookScope, makeBook, runAsk, tradesFromTuples, tradesHref } from "@/lib/ask/run";
+import { askBookScope, decodeTuples, makeBook, runAsk, tradesFromTuples, tradesHref } from "@/lib/ask/run";
 import { canonicalText, type AskTrade } from "@/lib/ask/aggregate";
 
 // Book: Ориф trades Mon 2026-10-12 … Fri 2026-10-16, plus one Тимур trade.
@@ -144,5 +144,30 @@ describe("tradesFromTuples", () => {
     expect(t.contextSnapshot).toEqual({ openedAt: "2026-10-16T09:45:00", closedAt: "2026-10-16T09:48:00" });
     const b = makeBook(tradesFromTuples(cols, [[1, "AAPL", "2026-10-16", "Ориф", 50, 1, 100, "2026-10-16T09:45:00", "2026-10-16T09:48:00", "win"]]));
     expect(runAsk(parseAsk("сколько сделок", ctx), b, { me: "Ориф" }).answer.matched).toBe(1);
+  });
+});
+
+describe("decodeTuples (enc=2)", () => {
+  it("restores dictionary strings and clock stamps (closedAt relative to exitDate, else date)", () => {
+    const cols = ["id", "ticker", "date", "exitDate", "setup", "openedAt", "closedAt"];
+    const enc = {
+      dicts: { ticker: ["AAPL"], date: ["2026-10-16"], exitDate: ["2026-10-19"], setup: ["Пробой"] },
+      clock: { openedAt: "date", closedAt: "exitDate" },
+    };
+    const rows = decodeTuples(cols, [
+      [1, 0, 0, null, 0, 9 * 3600 + 45 * 60, 9 * 3600 + 48 * 60 + 7],
+      [2, 0, 0, 0, null, "2026-10-15T23:59:59", 34200],
+      [3, null, 0, null, null, null, null],
+    ], enc);
+    expect(rows[0]).toEqual([1, "AAPL", "2026-10-16", null, "Пробой", "2026-10-16T09:45:00", "2026-10-16T09:48:07"]);
+    expect(rows[1]).toEqual([2, "AAPL", "2026-10-16", "2026-10-19", null, "2026-10-15T23:59:59", "2026-10-19T09:30:00"]);
+    expect(rows[2]).toEqual([3, null, "2026-10-16", null, null, null, null]);
+    const [t] = tradesFromTuples(cols, [[1, 0, 0, null, 0, 35100, 35287]], enc);
+    expect(t).toMatchObject({ id: 1, ticker: "AAPL", date: "2026-10-16", setup: "Пробой" });
+    expect(t.contextSnapshot).toEqual({ openedAt: "2026-10-16T09:45:00", closedAt: "2026-10-16T09:48:07" });
+  });
+  it("plain tuples pass through unchanged", () => {
+    const rows = [[1, "AAPL"]];
+    expect(decodeTuples(["id", "ticker"], rows)).toBe(rows);
   });
 });

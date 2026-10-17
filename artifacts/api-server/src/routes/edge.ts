@@ -20,6 +20,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 
 const router: IRouter = Router();
 
@@ -67,15 +68,6 @@ function normQuery(q: Request["query"]): Record<string, string> {
 
 /* ─── SQL fragments ───────────────────────────────────────────────────────── */
 
-/** Earliest entry/add execution and latest exit/stop/trim execution per trade. */
-const EXEC_CTE = `exec AS (
-  SELECT trade_id,
-         MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-         MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-  FROM trade_executions
-  WHERE executed_at IS NOT NULL
-  GROUP BY trade_id
-)`;
 
 /** Minutes since NY midnight of the entry: execution → time inside `date` → NULL. */
 const ENTRY_MIN_SQL = `(CASE
@@ -194,9 +186,10 @@ function hasJournalDays(): Promise<boolean> {
   return journalProbe;
 }
 
-function fromClause(hasJournal: boolean): string {
-  return `FROM trades t
-    LEFT JOIN exec e ON e.trade_id = t.id` +
+/** Earliest entry/add and latest exit/stop/trim execution per trade (`e`), joined only when a dimension reads it
+ *  (tod / hold): one trader → per-trade index probe, desk-wide → one hash aggregate (lib/execSpan). */
+function fromClause(hasJournal: boolean, exec: "lateral" | "global" | null): string {
+  return `FROM trades t` + (exec ? `\n    ${execSpanJoin(exec)}` : "") +
     (hasJournal ? `\n    LEFT JOIN journal_days j ON j.trader = t.trader AND j.day = ${CLOSE_DATE_CAST}` : "");
 }
 
@@ -213,19 +206,22 @@ export type EdgeCell = {
 export type MatrixQuery = z.infer<typeof matrixSchema>;
 export type CostsQuery = z.infer<typeof costsSchema>;
 
-/** Pure SQL builder (exported for the offline check). */
+/** Pure SQL builder (exported for the offline check).
+ *  `base` is MATERIALIZED: inlined, Postgres re-evaluates res / r / net at every reference in the aggregates
+ *  (≈20 TRANSLATE/LOWER chains per row) — desk-wide 1.1 s → 0.25 s on 45k trades. */
 export function buildMatrixQuery(q: MatrixQuery, scope: string | null, hasJournal: boolean): { sql: string; params: unknown[] } {
   const tod = q.tod ?? 30;
   const { where, params } = buildWhere(q, scope);
   const rowSql = dimensionSql(q.rows, tod, hasJournal);
   const colSql = q.cols === q.rows ? `'—'` : dimensionSql(q.cols, tod, hasJournal);
-  const sql = `WITH ${EXEC_CTE},
-  base AS (
+  const needsExec = [q.rows, q.cols].some((d) => d === "tod" || d === "hold");
+  const exec = needsExec ? (scope != null ? "lateral" : "global") : null;
+  const sql = `WITH base AS MATERIALIZED (
     SELECT ${rowSql} AS row_key, ${colSql} AS col_key,
            ${resultSql("t")} AS res, ${decidedSql("t")} AS decided, ${closedSql("t")} AS closed,
            ${signedRSql("t")} AS r, t.pnl::float8 AS gross, ${netPnlSql("t")}::float8 AS net, ABS(COALESCE(t.fees, 0))::float8 AS fees,
            substring(${closeDateSql("t")} from 1 for 10) AS close_day, t.date AS entry_key, t.id
-    ${fromClause(hasJournal)}
+    ${fromClause(hasJournal, exec)}
     WHERE ${where}
   )
   SELECT row_key, col_key,
@@ -302,14 +298,13 @@ export type EdgeCostRow = {
 export function buildCostsQuery(q: CostsQuery, scope: string | null): { sql: string; params: unknown[] } {
   const { where, params } = buildWhere(q, scope);
   const keySql = dimensionSql(q.group, 30, false);
-  const sql = `WITH ${EXEC_CTE},
-  base AS (
+  const sql = `WITH base AS MATERIALIZED (
     SELECT ${keySql} AS key, ${closedSql("t")} AS closed,
            t.pnl::float8 AS gross, ${netPnlSql("t")}::float8 AS net,
            (CASE WHEN t.pnl IS NOT NULL THEN ABS(COALESCE(t.fees, 0)) END)::float8 AS fees,
            t.fees IS NOT NULL AND t.fees <> 0 AS has_fees,
            t.qty::float8 AS qty, t.slippage::float8 AS slippage
-    ${fromClause(false)}
+    ${fromClause(false, null)}
     WHERE ${where}
   )
   SELECT key,

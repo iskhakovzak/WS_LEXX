@@ -15,6 +15,7 @@ import { ViolationsList } from "@/components/rules/ViolationsList";
 import { LS_KEYS, PERIODS, type PeriodValue, lsGet, lsSet } from "@/components/rules/constants";
 import type { RuleDraft } from "@/components/rules/templates";
 import type { Mistake, MistakePrefill, Rule, RuleReport } from "@/components/rules/types";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "overview" | "mistakes" | "violations";
 const TABS: Tab[] = ["overview", "mistakes", "violations"];
@@ -157,14 +158,15 @@ export default function RulesTracker() {
         actions={
           <>
             {isStaff && traderOptions.length > 1 && (
-              <Select value={traderName} onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}>
-                <SelectTrigger aria-label="Трейдер" className="w-full sm:w-[180px]">
-                  <SelectValue placeholder="Трейдер" />
-                </SelectTrigger>
-                <SelectContent>
-                  {traderOptions.map((n) => <SelectItem key={n} value={n}>{n === self ? `${n} (вы)` : n}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect
+                value={traderName}
+                onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}
+                options={traderOptions}
+                self={self}
+                selfSuffix="(вы)"
+                ariaLabel="Трейдер"
+                className="w-full sm:w-[180px]"
+              />
             )}
             <Segmented<PeriodValue> ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
             {user?.role !== "guest" && !(tab === "overview" && report && !hasRules) && (

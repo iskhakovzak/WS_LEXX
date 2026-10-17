@@ -70,15 +70,34 @@ const nyFmt = new Intl.DateTimeFormat("en-CA", {
   timeZone: NY_TZ, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
 });
 
+/**
+ * NY UTC offset (ms) per UTC hour. US DST switches happen on a whole UTC hour, so one Intl call per hour is
+ * exact — and the office endpoint classifies ~45k trades per load (formatToParts per trade cost ~0.4 s).
+ */
+const HOUR_MS = 3_600_000;
+const nyOffsetByHour = new Map<number, number>();
+function nyOffsetMs(ms: number): number {
+  const hk = Math.floor(ms / HOUR_MS);
+  let off = nyOffsetByHour.get(hk);
+  if (off === undefined) {
+    const base = hk * HOUR_MS;
+    const p: Record<string, string> = {};
+    for (const x of nyFmt.formatToParts(new Date(base))) p[x.type] = x.value;
+    off = Date.UTC(Number(p.year), Number(p.month) - 1, Number(p.day), Number(p.hour) % 24, Number(p.minute), Number(p.second)) - base;
+    if (nyOffsetByHour.size > 100_000) nyOffsetByHour.clear();
+    nyOffsetByHour.set(hk, off);
+  }
+  return off;
+}
+
 /** New York calendar date + seconds since NY midnight of an instant; null for a missing / invalid one. */
 export function nyParts(at: string | Date | null | undefined): { date: string; sec: number } | null {
   if (at == null || at === "") return null;
   const d = at instanceof Date ? at : new Date(at);
-  if (Number.isNaN(d.getTime())) return null;
-  const p: Record<string, string> = {};
-  for (const x of nyFmt.formatToParts(d)) p[x.type] = x.value;
-  const hour = Number(p.hour) % 24;
-  return { date: `${p.year}-${p.month}-${p.day}`, sec: hour * 3600 + Number(p.minute) * 60 + Number(p.second) };
+  const ms = d.getTime();
+  if (Number.isNaN(ms)) return null;
+  const local = new Date(ms + nyOffsetMs(ms));
+  return { date: local.toISOString().slice(0, 10), sec: local.getUTCHours() * 3600 + local.getUTCMinutes() * 60 + local.getUTCSeconds() };
 }
 
 export interface ClassifyInput {

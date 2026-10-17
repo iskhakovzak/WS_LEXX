@@ -12,6 +12,7 @@ import { links } from "@/lib/links";
 import { isDecided, netPnl, resultOf } from "@/lib/trade-math";
 import { safeHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { DealTypePill, ExposureBadge, OfferGauge, ScoreBreakdown, SignedPct, pctTone } from "./bits";
 import { BuySellBar } from "./InsiderPanel";
 import {
@@ -249,7 +250,7 @@ export function OfferingDetailSheet({
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="outline" disabled={watched || watchPending} onClick={() => onAddWatch(o)}>
               {watched ? <Check aria-hidden="true" /> : <Star aria-hidden="true" />}
-              {watched ? "В вотчлисте" : "В вотчлист"}
+              {watched ? "В вотчлисте" : "В «Сегодня»"}
             </Button>
             <Button size="sm" variant="outline" disabled={planPending} onClick={() => onAddPlan(o)} title={`Мой план на ${fmtDay(planDate, { day: "numeric", month: "long" })}`}>
               <CalendarPlus aria-hidden="true" /> В план дня
@@ -351,7 +352,7 @@ export function OfferingDetailSheet({
                 <div className="flex flex-wrap gap-1.5">
                   {h ? (
                     <>
-                      <Pill tone={h.stats.priced12m >= 3 ? "down" : h.stats.priced12m > 0 ? "warn" : "up"}>{h.stats.priced12m} сделок за 12 мес · {h.stats.priced36m} за 3 года</Pill>
+                      <Pill tone={h.stats.priced12m >= 3 ? "down" : h.stats.priced12m > 0 ? "warn" : "up"}>{h.stats.priced12m} {pluralRu(h.stats.priced12m, "сделка", "сделки", "сделок")} за 12 мес · {h.stats.priced36m} за 3 года</Pill>
                       {h.stats.atm12m > 0 && <Pill tone="warn"><TermTooltip term="atm" />: {h.stats.atm12m}</Pill>}
                       {h.stats.activeShelf && <Pill tone="warn">активный <TermTooltip term="shelf">шелф</TermTooltip> с {fmtDay(h.stats.lastShelfDate, { month: "short", year: "numeric" })}</Pill>}
                       {h.stats.wksi && <Pill tone="neutral" title="Крупный эмитент с автоматическим шелфом: 424B5 часто — облигации">WKSI</Pill>}

@@ -62,11 +62,11 @@ export function TodayForYou({
                 <li key={r.dim.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 text-sm tabular-nums">
                   <span className="min-w-0">
                     <span className="block truncate text-xs text-muted-foreground">{r.dim.label}</span>
-                    <span className="block truncate">{b.label}<span className="text-xs text-muted-foreground"> · {b.days} дн.</span></span>
+                    <span className="block truncate" title={`${b.label} · ${b.days} дн.`}>{b.label}<span className="text-xs text-muted-foreground"> · {b.days} дн.</span></span>
                   </span>
                   <NetBar v={b.netPerDay} max={max} dim={b.days < MIN_DAYS} />
                   <span className={cn("text-right font-medium", b.days < MIN_DAYS ? "text-muted-foreground" : tx(b.netPerDay))} title={b.days < MIN_DAYS ? "Меньше 8 дней — вывод ненадёжен" : undefined}>
-                    {usd(b.netPerDay)}
+                    {b.days > 0 ? usd(b.netPerDay) : "—"}
                   </span>
                 </li>
               ))}

@@ -825,7 +825,7 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
       inBackground("discussions.accept", async () => {
         if (!(await filterVisibleNames([who], row)).length) return;
         await notifyUser({
-          userName: who, type: "reply", actor: viewer, title: `${viewer} отметил ваш ответ как решение`,
+          userName: who, type: "reply", actor: viewer, title: `Ваш ответ отмечен как решение · ${viewer}`,
           message: `«${textPreview(existing.topic, 100)}»`, link: threadLink(id), entityType: "thread", entityId: id,
         });
       });
@@ -857,6 +857,9 @@ router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<v
 // ─── Comments ───────────────────────────────────────────────────────────────
 
 const RE_REPLY = /\[re:(\d+)\]/;
+/** Comment text without the machine prefixes «[Наблюдаю] [re:12] » — what a person actually wrote (for notification previews). */
+const COMMENT_PREFIX = /^(\[(?:Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:\d+\]\s*)?/;
+const plainComment = (text: string) => text.replace(COMMENT_PREFIX, "").trim();
 
 router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
@@ -888,11 +891,12 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
   const row = { trader: thread.trader, audience: audienceOf(thread.audience) };
   inBackground("discussions.comment", async () => {
     const link = threadLink(threadId);
+    const plain = plainComment(text);
     const mentioned = new Set(await notifyMentions({
-      text, authorName: me, context: `в обсуждении «${topicShort}»`, link, telegram: false,
+      text: plain, authorName: me, context: `в обсуждении «${topicShort}»`, link, telegram: false,
       filter: (names) => filterVisibleNames(names, row),
     }));
-    const body = `«${textPreview(text, 120)}»`;
+    const body = `«${textPreview(plain, 120)}»`;
     const notified = new Set<string>([me, ...mentioned]);
     const reTo = RE_REPLY.exec(text)?.[1];
     if (reTo) {
@@ -900,11 +904,11 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
       const who = parent[0]?.trader;
       if (who && !notified.has(who) && (await filterVisibleNames([who], row)).length) {
         notified.add(who);
-        await notifyUser({ userName: who, type: "reply", actor: me, title: `${me} ответил вам в «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
+        await notifyUser({ userName: who, type: "reply", actor: me, title: `${me}: ответ вам в «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
       }
     }
     if (thread.trader && !notified.has(thread.trader)) {
-      await notifyUser({ userName: thread.trader, type: "reply", actor: me, title: `${me} ответил в вашем обсуждении «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
+      await notifyUser({ userName: thread.trader, type: "reply", actor: me, title: `${me}: новый ответ в вашем обсуждении «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
     }
   });
   res.status(201).json({ id: comment.id, discussionId: comment.discussion_id, trader: comment.trader, text: comment.text, createdAt: comment.created_at.toISOString() });

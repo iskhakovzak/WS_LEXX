@@ -1014,12 +1014,12 @@ export async function runMigrations() {
     const { rows: chkRows } = await pool.query(`SELECT COUNT(*) AS cnt FROM pre_trade_checklist_template`);
     if (Number(chkRows[0]?.cnt) === 0) {
       const defaults = [
-        { label: "Catalyst identified", description: "Earnings, news, FDA, sector move, or other measurable catalyst", sort: 1 },
-        { label: "Volume above average", description: "Relative volume > 1.5x or pre-market volume confirms interest", sort: 2 },
-        { label: "Setup is in playbook", description: "This setup matches a documented strategy with edge", sort: 3 },
-        { label: "Risk size calculated", description: "Position sized to predefined R-unit. Stop placement is clear", sort: 4 },
-        { label: "Aligned with market regime", description: "SPY/QQQ direction and sector match the trade thesis", sort: 5 },
-        { label: "Stop level is concrete", description: "Specific price level (not 'feel'), no wider than 1R", sort: 6 },
+        { label: "Есть катализатор", description: "Отчёт, новость, FDA, движение сектора или другой измеримый повод", sort: 1 },
+        { label: "Объём выше среднего", description: "Относительный объём > 1.5x или премаркет-объём подтверждает интерес", sort: 2 },
+        { label: "Сетап есть в плейбуке", description: "Сетап совпадает с описанной стратегией с подтверждённым edge", sort: 3 },
+        { label: "Размер рассчитан от риска", description: "Позиция посчитана от заданного R. Место стопа понятно", sort: 4 },
+        { label: "По направлению рынка", description: "Направление SPY/QQQ и сектора совпадает с идеей сделки", sort: 5 },
+        { label: "Стоп — конкретный уровень", description: "Конкретная цена (не «по ощущениям»), не шире 1R", sort: 6 },
       ];
       for (const d of defaults) {
         await pool.query(
@@ -1246,6 +1246,24 @@ export async function runMigrations() {
   `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_performance_reports"));
   await pool.query(`CREATE INDEX IF NOT EXISTS propreports_perf_trader_idx ON propreports_performance_reports(trader_name)`).catch(() => {});
   // ─── end PropReports integration ───
+
+  // Tier seed rename «Джуниор» → «Джун» (lib/scalingEngine.ts) for databases seeded before it. Only the untouched
+  // system row is renamed — a curator's own name (updated_by ≠ 'system') stays. scaling_tiers is created lazily by
+  // routes/scaling.ts, hence the to_regclass guard; idempotent (a second run matches nothing).
+  await pool.query(`
+    DO $$ BEGIN
+      IF to_regclass('public.scaling_tiers') IS NOT NULL THEN
+        UPDATE scaling_tiers SET name = 'Джун' WHERE key = 'junior' AND name = 'Джуниор' AND updated_by = 'system';
+      END IF;
+    END $$
+  `).catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "migrate: scaling tier rename failed"));
+
+  // Interface language per user (RU / EN / UZ): server texts use X-Lang → users.locale → ru (src/i18n).
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'ru'`).catch((e: any) => logger.warn({ error: e.message }, "users.locale"));
+
+  // Optional Latin alias for cross-script people search (lib/peopleDirectory.ts, admin «Люди» → «Латинское имя»).
+  // Names stay the identifiers (trades.trader, users.assigned_curator); this column is search-only. Idempotent.
+  await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name_latin TEXT`).catch((e: any) => logger.warn({ error: e.message }, "users.name_latin"));
 
   await seedHolidays2026();
 

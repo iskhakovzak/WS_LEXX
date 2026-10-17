@@ -8,6 +8,7 @@ import { QueryError } from "@/components/query-error";
 import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { Avatar, ScoreBar, Sparkline, fmtSigned, pluralRu } from "./shared";
 import { CRITERIA, buildScorecards, criterionLabel, shiftWeek, tierLabel, weekLabel, weekOf, type Rating, type Scorecard } from "./scorecard-model";
+import { PersonSelect } from "@/components/people/person-select";
 
 function Delta({ cur, prev, className }: { cur: number; prev: number | null | undefined; className?: string }) {
   if (prev == null) return null;
@@ -247,13 +248,7 @@ export function ScorecardsTab({
             title="Журнал оценок"
             description="Все оценки по неделям, с комментариями кураторов"
             actions={
-              <Select value={filter} onValueChange={setFilter}>
-                <SelectTrigger className="h-8 w-44" aria-label="Фильтр по трейдеру"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Все трейдеры</SelectItem>
-                  {traderOptions.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={filter} onValueChange={setFilter} allValue="all" allLabel="Все трейдеры" options={traderOptions} ariaLabel="Фильтр по трейдеру" className="h-8 w-44" />
             }
           >
             {byWeek.length === 0 ? (

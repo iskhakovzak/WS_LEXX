@@ -108,11 +108,11 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
     return p?.time?.slice(0, 5) ?? "";
   };
   const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
-  const srcLabel = e.timeSource === "executions" ? "по времени исполнений (выход)" : e.timeSource === "snapshot" ? "по времени брокера (выход)" : "порядок сделок, без времени";
+  const srcLabel = e.timeSource === "executions" ? "по времени исполнений (выход), ET" : e.timeSource === "snapshot" ? "по времени брокера (выход), ET" : "по порядку сделок — время неизвестно";
   return (
     <Panel
       title="Кривая дня"
-      description={`Нарастающее нетто ${srcLabel}, ET`}
+      description={`Нарастающее нетто ${srcLabel}`}
       icon={LineChart}
       className="min-w-0"
       actions={

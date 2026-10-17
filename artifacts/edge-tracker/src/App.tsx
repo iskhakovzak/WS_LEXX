@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
+import { MotionConfig } from "framer-motion";
 import { RouteErrorBoundary } from "@/components/shell/route-error-boundary";
-import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter, useLocation, useSearch } from "wouter";
 import { QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/hooks/use-toast";
@@ -10,59 +11,65 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
-import Trades from "@/pages/trades";
-import Events from "@/pages/events";
 import LoginPage from "@/pages/login";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
+import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loaders";
+import { I18nProvider } from "@/i18n";
+import { LocaleSync } from "@/i18n/locale-sync";
+import { shellI18n } from "@/i18n/ns/shell";
 
-const Research = lazy(() => import("@/pages/research"));
-const DailyFeed = lazy(() => import("@/pages/dailyfeed"));
-const Discussions = lazy(() => import("@/pages/discussions"));
-const Analytics = lazy(() => import("@/pages/analytics"));
-const Settings = lazy(() => import("@/pages/settings"));
-const Watchlist = lazy(() => import("@/pages/watchlist"));
-const Playbook = lazy(() => import("@/pages/playbook"));
-const TradeIdeas = lazy(() => import("@/pages/trade-ideas"));
-const TradeIdeaStats = lazy(() => import("@/pages/trade-idea-stats"));
-const Calculator = lazy(() => import("@/pages/calculator"));
-const ActivityPage = lazy(() => import("@/pages/activity"));
-const ErrorTracker = lazy(() => import("@/pages/error-tracker"));
-const Indicators = lazy(() => import("@/pages/indicators"));
-const Big7 = lazy(() => import("@/pages/big7"));
-const Ratings = lazy(() => import("@/pages/ratings"));
-const AnalystActions = lazy(() => import("@/pages/analyst-actions"));
-const Stats = lazy(() => import("@/pages/stats"));
-const Journal = lazy(() => import("@/pages/journal"));
-const TopResults = lazy(() => import("@/pages/top-results"));
-const Admin = lazy(() => import("@/pages/admin"));
-const Curator = lazy(() => import("@/pages/curator"));
-const AuthorNotes = lazy(() => import("@/pages/author-notes"));
-const JuniorNotes = lazy(() => import("@/pages/junior-notes"));
-const Offerings = lazy(() => import("@/pages/offerings"));
-const RiskDesk = lazy(() => import("@/pages/risk"));
-const GamePlan = lazy(() => import("@/pages/game-plan"));
-const Integrations = lazy(() => import("@/pages/integrations"));
-const Scaling = lazy(() => import("@/pages/scaling"));
-const WeeklyReview = lazy(() => import("@/pages/weekly-review"));
-const Notifications = lazy(() => import("@/pages/notifications"));
-const Simulator = lazy(() => import("@/pages/simulator"));
-const Behavior = lazy(() => import("@/pages/behavior"));
-const DayReport = lazy(() => import("@/pages/day-report"));
-const Benchmark = lazy(() => import("@/pages/benchmark"));
-const OfficeStats = lazy(() => import("@/pages/office-stats"));
-const Ask = lazy(() => import("@/pages/ask"));
-const ChartLab = lazy(() => import("@/pages/chart-lab"));
-const AcademyPath = lazy(() => import("@/pages/academy/path"));
-const AcademyChallenges = lazy(() => import("@/pages/academy/challenges"));
-const AcademyMy = lazy(() => import("@/pages/academy/my"));
-const AcademyMentor = lazy(() => import("@/pages/academy/mentor"));
-const AcademyCohorts = lazy(() => import("@/pages/academy/cohorts"));
-const AcademyLearn = lazy(() => import("@/pages/academy/learn"));
-const AcademyLesson = lazy(() => import("@/pages/academy/lesson"));
-const AcademyContentAdmin = lazy(() => import("@/pages/academy/content-admin"));
+// Every section except the dashboard (the landing page) is its own chunk; see shell/route-loaders.ts.
+const L = ROUTE_LOADERS;
+const Trades = lazy(L["/trades"]);
+const Events = lazy(L["/events"]);
+const Research = lazy(L["/research"]);
+const DailyFeed = lazy(L["/dailyfeed"]);
+const Discussions = lazy(L["/discussions"]);
+const Analytics = lazy(L["/analytics"]);
+const Settings = lazy(L["/settings"]);
+const Watchlist = lazy(L["/watchlist"]);
+const Playbook = lazy(L["/playbook"]);
+const TradeIdeas = lazy(L["/trade-ideas"]);
+const TradeIdeaStats = lazy(L["/trade-idea-stats"]);
+const Calculator = lazy(L["/calculator"]);
+const ActivityPage = lazy(L["/activity"]);
+const ErrorTracker = lazy(L["/rules"]);
+const Indicators = lazy(L["/indicators"]);
+const Big7 = lazy(L["/big7"]);
+const Ratings = lazy(L["/ratings"]);
+const AnalystActions = lazy(L["/analyst-actions"]);
+const Stats = lazy(L["/stats"]);
+const Journal = lazy(L["/journal"]);
+const TopResults = lazy(L["/top-results"]);
+const Admin = lazy(L["/admin"]);
+const Curator = lazy(L["/curator"]);
+const AuthorNotes = lazy(L["/author-notes"]);
+const JuniorNotes = lazy(L["/junior-notes"]);
+const Offerings = lazy(L["/offerings"]);
+const RiskDesk = lazy(L["/risk"]);
+const GamePlan = lazy(L["/game-plan"]);
+const Integrations = lazy(L["/integrations"]);
+const Scaling = lazy(L["/scaling"]);
+const WeeklyReview = lazy(L["/weekly-review"]);
+const Notifications = lazy(L["/notifications"]);
+const Simulator = lazy(L["/simulator"]);
+const Behavior = lazy(L["/behavior"]);
+const DayReport = lazy(L["/day-report"]);
+const Benchmark = lazy(L["/benchmark"]);
+const OfficeStats = lazy(L["/office"]);
+const Ask = lazy(L["/ask"]);
+const ChartLab = lazy(L["/chart-lab"]);
+const AcademyPath = lazy(L["/academy/path"]);
+const AcademyChallenges = lazy(L["/academy/challenges"]);
+const AcademyMy = lazy(L["/academy/my"]);
+const AcademyMentor = lazy(L["/academy/mentor"]);
+const AcademyCohorts = lazy(L["/academy/cohorts"]);
+const AcademyLearn = lazy(L["/academy/learn"]);
+const AcademyLesson = lazy(L["/academy/lesson"]);
+const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
 
 const queryClient = new QueryClient({
   // Any mutation without its own onError gets one Russian toast (lib/api-errors). 401s are
@@ -70,7 +77,7 @@ const queryClient = new QueryClient({
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
       if (mutation.options.onError || isAuthError(error)) return;
-      toast({ title: "Не удалось выполнить", description: humanizeApiError(error), variant: "destructive" });
+      toast({ title: shellI18n.t("app.actionFailed"), description: humanizeApiError(error), variant: "destructive" });
     },
   }),
   defaultOptions: {
@@ -88,9 +95,9 @@ const queryClient = new QueryClient({
 });
 
 // Mirrors the usual page shape (title, KPI row, content) so the swap to the real page doesn't jump.
-const PageFallback = (
+const PageFallback = () => (
   <div role="status" aria-busy="true" className="space-y-6">
-    <span className="sr-only">Загрузка страницы…</span>
+    <span className="sr-only">{shellI18n.t("app.pageLoading")}</span>
     <div className="space-y-2">
       <Skeleton className="h-7 w-48" />
       <Skeleton className="h-4 w-72 max-w-full" />
@@ -107,10 +114,13 @@ const APP_NAME = "WS_LEXX";
 /** Keeps the tab title in sync with the current section, and moves focus to the new page for keyboard/SR users. */
 function RouteTitle() {
   const [location] = useLocation();
+  const search = useSearch();
   const first = useRef(true);
   useEffect(() => {
-    const section = routeTitle(location);
-    document.title = section ? `${section} · ${APP_NAME}` : `Страница не найдена · ${APP_NAME}`;
+    const section = routeTitle(location, search);
+    document.title = `${section ?? shellI18n.t("titles.notFound")} · ${APP_NAME}`;
+  }, [location, search]);
+  useEffect(() => {
     if (first.current) { first.current = false; return; }
     // After client-side navigation, put focus at the top of the new content (not on the old link).
     const main = document.getElementById("main-content");
@@ -122,11 +132,14 @@ function RouteTitle() {
 
 function Router() {
   const [location] = useLocation();
+  // Trades used to ship in the main bundle; warm its chunk once the first screen is idle so the most common
+  // next click stays instant.
+  useEffect(() => preloadCommonRoutes(["/trades"]), []);
   return (
     <Layout>
       <RouteTitle />
       <RouteErrorBoundary resetKey={location}>
-      <Suspense fallback={PageFallback}>
+      <Suspense fallback={<PageFallback />}>
         <Switch>
           <Route path="/" component={Dashboard} />
           {/* Signed in already (the login screen renders outside the router): a typed / bookmarked /login goes home. */}
@@ -199,7 +212,7 @@ function AppContent() {
   }, [isAuthenticated]);
 
   if (!isAuthenticated) {
-    document.title = `Вход · ${APP_NAME}`;
+    document.title = `${shellI18n.t("titles.login")} · ${APP_NAME}`;
     return <LoginPage />;
   }
 
@@ -213,14 +226,24 @@ function AppContent() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      {/* framer-motion follows the OS «reduce motion» setting everywhere (transforms/layout off, opacity kept). */}
+      <MotionConfig reducedMotion="user">
       <TooltipProvider>
         <AuthProvider>
           <ThemeProvider>
-            <AppContent />
+            <LocaleSync />
+            {/* Re-mounts the app on a language switch (query cache, auth and theme survive; see i18n/README.md). */}
+            <I18nProvider>
+              {/* Last line of defence: a crash in the shell itself (header, sidebar) shows a retry instead of a blank page. */}
+              <RouteErrorBoundary resetKey="app">
+                <AppContent />
+              </RouteErrorBoundary>
+            </I18nProvider>
           </ThemeProvider>
         </AuthProvider>
         <Toaster />
       </TooltipProvider>
+      </MotionConfig>
     </QueryClientProvider>
   );
 }

@@ -5,6 +5,7 @@ import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { addDays } from "@/lib/trading-date";
 import { catLabel, fmtUsd, isClosedRow, isShortDayRow } from "./catalyst-math";
 import type { CatalystData } from "./use-catalysts";
@@ -26,9 +27,19 @@ export function WeekGrid({
   data: CatalystData;
 }) {
   const days = [0, 1, 2, 3, 4].map((i) => addDays(weekStart, i));
-  const { today, rows, book, notes, earningsByDate } = data;
+  const { today, focus, rows, book, notes, earningsByDate } = data;
   const loading = data.holidays.isLoading || data.trades.isLoading;
-  const thisWeek = days.includes(today) || (today > days[4] && today <= addDays(weekStart, 6));
+  // «Эта неделя» = the week of the session being prepared (on Saturday / Sunday — the coming one).
+  const thisWeek = days.includes(focus);
+  const weekendNow = [0, 6].includes(new Date(`${today}T12:00:00Z`).getUTCDay());
+  const mine = new Set(data.myTickers);
+  /** Whole-market reporters of a calendar date: count + the two largest that aren't the trader's. */
+  const market = (d: string) => {
+    const day = data.upcoming.data?.days.find((x) => x.date === d);
+    if (!day) return null;
+    const top = [...day.items].filter((e) => !mine.has(e.ticker.toUpperCase())).sort((a, b) => (b.marketCapNum ?? 0) - (a.marketCapNum ?? 0)).slice(0, 2);
+    return { total: day.total, top };
+  };
 
   return (
     <section aria-label="Неделя" className="glass-panel rounded-2xl p-[var(--panel-p)]">
@@ -38,7 +49,7 @@ export function WeekGrid({
           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Предыдущая неделя" onClick={() => onWeekChange(addDays(weekStart, -7))}>
             <ChevronLeft className="!size-4" />
           </Button>
-          <Button variant="outline" size="sm" disabled={thisWeek} onClick={() => onWeekChange(today)}>Эта неделя</Button>
+          <Button variant="outline" size="sm" disabled={thisWeek} onClick={() => onWeekChange(focus)}>{weekendNow ? "Ближайшая неделя" : "Эта неделя"}</Button>
           <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Следующая неделя" onClick={() => onWeekChange(addDays(weekStart, 7))}>
             <ChevronRight className="!size-4" />
           </Button>
@@ -113,6 +124,15 @@ export function WeekGrid({
                 )}
 
                 <span className="mt-auto flex flex-col gap-1">
+                  {!closed && !past && (() => {
+                    const m = market(d);
+                    return m && m.total > 0 ? (
+                      <span className="flex min-w-0 flex-col text-xs text-muted-foreground" title={`Отчётов на рынке: ${m.total}${m.top.length ? ` · крупнейшие: ${m.top.map((e) => `${e.ticker} (${e.company})`).join(", ")}` : ""}`}>
+                        <span>рынок: {m.total} {pluralRu(m.total, "отчёт", "отчёта", "отчётов")}</span>
+                        {m.top.length > 0 && <span className="truncate font-medium text-foreground">{m.top.map((e) => e.ticker).join(", ")}</span>}
+                      </span>
+                    ) : null;
+                  })()}
                   {dayNotes.length > 0 && (
                     <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                       <StickyNote className="h-3 w-3" aria-hidden="true" /> заметок: {dayNotes.length}
@@ -135,7 +155,7 @@ export function WeekGrid({
         </div>
       </div>
       <p className="mt-2 text-xs text-muted-foreground">
-        Отчёты — по вашим тикерам (вотчлист и самые торгуемые), на 2 недели вперёд. Выберите день, чтобы увидеть детали.
+        Отчёты — по вашим тикерам (вотчлист и самые торгуемые), «рынок» — все отчёты дня и два крупнейших. Календарь — на 2 недели вперёд; выберите день, чтобы увидеть детали.
       </p>
     </section>
   );

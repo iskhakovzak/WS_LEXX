@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import {
   type Criterion, type PathConfig, type StageKey, OP_LABEL, OPS,
   fmtInstant, sendJson, stageName, usd, useFunnel, usePathMutation, useRequests,
@@ -43,15 +44,18 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                   aria-label={`${p.user}: ${p.headline}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-foreground">{p.user}</span>
+                    <span className="truncate text-sm font-medium text-foreground" title={p.user}>{p.user}</span>
                     {p.pendingRequestId ? <Pill tone="accent">заявка</Pill> : p.ready ? <Pill tone="up">готов</Pill> : null}
                   </div>
                   {p.stage && (
                     <>
-                      <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
-                        <div className={cn("h-full rounded-full", p.ready ? "bg-up" : pct >= 0.7 ? "bg-[hsl(var(--chart-3))]" : "bg-primary")} style={{ width: `${pct * 100}%` }} />
-                      </div>
-                      <span className="text-xs tabular-nums text-muted-foreground">{p.passed} из {p.total} · P&amp;L {usd(p.summary.net)} за {p.summary.windowDays} дн.</span>
+                      {/* The top stage has no next step and no criteria: no «0 из 0» bar. */}
+                      {p.total > 0 && (
+                        <div className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
+                          <div className={cn("h-full rounded-full", p.ready ? "bg-up" : pct >= 0.7 ? "bg-[hsl(var(--chart-3))]" : "bg-primary")} style={{ width: `${pct * 100}%` }} />
+                        </div>
+                      )}
+                      <span className="text-xs tabular-nums text-muted-foreground">{p.total > 0 ? `${p.passed} из ${p.total} · ` : ""}P&amp;L {usd(p.summary.net)} за {p.summary.windowDays} дн.</span>
                       {p.failing.length > 0 && <span className="line-clamp-2 text-[11px] text-muted-foreground">Не хватает: {p.failing.join(", ")}</span>}
                     </>
                   )}
@@ -104,6 +108,8 @@ export function RequestsView({ config, me, onOpen }: { config: PathConfig | unde
 
 // ─── criteria editor ────────────────────────────────────────────────────────
 
+const activeText = (n: number) => `${n} ${pluralRu(n, "активный критерий", "активных критерия", "активных критериев")}`;
+
 type Draft = Omit<Criterion, "id"> & { id?: number; _k: string };
 let seq = 0;
 const toDraft = (c: Criterion): Draft => ({ ...c, _k: `c${c.id}` });
@@ -125,7 +131,7 @@ export function CriteriaEditor({ config }: { config: PathConfig }) {
         const list = rows.filter((r) => r.fromStage === st.key);
         const to = config.stages[i + 1];
         return (
-          <Panel key={st.key} title={`«${st.name}» → «${to?.name}»`} description={`${list.filter((r) => r.enabled).length} активных критериев. Окно — последние N торговых дней; пусто — с начала ступени.`}
+          <Panel key={st.key} title={`«${st.name}» → «${to?.name}»`} description={`${activeText(list.filter((r) => r.enabled).length)}. Окно — последние N торговых дней; пусто — с начала ступени.`}
             actions={<Button size="sm" variant="outline" onClick={() => setRows((rs) => [...rs, { _k: `n${++seq}`, fromStage: st.key, metric: "net_pnl", op: ">=", value: 0, windowDays: 20, label: null, enabled: true }])}><Plus className="mr-1 h-4 w-4" aria-hidden="true" />Критерий</Button>}>
             <div className="-mx-1 overflow-x-auto px-1">
               <table className="w-full min-w-[760px] text-sm">

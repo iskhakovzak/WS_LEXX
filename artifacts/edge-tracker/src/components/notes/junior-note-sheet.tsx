@@ -285,7 +285,7 @@ export function JuniorNoteSheet({
             </div>
 
             {isCurator && (
-              <section className="space-y-2 border-t border-border bg-background/60 p-4 backdrop-blur" aria-label="Ответ трейдеру">
+              <section className="space-y-2 border-t border-border bg-background/60 p-4" aria-label="Ответ трейдеру">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <ScorePicker value={score} onChange={changeScore} />
                   <span className="text-xs text-muted-foreground">

@@ -14,7 +14,8 @@ import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned, createdByOf } from "@/lib/ownership";
-import { DEFAULT_BIG7, TODAY, parseTickerSymbols } from "./lib";
+import { pluralRu } from "@/components/rules/constants";
+import { DEFAULT_BIG7, big7Today, parseTickerSymbols } from "./lib";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const SYM_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
@@ -156,7 +157,7 @@ export function TickerManagerSheet({
       <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-md">
         <SheetHeader>
           <SheetTitle>Тикеры доски</SheetTitle>
-          <SheetDescription>Big 7 — общий список команды. Hot — ваши горячие тикеры на сегодня ({TODAY}), сбрасываются каждый день.</SheetDescription>
+          <SheetDescription>Big 7 — общий список команды. Hot — ваши горячие тикеры на сегодня ({big7Today()}), сбрасываются каждый день.</SheetDescription>
         </SheetHeader>
 
         <Segmented
@@ -218,7 +219,7 @@ export function TickerManagerSheet({
               </div>
             )}
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs text-muted-foreground">{preview.length ? `${preview.length} тикеров` : "Через пробел, запятую или перенос"}</span>
+              <span className="text-xs text-muted-foreground">{preview.length ? `${preview.length} ${pluralRu(preview.length, "тикер", "тикера", "тикеров")}` : "Через пробел, запятую или перенос"}</span>
               <Button size="sm" onClick={addBulk} disabled={!preview.length || bulkM.isPending}>{bulkM.isPending ? "Добавляем…" : `Добавить ${preview.length}`}</Button>
             </div>
           </CollapsibleContent>

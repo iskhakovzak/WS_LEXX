@@ -10,6 +10,8 @@ import {
   Link as LinkIcon, ListChecks, MoreHorizontal, Pencil, Plus, Send, Share2, Trash2, Trophy, Undo2, User, Users, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -29,7 +31,7 @@ import { ExamplesBoard } from "./examples-board";
 import { ExamplesSection } from "./examples-section";
 import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
-import { SetupHighlights } from "./highlights";
+import { RelatedSetupsSection, SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
 import { SetupStatsPanel } from "./setup-stats";
 import { StructuredDescription } from "./structured-editor";
@@ -37,6 +39,7 @@ import {
   HORIZON_LABEL, SOURCE_LABELS, accessOf, ddmm, fmtPct, fmtR, fmtUsd, folderSwatch, moneyTone, timeAgo,
   type PlaybookEntry, type SetupAccess, type SetupSummary, type ViewerLike,
 } from "./model";
+import { pluralRu } from "@/components/rules/constants";
 
 export type SetupTab = "about" | "examples" | "stats" | "history";
 export const SETUP_TABS: SetupTab[] = ["about", "examples", "stats", "history"];
@@ -93,18 +96,22 @@ export function SetupView({
     onSettled: () => qc.invalidateQueries({ queryKey: ["playbook"] }),
   });
 
+  const [proposeOpen, setProposeOpen] = React.useState(false);
+  const [proposeNote, setProposeNote] = React.useState("");
   const action = useMutation({
-    mutationFn: async (kind: "copy" | "propose" | "unpropose" | "promote") => {
+    mutationFn: async (kind: "copy" | "propose" | "unpropose" | "decline" | "promote") => {
+      const note = proposeNote.trim();
       if (kind === "copy") return pbRequest<{ id: number; name: string }>(`/api/playbook/${entry.id}/copy`, { method: "POST", json: {} });
-      if (kind === "propose") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "POST", json: {} });
-      if (kind === "unpropose") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "DELETE" });
+      if (kind === "propose") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "POST", json: note ? { note } : {} });
+      if (kind === "unpropose" || kind === "decline") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "DELETE" });
       return pbRequest<{ id: number }>(`/api/playbook/${entry.id}/promote`, { method: "POST", json: {} });
     },
     onSuccess: (r: any, kind) => {
       invalidatePlaybook(qc, entry.id);
       if (kind === "copy") { toast({ title: "Скопировано в «Мой»", description: "Автор оригинала сохранён в карточке." }); if (r?.id) onOpen(r.id); }
-      if (kind === "propose") toast({ title: "Предложено в Офис", description: "Куратор увидит сетап в списке предложений." });
+      if (kind === "propose") { setProposeOpen(false); setProposeNote(""); toast({ title: "Предложено в Офис", description: "Куратор увидит сетап в списке предложений." }); }
       if (kind === "unpropose") toast({ title: "Предложение отозвано" });
+      if (kind === "decline") toast({ title: "Предложение отклонено", description: "Сетап остался в личном плейбуке автора." });
       if (kind === "promote") { toast({ title: "Сетап добавлен в Офис", description: "Копия с эталонами — оригинал остаётся у автора." }); if (r?.id) onOpen(r.id); }
     },
     onError: (e) => toast({ title: "Не получилось", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" }),
@@ -152,7 +159,9 @@ export function SetupView({
           {entry.timeOfDay && <Pill tone="neutral">{entry.timeOfDay}</Pill>}
           {entry.ticker && <Pill tone="neutral">{entry.ticker}</Pill>}
           {access.shared && <Pill tone="accent"><Users className="h-3 w-3" aria-hidden="true" /> {entry.visibility === "all" ? "Открыт офису" : "Открыт выбранным"}</Pill>}
-          {proposed && access.space === "personal" && <Pill tone="warn"><Send className="h-3 w-3" aria-hidden="true" /> Предложен в Офис</Pill>}
+          {proposed && access.space === "personal" && (
+            <Pill tone="warn" title={entry.officeProposedNote ?? undefined}><Send className="h-3 w-3" aria-hidden="true" /> Предложен в Офис{entry.officeProposedBy && !access.mine ? ` · ${entry.officeProposedBy}` : ""}</Pill>
+          )}
           {entry.copiedFromAuthor && <Pill tone="neutral" title={entry.copiedFromId ? `Копия сетапа #${entry.copiedFromId}` : undefined}>Копия · {entry.copiedFromAuthor}</Pill>}
           {entry.sourceType && <Pill tone="neutral">{SOURCE_LABELS[entry.sourceType] || entry.sourceType}</Pill>}
           {access.space === "office" && (isCurator ? (
@@ -172,10 +181,15 @@ export function SetupView({
           <ConfidenceMeter level={entry.confidenceLevel} showLabel />
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
+        {proposed && access.canPromote && entry.officeProposedNote && (
+          <p className="mt-2 rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.08)] px-3 py-2 text-sm text-foreground">
+            <span className="text-muted-foreground">Комментарий к предложению: </span>{entry.officeProposedNote}
+          </p>
+        )}
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           {access.canAddExamples && live && (
-            <Button size="sm" onClick={() => onAddExamples(entry)}><Plus className="h-4 w-4" aria-hidden="true" /> Добавить примеры</Button>
+            <Button size="sm" onClick={() => onAddExamples(entry)} aria-keyshortcuts="a" title="Добавить сделки эталонами (A)"><Plus className="h-4 w-4" aria-hidden="true" /> Добавить примеры</Button>
           )}
           {access.canShare && live && (
             <Button size="sm" variant="outline" onClick={() => onShare(entry)}><Share2 className="h-4 w-4" aria-hidden="true" /> {access.shared ? "Доступ" : "Поделиться"}</Button>
@@ -186,11 +200,46 @@ export function SetupView({
           {live && access.mine && !access.canPromote && (
             proposed
               ? <Button size="sm" variant="ghost" onClick={() => action.mutate("unpropose")} disabled={action.isPending}><Undo2 className="h-4 w-4" aria-hidden="true" /> Отозвать из Офиса</Button>
-              : <Button size="sm" variant="ghost" onClick={() => action.mutate("propose")} disabled={action.isPending}><Send className="h-4 w-4" aria-hidden="true" /> Предложить в Офис</Button>
+              : (
+                <Popover open={proposeOpen} onOpenChange={setProposeOpen}>
+                  <PopoverTrigger asChild>
+                    <Button size="sm" variant="ghost" disabled={action.isPending}><Send className="h-4 w-4" aria-hidden="true" /> Предложить в Офис</Button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-80">
+                    <form
+                      className="flex flex-col gap-2"
+                      onSubmit={(e) => { e.preventDefault(); action.mutate("propose"); }}
+                    >
+                      <label htmlFor="pb-propose-note" className="text-sm font-medium text-foreground">Предложить в плейбук офиса</label>
+                      <Textarea
+                        id="pb-propose-note"
+                        value={proposeNote}
+                        onChange={(e) => setProposeNote(e.target.value)}
+                        onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); action.mutate("propose"); } }}
+                        rows={3}
+                        maxLength={2000}
+                        autoFocus
+                        placeholder="Почему сетап стоит взять в Офис: результаты, на чём работает (необязательно)"
+                        className="resize-y text-sm"
+                      />
+                      <p className="text-xs text-muted-foreground">Куратор увидит сетап в «Предложено в Офис». Ваш сетап останется у вас.</p>
+                      <div className="flex justify-end gap-2">
+                        <Button type="button" size="sm" variant="ghost" onClick={() => setProposeOpen(false)}>Отмена</Button>
+                        <Button type="submit" size="sm" disabled={action.isPending}>Отправить</Button>
+                      </div>
+                    </form>
+                  </PopoverContent>
+                </Popover>
+              )
           )}
           {live && access.canPromote && (
             <Button size="sm" variant="outline" onClick={() => action.mutate("promote")} disabled={action.isPending} title="Копия с эталонами появится в «Офис»">
               <ArrowUpFromLine className="h-4 w-4" aria-hidden="true" /> В Офис
+            </Button>
+          )}
+          {live && access.canPromote && proposed && !access.mine && (
+            <Button size="sm" variant="ghost" onClick={() => action.mutate("decline")} disabled={action.isPending} title="Убрать из «Предложено в Офис» — сетап останется у автора">
+              <X className="h-4 w-4" aria-hidden="true" /> Отклонить
             </Button>
           )}
           <Button variant="ghost" size="sm" onClick={() => onCompare(entry)}><Columns2 className="h-4 w-4" aria-hidden="true" /> Сравнить</Button>
@@ -248,8 +297,9 @@ export function SetupView({
                 onOpen={onOpen}
               />
             )}
-            <StructuredDescription entry={entry} canEdit={access.canEdit} live={live} aside={<AboutAside entry={entry} parent={parent} access={access} onEdit={onEdit} />} />
+            <StructuredDescription entry={entry} canEdit={access.canEdit} live={live} aside={<AboutAside key={entry.id} entry={entry} parent={parent} access={access} />} />
             <SubSetupsSection entry={entry} allEntries={allEntries} summary={summary} onOpen={onOpen} onCreateChild={() => onCreateChild(entry)} />
+            {live && <RelatedSetupsSection entry={entry} allEntries={allEntries} summary={summary} viewer={viewer} onOpen={onOpen} />}
           </div>
         )}
         {tab === "examples" && (
@@ -291,7 +341,7 @@ function StatusLine({
 }: { s: SetupSummary | undefined; exampleCount?: number; tier1?: number; onStats: () => void; onExamples: () => void }) {
   const ex = (
     <button type="button" onClick={onExamples} className="hover:text-foreground">
-      эталонов {exampleCount ?? 0}{tier1 ? ` · T1 ${tier1}` : ""}
+      эталонов: {exampleCount ?? 0}{tier1 ? ` · T1 ${tier1}` : ""}
     </button>
   );
   if (!s || s.tradeCount === 0) {
@@ -306,7 +356,7 @@ function StatusLine({
   const exp = s.expectancyUsd ?? (s.netPnl != null && s.tradeCount ? s.netPnl / s.tradeCount : null);
   return (
     <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 text-sm tabular-nums text-muted-foreground">
-      <button type="button" onClick={onStats} className="hover:text-foreground">{s.tradeCount} сделок{s.tradeCount < 10 ? " (мало для выводов)" : ""}</button>
+      <button type="button" onClick={onStats} className="hover:text-foreground">{s.tradeCount} {pluralRu(s.tradeCount, "сделка", "сделки", "сделок")}{s.tradeCount < 10 ? " (мало для выводов)" : ""}</button>
       <span aria-hidden="true">·</span>
       <span>WR <span className="text-foreground">{fmtPct(s.winrate)}</span></span>
       <span aria-hidden="true">·</span>
@@ -327,7 +377,8 @@ function StatusLine({
   );
 }
 
-function AboutAside({ entry, parent, access, onEdit }: { entry: PlaybookEntry; parent: PlaybookEntry | null; access: SetupAccess; onEdit: (e: PlaybookEntry) => void }) {
+function AboutAside({ entry, parent, access }: { entry: PlaybookEntry; parent: PlaybookEntry | null; access: SetupAccess }) {
+  const [editingChecklist, setEditingChecklist] = React.useState(false);
   const checklistText = entry.checklist || parent?.checklist || null;
   const checklistItems = entry.checklist ? entry.checklistItems : null;
   const fundamentals: [string, string | number | null][] = [
@@ -340,9 +391,18 @@ function AboutAside({ entry, parent, access, onEdit }: { entry: PlaybookEntry; p
       <DocSection
         title="Чеклист"
         icon={ListChecks}
-        actions={checklistText ? <ChecklistProbabilityBadge playbookId={entry.id} items={checklistItems} text={checklistText} /> : undefined}
+        actions={
+          <>
+            {checklistText && !editingChecklist && <ChecklistProbabilityBadge playbookId={entry.id} items={checklistItems} text={checklistText} />}
+            {access.canEdit && checklistText && !editingChecklist && (
+              <IconAction aria-label="Изменить чеклист" title="Изменить чеклист" onClick={() => setEditingChecklist(true)}><Pencil /></IconAction>
+            )}
+          </>
+        }
       >
-        {checklistText ? (
+        {editingChecklist ? (
+          <ChecklistInlineEditor entry={entry} onDone={() => setEditingChecklist(false)} />
+        ) : checklistText ? (
           <>
             {!entry.checklist && parent?.checklist && <p className="mb-2 text-xs text-muted-foreground">Унаследован от «{parent.name}»</p>}
             <MarkChecklist playbookId={entry.id} items={checklistItems} text={checklistText} />
@@ -350,7 +410,7 @@ function AboutAside({ entry, parent, access, onEdit }: { entry: PlaybookEntry; p
         ) : (
           <div className="space-y-2">
             <p className="text-sm text-muted-foreground">Чеклиста нет. Короткий список условий помогает не входить в «почти тот же» сетап.</p>
-            {access.canEdit && <Button size="sm" variant="outline" onClick={() => onEdit(entry)}>Добавить чеклист</Button>}
+            {access.canEdit && <Button size="sm" variant="outline" onClick={() => setEditingChecklist(true)}><Plus className="h-4 w-4" aria-hidden="true" /> Добавить чеклист</Button>}
           </div>
         )}
       </DocSection>
@@ -366,12 +426,66 @@ function AboutAside({ entry, parent, access, onEdit }: { entry: PlaybookEntry; p
   );
 }
 
+/** Checklist edited in place — one item per line; Ctrl+Enter saves, Esc cancels. Same PATCH as the full form. */
+function ChecklistInlineEditor({ entry, onDone }: { entry: PlaybookEntry; onDone: () => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [text, setText] = React.useState(entry.checklist ?? "");
+  const [saving, setSaving] = React.useState(false);
+  const lines = text.split("\n").map((l) => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean).length;
+  async function save() {
+    if (saving) return;
+    const next = text.trim();
+    if (next === (entry.checklist ?? "").trim()) { onDone(); return; }
+    setSaving(true);
+    try {
+      await pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { checklist: next || null } });
+      invalidatePlaybook(qc, entry.id);
+      toast({ title: next ? "Чеклист сохранён" : "Чеклист очищен" });
+      onDone();
+    } catch (e) {
+      toast({ title: "Не удалось сохранить чеклист", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+  return (
+    <div className="flex flex-col gap-2">
+      <Textarea
+        aria-label="Чеклист — пункт на строку"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          e.stopPropagation();
+          if (e.key === "Escape") { e.preventDefault(); onDone(); }
+          if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+        }}
+        rows={Math.min(14, Math.max(5, text.split("\n").length + 1))}
+        placeholder={"Гэп > 5%\nОбъём > 500k в премаркете\nЧистый катализатор\nВход на первом откате"}
+        autoFocus
+        className="resize-y text-sm"
+      />
+      <div className="flex items-center gap-2">
+        <span className="mr-auto text-xs tabular-nums text-muted-foreground">{lines ? `${lines} ${pluralRu(lines, "пункт", "пункта", "пунктов")}` : "Пункт на строку"} · Ctrl+Enter</span>
+        <Button size="sm" variant="ghost" onClick={onDone} disabled={saving}>Отмена</Button>
+        <Button size="sm" onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</Button>
+      </div>
+    </div>
+  );
+}
+
 type ActivityRow = { id: number; action: string; section: string; entityId?: string | null; entityTitle?: string; trader?: string; details?: string; createdAt: string };
 
 function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   const q = useQuery<ActivityRow[]>({
     queryKey: ["playbook-activity", "setup", entry.id],
     queryFn: async () => {
+      // The setup's own journal (any reader of the setup). Older API → the global feed, filtered here.
+      const own = await fetch(`${BASE}/api/playbook/${entry.id}/activity`);
+      if (own.ok) {
+        const rows = (await own.json().catch(() => [])) as ActivityRow[];
+        return Array.isArray(rows) ? rows : [];
+      }
       const r = await fetch(`${BASE}/api/activity`);
       if (!r.ok) return [];
       const all = (await r.json().catch(() => [])) as ActivityRow[];
@@ -402,9 +516,9 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
           <ol className="flex flex-col gap-2">
             {q.data.map((a) => (
               <li key={a.id} className="flex items-start gap-3 text-sm">
-                <span className="w-20 shrink-0 text-xs tabular-nums text-muted-foreground">{new Date(a.createdAt).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" })}</span>
+                <time dateTime={a.createdAt} className="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{new Date(a.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
                 <span className="min-w-0 flex-1">
-                  <span className="text-foreground">{a.details || ACTION_LABEL[a.action] || a.action}</span>
+                  <span className="text-foreground">{activityText(a)}</span>
                   {a.trader && <span className="text-muted-foreground"> · {a.trader}</span>}
                 </span>
               </li>
@@ -422,3 +536,9 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
 }
 
 const ACTION_LABEL: Record<string, string> = { created: "Создан", updated: "Изменён", deleted: "Удалён", restored: "Восстановлен" };
+/** «Создан — Мой · папка: X» instead of a bare «Мой · папка: X» (the create log stores only the space / folder). */
+function activityText(a: ActivityRow): string {
+  const label = ACTION_LABEL[a.action] ?? a.action;
+  if (!a.details) return label;
+  return a.action === "created" && /^(Мой|Офис)(\s|$)/.test(a.details) ? `${label} — ${a.details}` : a.details;
+}

@@ -17,6 +17,7 @@ import { suggestTagsFromFundamentals } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 import { BROKER_OWNED_FIELDS, EVENT_LABEL, EVENT_TYPES, GRADES, HORIZONS, HORIZON_LABEL, RESULT_LABEL, RESULTS, SESSIONS, SESSION_LABEL, computedR, fmtR, isBrokerTrade, suggestedRiskUsd, type FormData } from "./trade-utils";
 import { syncedAgo } from "./trade-bits";
+import { PersonSelect } from "@/components/people/person-select";
 
 /** Validation shared with the page's save handler: returns an error message or null. */
 export function formSaveError(form: FormData): string | null {
@@ -180,10 +181,7 @@ export function TradeFormDialog({
                 <Input id="tf-date" type="date" value={form.date} readOnly={isLocked("date")} aria-readonly={isLocked("date") || undefined} onChange={(e) => set("date", e.target.value)} className={cn("px-3", isLocked("date") && "opacity-70")} />
               </Field>
               <Field id="tf-trader" label="Трейдер">
-                <Select value={form.trader} onValueChange={(v) => set("trader", v)}>
-                  <SelectTrigger id="tf-trader"><SelectValue placeholder="—" /></SelectTrigger>
-                  <SelectContent>{traderNames.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent>
-                </Select>
+                <PersonSelect id="tf-trader" value={form.trader} onValueChange={(v) => set("trader", v)} options={traderNames} placeholder="—" ariaLabel="Трейдер" />
               </Field>
               <Field id="tf-setup" label="Сетап">
                 <Input id="tf-setup" value={form.setup} onChange={(e) => set("setup", e.target.value)} placeholder="Gap & Go" />

@@ -1,8 +1,10 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { DataTable, Pill, SortableTh, Sparkline, toneOf, toneText, useTableSort } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { BenchRow } from "./api";
 import { fmtDay, fmtMinutes, fmtNum, fmtPct, fmtR, fmtUsd } from "./format";
+import { PeopleSearchInput } from "@/components/people/people-search-input";
+import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
 type Key =
   | "trader" | "trades" | "tpd" | "winRate" | "pf" | "net" | "expectancy" | "feeShare" | "sharpe" | "sortino" | "dd"
@@ -38,9 +40,20 @@ export function BenchmarkTable({
   onToggleSelect: (trader: string) => void;
   me: string;
 }) {
-  const { rows: sorted, thProps } = useTableSort(rows, ACCESSORS, "net");
+  const [q, setQ] = useState("");
+  const aliases = usePeopleAliases();
+  const shown = useMemo(() => {
+    const pq = prepareQuery(q);
+    return pq.empty ? rows : rows.filter((r) => matchPerson(pq, r.trader, aliases));
+  }, [rows, q, aliases]);
+  const { rows: sorted, thProps } = useTableSort(shown, ACCESSORS, "net");
   const sel = useMemo(() => new Set(selected), [selected]);
   return (
+    <div className="flex flex-col gap-2">
+    <div className="flex flex-wrap items-center gap-2">
+      <PeopleSearchInput value={q} onChange={setQ} />
+      {q && <span className="text-xs tabular-nums text-muted-foreground">{shown.length} из {rows.length}</span>}
+    </div>
     <DataTable maxHeight="70vh" stickyFirstCol ariaLabel="Таблица трейдеров деска">
       <table>
         <thead>
@@ -53,7 +66,7 @@ export function BenchmarkTable({
             <SortableTh {...thProps("pf")} align="right">PF</SortableTh>
             <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
             <SortableTh {...thProps("expectancy")} align="right">Ожидание</SortableTh>
-            <th scope="col" className="text-right">Avg + / −</th>
+            <th scope="col" className="text-right" title="Средняя плюсовая / средняя минусовая сделка">Ср. + / −</th>
             <SortableTh {...thProps("feeShare")} align="right">Комиссии</SortableTh>
             <SortableTh {...thProps("sharpe")} align="right">Sharpe</SortableTh>
             <SortableTh {...thProps("sortino")} align="right">Sortino</SortableTh>
@@ -174,5 +187,6 @@ export function BenchmarkTable({
         R — только по сделкам со стопом/риском. Бледные строки — меньше минимума сделок.
       </p>
     </DataTable>
+    </div>
   );
 }

@@ -125,7 +125,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
       <Toolbar>
         <div className="relative min-w-[200px] flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Трейдер… ( / )" aria-label="Поиск трейдера" className="pl-9" />
+          <Input ref={searchRef} value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Найти трейдера (/)" aria-label="Поиск трейдера" className="pl-9" />
         </div>
         {FILTERS.map((f) => (
           <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={f === "all" ? all.length : f === "action" ? actionCount : s?.pending}>

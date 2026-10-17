@@ -1,7 +1,7 @@
 import * as React from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { Link } from "wouter";
-import { ChevronDown, ChevronUp, FileText, Pencil, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, FileText, Link2, Pencil, Trash2 } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -15,11 +15,14 @@ import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { DateHolidayBadge } from "@/components/holiday-badge";
 import type { HolidayEvent } from "@/lib/market-intel";
 import { links } from "@/lib/links";
+import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import {
   EVENT_LABEL,
   SESSION_LABEL,
   dayOf,
+  tradePlaybookPayload,
   daysHeld,
   effectiveR,
   fmtDay,
@@ -30,6 +33,7 @@ import {
   isBrokerTrade,
   isRedactedTrade,
   netPnl,
+  parseHoldText,
   resultKey,
 } from "./trade-utils";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
@@ -118,9 +122,35 @@ type Props = {
   holidayEvents: HolidayEvent[];
 };
 
-function Kpi({ label, value, className, hint }: { label: string; value: React.ReactNode; className?: string; hint?: string }) {
+/** Copies a link that opens this trade (/trades?highlight=id) — for discussions, notes and messages to the curator. */
+function CopyTradeLink({ id, ticker }: { id: number; ticker: string }) {
+  const { toast } = useToast();
+  const [done, setDone] = React.useState(false);
+  React.useEffect(() => {
+    if (!done) return;
+    const t = window.setTimeout(() => setDone(false), 1600);
+    return () => window.clearTimeout(t);
+  }, [done]);
+  const copy = async () => {
+    const url = `${window.location.origin}${BASE}${links.trade(id)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setDone(true);
+      toast({ title: "Ссылка скопирована", description: `${ticker} · откроет эту сделку в журнале` });
+    } catch {
+      toast({ title: "Не удалось скопировать", description: url, variant: "destructive" });
+    }
+  };
   return (
-    <div className="min-w-0 rounded-xl bg-[var(--glass-bg)] px-3 py-2" title={hint}>
+    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Скопировать ссылку на сделку" title="Скопировать ссылку на сделку" onClick={() => void copy()}>
+      {done ? <Check className="text-up" /> : <Link2 />}
+    </Button>
+  );
+}
+
+function Kpi({ label, value, className, hint, cellClassName }: { label: string; value: React.ReactNode; className?: string; hint?: string; cellClassName?: string }) {
+  return (
+    <div className={cn("min-w-0 rounded-xl bg-[var(--glass-bg)] px-3 py-2", cellClassName)} title={hint ?? (typeof value === "string" ? value : undefined)}>
       <p className="truncate text-xs text-muted-foreground">{label}</p>
       <p className={cn("truncate text-base font-semibold tabular-nums", className)}>{value}</p>
     </div>
@@ -255,32 +285,23 @@ export function TradeDetailSheet(p: Props) {
                     </Link>
                   </SheetDescription>
                 </div>
-                {(p.onPrev || p.onNext) && (
-                  <div className="flex shrink-0 items-center gap-1">
-                    {p.position && <span className="mr-1 hidden text-xs tabular-nums text-muted-foreground sm:inline">{p.position.index + 1} / {p.position.total}</span>}
-                    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Предыдущая сделка (K)" disabled={!p.onPrev} onClick={p.onPrev}><ChevronUp /></Button>
-                    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Следующая сделка (J)" disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-1">
+                  {(p.onPrev || p.onNext) && (
+                    <>
+                      {p.position && <span className="mr-1 hidden text-xs tabular-nums text-muted-foreground sm:inline">{p.position.index + 1} / {p.position.total}</span>}
+                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Предыдущая сделка (K)" disabled={!p.onPrev} onClick={p.onPrev}><ChevronUp /></Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Следующая сделка (J)" disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
+                    </>
+                  )}
+                  <CopyTradeLink id={t.id} ticker={t.ticker} />
+                </div>
               </div>
               <KpiRow trade={t} holdSeconds={timing?.holdSeconds ?? null} />
               {redacted && <RedactedHint />}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
                   {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> Редактировать</Button>}
-                  <AddToPlaybookButton
-                    payload={{
-                      name: `${t.ticker} ${t.setup || t.eventType || ""} (${dayOf(t)})`.trim(),
-                      setupType: t.setup || t.eventType || undefined,
-                      conditions: t.notes || undefined,
-                      notes: [t.whatWorked ? `Что сработало: ${t.whatWorked}` : "", t.whatFailed ? `Что не сработало: ${t.whatFailed}` : "", t.conclusion ? `Вывод: ${t.conclusion}` : ""].filter(Boolean).join("\n") || undefined,
-                      screenshotUrl: t.screenshotUrl || undefined,
-                      screenshotNotes: t.screenshotNotes || undefined,
-                      tags: t.tags || undefined,
-                      sourceType: "trade",
-                      sourceId: t.id,
-                    }}
-                  />
+                  <AddToPlaybookButton payload={tradePlaybookPayload(t)} />
                   {canDelete && (
                     <Button variant="ghost" size="sm" className="ml-auto gap-1.5 text-muted-foreground hover:text-down" onClick={() => p.onDelete(t)}>
                       <Trash2 className="h-3.5 w-3.5" /> Удалить
@@ -408,18 +429,21 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
   const perShare = t.pnl != null && t.qty ? t.pnl / t.qty : null;
   const useR = r.value != null;
   const redacted = isRedactedTrade(t);
+  // Executions give exact seconds; otherwise the broker's free-text hold («4m», «1h 20m») is shown in Russian units.
+  const hold = holdSeconds ?? parseHoldText(t.holdTime);
   return (
-    <div className="grid grid-cols-5 gap-2">
+    // Phones: two columns, prices on their own full row; wider: one row, the price pair gets more room.
+    <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
       <Kpi
         label={t.fees ? "Нетто" : "P&L"}
         value={fmtMoney(net)}
         className={net == null ? "text-muted-foreground" : toneText(toneOf(net))}
         hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
       />
-      <Kpi label="Вход → выход" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
+      <Kpi label="Вход → выход" cellClassName="col-span-2 sm:col-span-1" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
       {open && t.exit == null
         ? <Kpi label="В позиции" value={held != null ? `${held} дн.` : "—"} className="text-primary" />
-        : <Kpi label="Удержание" value={holdSeconds != null ? fmtDuration(holdSeconds) : t.holdTime || "—"} className={holdSeconds == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
+        : <Kpi label="Удержание" value={hold != null ? fmtDuration(hold) : t.holdTime || "—"} className={hold == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
         ? <Kpi label={r.derived ? "R (по ценам)" : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
         : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}

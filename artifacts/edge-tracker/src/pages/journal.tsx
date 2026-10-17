@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ru } from "date-fns/locale";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { BookOpenCheck, CalendarDays, ChevronLeft, ChevronRight, CloudUpload, History, Users } from "lucide-react";
@@ -12,6 +12,7 @@ import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
 import { apiUrl } from "@/lib/api";
 import { links } from "@/lib/links";
+import { prevWeekday } from "@/lib/trading-date";
 import { MonthCalendar, type CalMetric, type ReviewMark } from "@/components/journal/MonthCalendar";
 import { DayTrades, type RuleViolation } from "@/components/journal/DayTrades";
 import { DayJournalEditor } from "@/components/journal/DayJournalEditor";
@@ -30,9 +31,12 @@ import { EodFlow } from "@/components/eod/EodFlow";
 import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
 import { useEodQueue, useEodRange, type EodDayMark } from "@/components/eod/eod-api";
+import { PersonSelect } from "@/components/people/person-select";
 
 const ACCOUNT_KEY = "journal:account";
 const METRIC_KEY = "journal:metric";
+/** Days loaded around the visible month / week: the calendar grid's spill-over days and prev / next trading day. */
+const WINDOW_MARGIN_DAYS = 14;
 
 type View = "day" | "queue";
 
@@ -70,12 +74,15 @@ export default function JournalPage() {
   const [account, setAccount] = useState<string>(() => {
     if (!isCurator) return traderName ?? "";
     if (url.trader != null) return url.trader;
-    return readLS(ACCOUNT_KEY) ?? traderName ?? "";
+    // A curator's own journal is usually empty — the team day is the useful default until they pick someone.
+    return readLS(ACCOUNT_KEY) ?? (user?.role === "trader" ? traderName ?? "" : "");
   });
   const effectiveAccount = isCurator ? account : traderName ?? "";
 
-  const [activeDate, setActiveDate] = useState<string>(url.date ?? today);
-  const [viewMonth, setViewMonth] = useState<string>(monthKey(url.date ?? today));
+  // Saturday / Sunday: open Friday's day (the one to review), not an empty weekend day.
+  const startDate = url.date ?? ([0, 6].includes(new Date(`${today}T12:00:00Z`).getUTCDay()) ? prevWeekday(today) : today);
+  const [activeDate, setActiveDate] = useState<string>(startDate);
+  const [viewMonth, setViewMonth] = useState<string>(monthKey(startDate));
   const [metric, setMetricState] = useState<CalMetric>(() => {
     const m = readLS(METRIC_KEY);
     return m === "r" || m === "count" ? m : "pnl";
@@ -109,11 +116,13 @@ export default function JournalPage() {
   }, [activeDate, effectiveAccount, isCurator, eodMode, view]);
 
   // ── Trades ────────────────────────────────────────────────────────────────
-  // Server-side window (P1-5): the visible month + active week with a ±45-day margin. Not the whole book.
+  // Server-side window (P1-5): the visible month + active week + the adjacent days the calendar grid shows (and
+  // prev / next trading day across the month edge). `from` filters by the realised day, so positions entered
+  // earlier and closed (or still open) inside the window are included without a wider margin.
   const winWk = weekStart(activeDate);
   const winMb = monthBounds(viewMonth);
-  const tradesFrom = addDays(winWk < winMb.from ? winWk : winMb.from, -45);
-  const tradesTo = addDays(addDays(winWk, 6) > winMb.to ? addDays(winWk, 6) : winMb.to, 45);
+  const tradesFrom = addDays(winWk < winMb.from ? winWk : winMb.from, -WINDOW_MARGIN_DAYS);
+  const tradesTo = addDays(addDays(winWk, 6) > winMb.to ? addDays(winWk, 6) : winMb.to, WINDOW_MARGIN_DAYS);
   const { data: trades = [], isLoading, isError, error, refetch } = useTradesWindow({
     from: tradesFrom,
     to: tradesTo,
@@ -202,13 +211,30 @@ export default function JournalPage() {
   const sync = useSyncLocalJournal(editable ? effectiveAccount : "");
 
   // ── Rule violations for the day's trades ───────────────────────────────────
+  // Only the span of the day's trades (entry … exit of the carried / multi-day ones), not the 500 newest of the book.
+  const violSpan = useMemo(() => {
+    const list = [...dayTrades, ...carried];
+    if (!list.length) return null;
+    let from = activeDate;
+    let to = activeDate;
+    for (const t of list) {
+      const entry = String(t.date ?? "").slice(0, 10);
+      const exit = String(t.exitDate ?? "").slice(0, 10);
+      if (entry && entry < from) from = entry;
+      if (exit && exit > to) to = exit;
+      else if (!exit && entry < activeDate && today > to) to = today; // still-open carried position
+    }
+    return { from, to };
+  }, [dayTrades, carried, activeDate, today]);
   const violationsQ = useQuery({
-    queryKey: ["journal-violations", effectiveAccount],
-    enabled: !!user,
+    queryKey: ["journal-violations", effectiveAccount, violSpan?.from ?? "", violSpan?.to ?? ""],
+    enabled: !!user && !!violSpan,
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
     queryFn: async (): Promise<RuleViolation[]> => {
       const qs = new URLSearchParams({ limit: "500" });
       if (effectiveAccount) qs.set("trader", effectiveAccount);
+      if (violSpan) { qs.set("from", violSpan.from); qs.set("to", violSpan.to); }
       const res = await fetch(apiUrl(`/api/rule-violations?${qs.toString()}`));
       if (!res.ok) return [];
       const rows = await res.json();
@@ -286,18 +312,16 @@ export default function JournalPage() {
                 ]}
               />
               {view === "day" && (
-                <Select value={effectiveAccount || "__all__"} onValueChange={(v) => changeAccount(v === "__all__" ? "" : v)}>
-                  <SelectTrigger aria-label="Трейдер" className="w-full sm:w-[200px]">
-                    <Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <SelectValue placeholder="Вся команда" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="__all__">Вся команда</SelectItem>
-                    {allTraders.map((n) => (
-                      <SelectItem key={n} value={n}>{n}{n === traderName ? " (я)" : ""}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <PersonSelect
+                  value={effectiveAccount || ""}
+                  onValueChange={(v) => changeAccount(v)}
+                  options={allTraders}
+                  allLabel="Вся команда"
+                  self={traderName}
+                  icon={Users}
+                  ariaLabel="Трейдер"
+                  className="w-full sm:w-[200px]"
+                />
               )}
             </div>
           ) : null

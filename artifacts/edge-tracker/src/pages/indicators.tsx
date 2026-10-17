@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
-import { motion, useReducedMotion } from "framer-motion";
-import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
+import { useTradesBookFacets } from "@/hooks/use-trades-window";
+import { useTaggedTrades } from "@/components/indicators/use-tagged-trades";
 import { Activity, BookOpen, Compass, LayoutGrid, Layers, Rows3, Search, SlidersHorizontal, X } from "lucide-react";
 import { EmptyState, Page, PageHeader, SectionTabs, Segmented, Toolbar, usePersistentState } from "@/components/ds";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -48,7 +48,6 @@ function matches(ind: LibIndicator, q: string, note: string) {
 /** Desk reference: 25 technical indicators, the trader's set, notes and per-tag stats. */
 function IndicatorLibrary() {
   const { toast } = useToast();
-  const reduceMotion = useReducedMotion();
   const initialPrefs = useMemo(loadPrefs, []);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<CategoryFilter>(isCategory(initialPrefs.category) ? initialPrefs.category : "all");
@@ -63,7 +62,8 @@ function IndicatorLibrary() {
 
   // P1-5: only trades with a setup or tags can match an indicator — the rest of the book is not loaded.
   // The coverage denominator (all trades in scope per horizon) comes from the cheap /trades/page facets.
-  const tradesQuery = useTradesWindow({ tagged: true });
+  // Slim columnar endpoint (~2 MB for the whole desk instead of ~60 MB of full trade rows).
+  const tradesQuery = useTaggedTrades();
   const trades = tradesQuery.data ?? [];
   const facets = useTradesBookFacets();
   const scopeTotal = facets.data
@@ -440,14 +440,7 @@ function IndicatorLibrary() {
               aria-label="Индикаторы"
             >
               {filtered.map((ind, i) => (
-                <motion.div
-                  key={ind.id}
-                  role="listitem"
-                  layout={reduceMotion ? false : "position"}
-                  initial={reduceMotion ? false : { opacity: 0, y: 6 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
-                >
+                <div key={ind.id} role="listitem">
                   <IndicatorCard
                     ind={ind}
                     index={i}
@@ -460,7 +453,7 @@ function IndicatorLibrary() {
                     onOpen={setOpenId}
                     onToggleFavorite={toggleFavorite}
                   />
-                </motion.div>
+                </div>
               ))}
             </div>
           )}

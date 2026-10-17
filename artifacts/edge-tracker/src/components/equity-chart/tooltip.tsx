@@ -56,7 +56,7 @@ export function EquityTooltip({
   const action = agg === "day" ? "разбор дня" : agg === "week" ? "по дням + отчёт недели" : "по дням";
   return (
     <div
-      className="pointer-events-none absolute z-raised flex flex-col gap-2 rounded-xl border border-border/70 bg-popover/95 p-3 text-xs text-popover-foreground shadow-xl backdrop-blur-xl tabular-nums animate-in fade-in-0 duration-100"
+      className="pointer-events-none absolute z-raised flex flex-col gap-2 rounded-xl border border-border/70 bg-popover/95 p-3 text-xs text-popover-foreground shadow-xl tabular-nums animate-in fade-in-0 duration-100"
       style={{ left, top, width: w }}
       aria-hidden="true"
     >

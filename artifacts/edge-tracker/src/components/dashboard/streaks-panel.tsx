@@ -59,7 +59,9 @@ export function StreaksPanel({ data, isLoading, fill }: { data: DashboardToday |
         </div>
 
         <div>
-          <div className="mb-1.5 text-xs text-muted-foreground">Последние {s.recent.length || 20} сделок</div>
+          <div className="mb-1.5 text-xs text-muted-foreground">
+            {s.recent.length === 1 ? "Последняя сделка" : `Последние ${s.recent.length || 20} ${plural(s.recent.length || 20, ["сделка", "сделки", "сделок"])}`}
+          </div>
           {s.recent.length === 0 ? (
             <p className="text-xs text-muted-foreground">Пока нет закрытых сделок.</p>
           ) : (

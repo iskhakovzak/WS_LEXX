@@ -297,7 +297,18 @@ export function IdeaDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl lg:max-w-2xl">
+      <SheetContent
+        className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl lg:max-w-2xl"
+        // Opened programmatically, so Radix has no trigger to return focus to: hand it back to the idea's card
+        // (the last one viewed after J/K), keeping the keyboard position on the board / list.
+        onCloseAutoFocus={(e) => {
+          const card = document.querySelector<HTMLElement>(`[data-idea-id="${idea.id}"]`);
+          if (!card) return;
+          e.preventDefault();
+          card.focus({ preventScroll: true });
+          card.scrollIntoView({ block: "nearest" });
+        }}
+      >
         {/* Header */}
         <div className="flex flex-col gap-2 border-b border-[var(--field-border)] px-5 pb-4 pt-5 pr-14">
           <div className="flex flex-wrap items-center gap-2">
@@ -385,8 +396,9 @@ export function IdeaDetailSheet({
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><div className="text-xs text-muted-foreground">Цена</div><div className="text-lg font-semibold tabular-nums">{fmtPrice(tracking.price)}</div></div>
                 <div><div className="text-xs text-muted-foreground">Сейчас</div><div className={cn("text-lg font-semibold tabular-nums", toneOf(tracking.rNow) === "up" ? "text-up" : toneOf(tracking.rNow) === "down" ? "text-down" : "")}>{fmtR(tracking.rNow, 2)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Макс. в плюс</div><div className="text-lg font-semibold tabular-nums text-up">{fmtR(tracking.mfeR, 2)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Макс. в минус</div><div className="text-lg font-semibold tabular-nums text-down">{fmtR(tracking.maeR, 2)}</div></div>
+                {/* Excursions from the planned entry: a price that never went past entry shows 0R, not a wrong-signed number. */}
+                <div><div className="text-xs text-muted-foreground">Макс. в плюс</div><div className="text-lg font-semibold tabular-nums text-up">{fmtR(tracking.mfeR != null ? Math.max(0, tracking.mfeR) : null, 2)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Макс. в минус</div><div className="text-lg font-semibold tabular-nums text-down">{fmtR(tracking.maeR != null ? Math.min(0, tracking.maeR) : null, 2)}</div></div>
               </div>
               <div className="mt-3"><OutcomeChips idea={idea} tracking={tracking} /></div>
             </Section>

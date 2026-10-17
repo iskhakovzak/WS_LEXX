@@ -5,6 +5,9 @@ import { z } from "zod";
 import { hashPassword, verifyPassword, bumpTokenVersion, requireMember, isGuestUser } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
+import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
+import { commonT } from "../i18n/ns";
+import { ensureNameLatin, loadDirectory, searchPeople } from "../lib/peopleDirectory";
 
 const router: IRouter = Router();
 
@@ -14,6 +17,16 @@ const USER_COLUMNS = `id, name, role, active,
   banned_at AS "bannedAt",
   banned_reason AS "bannedReason",
   created_at AS "createdAt"`;
+
+/** USER_COLUMNS + the optional Latin alias (users.name_latin) once the column is known to exist. */
+async function userColumns(): Promise<string> {
+  try {
+    await ensureNameLatin();
+    return `${USER_COLUMNS}, name_latin AS "nameLatin"`;
+  } catch {
+    return USER_COLUMNS; // never break the login screen over an optional column
+  }
+}
 
 function normalizeRole(r: unknown): string {
   if (r === "admin") return "admin";
@@ -52,7 +65,7 @@ function stripModeration(rows: any[]): any[] {
 // Public (the login screen lists traders before sign-in), so moderation fields are staff-only.
 router.get("/users", asyncHandler(async (req, res): Promise<void> => {
   const { rows } = await pool.query<any>(`
-    SELECT ${USER_COLUMNS}
+    SELECT ${await userColumns()}
     FROM users
     WHERE active = true
     ORDER BY created_at ASC
@@ -63,7 +76,7 @@ router.get("/users", asyncHandler(async (req, res): Promise<void> => {
 router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
   const { rows } = await pool.query<any>(`
-    SELECT ${USER_COLUMNS}
+    SELECT ${await userColumns()}
     FROM users
     ORDER BY created_at ASC
   `);
@@ -107,9 +120,11 @@ router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<voi
 router.get("/users/me/profile", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
   if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  await ensureLocaleColumn().catch(() => {});
   const { rows } = await pool.query<any>(
     `SELECT id, name, role, active,
             COALESCE(theme, 'dark') AS theme,
+            COALESCE(locale, 'ru') AS locale,
             created_at AS "createdAt",
             (telegram_chat_id IS NOT NULL AND telegram_chat_id <> '') AS "telegramLinked",
             telegram_linked_at AS "telegramLinkedAt",
@@ -145,6 +160,24 @@ router.get("/users/me/profile", asyncHandler(async (req, res): Promise<void> => 
     stats: statRows[0] ?? { total: 0, last30: 0, firstTrade: null, lastTrade: null },
     wards: wards.map((w) => w.name),
   });
+}));
+
+// ─── Interface language (users.locale) ────────────────────────────────────────
+// PATCH /users/me/locale { locale: "ru" | "en" | "uz" } → { locale }. Members only (guests keep it in the browser).
+// Read back via GET /auth/me (`locale`) and GET /users/me/profile. Server texts follow X-Lang → users.locale (i18n/).
+router.patch("/users/me/locale", asyncHandler(async (req, res): Promise<void> => {
+  if (!requireMember(req, res)) return;
+  const raw = (req.body as { locale?: unknown } | undefined)?.locale;
+  const locale = typeof raw === "string" && raw.length <= 10 ? parseLang(raw) : null;
+  if (!locale) {
+    res.status(400).json({ error: commonT.tFor(langOf(req))("errors.invalidLocale", { value: String(raw ?? "") }), code: "VALIDATION" });
+    return;
+  }
+  await ensureLocaleColumn();
+  const me = req.authUser!;
+  await pool.query(`UPDATE users SET locale = $1 WHERE id = $2`, [locale, me.id]);
+  rememberLocale({ id: me.id, name: me.name }, locale);
+  res.json({ locale });
 }));
 
 // ─── Personal settings (users.settings JSONB) — audit P1-7 ─────────────────────
@@ -295,6 +328,21 @@ router.get("/users/team", asyncHandler(async (req, res): Promise<void> => {
     .catch(() => ({ rows: [] as { trader: string; tier: string | null }[] }));
   const tierBy = new Map(tiers.map((t) => [t.trader, t.tier]));
   res.json(rows.map((r) => ({ ...r, riskTier: tierBy.get(r.name) ?? null })));
+}));
+
+/**
+ * GET /users/directory?q=&limit=&all=1 — people the caller may see (lib/peopleDirectory: staff → everyone;
+ * a trader → themselves, wards and staff), with Latin alias and curator. With `q` — ranked cross-script search
+ * (RU / EN / UZ, keyboard-layout slips, typos): `{ people: [...hit, score, tier, matched] }`.
+ */
+router.get("/users/directory", asyncHandler(async (req, res): Promise<void> => {
+  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  const all = req.query.all === "1" && (await can(req, "users.read.team"));
+  const people = await loadDirectory(req, { includeInactive: all });
+  const q = typeof req.query.q === "string" ? req.query.q.slice(0, 120) : "";
+  const limit = Math.min(Math.max(Number(req.query.limit) || 20, 1), 200);
+  if (!q.trim()) { res.json({ people: people.slice(0, req.query.limit ? limit : undefined) }); return; }
+  res.json({ q, people: searchPeople(people, q, limit) });
 }));
 
 router.post("/users", asyncHandler(async (req, res): Promise<void> => {

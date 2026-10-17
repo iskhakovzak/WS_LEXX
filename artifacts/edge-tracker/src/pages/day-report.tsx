@@ -19,6 +19,7 @@ import {
 import {
   BreakdownPanel, ComparisonPanel, EquityPanel, LeaksPanel, LinksPanel, PlanPanel, StrengthsPanel, SummaryBento, TimelinePanel,
 } from "@/components/day-report/sections";
+import { PersonSelect } from "@/components/people/person-select";
 
 const PRINT_CSS = `
 @media print {
@@ -55,17 +56,34 @@ function writeParams(trader: string | null, date: string) {
   window.history.replaceState({}, "", `${window.location.pathname}?${p.toString()}`);
 }
 
+const TRADER_KEY = "dayReport.trader";
+function readStoredTrader(): string | null {
+  try { return localStorage.getItem(TRADER_KEY) || null; } catch { return null; }
+}
+function storeTrader(name: string) {
+  try { localStorage.setItem(TRADER_KEY, name); } catch { /* storage unavailable */ }
+}
+
 export default function DayReportPage() {
-  const { user, isCurator } = useAuth();
+  const { user, isCurator, dbUsers } = useAuth();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const initial = React.useMemo(readParams, []);
   const [date, setDate] = React.useState<string>(initial.date ?? lastTradingDay(undefined));
   const holidays = useMarketHolidays(date).data;
-  const [trader, setTrader] = React.useState<string | null>(initial.trader && isCurator ? initial.trader : me);
+  // Staff: an explicit ?trader= wins, then the trader picked last time on this device.
+  const [trader, setTrader] = React.useState<string | null>(initial.trader && isCurator ? initial.trader : isCurator ? (readStoredTrader() ?? me) : me);
 
   React.useEffect(() => {
     if (!trader && me) setTrader(me);
   }, [trader, me]);
+  React.useEffect(() => { if (isCurator && trader) storeTrader(trader); }, [isCurator, trader]);
+  // A curator who does not trade would land on an always-empty own report: open the first trader instead.
+  React.useEffect(() => {
+    if (!isCurator || initial.trader || trader !== me || !dbUsers.length) return;
+    if (dbUsers.some((u) => u.name === me && u.role === "trader")) return;
+    const first = dbUsers.filter((u) => u.active && !u.banned && u.role === "trader").sort((a, b) => a.name.localeCompare(b.name, "ru"))[0];
+    if (first) setTrader(first.name);
+  }, [isCurator, initial.trader, trader, me, dbUsers]);
 
   // No explicit ?date= and today turned out to be a holiday → step back once holidays load.
   React.useEffect(() => {
@@ -79,7 +97,9 @@ export default function DayReportPage() {
 
   const q = useDayReport(isCurator ? trader : null, date, !!me);
   const doc = q.data;
-  const today = doc?.today ?? lastTradingDay(holidays);
+  // The API's `today` is the NY calendar date: on a weekend / holiday step back to the last trading day,
+  // otherwise «Последний торговый день» jumped to an empty Saturday.
+  const today = doc?.today && isTradingDay(doc.today, holidays) ? doc.today : doc?.today ? shiftTradingDay(doc.today, -1, holidays) : lastTradingDay(holidays);
   const nextDay = shiftTradingDay(date, 1, holidays);
   const canNext = nextDay <= today;
 
@@ -114,12 +134,7 @@ export default function DayReportPage() {
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {isCurator && (
-            <Select value={trader ?? ""} onValueChange={(v) => setTrader(v)}>
-              <SelectTrigger className="w-44" aria-label="Трейдер"><SelectValue placeholder="Трейдер" /></SelectTrigger>
-              <SelectContent>
-                {traders.map((t) => <SelectItem key={t} value={t}>{t === me ? `${t} (я)` : t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders} self={me} className="w-44" ariaLabel="Трейдер" />
           )}
           <Button type="button" variant="outline" size="sm" disabled={!doc} onClick={() => window.print()}>
             <Printer className="h-4 w-4" aria-hidden="true" /> Печать / PDF

@@ -112,7 +112,7 @@ export function AuthorAudience({
               aria-valuemax={data.total}
               aria-valuenow={data.read}
             >
-              <div className="h-full rounded-full bg-up transition-[width]" style={{ width: `${pct}%` }} />
+              <div className="h-full w-full origin-left rounded-full bg-up motion-safe:transition-transform" style={{ transform: `scaleX(${pct / 100})` }} />
             </div>
           </div>
 

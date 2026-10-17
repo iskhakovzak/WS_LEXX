@@ -75,7 +75,8 @@ export default function Discussions() {
   // ── State ──────────────────────────────────────────────────────────────
   const [prefs, setPrefs] = useState(loadPrefs);
   useEffect(() => savePrefs(prefs), [prefs]);
-  const [q, setQ] = useState("");
+  // ?q= deep link (e.g. «Обсуждения» from the curator group view: threads by / with a person).
+  const [q, setQ] = useState(() => readParam("q") ?? "");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>(() => readParam("for") || "all");
   const [tickerFilter, setTickerFilter] = useState<string | null>(() => readParam("ticker")?.toUpperCase() || null);
@@ -476,7 +477,7 @@ export default function Discussions() {
                 ]}
               />
               <Select value={prefs.sort} onValueChange={(v) => setPrefs((p) => ({ ...p, sort: v as SortKey }))}>
-                <SelectTrigger aria-label="Сортировка" className="h-9 w-[124px] shrink-0 gap-1 text-xs">
+                <SelectTrigger aria-label="Сортировка" className="h-8 w-[124px] shrink-0 gap-1 px-3 text-xs">
                   <ArrowDownUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
                   <SelectValue />
                 </SelectTrigger>

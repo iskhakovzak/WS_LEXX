@@ -40,7 +40,8 @@ export default function RatingsPage() {
   const ratingsQ = useQuery<Rating[]>({
     queryKey: ["ratings", "all"],
     queryFn: () => fetchJson<Rating[]>(`${BASE}/api/ratings`),
-    staleTime: 0,
+    // The full history (~850 rows / 400 KB for staff) feeds trends; mutations invalidate it, so no refetch per visit.
+    staleTime: 60_000,
   });
   const ratings = ratingsQ.data ?? [];
 

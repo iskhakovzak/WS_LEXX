@@ -70,8 +70,12 @@ function TemplateCard({ t, trader, days, onUse }: { t: RuleDraft & { why: string
   const q = useRulePreview(trader, days, t.kind, t.threshold);
   const r = q.data;
   return (
-    <button type="button" onClick={onUse} className="tile tile-interactive press flex min-h-[132px] flex-col gap-1.5 p-3 text-left">
-      <span className="text-sm font-medium text-foreground">{t.name}</span>
+    <button type="button" onClick={onUse} title="Добавить правило — порог можно поменять" className="tile tile-interactive press group flex min-h-[132px] flex-col gap-1.5 p-3 text-left">
+      <span className="flex items-start justify-between gap-2">
+        <span className="text-sm font-medium text-foreground">{t.name}</span>
+        {/* The whole card adds the rule; the icon makes that visible before hover. */}
+        <Plus className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground transition-colors group-hover:text-primary" aria-hidden="true" />
+      </span>
       <span className="text-xs text-muted-foreground">{t.why}</span>
       <span className="mt-auto pt-1 text-xs" aria-live="polite">
         {q.isLoading ? (

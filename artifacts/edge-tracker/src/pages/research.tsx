@@ -8,7 +8,7 @@ import {
   useListResearch, useUpdateResearch, useDeleteResearch, getListResearchQueryKey,
   type Research, type UpdateResearchBody,
 } from "@workspace/api-client-react";
-import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, RefreshCw, Search, X } from "lucide-react";
+import { AlertTriangle, Archive, ArrowRight, BookMarked, CalendarClock, Download, RefreshCw, Search, X } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +24,7 @@ import { ResearchFormDialog, formToResearchBody, type ResearchFormData } from "@
 import { ResearchPreview, type UpcomingByTicker } from "@/components/research/research-preview";
 import { ResearchRow } from "@/components/research/research-row";
 import {
-  highlightTerms, isEmptyQuery, matchResearch, parseQuery, splitTags, splitTickers, type ResearchNote, type SearchHit,
+  exportResearchCsv, highlightTerms, isEmptyQuery, matchResearch, parseQuery, splitTags, splitTickers, type ResearchNote, type SearchHit,
 } from "@/components/research/research-utils";
 
 const NO_UPCOMING: UpcomingByTicker = new Map();
@@ -155,6 +155,41 @@ export default function ResearchArchivePage() {
     if (!window.matchMedia("(min-width: 1024px)").matches) setMobileOpen(true);
   }, []);
 
+  // The open note is part of the URL (?id=), so a link to it can be shared or reopened.
+  useEffect(() => {
+    if (isLoading) return;
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (selectedId != null) p.set("id", String(selectedId)); else p.delete("id");
+      const qs = p.toString();
+      const next = window.location.pathname + (qs ? `?${qs}` : "");
+      if (next !== window.location.pathname + window.location.search) window.history.replaceState(window.history.state, "", next);
+    } catch { /* ignore */ }
+  }, [selectedId, isLoading]);
+
+  // Keyboard: / — search, J/K or ↓/↑ — next/previous note (the selected row scrolls into view).
+  const searchRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName))) return;
+      if (document.querySelector("[role=dialog], [role=alertdialog]")) return;
+      const k = e.key.toLowerCase();
+      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      const dir = k === "j" || k === "о" || e.key === "ArrowDown" ? 1 : k === "k" || k === "л" || e.key === "ArrowUp" ? -1 : 0;
+      if (!dir || !list.length || !isDesktop) return;
+      e.preventDefault();
+      const idx = list.findIndex((r) => r.id === selectedId);
+      const next = list[Math.min(list.length - 1, Math.max(0, idx < 0 ? 0 : idx + dir))];
+      if (!next) return;
+      setSelectedId(next.id);
+      requestAnimationFrame(() => document.querySelector<HTMLElement>(`[data-research-id="${next.id}"]`)?.scrollIntoView({ block: "nearest" }));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [list, selectedId, isDesktop]);
+
   function handleSubmit(f: ResearchFormData) {
     const body = formToResearchBody(f);
     if (!body.patternName || !editing) return;
@@ -201,11 +236,20 @@ export default function ResearchArchivePage() {
       </Panel>
 
       <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <Panel padded={false} title="Заметки" description={isLoading ? "Загрузка…" : searching ? `Найдено ${list.length} из ${items.length}` : `${items.length} в архиве`}>
+        <Panel
+          padded={false}
+          title="Заметки"
+          description={isLoading ? "Загрузка…" : searching ? `Найдено ${list.length} из ${items.length}` : `${items.length} в архиве · J/K — листать`}
+          actions={list.length > 0 ? (
+            <Button variant="ghost" size="sm" onClick={() => exportResearchCsv(list)} title={searching ? "Скачать найденные заметки в CSV" : "Скачать архив в CSV"}>
+              <Download className="h-4 w-4" aria-hidden="true" /> CSV
+            </Button>
+          ) : undefined}
+        >
           {items.length > 3 && (
             <div className="relative px-[var(--panel-p)] pt-3">
               <Search className="pointer-events-none absolute left-[calc(var(--panel-p)+0.875rem)] top-1/2 mt-1.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-              <Input type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: слова, #тег, $TICKER" aria-label="Поиск по архиву" className="pl-10 pr-10" />
+              <Input ref={searchRef} type="search" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Поиск: слова, #тег, $TICKER  ( / )" aria-label="Поиск по архиву" className="pl-10 pr-10" />
               {query && (
                 <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="absolute right-[calc(var(--panel-p)+0.375rem)] top-1/2 mt-1.5 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
                   <X className="h-3.5 w-3.5" />

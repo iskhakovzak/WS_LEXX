@@ -114,6 +114,7 @@ export function IdeaCard({
   return (
     <button
       type="button"
+      data-idea-id={idea.id}
       onClick={() => onOpen(idea)}
       aria-label={`${idea.ticker} ${idea.side ?? ""}, ${st.label}${idea.trader ? `, автор ${idea.trader}` : ""}. Открыть идею`}
       className={cn(
@@ -148,7 +149,7 @@ export function IdeaCard({
       </div>
 
       {idea.setup && (
-        <p className="-mt-1 truncate text-xs text-muted-foreground">
+        <p className="-mt-1 truncate text-xs text-muted-foreground" title={idea.setup}>
           <Highlight text={idea.setup} q={query} />
         </p>
       )}
@@ -157,15 +158,15 @@ export function IdeaCard({
         <div className="grid grid-cols-3 gap-2 text-xs tabular-nums">
           <div className="min-w-0">
             <div className="text-2xs text-muted-foreground">Вход</div>
-            <div className="truncate font-medium text-foreground">{idea.entryZone || "—"}</div>
+            <div className="break-words font-medium text-foreground">{idea.entryZone || "—"}</div>
           </div>
           <div className="min-w-0">
             <div className="text-2xs text-muted-foreground">Цель</div>
-            <div className="truncate font-medium text-up">{idea.target || "—"}</div>
+            <div className="break-words font-medium text-up">{idea.target || "—"}</div>
           </div>
           <div className="min-w-0">
             <div className="text-2xs text-muted-foreground">Стоп</div>
-            <div className="truncate font-medium text-down">{idea.stop || "—"}</div>
+            <div className="break-words font-medium text-down">{idea.stop || "—"}</div>
           </div>
         </div>
       )}
@@ -177,7 +178,7 @@ export function IdeaCard({
       <div className="flex items-center justify-between gap-2 pt-0.5 text-xs text-muted-foreground">
         <span className="flex min-w-0 items-center gap-1.5">
           <Avatar name={idea.trader} />
-          <span className="truncate text-foreground/90">{idea.trader ?? "—"}</span>
+          <span className="truncate text-foreground/90" title={idea.trader ?? undefined}>{idea.trader ?? "—"}</span>
           <span className="shrink-0">· {relTime(idea.publishedAt ?? idea.createdAt)}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 tabular-nums">

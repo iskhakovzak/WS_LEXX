@@ -43,7 +43,7 @@ export function HorizonPanel({
               <th scope="col" className="px-2 py-2 text-right font-medium">WR</th>
               <th scope="col" className="hidden px-2 py-2 text-right font-medium sm:table-cell">Ср.</th>
               <th scope="col" className="px-2 py-2 text-right font-medium">Итого</th>
-              {showNet && <th scope="col" className="hidden px-2 py-2 text-right font-medium md:table-cell">Net $</th>}
+              {showNet && <th scope="col" className="hidden px-2 py-2 text-right font-medium md:table-cell">Нетто $</th>}
             </tr>
           </thead>
           <tbody>
@@ -100,22 +100,22 @@ export function FeesPanel({ fees, prev, trades }: { fees: FeeStats; prev: FeeSta
 
   return (
     <Panel
-      title="Gross и net P&L"
+      title="Брутто и нетто P&L"
       icon={Receipt}
-      description="P&L считается gross, net = P&L − комиссии"
-      actions={netDelta != null ? <Pill tone={toneOf(netDelta)}>{fmtValue(netDelta, "usd")} net к пред.</Pill> : undefined}
+      description="Брутто — P&L до издержек, нетто = брутто − комиссии"
+      actions={netDelta != null ? <Pill tone={toneOf(netDelta)}>{fmtValue(netDelta, "usd")} нетто к пред.</Pill> : undefined}
     >
       {fees.gross == null && fees.fees === 0 ? (
         <p className="text-sm text-muted-foreground">
-          В закрытых сделках периода нет P&L и комиссий. Заполните P&L и поле «Комиссии», чтобы видеть реальный результат после издержек.
+          В закрытых сделках периода нет P&L и комиссий — они появятся после синхронизации с брокером.
         </p>
       ) : (
         <>
           <div className="grid grid-cols-3 gap-2">
             {[
-              { l: "Gross", v: fmtValue(fees.gross, "usd"), c: toneCls(fees.gross) },
+              { l: "Брутто", v: fmtValue(fees.gross, "usd"), c: toneCls(fees.gross) },
               { l: "Комиссии", v: fees.fees ? fmtValue(-fees.fees, "usd") : "$0", c: fees.fees ? "text-down" : "text-muted-foreground" },
-              { l: "Net", v: fmtValue(fees.net, "usd"), c: toneCls(fees.net) },
+              { l: "Нетто", v: fmtValue(fees.net, "usd"), c: toneCls(fees.net) },
             ].map((x) => (
               <div key={x.l} className="rounded-xl bg-[var(--glass-bg)] p-3">
                 <div className="text-xs text-muted-foreground">{x.l}</div>
@@ -124,14 +124,14 @@ export function FeesPanel({ fees, prev, trades }: { fees: FeeStats; prev: FeeSta
             ))}
           </div>
           {fees.gross != null && fees.gross > 0 && (
-            <div className="mt-3" aria-label={`Комиссии съедают ${fmtPct(share)} gross P&L`}>
+            <div className="mt-3" aria-label={`Комиссии съедают ${fmtPct(share)} брутто P&L`}>
               <div className="h-2 overflow-hidden rounded-full bg-up/30">
                 <div className="h-full rounded-full bg-down" style={{ width: `${bar}%` }} />
               </div>
             </div>
           )}
           <div className="mt-3 divide-y divide-[hsl(var(--border)/0.5)]">
-            <StatRow label="Комиссии от gross" value={fmtPct(share)} tone={share != null && share > 0.2 ? "down" : "neutral"} />
+            <StatRow label="Комиссии от брутто" value={fmtPct(share)} tone={share != null && share > 0.2 ? "down" : "neutral"} />
             <StatRow label="Средняя комиссия на сделку" value={avgFee != null ? fmtValue(avgFee, "usd", { sign: false }) : "—"} />
             <StatRow label="Сделок с комиссией" value={`${fees.withFees} из ${closed}`} />
           </div>

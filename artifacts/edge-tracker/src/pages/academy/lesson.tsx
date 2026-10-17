@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import {
   ApiError, KIND_LABEL, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
   type ItemKind, type Nav,
@@ -107,7 +108,7 @@ function OutlineNav({ nav, current, user }: { nav: Nav; current: { kind: ItemKin
                       )}
                     >
                       <KindIcon kind={i.kind} className="shrink-0 text-muted-foreground" />
-                      <span className="min-w-0 flex-1 truncate">{i.title}</span>
+                      <span className="min-w-0 flex-1 truncate" title={i.title}>{i.title}</span>
                       {i.draft && <Pill tone="warn">черн.</Pill>}
                     </Link>
                   </li>
@@ -297,7 +298,7 @@ function QuizView({ id, user, staff }: { id: number; user?: string; staff: boole
       kind="quiz"
       meta={
         <>
-          <span className="tabular-nums">{d.quiz.questions.length} вопр. · зачёт от {d.quiz.passPct}% · {d.quiz.maxAttempts ? `попыток: ${d.quiz.maxAttempts}` : "попытки без ограничений"}</span>
+          <span className="tabular-nums">{d.quiz.questions.length} {pluralRu(d.quiz.questions.length, "вопрос", "вопроса", "вопросов")} · зачёт от {d.quiz.passPct}% · {d.quiz.maxAttempts ? `попыток: ${d.quiz.maxAttempts}` : "попытки без ограничений"}</span>
           {d.quiz.draft && <Pill tone="warn">Черновик</Pill>}
           {d.state.passed && <Pill tone="up" dot>Сдан</Pill>}
         </>

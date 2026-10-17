@@ -231,7 +231,7 @@ export function ContentTree({ programId, modules: serverModules, selection, onSe
                         className={cn("flex min-w-0 flex-1 items-center gap-2 rounded-md px-1 py-1.5 text-left text-sm hover:text-primary", sel && "font-medium text-primary")}
                       >
                         <KindIcon kind={it.kind} className="shrink-0 text-muted-foreground" />
-                        <span className="min-w-0 flex-1 truncate">{it.title}</span>
+                        <span className="min-w-0 flex-1 truncate" title={it.title}>{it.title}</span>
                         {it.draft && <Pill tone="warn">черн.</Pill>}
                         {it.archivedAt && <Pill tone="neutral">архив</Pill>}
                       </button>

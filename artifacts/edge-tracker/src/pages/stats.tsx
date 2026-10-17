@@ -23,6 +23,7 @@ import {
   monthlySeries, parseKey, periodRanges, pluralTrades, preferredMetric,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
+import { PersonSelect } from "@/components/people/person-select";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -62,7 +63,7 @@ function fmtRange(r: Range): string {
 }
 
 export default function Stats() {
-  const { user } = useAuth();
+  const { user, isCurator } = useAuth();
   const { toast } = useToast();
   const [prefs, setPrefs] = useState<Prefs>(() => {
     const p = loadPrefs();
@@ -137,8 +138,10 @@ export default function Stats() {
   const horizonBase = useMemo(() => inRange(traderScoped, ranges.cur), [traderScoped, ranges]);
 
   const periodOpt = PERIOD_OPTIONS.find((o) => o.value === prefs.period)!;
+  // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
+  const solo = !isCurator && traders.length <= 1 && reportTraders.length === 0;
   const scopeLabel =
-    (prefs.trader === "all" ? "Вся команда" : prefs.trader) + (prefs.horizon !== "all" ? ` · ${HORIZON_LABEL[prefs.horizon]}` : "");
+    (prefs.trader === "all" ? (solo ? "Мои сделки" : "Вся команда") : prefs.trader) + (prefs.horizon !== "all" ? ` · ${HORIZON_LABEL[prefs.horizon]}` : "");
 
   const reportMeta = () => ({
     title: `Отчёт WS_LEXX — ${scopeLabel}`,
@@ -255,18 +258,20 @@ export default function Stats() {
             options={HORIZON_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
           />
         </div>
-        <Select value={prefs.trader} onValueChange={(v) => set("trader", v)}>
-          <SelectTrigger className="h-9 w-full rounded-full sm:w-[200px]" aria-label="Трейдер">
-            <SelectValue placeholder="Вся команда" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Вся команда</SelectItem>
-            {me && traders.includes(me) && <SelectItem value={me}>Мои сделки ({me})</SelectItem>}
-            {traders.filter((t) => t !== me).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {reportTraders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) && <SelectItem value={prefs.trader}>{prefs.trader}</SelectItem>}
-          </SelectContent>
-        </Select>
+        {!solo && <PersonSelect
+          value={prefs.trader}
+          onValueChange={(v) => set("trader", v)}
+          allValue="all"
+          allLabel="Вся команда"
+          options={[
+            ...(me && traders.includes(me) ? [{ value: me, label: `Мои сделки (${me})` }] : []),
+            ...traders.filter((t) => t !== me),
+            ...reportTraders,
+            ...(prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) ? [prefs.trader] : []),
+          ]}
+          className="h-9 w-full sm:w-[200px]"
+          ariaLabel="Трейдер"
+        />}
       </Toolbar>
 
       {hasBroker && (
@@ -339,6 +344,7 @@ export default function Stats() {
               dimension={prefs.dim}
               onDimension={(d) => set("dim", d)}
               onPickTrader={prefs.trader === "all" ? (name) => set("trader", name) : undefined}
+              hideTrader={solo}
             />
             <ExtremesPanel trades={trades} metric={metric} />
           </div>

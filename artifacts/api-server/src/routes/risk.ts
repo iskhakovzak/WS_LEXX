@@ -422,14 +422,14 @@ export function computeStop(args: { todayLoss: number; weekLoss: number; current
   const worst = Math.max(dailyPct ?? -1, weeklyPct ?? -1, drawdownPct ?? -1);
   if (worst >= WARN_PCT) {
     const parts: string[] = [];
-    if (dailyPct != null && dailyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.dailyRemainingUsd ?? 0)} до дневного стопа (${Math.round(dailyPct)}%)`);
-    if (weeklyPct != null && weeklyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.weeklyRemainingUsd ?? 0)} до недельного лимита (${Math.round(weeklyPct)}%)`);
-    if (drawdownPct != null && drawdownPct >= WARN_PCT) parts.push(`до макс. просадки ${usd0(base.drawdownRemainingUsd ?? 0)} (${Math.round(drawdownPct)}%)`);
+    if (dailyPct != null && dailyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.dailyRemainingUsd ?? 0)} до дневного стопа (использовано ${Math.round(dailyPct)}%)`);
+    if (weeklyPct != null && weeklyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.weeklyRemainingUsd ?? 0)} до недельного лимита (использовано ${Math.round(weeklyPct)}%)`);
+    if (drawdownPct != null && drawdownPct >= WARN_PCT) parts.push(`до макс. просадки ${usd0(base.drawdownRemainingUsd ?? 0)} (использовано ${Math.round(drawdownPct)}%)`);
     const msg = parts.join("; ");
     return { ...base, state: "warn", label: "Близко к стопу", halted: false, message: msg.charAt(0).toUpperCase() + msg.slice(1) + "." };
   }
   const msg = base.dailyRemainingUsd != null
-    ? `Осталось ${usd0(base.dailyRemainingUsd)} до дневного стопа${dailyPct != null ? ` (${Math.round(dailyPct)}%)` : ""}.`
+    ? `Осталось ${usd0(base.dailyRemainingUsd)} до дневного стопа${dailyPct != null ? ` (использовано ${Math.round(dailyPct)}%)` : ""}.`
     : base.weeklyRemainingUsd != null
       ? `Осталось ${usd0(base.weeklyRemainingUsd)} до недельного лимита.`
       : `До макс. просадки ${usd0(base.drawdownRemainingUsd ?? 0)}.`;
@@ -898,7 +898,7 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       if (!diff.length && !b.reason) return; // nothing the trader would notice
       await notifyUser({
         userName: trader, type: "limit_change", actor, source: "risk",
-        title: `${actor} изменил ваши лимиты`,
+        title: `Лимиты изменены: ${actor}`,
         message: `${diff.length ? diff.join("; ") : "Обновлены настройки риска"}${b.reason ? `. Причина: ${b.reason.slice(0, 200)}` : ""}`,
         link: notifLinks.risk(trader), entityType: "risk_limits", entityId: trader,
       });

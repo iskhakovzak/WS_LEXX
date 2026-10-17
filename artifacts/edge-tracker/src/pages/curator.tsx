@@ -14,7 +14,7 @@ import { cn } from "@/lib/utils";
 import { NotAvailableError, curatorKeys, useCuratorToday, useCuratorTraders, type Scope } from "@/components/curator/api";
 import { PHASE_HINT, PHASE_LABEL } from "@/components/curator/curator-math";
 import { TodayView } from "@/components/curator/today-view";
-import { TradersView } from "@/components/curator/traders-view";
+import { GroupView } from "@/components/curator/group-view";
 import { TraderProfile, PROFILE_TABS, type ProfileTab } from "@/components/curator/trader-profile";
 import { RiskProcessesView } from "@/components/curator/risk-processes-view";
 
@@ -47,7 +47,16 @@ function CuratorCabinet() {
   const [scope, setScope] = usePersistentState<Scope | "auto">("curator.scope", "auto");
 
   const today = useCuratorToday(scope);
-  const traders = useCuratorTraders(scope);
+  // «Группа»: the whole visible desk (server-side readScope still applies) — groups are split on the client by assigned_curator.
+  const traders = useCuratorTraders("desk", view === "traders" && !trader);
+  // Last opened group is remembered, so «назад» from a profile returns to the same group.
+  const [storedGroup, setStoredGroup] = usePersistentState<string | null>("curator.group", null);
+  const group = params.get("group") ?? storedGroup;
+  const setGroup = (g: string) => {
+    setStoredGroup(g);
+    const q = new URLSearchParams({ view: "traders", group: g });
+    navigate(`/curator?${q.toString()}`, { replace: true });
+  };
   const qc = useQueryClient();
   const fetching = useIsFetching({ queryKey: curatorKeys.all }) > 0;
 
@@ -83,7 +92,7 @@ function CuratorCabinet() {
         ) : undefined}
         actions={
           <>
-            {wards > 0 && (
+            {wards > 0 && view !== "traders" && (
               <Segmented
                 size="sm"
                 ariaLabel="Чьи трейдеры"
@@ -111,7 +120,7 @@ function CuratorCabinet() {
           onChange={(v) => setView(v)}
           tabs={[
             { value: "today", label: "Сегодня", icon: Sun, count: d ? d.counts.queue + d.counts.halted || undefined : undefined },
-            { value: "traders", label: "Мои трейдеры", icon: Users, count: d?.counts.traders },
+            { value: "traders", label: "Группа", icon: Users, count: d?.counts.traders },
             { value: "risk", label: "Риск-процессы", icon: ShieldAlert, count: d ? d.counts.noLimits + d.counts.halted || undefined : undefined },
           ]}
         />
@@ -132,7 +141,7 @@ function CuratorCabinet() {
           <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} />
         ) : (
           <QueryState query={traders} skeleton={<StatGridSkeleton count={6} />} errorTitle="Список трейдеров не загрузился">
-            {(data) => <TradersView traders={data.traders} onOpenTrader={openTrader} />}
+            {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}
           </QueryState>
         )
       ) : (

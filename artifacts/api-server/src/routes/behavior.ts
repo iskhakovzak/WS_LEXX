@@ -22,8 +22,9 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { scopeTrader, isGuestUser, GUEST_SCOPE } from "../lib/auth";
-import { can } from "../lib/permissions";
+import { can, readScope } from "../lib/permissions";
 import { resultSql, netPnlSql, horizonSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes, nyDate } from "../lib/tradingDate";
 import { etWallToUtcSeconds, parseDateStrict } from "./candles";
 import { analyzeBehavior, dayTimeline, groupByDay, parseHoldText, shiftDate, type BehaviorTrade } from "../lib/behaviorEngine";
@@ -74,14 +75,6 @@ export type BehaviorRow = {
   trader: string | null;
 };
 
-const EXEC_CTE = `exec AS (
-  SELECT trade_id,
-         MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-         MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-  FROM trade_executions
-  WHERE executed_at IS NOT NULL
-  GROUP BY trade_id
-)`;
 
 /** Настенное время ET без зоны ("2026-10-15T15:59:16") → epoch ms (DST-aware). */
 export function etWallIsoToMs(iso: string | null | undefined): number | null {
@@ -141,7 +134,7 @@ export function rowToBehaviorTrade(r: BehaviorRow): BehaviorTrade {
  * Сделки трейдера за период (без удалённых). `scope` = имя трейдера, null = все (staff), GUEST_SCOPE — пусто.
  * Переиспользуется классификатором сетапов (routes/setups-auto.ts).
  */
-export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[]): Promise<BehaviorRow[]> {
+export async function loadBehaviorRows(scope: string | null, from?: string, to?: string, ids?: number[], traders?: string[]): Promise<BehaviorRow[]> {
   const params: unknown[] = [];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   const cond = ["t.deleted_at IS NULL"];
@@ -149,7 +142,10 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
   if (from) cond.push(`substring(t.date, 1, 10) >= ${p(from)}`);
   if (to) cond.push(`substring(t.date, 1, 10) <= ${p(to)}`);
   if (ids && ids.length) cond.push(`t.id = ANY(${p(ids)}::int[])`);
-  const sql = `WITH ${EXEC_CTE}
+  if (traders) cond.push(`t.trader = ANY(${p(traders)}::text[])`);
+  // One trader / explicit ids → per-trade index probe; desk-wide scans → one hash aggregate (cheaper above ~10k trades).
+  const execJoin = execSpanJoin(scope != null || (ids && ids.length) || (traders && traders.length <= 12) ? "lateral" : "global");
+  const sql = `
     SELECT t.id, t.ticker, t.date, t.side, t.setup, t.trader,
            ${resultSql("t")} AS result,
            ${netPnlSql("t")}::float8 AS net,
@@ -164,7 +160,7 @@ export async function loadBehaviorRows(scope: string | null, from?: string, to?:
            t.context_snapshot->>'closedAt' AS closed_at,
            e.first_entry, e.last_exit
     FROM trades t
-    LEFT JOIN exec e ON e.trade_id = t.id
+    ${execJoin}
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date, 1, 10), e.first_entry NULLS LAST, t.id`;
   const { rows } = await pool.query<BehaviorRow>(sql, params);
@@ -215,6 +211,45 @@ router.get("/behavior", asyncHandler(async (req, res) => {
     ...report,
     generatedAt: new Date().toISOString(),
   });
+}));
+
+/**
+ * GET /behavior/top-patterns?traders=A,B&from=&to=&limit=2 — the costliest behaviour patterns per trader in ONE request
+ * (the curator group view used to fire one full /behavior report per trader card). Only traders the caller may read
+ * (team.read scope) are returned: { from, to, traders: { [name]: [{ key, title, n, cost, severity }] } }.
+ */
+const topSchema = z.object({
+  traders: z.string().max(8000),
+  from: z.string().regex(YMD_RE),
+  to: z.string().regex(YMD_RE),
+  limit: z.coerce.number().int().min(1).max(10).optional(),
+});
+router.get("/behavior/top-patterns", asyncHandler(async (req, res) => {
+  const parsed = topSchema.safeParse(normQuery(req.query));
+  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  const q = parsed.data;
+  if (q.from > q.to) { res.status(400).json({ error: "from позже to" }); return; }
+  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (isGuestUser(req.authUser)) { res.json({ from: q.from, to: q.to, traders: {} }); return; }
+  const wanted = [...new Set(q.traders.split(",").map((t) => t.trim()).filter((t) => t && t.length <= 120))].slice(0, 300);
+  const allowed = await readScope(req, "team.read");
+  const list = allowed === null ? wanted : wanted.filter((t) => allowed.includes(t));
+  const out: Record<string, { key: string; title: string; n: number; cost: number | null; severity: string | null }[]> = {};
+  if (list.length) {
+    const rows = await loadBehaviorRows(null, q.from, q.to, undefined, list);
+    const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
+    const by = new Map<string, BehaviorTrade[]>();
+    rows.forEach((r, i) => { const k = String(r.trader); const arr = by.get(k); if (arr) arr.push(trades[i]!); else by.set(k, [trades[i]!]); });
+    for (const name of list) {
+      const report = analyzeBehavior(by.get(name) ?? [], {});
+      out[name] = ((report as { patterns?: any[] }).patterns ?? [])
+        .filter((p) => p.n > 0 && p.severity && p.severity !== "none")
+        .sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0))
+        .slice(0, q.limit ?? 2)
+        .map((p) => ({ key: String(p.key), title: String(p.title), n: Number(p.n), cost: p.cost ?? null, severity: p.severity ?? null }));
+    }
+  }
+  res.json({ from: q.from, to: q.to, traders: out });
 }));
 
 const daySchema = querySchema.extend({ date: z.string().regex(YMD_RE) });

@@ -12,6 +12,7 @@
  * for trades without a structure. GET /trades/:id/executions computes on read (always fresh).
  */
 import { pool } from "@workspace/db";
+import { cleanCandles, type Ohlcv } from "./candleClean";
 import {
   classifyTrade, linkTrades, structureSummary,
   type ExecIn, type ExecKind, type Leg, type Side, type StructureStats, type TradeHead, type TradeSource, type TradeStructure,
@@ -165,7 +166,8 @@ async function loadExecs(q: Queryable, tradeIds: readonly number[]): Promise<Exe
 }
 
 /**
- * Most adverse price inside each trade's hold window from candles ALREADY in candles_cache (1m / 5m). Never fetches:
+ * Most adverse price inside each trade's hold window from candles ALREADY in candles_cache (1m / 5m), cleaned of stray
+ * prints by lib/candleClean like every other candle read. Never fetches:
  * no cached candles → no entry → the heuristic simply does not fire.
  */
 async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs: readonly ExecRowLite[]): Promise<Map<number, number>> {
@@ -186,7 +188,8 @@ async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs
   const bars = new Map<string, { sec: number; list: { t: number; h: number; l: number }[] }>();
   for (const r of rows as { ticker: string; date: string; interval: string; ohlcv: unknown }[]) {
     if (!Array.isArray(r.ohlcv)) continue;
-    bars.set(`${r.ticker}|${r.date}`, { sec: r.interval === "1m" ? 60 : 300, list: r.ohlcv as { t: number; h: number; l: number }[] });
+    // Same bad-print cleaning as the chart (routes/candles.ts): a stray Yahoo wick must not become the trade's MAE.
+    bars.set(`${r.ticker}|${r.date}`, { sec: r.interval === "1m" ? 60 : 300, list: cleanCandles(r.ohlcv as Ohlcv[]) });
   }
   for (const t of trades) {
     const w = window.get(t.id);

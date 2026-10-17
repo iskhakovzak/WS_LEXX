@@ -55,7 +55,9 @@ export function fmtDaysAgo(ymd: string | null | undefined): string {
   if (days <= 0) return "сегодня";
   if (days === 1) return "вчера";
   if (days < 30) return `${days} дн. назад`;
-  return fmtDate(ymd);
+  // Longer gaps: a short relative form — the exact date sits in the card hint, and a full date truncates.
+  if (days < 365) return `${Math.floor(days / 30)} мес. назад`;
+  return "больше года назад";
 }
 
 export function initials(name: string): string {

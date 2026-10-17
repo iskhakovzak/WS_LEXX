@@ -153,7 +153,7 @@ export function JuniorHistory({
                     return [`${v} из 5`, "Оценка куратора"];
                   }}
                 />
-                <Bar dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
+                <Bar isAnimationActive={false} dataKey="score" name="score" fill="hsl(var(--chart-3) / 0.55)" radius={[6, 6, 0, 0]} maxBarSize={18} />
                 <Line dataKey="mood" name="mood" type="monotone" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 2.5 }} connectNulls isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>

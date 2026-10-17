@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { AlertTriangle, CalendarClock, ClipboardCheck, ListChecks, MessagesSquare, Plus, Target, UserCog, Users, X } from "lucide-react";
 import {
@@ -65,7 +65,8 @@ export default function AcademyMentorPage() {
         <>
           {!d.hasOwnCohorts && <p className="text-xs text-muted-foreground">Вы не назначены наставником ни одной когорты — показаны все когорты деска.</p>}
           <Kpis d={d} />
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
+          {/* Side-by-side only on wide screens: at 1280–1440 px the students table needs the full width («Почему отстаёт»). */}
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_minmax(0,22rem)]">
             <Students d={d} selected={selected} onSelect={setSelected} onMeeting={(s) => setMeetingFor(s)} />
             <Today sessions={d.today} />
           </div>
@@ -151,7 +152,7 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
                     <td><StagePill stage={s.enrollment.stage} /></td>
                     <td>
                       <span className={cn(a.rate == null ? "text-muted-foreground" : a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down")}>{pct(a.rate)}</span>
-                      {a.total > 0 && <div className="text-xs text-muted-foreground">{a.present}/{a.late}/{a.absent}{a.unmarked ? ` · ? ${a.unmarked}` : ""}</div>}
+                      {a.total > 0 && <div className="text-xs text-muted-foreground" title="был / опоздал / пропуск · не отмечено">{a.present}/{a.late}/{a.absent}{a.unmarked ? ` · ? ${a.unmarked}` : ""}</div>}
                     </td>
                     <td>
                       {s.goals.active + s.goals.achieved + s.goals.missed === 0 ? <span className="text-muted-foreground">—</span> : (
@@ -172,7 +173,7 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
                     <td>
                       {s.reasons.length === 0 ? <Pill tone="up">в графике</Pill> : (
                         <div className="flex max-w-[22rem] flex-wrap gap-1">
-                          {s.reasons.map((r) => <Pill key={r.code} tone={sevTone(r.severity)} title={r.code}>{r.text}</Pill>)}
+                          {s.reasons.map((r) => <Pill key={r.code} tone={sevTone(r.severity)} className="whitespace-normal rounded-lg" title={r.text}>{r.text}</Pill>)}
                         </div>
                       )}
                       <div className="mt-1 text-xs text-muted-foreground">
@@ -240,7 +241,18 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
   const [actionOpen, setActionOpen] = useState(false);
   const [stageOpen, setStageOpen] = useState(false);
   const err = (e: Error) => toast({ title: "Не сохранено", description: e.message, variant: "destructive" });
+  // The card opens under the (long) students table — bring it into view when a student is picked.
+  const boxRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    boxRef.current?.scrollIntoView({ block: "start", behavior: reduce ? "auto" : "smooth" });
+  }, [u]);
+  const archiveGoal = (id: number, title: string) => {
+    if (!window.confirm(`Убрать цель «${title}» в архив?`)) return;
+    archive.mutate(id, { onSuccess: () => toast({ title: "Цель в архиве" }), onError: err });
+  };
   return (
+    <div ref={boxRef} className="scroll-mt-[var(--sticky-top)]">
     <Panel title={`${u} · ${student.cohortName}`} icon={Target}
       description={`С ${fmtYmd(student.enrollment.joinedOn, true)} · посещаемость всего ${pct(student.attendance.rate)}`}
       actions={<>
@@ -267,7 +279,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
               <GoalCard key={g.id} goal={g} compact actions={<>
                 {g.status === "active" && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "cancelled" }, { onError: err })}>Отменить</Button>}
                 {(g.status === "cancelled" || g.status === "missed") && <Button size="sm" variant="ghost" onClick={() => updGoal.mutate({ id: g.id, status: "active" }, { onError: err })}>Вернуть</Button>}
-                <Button size="sm" variant="ghost" onClick={() => archive.mutate(g.id, { onError: err })}>В архив</Button>
+                <Button size="sm" variant="ghost" onClick={() => archiveGoal(g.id, g.title)} disabled={archive.isPending}>В архив</Button>
               </>} />
             ))}
           </div>
@@ -301,6 +313,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
       <ActionDialog open={actionOpen} onOpenChange={setActionOpen} student={u} />
       <EnrollmentEditDialog open={stageOpen} onOpenChange={setStageOpen} enrollment={student.enrollment} />
     </Panel>
+    </div>
   );
 }
 
@@ -323,7 +336,11 @@ function OpenActions({ items }: { items: ActionItem[] }) {
                 {a.dueOn && <span className={cn(a.overdue && "font-medium text-down")}>срок {fmtYmd(a.dueOn)}{a.overdue ? " · просрочено" : ""}</span>}
               </span>
             </label>
-            <Button size="sm" variant="ghost" onClick={() => upd.mutate({ id: a.id, status: "dropped" })} aria-label={`Снять договорённость: ${a.title}`}>Снять</Button>
+            <Button size="sm" variant="ghost" disabled={upd.isPending} aria-label={`Снять договорённость: ${a.title}`}
+              onClick={() => upd.mutate({ id: a.id, status: "dropped" }, {
+                onSuccess: () => toast({ title: "Договорённость снята", description: a.title }),
+                onError: (e) => toast({ title: "Не сохранено", description: e.message, variant: "destructive" }),
+              })}>Снять</Button>
           </li>
         ))}
       </ul>

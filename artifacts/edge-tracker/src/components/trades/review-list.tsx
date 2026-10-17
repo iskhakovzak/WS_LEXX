@@ -20,6 +20,9 @@ import { SidePill } from "./trade-bits";
 import { SortHead } from "./sort-head";
 import type { TradesView } from "./use-trade-filters";
 
+/** Counts with thin-space grouping: «45 211», not «45211». */
+const num = (v: number) => v.toLocaleString("ru-RU");
+
 const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const WEEKDAYS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
 
@@ -77,7 +80,7 @@ export function ReviewKpis({
         loading={loading}
         value={fmtMoney(s?.net ?? null)}
         tone={toneOf(s?.net ?? null)}
-        hint={s ? `${s.total} ${plural(s.total, ["сделка", "сделки", "сделок"])}${perTrade != null ? ` · ${fmtMoney(perTrade)} на сделку` : ""}` : undefined}
+        hint={s ? `${num(s.total)} ${plural(s.total, ["сделка", "сделки", "сделок"])}${perTrade != null ? ` · ${fmtMoney(perTrade)} на сделку` : ""}` : undefined}
         spark={dayCurve.length > 1 ? dayCurve : undefined}
       />
       <StatCard
@@ -85,7 +88,7 @@ export function ReviewKpis({
         term="winrate"
         loading={loading}
         value={fmtPct(s?.winRate ?? null)}
-        hint={s ? `${s.wins} W · ${s.losses} L${s.be ? ` · ${s.be} в ноль` : ""}` : undefined}
+        hint={s ? `${num(s.wins)} W · ${num(s.losses)} L${s.be ? ` · ${num(s.be)} в ноль` : ""}` : undefined}
       />
       <StatCard
         label={useR ? "Payoff, R" : "Payoff"}
@@ -121,9 +124,9 @@ export function ReviewKpis({
       <StatCard
         label="Без разбора"
         loading={loading}
-        value={untagged}
+        value={num(untagged)}
         tone={untagged > 0 ? "warn" : "neutral"}
-        hint={s ? (untagged ? `из ${closed} закрытых · разобрать →` : "все сделки размечены") : undefined}
+        hint={s ? (untagged ? `из ${num(closed)} закрытых · разобрать →` : "все сделки размечены") : undefined}
         onClick={untagged ? () => onPreset("review") : undefined}
       />
     </StatGrid>
@@ -180,7 +183,7 @@ export function PresetBar({
           {PRESETS.map((k) => {
             const n = counts?.[k];
             return (
-              <FilterChip key={k} active={preset === k} onClick={() => onPreset(preset === k ? null : k)} count={n ?? undefined} className="min-h-7 px-2.5 text-xs">
+              <FilterChip key={k} active={preset === k} onClick={() => onPreset(preset === k ? null : k)} count={n ?? undefined} size="sm">
                 {PRESET_META[k].label}
               </FilterChip>
             );
@@ -199,8 +202,7 @@ export function PresetBar({
             </Select>
             <Button
               variant="ghost"
-              size="icon"
-              className="h-8 w-8"
+              size="icon-sm"
               aria-label={sort.dir === "desc" ? "По убыванию" : "По возрастанию"}
               title={sort.dir === "desc" ? "По убыванию" : "По возрастанию"}
               onClick={() => onSort({ col: sort.col, dir: sort.dir === "desc" ? "asc" : "desc" })}
@@ -436,7 +438,7 @@ export function DayCard({
           </span>
           <Sparkline data={curve} baseline={0} tone={toneOf(day.net)} width={120} height={30} className="shrink-0" ariaLabel="Кривая дня по сделкам" />
           <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="tabular-nums"><span className="text-foreground">{day.count}</span> {plural(day.count, ["сделка", "сделки", "сделок"])}</span>
+            <span className="tabular-nums"><span className="text-foreground">{num(day.count)}</span> {plural(day.count, ["сделка", "сделки", "сделок"])}</span>
             <span className="tabular-nums">WR <span className="text-foreground">{fmtPct(day.winRate)}</span>{closed ? ` · ${day.wins}/${day.losses}` : ""}</span>
             {day.fees != null && day.fees > 0 && (
               <span className="tabular-nums" title="Комиссии дня и их доля в брутто">

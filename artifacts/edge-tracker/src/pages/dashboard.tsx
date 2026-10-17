@@ -104,6 +104,9 @@ export default function Dashboard() {
           .find((d) => d < tradingDate || (d === tradingDate && afterClose)) ?? null)
       : null;
   const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
+  // «Что важно сейчас» counts tasks from all of these: render it once they have answered (no 2 → 3 jump).
+  const attentionLoading = todayQ.isLoading || recentQ.isLoading || riskQ.isLoading || deskQ.isLoading || eodQ.isLoading
+    || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading;
 
   const goToCheckin = useCallback(() => {
     if (prefs.hidden.includes("checkin")) update({ hidden: prefs.hidden.filter((h) => h !== "checkin") });
@@ -132,7 +135,7 @@ export default function Dashboard() {
             events={eventsQ.data}
             marketEvents={holidaysQ.data?.today ?? []}
             unread={unreadQ.data}
-            isLoading={todayQ.isLoading}
+            isLoading={attentionLoading}
             updatedAt={todayQ.dataUpdatedAt || undefined}
             onCheckin={goToCheckin}
           />

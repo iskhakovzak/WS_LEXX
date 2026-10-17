@@ -10,16 +10,17 @@ import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { canModifyOwned } from "@/lib/ownership";
-import { useCatalystMutations } from "./use-big7";
+import { useBig7Today, useCatalystMutations } from "./use-big7";
 import {
-  CATALYST_TYPES, TODAY, addDays, catalystMeta, dayMonth, mondayOf, relDayLabel, weekdayShort,
+  CATALYST_TYPES, addDays, big7Today, catalystMeta, dayMonth, mondayOf, relDayLabel, weekdayShort,
   type MergedCatalyst,
 } from "./lib";
 
 export type CatalystDraft = { id?: number; ticker: string; date: string; type: string; description: string; impact: string };
 export const emptyDraft = (p: Partial<CatalystDraft> = {}): CatalystDraft => ({
-  ticker: "", date: TODAY, type: "earnings", description: "", impact: "medium", ...p,
+  ticker: "", date: big7Today(), type: "earnings", description: "", impact: "medium", ...p,
 });
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const selectCls = "glass-field h-9 w-full min-w-0 rounded-full px-3 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
@@ -145,7 +146,12 @@ export function CatalystWeek({
   onRetry: () => void;
 }) {
   const [week, setWeek] = useState<"this" | "next">("this");
-  const monday = addDays(mondayOf(TODAY), week === "next" ? 7 : 0);
+  const TODAY = useBig7Today();
+  // Saturday / Sunday: the week that matters is the one ahead, not the one that just closed.
+  const dow = new Date(`${TODAY}T12:00:00Z`).getUTCDay();
+  const weekend = dow === 0 || dow === 6;
+  const anchor = weekend ? addDays(TODAY, dow === 6 ? 2 : 1) : TODAY;
+  const monday = addDays(mondayOf(anchor), week === "next" ? 7 : 0);
   const days = [0, 1, 2, 3, 4].map((i) => addDays(monday, i));
   const board = useMemo(() => new Set(boardSymbols), [boardSymbols]);
   const relevant = merged.filter((c) => board.has(c.ticker) || c.marketWide);
@@ -156,10 +162,10 @@ export function CatalystWeek({
     <Panel
       title="Катализаторы недели"
       icon={CalendarDays}
-      description={total > 0 ? `${total} событий · ${dayMonth(days[0])}–${dayMonth(days[4])}` : `${dayMonth(days[0])}–${dayMonth(days[4])}`}
+      description={total > 0 ? `${total} ${pluralRu(total, "событие", "события", "событий")} · ${dayMonth(days[0])}–${dayMonth(days[4])}` : `${dayMonth(days[0])}–${dayMonth(days[4])}`}
       actions={
         <>
-          <Segmented ariaLabel="Неделя" size="sm" value={week} onChange={setWeek} options={[{ value: "this", label: "Эта" }, { value: "next", label: "Следующая" }]} />
+          <Segmented ariaLabel="Неделя" size="sm" value={week} onChange={setWeek} options={[{ value: "this", label: weekend ? "Ближайшая" : "Эта" }, { value: "next", label: "Следующая" }]} />
           <Button variant="ghost" size="sm" onClick={onOpenAll}><ListFilter /> Все</Button>
         </>
       }
@@ -266,6 +272,7 @@ function CatalystActions({ c, onEdit }: { c: MergedCatalyst; onEdit: (c: MergedC
 function CatalystRow({ c, showTicker, onEdit }: { c: MergedCatalyst; showTicker: boolean; onEdit: (c: MergedCatalyst) => void }) {
   const m = catalystMeta(c.type);
   const Icon = m.icon;
+  const TODAY = big7Today(); // re-rendered by the parent's useBig7Today()
   const past = c.date < TODAY;
   return (
     <li className={cn("group relative flex min-w-0 items-start gap-3 py-2 pl-5", past && "opacity-60")}>
@@ -293,6 +300,7 @@ function CatalystRow({ c, showTicker, onEdit }: { c: MergedCatalyst; showTicker:
 export function CatalystTimeline({
   ticker, merged, onAdd, onEdit,
 }: { ticker: string; merged: MergedCatalyst[]; onAdd: () => void; onEdit: (c: MergedCatalyst) => void }) {
+  const TODAY = useBig7Today();
   const from = addDays(TODAY, -14);
   const list = merged.filter((c) => (c.ticker === ticker || c.marketWide) && c.date >= from);
   const upcoming = list.filter((c) => c.date >= TODAY);
@@ -323,6 +331,7 @@ export function CatalystSheet({
 }: { open: boolean; onOpenChange: (o: boolean) => void; merged: MergedCatalyst[]; onAdd: () => void; onEdit: (c: MergedCatalyst) => void }) {
   const [scope, setScope] = useState<"upcoming" | "past">("upcoming");
   const { canEdit } = useAuth();
+  const TODAY = useBig7Today();
   const list = scope === "upcoming"
     ? merged.filter((c) => c.date >= TODAY)
     : merged.filter((c) => c.date < TODAY && c.date >= addDays(TODAY, -60)).reverse();

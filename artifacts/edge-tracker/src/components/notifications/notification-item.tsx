@@ -64,7 +64,7 @@ export const NotificationItem = React.memo(function NotificationItem({
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-baseline gap-2">
-            <span className={cn("min-w-0 flex-1 truncate text-sm leading-snug", n.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground")}>
+            <span title={n.title} className={cn("min-w-0 flex-1 text-sm leading-snug", full ? "line-clamp-2 break-words" : "truncate", n.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground")}>
               {n.title}
             </span>
             <span className="shrink-0 text-2xs tabular-nums text-muted-foreground" title={new Date(n.createdAt).toLocaleString("ru-RU")}>

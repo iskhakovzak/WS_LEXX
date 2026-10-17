@@ -1,5 +1,5 @@
 /** Linked trades of a setup: R-strip, sortable table, link/unlink. Link dialog suggests trades whose setup name matches. */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { ExternalLink, Link2, List, Search, TrendingUp, Unlink } from "lucide-react";
@@ -14,9 +14,17 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { byCloseDate, horizonOf, isDecided, netPnl, resultOf, signedR, type Horizon } from "@/lib/trade-math";
-import { invalidateTradeLinks, pbRequest } from "./api";
+import { invalidateTradeLinks, pbRequest, useTradePicker } from "./api";
 import { DocSection, InlineError, REDACTED_HINT, RedactedHint } from "./setup-bits";
-import type { LinkedTrade, PlaybookEntry } from "./model";
+import type { LinkedTrade, PickerTrade, PlaybookEntry } from "./model";
+
+type PickRow = LinkedTrade & { matchesSetup: boolean };
+/** Lean picker row → the LinkedTrade shape the row renderer uses (net P&L goes in as `pnl`, fees already netted). */
+const fromPicker = (t: PickerTrade): PickRow => ({
+  id: t.id, ticker: t.ticker, date: t.date, closeDate: t.closeDate, side: t.side, result: t.result ?? "",
+  pnl: t.netPnl, fees: 0, netPnl: t.netPnl, rMultiple: null, signedR: t.signedR, horizon: t.horizon,
+  setup: t.setup, trader: t.trader, playbookId: t.playbookId, redacted: t.redacted, matchesSetup: t.matchesSetup,
+});
 
 const resultTone = (t: LinkedTrade): Tone => { const r = resultOf(t); return r === "win" ? "up" : r === "loss" ? "down" : "neutral"; };
 /** Net $ when P&L is known (labelled «нетто» in the title), else the result word (also for redacted rows). */
@@ -115,21 +123,32 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
     queryKey: ["playbook-trades", entryId],
     queryFn: () => pbRequest<LinkedTrade[]>(`/api/playbook/${entryId}/trades`),
   });
-  const { data: allTrades = [], isLoading: allLoading, isError: allError } = useQuery<LinkedTrade[]>({
-    queryKey: ["all-trades-for-link"],
-    queryFn: async () => {
-      const j = await pbRequest<any>("/api/trades");
-      return Array.isArray(j) ? j : [];
-    },
-    enabled: linkOpen,
-  });
+  // Lean server picker (recent trades in scope + server-side setup matching) instead of the full /api/trades payload.
+  // A ticker-like query also searches the whole history on the server; setup / trader text filters the recent list.
+  const [debounced, setDebounced] = useState("");
+  useEffect(() => {
+    const t = window.setTimeout(() => setDebounced(search.trim()), 250);
+    return () => window.clearTimeout(t);
+  }, [search]);
+  const tickerQ = /^[a-z0-9.-]{1,10}$/i.test(debounced) ? debounced : "";
+  const baseQ = useTradePicker({ setupId: entryId }, linkOpen);
+  const tickerHits = useTradePicker({ setupId: entryId, q: tickerQ }, linkOpen && !!tickerQ);
+  const allLoading = baseQ.isLoading || (!!tickerQ && tickerHits.isLoading);
+  const allError = baseQ.isError;
+  const allTrades = useMemo(() => {
+    const out = new Map<number, PickRow>();
+    for (const t of baseQ.data?.trades ?? []) out.set(t.id, fromPicker(t));
+    if (tickerQ) for (const t of tickerHits.data?.trades ?? []) if (!out.has(t.id)) out.set(t.id, fromPicker(t));
+    return [...out.values()];
+  }, [baseQ.data, tickerHits.data, tickerQ]);
 
   const { rows: sortedLinked, thProps } = useTableSort<LinkedTrade, LinkedKey>(linked, LINKED_ACCESSORS, "date", "desc", { ticker: "asc", horizon: "asc", who: "asc" });
   const linkedIds = useMemo(() => new Set(linked.map((t) => t.id)), [linked]);
   const { suggested, rest } = useMemo(() => {
     const q = search.trim().toLowerCase();
     const keys = [entry.name, entry.setupType].filter(Boolean).map((s) => s!.toLowerCase());
-    const matchesSetup = (t: LinkedTrade) => {
+    const matchesSetup = (t: PickRow) => {
+      if (t.matchesSetup) return true;
       const s = (t.setup || "").toLowerCase();
       return !!s && keys.some((k) => s.includes(k) || k.includes(s));
     };

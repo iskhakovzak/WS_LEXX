@@ -16,6 +16,7 @@ import {
   CHART_TOOLTIP, MOODS, SECTIONS, filledSections, fmtDayLong, fmtDayShort, fmtWeekday, localToday,
   moodOf, notePreview, writingStreak, type AuthorNote,
 } from "./author-model";
+import { pluralRu } from "@/components/rules/constants";
 
 function monthKey(d: string) {
   const dt = new Date(d.slice(0, 10) + "T12:00:00");
@@ -139,7 +140,7 @@ export function AuthorHistory({
         <StatCard label="Записей" value={stats.total} icon={BookOpen} hint="за всё время" />
         <StatCard
           label="Серия"
-          value={`${stats.streak} ${stats.streak === 1 ? "день" : stats.streak > 1 && stats.streak < 5 ? "дня" : "дней"}`}
+          value={`${stats.streak} ${pluralRu(stats.streak, "день", "дня", "дней")}`}
           icon={Flame}
           tone={stats.streak >= 5 ? "up" : "neutral"}
           hint="торговых дней подряд"
@@ -288,7 +289,7 @@ export function AuthorHistory({
           {preview && (
             <>
               <SheetHeader>
-                <SheetTitle className="capitalize">{fmtDayLong(preview.note_date)}</SheetTitle>
+                <SheetTitle className="first-letter:uppercase">{fmtDayLong(preview.note_date)}</SheetTitle>
                 <SheetDescription>
                   {moodOf(preview.mood) ? `${moodOf(preview.mood)!.emoji} ${moodOf(preview.mood)!.label}` : "Настроение не отмечено"}
                 </SheetDescription>

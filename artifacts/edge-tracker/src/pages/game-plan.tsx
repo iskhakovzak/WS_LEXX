@@ -68,7 +68,10 @@ export default function GamePlanPage() {
   const canTeam = can("journal.read.team");
   const [viewRaw, setView] = useState<View>(() => readUrlView() ?? "desk");
   const view: View = viewRaw === "my" && !canMine ? "desk" : viewRaw === "traders" && !canTeam ? "desk" : viewRaw;
-  const today = nyToday();
+  // On Saturday / Sunday the plan that matters is Monday's: open the next session instead of an empty weekend day.
+  const calToday = nyToday();
+  const today = [0, 6].includes(new Date(`${calToday}T12:00:00Z`).getUTCDay()) ? shiftTradingDay(calToday, 1) : calToday;
+  const sessionAhead = today !== calToday;
   const [date, setDate] = useState<string>(() => readUrlDate() ?? today);
   const [editorOpen, setEditorOpen] = useState(false);
   const [calOpen, setCalOpen] = useState(false);
@@ -208,8 +211,8 @@ export default function GamePlanPage() {
               </Button>
             </nav>
             {!isToday && (
-              <Button variant="outline" size="sm" onClick={() => go(today)} title="Сегодня (T)">
-                Сегодня
+              <Button variant="outline" size="sm" onClick={() => go(today)} title={sessionAhead ? "Ближайший торговый день (T)" : "Сегодня (T)"}>
+                {sessionAhead ? "Ближайшая сессия" : "Сегодня"}
               </Button>
             )}
             {isCurator && view === "desk" && plan && (
@@ -251,7 +254,7 @@ export default function GamePlanPage() {
             <Panel>
               <EmptyState
                 icon={FileText}
-                title={isToday ? "План на сегодня ещё не опубликован" : `План на ${format(dateObj(date), "d MMMM", { locale: ru })} не публиковался`}
+                title={isToday ? (sessionAhead ? `План на ${format(dateObj(date), "EEEE, d MMMM", { locale: ru })} ещё не опубликован` : "План на сегодня ещё не опубликован") : date > today ? `План на ${format(dateObj(date), "d MMMM", { locale: ru })} ещё не опубликован` : `План на ${format(dateObj(date), "d MMMM", { locale: ru })} не публиковался`}
                 description={
                   isCurator
                     ? "Соберите брифинг: взгляд на рынок, уровни SPY/QQQ, тикеры в игре и риск-режим. Можно продублировать прошлый план."

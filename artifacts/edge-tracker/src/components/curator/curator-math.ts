@@ -1,5 +1,6 @@
 import type { Tone } from "@/components/ds";
 import type { NextActionKind, Phase, QueueKind, TraderSignal } from "./api";
+import { matchesAny } from "@workspace/text-search";
 
 /** Signed compact USD: +$1,240 / −$85 / «—» for null. */
 export function usd(v: number | null | undefined, signed = true): string {
@@ -99,11 +100,12 @@ export function sortTraders(list: readonly TraderSignal[], by: TraderSort): Trad
   return arr.sort((a, b) => b.nextAction.priority - a.nextAction.priority || (worstUsage(b) ?? -1) - (worstUsage(a) ?? -1) || name(a, b));
 }
 
-/** Free-text filter over trader name, stage, tier and next action. */
+/** Free-text filter: trader name / Latin alias in any script (RU / EN / UZ, wrong layout), stage, tier, next action. */
 export function matchesQuery(s: TraderSignal, q: string): boolean {
   const t = q.trim().toLowerCase();
   if (!t) return true;
-  return [s.trader, s.stage.label, s.tierName, s.nextAction.label].some((x) => (x ?? "").toLowerCase().includes(t));
+  if ([s.trader, s.stage.label, s.tierName, s.nextAction.label].some((x) => (x ?? "").toLowerCase().includes(t))) return true;
+  return matchesAny(q, s.trader, s.nameLatin);
 }
 
 export const NOTE_KIND_LABEL = { note: "Заметка", call: "Разговор", concern: "Тревога", praise: "Успех" } as const;

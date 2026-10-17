@@ -295,11 +295,12 @@ router.post("/notifications/archive", asyncHandler(async (req, res): Promise<voi
   await ensureNotificationSchema();
   const body = (req.body ?? {}) as { ids?: unknown; read?: unknown };
   if (body.read === true) {
-    const { rowCount } = await pool.query(
-      `UPDATE notifications SET archived_at = NOW() WHERE user_name = $1 AND archived_at IS NULL AND (is_read = TRUE OR read_at IS NOT NULL)`,
+    const { rows } = await pool.query<{ id: number }>(
+      `UPDATE notifications SET archived_at = NOW() WHERE user_name = $1 AND archived_at IS NULL AND (is_read = TRUE OR read_at IS NOT NULL) RETURNING id`,
       [name],
     );
-    res.json({ ok: true, updated: rowCount ?? 0 });
+    // ids → the client can offer «Отменить» (POST /notifications/unarchive).
+    res.json({ ok: true, updated: rows.length, ids: rows.map((r) => Number(r.id)) });
     return;
   }
   const ids = parseIds(body);

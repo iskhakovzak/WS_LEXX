@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle, Award, BookOpen, CalendarRange, ChevronDown, Flame, GraduationCap, Lightbulb, Map as MapIcon,
-  MessageSquareText, MessagesSquare, ShieldAlert, ShieldCheck, TrendingDown, TrendingUp, Trophy, Users, Zap,
+  MessageSquareText, MessagesSquare, ShieldAlert, ShieldCheck, Star, TrendingDown, TrendingUp, Trophy, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
 import { Pill, Truncate, toneOf, tonePill, toneText, type Tone } from "@/components/ds";
@@ -145,6 +145,17 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
   }
   if (prefix === "events") {
     return { icon: Zap, tone: "neutral", title: `${n} ${pluralRu(n, "событие", "события", "событий")} рынка`, subtitle: tickers.length ? listShort(tickers, 6) : null, value: null, valueFmt: null };
+  }
+  if (prefix === "ratings") {
+    const curators = uniq(items.map((i) => i.actor));
+    const scored = items.filter((i) => i.value != null);
+    const avg = scored.length ? Math.round((scored.reduce((sum, i) => sum + (i.value ?? 0), 0) / scored.length) * 10) / 10 : null;
+    return {
+      icon: Star, tone: "accent",
+      title: `${n} ${pluralRu(n, "оценка", "оценки", "оценок")} за неделю`,
+      subtitle: [avg != null ? `в среднем ${avg.toLocaleString("ru-RU")}/10` : null, curators.length ? listShort(curators, 2) : null].filter(Boolean).join(" · ") || null,
+      value: null, valueFmt: null,
+    };
   }
   if (prefix === "reviews") {
     const who = uniq(items.map((i) => i.actor));

@@ -36,7 +36,8 @@ export function usePlaybookEntries() {
   return useQuery<PlaybookEntry[]>({
     queryKey: ["playbook"],
     queryFn: () => pbRequest<PlaybookEntry[]>("/api/playbook"),
-    staleTime: 0,
+    // ~300 KB: don't refetch on every visit; every write invalidates this key anyway.
+    staleTime: 30_000,
   });
 }
 
@@ -110,6 +111,7 @@ export function invalidatePlaybook(qc: QueryClient, id?: number) {
 
 export function invalidateTradeLinks(qc: QueryClient) {
   qc.invalidateQueries({ queryKey: ["all-trades-for-link"] });
+  qc.invalidateQueries({ queryKey: ["playbook-trade-picker"] });
   qc.invalidateQueries({ queryKey: ["all-playbook-trades-stats"] });
   qc.invalidateQueries({ queryKey: ["playbook-edge"] });
   qc.invalidateQueries({ queryKey: ["playbook-health"] });

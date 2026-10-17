@@ -16,6 +16,7 @@ import { bumpTokenVersion, hashPassword } from "../lib/auth";
 import { can, requireCap, resolveActor } from "../lib/permissions";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { getSettings, setSetting, schedulerStatus, statusConfig } from "../lib/propreports";
+import { cleanNameLatin, ensureNameLatin } from "../lib/peopleDirectory";
 
 const router: IRouter = Router();
 
@@ -129,7 +130,8 @@ router.get("/admin/console/health", asyncHandler(async (req, res): Promise<void>
 router.get("/admin/console/people", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.read.team"))) return;
   const since30 = addDays(nyDate(), -30);
-  const [users, tiers, accounts, seen, trades, settings] = await Promise.all([
+  await ensureNameLatin().catch(() => undefined);
+  const [users, tiers, accounts, seen, trades, settings, latin] = await Promise.all([
     soft<UserRow>(`${USER_SELECT} ORDER BY u.active DESC, CASE u.role WHEN 'admin' THEN 0 WHEN 'curator' THEN 1 ELSE 2 END, u.name`),
     soft<{ trader: string; tier: string | null }>(`SELECT trader, tier FROM trader_risk_limits`),
     soft<{ id: number; account: string; trader: string | null; last_synced_at: Date | null; active: boolean }>(
@@ -143,7 +145,9 @@ router.get("/admin/console/people", asyncHandler(async (req, res): Promise<void>
       `SELECT trader, COUNT(*) FILTER (WHERE LEFT(date, 10) >= $1)::int AS n30, MAX(LEFT(date, 10)) AS last
          FROM trades WHERE deleted_at IS NULL AND trader IS NOT NULL GROUP BY trader`, [since30]),
     getSettings().catch(() => null),
+    soft<{ id: number; name_latin: string | null }>(`SELECT id, name_latin FROM users WHERE name_latin IS NOT NULL`),
   ]);
+  const latinBy = new Map(latin.map((l) => [Number(l.id), l.name_latin]));
   const tierBy = new Map(tiers.map((t) => [t.trader, t.tier]));
   const seenBy = new Map(seen.map((s) => [s.name, iso(s.at)]));
   const tradesBy = new Map(trades.map((t) => [t.trader, t]));
@@ -154,6 +158,7 @@ router.get("/admin/console/people", asyncHandler(async (req, res): Promise<void>
     people: users.map((u) => ({
       id: u.id,
       name: u.name,
+      nameLatin: latinBy.get(Number(u.id)) ?? null,
       role: u.role,
       status: statusOf(u),
       active: u.active,
@@ -304,6 +309,28 @@ router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): 
   const r = await applyAction(req, actor, await can(req, "users.manage.admins"), id, "curator", parsed.data.reason, { curator: parsed.data.curator || null });
   if (!r.ok) { res.status(r.status).json({ error: r.error }); return; }
   res.json({ ok: true, name: r.name });
+}));
+
+/** Latin alias for cross-script search (users.name_latin): {nameLatin: string | null}. Not a rename — names stay identifiers. */
+router.post("/admin/console/people/:id/name-latin", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "users.manage"))) return;
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  const cleaned = cleanNameLatin((req.body ?? {}).nameLatin);
+  if (!cleaned.ok) { res.status(400).json({ error: cleaned.error }); return; }
+  const actor = await actorOf(req);
+  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  await ensureNameLatin();
+  const u = await loadUser(id);
+  if (!u) { res.status(404).json({ error: "Пользователь не найден" }); return; }
+  if (u.role === "admin" && u.id !== actor.id && !(await can(req, "users.manage.admins"))) { res.status(403).json({ error: "Админов меняет только администратор" }); return; }
+  const { rows } = await pool.query<{ prev: string | null }>(
+    `UPDATE users u SET name_latin = $1 FROM (SELECT name_latin AS prev FROM users WHERE id = $2) p WHERE u.id = $2 RETURNING p.prev`, [cleaned.value, id]);
+  const prev = rows[0]?.prev ?? null;
+  if (prev !== cleaned.value) {
+    await logAudit({ actor: actor.name, action: "user.name_latin", targetType: "user", targetId: String(id), details: { name: u.name, from: prev, to: cleaned.value } });
+  }
+  res.json({ ok: true, name: u.name, nameLatin: cleaned.value });
 }));
 
 router.post("/admin/console/people/:id/role", asyncHandler(async (req, res): Promise<void> => {

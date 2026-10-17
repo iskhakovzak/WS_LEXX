@@ -31,6 +31,7 @@ import { SubSetupsSection } from "./sub-setups-section";
 import { MoveToFolderButton } from "./move-to-folder";
 import { CreateIdeaButton } from "./create-idea-button";
 import { SOURCE_LABELS, fmtPct, fmtR, folderSwatch, isSameLocalDay, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { pluralRu } from "@/components/rules/constants";
 
 /* ---------- structured thesis ---------- */
 
@@ -208,7 +209,7 @@ export function EdgeStrip({ s, onLink }: { s: SetupSummary | undefined; onLink: 
       </div>
       {s.edgeDecay && (
         <p className="rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-xs text-[hsl(var(--chart-3))]">
-          Edge угасает: последние {s.recentRCount} сделок дают {fmtR(s.recentAvgR)} против {fmtR(s.avgR)} за всю историю. Пересмотрите условия входа.
+          Edge угасает: последние {s.recentRCount} {pluralRu(s.recentRCount, "сделка", "сделки", "сделок")} дают {fmtR(s.recentAvgR)} против {fmtR(s.avgR)} за всю историю. Пересмотрите условия входа.
         </p>
       )}
       {s.redacted && <RedactedHint text={REDACTED_AGG_HINT} className="px-1" />}

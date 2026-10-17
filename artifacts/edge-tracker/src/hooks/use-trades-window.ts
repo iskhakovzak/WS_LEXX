@@ -102,7 +102,8 @@ export function useTradesBookFacets(opts: { trader?: string | null; enabled?: bo
     enabled: opts.enabled ?? true,
     staleTime: 60_000,
     queryFn: async ({ signal }) => {
-      const p = new URLSearchParams({ limit: "1" });
+      // lite=1: the API skips rows / curve / streak / preset counts (an older API ignores it and answers in full).
+      const p = new URLSearchParams({ limit: "1", lite: "1" });
       if (trader) p.set("trader", trader);
       try {
         const r = await fetchTradesPage(p, signal);

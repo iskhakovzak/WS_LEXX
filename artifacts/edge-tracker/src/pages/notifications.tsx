@@ -17,6 +17,8 @@ import {
   type ListFilters, type Notification, type NotificationGroup, type Severity,
 } from "@/components/notifications/model";
 import { useMe, useNotificationActions, useNotificationList, useOpenNotification, useUnreadCount } from "@/components/notifications/use-notifications";
+import { pluralRu } from "@/components/rules/constants";
+import { UndoToast } from "@/components/undo-toast";
 
 type Tab = "inbox" | "archive" | "prefs";
 const ALL = "__all__";
@@ -51,6 +53,8 @@ export default function NotificationsPage() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [focusIdx, setFocusIdx] = useState<number>(-1);
   const lastClickRef = useRef<number | null>(null);
+  // «Отменить» for anything sent to the archive from the inbox (E, bulk, «Архивировать прочитанные»).
+  const [undo, setUndo] = useState<{ ids: number[]; label: string } | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   // Keep the URL in sync (shareable filters, back/forward friendly).
@@ -116,7 +120,28 @@ export default function NotificationsPage() {
   const clearSelection = () => setSelected(new Set());
 
   const onRead = useCallback((n: Notification, read: boolean) => (read ? actions.readMany.mutate([n.id]) : actions.unreadMany.mutate([n.id])), [actions.readMany, actions.unreadMany]);
-  const onArchive = useCallback((n: Notification, archive: boolean) => (archive ? actions.archive.mutate([n.id]) : actions.unarchive.mutate([n.id])), [actions.archive, actions.unarchive]);
+  const onArchive = useCallback((n: Notification, archive: boolean) => {
+    if (archive) {
+      actions.archive.mutate([n.id]);
+      setUndo({ ids: [n.id], label: "Уведомление" });
+    } else {
+      actions.unarchive.mutate([n.id]);
+    }
+  }, [actions.archive, actions.unarchive]);
+  const archiveSelected = () => {
+    if (!selectedIds.length) return;
+    actions.archive.mutate(selectedIds);
+    setUndo({ ids: selectedIds, label: `${selectedIds.length} ${pluralRu(selectedIds.length, "уведомление", "уведомления", "уведомлений")}` });
+    clearSelection();
+  };
+  const archiveAllRead = () => {
+    actions.archiveRead.mutate(undefined, {
+      onSuccess: (r) => {
+        const ids = (r as { ids?: number[] } | undefined)?.ids ?? [];
+        if (ids.length) setUndo({ ids, label: `${ids.length} ${pluralRu(ids.length, "уведомление", "уведомления", "уведомлений")}` });
+      },
+    });
+  };
 
   // Keyboard navigation.
   useEffect(() => {
@@ -169,11 +194,11 @@ export default function NotificationsPage() {
       <PageHeader
         title="Уведомления"
         icon={Bell}
-        description={unread > 0 ? `${unread} непрочитанных${count?.critical ? ` · критичных: ${count.critical}` : ""}` : "Всё прочитано"}
+        description={unread > 0 ? `${unread} ${pluralRu(unread, "непрочитанное", "непрочитанных", "непрочитанных")}${count?.critical ? ` · критичных: ${count.critical}` : ""}` : "Всё прочитано"}
         actions={
           <>
             <button type="button" onClick={() => list.refetch()} className="chip grid h-9 w-9 place-items-center" title="Обновить" aria-label="Обновить">
-              <RefreshCw className={cn("h-4 w-4", list.isFetching && "animate-spin")} aria-hidden="true" />
+              <RefreshCw className={cn("h-4 w-4", list.isFetching && "motion-safe:animate-spin")} aria-hidden="true" />
             </button>
             {tab === "inbox" && unread > 0 && (
               <button type="button" onClick={() => actions.readAll.mutate(undefined)} disabled={actions.readAll.isPending} className="chip inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium disabled:opacity-50">
@@ -181,7 +206,7 @@ export default function NotificationsPage() {
               </button>
             )}
             {tab === "inbox" && (
-              <button type="button" onClick={() => actions.archiveRead.mutate()} disabled={actions.archiveRead.isPending} className="chip inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium disabled:opacity-50" title="Убрать из входящих всё, что уже прочитано">
+              <button type="button" onClick={archiveAllRead} disabled={actions.archiveRead.isPending} className="chip inline-flex h-9 items-center gap-1.5 px-3 text-sm font-medium disabled:opacity-50" title="Убрать из входящих всё, что уже прочитано">
                 <Archive className="h-4 w-4" aria-hidden="true" /> Архивировать прочитанные
               </button>
             )}
@@ -221,14 +246,14 @@ export default function NotificationsPage() {
             ))}
             <span className="mx-1 hidden h-5 w-px bg-[var(--glass-border)] sm:block" aria-hidden="true" />
             <Select value={group} onValueChange={(v) => { setGroup(v as NotificationGroup | typeof ALL); setTypes([]); }}>
-              <SelectTrigger aria-label="Группа" className="h-8 w-[170px] text-xs"><SelectValue placeholder="Все группы" /></SelectTrigger>
+              <SelectTrigger aria-label="Группа" className="h-9 w-[170px] text-xs"><SelectValue placeholder="Все группы" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Все группы</SelectItem>
                 {GROUP_ORDER.map((g) => <SelectItem key={g} value={g}>{GROUP_LABELS[g]}</SelectItem>)}
               </SelectContent>
             </Select>
             <Select value={types.length === 1 ? types[0] : ALL} onValueChange={(v) => setTypes(v === ALL ? [] : [v])}>
-              <SelectTrigger aria-label="Тип уведомления" className="h-8 w-[230px] text-xs"><SelectValue placeholder="Все типы" /></SelectTrigger>
+              <SelectTrigger aria-label="Тип уведомления" className="h-9 w-[230px] text-xs"><SelectValue placeholder="Все типы" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>Все типы</SelectItem>
                 {typeOptions.map((t) => <SelectItem key={t.type} value={t.type}>{t.label}</SelectItem>)}
@@ -258,7 +283,7 @@ export default function NotificationsPage() {
                 </button>
               )}
               {tab === "inbox" ? (
-                <button type="button" onClick={() => { actions.archive.mutate(selectedIds); clearSelection(); }} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium">
+                <button type="button" onClick={archiveSelected} className="chip inline-flex h-8 items-center gap-1.5 px-3 text-xs font-medium">
                   <Archive className="h-3.5 w-3.5" aria-hidden="true" /> В архив
                 </button>
               ) : (
@@ -335,7 +360,17 @@ export default function NotificationsPage() {
           </Panel>
         </>
       )}
-      <p className="sr-only" aria-live="polite">{unread > 0 ? `${unread} непрочитанных уведомлений` : "Непрочитанных уведомлений нет"}</p>
+      {undo && (
+        <UndoToast
+          key={undo.ids.join(",")}
+          label={undo.label}
+          actionText="в архиве"
+          restoring={actions.unarchive.isPending}
+          onUndo={() => actions.unarchive.mutate(undo.ids, { onSettled: () => setUndo(null) })}
+          onDismiss={() => setUndo(null)}
+        />
+      )}
+      <p className="sr-only" aria-live="polite">{unread > 0 ? `${unread} ${pluralRu(unread, "непрочитанное уведомление", "непрочитанных уведомления", "непрочитанных уведомлений")}` : "Непрочитанных уведомлений нет"}</p>
     </Page>
   );
 }

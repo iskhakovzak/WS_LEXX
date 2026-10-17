@@ -187,6 +187,18 @@ export function writePref(key: string, v: string) {
 }
 
 // ── Confidence ──────────────────────────────────────────────────────────
+/** Older notes stored confidence on a 1–10 scale; the slider is 0–100 %. Bring the legacy values onto the % scale. */
+export function confidencePct(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v)) return null;
+  return v > 0 && v <= 10 ? v * 10 : v;
+}
+
+/** The confidence a note shows: observed win rate once it has evidence (≥5 decided trades), else the manual estimate. */
+export function noteConfidence(r: { confidenceLevel?: number | null; confidenceSource?: string; derivedConfidence?: number | null }): { value: number | null; byTrades: boolean } {
+  const byTrades = r.confidenceSource === "trades" && r.derivedConfidence != null;
+  return { value: byTrades ? Math.round(r.derivedConfidence!) : confidencePct(r.confidenceLevel), byTrades };
+}
+
 export function confidenceTone(v: number | null | undefined): "up" | "warn" | "down" | "neutral" {
   if (v == null) return "neutral";
   if (v >= 70) return "up";

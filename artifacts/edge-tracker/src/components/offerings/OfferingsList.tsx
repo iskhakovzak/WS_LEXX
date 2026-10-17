@@ -87,7 +87,7 @@ export function RowActions({ o, watched, pending, onAddWatch, onAddPlan, planPen
   return (
     <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()}>
       <button type="button" className={cn(btn, watched && "text-primary")} disabled={watched || pending} onClick={() => onAddWatch(o)}
-        aria-label={watched ? `${o.ticker} уже в вотчлисте` : `Добавить ${o.ticker} в вотчлист`} title={watched ? "Уже в вотчлисте" : "В вотчлист (W)"}>
+        aria-label={watched ? `${o.ticker} уже в вотчлисте` : `Добавить ${o.ticker} в вотчлист`} title={watched ? "Уже в вотчлисте" : "В вотчлист «Сегодня» (W)"}>
         {watched ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Star className="h-3.5 w-3.5" aria-hidden="true" />}
       </button>
       <button type="button" className={btn} disabled={planPending} onClick={() => onAddPlan(o)} aria-label={`Добавить ${o.ticker} в план дня`} title="В план дня (P)">

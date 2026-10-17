@@ -30,14 +30,15 @@ async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 type WatchRow = { ticker: string; status?: string | null; deletedAt?: string | null };
 
+/** Active (not archived) watchlist tickers. Shares the ["watchlist"] cache with the watchlist page, so adds show up here at once. */
 export function useWatchlistTickers() {
   return useQuery({
-    queryKey: ["catalysts", "watchlist"],
+    queryKey: ["watchlist"],
     queryFn: ({ signal }) => getJson<WatchRow[]>("/api/watchlist", signal),
-    staleTime: 5 * 60_000,
-    select: (rows) =>
+    staleTime: 60_000,
+    select: (rows: WatchRow[]) =>
       (Array.isArray(rows) ? rows : [])
-        .filter((r) => !r.deletedAt && r.status !== "archived")
+        .filter((r) => !r.deletedAt && !["passed", "archived"].includes(String(r.status ?? "").toLowerCase()))
         .map((r) => String(r.ticker ?? "").trim().toUpperCase())
         .filter((t) => TICKER_RE.test(t)),
   });

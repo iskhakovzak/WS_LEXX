@@ -124,7 +124,7 @@ export function DaySummary({
                 </p>
               )}
             </div>
-            <IntradayCurve doc={doc} loading={report.isLoading} />
+            <IntradayCurve doc={doc} loading={report.isLoading} team={!trader} />
           </div>
 
           {report.isLoading && !doc && trader ? (
@@ -188,7 +188,15 @@ function HintRow({ hint, href }: { hint: DayHint; href?: string }) {
   );
 }
 
-function IntradayCurve({ doc, loading }: { doc: DayReport | null; loading: boolean }) {
+function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; loading: boolean; team?: boolean }) {
+  if (team) {
+    // The intraday curve is per trader (day report); a whole-team day has none — say so instead of «no closed trades».
+    return (
+      <div className="tile grid h-32 place-items-center px-4 text-center text-xs text-muted-foreground">
+        Кривая дня строится по одному трейдеру — выберите его в списке «Команда за день»
+      </div>
+    );
+  }
   if (loading && !doc) return <Skeleton className="h-32 w-full rounded-xl" />;
   const e = doc?.equity;
   if (!e || e.points.length < 2) {

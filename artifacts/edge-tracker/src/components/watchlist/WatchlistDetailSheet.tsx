@@ -3,8 +3,9 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
   Lightbulb, Pencil, RefreshCw, Trash2, Target, Gauge, Link2, Check, ClipboardList, Archive, ArchiveRestore,
-  AlertTriangle, History, LineChart, ArrowUpRight, ArrowDownRight, Briefcase,
+  AlertTriangle, History, LineChart, ArrowUpRight, ArrowDownRight, Briefcase, Copy,
 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -21,7 +22,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned } from "@/lib/ownership";
 import {
-  LISTS, LIST_LABELS, SCORE_LABELS, apiJson, fmtMoney, fmtPct, fmtPrice, fmtVol, inPlayReasons, keyLevels,
+  LISTS, LIST_LABELS, SCORE_LABELS, apiJson, copyText, fmtMoney, fmtPct, fmtPrice, fmtVol, inPlayReasons, keyLevels,
   parseBreakdown, splitTags, timeAgoRu, type ListName, type WatchlistItem,
 } from "./lib";
 import { ScoreRing } from "./visuals";
@@ -109,7 +110,7 @@ const sideLabel = (s: string | null | undefined) => {
 };
 
 export function WatchlistDetailSheet({
-  row, me, canEdit, scoring, actions, onClose, planBusy,
+  row, me, canEdit, scoring, actions, onClose, planBusy, planDay,
 }: {
   row: WlRow | null;
   me: string | null;
@@ -118,6 +119,8 @@ export function WatchlistDetailSheet({
   actions: RowActions;
   onClose: () => void;
   planBusy: boolean;
+  /** Date of the plan «В план дня» writes to (next session on weekends). */
+  planDay: string;
 }) {
   const item = row?.item ?? null;
   const ticker = item?.ticker ?? "";
@@ -125,6 +128,11 @@ export function WatchlistDetailSheet({
   // Content (catalyst / levels / notes) and delete: the author or staff. List moves / archive stay with canEdit.
   const mayModify = canEdit && canModifyOwned(item?.createdBy, me, isCurator);
   const today = nyDate();
+  const { toast } = useToast();
+  const copy = React.useCallback(async (text: string, what: string) => {
+    const ok = await copyText(text);
+    toast(ok ? { title: `Скопировано: ${what}` } : { title: "Не удалось скопировать", variant: "destructive" });
+  }, [toast]);
   const ideas = useQuery<IdeaLite[]>({
     queryKey: ["trade-ideas", "by-ticker", ticker],
     queryFn: () => apiJson<IdeaLite[]>(`${BASE}/api/trade-ideas?ticker=${encodeURIComponent(ticker)}`),
@@ -132,8 +140,8 @@ export function WatchlistDetailSheet({
     staleTime: 60_000,
   });
   const myPlan = useQuery({
-    queryKey: gpKeys.my(today),
-    queryFn: () => gpApi.my(today),
+    queryKey: gpKeys.my(planDay),
+    queryFn: () => gpApi.my(planDay),
     enabled: !!ticker && !!me && canEdit,
     staleTime: 60_000,
     retry: 0,
@@ -161,7 +169,18 @@ export function WatchlistDetailSheet({
               <div className="flex items-start gap-3">
                 <div className="min-w-0 flex-1">
                   <SheetTitle className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xl">
-                    <span>{item.ticker}</span>
+                    <span className="inline-flex items-center gap-1">
+                      {item.ticker}
+                      <button
+                        type="button"
+                        onClick={() => void copy(item.ticker, item.ticker)}
+                        aria-label={`Скопировать ${item.ticker}`}
+                        title="Скопировать тикер"
+                        className="grid h-7 w-7 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                      </button>
+                    </span>
                     <span className="text-2xl font-semibold tabular-nums tracking-tight">{fmtPrice(q?.price)}</span>
                     <span className={cn("text-base font-medium tabular-nums", toneText(toneOf(q?.change)))}>{fmtPct(q?.change, 2)}</span>
                   </SheetTitle>
@@ -218,7 +237,9 @@ export function WatchlistDetailSheet({
             {/* Actions */}
             {canEdit && (
               <div className="flex flex-wrap items-center gap-2">
-                <Button className="bg-primary-solid" onClick={() => actions.addToPlan(item)} disabled={planBusy || inPlan} title={inPlan ? "Уже в твоём плане на сегодня" : "Добавить в «В игре» твоего плана дня"}>
+                <Button className="bg-primary-solid" onClick={() => actions.addToPlan(item)} disabled={planBusy || inPlan} title={inPlan
+                  ? `Уже в твоём плане ${planDay === today ? "на сегодня" : `на ${fmtDay(planDay)}`}`
+                  : `Добавить в «В игре» твоего плана ${planDay === today ? "дня" : `на ${fmtDay(planDay)}`}`}>
                   {inPlan ? <Check className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
                   {inPlan ? "В плане дня" : planBusy ? "Добавляем…" : "В план дня"}
                 </Button>
@@ -277,7 +298,16 @@ export function WatchlistDetailSheet({
                       return (
                         <tr key={l.key} className="border-b border-border/40 last:border-0">
                           <td className={cn("py-1.5 font-medium", close ? "text-primary" : "text-foreground")}>{l.label}</td>
-                          <td className="py-1.5 text-right text-foreground">{fmtPrice(l.price)}</td>
+                          <td className="py-1 text-right text-foreground">
+                            <button
+                              type="button"
+                              onClick={() => void copy(l.price.toFixed(2), `${l.label} ${l.price.toFixed(2)}`)}
+                              title="Скопировать цену"
+                              className="rounded-md px-1.5 py-0.5 tabular-nums transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                            >
+                              {fmtPrice(l.price)}
+                            </button>
+                          </td>
                           <td className={cn("py-1.5 text-right", close ? "text-primary" : "text-muted-foreground")}>{l.distPct >= 0 ? "↑" : "↓"} {Math.abs(l.distPct).toFixed(2)}%</td>
                           <td className="py-1.5 text-right text-muted-foreground">{l.distAtr != null ? `${l.distAtr.toFixed(2)} ATR` : "—"}</td>
                         </tr>

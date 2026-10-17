@@ -3,13 +3,15 @@
  * daily-results histogram, streaks and best / worst days.
  */
 import * as React from "react";
-import { Activity, CalendarRange, Clock, Flame, Medal, TrendingDown, Tag } from "lucide-react";
+import { Activity, CalendarRange, Clock, Download, Flame, Medal, TrendingDown, Tag } from "lucide-react";
 import { EmptyState, Panel } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmtAxis, fmtDay, fmtShare, fmtV, type DayPoint, type PeriodView, type TickerRow, type Unit } from "./api";
-import { LineCanvas, MONTH_TICKS } from "./line-canvas";
+import { LineCanvas, MONTH_TICKS, downloadCanvasPng } from "./line-canvas";
 import { strategyColor, tokenColor, useDark } from "./palette";
 import type { Ctx } from "./overview";
+import { pluralRu } from "@/components/rules/constants";
 
 /** Vertical diverging bars around a zero line (DOM, so every bar has a native hover + aria). */
 function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
@@ -65,7 +67,7 @@ export function TimeOfDay({ period, unit }: { period: PeriodView; unit: Unit }) 
     label: b.key === "pre" ? "пре" : b.key === "post" ? "пост" : b.label.split("–")[0],
     v: b.v,
     muted: b.key === "pre" || b.key === "post",
-    title: `${b.label}: ${fmtV(b.v, unit)} · ${b.trades} сделок · WR ${fmtShare(b.winRate)}`,
+    title: `${b.label}: ${fmtV(b.v, unit)} · ${b.trades} ${pluralRu(b.trades, "сделка", "сделки", "сделок")} · WR ${fmtShare(b.winRate)}`,
   }));
   const best = [...period.timeOfDay].sort((a, b) => b.v - a.v)[0];
   const worst = [...period.timeOfDay].sort((a, b) => a.v - b.v)[0];
@@ -171,10 +173,30 @@ export function Underwater({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (d: string
   }, [focus, dark]);
   const fmtY = React.useCallback((v: number) => fmtAxis(v, unit), [unit]);
   const dd = focus.drawdown;
+  const ref = React.useRef<HTMLDivElement | null>(null);
   return (
-    <Panel title="Просадка офиса" description="насколько офис ниже своего максимума в каждый день года" icon={TrendingDown} fill className="lg:col-span-8">
+    <Panel
+      title="Просадка офиса"
+      description="насколько офис ниже своего максимума в каждый день года"
+      icon={TrendingDown}
+      fill
+      className="lg:col-span-8"
+      actions={series.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          aria-label="Скачать график просадки PNG"
+          onClick={() => downloadCanvasPng(ref.current, `office-drawdown-${focus.year}-${unit}.png`, {
+            title: `Просадка офиса · ${focus.year}`,
+            subtitle: `от максимума · макс. ${fmtV(dd.max, unit)} · ${unit === "usd" ? "$" : "% от капитала"}`,
+          })}
+        >
+          <Download className="h-4 w-4" /> PNG
+        </Button>
+      )}
+    >
       {!series.length ? <EmptyState compact icon={TrendingDown} title="Нет сделок" /> : (
-        <div className="flex flex-col gap-3">
+        <div ref={ref} className="flex flex-col gap-3">
           <LineCanvas
             series={series}
             xMin={0}

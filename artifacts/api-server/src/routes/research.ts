@@ -8,6 +8,7 @@ import { logActivity } from "../lib/activity";
 import { canAccessTrade, isStaffRole, requireMember, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
+import { loadViewer, visibleSql } from "../lib/playbookAccess";
 import {
   CreateResearchBody,
   GetResearchParams,
@@ -29,6 +30,8 @@ import {
  *   PATCH  /research/:id                         owner or staff (also {date, playbookId} lineage)
  *   DELETE /research/:id, POST /research/:id/restore
  *   GET    /research/:id/trades                  scoped trades linked via pattern_id + net stats
+ *   GET    /research/:id/setups                  playbook setups promoted from the note (viewer-visible, lean)
+ *   GET    /research/:id/candidates              scoped trades in the note's ticker(s) not linked to it yet (≤12)
  *   POST   /research/:id/link-trade              {tradeId, unlink?}
  *   POST   /research/:id/pin                     {pinned} — per-user pin (research_pins)
  *
@@ -377,6 +380,55 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
       grossPnl: hasPnl ? r2(gross) : null, fees: hasPnl ? r2(fees) : null, netPnl: hasPnl ? r2(gross - fees) : null,
     },
   });
+}));
+
+/**
+ * Playbook setups promoted from this note (source_type = 'research', or the note's own playbook_id), limited to what
+ * the viewer may read. The note preview used to load the whole /playbook list (~300 KB) just for this lookup.
+ */
+router.get("/research/:id/setups", asyncHandler(async (req, res): Promise<void> => {
+  await ensureTables();
+  const id = parseId(req, res); if (id == null) return;
+  const { rows: exists } = await pool.query<{ playbook_id: number | null }>(`SELECT playbook_id FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  const params: unknown[] = [id, exists[0].playbook_id];
+  const vis = visibleSql(await loadViewer(req), params, "p");
+  const { rows } = await pool.query<{ id: number; name: string; folder: string | null; source_type: string | null; source_id: number | null }>(
+    `SELECT p.id, p.name, p.folder, p.source_type, p.source_id
+       FROM playbook p
+      WHERE p.deleted_at IS NULL AND ((p.source_type = 'research' AND p.source_id = $1) OR p.id = $2::int) AND ${vis}
+      ORDER BY p.created_at ASC LIMIT 20`,
+    params,
+  );
+  res.json(rows.map((r) => ({ id: r.id, name: r.name, folder: r.folder, sourceType: r.source_type, sourceId: r.source_id })));
+}));
+
+/**
+ * Trades the viewer could link to this note: same ticker(s), not linked to this note yet, newest first (scoped like
+ * /research/:id/trades — a trader sees only their own). Saves looking up trade IDs in the journal.
+ */
+router.get("/research/:id/candidates", asyncHandler(async (req, res): Promise<void> => {
+  await ensureTables();
+  const id = parseId(req, res); if (id == null) return;
+  const scope = await evidenceScope(req);
+  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === GUEST_SCOPE) { res.json([]); return; }
+  const { rows: exists } = await pool.query<{ ticker: string | null }>(`SELECT ticker FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
+  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  const tickers = [...new Set((exists[0].ticker ?? "").toUpperCase().split(/[\s,;/]+/).map((t) => t.trim()).filter((t) => /^[A-Z][A-Z0-9.\-]{0,11}$/.test(t)))];
+  if (!tickers.length) { res.json([]); return; }
+  const { rows } = await pool.query<Record<string, unknown>>(
+    `SELECT ${TRADE_SELECT} FROM trades t
+      WHERE t.deleted_at IS NULL AND UPPER(t.ticker) = ANY($1::text[]) AND t.pattern_id IS DISTINCT FROM $2
+        AND ($3::text IS NULL OR t.trader = $3)
+      ORDER BY ${closeDateSql("t")} DESC, t.id DESC LIMIT 12`,
+    [tickers, id, scope],
+  );
+  res.json(rows.map((r) => ({
+    id: Number(r.id), ticker: String(r.ticker ?? ""), date: String(r.date ?? "").slice(0, 10), side: (r.side as string | null) ?? null,
+    setup: (r.setup as string | null) ?? null, result: (r.result as string | null) ?? null, netPnl: strToNum(r.net_pnl),
+    signedR: strToNum(r.signed_r), trader: (r.trader as string | null) ?? null, patternId: r.pattern_id == null ? null : Number(r.pattern_id),
+  })));
 }));
 
 const LinkBody = z.object({ tradeId: z.coerce.number().int().positive(), unlink: z.coerce.boolean().optional() });

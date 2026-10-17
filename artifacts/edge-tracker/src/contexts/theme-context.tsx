@@ -1,15 +1,16 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
 import { BASE } from "@/lib/api";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Theme = "dark" | "dim" | "light";
 
 const THEMES: Theme[] = ["dark", "dim", "light"];
-const THEME_LABELS: Record<Theme, string> = {
-  dark: "Тёмная",
-  dim: "Сумеречная",
-  light: "Светлая",
-};
+/** Theme names in the current UI language (common `theme.*`). */
+function themeLabels(): Record<Theme, string> {
+  const t = commonI18n.t;
+  return { dark: t("theme.dark"), dim: t("theme.dim"), light: t("theme.light") };
+}
 
 interface ThemeContextType {
   theme: Theme;
@@ -26,10 +27,10 @@ const ThemeContext = createContext<ThemeContextType>({
   theme: "dark",
   cycleTheme: () => {},
   toggleTheme: () => {},
-  themeLabel: "Тёмная",
+  themeLabel: "dark",
   setTheme: () => {},
   themes: THEMES,
-  themeLabels: THEME_LABELS,
+  themeLabels: { dark: "dark", dim: "dim", light: "light" },
 });
 
 const LS_KEY = "ws_lexx_theme";
@@ -65,6 +66,9 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   });
 
   const auth = useAuth();
+  // Subscribes to language switches, so the labels below follow the UI language.
+  commonI18n.useT();
+  const labels = themeLabels();
   const syncedUser = useRef<string | null>(null);
 
   useEffect(() => {
@@ -105,7 +109,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, cycleTheme, toggleTheme: cycleTheme, themeLabel: THEME_LABELS[theme], setTheme, themes: THEMES, themeLabels: THEME_LABELS }}>
+    <ThemeContext.Provider value={{ theme, cycleTheme, toggleTheme: cycleTheme, themeLabel: labels[theme], setTheme, themes: THEMES, themeLabels: labels }}>
       {children}
     </ThemeContext.Provider>
   );

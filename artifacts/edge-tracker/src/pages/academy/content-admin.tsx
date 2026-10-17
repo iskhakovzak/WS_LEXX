@@ -14,6 +14,7 @@ import { STAGE_LABELS, api, invalidateAcademy, useAcademyMeta, useAdminTree, typ
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
 import { academyLinks } from "@/components/academy/content/links";
+import { pluralRu } from "@/components/rules/constants";
 
 /**
  * /academy/content-admin — «Редактор курсов» (наставники / staff).
@@ -74,6 +75,7 @@ export default function AcademyContentAdmin() {
   const d = tree.data;
   const program = creatingProgram ? null : d?.program ?? null;
   const modules = d?.modules ?? [];
+  const itemCount = modules.reduce((a, m) => a + m.items.length, 0);
   const programs = d?.programs ?? [];
   const onItemCreated = (kind: ItemKind, id: number) => setSelection({ type: "item", kind, id });
 
@@ -155,7 +157,7 @@ export default function AcademyContentAdmin() {
         </Panel>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)]" aria-label="Структура программы">
+          <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] lg:overflow-y-auto lg:pr-0.5" aria-label="Структура программы">
             {program && (
               <>
                 <button
@@ -169,7 +171,7 @@ export default function AcademyContentAdmin() {
                     {program.stage && <Pill tone="purple">{STAGE_LABELS[program.stage]}</Pill>}
                     {program.published ? <Pill tone="up">Опубликована</Pill> : <Pill tone="warn">Черновик</Pill>}
                     {program.archivedAt && <Pill tone="neutral">Архив</Pill>}
-                    <span className="text-xs text-muted-foreground tabular-nums">{modules.length} модул. · {modules.reduce((a, m) => a + m.items.length, 0)} элем.</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{modules.length} {pluralRu(modules.length, "модуль", "модуля", "модулей")} · {itemCount} {pluralRu(itemCount, "элемент", "элемента", "элементов")}</span>
                   </span>
                 </button>
                 <ContentTree programId={program.id} modules={modules} selection={selection} onSelect={setSelection} />

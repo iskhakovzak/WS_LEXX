@@ -2,6 +2,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
 import { useAuth } from "@/contexts/auth-context";
+import { shellI18n } from "@/i18n/ns/shell";
 
 export type RiskStatus = "ok" | "warn" | "breach" | "no_limits";
 
@@ -9,6 +10,7 @@ export type NavBadge = { count?: number; tone: "down" | "warn" | "up"; label: st
 
 export function useShellBadges(): Record<string, NavBadge | undefined> {
   const { user, isCurator } = useAuth();
+  const { t } = shellI18n.useT();
   const name = user && user.role !== "guest" ? user.traderName : null;
 
   const { data: reports } = useQuery<number>({
@@ -68,16 +70,16 @@ export function useShellBadges(): Record<string, NavBadge | undefined> {
             count: disc.attention,
             tone: disc.mentions > 0 ? "warn" : "up",
             label: disc.mentions > 0
-              ? `Обсуждения: ${disc.attention} новых для вас, есть упоминания`
-              : `Обсуждения: ${disc.attention} новых тем для вас`,
+              ? t("badges.discussionsMentions", { count: disc.attention })
+              : t("badges.discussionsNew", { count: disc.attention }),
           }
         : undefined,
-    "/admin": reports && reports > 0 ? { count: reports, tone: "down", label: `${reports} открытых жалоб` } : undefined,
+    "/admin": reports && reports > 0 ? { count: reports, tone: "down", label: t("badges.openReports", { count: reports }) } : undefined,
     "/risk":
       risk?.status === "breach"
-        ? { tone: "down", label: "Лимит риска превышен", count: risk.alerts || undefined }
+        ? { tone: "down", label: t("badges.riskBreach"), count: risk.alerts || undefined }
         : risk?.status === "warn"
-          ? { tone: "warn", label: "Близко к лимиту риска" }
+          ? { tone: "warn", label: t("badges.riskWarn") }
           : undefined,
   };
 }

@@ -116,7 +116,8 @@ export function rrTone(rr: number | null | undefined): Tone {
 export function fmtPrice(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const abs = Math.abs(n);
-  return n.toLocaleString("ru-RU", { minimumFractionDigits: abs < 10 ? 2 : abs < 1000 ? 2 : 0, maximumFractionDigits: abs < 10 ? 3 : 2 });
+  // Same notation as the levels traders type and the trade tables («920.74»), not «920,74» next to them.
+  return n.toLocaleString("en-US", { useGrouping: false, minimumFractionDigits: abs < 10 ? 2 : abs < 1000 ? 2 : 0, maximumFractionDigits: abs < 10 ? 3 : 2 });
 }
 
 export function fmtR(n: number | null | undefined, digits = 1): string {

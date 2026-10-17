@@ -13,6 +13,7 @@ import { ensureCuratorTables } from "../lib/curatorStore";
 import { QUEUE_DEFAULT_DAYS } from "../lib/curatorLogic";
 import { can, requireCap } from "../lib/permissions";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
+import { logActivity } from "../lib/activity";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { eodOverdueKey, fmtSignedUsd, plural, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
@@ -531,18 +532,20 @@ router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void>
     logger.warn({ err }, "eod: journal prefill failed");
   }
   // Day closed → it is in the curator queue: tell the trader's assigned staff (fallback: every curator/admin).
+  // Once per day: close → reopen → close again must not ping the curator a second time.
   const trader = me.name;
   inBackground("eod.close", async () => {
     const t = totals(trades, date);
     const parts = [`${t.trades} ${plural(t.trades, "сделка", "сделки", "сделок")}`];
     if (t.net != null) parts.push(`нетто ${fmtSignedUsd(t.net)}`);
     if (day.discipline != null) parts.push(`дисциплина ${day.discipline}/5`);
-    await notifyUsers(await staffOrFallback(trader), {
+    if (await claimOnce(`eod:review_request:${day.id}`)) await notifyUsers(await staffOrFallback(trader), {
       type: "eod_review_request", actor: trader, source: "eod",
-      title: `${trader} закрыл день ${date}`,
+      title: `День закрыт: ${trader}, ${date}`,
       message: `${parts.join(", ")} — ждёт разбора`,
       link: notifLinks.journalDay(date, trader), entityType: "eod_day", entityId: day.id,
     }, trader);
+    await logActivity({ action: "closed", section: "eod", entityId: date, entityTitle: date, trader, details: parts.join(", ") });
   });
   res.json({ day: serializeDay(day), streaks: await loadStreaks(me.name, today), journalPrefilled: true });
 }));
@@ -558,6 +561,7 @@ router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void
     [me.name, date],
   );
   if (!rows[0]) { res.status(404).json({ error: "День не найден" }); return; }
+  inBackground("eod.reopen", () => logActivity({ action: "reopened", section: "eod", entityId: date, entityTitle: date, trader: me.name }));
   res.json(serializeDay(rows[0]));
 }));
 
@@ -738,8 +742,16 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
     inBackground("eod.reviewed", () => notifyUser({
       userName: reviewed.trader, type: "eod_reviewed", actor: reviewer, source: "eod",
       title: `Разбор дня ${reviewed.date}: ${reviewed.curatorScore ?? "—"}/5`,
-      message: `${reviewer}${reviewed.curatorComment ? `: «${textPreview(reviewed.curatorComment, 140)}»` : " оценил ваш день"}`,
+      message: reviewed.curatorComment ? `${reviewer}: «${textPreview(reviewed.curatorComment, 140)}»` : `Оценка от ${reviewer}`,
       link: notifLinks.journalDay(reviewed.date, reviewed.trader), entityType: "eod_day", entityId: reviewed.id,
+    }));
+  }
+  // Лента активности: «разобран торговый день». entity_id = «дата|трейдер» — трейдер видит разбор своего дня (owner в /activity).
+  if (reviewed) {
+    const reviewer = me.name;
+    inBackground("eod.reviewed.activity", () => logActivity({
+      action: "reviewed", section: "eod", entityId: `${reviewed.date}|${reviewed.trader}`, entityTitle: `${reviewed.trader}, ${reviewed.date}`,
+      trader: reviewer, details: `${reviewed.curatorScore ?? "—"}/5${reviewed.curatorComment ? ` · ${textPreview(reviewed.curatorComment, 200)}` : ""}`,
     }));
   }
   res.json({ day: serializeDay(rows[0]), next: next[0] ? serializeQueue(next[0]) : null });

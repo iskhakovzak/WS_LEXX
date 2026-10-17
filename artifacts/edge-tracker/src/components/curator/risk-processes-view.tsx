@@ -12,6 +12,7 @@ import { curatorApi, curatorKeys, useRiskSummary, useRiskTemplates, type RiskSum
 import { BreachReviewPanel } from "./breach-review";
 import { shortDate, usd } from "./curator-math";
 import { TemplateDialog } from "./template-dialog";
+import { pluralRu } from "@/components/rules/constants";
 
 /**
  * «Риск-процессы»: daily risk summary (GET /api/risk/summary), tier limit templates with bulk apply
@@ -56,7 +57,7 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
         <StatCard label="На стопе" value={s.halted.length} tone={s.halted.length ? "down" : "neutral"} icon={ShieldAlert} hint={s.nearStop.length ? `близко к стопу: ${s.nearStop.length}` : "никто не близко"} />
         <StatCard label="Нарушения" value={s.breachesToday.length} tone={s.breachesToday.length ? "down" : "neutral"} icon={AlertTriangle} hint={`сегодня · ${s.unreviewedBreaches.length ? `без разбора ${s.unreviewedBreaches.length}` : "все разобраны"}`} />
         <StatCard label="Повторные, 7 дн." value={s.repeatBreachers.length} tone={s.repeatBreachers.length ? "warn" : "neutral"} icon={Repeat} hint="→ руководителю" />
-        <StatCard label="Открытый риск" value={usd(t.openRiskUsd, false)} icon={ShieldCheck} hint={`${t.openPositions} позиций`} term="openRisk" />
+        <StatCard label="Открытый риск" value={usd(t.openRiskUsd, false)} icon={ShieldCheck} hint={`${t.openPositions} ${pluralRu(t.openPositions, "позиция", "позиции", "позиций")}`} term="openRisk" />
         <StatCard label="Овернайт" value={t.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={t.overnightExposureUsd ? usd(t.overnightExposureUsd, false) : "нет экспозиции"} />
       </StatGrid>
       {(s.repeatBreachers.length > 0 || s.overnight.length > 0 || s.unreviewedBreaches.length > 0) && (

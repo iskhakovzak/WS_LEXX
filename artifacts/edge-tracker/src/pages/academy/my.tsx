@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation, useSearch } from "wouter";
-import { CalendarClock, CheckCircle2, GraduationCap, ListChecks, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
+import { ArrowRight, BookOpenCheck, CalendarClock, CheckCircle2, GraduationCap, PlayCircle, ListChecks, MessagesSquare, Target, UserCheck, Users } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader, Panel, Pill, StatCard, StatGrid, StatGridSkeleton, PanelSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -18,6 +18,9 @@ import {
   AttendancePill, AttendanceSummaryView, DualTime, GoalCard, LOCAL_TZ, SAME_TZ, StagePill, StatusPill, UserSelect, WhereLine,
   dateTimeLocal, dayIn, fmtYmd, pct, relMinutes, useNow,
 } from "@/components/academy/cohorts/shared";
+import { usePrograms } from "@/components/academy/content/api";
+import { PctBar } from "@/components/academy/content/bits";
+import { academyLinks } from "@/components/academy/content/links";
 
 /**
  * /academy/my — «Моё обучение»: когорта и ступень, ближайшие занятия с самоотметкой (удалённо: окно −10…+15 мин,
@@ -81,8 +84,12 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
             actions={<><StagePill stage={e.stage} /><StatusPill status={e.status} /></>}>
             <Ladder stage={e.stage} />
             {e.note && <p className="mt-2 text-xs text-muted-foreground">{e.note}</p>}
+            <Link href={`/academy/path${readOnly ? `?user=${encodeURIComponent(d.user ?? "")}` : ""}`} className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+              Что нужно для перевода <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            </Link>
           </Panel>
         ))}
+        <CoursesCard user={readOnly ? d.user ?? undefined : undefined} />
       </div>
 
       <StatGrid>
@@ -111,6 +118,43 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
         <History d={d} />
       </div>
     </>
+  );
+}
+
+/** Курсы рядом с когортой: прогресс программы и «Продолжить» — без похода в «Обучение» за следующим уроком. */
+function CoursesCard({ user }: { user?: string }) {
+  const q = usePrograms(user);
+  const list = q.data?.programs ?? [];
+  const p = list.find((x) => x.progress.pct < 100 && x.progress.total > 0) ?? list[0];
+  return (
+    <Panel title="Курсы" icon={BookOpenCheck}
+      actions={<Link href={academyLinks.learn({ program: p?.id, user })} className="text-xs font-medium text-primary hover:underline">Все курсы</Link>}>
+      {q.isLoading ? (
+        <div className="flex flex-col gap-2" aria-busy="true"><span className="skeleton block h-4 w-2/3" /><span className="skeleton block h-1.5 w-full" /><span className="skeleton block h-8 w-48" /></div>
+      ) : q.isError ? (
+        <p className="text-sm text-muted-foreground">Курсы не загрузились — откройте «Обучение».</p>
+      ) : !p ? (
+        <p className="text-sm text-muted-foreground">Курсов пока нет — наставник опубликует программу.</p>
+      ) : (
+        <div className="flex flex-col gap-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="truncate text-sm font-medium text-foreground" title={p.title}>{p.title}</span>
+            <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{p.progress.done} из {p.progress.total} · {Math.round(p.progress.pct)}%</span>
+          </div>
+          <PctBar pct={p.progress.pct} label={`Прогресс: ${p.title}`} />
+          {p.progress.next ? (
+            <Button size="sm" className="mt-1 self-start" asChild>
+              <Link href={academyLinks.item(p.progress.next.kind, p.progress.next.id, { user })}>
+                <PlayCircle className="mr-1 h-4 w-4" aria-hidden="true" />
+                <span className="max-w-[22rem] truncate">{p.progress.done ? "Продолжить" : "Начать"}: {p.progress.next.title}</span>
+              </Link>
+            </Button>
+          ) : (
+            <Pill tone="up" dot>Программа пройдена</Pill>
+          )}
+        </div>
+      )}
+    </Panel>
   );
 }
 
@@ -202,7 +246,10 @@ function ManualProgress({ goal }: { goal: Goal }) {
     <form className="flex items-center gap-1" onSubmit={(e) => {
       e.preventDefault();
       if (v === "") return;
-      upd.mutate({ id: goal.id, manualProgress: Math.max(0, Math.min(100, Number(v))) }, { onError: (err) => toast({ title: "Не сохранено", description: err.message, variant: "destructive" }) });
+      upd.mutate({ id: goal.id, manualProgress: Math.max(0, Math.min(100, Number(v))) }, {
+        onSuccess: () => toast({ title: "Прогресс сохранён" }),
+        onError: (err) => toast({ title: "Не сохранено", description: err.message, variant: "destructive" }),
+      });
     }}>
       <Input aria-label="Прогресс, %" type="number" min={0} max={100} className="h-8 w-20" value={v} onChange={(e) => setV(e.target.value === "" ? "" : Number(e.target.value))} />
       <Button type="submit" size="sm" variant="outline" disabled={upd.isPending}>%</Button>

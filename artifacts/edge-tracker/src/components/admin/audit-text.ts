@@ -3,6 +3,7 @@
  * `propreports.sync {"runId":3,…}`. Pure functions — unit-tested in audit-text.test.ts.
  */
 import type { Tone } from "@/components/ds";
+import { pluralRu } from "@/components/rules/constants";
 
 export interface AuditLike {
   actor: string;
@@ -183,7 +184,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       return {
         label: "Отчёт", tone: "accent",
         text: `загрузил отчёт Trade Performance${d.trader ? ` (${d.trader})` : ""}${d.periodFrom ? ` за ${d.periodFrom} — ${d.periodTo}` : ""}`,
-        detail: sum.trades != null ? `${sum.trades} сделок${sum.net != null ? `, net ${Number(sum.net).toFixed(2)}` : ""}` : undefined,
+        detail: sum.trades != null ? `${sum.trades} ${pluralRu(Number(sum.trades), "сделка", "сделки", "сделок")}${sum.net != null ? `, net ${Number(sum.net).toFixed(2)}` : ""}` : undefined,
       };
     }
     case "propreports.performance.delete": return { label: "Отчёт", tone: "warn", text: `удалил отчёт Trade Performance #${s(e.targetId)}` };
@@ -217,7 +218,14 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "academy.criteria.update": return { label: "Академия", tone: "neutral", text: "изменил критерии академии" };
 
     case "risk.limits.template": {
-      const changes: string[] = Array.isArray(d.changes) ? d.changes.map(String) : [];
+      // Server writes «тир нет → trainee» with raw tier keys; show tier names instead.
+      const tierSide = (v: string) => (v === "нет" ? v : tier(v));
+      const changes: string[] = Array.isArray(d.changes)
+        ? d.changes.map(String).map((c) => {
+            const m = /^тир (.+?) → (.+)$/.exec(c);
+            return m ? `тир ${tierSide(m[1]!)} → ${tierSide(m[2]!)}` : c;
+          })
+        : [];
       const target = s(e.targetId) || s(d.trader);
       return {
         label: "Лимиты", tone: "purple",

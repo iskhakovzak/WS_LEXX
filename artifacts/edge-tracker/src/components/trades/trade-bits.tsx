@@ -19,7 +19,7 @@ export function SidePill({ side, compact }: { side?: string | null; compact?: bo
     // Direction is not a result: neutral tone, the arrow carries the meaning (design audit).
     <Pill tone="neutral" className={compact ? "px-1.5" : undefined}>
       <Icon className="h-3 w-3" aria-hidden="true" />
-      {compact ? (isLong ? "L" : "S") : side}
+      {compact ? (isLong ? "L" : "S") : isLong ? "Лонг" : side === "Short" ? "Шорт" : side}
       {compact && <span className="sr-only">{side}</span>}
     </Pill>
   );

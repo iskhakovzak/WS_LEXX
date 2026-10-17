@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { fmtDayShort, fmtMoney, plural } from "@/components/journal/utils";
 import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "pending" | "reviewed";
 type Sort = "oldest" | "newest";
@@ -87,15 +88,7 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
           </dl>
 
           <div className="flex flex-wrap items-center gap-2">
-            <select
-              aria-label="Трейдер"
-              value={trader}
-              onChange={(e) => setTrader(e.target.value)}
-              className="glass-field h-8 rounded-full px-3 text-xs"
-            >
-              <option value="">Все трейдеры</option>
-              {traders.map((t) => <option key={t} value={t}>{t}</option>)}
-            </select>
+            <PersonSelect value={trader} onValueChange={setTrader} options={traders} allLabel="Все трейдеры" ariaLabel="Трейдер" className="h-8 w-44 px-3 text-xs" />
             {tab === "pending" && (
               <button
                 type="button"

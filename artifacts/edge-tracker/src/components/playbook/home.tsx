@@ -8,14 +8,18 @@
  */
 import * as React from "react";
 import { useLocation } from "wouter";
-import { BookOpen, CheckCircle2, Inbox, Sparkles, Trophy } from "lucide-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { BookOpen, CheckCircle2, EyeOff, Inbox, Sparkles, Trophy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ToastAction } from "@/components/ui/toast";
+import { IconAction } from "@/components/playbook-sub/bits";
+import { useToast } from "@/hooks/use-toast";
 import { Panel, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/components/ds";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { useGallery, usePlaybookInbox, type InboxTrade } from "./api";
+import { notLiveMessage, pbRequest, useGallery, usePlaybookInbox, type InboxTrade } from "./api";
 import { ExampleCard, checklistOf } from "./examples-board";
 import { AddTradesToPlaybookDialog } from "./quick-add";
 import { tradesWord } from "./quick-add-logic";
@@ -33,8 +37,13 @@ const ACCESSORS = {
 };
 type SortKey = keyof typeof ACCESSORS;
 
-export function PlaybookInbox() {
+export function PlaybookInbox({ onNewSetup }: {
+  /** «Новый сетап из сделки»: the page opens its setup form; the trade is attached as an example on save. */
+  onNewSetup?: (t: InboxTrade) => void;
+} = {}) {
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
+  const { toast } = useToast();
   const [days, setDays] = React.useState<Days>("14");
   const q = usePlaybookInbox(Number(days));
   const data = q.data;
@@ -55,6 +64,33 @@ export function PlaybookInbox() {
   if (q.isError) return null;
 
   const openOne = (t: InboxTrade) => setDialog({ ids: [t.id], preset: t.suggestion?.id ?? null });
+  /** «Не для плейбука»: the trade leaves the inbox (server-side mark), with an undo in the toast. */
+  async function dismiss(ids: number[]) {
+    if (!ids.length) return;
+    const call = (method: "POST" | "DELETE") => pbRequest("/api/playbook-tools/inbox/dismiss", { method, json: { tradeIds: ids } });
+    try {
+      await call("POST");
+      setSelected((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
+      qc.invalidateQueries({ queryKey: ["playbook-inbox"] });
+      toast({
+        title: ids.length === 1 ? "Сделка скрыта из разбора" : `Скрыто из разбора: ${ids.length} ${tradesWord(ids.length)}`,
+        description: "Она по-прежнему в журнале сделок; в плейбук её можно добавить из карточки сделки.",
+        action: (
+          <ToastAction
+            altText="Вернуть в разбор"
+            onClick={async () => {
+              try { await call("DELETE"); qc.invalidateQueries({ queryKey: ["playbook-inbox"] }); }
+              catch (e) { toast({ title: "Не удалось вернуть", description: (e as Error)?.message, variant: "destructive" }); }
+            }}
+          >
+            Вернуть
+          </ToastAction>
+        ),
+      });
+    } catch (e) {
+      toast({ title: "Не удалось скрыть", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
+    }
+  }
   const openSelected = () => {
     const ids = rows.filter((t) => selected.has(t.id)).map((t) => t.id);
     if (!ids.length) return;
@@ -83,6 +119,9 @@ export function PlaybookInbox() {
           <Button size="sm" className="ml-auto h-9 bg-primary-solid" onClick={openSelected}>
             <BookOpen className="h-4 w-4" aria-hidden="true" /> В плейбук · {selected.size}
           </Button>
+          <Button size="sm" variant="outline" className="h-9" onClick={() => dismiss(rows.filter((t) => selected.has(t.id)).map((t) => t.id))} title="Скрыть выбранные из разбора — сделки останутся в журнале">
+            <EyeOff className="h-4 w-4" aria-hidden="true" /> Не для плейбука
+          </Button>
           <Button size="sm" variant="ghost" className="h-9" onClick={() => setSelected(new Set())}>Снять</Button>
         </div>
       ) : undefined}
@@ -105,7 +144,7 @@ export function PlaybookInbox() {
                 </th>
                 <SortableTh {...thProps("date")}>Дата</SortableTh>
                 <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-                <SortableTh {...thProps("setup")} className="hidden 2xl:table-cell">В сделке</SortableTh>
+                <SortableTh {...thProps("setup")} className="hidden 2xl:table-cell">Метка сделки</SortableTh>
                 <SortableTh {...thProps("suggestion")}>Подсказка</SortableTh>
                 <SortableTh {...thProps("r")} align="right">R</SortableTh>
                 <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
@@ -127,8 +166,8 @@ export function PlaybookInbox() {
                       />
                     </td>
                     <td className="whitespace-nowrap text-muted-foreground">{ddmm(t.closeDate ?? t.date)}</td>
-                    <td className="whitespace-nowrap">
-                      <button type="button" className="font-semibold text-foreground hover:underline" onClick={() => navigate(links.trade(t.id))} title="Открыть сделку">
+                    <td className="max-w-[200px] whitespace-nowrap">
+                      <button type="button" className="max-w-[160px] truncate align-bottom font-semibold text-foreground hover:underline" onClick={() => navigate(links.trade(t.id))} title={`Открыть сделку ${t.ticker}`}>
                         {t.ticker}
                       </button>
                       {t.side && <span className={cn("ml-1.5 text-xs", short ? "text-down" : "text-up")}>{short ? "S" : "L"}</span>}
@@ -143,15 +182,25 @@ export function PlaybookInbox() {
                           <span className="min-w-0 truncate text-xs text-foreground" title={t.suggestion.reason}>
                             <Sparkles className="mr-1 inline h-3 w-3 text-primary" aria-hidden="true" />{t.suggestion.name}
                           </span>
-                        ) : <span className="text-xs text-muted-foreground">сетап выберете</span>}
+                        ) : <span className="text-xs text-muted-foreground">выберите сетап</span>}
                       </span>
                     </td>
                     <td className={cn("whitespace-nowrap text-right font-medium", toneText(moneyTone(t.signedR)))}>{fmtR(t.signedR)}</td>
                     <td className={cn("whitespace-nowrap text-right", toneText(moneyTone(t.redacted ? null : t.netPnl)))}>{t.redacted ? "—" : fmtUsd(t.netPnl)}</td>
                     <td className="!pr-[var(--panel-p)] text-right">
-                      <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2.5" onClick={() => openOne(t)} aria-label={`${t.ticker}: в плейбук`}>
-                        <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden 2xl:inline">В плейбук</span>
-                      </Button>
+                      <span className="inline-flex items-center justify-end gap-1">
+                        <IconAction
+                          aria-label={`${t.ticker}: не для плейбука`}
+                          title="Не для плейбука — скрыть из разбора"
+                          onClick={() => dismiss([t.id])}
+                          className="h-8 w-8 [&_svg]:h-3.5 [&_svg]:w-3.5"
+                        >
+                          <EyeOff />
+                        </IconAction>
+                        <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2.5" onClick={() => openOne(t)} aria-label={`${t.ticker}: в плейбук`}>
+                          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden 2xl:inline">В плейбук</span>
+                        </Button>
+                      </span>
                     </td>
                   </tr>
                 );
@@ -169,6 +218,7 @@ export function PlaybookInbox() {
         tradeIds={dialog?.ids ?? []}
         presetSetupId={dialog?.preset ?? null}
         onDone={() => setSelected(new Set())}
+        onNewSetup={onNewSetup && dialog?.ids.length === 1 ? () => { const t = trades.find((x) => x.id === dialog.ids[0]); if (t) onNewSetup(t); } : undefined}
       />
     </Panel>
   );

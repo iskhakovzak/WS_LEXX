@@ -1,7 +1,10 @@
-import { useMemo } from "react";
+import { createElement, useMemo } from "react";
+import { useLocation } from "wouter";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
+import { links } from "@/lib/links";
 import { gpApi, gpKeys } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc, emptyTicker, MAX_TICKERS } from "@/components/game-plan/plan-draft";
 import type {
@@ -136,7 +139,8 @@ export function useExposure() {
     }
     for (const w of watch.data ?? []) {
       const k = String(w.ticker ?? "").toUpperCase();
-      if (!k) continue;
+      // Archived («Пропустил») rows are out of work — «В вотчлист» brings them back.
+      if (!k || String(w.status ?? "").toLowerCase() === "passed") continue;
       const e = m.get(k) ?? { held: [], watched: false };
       e.watched = true;
       m.set(k, e);
@@ -167,22 +171,30 @@ export function useInsiders(tickers: string[]) {
   });
 }
 
-/** Add a ticker to the shared watchlist with the filing as catalyst. */
+/**
+ * Add a ticker to the shared watchlist «Сегодня» (a deal in play is traded today) with the filing as catalyst.
+ * Already there / archived (409) → the quick endpoint moves or restores the existing row instead.
+ */
 export function useAddToWatchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   return useMutation({
     mutationFn: async (o: Offering) => {
-      const r = await fetch(`${BASE}/api/watchlist`, {
+      const post = (path: string, body: unknown) => fetch(`${BASE}${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ticker: o.ticker,
-          catalyst: watchCatalyst(o),
-          notes: o.filingUrl ? `SEC: ${o.filingUrl}` : undefined,
-          sector: o.sector ?? undefined,
-        }),
+        body: JSON.stringify(body),
       });
+      let r = await post("/api/watchlist", {
+        ticker: o.ticker,
+        catalyst: watchCatalyst(o),
+        notes: o.filingUrl ? `SEC: ${o.filingUrl}` : undefined,
+        sector: o.sector ?? undefined,
+        list: "today",
+        inPlay: true,
+      });
+      if (r.status === 409) r = await post("/api/watchlist/quick", { tickers: [o.ticker], list: "today" });
       if (!r.ok) {
         const body = (await r.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error || `HTTP ${r.status}`);
@@ -200,7 +212,11 @@ export function useAddToWatchlist() {
       toast({ title: `Не удалось добавить ${o.ticker}`, description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     },
     onSuccess: (_d, o) => {
-      toast({ title: `${o.ticker} в вотчлисте`, description: watchCatalyst(o) });
+      toast({
+        title: `${o.ticker} → вотчлист «Сегодня»`,
+        description: watchCatalyst(o),
+        action: createElement(ToastAction, { altText: "Открыть в вотчлисте", onClick: () => navigate(links.watchlist(o.ticker)) }, "Открыть") as unknown as ToastActionElement,
+      });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
   });

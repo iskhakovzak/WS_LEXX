@@ -4,7 +4,7 @@
  * desk console: their nav items (and old #team / #permissions links) open /admin?tab=people|roles.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { useLocation } from "wouter";
 import { Settings as SettingsIcon } from "lucide-react";
 import { Page, PageHeader, Pill } from "@/components/ds";
@@ -113,18 +113,17 @@ export default function Settings() {
           <SettingsNav ref={searchRef} sections={sections} active={active} onSelect={select} query={query} onQuery={setQuery} badges={badges} />
         </aside>
 
-        <main id="settings-section" tabIndex={-1} aria-labelledby="settings-section-title" className="min-w-0 focus:outline-none">
+        <section id="settings-section" tabIndex={-1} aria-labelledby="settings-section-title" className="min-w-0 focus:outline-none">
           <div className="mb-4 flex flex-col gap-0.5">
             <h2 id="settings-section-title" className="text-lg font-semibold text-foreground">{meta.label}</h2>
             <p className="text-sm text-muted-foreground">{meta.description}</p>
           </div>
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
+          {/* Enter-only fade: no exit «wait», so switching sections is instant (and never stalls in a background tab). */}
+          <motion.div
               key={active}
-              initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+              initial={reduceMotion ? false : { opacity: 0, y: 4 }}
               animate={{ opacity: 1, y: 0 }}
-              exit={reduceMotion ? undefined : { opacity: 0, y: -4 }}
-              transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1] }}
+              transition={{ duration: 0.16, ease: [0.2, 0.8, 0.2, 1] }}
             >
               {active === "profile" && <ProfileSection onNavigate={select} />}
               {active === "appearance" && <AppearanceSection />}
@@ -133,8 +132,7 @@ export default function Settings() {
               {active === "data" && <DataSection />}
               {active === "integrations" && <IntegrationsSection />}
             </motion.div>
-          </AnimatePresence>
-        </main>
+        </section>
       </div>
     </Page>
   );

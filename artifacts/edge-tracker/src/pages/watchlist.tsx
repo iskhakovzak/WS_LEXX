@@ -1,18 +1,19 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock } from "lucide-react";
+import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock, History } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
-import { nyDate } from "@/lib/trading-date";
+import { nyDate, prevWeekday } from "@/lib/trading-date";
+import { pluralRu } from "@/components/rules/constants";
 import { cn } from "@/lib/utils";
 import { EmptyState, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
 import {
-  LISTS, LIST_LABELS, apiJson, computePlan, isListName, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
+  LISTS, LIST_LABELS, apiJson, computePlan, copyText, isListName, isStaleToday, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
   type ListName, type WatchlistItem,
 } from "@/components/watchlist/lib";
 import { useWatchlistLevels, useWatchlistMarket, sessionDays } from "@/components/watchlist/use-market";
@@ -51,6 +52,9 @@ function csvCell(v: unknown) {
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const round2 = (v: number) => Math.round(v * 100) / 100;
+const tickersWord = (n: number) => pluralRu(n, "тикер", "тикера", "тикеров");
+/** «AVGO, COIN, MSTR и ещё 3» */
+const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : `${ts.slice(0, max).join(", ")} и ещё ${ts.length - max}`);
 
 /** Run async jobs with limited concurrency (fallback adds: each old POST scores the ticker synchronously). */
 async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
@@ -75,6 +79,8 @@ export default function Watchlist() {
   const mayModify = (i: WatchlistItem) => canEdit && canModifyOwned(i.createdBy, me, isCurator);
   const [, navigate] = useLocation();
   const today = nyDate();
+  // The session being prepared: today on weekdays, Monday on the weekend (same rule as «План дня»).
+  const planDay = sessionDays(today).levelsDay;
 
   // ── persisted view state ─────────────────────────────────────────────
   const [view, setViewRaw] = usePersistentState<View>("watchlist.view", "today");
@@ -293,7 +299,7 @@ export default function Watchlist() {
     try {
       await applyLists(moving.map((item) => ({ item, list })));
       if (!opts.silent) {
-        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${moving.length} тикеров → «${LIST_LABELS[list]}»`;
+        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${moving.length} ${tickersWord(moving.length)} → «${LIST_LABELS[list]}»`;
         toast({
           title: label,
           action: <ToastAction altText="Отменить перенос" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>Отменить</ToastAction>,
@@ -405,7 +411,7 @@ export default function Watchlist() {
         createdCount ? `добавлено ${createdCount}` : null,
         moved.length ? `перенесено ${moved.length}` : null,
       ].filter(Boolean);
-      toast({ title: `«${LIST_LABELS[list]}»: ${parts.join(", ") || "уже в списке"}`, description: tickers.length <= 6 ? tickers.join(", ") : `${tickers.slice(0, 6).join(", ")} и ещё ${tickers.length - 6}` });
+      toast({ title: `«${LIST_LABELS[list]}»: ${parts.join(", ") || "уже в списке"}`, description: tickerList(tickers) });
       if (isListName(view) && view !== list) setView(list);
       return true;
     } catch (e) {
@@ -420,7 +426,7 @@ export default function Watchlist() {
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiJson<WatchlistItem>(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", data)),
-    onSuccess: (row) => { void invalidate(); setFormOpen(false); setEditing(null); toast({ title: `${row?.ticker ?? "Тикер"} сохранён` }); },
+    onSuccess: (row) => { void invalidate(); setFormOpen(false); toast({ title: `${row?.ticker ?? "Тикер"} сохранён` }); },
     onError: (e) => toast({ title: "Ошибка сохранения", description: errMsg(e), variant: "destructive" }),
   });
   const createMut = useMutation({
@@ -485,7 +491,7 @@ export default function Watchlist() {
       void invalidate();
       const failed = data.failed ?? 0;
       toast({
-        title: `Пересчитано ${data.count} тикеров`,
+        title: `Пересчитано: ${data.count} ${tickersWord(data.count)}`,
         description: failed > 0 ? `Ошибка у ${failed}: ${(data.failures ?? []).map((f) => f.ticker).join(", ")}` : undefined,
         variant: failed > 0 && data.count === 0 ? "destructive" : undefined,
       });
@@ -498,7 +504,7 @@ export default function Watchlist() {
     if (!me) { toast({ title: "План дня ведёт трейдер под своим именем", variant: "destructive" }); return; }
     setPlanBusy(true);
     try {
-      const date = nyDate();
+      const date = planDay;
       const r = await gpApi.my(date);
       const doc = draftToDoc(docToDraft(r.plan?.doc));
       if (doc.inPlay.some((t) => t.ticker.toUpperCase() === item.ticker.toUpperCase())) {
@@ -528,7 +534,7 @@ export default function Watchlist() {
       await gpApi.saveMy(date, { ...doc, inPlay: [...doc.inPlay, entry], status: r.plan?.status ?? "draft" });
       void qc.invalidateQueries({ queryKey: gpKeys.my(date) });
       toast({
-        title: `${item.ticker} добавлен в план дня`,
+        title: date === today ? `${item.ticker} добавлен в план дня` : `${item.ticker} добавлен в план на ${date.slice(8, 10)}.${date.slice(5, 7)}`,
         description: support.length || resistance.length ? `Уровни: ${[...support, ...resistance].sort((a, b) => a - b).join(" · ")}` : undefined,
         action: <ToastAction altText="Открыть план дня" onClick={() => navigate(links.gamePlan(date))}>Открыть</ToastAction>,
       });
@@ -537,7 +543,7 @@ export default function Watchlist() {
     } finally {
       setPlanBusy(false);
     }
-  }, [me, market.quotes, market.earnings, levels, listOf, qc, toast, navigate]);
+  }, [me, planDay, today, market.quotes, market.earnings, levels, listOf, qc, toast, navigate]);
 
   // ── row actions (stable identity for memoised rows) ─────────────────
   const impl = useRef({ moveTo, archive, restore, addToPlan, scoreMutate: scoreMut.mutate, notePatch: notePatch.mutate, scoringIds });
@@ -554,6 +560,14 @@ export default function Watchlist() {
     edit: (i) => { setFormInitial(itemToForm(i)); setEditing(i); setFormOpen(true); },
     remove: (list_items) => setDeleting(list_items),
   }), []);
+
+  const copyTickers = useCallback(async (ts: string[]) => {
+    if (!ts.length) return;
+    const ok = await copyText(ts.join(", "));
+    toast(ok
+      ? { title: `Скопировано: ${ts.length} ${tickersWord(ts.length)}`, description: tickerList(ts) }
+      : { title: "Не удалось скопировать", description: "Браузер не дал доступ к буферу обмена", variant: "destructive" });
+  }, [toast]);
 
   const exportCsv = () => {
     const head = ["Тикер", "Список", "Цена", "Изм %", "Гэп %", "rVol", "ATR", "Ближайший уровень", "Цена уровня", "До уровня %", "Мои сделки", "Net $", "WR %", "Стоп", "Цель", "Катализатор", "Заметка", "Теги"];
@@ -573,8 +587,8 @@ export default function Watchlist() {
   };
 
   // ── keyboard ────────────────────────────────────────────────────────
-  const kb = useRef({ visible, focusedId, selected, canEdit, actions });
-  kb.current = { visible, focusedId, selected, canEdit, actions };
+  const kb = useRef({ visible, focusedId, selected, canEdit, actions, copyTickers });
+  kb.current = { visible, focusedId, selected, canEdit, actions, copyTickers };
   const blocked = formOpen || openId != null || !!ideaFor || !!deleting;
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -585,7 +599,7 @@ export default function Watchlist() {
         return;
       }
       if (blocked) return;
-      const { visible: list, focusedId: fid, selected: sel, canEdit: edit, actions: act } = kb.current;
+      const { visible: list, focusedId: fid, selected: sel, canEdit: edit, actions: act, copyTickers: copy } = kb.current;
       const idx = list.findIndex((r) => r.item.id === fid);
       const cur = idx >= 0 ? list[idx] : null;
       const targets = () => (sel.size ? list.filter((r) => sel.has(r.item.id)) : cur ? [cur] : []).map((r) => r.item);
@@ -604,6 +618,12 @@ export default function Watchlist() {
       }
       if (code === "KeyR") { e.preventDefault(); market.refetchQuotes(); return; }
       if (code === "KeyD") { e.preventDefault(); setDensity((d) => (d === "compact" ? "comfortable" : "compact")); return; }
+      if (code === "KeyC") {
+        e.preventDefault();
+        const rows = sel.size ? list.filter((r) => sel.has(r.item.id)) : list;
+        void copy(rows.filter((r) => !r.pending).map((r) => r.item.ticker));
+        return;
+      }
       if (e.key === "Escape") { if (sel.size) setSelected(new Set()); else setFocusedId(null); return; }
       if (!cur) return;
       if (e.key === "Enter") { e.preventDefault(); act.open(cur.item); return; }
@@ -705,6 +725,13 @@ export default function Watchlist() {
   }, [allRows]);
   const archivedTickers = useMemo(() => allRows.filter((r) => r.list == null).map((r) => r.item.ticker.toUpperCase()), [allRows]);
   const existingTickers = useMemo(() => new Set(realItems.map((i) => i.ticker)), [realItems]);
+  // «Сегодня» left over from earlier sessions (moved in before the previous session's close).
+  const prevSession = prevWeekday(planDay);
+  const [staleDismissed, setStaleDismissed] = usePersistentState<string>("watchlist.staleDismissed", "");
+  const staleToday = useMemo(
+    () => (view === "today" ? inView.filter((r) => !r.pending && isStaleToday(r.item.inPlayAt, prevSession)).map((r) => r.item) : []),
+    [view, inView, prevSession],
+  );
   const losingInView = useMemo(() => inView.filter((r) => r.history && r.history.net < 0 && r.history.n >= 2), [inView]);
   const filtersActive = !!query.trim() || filters.size > 0;
   const days = sessionDays(today);
@@ -746,6 +773,8 @@ export default function Watchlist() {
               canEdit={canEdit}
               canExport={visible.length > 0}
               onExport={exportCsv}
+              copyCount={visible.filter((r) => !r.pending).length}
+              onCopy={() => void copyTickers(visible.filter((r) => !r.pending).map((r) => r.item.ticker))}
               onAddDetailed={() => { setFormInitial(blankForm()); setEditing(null); setFormOpen(true); }}
               canScoreAll={realItems.length > 0}
               scoringAll={scoreAllMut.isPending}
@@ -784,14 +813,17 @@ export default function Watchlist() {
             prefill={prefill}
           />
         )}
-        <WatchlistSearch
-          inputRef={searchRef}
-          query={query}
-          onQuery={setQuery}
-          filters={filters}
-          onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
-          filterCounts={filterCounts}
-        />
+        {/* Search + chips wrap as one group (no lone chip on a second line). */}
+        <div className="flex w-full min-w-0 flex-wrap items-center gap-2 sm:w-auto sm:flex-nowrap">
+          <WatchlistSearch
+            inputRef={searchRef}
+            query={query}
+            onQuery={setQuery}
+            filters={filters}
+            onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
+            filterCounts={filterCounts}
+          />
+        </div>
       </div>
 
       {canEdit && selectedItems.length > 0 && (
@@ -803,8 +835,21 @@ export default function Watchlist() {
           onMove={(l) => { void moveTo(selectedItems, l); setSelected(new Set()); }}
           onArchive={() => void archive(selectedItems)}
           onDelete={setDeleting}
+          onCopy={() => void copyTickers(selectedItems.map((i) => i.ticker))}
           onClear={() => setSelected(new Set())}
         />
+      )}
+
+      {canEdit && staleToday.length > 0 && staleDismissed !== prevSession && (
+        <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[var(--glass-bg)] px-3 py-2 text-sm">
+          <History className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className="min-w-0 flex-1 text-muted-foreground">
+            <span className="font-medium text-foreground">{staleToday.length} {tickersWord(staleToday.length)}</span> в «Сегодня» с прошлых сессий: {tickerList(staleToday.map((i) => i.ticker), 8)}
+          </span>
+          <Button size="sm" variant="outline" onClick={() => void moveTo(staleToday, "watch")}>В «Наблюдаю»</Button>
+          <Button size="sm" variant="outline" onClick={() => void archive(staleToday)}><Archive className="h-4 w-4" />В архив</Button>
+          <Button size="sm" variant="ghost" onClick={() => setStaleDismissed(prevSession)} title="Скрыть до следующей сессии">Оставить</Button>
+        </div>
       )}
 
       <Panel padded={false}>
@@ -875,6 +920,7 @@ export default function Watchlist() {
         actions={actions}
         onClose={() => setOpenId(null)}
         planBusy={planBusy}
+        planDay={planDay}
       />
 
       <WatchlistFormDialog
@@ -883,7 +929,8 @@ export default function Watchlist() {
         initial={formInitial}
         existingTickers={existingTickers}
         saving={createMut.isPending || updateMut.isPending}
-        onClose={() => { setFormOpen(false); setEditing(null); }}
+        // `editing` stays until the next open, so the closing dialog doesn't flip to «Добавить» / «Уже есть в вотчлисте».
+        onClose={() => setFormOpen(false)}
         onSubmit={(payload) => (editing ? updateMut.mutate({ id: editing.id, data: payload }) : createMut.mutate(payload))}
       />
 

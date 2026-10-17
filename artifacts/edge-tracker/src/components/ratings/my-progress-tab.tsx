@@ -16,26 +16,36 @@ import { useLeaderboard, winPctOf } from "./leaderboard-tab";
 import { ScorecardCard } from "./scorecards-tab";
 import { CRITERIA, buildScorecards, criterionLabel, tierLabel, weekLabel, type Rating } from "./scorecard-model";
 import { bucketOf, calibVerdict, calibrationOf, enrichIdea, type TradeIdea } from "./idea-metrics";
+import { IDEAS_KEY, useTracking } from "@/components/ideas/hooks";
 
 export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | null; ratings: Rating[]; ratingsLoading: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const month = useLeaderboard("30", "auto");
   const ideasQ = useQuery<TradeIdea[]>({
-    queryKey: ["trade-ideas", "stats-list"],
+    queryKey: IDEAS_KEY, // shared with /trade-ideas and the stats page
     queryFn: () => fetchJson<TradeIdea[]>(`${BASE}/api/trade-ideas`),
     staleTime: 30_000,
     enabled: !!me,
   });
 
   const mine = month.ranked.find((l) => l.trader === me) ?? null;
+  // Traders read only their own leaderboard row; rank and «команда …%» need the whole desk.
+  const deskVisible = month.ranked.some((l) => l.trader !== me);
   const card = useMemo(() => (me ? buildScorecards(ratings.filter((r) => r.trader === me))[0] ?? null : null), [ratings, me]);
   const myRatings = useMemo(
     () => ratings.filter((r) => r.trader === me && r.comment?.trim()).sort((a, b) => b.week.localeCompare(a.week) || b.createdAt.localeCompare(a.createdAt)).slice(0, 4),
     [ratings, me],
   );
-  const ideas = useMemo(() => (ideasQ.data ?? []).filter((i) => i.trader === me).map(enrichIdea), [ideasQ.data, me]);
+  const ideas = useMemo(() => (ideasQ.data ?? []).filter((i) => i.trader === me).map((i) => enrichIdea(i)), [ideasQ.data, me]);
   const ideaB = useMemo(() => bucketOf(ideas), [ideas]);
+  // Price outcome of the same ideas (target vs stop first) — most ideas are never linked to a trade.
+  const tracking = useTracking(ideas.some((i) => i.published));
+  const priceB = useMemo(() => {
+    const items = tracking.data?.items;
+    if (!items) return null;
+    return bucketOf((ideasQ.data ?? []).filter((i) => i.trader === me).map((i) => enrichIdea(i, { basis: "price", track: items[String(i.id)] ?? null })));
+  }, [tracking.data, ideasQ.data, me]);
   const ideaCalib = useMemo(() => calibrationOf(ideas), [ideas]);
   const team = useMemo(() => {
     // Team win rate = W / (W + L): break-even trades are excluded, same as the leaderboard rows.
@@ -83,13 +93,26 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
         <StatGrid>{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}</StatGrid>
       ) : (
         <StatGrid>
-          <StatCard
-            label="Место за месяц"
-            icon={Trophy}
-            value={mine ? `#${mine.rank}` : "—"}
-            hint={mine ? <span className="inline-flex items-center gap-1.5">из {month.ranked.length} <RankDelta delta={mine.rankDelta} isNew={mine.isNew} /></span> : "нет сделок за 30 дней"}
-            tone={mine && mine.rank <= 3 ? "accent" : "neutral"}
-          />
+          {deskVisible ? (
+            <StatCard
+              label="Место за месяц"
+              icon={Trophy}
+              value={mine ? `#${mine.rank}` : "—"}
+              hint={mine ? <span className="inline-flex items-center gap-1.5">из {month.ranked.length} <RankDelta delta={mine.rankDelta} isNew={mine.isNew} /></span> : "нет сделок за 30 дней"}
+              tone={mine && mine.rank <= 3 ? "accent" : "neutral"}
+            />
+          ) : (
+            // A trader's leaderboard holds only their own row: «#1 из 1» meant nothing, the month's net does.
+            <StatCard
+              label="P&L за месяц · нетто"
+              icon={Trophy}
+              value={mine ? fmtUsd(mine.totalPnl) : "—"}
+              tone={toneOf(mine?.totalPnl)}
+              hint={mine
+                ? `${mine.totalTrades} ${pluralRu(mine.totalTrades, "сделка", "сделки", "сделок")}${mine.tradingDays ? ` · ${mine.tradingDays} ${pluralRu(mine.tradingDays, "торговый день", "торговых дня", "торговых дней")}` : ""}`
+                : "нет сделок за 30 дней"}
+            />
+          )}
           <StatCard
             label="Текущая серия"
             icon={Flame}
@@ -116,8 +139,14 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
           <StatCard
             label="Винрейт за месяц"
             value={mine ? fmtPct(winPctOf(mine)) : "—"}
-            tone={mine && team.winrate != null && winPctOf(mine) != null ? toneOf(winPctOf(mine)! - team.winrate) : "neutral"}
-            hint={team.winrate != null ? `команда ${fmtPct(team.winrate)}` : undefined}
+            tone={(() => {
+              const base = deskVisible ? team.winrate : mine?.prev ? winPctOf(mine.prev) : null;
+              const cur = mine ? winPctOf(mine) : null;
+              return base != null && cur != null ? toneOf(cur - base) : "neutral";
+            })()}
+            hint={deskVisible
+              ? (team.winrate != null ? `команда ${fmtPct(team.winrate)}` : undefined)
+              : mine?.prev ? `прошлый месяц ${fmtPct(winPctOf(mine.prev))}` : undefined}
           />
         </StatGrid>
       )}
@@ -189,8 +218,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                     <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                     <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [v.toFixed(1), n === "overall" ? "Общая" : "Критерии"]} />
                     <Legend formatter={(v: string) => <span className="text-xs text-muted-foreground">{v === "overall" ? "Общая оценка" : "Среднее критериев"}</span>} />
-                    <Line dataKey="composite" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
-                    <Line dataKey="overall" stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3 }} />
+                    <Line isAnimationActive={false} dataKey="composite" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
+                    <Line isAnimationActive={false} dataKey="overall" stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
@@ -241,7 +270,12 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                 <OutcomeBar wins={ideaB.wins} losses={ideaB.losses} be={ideaB.be} open={ideaB.open} />
                 <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
                   <StatRow label="Идей / в сделках" value={`${ideaB.ideas} / ${ideaB.converted}`} />
-                  <StatRow label="Hit rate" value={ideaB.hitRate == null ? "—" : `${Math.round(ideaB.hitRate * 100)}%`} tone={ideaB.hitRate == null ? "neutral" : ideaB.hitRate >= 0.5 ? "up" : "down"} />
+                  <StatRow label="Hit rate по сделкам" value={ideaB.hitRate == null ? "—" : `${Math.round(ideaB.hitRate * 100)}%`} tone={ideaB.hitRate == null ? "neutral" : ideaB.hitRate >= 0.5 ? "up" : "down"} />
+                  <StatRow
+                    label="Цель раньше стопа"
+                    value={priceB?.hitRate == null ? "—" : `${Math.round(priceB.hitRate * 100)}% · ${priceB.wins}/${priceB.wins + priceB.losses}`}
+                    tone={priceB?.hitRate == null ? "neutral" : priceB.hitRate >= 0.5 ? "up" : "down"}
+                  />
                   <StatRow label="Средний R" value={fmtR(ideaB.avgR)} tone={toneOf(ideaB.avgR)} />
                   <StatRow
                     label="Калибровка скора"

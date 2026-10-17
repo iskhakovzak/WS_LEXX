@@ -350,7 +350,7 @@ export function JuniorEditor({
       <Button size="icon" variant="ghost" className="h-9 w-9" aria-label="Предыдущий торговый день" onClick={() => onDateChange(prevTradingDay(date))}>
         <ChevronLeft />
       </Button>
-      <label className="glass-field relative inline-flex min-h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
+      <label className="glass-field relative inline-flex h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
         <span className="first-letter:uppercase">{fmtDayLong(date)}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         <input
@@ -373,7 +373,7 @@ export function JuniorEditor({
         <ChevronRight />
       </Button>
       {date !== today && (
-        <Button size="sm" variant="outline" onClick={() => onDateChange(today)}>Сегодня</Button>
+        <Button variant="outline" onClick={() => onDateChange(today)}>Сегодня</Button>
       )}
     </div>
   );

@@ -12,7 +12,8 @@ import {
   type DayPoint, type Insight, type OfficeView, type PeriodView, type Unit, type YearView,
 } from "./api";
 import { LineCanvas, MONTH_TICKS, downloadCanvasPng, type LineSeries } from "./line-canvas";
-import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
+import { divergingCell, strategyColor, tokenColor, useDark, yearColor } from "./palette";
+import { pluralRu } from "@/components/rules/constants";
 
 export type Ctx = { unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean };
 
@@ -44,7 +45,7 @@ export function InsightsStrip({ insights }: { insights: Insight[] }) {
   );
 }
 
-/** Month tile value: $ compacted to +$16.4K so twelve tiles fit one row at xl (the full sum is in the title). */
+/** Month tile value: $ compacted to +$16.4K so twelve tiles fit one row from 1400px (the full sum is in the title). */
 function fmtMonthTile(v: number | null | undefined, unit: Unit): string {
   if (unit !== "usd" || v == null || !Number.isFinite(v) || Math.abs(v) < 1000) return fmtV(v, unit);
   const a = Math.abs(v);
@@ -80,7 +81,7 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
         tone={toneOf(t.net)}
         delta={yoy != null && prevY ? `${fmtV(t.net - yoy, unit)} к ${prevY.year}` : undefined}
         deltaTone={yoy != null ? toneOf(t.net - yoy) : undefined}
-        hint={`${fmtNum(t.trades)} сделок · ${t.tradingDays} дн.`}
+        hint={`${fmtNum(t.trades)} ${pluralRu(t.trades, "сделка", "сделки", "сделок")} · ${t.tradingDays} дн.`}
         spark={focus.days.map((d) => d.cum)}
       />
       <div className="glass-panel flex h-full min-h-[104px] min-w-0 items-center gap-3 rounded-2xl p-4">
@@ -125,10 +126,11 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       <StatCard
         label="Сделок за период"
         value={fmtNum(period.totals.trades)}
+        valueTitle={`${period.totals.trades.toLocaleString("ru-RU")} ${pluralRu(period.totals.trades, "сделка", "сделки", "сделок")}`}
         hint={`WR ${fmtShare(period.totals.winRate)} · PF ${period.totals.profitFactor?.toFixed(2) ?? "—"}`}
       />
       {isAdmin && period.totals.volume != null ? (
-        <StatCard label="Объём офиса" value={fmtNum(period.totals.volume)} hint="акций за период" />
+        <StatCard label="Объём офиса" value={fmtNum(period.totals.volume)} valueTitle={`${period.totals.volume.toLocaleString("ru-RU")} акций`} hint="акций за период" />
       ) : (
         <StatCard
           label="Средний день"
@@ -186,7 +188,24 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
       icon={TrendingUp}
       fill
       className="lg:col-span-8"
-      actions={<Button variant="ghost" size="sm" onClick={() => downloadCanvasPng(ref.current, `office-net-${focus.year}.png`)} aria-label="Скачать график PNG"><Download className="h-4 w-4" /> PNG</Button>}
+      actions={series.length > 0 && (
+        <Button
+          variant="ghost"
+          size="sm"
+          title="Картинка с заголовком и легендой — для чата или отчёта"
+          onClick={() => downloadCanvasPng(ref.current, `office-net-${focus.year}-${unit}.png`, {
+            title: "Общий результат офиса",
+            subtitle: `нарастающим итогом · ${unit === "usd" ? "$" : "% от капитала"} · на ${fmtDay(focus.days[focus.days.length - 1]?.date)} ${focus.year}`,
+            legend: [
+              ...series.map((s) => ({ label: s.label, color: s.color })),
+              ...(focus.goal != null ? [{ label: `цель ${fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined })}`, color: tokenColor("--foreground", "#888"), dashed: true }] : []),
+            ],
+          })}
+          aria-label="Скачать график PNG"
+        >
+          <Download className="h-4 w-4" /> PNG
+        </Button>
+      )}
     >
       {series.length === 0 ? (
         <EmptyState icon={TrendingUp} title={`За ${focus.year} сделок нет`} description="Как только появятся закрытые сделки, здесь будет кривая офиса." />
@@ -264,7 +283,7 @@ export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | nul
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className={cn("whitespace-nowrap text-2xl font-semibold tabular-nums", day.v >= 0 ? "text-up" : "text-down")}>{fmtV(day.v, unit)}</span>
-        <span className="text-xs text-muted-foreground">{day.trades} сделок · с начала года {fmtV(day.cum, unit)}</span>
+        <span className="text-xs text-muted-foreground">{day.trades} {pluralRu(day.trades, "сделка", "сделки", "сделок")} · с начала года {fmtV(day.cum, unit)}</span>
       </div>
       <ul className="mt-3 flex flex-col gap-1.5">
         {parts.map((p) => (
@@ -386,7 +405,7 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
             {[-1, -0.5, -0.15, 0.15, 0.5, 1].map((k) => <span key={k} className="h-2.5 w-2.5 rounded-[3px]" style={{ background: divergingCell(k, 1) }} aria-hidden="true" />)}
             <span>плюс</span>
           </div>
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6 xl:grid-cols-12">
+          <div className="grid grid-cols-3 gap-2 min-[640px]:grid-cols-4 min-[1024px]:grid-cols-6 min-[1400px]:grid-cols-12">
             {focus.months.map((m) => (
               <button
                 key={m.month}

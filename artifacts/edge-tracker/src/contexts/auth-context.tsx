@@ -3,6 +3,7 @@ import { BASE } from "@/lib/api";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { AUTH_EXPIRED_EVENT } from "@/lib/install-fetch-auth";
 import { toast } from "@/hooks/use-toast";
+import { shellI18n } from "@/i18n/ns/shell";
 import { canWith, defaultPermissions, type Capability, type PermissionsMe, type Target } from "@/lib/permissions";
 
 export type UserRole = "trader" | "curator" | "admin" | "guest";
@@ -25,6 +26,8 @@ export type DbUser = {
   bannedAt?: string | null;
   bannedReason?: string | null;
   createdAt: string;
+  /** Optional Latin alias (users.name_latin) for cross-script search; absent on older API builds. */
+  nameLatin?: string | null;
 };
 
 interface AuthContextType {
@@ -60,15 +63,16 @@ const AuthContext = createContext<AuthContextType | null>(null);
 const STORAGE_KEY = "ws_lexx_session";
 const TOKEN_KEY = "ws_lexx_token";
 
+// People's names (user content, never translated) — offline fallback for the login list.
 const FALLBACK_TRADERS: DbUser[] = [
-  { id: 1, name: "Закир", role: "trader", active: true, theme: "default", createdAt: "" },
-  { id: 2, name: "Антон", role: "curator", active: true, theme: "default", createdAt: "" },
-  { id: 3, name: "Артур", role: "trader", active: true, theme: "default", createdAt: "" },
-  { id: 4, name: "Рахматулло", role: "trader", active: true, theme: "default", createdAt: "" },
-  { id: 5, name: "Умид", role: "trader", active: true, theme: "default", createdAt: "" },
-  { id: 6, name: "Максат", role: "trader", active: true, theme: "default", createdAt: "" },
-  { id: 7, name: "Тимур", role: "curator", active: true, theme: "default", createdAt: "" },
-  { id: 8, name: "Ориф", role: "curator", active: true, theme: "default", createdAt: "" },
+  { id: 1, name: "Закир", role: "trader", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 2, name: "Антон", role: "curator", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 3, name: "Артур", role: "trader", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 4, name: "Рахматулло", role: "trader", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 5, name: "Умид", role: "trader", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 6, name: "Максат", role: "trader", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 7, name: "Тимур", role: "curator", active: true, theme: "default", createdAt: "" }, // i18n-ignore
+  { id: 8, name: "Ориф", role: "curator", active: true, theme: "default", createdAt: "" }, // i18n-ignore
 ];
 
 function writeToken(token: string | null) {
@@ -144,7 +148,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           _currentToken = null;
           writeToken(null);
           setUser(null);
-          toast({ title: "Сессия истекла", description: "Войдите снова, чтобы продолжить работу." });
+          toast({ title: shellI18n.t("app.sessionExpired"), description: shellI18n.t("app.sessionExpiredDesc") });
         }
       } catch {
         // network error — keep the session, the user may just be offline

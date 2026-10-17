@@ -110,7 +110,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                   <button
                     type="button"
                     onClick={(ev) => { ev.stopPropagation(); onOpen(r.trader); }}
-                    className="rounded-md text-left font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="whitespace-nowrap rounded-md text-left font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {r.trader}
                   </button>

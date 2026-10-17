@@ -25,9 +25,9 @@ import { DetailSheet } from "@/components/big7/DetailSheet";
 import { CatalystDialog, CatalystSheet, CatalystWeek, emptyDraft, type CatalystDraft } from "@/components/big7/catalysts";
 import { TickerManagerSheet, useSeedBig7 } from "@/components/big7/TickerManagerSheet";
 import {
-  useAutoEarnings, useCatalysts, useGapRisk, useMyStats, useNow, useQuotes, useSessionBars,
+  useAutoEarnings, useBig7Today, useCatalysts, useGapRisk, useMyStats, useNow, useQuotes, useSessionBars,
 } from "@/components/big7/use-big7";
-import { DEFAULT_BIG7, TODAY, lsRaw, lsRawSet, mergeCatalysts, type BoardTicker, type MergedCatalyst } from "@/components/big7/lib";
+import { DEFAULT_BIG7, lsRaw, lsRawSet, mergeCatalysts, type BoardTicker, type MergedCatalyst } from "@/components/big7/lib";
 import {
   boardAgg, buildRow, buildSnap, marketTone, phaseOf, referenceSession, windowStart, type Big7Row, type SessionSnap,
 } from "@/components/big7/context";
@@ -63,14 +63,18 @@ export default function Big7() {
   const { data: tickers = [], isLoading: tickersLoading, isError: tickersError, error: tickersErr, refetch: refetchTickers } = useListBig7Tickers();
   const { seed, seeding } = useSeedBig7();
 
-  // Hot list: per day, local (managed in the ticker sheet).
-  const HOT_KEY = `big7_hot_${TODAY}`;
-  const [hotSymbols, setHotSymbols] = useState<string[]>(() => {
+  // Hot list: per day, local (managed in the ticker sheet). Rolls over at the NY date change in an open tab.
+  const today = useBig7Today();
+  const HOT_KEY = `big7_hot_${today}`;
+  const readHot = (key: string): string[] => {
     try {
-      const v = JSON.parse(lsRaw(HOT_KEY) || "[]");
+      const v = JSON.parse(lsRaw(key) || "[]");
       return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
     } catch { return []; }
-  });
+  };
+  const [hotSymbols, setHotSymbols] = useState<string[]>(() => readHot(HOT_KEY));
+  const [hotKeyLoaded, setHotKeyLoaded] = useState(HOT_KEY);
+  if (hotKeyLoaded !== HOT_KEY) { setHotKeyLoaded(HOT_KEY); setHotSymbols(readHot(HOT_KEY)); }
   const saveHot = useCallback((syms: string[]) => {
     const unique = [...new Set(syms.map((s) => s.toUpperCase()))];
     setHotSymbols(unique);
@@ -191,7 +195,7 @@ export default function Big7() {
 
   const tileGrid = (rows: Big7Row[], offset: number, hotGroup = false) => (
     <div
-      className="grid grid-cols-2 gap-[var(--grid-gap)] sm:grid-cols-4 min-[1360px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
+      className="grid grid-cols-2 gap-[var(--grid-gap)] @min-[672px]:grid-cols-4 @min-[1200px]:grid-cols-[repeat(var(--cols),minmax(0,1fr))]"
       style={{ ["--cols" as string]: String(hotGroup ? Math.max(cols, 7) : cols) }}
     >
       {rows.map((r, i) => (
@@ -218,7 +222,7 @@ export default function Big7() {
           <>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Обновить данные"
               title="Обновить данные"
               onClick={() => { void bars.refetch(); void quotesQ.refetch(); }}
@@ -272,9 +276,9 @@ export default function Big7() {
         <>
           <ToneBar tone={model.tone} agg={model.agg} qqq={model.qqq} spy={model.spy} phase={phase} loading={dataLoading} />
 
-          <section aria-label="Тикеры" className="flex flex-col gap-[var(--grid-gap)]">
+          <section aria-label="Тикеры" className="@container flex flex-col gap-[var(--grid-gap)]">
             {tickersLoading ? (
-              <div className="grid grid-cols-2 gap-[var(--grid-gap)] sm:grid-cols-4 min-[1360px]:grid-cols-7" aria-busy="true" aria-label="Загрузка тикеров">
+              <div className="grid grid-cols-2 gap-[var(--grid-gap)] @min-[672px]:grid-cols-4 @min-[1200px]:grid-cols-7" aria-busy="true" aria-label="Загрузка тикеров">
                 {Array.from({ length: 7 }, (_, i) => <TileSkeleton key={i} />)}
               </div>
             ) : (

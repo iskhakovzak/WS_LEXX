@@ -9,6 +9,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { NAV_GROUPS, ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
 import { useCollapsedGroups, usePinnedNav } from "./use-nav-prefs";
 import { useShellBadges, type NavBadge } from "./use-shell-badges";
+import { preloadRoute } from "./route-loaders";
+import { shellI18n } from "@/i18n/ns/shell";
 
 const BADGE_CLS: Record<NavBadge["tone"], string> = {
   down: "bg-down/12 text-down",
@@ -24,7 +26,12 @@ const DOT_CLS: Record<NavBadge["tone"], string> = {
 /** Visible nav for the current role (staff-only items filtered, hidden items dropped). */
 export function useVisibleNav() {
   const { isCurator } = useAuth();
-  const groups = NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => !i.hidden && (!i.staff || isCurator)) })).filter((g) => g.items.length);
+  const groups = NAV_GROUPS.map((g) => {
+    const items = g.items.filter((i) => !i.hidden && (!i.staff || isCurator));
+    // A trader sees only the member items of a staff group: name it for what is left («Admin» → «Account»).
+    const label = g.memberLabel && !items.some((i) => i.staff) ? g.memberLabel : g.label;
+    return { ...g, label, items };
+  }).filter((g) => g.items.length);
   return groups;
 }
 
@@ -44,6 +51,7 @@ function NavLink({
   /** Favourites are full (MAX_PINS): the star can only un-pin. */
   pinFull?: boolean;
 }) {
+  const { t } = shellI18n.useT();
   const pinBlocked = !pinned && pinFull;
   const active = isNavActive(item, location);
   const Icon = item.icon;
@@ -52,6 +60,8 @@ function NavLink({
       <Link
         href={item.href}
         aria-current={active ? "page" : undefined}
+        onPointerEnter={() => preloadRoute(item.href)}
+        onFocus={() => preloadRoute(item.href)}
         className={cn(
           "flex h-9 items-center gap-3 rounded-full pl-3 pr-9 text-[13px] transition-[background-color,color] duration-200",
           active
@@ -73,9 +83,9 @@ function NavLink({
         type="button"
         onClick={onTogglePin}
         disabled={pinBlocked}
-        aria-label={pinned ? `Убрать «${item.name}» из избранного` : `Добавить «${item.name}» в избранное`}
+        aria-label={pinned ? t("sidebar.unpinAria", { name: item.name }) : t("sidebar.pinAria", { name: item.name })}
         aria-pressed={pinned}
-        title={pinned ? "Убрать из избранного" : pinBlocked ? "В избранном уже максимум пунктов: сначала уберите один" : "В избранное"}
+        title={pinned ? t("sidebar.unpinTitle") : pinBlocked ? t("sidebar.pinFullTitle") : t("sidebar.pinTitle")}
         className={cn(
           "absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full transition-opacity",
           "opacity-0 focus-visible:opacity-100 group-hover/nav:opacity-100 [@media(hover:none)]:opacity-100 disabled:cursor-not-allowed disabled:group-hover/nav:opacity-40",
@@ -91,6 +101,7 @@ function NavLink({
 // Trades arrive from the broker automatically, so the sidebar offers no manual entry.
 export function SidebarNav({ location }: { location: string }) {
   const groups = useVisibleNav();
+  const { t } = shellI18n.useT();
   const { pins, togglePin, isPinned, canPin } = usePinnedNav();
   const { isCollapsed, toggleGroup, setAll } = useCollapsedGroups();
   const badges = useShellBadges();
@@ -115,8 +126,13 @@ export function SidebarNav({ location }: { location: string }) {
   const listRef = React.useRef<HTMLDivElement | null>(null);
   React.useEffect(() => {
     const id = requestAnimationFrame(() => {
-      const el = listRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
-      el?.scrollIntoView({ block: "nearest" });
+      const list = listRef.current;
+      const el = list?.querySelector<HTMLElement>('[aria-current="page"]');
+      if (!list || !el) return;
+      // Only when it is out of view, and then to the middle (with its group around it), not glued to an edge.
+      const l = list.getBoundingClientRect();
+      const r = el.getBoundingClientRect();
+      if (r.top < l.top || r.bottom > l.bottom) el.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(id);
   }, [location]);
@@ -126,12 +142,12 @@ export function SidebarNav({ location }: { location: string }) {
   };
 
   return (
-    <nav aria-label="Основная навигация" className="flex min-h-0 flex-1 flex-col">
+    <nav aria-label={t("sidebar.navLabel")} className="flex min-h-0 flex-1 flex-col">
       <div ref={listRef} className="scrollbar-none min-h-0 flex-1 overflow-y-auto px-2 pb-3">
         {pinnedItems.length > 0 && (
           <section className="pt-2">
             <h3 className="micro-label flex items-center gap-1.5 px-3 pb-1.5 pt-1">
-              <Star className="h-3 w-3" aria-hidden="true" /> Избранное
+              <Star className="h-3 w-3" aria-hidden="true" /> {t("sidebar.favorites")}
             </h3>
             <ul className="space-y-0.5">
               {pinnedItems.map((item) => (
@@ -194,20 +210,20 @@ export function SidebarNav({ location }: { location: string }) {
         })}
       </div>
       <div className="flex items-center justify-between gap-2 border-t border-[var(--glass-border)] px-3 py-2 text-2xs text-muted-foreground">
-        <span className="inline-flex min-w-0 items-center gap-1 truncate" title="G, затем буква — переход к разделу">
-          <Kbd>G</Kbd>+ буква
+        <span className="inline-flex min-w-0 items-center gap-1 truncate" title={t("sidebar.goHint")}>
+          <Kbd>G</Kbd>{t("sidebar.goLetter")}
         </span>
         <span className="inline-flex shrink-0 items-center gap-1">
           <button
             type="button"
             onClick={onToggleAll}
-            aria-label={allFolded ? "Развернуть все группы меню" : "Свернуть все группы меню"}
-            title={allFolded ? "Развернуть все группы" : "Свернуть все группы"}
+            aria-label={allFolded ? t("sidebar.expandAllAria") : t("sidebar.collapseAllAria")}
+            title={allFolded ? t("sidebar.expandAll") : t("sidebar.collapseAll")}
             className="grid h-7 w-7 place-items-center rounded-full transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
           >
             {allFolded ? <ChevronsUpDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronsDownUp className="h-3.5 w-3.5" aria-hidden="true" />}
           </button>
-          <span title="Свернуть или показать меню">
+          <span title={t("sidebar.toggleSidebar")}>
             <Kbd keys={[/Mac|iPhone|iPad/.test(typeof navigator !== "undefined" ? navigator.platform : "") ? "⌘" : "Ctrl", "B"]} />
           </span>
         </span>

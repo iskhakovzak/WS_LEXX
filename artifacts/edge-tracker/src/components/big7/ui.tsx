@@ -4,7 +4,7 @@
 import { toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { fmtSigned, type MergedCatalyst } from "./lib";
-import { tradingDaysUntil, TODAY } from "./lib";
+import { big7Today, tradingDaysUntil } from "./lib";
 import type { LevelPoint } from "./context";
 
 export const fmtPx = (n: number | null | undefined) =>
@@ -56,7 +56,7 @@ export function LevelChip({ level, dir }: { level: LevelPoint | null; dir: "up" 
 
 /** Next earnings for a ticker within `horizon` trading days (auto calendar + manual catalysts). */
 export function nextEarnings(symbol: string, merged: MergedCatalyst[], horizon = 5): { date: string; days: number; when: string | null } | null {
-  const e = merged.find((c) => c.ticker === symbol && c.type === "earnings" && c.date >= TODAY);
+  const e = merged.find((c) => c.ticker === symbol && c.type === "earnings" && c.date >= big7Today());
   if (!e) return null;
   const days = tradingDaysUntil(e.date);
   if (days > horizon) return null;

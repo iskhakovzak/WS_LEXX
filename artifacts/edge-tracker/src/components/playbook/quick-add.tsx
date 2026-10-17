@@ -312,7 +312,7 @@ export function TradeQuickAdd({
               const ex = existing.get(s.id);
               return (
                 <React.Fragment key={s.id}>
-                  {head && <li role="presentation" className="sticky top-0 z-raised bg-popover/95 px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground backdrop-blur-sm">{head}</li>}
+                  {head && <li role="presentation" className="sticky top-0 z-raised bg-popover px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground">{head}</li>}
                   <li
                     role="option"
                     aria-selected={active}
@@ -427,13 +427,15 @@ export function TradeQuickAdd({
 
 /** Dialog wrapper for bulk / inbox use (the trade sheet uses a popover via AddToPlaybookButton). */
 export function AddTradesToPlaybookDialog({
-  open, onOpenChange, tradeIds, presetSetupId, onDone,
+  open, onOpenChange, tradeIds, presetSetupId, onDone, onNewSetup,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   tradeIds: number[];
   presetSetupId?: number | null;
   onDone?: () => void;
+  /** «Новый сетап из сделки» (single trade): the caller opens its setup form. */
+  onNewSetup?: () => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -447,6 +449,7 @@ export function AddTradesToPlaybookDialog({
             tradeIds={tradeIds}
             presetSetupId={presetSetupId}
             onClose={() => { onOpenChange(false); onDone?.(); }}
+            onNewSetup={onNewSetup && tradeIds.length === 1 ? () => { onOpenChange(false); onNewSetup(); } : undefined}
             className="min-h-0 flex-1"
             inDialog
           />

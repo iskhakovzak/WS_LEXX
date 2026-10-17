@@ -480,8 +480,10 @@ export default function AnalystActionsPage() {
       </StatGrid>
 
       {/* ── premarket + my stats ── */}
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_360px]">
+      {/* Same 3-column track as the KPI row above, so the panel edges line up with the stat cards. */}
+      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-3">
         <PremarketPanel
+          className="xl:col-span-2"
           rows={premarketRows}
           isLoading={feed.isLoading}
           fallbackDay={fallbackDay}

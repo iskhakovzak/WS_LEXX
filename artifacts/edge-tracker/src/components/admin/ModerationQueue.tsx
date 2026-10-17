@@ -18,6 +18,7 @@ import { BASE } from "@/lib/api";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
 import { BAN_PRESETS } from "./useUserActions";
 import { ROLE_LABEL, adminUrl, errorFrom, isTypingTarget, postJson, timeAgo, useReports, type ContentReport } from "./api";
+import { pluralRu } from "@/components/rules/constants";
 
 type Status = "open" | "resolved" | "dismissed" | "all";
 
@@ -37,6 +38,8 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const listRef = useRef<HTMLUListElement>(null);
   const apiStatus = status === "all" ? "" : status;
   const { data: reports = [], isLoading, isError, error, refetch } = useReports(actor, apiStatus);
+  // Per-row layout/enter animation only on short lists (the «Все» filter can hold hundreds).
+  const animateRows = !reduce && reports.length <= 30;
 
   const invalidate = () => {
     for (const k of ["admin-reports", "admin-overview", "admin-audit", "admin-desk-pulse", "admin-users"]) qc.invalidateQueries({ queryKey: [k] });
@@ -81,7 +84,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const bulk = (kind: "resolve" | "dismiss") => {
     const ids = [...checked];
     setDialog({
-      title: `${kind === "resolve" ? "Решить" : "Отклонить"} ${ids.length} ${ids.length === 1 ? "жалобу" : "жалоб(ы)"}`,
+      title: `${kind === "resolve" ? "Решить" : "Отклонить"} ${ids.length} ${pluralRu(ids.length, "жалобу", "жалобы", "жалоб")}`,
       description: "Одна причина для всех выбранных. Каждая жалоба отдельно попадёт в аудит.",
       confirmLabel: kind === "resolve" ? "Решить все" : "Отклонить все",
       input: { label: kind === "resolve" ? "Резолюция" : "Причина отклонения", required: true, presets: kind === "resolve" ? RESOLVE_PRESETS : DISMISS_PRESETS },
@@ -255,10 +258,10 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
                 <motion.li
                   key={r.id}
                   data-idx={i}
-                  layout={!reduce}
-                  initial={reduce ? false : { opacity: 0, y: 6 }}
+                  layout={animateRows}
+                  initial={animateRows ? { opacity: 0, y: 6 } : false}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={reduce ? { opacity: 0 } : { opacity: 0, x: 24, transition: { duration: 0.18 } }}
+                  exit={animateRows ? { opacity: 0, x: 24, transition: { duration: 0.18 } } : { opacity: 0 }}
                   transition={{ duration: 0.2, ease: EASE }}
                   onClick={() => setSelected(i)}
                   aria-current={i === selected ? "true" : undefined}
@@ -324,7 +327,7 @@ function ReportCard({
           </div>
           <div className="text-xs text-muted-foreground">Жалоба #{r.id} · {timeAgo(r.createdAt)}</div>
         </div>
-        {many && <Pill tone="down">{r.openReportsOnTarget} жалобы</Pill>}
+        {many && <Pill tone="down">{r.openReportsOnTarget} {pluralRu(r.openReportsOnTarget ?? 0, "жалоба", "жалобы", "жалоб")}</Pill>}
         <Pill tone={r.status === "open" ? "warn" : r.status === "resolved" ? "up" : "neutral"} dot>{STATUS_LABEL[r.status] ?? r.status}</Pill>
       </div>
 

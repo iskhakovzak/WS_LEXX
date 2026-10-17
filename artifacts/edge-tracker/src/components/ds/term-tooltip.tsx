@@ -155,7 +155,7 @@ export function TermTooltip({
           <button
             type="button"
             className={cn(
-              "inline cursor-help rounded-sm text-inherit underline decoration-current/40 decoration-dotted underline-offset-[3px] hover:decoration-current/80",
+              "inline cursor-help rounded-sm text-left text-inherit underline decoration-current/40 decoration-dotted underline-offset-[3px] hover:decoration-current/80",
               className,
             )}
             onClick={(e) => e.preventDefault()}

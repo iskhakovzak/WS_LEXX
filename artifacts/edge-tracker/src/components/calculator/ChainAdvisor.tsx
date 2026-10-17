@@ -19,6 +19,7 @@ import {
   buildStrategies, fsFind, type AdvisorGoal, type ChainData, type ChainOption, type Expiration, type IvOutlook, type Strategy,
 } from "./strategies";
 import type { OpenInBuilderParams, UseInBsParams } from "./OptionsSection";
+import { riskPerTradeUsd, useTradingDefaults } from "@/components/settings/trading-defaults";
 
 interface AiAnalysisResult {
   strategy: string;
@@ -85,15 +86,22 @@ export default function ChainAdvisor({
 
   const [goal, setGoal] = usePersistedState<AdvisorGoal>("advisor_goal", "bullish");
   const [maxRisk, setMaxRisk] = usePersistedState<string>("advisor_maxrisk", "500");
-  // Desk's risk per trade seeds the per-contract cap once (the trader can still type their own number).
+  // The trader's own 1R (Settings → Торговля) seeds the per-contract cap once, never above the desk's
+  // max risk per trade (/risk/me = hard cap). The trader can still type their own number.
   const deskQ = useQuery({ queryKey: ["calculator", "risk-me"], queryFn: fetchDeskLimits, retry: false, staleTime: 60_000 });
+  const tradingDefaults = useTradingDefaults();
+  const personalRisk = tradingDefaults.updatedAt ? riskPerTradeUsd(tradingDefaults) : null;
+  const deskMaxRisk = deskQ.data?.maxRisk ?? null;
   const deskSeeded = useRef(false);
   useEffect(() => {
-    const mr = deskQ.data?.maxRisk;
-    if (deskSeeded.current || mr == null) return;
+    if (deskSeeded.current || deskQ.isLoading) return;
+    const seed = personalRisk != null && personalRisk > 0
+      ? (deskMaxRisk != null ? Math.min(personalRisk, deskMaxRisk) : personalRisk)
+      : deskMaxRisk;
+    if (seed == null) return;
     deskSeeded.current = true;
-    if (maxRisk === "500") setMaxRisk(String(Math.round(mr)));
-  }, [deskQ.data?.maxRisk, maxRisk, setMaxRisk]);
+    if (maxRisk === "500") setMaxRisk(String(Math.round(seed)));
+  }, [deskQ.isLoading, deskMaxRisk, personalRisk, maxRisk, setMaxRisk]);
   const [ivOutlook, setIvOutlook] = usePersistedState<IvOutlook>("advisor_iv", "neutral");
   const [nContracts, setNContracts] = usePersistedState<string>("advisor_contracts", "1");
   const [rateStr, setRateStr] = usePersistedState<string>("advisor_rate", "4.5");
@@ -174,8 +182,17 @@ export default function ChainAdvisor({
   const strategies = useMemo(() => {
     if (!chain) return [];
     const mr = num(maxRisk);
-    return buildStrategies(chain, goal, mr > 0 ? mr : 500, ivOutlook, contractsN, riskFree);
-  }, [chain, goal, maxRisk, ivOutlook, contractsN, riskFree]);
+    let perContract = mr > 0 ? mr : 500;
+    // Desk limit is a hard cap on the whole trade (N contracts).
+    if (deskMaxRisk != null) perContract = Math.min(perContract, deskMaxRisk / contractsN);
+    return buildStrategies(chain, goal, perContract, ivOutlook, contractsN, riskFree);
+  }, [chain, goal, maxRisk, ivOutlook, contractsN, riskFree, deskMaxRisk]);
+  const tradeRisk = (num(maxRisk) > 0 ? num(maxRisk) : 500) * contractsN;
+  const overDesk = deskMaxRisk != null && tradeRisk > deskMaxRisk + 0.005;
+  const maxRiskHint = [
+    personalRisk != null ? `Ваш 1R: ${fmtUsd(personalRisk, 0)}` : null,
+    deskMaxRisk != null ? `лимит деска на сделку: ${fmtUsd(deskMaxRisk, 0)}` : null,
+  ].filter(Boolean).join(" · ");
 
   const atmIv = useMemo(() => {
     if (!chain) return null;
@@ -246,7 +263,7 @@ export default function ChainAdvisor({
     <div className="flex flex-col gap-4">
       <Panel title="Цепочка опционов" icon={Search} description="NASDAQ, с задержкой">
         <div className="flex flex-col gap-3">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,16rem)_minmax(0,16rem)_1fr] lg:items-end">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:grid-cols-[minmax(0,20rem)_minmax(0,16rem)_1fr] lg:items-end">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="chain-ticker" className="text-xs font-normal text-muted-foreground">Тикер</Label>
               <div className="flex gap-2">
@@ -323,7 +340,8 @@ export default function ChainAdvisor({
                   <Segmented<IvOutlook> ariaLabel="Прогноз волатильности" value={ivOutlook} onChange={setIvOutlook} options={IV_OUTLOOKS} />
                 </div>
                 <NumField label="Макс. риск на контракт" prefix="$" value={maxRisk} onChange={setMaxRisk} placeholder="500"
-                  hint={deskQ.data?.maxRisk != null ? `Лимит деска на сделку: ${fmtUsd(deskQ.data.maxRisk, 0)}` : undefined} />
+                  error={overDesk ? `Риск сделки ${fmtUsd(tradeRisk, 0)} выше лимита деска ${fmtUsd(deskMaxRisk ?? 0, 0)} — подбор по лимиту` : undefined}
+                  hint={maxRiskHint ? maxRiskHint.charAt(0).toUpperCase() + maxRiskHint.slice(1) : undefined} />
                 <NumField label="Контрактов" value={nContracts} onChange={setNContracts} integer placeholder="1" />
                 <NumField label="Ставка" suffix="%" value={rateStr} onChange={setRateStr} placeholder="4.5" />
               </div>

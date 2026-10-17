@@ -149,7 +149,8 @@ export function fmtValue(v: number | null, fmt: StreamItem["valueFmt"]): string 
   if (v == null || !Number.isFinite(v) || !fmt) return null;
   if (fmt === "pct") return `${Math.round(v)}%`;
   if (fmt === "int") return v.toLocaleString("ru-RU");
-  const abs = Math.abs(v).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  // Money as everywhere on the desk ($1,234.56 — formatCurrency, trade tables, the server-written subtitles).
+  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   return v > 0 ? `+$${abs}` : v < 0 ? `−$${abs}` : `$${abs}`;
 }
 

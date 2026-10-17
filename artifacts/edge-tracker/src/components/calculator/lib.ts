@@ -96,17 +96,18 @@ export async function fetchDeskLimits(): Promise<DeskLimits | null> {
   }
 }
 
-/** Distinct broker accounts seen on the viewer's trades (PropReports / manual). Empty when none → selector hidden. */
+/** The viewer's PropReports accounts (staff: every desk account). Empty when none → selector hidden.
+ *  Uses the lean mapping endpoint — never the full /api/trades payload (tens of MB for staff). */
 export async function fetchBrokerAccounts(): Promise<string[]> {
   try {
-    const r = await fetch(`${BASE}/api/trades`);
+    const r = await fetch(`${BASE}/api/propreports/accounts`);
     if (!r.ok) return [];
-    const j = await r.json() as unknown;
-    const rows = Array.isArray(j) ? j : Array.isArray((j as { items?: unknown[] })?.items) ? (j as { items: unknown[] }).items : [];
+    const rows = await r.json() as unknown;
+    if (!Array.isArray(rows)) return [];
     const out = new Set<string>();
-    for (const t of rows as { brokerAccount?: unknown; broker_account?: unknown }[]) {
-      const a = t.brokerAccount ?? t.broker_account;
-      if (typeof a === "string" && a.trim()) out.add(a.trim());
+    for (const a of rows as { account?: unknown; active?: unknown }[]) {
+      if (a.active === false) continue;
+      if (typeof a.account === "string" && a.account.trim()) out.add(a.account.trim());
     }
     return [...out].sort();
   } catch {

@@ -2,13 +2,15 @@ import { useMemo } from "react";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill, Segmented, toneOf, toneText } from "@/components/ds";
 import { CHART_CURSOR, CHART_TOOLTIP, OutcomeBar, fmtR, useStoredState } from "./shared";
-import { calibVerdict, calibrationOf, qualityCalibration, scoreCalibration, type EnrichedIdea } from "./idea-metrics";
+import { calibVerdict, calibrationOf, qualityCalibration, scoreCalibration, type EnrichedIdea, type OutcomeBasis } from "./idea-metrics";
 
 type Mode = "score" | "quality";
 
-export function IdeaCalibration({ ideas }: { ideas: EnrichedIdea[] }) {
+export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { ideas: EnrichedIdea[]; basis?: OutcomeBasis; pending?: boolean }) {
+  const byPrice = basis === "price";
   const [mode, setMode] = useStoredState<Mode>("ideaStats.calibMode", "score", ["score", "quality"]);
   const rows = useMemo(() => (mode === "score" ? scoreCalibration(ideas) : qualityCalibration(ideas)), [ideas, mode]);
   const calib = useMemo(() => calibrationOf(ideas), [ideas]);
@@ -25,7 +27,9 @@ export function IdeaCalibration({ ideas }: { ideas: EnrichedIdea[] }) {
     <Panel
       icon={Gauge}
       title="Калибровка"
-      description={mode === "score" ? "Совпадает ли скор идеи с реальным исходом сделки" : "Совпадает ли качество сетапа (A+…D) с исходом"}
+      description={mode === "score"
+        ? byPrice ? "Совпадает ли скор идеи с тем, дошла ли цена до цели" : "Совпадает ли скор идеи с реальным исходом сделки"
+        : "Совпадает ли качество сетапа (A+…D) с исходом"}
       actions={
         <Segmented
           ariaLabel="Группировка калибровки"
@@ -49,7 +53,9 @@ export function IdeaCalibration({ ideas }: { ideas: EnrichedIdea[] }) {
           </div>
         )}
 
-        {hasOutcomes ? (
+        {pending ? (
+          <Skeleton className="h-52 w-full rounded-xl" />
+        ) : hasOutcomes ? (
           <div className="h-52 w-full" role="img" aria-label="Hit rate и средний R по группам">
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartRows} margin={{ top: 8, right: 4, bottom: 0, left: -16 }}>
@@ -67,14 +73,16 @@ export function IdeaCalibration({ ideas }: { ideas: EnrichedIdea[] }) {
                       : [fmtR(n), "Средний R"];
                   }}
                 />
-                <Bar yAxisId="hit" dataKey="hit" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} maxBarSize={36} />
-                <Line yAxisId="r" dataKey="avgR" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--chart-3))" }} connectNulls />
+                <Bar isAnimationActive={false} yAxisId="hit" dataKey="hit" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} maxBarSize={36} />
+                <Line isAnimationActive={false} yAxisId="r" dataKey="avgR" stroke="hsl(var(--chart-3))" strokeWidth={2} dot={{ r: 3, fill: "hsl(var(--chart-3))" }} connectNulls />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
         ) : (
           <p className="rounded-xl bg-[var(--glass-bg)] p-4 text-sm text-muted-foreground">
-            Пока нет закрытых сделок из идей. Когда идеи будут конвертированы в сделки с результатом, здесь появится сравнение
+            {byPrice
+              ? "Пока ни одна идея не дошла до цели или стопа. Когда цена отработает уровни, здесь появится сравнение"
+              : "Пока нет закрытых сделок из идей. Когда идеи будут конвертированы в сделки с результатом, здесь появится сравнение"}{" "}
             hit rate и среднего R по {mode === "score" ? "диапазонам скора" : "качеству сетапа"}.
           </p>
         )}

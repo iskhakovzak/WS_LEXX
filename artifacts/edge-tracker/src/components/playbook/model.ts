@@ -160,7 +160,7 @@ export const STRUCTURED: { key: StructuredKey; label: string; placeholder: strin
 export const fmtUsd = (v: number | null | undefined, digits = 0) =>
   v == null || !Number.isFinite(v)
     ? "—"
-    : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
+    : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
 export const moneyTone = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
 /** dd.MM (tables) from YYYY-MM-DD. */
 export const ddmm = (d: string | null | undefined) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : d ?? "—");
@@ -231,12 +231,18 @@ export type FormData = {
   notes: string; confidenceLevel: string; screenshotUrls: string[]; screenshotNotes: string[]; tags: string;
   ticker: string; marketCap: string; float: string; adv: string;
   atr: string; relativeVolume: string; beta: string; shortInterest: string; sector: string; longName: string;
-};
+  /** Structured card — the same columns the «Описание» tab autosaves. */
+  horizon: string; timeOfDay: string;
+} & Record<StructuredKey, string>;
+
+const structuredOf = (e?: Partial<Record<StructuredKey, string | null>>): Record<StructuredKey, string> =>
+  Object.fromEntries(STRUCTURED.map((f) => [f.key, e?.[f.key] ?? ""])) as Record<StructuredKey, string>;
 
 export const blankForm = (): FormData => ({
   name: "", folder: "", setupType: "", conditions: "", checklist: "", notes: "", confidenceLevel: "70",
   screenshotUrls: [""], screenshotNotes: [""], tags: "", ticker: "", marketCap: "", float: "", adv: "",
   atr: "", relativeVolume: "", beta: "", shortInterest: "", sector: "", longName: "",
+  horizon: "", timeOfDay: "", ...structuredOf(),
 });
 
 export function entryToForm(e: PlaybookEntry): FormData {
@@ -250,15 +256,19 @@ export function entryToForm(e: PlaybookEntry): FormData {
     atr: e.atr != null ? String(e.atr) : "", relativeVolume: e.relativeVolume != null ? String(e.relativeVolume) : "",
     beta: e.beta != null ? String(e.beta) : "", shortInterest: e.shortInterest != null ? String(e.shortInterest) : "",
     sector: e.sector ?? "", longName: e.longName ?? "",
+    horizon: e.horizon ?? "", timeOfDay: e.timeOfDay ?? "", ...structuredOf(e),
   };
 }
 
 /** Request body for POST/PATCH /api/playbook from the form. */
 export function formToBody(data: FormData, folder: string | null, trader: string) {
-  const { screenshotUrls, screenshotNotes: sNotes, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName, ...rest } = data;
+  const { screenshotUrls, screenshotNotes: sNotes, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName, horizon, timeOfDay, ...rest } = data;
   const num = (v: string) => (v.trim() !== "" && Number.isFinite(Number(v)) ? Number(v) : null);
   return {
     ...rest,
+    ...Object.fromEntries(STRUCTURED.map((f) => [f.key, (data[f.key] ?? "").trim() || null])),
+    horizon: horizon || null,
+    timeOfDay: timeOfDay.trim() || null,
     folder: folder || null,
     confidenceLevel: num(data.confidenceLevel),
     screenshotUrl: screenshotUrlsToString(screenshotUrls) || null,
@@ -346,8 +356,19 @@ export function checklistCount(e: Pick<PlaybookEntry, "checklist" | "checklistIt
 }
 
 /** Text a setup is searchable by. */
+const haystacks = new WeakMap<PlaybookEntry, string>();
 export function searchHaystack(e: PlaybookEntry): string {
-  return [e.name, e.folder, e.setupType, e.conditions, e.tags, e.notes, e.ticker, e.sector, e.longName, e.checklist]
+  // Rows are immutable query-cache objects: build each text once, not on every keystroke.
+  let hay = haystacks.get(e);
+  if (hay === undefined) { hay = buildHaystack(e); haystacks.set(e, hay); }
+  return hay;
+}
+function buildHaystack(e: PlaybookEntry): string {
+  // Structured card fields too — most setups are described there, not in the legacy `conditions` text.
+  return [
+    e.name, e.folder, e.setupType, e.conditions, e.tags, e.notes, e.ticker, e.sector, e.longName, e.checklist,
+    ...STRUCTURED.map((f) => e[f.key]), e.timeOfDay,
+  ]
     .filter(Boolean)
     .join("\n")
     .toLowerCase();

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 
 type TickerContextData = {
   ticker: string;
@@ -42,7 +43,7 @@ function TickerContextBody({ ticker, onFilter }: { ticker: string; onFilter?: (t
     <div className="space-y-3 text-sm">
       <div className="flex items-center justify-between gap-2">
         <span className="text-base font-semibold tabular-nums">${ticker}</span>
-        {data && <span className="text-xs text-muted-foreground">{data.discussions} {data.discussions === 1 ? "тема" : "тем"} в обсуждениях</span>}
+        {data && <span className="text-xs text-muted-foreground">{data.discussions} {pluralRu(data.discussions, "тема", "темы", "тем")} в обсуждениях</span>}
       </div>
       {isLoading && <div className="space-y-2"><Skeleton className="h-10 rounded-xl" /><Skeleton className="h-10 rounded-xl" /></div>}
       {isError && <p className="text-xs text-down">Не удалось загрузить контекст тикера.</p>}

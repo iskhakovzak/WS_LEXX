@@ -8,6 +8,7 @@ import {
   type WeekSummary, fmtDayLong, fmtMonthKey,
 } from "@/lib/analytics-pro";
 import { fmtPct, fmtVal } from "./pro-format";
+import { pluralRu } from "@/components/rules/constants";
 
 /* ── KPI strip ────────────────────────────────────────────────────────── */
 
@@ -27,7 +28,7 @@ export function KpiGrid({
         label="Итог"
         value={noVal ? "—" : fmtVal(metric, edge.total, { sign: true })}
         tone={toneOf(edge.total)}
-        hint={`${edge.count} из ${totalTrades} сделок с ${metric === "r" ? "R" : "P&L"}`}
+        hint={`${edge.count} из ${totalTrades} ${pluralRu(totalTrades, "сделки", "сделок", "сделок")} с ${metric === "r" ? "R" : "P&L"}`}
       />
       <StatCard
         label="Ожидание на сделку"

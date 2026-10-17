@@ -227,7 +227,7 @@ export const PatternCards = React.memo(function PatternCards({
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       {costly.length > 0 ? (
-        <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2 min-[1800px]:grid-cols-3">
+        <div className="grid grid-cols-1 gap-[var(--grid-gap)] min-[1280px]:grid-cols-2 min-[1800px]:grid-cols-3">
           {costly.map((p) => <PatternCard key={p.key} p={p} trader={trader} canEdit={canEdit} />)}
         </div>
       ) : (
@@ -251,7 +251,7 @@ export const PatternCards = React.memo(function PatternCards({
             )}
           </button>
           {showFree && (
-            <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2 min-[1800px]:grid-cols-3">
+            <div className="grid grid-cols-1 gap-[var(--grid-gap)] min-[1280px]:grid-cols-2 min-[1800px]:grid-cols-3">
               {free.map((p) => <PatternCard key={p.key} p={p} trader={trader} canEdit={canEdit} />)}
             </div>
           )}

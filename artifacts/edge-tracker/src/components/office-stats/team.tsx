@@ -5,7 +5,8 @@
  */
 import * as React from "react";
 import { Download, HelpCircle, Landmark, Save, Users } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Sparkline, toneOf } from "@/components/ds";
+import { Link } from "wouter";
+import { DataTable, EmptyState, Panel, SortableTh, Sparkline, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -16,72 +17,125 @@ import {
   type AdminResponse, type AdminSetting, type OfficeView, type Rules, type TraderRow, type Unit,
 } from "./api";
 import { strategyColor, useDark } from "./palette";
+import { downloadCsv } from "./csv";
+import { TFOOT } from "./monthly";
+import { profileHref } from "@/components/curator/curator-math";
+import { PeopleSearchInput } from "@/components/people/people-search-input";
+import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
-type SortKey = "net" | "share" | "trades" | "winRate" | "profitFactor" | "consistency" | "volume" | "maxDrawdown";
+/** Columns that only fit from ~1400px (the sparkline): hidden on a 1280 screen so the table needs no sideways scroll. */
+const WIDE_ONLY = "hidden min-[1400px]:table-cell";
+
+type TraderKey = "trader" | "net" | "share" | "trades" | "winRate" | "profitFactor" | "consistency" | "volume" | "maxDrawdown";
+const TRADER_ACCESSORS: Record<TraderKey, (r: TraderRow) => number | string | null> = {
+  trader: (r) => r.trader,
+  net: (r) => r.net,
+  share: (r) => r.share,
+  trades: (r) => r.trades,
+  winRate: (r) => r.winRate,
+  profitFactor: (r) => r.profitFactor,
+  consistency: (r) => r.consistency,
+  volume: (r) => r.volume,
+  // «desc» puts the shallowest drawdown (0) first, the deepest last.
+  maxDrawdown: (r) => r.maxDrawdown,
+};
 
 export function TradersTable({ view, unit, periodLabel }: { view: OfficeView; unit: Unit; periodLabel: string }) {
   const dark = useDark();
-  const rows = view.period.traders ?? [];
-  const [sort, setSort] = React.useState<{ k: SortKey; dir: 1 | -1 }>({ k: "net", dir: -1 });
-  const sorted = React.useMemo(() => {
-    const val = (r: TraderRow) => (r[sort.k] as number | null) ?? -Infinity;
-    return [...rows].sort((a, b) => (val(a) - val(b)) * sort.dir);
-  }, [rows, sort]);
-  const th = (k: SortKey, label: string, title?: string) => (
-    <th className="!text-right" aria-sort={sort.k === k ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
-      <button type="button" title={title} onClick={() => setSort((s) => ({ k, dir: s.k === k ? ((-s.dir) as 1 | -1) : -1 }))} className="inline-flex items-center gap-1 hover:text-foreground">
-        {label}{sort.k === k && <span aria-hidden="true">{sort.dir === -1 ? "↓" : "↑"}</span>}
-      </button>
-    </th>
-  );
+  const rows = React.useMemo(() => view.period.traders ?? [], [view]);
+  const [q, setQ] = React.useState("");
+  const aliases = usePeopleAliases();
+  const shown = React.useMemo(() => {
+    const pq = prepareQuery(q);
+    return pq.empty ? rows : rows.filter((r) => matchPerson(pq, r.trader, aliases, r.topStrategy));
+  }, [rows, q, aliases]);
+  const { rows: sorted, thProps } = useTableSort(shown, TRADER_ACCESSORS, "net", "desc", { trader: "asc" });
+  const t = view.period.totals;
+  // 12 columns: tighter cell padding so the table fits a 1280–1440 screen without a sideways scroll.
+  const winners = rows.filter((r) => r.net > 0).length;
+  const exportCsv = () => {
+    const u = unit === "usd" ? "$" : "%";
+    downloadCsv(`office-traders-${view.period.from}_${view.period.to}-${unit}.csv`, [
+      ["Трейдер", `Нетто ${u}`, "Доля результата", "Сделок", "WR", "PF", "Зелёные дни", "Объём", "Доля объёма", `Макс. DD ${u}`,
+        "Лучший день", `Лучший день ${u}`, "Худший день", `Худший день ${u}`, "Основная стратегия"],
+      ...sorted.map((r) => [r.trader, r.net, r.share, r.trades, r.winRate, r.profitFactor, r.consistency, r.volume, r.volumeShare, r.maxDrawdown,
+        r.bestDay?.date, r.bestDay?.v, r.worstDay?.date, r.worstDay?.v, r.topStrategy]),
+    ]);
+  };
   return (
-    <Panel title="Трейдеры" description={`${periodLabel} · вклад каждого трейдера в результат офиса · видят только партнёры`} icon={Users}>
+    <Panel
+      title="Трейдеры"
+      description={`${periodLabel} · вклад каждого трейдера в результат офиса · имя — профиль в кабинете куратора · видят только партнёры`}
+      icon={Users}
+      actions={rows.length > 0 && (
+        <>
+          <PeopleSearchInput value={q} onChange={setQ} className="sm:w-56" inputClassName="h-8" />
+          <span className="text-xs tabular-nums text-muted-foreground">{q ? `${shown.length} из ${rows.length} · ` : ""}{winners} из {rows.length} в плюсе</span>
+          <Button variant="ghost" size="sm" onClick={exportCsv} aria-label="Скачать таблицу трейдеров CSV"><Download className="h-4 w-4" /> CSV</Button>
+        </>
+      )}
+    >
       {!rows.length ? <EmptyState compact icon={Users} title="Нет сделок за период" /> : (
-        <DataTable ariaLabel="Трейдеры офиса" stickyFirstCol maxHeight="70vh">
+        <DataTable ariaLabel="Трейдеры офиса" stickyFirstCol maxHeight="70vh" className={cn(TFOOT, "[&_thead_th]:px-2 [&_tbody_td]:px-2 [&_tfoot_td]:px-2")}>
           <table>
             <thead>
               <tr>
-                <th>Трейдер</th>
-                <th>Кривая</th>
-                {th("net", "Нетто")}
-                {th("share", "Доля", "доля в результате офиса")}
-                {th("trades", "Сделок")}
-                {th("winRate", "WR")}
-                {th("profitFactor", "PF")}
-                {th("consistency", "Стабильность", "доля зелёных дней из торговых")}
-                {th("volume", "Объём", "акций за период")}
-                {th("maxDrawdown", "Макс. DD")}
-                <th>Лучший / худший день</th>
-                <th>Стратегия</th>
+                <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
+                <th scope="col" className={cn("!px-1.5", WIDE_ONLY)}><span className="sr-only">Кривая</span></th>
+                <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+                <SortableTh {...thProps("share")} align="right">Доля</SortableTh>
+                <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
+                <SortableTh {...thProps("winRate")} align="right">WR</SortableTh>
+                <SortableTh {...thProps("profitFactor")} align="right">PF</SortableTh>
+                <SortableTh {...thProps("consistency")} align="right">Зел. дни</SortableTh>
+                <SortableTh {...thProps("volume")} align="right">Объём</SortableTh>
+                <SortableTh {...thProps("maxDrawdown")} align="right">Макс. DD</SortableTh>
+                <th scope="col" className="text-right" title="Лучший и худший день трейдера за период">Лучш. / худш.</th>
+                <th scope="col">Стратегия</th>
               </tr>
             </thead>
             <tbody>
               {sorted.map((r) => (
                 <tr key={r.trader}>
-                  <td className="whitespace-nowrap font-medium text-foreground">{r.trader}</td>
-                  <td><Sparkline data={r.spark} width={88} height={22} baseline={0} ariaLabel={`Кривая ${r.trader}`} /></td>
-                  <td className={cn("text-right font-semibold", r.net >= 0 ? "text-up" : "text-down")}>{fmtV(r.net, unit)}</td>
-                  <td className="text-right">{r.share != null ? <Pill tone={toneOf(r.share)}>{fmtShare(r.share)}</Pill> : "—"}</td>
-                  <td className="text-right">{r.trades}</td>
+                  <td className="whitespace-nowrap font-medium">
+                    <Link href={profileHref(r.trader)} className="rounded text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`Профиль ${r.trader} в кабинете куратора`}>{r.trader}</Link>
+                  </td>
+                  <td className={cn("!px-1.5", WIDE_ONLY)}><Sparkline data={r.spark} width={64} height={22} baseline={0} ariaLabel={`Кривая ${r.trader}`} /></td>
+                  <td className={cn("whitespace-nowrap text-right font-semibold", r.net >= 0 ? "text-up" : "text-down")}>{fmtV(r.net, unit)}</td>
+                  <td className={cn("text-right font-medium", r.share != null && r.share < 0 && "text-down")}>{fmtShare(r.share)}</td>
+                  <td className="text-right">{r.trades.toLocaleString("ru-RU")}</td>
                   <td className="text-right">{fmtShare(r.winRate)}</td>
                   <td className={cn("text-right", r.profitFactor != null && (r.profitFactor >= 1 ? "text-up" : "text-down"))}>{r.profitFactor != null ? r.profitFactor.toFixed(2) : "—"}</td>
-                  <td className="text-right">
-                    <span className="inline-flex items-center gap-1.5">
-                      <span className="relative h-1.5 w-12 rounded-full bg-[var(--glass-bg)]"><span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${(r.consistency ?? 0) * 100}%` }} /></span>
-                      {fmtShare(r.consistency)}
+                  <td className="text-right" title="Доля зелёных дней из торговых">
+                    <span className="inline-flex items-center justify-end gap-1.5">
+                      <span className="relative hidden h-1.5 w-8 rounded-full bg-[var(--glass-bg)] 2xl:inline-block" aria-hidden="true"><span className="absolute inset-y-0 left-0 rounded-full bg-primary" style={{ width: `${(r.consistency ?? 0) * 100}%` }} /></span>
+                      <span className="w-8">{fmtShare(r.consistency)}</span>
                     </span>
                   </td>
-                  <td className="text-right" title={r.volumeShare != null ? `${fmtShare(r.volumeShare, 1)} объёма офиса` : undefined}>{fmtNum(r.volume)}<span className="ml-1 text-2xs text-muted-foreground">{fmtShare(r.volumeShare)}</span></td>
-                  <td className="text-right text-down">{r.maxDrawdown < 0 ? fmtV(r.maxDrawdown, unit) : "—"}</td>
-                  <td className="whitespace-nowrap text-xs">
-                    <span className="text-up">{r.bestDay ? `${fmtV(r.bestDay.v, unit)} ${fmtDay(r.bestDay.date)}` : "—"}</span>
-                    <span className="mx-1 text-muted-foreground">/</span>
-                    <span className="text-down">{r.worstDay && r.worstDay.v < 0 ? `${fmtV(r.worstDay.v, unit)} ${fmtDay(r.worstDay.date)}` : "—"}</span>
+                  <td className="whitespace-nowrap text-right" title={r.volumeShare != null ? `${fmtNum(r.volume)} акций · ${fmtShare(r.volumeShare, 1)} объёма офиса` : undefined}>{fmtNum(r.volume)}</td>
+                  <td className={cn("whitespace-nowrap text-right", r.maxDrawdown < 0 && "text-down")}>{r.maxDrawdown < 0 ? fmtV(r.maxDrawdown, unit) : "—"}</td>
+                  <td className="whitespace-nowrap text-right text-xs leading-tight">
+                    <span className="block text-up">{r.bestDay ? <>{fmtV(r.bestDay.v, unit)} <span className="text-muted-foreground">{fmtDay(r.bestDay.date)}</span></> : "—"}</span>
+                    <span className="block text-down">{r.worstDay && r.worstDay.v < 0 ? <>{fmtV(r.worstDay.v, unit)} <span className="text-muted-foreground">{fmtDay(r.worstDay.date)}</span></> : "—"}</span>
                   </td>
-                  <td>{r.topStrategy ? <span className="inline-flex items-center gap-1.5 text-xs"><span className="h-2 w-2 rounded-full" style={{ background: strategyColor(r.topStrategy, dark) }} aria-hidden="true" />{r.topStrategy}</span> : "—"}</td>
+                  <td>{r.topStrategy ? <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs"><span className="h-2 w-2 rounded-full" style={{ background: strategyColor(r.topStrategy, dark) }} aria-hidden="true" />{r.topStrategy}</span> : "—"}</td>
                 </tr>
               ))}
             </tbody>
+            <tfoot>
+              <tr className="font-semibold">
+                <td className="left-0 !z-sticky-corner">Офис</td>
+                <td className={WIDE_ONLY} />
+                <td className={cn("whitespace-nowrap text-right", t.net >= 0 ? "text-up" : "text-down")}>{fmtV(t.net, unit)}</td>
+                <td className="text-right">100%</td>
+                <td className="text-right">{t.trades.toLocaleString("ru-RU")}</td>
+                <td className="text-right">{fmtShare(t.winRate)}</td>
+                <td className="text-right">{t.profitFactor != null ? t.profitFactor.toFixed(2) : "—"}</td>
+                <td className="text-right">{t.tradingDays ? fmtShare(t.greenDays / t.tradingDays) : "—"}</td>
+                <td className="text-right">{t.volume != null ? fmtNum(t.volume) : "—"}</td>
+                <td colSpan={3} />
+              </tr>
+            </tfoot>
           </table>
         </DataTable>
       )}
@@ -98,7 +152,10 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
   const capNum = capital.trim() === "" ? null : Number(capital.replace(/[\s,]/g, ""));
   const goalNum = Number(goal.replace(",", "."));
   const capValid = capNum == null || (Number.isFinite(capNum) && capNum > 0 && capNum <= 1e11);
-  const goalValid = Number.isFinite(goalNum) && goalNum >= 0 && goalNum <= 1000;
+  // The server accepts 0 < goal ≤ 1000 %.
+  const goalValid = Number.isFinite(goalNum) && goalNum > 0 && goalNum <= 1000;
+  const goalUsd = capValid && capNum != null && goalValid ? (capNum * goalNum) / 100 : null;
+  const clearing = capNum == null && s.capital != null;
   const dirty = capNum !== s.capital || goalNum !== s.goalPct;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -122,7 +179,17 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
       <Button type="submit" size="sm" disabled={!dirty || !capValid || !goalValid || save.isPending} className="col-span-2 sm:col-span-1">
         <Save className="h-4 w-4" /> {save.isPending ? "Сохраняю…" : "Сохранить"}
       </Button>
-      {s.updatedBy && <p className="col-span-2 text-2xs text-muted-foreground sm:col-span-4">изменил {s.updatedBy}{s.updatedAt ? ` · ${new Date(s.updatedAt).toLocaleDateString("ru-RU")}` : ""}</p>}
+      <p className="col-span-2 flex flex-wrap gap-x-3 text-2xs text-muted-foreground sm:col-span-4">
+        {clearing ? (
+          <span className="text-warn">Без капитала трейдеры не увидят статистику за {s.year}</span>
+        ) : capNum != null && capValid ? (
+          <span className="tabular-nums">{fmtV(capNum, "usd", { signed: false })} · цель {goalUsd != null ? fmtV(goalUsd, "usd") : "—"}</span>
+        ) : !capValid ? (
+          <span className="text-destructive">Капитал — положительное число в $</span>
+        ) : null}
+        {!goalValid && <span className="text-destructive">Цель — больше 0 и не выше 1000 %</span>}
+        {s.updatedBy && <span>изменил {s.updatedBy}{s.updatedAt ? ` · ${new Date(s.updatedAt).toLocaleDateString("ru-RU")}` : ""}</span>}
+      </p>
     </form>
   );
 }
@@ -148,17 +215,11 @@ export function CapitalPanel({ data }: { data: AdminResponse }) {
 
 // ─── CSV export (partners) ─────────────────────────────────────────────────────
 
-function csvCell(v: unknown): string {
-  if (v == null) return "";
-  const s = typeof v === "number" ? String(Math.round(v * 10000) / 10000) : String(v);
-  return /[;"\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-}
-
 export function exportCsv(data: AdminResponse, unit: Unit) {
   const view = unit === "usd" ? data.usd : data.pct;
   const u = unit === "usd" ? "$" : "%";
-  const lines: string[] = [];
-  const row = (...c: unknown[]) => lines.push(c.map(csvCell).join(";"));
+  const rows: unknown[][] = [];
+  const row = (...c: unknown[]) => rows.push(c);
   row(`Статистика офиса · период ${view.period.from} — ${view.period.to} · единицы: ${u}`);
   row();
   row("Дни"); row("Дата", "Год", `Нетто ${u}`, `С начала года ${u}`, "Сделок");
@@ -167,24 +228,17 @@ export function exportCsv(data: AdminResponse, unit: Unit) {
   row("Стратегии за период"); row("Стратегия", "Сделок", "WR", "PF", "Ср. R", `Нетто ${u}`, "Доля результата", "Доля объёма", "Объём");
   for (const s of view.period.strategies) row(s.key, s.trades, s.winRate, s.profitFactor, s.avgR, s.net, s.netShare, s.volumeShare, s.volume);
   row();
-  row("Трейдеры за период"); row("Трейдер", "Сделок", `Нетто ${u}`, "Доля", "WR", "PF", "Стабильность", "Объём", `Макс. DD ${u}`, "Стратегия");
+  row("Трейдеры за период"); row("Трейдер", "Сделок", `Нетто ${u}`, "Доля", "WR", "PF", "Зелёные дни", "Объём", `Макс. DD ${u}`, "Стратегия");
   for (const t of view.period.traders ?? []) row(t.trader, t.trades, t.net, t.share, t.winRate, t.profitFactor, t.consistency, t.volume, t.maxDrawdown, t.topStrategy);
   row();
   row("Месяцы"); row("Год", "Месяц", `Нетто ${u}`, "Дней", "Зелёных", "Красных");
   for (const y of view.years) for (const m of y.months) if (m.days) row(y.year, m.month, m.v, m.days, m.green, m.red);
-  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = `office-stats-${view.period.from}_${view.period.to}-${unit}.csv`;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  downloadCsv(`office-stats-${view.period.from}_${view.period.to}-${unit}.csv`, rows);
 }
 
 export function CsvButton({ data, unit }: { data: AdminResponse; unit: Unit }) {
   return (
-    <Button variant="outline" size="sm" onClick={() => exportCsv(data, unit)}>
+    <Button variant="outline" size="sm" onClick={() => exportCsv(data, unit)} title="Всё за период одним файлом: дни, стратегии, трейдеры, месяцы">
       <Download className="h-4 w-4" /> CSV
     </Button>
   );

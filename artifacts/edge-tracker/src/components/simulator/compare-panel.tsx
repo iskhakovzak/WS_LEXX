@@ -2,6 +2,7 @@ import { ArrowRight } from "lucide-react";
 import { Pill, TermTooltip, type TermKey, type Tone, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { fmtPct, fmtPf, fmtSigned, fmtUsd, sdeal } from "@/components/analytics-page/metrics";
+import { usd2 } from "./fees-tab";
 import type { BootstrapSummary, Metrics } from "./api";
 
 const TONE_CLASS: Record<string, string> = { up: "text-up", down: "text-down", neutral: "text-muted-foreground" };
@@ -77,7 +78,7 @@ export function KeyMetrics({ baseline, scenario, hasScenario }: { baseline: Metr
   const usd = (v: number | null) => (v == null ? "—" : fmtUsd(v));
   const items: KeyDef[] = [
     { label: "Нетто", term: "net", a: baseline.net, b: scenario.net, fmt: usd, delta: (d) => fmtUsd(d) },
-    { label: "Комиссии", term: "fees", a: baseline.fees, b: scenario.fees, fmt: (v) => (v == null ? "—" : `$${v.toFixed(0)}`), delta: (d) => fmtUsd(d), invert: true },
+    { label: "Комиссии", term: "fees", a: baseline.fees, b: scenario.fees, fmt: (v) => (v == null ? "—" : `$${Math.round(v).toLocaleString("en-US")}`), delta: (d) => fmtUsd(d), invert: true },
     { label: "Сделок", a: baseline.trades, b: scenario.trades, fmt: (v) => (v == null ? "—" : String(v)), delta: (d) => fmtSigned(d, 0) },
     { label: "Винрейт", term: "winrate", a: baseline.winRate, b: scenario.winRate, fmt: (v) => fmtPct(v, 1), delta: (d) => `${fmtSigned(d * 100, 1)} п.п.` },
     { label: "PF", term: "pf", a: baseline.profitFactor, b: scenario.profitFactor, fmt: fmtPf, delta: (d) => fmtSigned(d, 2) },
@@ -117,7 +118,7 @@ export function MetricsTable({ baseline, scenario, hasScenario }: { baseline: Me
   const rows: RowDef[] = [
     { label: "Нетто", a: baseline.net, b: scenario.net, fmt: fmtUsd, hint: "P&L − |комиссии|" },
     { label: "Брутто", a: baseline.gross, b: scenario.gross, fmt: fmtUsd },
-    { label: "Комиссии", a: baseline.fees, b: scenario.fees, fmt: (v) => (v == null ? "—" : `$${v.toFixed(2)}`), invert: true },
+    { label: "Комиссии", a: baseline.fees, b: scenario.fees, fmt: (v) => (v == null ? "—" : usd2(v)), invert: true },
     { label: "Сделок", a: baseline.trades, b: scenario.trades, fmt: (v) => (v == null ? "—" : String(v)), delta: (d) => fmtSigned(d, 0) },
     { label: "Винрейт", a: baseline.winRate, b: scenario.winRate, fmt: (v) => fmtPct(v, 1), delta: (d) => `${fmtSigned(d * 100, 1)} п.п.`, hint: "W / (W + L), по нетто" },
     { label: "Профит-фактор", a: baseline.profitFactor, b: scenario.profitFactor, fmt: fmtPf, delta: (d) => fmtSigned(d, 2), hint: "Σ нетто⁺ / |Σ нетто⁻|" },

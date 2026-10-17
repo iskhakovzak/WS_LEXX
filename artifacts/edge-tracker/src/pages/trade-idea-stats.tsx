@@ -15,11 +15,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { OutcomeBar, Sparkline, downloadCsv, fetchJson, fmtR, pluralRu, useStoredState } from "@/components/ratings/shared";
+import { IDEAS_KEY, useTracking } from "@/components/ideas/hooks";
 import { IdeaCalibration } from "@/components/ratings/idea-calibration";
 import {
   authorStats, bucketOf, calibVerdict, calibrationOf, enrichIdea,
-  type AuthorStats, type EnrichedIdea, type TradeIdea,
+  type AuthorStats, type EnrichedIdea, type OutcomeBasis, type TradeIdea,
 } from "@/components/ratings/idea-metrics";
+import { PersonSelect } from "@/components/people/person-select";
 
 const PERIODS = [
   { value: "30", label: "30 дней" },
@@ -30,14 +32,23 @@ const PERIODS = [
 type Period = (typeof PERIODS)[number]["value"];
 
 type SortKey = "ideas" | "conversion" | "hitRate" | "avgR" | "sumR" | "avgScore" | "calib";
-const SORTS: { key: SortKey; label: string; title?: string }[] = [
+const SORTS: { key: SortKey; label: string; title?: string; titlePrice?: string }[] = [
   { key: "ideas", label: "Идей" },
   { key: "conversion", label: "Конверсия", title: "Доля опубликованных идей, взятых в сделку" },
-  { key: "hitRate", label: "Hit rate", title: "Прибыльные / (прибыльные + убыточные) сделки из идей; безубыток не считается" },
+  {
+    key: "hitRate", label: "Hit rate",
+    title: "Прибыльные / (прибыльные + убыточные) сделки из идей; безубыток не считается",
+    titlePrice: "Цель раньше стопа / (цель + стоп) — по часовым свечам с момента публикации",
+  },
   { key: "avgR", label: "Ср. R" },
   { key: "sumR", label: "Σ R" },
   { key: "avgScore", label: "Ср. скор" },
-  { key: "calib", label: "Калибровка", title: "Корреляция скора идеи с итоговым R (нужно ≥ 5 сделок)" },
+  { key: "calib", label: "Калибровка", title: "Корреляция скора идеи с итоговым R (нужно ≥ 5 исходов)" },
+];
+
+const BASES: { value: OutcomeBasis; label: string }[] = [
+  { value: "price", label: "По цене" },
+  { value: "trades", label: "По сделкам" },
 ];
 
 /** Column accessors for the authors table; empty values sink to the bottom (useTableSort). */
@@ -54,6 +65,11 @@ const AUTHOR_ACCESSORS: Record<SortKey | "trader" | "best", (a: AuthorStats) => 
 };
 
 const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
+/** "2026-10-12" → "12 окт." (NY calendar date, no TZ shift). */
+const shortDate = (d: string) => {
+  const t = new Date(`${d}T12:00:00Z`);
+  return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
+};
 
 /** Period start on the NY trading calendar (idea dates are NY dates, so a local-midnight cutoff would drift by a day). */
 function cutoff(period: Period): string | null {
@@ -84,14 +100,25 @@ export default function TradeIdeaStats() {
   const [period, setPeriod] = useStoredState<Period>("ideaStats.period", "90", PERIODS.map((p) => p.value));
   const [author, setAuthor] = useState<string>("all");
   const [bestMode, setBestMode] = useState<"best" | "worst">("best");
+  // Outcome basis: price vs. the idea's own target / stop (every published idea with numeric levels), or the linked
+  // trade (only ideas a trade was matched to). Trades arrive from PropReports, so links are the rarer signal.
+  const [basis, setBasis] = useStoredState<OutcomeBasis>("ideaStats.basis", "price", ["price", "trades"]);
+  const byPrice = basis === "price";
 
+  // Same cache entry as the ideas board (no second 90 KB download when coming from /trade-ideas).
   const { data, isLoading, error, refetch } = useQuery<TradeIdea[]>({
-    queryKey: ["trade-ideas", "stats-list"],
+    queryKey: IDEAS_KEY,
     queryFn: () => fetchJson<TradeIdea[]>(`${BASE}/api/trade-ideas`),
     staleTime: 30_000,
   });
+  const tracking = useTracking(byPrice && !!data?.length);
+  const trackItems = tracking.data?.items;
 
-  const all = useMemo(() => (data ?? []).map(enrichIdea), [data]);
+  const all = useMemo(
+    () => (data ?? []).map((i) => (byPrice ? enrichIdea(i, { basis: "price", track: trackItems?.[String(i.id)] ?? null }) : enrichIdea(i))),
+    [data, byPrice, trackItems],
+  );
+  const trackingPending = byPrice && tracking.isLoading;
   const inPeriod = useMemo(() => {
     const c = cutoff(period);
     return c ? all.filter((i) => i.date >= c) : all;
@@ -118,8 +145,10 @@ export default function TradeIdeaStats() {
 
   function exportCsv() {
     downloadCsv(
-      `idea-stats-${period}.csv`,
-      ["Автор", "Идей", "Опубликовано", "В сделках", "Конверсия %", "Прибыль", "Убыток", "Безубыток", "Hit rate %", "Ср. R", "Σ R", "Ср. скор", "Калибровка r"],
+      `idea-stats-${period}-${basis}.csv`,
+      byPrice
+        ? ["Автор", "Идей", "Опубликовано", "В сделках", "Конверсия %", "Цель", "Стоп", "—", "Цель раньше стопа %", "Ср. R", "Σ R", "Ср. скор", "Калибровка r"]
+        : ["Автор", "Идей", "Опубликовано", "В сделках", "Конверсия %", "Прибыль", "Убыток", "Безубыток", "Hit rate %", "Ср. R", "Σ R", "Ср. скор", "Калибровка r"],
       authors.map((a) => [
         a.trader, a.ideas, a.published, a.converted,
         a.conversion == null ? "" : Math.round(a.conversion * 100), a.wins, a.losses, a.be,
@@ -137,7 +166,9 @@ export default function TradeIdeaStats() {
       <PageHeader
         icon={BarChart3}
         title="Статистика идей"
-        description="Какие идеи становятся прибыльными сделками: по авторам, скору и реакциям команды"
+        description={byPrice
+          ? "Какие идеи доходят до цели раньше стопа: по авторам, скору и реакциям команды"
+          : "Какие идеи становятся прибыльными сделками: по авторам, скору и реакциям команды"}
         actions={
           <>
             <Button variant="ghost" size="sm" className="gap-1.5" onClick={exportCsv} disabled={authors.length === 0}>
@@ -151,20 +182,21 @@ export default function TradeIdeaStats() {
       >
         <div className="flex flex-wrap items-center gap-2">
           <Segmented ariaLabel="Период" options={[...PERIODS]} value={period} onChange={setPeriod} />
-          <Select value={author} onValueChange={setAuthor}>
-            <SelectTrigger className="h-10 w-48" aria-label="Автор идей"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Все авторы</SelectItem>
-              {authorNames.map((n) => <SelectItem key={n} value={n}>{n}{n === me ? " (вы)" : ""}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <Segmented<OutcomeBasis> ariaLabel="Как считать исход идеи" options={BASES} value={basis} onChange={setBasis} />
+          <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel="Все авторы" options={authorNames} self={me} selfSuffix="(вы)" ariaLabel="Автор идей" className="h-9 w-48" />
           {me && authorNames.includes(me) && author !== me && (
-            <button type="button" className="chip min-h-8 px-3 text-sm" onClick={() => setAuthor(me)}>Мои идеи</button>
+            <button type="button" className="chip min-h-9 px-3 text-sm" onClick={() => setAuthor(me)}>Мои идеи</button>
           )}
           {author !== "all" && (
-            <button type="button" className="chip inline-flex min-h-8 items-center gap-1 px-3 text-sm" aria-pressed="true" onClick={() => setAuthor("all")}>
+            <button type="button" className="chip inline-flex min-h-9 items-center gap-1 px-3 text-sm" aria-pressed="true" onClick={() => setAuthor("all")}>
               {author} <X className="h-3.5 w-3.5" aria-label="Сбросить автора" />
             </button>
+          )}
+          {trackingPending && <span className="text-xs text-muted-foreground" role="status">загружаем цены…</span>}
+          {byPrice && tracking.isError && (
+            <span className="text-xs text-down" role="alert">
+              Цены не загрузились. <button type="button" className="underline" onClick={() => tracking.refetch()}>Повторить</button>
+            </span>
           )}
         </div>
       </PageHeader>
@@ -197,13 +229,27 @@ export default function TradeIdeaStats() {
           <StatGrid className="xl:grid-cols-5">
             <StatCard label="Идей" value={overall.ideas} hint={`${overall.published} опубликовано · ${periodText}`} icon={Lightbulb} />
             <StatCard label="Конверсия в сделку" value={pct(overall.conversion)} hint={`${overall.converted} ${pluralRu(overall.converted, "сделка", "сделки", "сделок")}`} />
+            {byPrice ? (
+              <StatCard
+                label="Цель раньше стопа"
+                value={trackingPending ? "…" : pct(overall.hitRate)}
+                tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
+                hint={`${overall.wins} ${pluralRu(overall.wins, "цель", "цели", "целей")} · ${overall.losses} ${pluralRu(overall.losses, "стоп", "стопа", "стопов")}${overall.open ? ` · ${overall.open} в работе` : ""}`}
+              />
+            ) : (
+              <StatCard
+                label="Hit rate"
+                value={pct(overall.hitRate)}
+                tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
+                hint={`${overall.wins} / ${overall.losses} / ${overall.be}${overall.open ? ` · ${overall.open} откр.` : ""}`}
+              />
+            )}
             <StatCard
-              label="Hit rate"
-              value={pct(overall.hitRate)}
-              tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
-              hint={`${overall.wins} / ${overall.losses} / ${overall.be}${overall.open ? ` · ${overall.open} откр.` : ""}`}
+              label={byPrice ? "Средний R по плану" : "Средний R"}
+              value={trackingPending ? "…" : fmtR(overall.avgR)}
+              tone={toneOf(overall.avgR)}
+              hint={`Σ ${fmtR(overall.sumR, 1)} по ${overall.rCount}${byPrice ? " · цель = R:R, стоп = −1R" : ""}`}
             />
-            <StatCard label="Средний R" value={fmtR(overall.avgR)} tone={toneOf(overall.avgR)} hint={`Σ ${fmtR(overall.sumR, 1)} по ${overall.rCount}`} />
             <StatCard
               label="Калибровка скора"
               value={calib.r == null ? "—" : `${calib.r >= 0 ? "+" : "−"}${Math.abs(calib.r).toFixed(2)}`}
@@ -222,31 +268,37 @@ export default function TradeIdeaStats() {
             </Panel>
           ) : (
             <div className="grid gap-4 lg:grid-cols-5">
-              <div className="lg:col-span-3"><IdeaCalibration ideas={scoped} /></div>
+              <div className="lg:col-span-3"><IdeaCalibration ideas={scoped} basis={basis} pending={trackingPending} /></div>
               <Panel
                 className="lg:col-span-2"
                 icon={Award}
                 title={bestMode === "best" ? "Лучшие идеи" : "Худшие идеи"}
-                description="По итоговому R сделки"
+                description={byPrice ? "По R до цели или стопа" : "По итоговому R сделки"}
                 actions={
                   <Segmented<"best" | "worst"> ariaLabel="Лучшие или худшие" size="sm" value={bestMode} onChange={setBestMode}
                     options={[{ value: "best", label: "Лучшие" }, { value: "worst", label: "Худшие" }]} />
                 }
               >
-                {ranked.length === 0 ? (
-                  <EmptyState className="py-8" title="Нет сделок с R" description="Появятся, когда идеи будут конвертированы в сделки с R-мультипликатором." />
+                {trackingPending ? (
+                  <Skeleton className="h-48 rounded-xl" />
+                ) : ranked.length === 0 ? (
+                  byPrice ? (
+                    <EmptyState className="py-8" title="Пока нет исходов" description="Появятся, когда цена дойдёт до цели или стопа опубликованных идей с уровнями." />
+                  ) : (
+                    <EmptyState className="py-8" title="Нет сделок с R" description="Появятся, когда идеи будут конвертированы в сделки с R-мультипликатором." />
+                  )
                 ) : (
                   <ol className="flex flex-col gap-1">
                     {ranked.map((i, idx) => (
                       <li key={i.id}>
                         <button
                           type="button"
-                          onClick={() => i.linkedTrade && setLocation(links.trade(i.linkedTrade.id))}
+                          onClick={() => (byPrice ? setLocation(`/trade-ideas?idea=${i.id}`) : i.linkedTrade && setLocation(links.trade(i.linkedTrade.id)))}
                           className={cn(
                             "flex w-full items-center gap-3 rounded-xl border-l-2 px-3 py-2 text-left transition-colors hover:bg-[var(--glass-hover-bg)]",
                             (i.r ?? 0) >= 0 ? "border-l-up/60" : "border-l-down/60",
                           )}
-                          aria-label={`${i.ticker}, ${fmtR(i.r)} — открыть сделку`}
+                          aria-label={`${i.ticker}, ${fmtR(i.r)} — ${byPrice ? "открыть идею" : "открыть сделку"}`}
                         >
                           <span className="w-4 text-xs text-muted-foreground tabular-nums">{idx + 1}</span>
                           <div className="min-w-0 flex-1">
@@ -255,9 +307,10 @@ export default function TradeIdeaStats() {
                               {i.side && <span className="text-xs text-muted-foreground">{i.side}</span>}
                               {i.setupQuality && <Pill tone="purple" className="px-1.5 py-0 text-2xs">{i.setupQuality}</Pill>}
                             </div>
-                            <div className="truncate text-xs text-muted-foreground">
-                              {i.trader ?? "—"} · {i.date}{i.score != null ? ` · скор ${i.score}` : ""}{i.setup ? ` · ${i.setup}` : ""}
-                            </div>
+                            {(() => {
+                              const meta = `${i.trader ?? "—"} · ${shortDate(i.date)}${i.score != null ? ` · скор ${i.score}` : ""}${i.setup ? ` · ${i.setup}` : ""}`;
+                              return <div className="truncate text-xs text-muted-foreground" title={meta}>{meta}</div>;
+                            })()}
                           </div>
                           <span className={cn("font-semibold tabular-nums", toneText(toneOf(i.r)))}>{fmtR(i.r, 1)}</span>
                         </button>
@@ -281,7 +334,7 @@ export default function TradeIdeaStats() {
                         <SortableTh {...thProps("trader")} className="px-5 py-2.5 font-medium">Автор</SortableTh>
                         {SORTS.map((s) => (
                           <SortableTh key={s.key} {...thProps(s.key)} align="right" className="px-2 py-2.5 font-medium">
-                            <span title={s.title}>{s.label}</span>
+                            <span title={byPrice && s.titlePrice ? s.titlePrice : s.title}>{s.label}</span>
                           </SortableTh>
                         ))}
                         <SortableTh {...thProps("best")} className="px-2 py-2.5 font-medium">Лучшая идея</SortableTh>
@@ -403,7 +456,10 @@ export default function TradeIdeaStats() {
           </Panel>
 
           <p className="text-xs text-muted-foreground">
-            Hit rate — прибыльные / (прибыльные + убыточные) сделки из идей, безубыток не входит; R и P&L — нетто, по общей формуле сделок. Калибровка — корреляция скора идеи (0–100) с итоговым R; считается при ≥ 5 сделках.
+            {byPrice
+              ? "По цене — дошла ли цена до цели раньше стопа (часовые свечи с момента публикации; если обе отметки в одной свече — засчитан стоп); цель = плановый R:R, стоп = −1R. Идеи без числовых уровней не отслеживаются. "
+              : "Hit rate — прибыльные / (прибыльные + убыточные) сделки из идей, безубыток не входит; R и P&L — нетто, по общей формуле сделок. "}
+            Калибровка — корреляция скора идеи (0–100) с итоговым R; считается при ≥ 5 исходах.
             Командный рейтинг — в разделе <Link href="/ratings" className="text-primary hover:underline">Рейтинг</Link>.
           </p>
         </>

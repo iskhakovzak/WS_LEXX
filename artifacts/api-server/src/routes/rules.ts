@@ -517,7 +517,11 @@ function shapeViolation(r: any) {
 }
 
 /**
- * GET /rule-violations?trader&status&from&to&tradeId&ruleId&limit
+ * GET /rule-violations?trader&status&from&to&tradeId&tradeIds&ruleId&limit&offset&paged
+ *   tradeIds  comma-separated ids (≤ 500) — only the violations of these trades (e.g. the trades of one journal day).
+ *   offset    skip N rows of the same order (day desc, id desc) — pagination instead of one big limit=500.
+ *   paged=1   respond `{ items, nextOffset }` (nextOffset null on the last page); without it the response stays
+ *             the plain array (old behaviour).
  * Archive (lib/violationArchive): active rows only by default; `include=archived` adds archived rows (disabled /
  * deleted rules, stale), `archived=only` returns only them. A ruleId filter (rule history) also shows the rows of a
  * disabled rule. Each row carries archived / archivedReason for the badge.
@@ -541,13 +545,24 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
   if (typeof req.query.from === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.from)) { params.push(req.query.from); where.push(`${dayExpr} >= $${params.length}`); }
   if (typeof req.query.to === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.to)) { params.push(req.query.to); where.push(`${dayExpr} <= $${params.length}`); }
   if (typeof req.query.tradeId === "string" && /^\d+$/.test(req.query.tradeId)) { params.push(Number(req.query.tradeId)); where.push(`v.trade_id = $${params.length}`); }
+  if (typeof req.query.tradeIds === "string") {
+    const ids = [...new Set(req.query.tradeIds.split(",").map((x) => Number(x.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 500);
+    params.push(ids);
+    where.push(`v.trade_id = ANY($${params.length}::int[])`);
+  }
   if (typeof req.query.ruleId === "string" && /^\d+$/.test(req.query.ruleId)) { params.push(Number(req.query.ruleId)); where.push(`v.rule_id = $${params.length}`); }
   let sql = VIOLATION_SELECT;
   sql += ` WHERE ${where.join(" AND ")}`;
-  params.push(limit);
+  const rawOffset = Number(req.query.offset);
+  const offset = Number.isFinite(rawOffset) && rawOffset > 0 ? Math.min(Math.floor(rawOffset), 1_000_000) : 0;
+  const paged = req.query.paged === "1" || req.query.paged === "true";
+  params.push(paged ? limit + 1 : limit); // one extra row tells whether another page exists
   sql += ` ORDER BY ${dayExpr} DESC, v.id DESC LIMIT $${params.length}`;
+  if (offset) { params.push(offset); sql += ` OFFSET $${params.length}`; }
   const { rows } = await pool.query<any>(sql, params);
-  res.json(rows.map(shapeViolation));
+  if (!paged) { res.json(rows.map(shapeViolation)); return; }
+  const more = rows.length > limit;
+  res.json({ items: rows.slice(0, limit).map(shapeViolation), nextOffset: more ? offset + limit : null });
 }));
 
 /**

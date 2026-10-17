@@ -18,6 +18,7 @@ import {
   agoText, useCheckConnection, useGroups, useSaveAccounts, useSaveSettings, useUsers,
   type AccountMapping, type FeeColumnView, type Status, type WizardStep,
 } from "./api";
+import { PersonSelect } from "@/components/people/person-select";
 
 /* ── wizard ───────────────────────────────────────────────────────────────── */
 
@@ -193,9 +194,9 @@ export function FeeSettings({ status }: { status: Status }) {
                 <tr key={r.key} className={cn(!r.include && "opacity-60")}>
                   <td><Switch checked={r.include} onCheckedChange={(v) => update(r.key, { include: v })} aria-label={`Учитывать ${r.header ?? r.key}`} /></td>
                   <td className="font-mono text-xs">{r.header ?? r.key}<span className="ml-1 text-muted-foreground">({r.key})</span></td>
-                  <td><Input value={r.customLabel ?? ""} placeholder={r.label} onChange={(e) => update(r.key, { customLabel: e.target.value })} className="h-8 w-44 text-xs" /></td>
+                  <td><Input value={r.customLabel ?? ""} placeholder={r.label} onChange={(e) => update(r.key, { customLabel: e.target.value })} className="h-8 w-full min-w-[8rem] max-w-[12rem] text-xs" /></td>
                   <td>{r.known ? <Pill tone="accent">известная</Pill> : r.heuristic ? <Pill tone="warn">по эвристике</Pill> : <Pill tone="neutral">по названию</Pill>}</td>
-                  <td className="text-xs text-muted-foreground">{r.lastSeenAt ? agoText(r.lastSeenAt) : "—"}</td>
+                  <td className="whitespace-nowrap text-xs text-muted-foreground">{r.lastSeenAt ? agoText(r.lastSeenAt) : "—"}</td>
                 </tr>
               ))}
             </tbody>
@@ -250,10 +251,15 @@ export function UnmatchedAccounts({ status, accounts }: { status: Status; accoun
             <li key={name} className="flex flex-wrap items-center gap-2 rounded-xl border border-dashed border-[hsl(var(--chart-3)/0.5)] p-3 text-sm">
               <span className="font-mono">{name}</span>
               <span className="text-xs text-muted-foreground">→ новый счёт для</span>
-              <Select value={pick[`t:${name}`] ?? NONE} onValueChange={(v) => setPick((p) => ({ ...p, [`t:${name}`]: v === NONE ? "" : v }))}>
-                <SelectTrigger className="h-8 w-40 text-xs"><SelectValue placeholder="трейдер" /></SelectTrigger>
-                <SelectContent><SelectItem value={NONE}>трейдер…</SelectItem>{traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent>
-              </Select>
+              <PersonSelect
+                value={pick[`t:${name}`] || NONE}
+                onValueChange={(v) => setPick((p) => ({ ...p, [`t:${name}`]: v === NONE ? "" : v }))}
+                allValue={NONE}
+                allLabel="трейдер…"
+                options={traders}
+                ariaLabel="Трейдер для нового счёта"
+                className="h-8 w-40 text-xs"
+              />
               <Button size="sm" variant="outline" onClick={() => asNew(name)} disabled={busy || !pick[`t:${name}`]}>Привязать</Button>
               <span className="text-xs text-muted-foreground">или псевдоним счёта</span>
               <Select value={pick[`a:${name}`] ?? NONE} onValueChange={(v) => setPick((p) => ({ ...p, [`a:${name}`]: v === NONE ? "" : v }))}>
@@ -274,10 +280,11 @@ export function UnmatchedAccounts({ status, accounts }: { status: Status; accoun
 
 export function SetupPanel({ status, accounts }: { status: Status; accounts: AccountMapping[] }) {
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-[var(--grid-gap)]">
       <SetupWizard status={status} />
       <GroupPicker status={status} />
-      <div className="grid gap-4 xl:grid-cols-2">
+      {/* The fee table needs the width; the unmatched list is usually one line («всё сопоставлено») — don't stretch it. */}
+      <div className="grid items-start gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
         <FeeSettings status={status} />
         <UnmatchedAccounts status={status} accounts={accounts} />
       </div>

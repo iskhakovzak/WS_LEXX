@@ -895,18 +895,18 @@ export function feeReport(input: SimTrade[]): FeeReport {
 
   const recommendations: string[] = [];
   if (breakEvenCents != null && typicalQty != null) {
-    recommendations.push(`Безубыток при вашем типичном размере (${Math.round(typicalQty)} акц.) — ${breakEvenCents.toFixed(1)} ¢ хода. Минимальный целевой ход, чтобы комиссия забирала не больше трети, — ${(breakEvenCents * 3).toFixed(0)} ¢.`);
+    recommendations.push(`Безубыток при твоём типичном размере (${Math.round(typicalQty)} акц.) — ${breakEvenCents.toFixed(1)} ¢ хода. Минимальный целевой ход, чтобы комиссия забирала не больше трети, — ${(breakEvenCents * 3).toFixed(0)} ¢.`);
   }
   if (total.feePctOfGross != null && total.feePctOfGross >= 0.5) {
     recommendations.push(`Издержки составляют ${Math.round(total.feePctOfGross * 100)}% от брутто-результата — исторически почти весь результат уходит в комиссию.`);
   }
   if (eatenAll.length) {
     const lost = eatenAll.reduce((s, x) => s + (x.gross - x.fees), 0);
-    recommendations.push(`${eatenAll.length} прибыльных по брутто сделок стали убыточными после комиссии (итого ${round2(lost).toFixed(2)} $).`);
+    recommendations.push(`${eatenAll.length} ${pluralRu(eatenAll.length, "прибыльная по брутто сделка стала", "прибыльные по брутто сделки стали", "прибыльных по брутто сделок стали")} убыточными после комиссии (итого ${usdText(lost)}).`);
   }
   const worstHold = byHold.filter((r) => r.trades >= 10 && r.feePctOfGross != null).sort((a, b) => (b.feePctOfGross ?? 0) - (a.feePctOfGross ?? 0))[0];
   if (worstHold && (worstHold.feePctOfGross ?? 0) > 1) {
-    recommendations.push(`Удержание «${worstHold.key}»: комиссия ${Math.round((worstHold.feePctOfGross ?? 0) * 100)}% от брутто на ${worstHold.trades} сделках — самые дорогие сделки относительно хода.`);
+    recommendations.push(`Удержание «${worstHold.key}»: комиссия ${Math.round((worstHold.feePctOfGross ?? 0) * 100)}% от брутто на ${worstHold.trades} ${pluralRu(worstHold.trades, "сделке", "сделках", "сделках")} — самые дорогие сделки относительно хода.`);
   }
   const smallSize = bySize.find((r) => r.key === SIZE_BUCKETS[0][1]);
   if (smallSize && smallSize.trades >= 10 && smallSize.breakEvenCents != null && total.breakEvenCents != null && smallSize.breakEvenCents > total.breakEvenCents * 1.3) {
@@ -918,7 +918,8 @@ export function feeReport(input: SimTrade[]): FeeReport {
   }
   const cheap = byPrice.filter((r) => (r.key === "< $2" || r.key === "$2–5") && r.trades >= 5 && r.net < 0);
   if (cheap.length) {
-    recommendations.push(`Дешёвые акции (${cheap.map((r) => r.key).join(", ")}): ${cheap.reduce((s, r) => s + r.trades, 0)} сделок, нетто ${round2(cheap.reduce((s, r) => s + r.net, 0)).toFixed(2)} $ — регуляторные сборы на цент хода там выше.`);
+    const cheapTrades = cheap.reduce((s, r) => s + r.trades, 0);
+    recommendations.push(`Дешёвые акции (${cheap.map((r) => r.key).join(", ")}): ${cheapTrades} ${pluralRu(cheapTrades, "сделка", "сделки", "сделок")}, нетто ${usdText(cheap.reduce((s, r) => s + r.net, 0))} — регуляторные сборы на цент хода там выше.`);
   }
 
   return {
@@ -936,3 +937,16 @@ export const PRESETS: { id: string; label: string; description: string; rules: R
   { id: "nopenny", label: "Без пенни", description: "Без акций дешевле $5", rules: [{ type: "priceRange", min: 5 }] },
   { id: "tariff", label: "Новый тариф", description: "$0.003/акц., мин. $0.50 за ордер, ECN $0.002/акц., регуляторные сборы сохраняются", rules: [{ type: "commissionPlan", perShare: 0.003, minPerOrder: 0.5, ecnPerShare: 0.002, keepRegulatory: true }] },
 ];
+
+/** «−$1,026.88» — the same money style as the page. */
+function usdText(v: number): string {
+  const abs = Math.abs(round2(v)).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${v < 0 ? "−" : ""}$${abs}`;
+}
+
+function pluralRu(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}

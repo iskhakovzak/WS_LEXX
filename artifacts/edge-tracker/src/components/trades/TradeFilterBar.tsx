@@ -22,6 +22,7 @@ import {
   type TradeFilters,
 } from "./trade-utils";
 import type { SavedView } from "./use-trade-filters";
+import { PersonSelect } from "@/components/people/person-select";
 
 const ALL = "__all";
 
@@ -102,13 +103,7 @@ export function TradeFilterBar(p: Props) {
         />
 
         {p.traders.length > 1 && (
-          <Select value={f.trader || ALL} onValueChange={(v) => patch({ trader: v === ALL ? "" : v })}>
-            <SelectTrigger aria-label="Трейдер" className="h-9 w-auto min-w-[140px] gap-2"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value={ALL}>Все трейдеры</SelectItem>
-              {p.traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <PersonSelect value={f.trader || ""} onValueChange={(v) => patch({ trader: v })} options={p.traders} allLabel="Все трейдеры" ariaLabel="Трейдер" className="h-9 w-auto min-w-[140px]" />
         )}
 
         <Popover>
@@ -143,7 +138,7 @@ export function TradeFilterBar(p: Props) {
       {(f.ticker || f.playbookId || f.setup || f.side || f.horizon || f.outcome !== "all") && (
         <div className="flex flex-wrap items-center gap-1.5" aria-label="Активные фильтры">
           {f.outcome !== "all" && <ActiveChip onClear={() => patch({ outcome: "all" })}>{outcomeOptions.find((o) => o.value === f.outcome)?.label}</ActiveChip>}
-          {f.side && <ActiveChip onClear={() => patch({ side: "" })}>{f.side}</ActiveChip>}
+          {f.side && <ActiveChip onClear={() => patch({ side: "" })}>{f.side === "Long" ? "Лонг" : f.side === "Short" ? "Шорт" : f.side}</ActiveChip>}
           {f.horizon && <ActiveChip onClear={() => patch({ horizon: "" })}>{HORIZON_LABEL[f.horizon]}</ActiveChip>}
           {f.setup && <ActiveChip onClear={() => patch({ setup: "" })}>Сетап: {EVENT_LABEL[f.setup] ?? f.setup}</ActiveChip>}
           {f.ticker && <ActiveChip onClear={() => patch({ ticker: "" })}>{f.ticker}</ActiveChip>}
@@ -170,7 +165,7 @@ function QuickFilters(p: Props & { outcomeOptions: { value: Outcome; label: stri
         <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Направление">
           {(["Long", "Short"] as const).map((s) => (
             <FilterChip key={s} active={f.side === s} onClick={() => patch({ side: f.side === s ? "" : s })} className="min-h-7 px-2.5 text-xs">
-              {s}
+              {s === "Long" ? "Лонг" : "Шорт"}
             </FilterChip>
           ))}
         </div>

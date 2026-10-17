@@ -506,7 +506,8 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
 
   const r = trade.risk;
   const exc = trade.excursion;
-  const inR = (v: number | null | undefined, sign: 1 | -1 = 1) => (v == null ? null : r ? formatR((sign * v) / r) : `${sign > 0 ? "+" : "−"}$${fmtPrice(Math.abs(v))}`);
+  // $ per share: always 2 decimals (fmtPrice gave «$0.0000» for a zero excursion); zero carries no sign.
+  const inR = (v: number | null | undefined, sign: 1 | -1 = 1) => (v == null ? null : r ? formatR((sign * v) / r) : `${v === 0 ? "" : sign > 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}`);
   const gapPct = levels.open != null && levels.prevClose ? ((levels.open - levels.prevClose) / levels.prevClose) * 100 : null;
   const leftOnTable = exc?.afterExit != null && r ? exc.afterExit / r : null;
 

@@ -13,13 +13,16 @@
  * Trading day = the NY date stored in trades.date; entry time / hold come from trade_executions, else the
  * PropReports snapshot (openedAt/closedAt in ET), else the hold_time text.
  */
-import { Router, type IRouter, type Request } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
+import { gzip } from "node:zlib";
+import { promisify } from "node:util";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isGuest } from "../lib/auth";
 import { num, normResult, signedR } from "../lib/tradeMath";
 import { nyMinutes } from "../lib/tradingDate";
+import { execSpanJoin } from "../lib/execSpan";
 import { logger } from "../lib/logger";
 import {
   type SimTrade, type Rule, type Side, type Horizon,
@@ -178,22 +181,41 @@ export function rowToSim(r: Row, seq: number): SimTrade {
 }
 
 /** Closed trades with a money result for the scope/period, in simulation order. */
+/*
+ * The page fires /base, /suggestions, /fees (and /run) at once for the same scope: one SQL load serves them all.
+ * Short TTL — trades only change on a PropReports sync, and a 20 s old snapshot is fine for a what-if.
+ * The engine never mutates trade objects (it sorts copies), so callers share them; each gets its own array.
+ */
+const SIM_CACHE_TTL_MS = 20_000;
+const SIM_CACHE_MAX = 24;
+const simCache = new Map<string, { at: number; promise: Promise<SimTrade[]> }>();
+
 export async function loadSimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
+  const key = `${scope ?? "*"}|${from ?? ""}|${to ?? ""}`;
+  const now = Date.now();
+  const hit = simCache.get(key);
+  if (hit && now - hit.at < SIM_CACHE_TTL_MS) return (await hit.promise).slice();
+  const promise = querySimTrades(scope, from, to);
+  simCache.set(key, { at: now, promise });
+  promise.catch(() => simCache.delete(key));
+  if (simCache.size > SIM_CACHE_MAX) {
+    for (const [k, v] of simCache) if (now - v.at >= SIM_CACHE_TTL_MS || simCache.size > SIM_CACHE_MAX) simCache.delete(k);
+  }
+  return (await promise).slice();
+}
+
+async function querySimTrades(scope: string | null, from?: string, to?: string): Promise<SimTrade[]> {
   const params: unknown[] = [];
   const cond: string[] = [`t.deleted_at IS NULL`, `t.pnl IS NOT NULL`, `LOWER(TRIM(t.result)) <> 'open'`];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   if (scope != null) cond.push(`t.trader = ${p(scope)}`);
   if (from) cond.push(`substring(t.date from 1 for 10) >= ${p(from)}`);
   if (to) cond.push(`substring(t.date from 1 for 10) <= ${p(to)}`);
-  const sql = `WITH exec AS (
-      SELECT trade_id,
-             MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-             MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-      FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-    )
+  // One trader → per-trade index probe; desk-wide → one hash aggregate (lib/execSpan).
+  const sql = `
     SELECT t.id, t.ticker, t.date, t.side, t.qty, t.entry, t.exit, t.stop, t.result, t.pnl, t.fees, t.r_multiple, t.risk_usd,
            t.hold_time, t.setup, t.confidence_grade, t.tags, t.horizon, t.context_snapshot, e.first_entry, e.last_exit
-    FROM trades t LEFT JOIN exec e ON e.trade_id = t.id
+    FROM trades t ${execSpanJoin(scope != null ? "lateral" : "global")}
     WHERE ${cond.join(" AND ")}
     ORDER BY substring(t.date from 1 for 10), e.first_entry NULLS LAST, t.id`;
   const { rows } = await pool.query<Row>(sql, params);
@@ -215,6 +237,33 @@ function periodMeta(trades: SimTrade[], from?: string, to?: string) {
   };
 }
 
+/**
+ * What the page needs per trade for its live previews (rule builder, questions, fees) — the engine fields it never
+ * reads (exit, r, stop, tags, horizon, result) stay on the server. Team-wide «всё время» was 19 MB of JSON.
+ */
+function previewOf(t: SimTrade) {
+  return {
+    id: t.id, day: t.day, entryMin: t.entryMin == null ? null : Math.round(t.entryMin * 100) / 100, ticker: t.ticker, side: t.side,
+    qty: t.qty, entry: t.entry, gross: t.gross, fees: t.fees, holdSec: t.holdSec, seq: t.seq,
+    fills: t.fills ?? null, feeBreakdown: t.feeBreakdown ?? null, setup: t.setup, grade: t.grade ?? null,
+  };
+}
+
+const gzipAsync = promisify(gzip);
+
+/** Large JSON gzipped when the client accepts it (no compression middleware in the app); small bodies as is. */
+async function sendJsonGz(req: Request, res: Response, body: unknown): Promise<void> {
+  const json = JSON.stringify(body);
+  if (json.length < 64 * 1024 || !/gzip/.test(String(req.headers["accept-encoding"] ?? ""))) {
+    res.type("application/json").send(json);
+    return;
+  }
+  const buf = await gzipAsync(json, { level: 6 });
+  res.setHeader("Content-Encoding", "gzip");
+  res.setHeader("Vary", "Accept-Encoding");
+  res.type("application/json").send(buf);
+}
+
 /* ─── Routes ─────────────────────────────────────────────────────────────── */
 
 router.get("/whatif/base", asyncHandler(async (req, res) => {
@@ -225,9 +274,9 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
   if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
   const trades = await loadSimTrades(scope, q.from, q.to);
   const daily = dailyResults(trades);
-  res.json({
+  await sendJsonGz(req, res, {
     scope, period: periodMeta(trades, q.from, q.to),
-    trades,
+    trades: trades.map(previewOf),
     baseline: computeMetrics(trades),
     equity: equityByDay(daily),
     daily,

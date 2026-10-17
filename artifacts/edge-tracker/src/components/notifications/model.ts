@@ -298,7 +298,8 @@ export const notificationsApi = {
   readMany: (ids: number[]) => sendJson(`/api/notifications/read-many`, "POST", { ids }),
   unreadMany: (ids: number[]) => sendJson(`/api/notifications/unread-many`, "POST", { ids }),
   archive: (ids: number[]) => sendJson(`/api/notifications/archive`, "POST", { ids }),
-  archiveRead: () => sendJson(`/api/notifications/archive`, "POST", { read: true }),
+  /** `ids` — what was archived (for «Отменить»); absent on older API builds. */
+  archiveRead: () => sendJson(`/api/notifications/archive`, "POST", { read: true }) as Promise<{ updated?: number; ids?: number[] }>,
   unarchive: (ids: number[]) => sendJson(`/api/notifications/unarchive`, "POST", { ids }),
   readOne: (id: number) => sendJson(`/api/notifications/${id}/read`, "PATCH"),
 };

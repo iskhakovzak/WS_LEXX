@@ -17,6 +17,7 @@ import { signedRSql, netPnlSql, closeDateSql, closedSql, decidedSql, resultSql }
 import { nyDate } from "../lib/tradingDate";
 import { logActivity } from "../lib/activity";
 import { audienceSql, loadAudienceViewer } from "../lib/discussionAudience";
+import { spaceSql } from "../lib/playbookAccess";
 
 const GetActivityQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
@@ -57,7 +58,10 @@ const FEED_CTE = `
 WITH feed AS (
   SELECT 'log:' || l.id AS uid, l.action, l.section, l.entity_id, l.entity_title, l.trader, l.details,
          NULL::text AS rating, l.created_at,
-         CASE WHEN l.section = 'trades' AND l.entity_id ~ '^[0-9]+$' THEN (SELECT t0.trader FROM trades t0 WHERE t0.id = l.entity_id::int) ELSE NULL END AS owner
+         CASE WHEN l.section = 'trades' AND l.entity_id ~ '^[0-9]+$' THEN (SELECT t0.trader FROM trades t0 WHERE t0.id = l.entity_id::int)
+              -- разбор дня куратором: entity_id = «YYYY-MM-DD|трейдер» — трейдер видит разбор своего дня
+              WHEN l.section = 'eod' AND l.entity_id LIKE '%|%' THEN split_part(l.entity_id, '|', 2)
+              ELSE NULL END AS owner
     FROM activity_log l
   UNION ALL
   SELECT 'rev:' || r.id, 'reviewed', 'trades', r.trade_id::text, t.ticker, r.curator, r.comment, r.rating, r.created_at, t.trader
@@ -102,7 +106,13 @@ async function visibility(req: Parameters<typeof scopeTrader>[0], requested?: st
 /** SQL predicate for a non-staff viewer (params appended via `p`). */
 function memberVisibleSql(v: Visibility, p: (x: unknown) => string): string {
   const me = p(v.me);
-  return `(trader = ${me} OR owner = ${me} OR (section = ANY(${p(PUBLIC_SECTIONS)}::text[]) AND action NOT IN ('reviewed','rated')))`;
+  // «playbook» is public only for setups the viewer may read (lib/playbookAccess): personal setups stay private
+  // unless shared — otherwise others' «Мой» names and copies leak through the feed.
+  const pbVisible = `(section <> 'playbook' OR entity_id IS NULL OR entity_id !~ '^[0-9]{1,9}$' OR EXISTS (
+      SELECT 1 FROM playbook pb WHERE pb.id = entity_id::int AND (
+        ${spaceSql("pb")} = 'office' OR pb.visibility = 'all' OR pb.trader = ${me}
+        OR (pb.visibility = 'custom' AND COALESCE(pb.shared_with->'users', '[]'::jsonb) ? ${me}))))`;
+  return `(trader = ${me} OR owner = ${me} OR (section = ANY(${p(PUBLIC_SECTIONS)}::text[]) AND action NOT IN ('reviewed','rated') AND ${pbVisible}))`;
 }
 
 /**

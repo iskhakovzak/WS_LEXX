@@ -172,7 +172,7 @@ export function nextActionFor(x: NextActionInput): NextAction {
   if (x.unreviewedBreaches > 0) cands.push({ kind: "breach_review", priority: 100, label: `Разобрать нарушение${x.unreviewedBreaches > 1 ? ` (${x.unreviewedBreaches})` : ""}`, href: `/curator?trader=${t}&tab=risk` });
   if (x.halted) cands.push({ kind: "stopped", priority: 95, label: "На стопе — связаться и проверить книгу", href: `/risk?trader=${t}` });
   if (x.nearStop) cands.push({ kind: "near_stop", priority: 80, label: "Близко к стопу — предупредить", href: `/risk?trader=${t}` });
-  if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: `Разобрать закрытый день${x.eodPending > 1 ? ` (${x.eodPending})` : ""}`, href: "/journal?view=queue" });
+  if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: `Разобрать закрытый день${x.eodPending > 1 ? ` (${x.eodPending})` : ""}`, href: `/curator?trader=${t}&tab=journal` });
   if (x.weeklySubmitted) cands.push({ kind: "weekly_review", priority: 65, label: "Ответить на недельный отчёт", href: `/weekly-review?view=curator&trader=${t}` });
   if (x.overdueActions > 0) cands.push({ kind: "overdue_action", priority: 60, label: `Договорённости 1:1 просрочены (${x.overdueActions})`, href: `/curator?trader=${t}&tab=academy` });
   if (!x.hasLimits) cands.push({ kind: "no_limits", priority: 55, label: "Задать лимиты по шаблону тира", href: `/curator?trader=${t}&tab=risk` });
@@ -191,10 +191,10 @@ export function nextActionFor(x: NextActionInput): NextAction {
 export const BREACH_REASONS = [
   { key: "revenge", label: "Отыгрыш после убытка" },
   { key: "size", label: "Размер позиции больше плана" },
-  { key: "no_stop", label: "Не поставил / двигал стоп" },
+  { key: "no_stop", label: "Стоп не выставлен или сдвинут" },
   { key: "overtrading", label: "Овертрейдинг" },
   { key: "news", label: "Новости / гэп против позиции" },
-  { key: "overnight", label: "Оставил позицию без разрешения" },
+  { key: "overnight", label: "Позиция на ночь без разрешения" },
   { key: "tilt", label: "Эмоции / тильт" },
   { key: "technical", label: "Техническая проблема" },
   { key: "other", label: "Другое" },

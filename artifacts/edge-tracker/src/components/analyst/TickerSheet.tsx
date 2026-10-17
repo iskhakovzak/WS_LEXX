@@ -242,7 +242,7 @@ export function TickerSheet({
 
   return (
     <Sheet open={!!ticker} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-2xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-2xl [&>*]:shrink-0">
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">
             {ticker}

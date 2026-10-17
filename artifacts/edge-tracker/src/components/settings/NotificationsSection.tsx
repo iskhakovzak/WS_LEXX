@@ -14,6 +14,15 @@ import { Callout, InlineError, SettingRow, readApiError } from "./shared";
 import { useMyProfile } from "./ProfileSection";
 import type { SectionId } from "./SettingsNav";
 
+/** Digest send times — must match MORNING_UTC_HOUR / EVENING_UTC_HOUR in api-server lib/digest.ts. */
+const DIGEST_MORNING_UTC = 9;
+const DIGEST_EVENING_UTC = 18;
+function digestLocalTime(utcHour: number): string {
+  const d = new Date();
+  d.setUTCHours(utcHour, 0, 0, 0);
+  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+}
+
 type DigestSub = {
   enabled: boolean;
   channel: string;
@@ -162,10 +171,10 @@ function DigestPanel() {
                   onChange={(e) => setSub((s) => ({ ...s, email: e.target.value }))} placeholder="trader@example.com" className="w-full sm:w-64" />
               </SettingRow>
             )}
-            <SettingRow label="Утренний дайджест" hint="08:00 (UTC+5) — перед премаркетом" htmlFor="digest-morning">
+            <SettingRow label="Утренний дайджест" hint={`${digestLocalTime(DIGEST_MORNING_UTC)} по вашему времени — до открытия рынка`} htmlFor="digest-morning">
               <Switch id="digest-morning" checked={sub.sendMorning} onCheckedChange={(v) => setSub((s) => ({ ...s, sendMorning: v }))} />
             </SettingRow>
-            <SettingRow label="Вечерний дайджест" hint="20:00 (UTC+5) — итоги дня для разбора" htmlFor="digest-evening">
+            <SettingRow label="Вечерний дайджест" hint={`${digestLocalTime(DIGEST_EVENING_UTC)} по вашему времени — сделки за выбранное окно`} htmlFor="digest-evening">
               <Switch id="digest-evening" checked={sub.sendEvening} onCheckedChange={(v) => setSub((s) => ({ ...s, sendEvening: v }))} />
             </SettingRow>
             <SettingRow label="Окно сделок" hint="За какой период собирать сделки">
@@ -253,7 +262,9 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
       ) : (
         <div className="flex flex-col gap-3">
           <SettingRow label="Присылать оповещения" htmlFor="tg-alerts"
-            hint={enabled ? "Вы получаете уведомления в боте" : "Пауза: бот привязан, но молчит (удобно в отпуске или при тестах)"}>
+            hint={enabled
+              ? profile && !linked ? "Включено, но придут только после привязки Telegram" : "Вы получаете уведомления в боте"
+              : profile && !linked ? "Выключено" : "Пауза: бот привязан, но молчит (удобно в отпуске или при тестах)"}>
             <Switch id="tg-alerts" checked={!!enabled} disabled={toggling} onCheckedChange={toggle} />
           </SettingRow>
           {profile && !linked && (

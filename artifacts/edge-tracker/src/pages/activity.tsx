@@ -25,6 +25,8 @@ import {
   type FeedPage,
 } from "@/components/team/activity-model";
 import { isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
+import { pluralRu } from "@/components/rules/constants";
+import { PersonSelect } from "@/components/people/person-select";
 
 const FILTER_KEY = "ws_activity_filters";
 const SEEN_KEY = "ws_activity_seen_at";
@@ -181,7 +183,10 @@ export default function ActivityPage() {
   useEffect(() => {
     if (digestDay || !firstUnfiltered.data) return;
     const real = firstUnfiltered.data.items.find((i) => i.trader && i.trader !== "system");
-    setDigestDay(real ? nyDate(new Date(real.createdAt)) : nyDate());
+    // Never a future day (rows with a future created_at would otherwise anchor the digest past «today»).
+    const today = nyDate();
+    const day = real ? nyDate(new Date(real.createdAt)) : today;
+    setDigestDay(day > today ? today : day);
   }, [firstUnfiltered.data, digestDay]);
   useEffect(() => {
     if (firstUnfiltered.isError && !digestDay) setDigestDay(nyDate());
@@ -281,7 +286,7 @@ export default function ActivityPage() {
             )}
             {unreadCount > 0 && (
               <Pill tone="accent" dot>
-                {unreadCount} {unreadCount === 1 ? "новое" : "новых"}
+                {unreadCount} {pluralRu(unreadCount, "новое", "новых", "новых")}
               </Pill>
             )}
             <Button variant="outline" size="sm" onClick={markRead} disabled={!unreadCount}>
@@ -289,7 +294,7 @@ export default function ActivityPage() {
             </Button>
             <Button
               variant="ghost"
-              size="icon"
+              size="icon-sm"
               aria-label="Обновить ленту"
               onClick={() => { feed.refetch(); summary.refetch(); }}
               disabled={feed.isFetching && !feed.isFetchingNextPage}
@@ -341,23 +346,12 @@ export default function ActivityPage() {
         </div>
         <Segmented
           ariaLabel="Тип действия"
-          size="sm"
           value={filters.group}
           onChange={(g) => setFilters((f) => ({ ...f, group: g }))}
           options={(Object.keys(ACTION_GROUPS) as ActionGroup[]).map((k) => ({ value: k, label: ACTION_GROUPS[k].label }))}
         />
         {staff && (
-        <Select value={filters.trader ?? ALL_TRADERS} onValueChange={(v) => pickTrader(v === ALL_TRADERS ? null : v)}>
-          <SelectTrigger aria-label="Трейдер" className="h-9 w-full sm:w-[180px]">
-            <SelectValue placeholder="Все трейдеры" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL_TRADERS}>Все трейдеры</SelectItem>
-            {traderOptions.map((t) => (
-              <SelectItem key={t} value={t}>{t === me ? `${t} (я)` : t}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <PersonSelect value={filters.trader ?? ""} onValueChange={(v) => pickTrader(v || null)} options={traderOptions} allLabel="Все трейдеры" self={me} ariaLabel="Трейдер" className="h-9 w-full sm:w-[180px]" />
         )}
         {staff && me && (
           <FilterChip active={filters.trader === me} onClick={() => pickTrader(filters.trader === me ? null : me)}>

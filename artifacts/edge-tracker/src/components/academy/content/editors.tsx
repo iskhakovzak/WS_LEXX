@@ -3,7 +3,7 @@
  * Lessons and assignments get a live markdown preview (same safe renderer students see); lesson video is
  * validated against the YouTube / Vimeo / Loom allow-list client-side and again on the server.
  */
-import { useMemo, useState } from "react";
+import { memo, useDeferredValue, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Archive, ArchiveRestore, ExternalLink, Eye, Loader2, Plus, Save, Search, Trash2, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Panel, Pill, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import {
   ApiError, KIND_ARCHIVE, STAGES, STAGE_LABELS, api, useAcademyMutation, useSetups,
   type AdminItem, type AdminModule, type AdminQuiz, type Assignment, type Attachment, type ItemKind, type Lesson, type Program,
@@ -67,15 +68,22 @@ const numOrNull = (s: string): number | null => {
   return s.trim() === "" || !Number.isFinite(n) ? null : n;
 };
 
+/** Preview re-renders only when its (deferred) text changes, not on every keystroke of the parent form. */
+const MarkdownPreview = memo(function MarkdownPreview({ source }: { source: string }) {
+  return <Markdown source={source} />;
+});
+
 /** Markdown textarea with Редактор / Предпросмотр / Рядом modes. */
 function MarkdownField({ id, label, value, onChange, rows = 18 }: { id: string; label: string; value: string; onChange: (v: string) => void; rows?: number }) {
   const [mode, setMode] = useState<"edit" | "split" | "preview">("split");
+  // Typing stays instant on long lessons: the preview and reading time follow at low priority.
+  const deferred = useDeferredValue(value);
   return (
     <div className="flex flex-col gap-2">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">{label}</Label>
         <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground tabular-nums">≈{readingMinutes(value)} мин чтения</span>
+          <span className="text-xs text-muted-foreground tabular-nums">≈{readingMinutes(deferred)} мин чтения</span>
           <Segmented size="sm" ariaLabel="Режим редактора" value={mode} onChange={setMode} options={[{ value: "edit", label: "Текст" }, { value: "split", label: "Рядом" }, { value: "preview", label: "Предпросмотр" }]} />
         </div>
       </div>
@@ -85,7 +93,7 @@ function MarkdownField({ id, label, value, onChange, rows = 18 }: { id: string; 
         )}
         {mode !== "edit" && (
           <div className="glass-field max-h-[36rem] min-h-[10rem] overflow-y-auto rounded-xl p-4" aria-label="Предпросмотр текста">
-            <Markdown source={value} />
+            <MarkdownPreview source={deferred} />
           </div>
         )}
       </div>
@@ -448,7 +456,7 @@ export function QuizEditor({ quiz, moduleId, modules, onCreated }: { quiz: Admin
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Порог зачёта, %" htmlFor={`${idp}-pass`}><Input id={`${idp}-pass`} inputMode="numeric" value={f.passPct} onChange={(e) => setF({ ...f, passPct: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <Field label="Попыток" htmlFor={`${idp}-att`} hint="пусто = без ограничений"><Input id={`${idp}-att`} inputMode="numeric" value={f.maxAttempts} onChange={(e) => setF({ ...f, maxAttempts: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
-          <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">{f.questions.length} вопр. · {totalPoints} балл.</div>
+          <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">{f.questions.length} {pluralRu(f.questions.length, "вопрос", "вопроса", "вопросов")} · {totalPoints} {pluralRu(totalPoints, "балл", "балла", "баллов")}</div>
         </div>
 
         <ol className="flex flex-col gap-3">
@@ -592,7 +600,7 @@ export function AssignmentEditor({ assignment, moduleId, modules, onCreated }: {
         <div className="grid gap-4 sm:grid-cols-3">
           <Field label="Порог зачёта, %" htmlFor={`${idp}-pass`}><Input id={`${idp}-pass`} inputMode="numeric" value={f.passPct} onChange={(e) => setF({ ...f, passPct: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
           <Field label="Минимум своих сделок" htmlFor={`${idp}-min`} hint="0 — сделки не обязательны"><Input id={`${idp}-min`} inputMode="numeric" value={f.minTrades} onChange={(e) => setF({ ...f, minTrades: e.target.value.replace(/[^\d]/g, "") })} className="tabular-nums" /></Field>
-          <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">Максимум: {maxTotal} балл.</div>
+          <div className="flex flex-col justify-end text-sm text-muted-foreground tabular-nums">Максимум: {maxTotal} {pluralRu(maxTotal, "балл", "балла", "баллов")}</div>
         </div>
 
         <fieldset className="flex flex-col gap-2">

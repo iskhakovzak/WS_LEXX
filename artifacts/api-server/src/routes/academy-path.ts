@@ -37,10 +37,11 @@ import { logAudit } from "../lib/audit";
 import { isGuest, isStaffRole, requireMember, scopeTrader, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { nyDate, nyMinutes } from "../lib/tradingDate";
 import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql, num } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { notifyUser, notifyUsers, assignedStaffOf } from "../lib/notifyUtils";
 import { DEFAULT_TIERS, OPS, windowStart, type Op, type Tier } from "../lib/scalingEngine";
 import {
-  DEFAULT_CRITERIA, DEFAULT_STAGES, PROMO_METRICS, PROMO_METRIC_KEYS, STAGE_KEYS, evaluatePromotion, isStageKey,
+  DEFAULT_CRITERIA, DEFAULT_STAGES, LEGACY_TRAINEE_DESCRIPTION, TRAINEE_DESCRIPTION, PROMO_METRICS, PROMO_METRIC_KEYS, STAGE_KEYS, evaluatePromotion, isStageKey,
   resolveWindow, sortStages, type Criterion, type LearningInput, type PromoMetricKey, type PromoTrade, type PromotionInput,
   type ReadinessReport, type StageKey, type StageMeta,
 } from "../lib/promotionEngine";
@@ -163,6 +164,11 @@ function ensureTables(): Promise<void> {
         }
         logger.info("academy-path: seeded default stages");
       }
+      // The first seed described «Стажёр» via the selection / bootcamp funnel, which is not part of the ladder.
+      await pool.query(
+        `UPDATE academy_stages SET description = $1 WHERE key = 'trainee' AND description = $2 AND updated_by = 'system'`,
+        [TRAINEE_DESCRIPTION, LEGACY_TRAINEE_DESCRIPTION],
+      );
       const { rows: cc } = await pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM academy_stage_criteria`);
       if (Number(cc[0]?.n ?? 0) === 0) {
         let i = 0;
@@ -717,7 +723,7 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
   await setStage(String(r.user_name), r.from_stage, r.to_stage, v.name, "promote", comment, id, report);
   const stages = await loadStages();
   const toName = stages.find((s) => s.key === r.to_stage)?.name ?? r.to_stage;
-  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", title: `Перевод одобрен: «${toName}»`, message: `${v.name} одобрил перевод на ступень «${toName}».${comment ? ` Комментарий: ${comment}` : ""}`, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy" });
+  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", title: `Перевод одобрен: «${toName}»`, message: `${v.name}: перевод на ступень «${toName}» одобрен.${comment ? ` Комментарий: ${comment}` : ""}`, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy" });
   await logAudit({ actor: v.name, action: "academy.promotion.approve", targetType: "academy_promotion_request", targetId: String(id), details: { user: r.user_name, from: r.from_stage, to: r.to_stage, ready: report.ready, passed: report.passed, total: report.total } });
   res.json({ request: rowToRequest(upd.rows[0]) });
 }));
@@ -783,7 +789,7 @@ router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void>
   // A pending request for the old stage no longer makes sense.
   await pool.query(`UPDATE academy_promotion_requests SET status = 'withdrawn', decided_by = $2, decided_at = NOW(), decision_comment = 'ступень изменена напрямую' WHERE user_name = $1 AND status = 'pending'`, [user, v.name]);
   const name = (await loadStages()).find((s) => s.key === stage)?.name ?? stage;
-  await notifyUser({ userName: user, type: "academy_promotion_decision", title: `Ступень: «${name}»`, message: `${v.name} установил ступень «${name}». ${comment}`, link: PATH_LINK(), entityType: "academy_stage", entityId: stage, actor: v.name, source: "academy", severity: action === "demote" ? "warn" : "info" });
+  await notifyUser({ userName: user, type: "academy_promotion_decision", title: `Ступень: «${name}»`, message: `${v.name}: установлена ступень «${name}». ${comment}`, link: PATH_LINK(), entityType: "academy_stage", entityId: stage, actor: v.name, source: "academy", severity: action === "demote" ? "warn" : "info" });
   await logAudit({ actor: v.name, action: `academy.stage.${action}`, targetType: "academy_trader_stage", targetId: user, details: { from: cur, to: stage } });
   res.json({ ok: true, user, from: cur, to: stage, action });
 }));
@@ -821,11 +827,8 @@ function instMinutes(v: unknown): number | null {
 
 async function loadChallengeTrades(user: string, from: string, to: string): Promise<ChallengeTrade[]> {
   if (hasExec == null) hasExec = await tableExists("trade_executions").catch(() => false);
-  const exec = hasExec
-    ? `LEFT JOIN (SELECT trade_id, MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-                         MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-                    FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id) e ON e.trade_id = t.id`
-    : "";
+  // One trader, one window → per-trade index probe instead of aggregating the whole executions table.
+  const exec = hasExec ? execSpanJoin("lateral") : "";
   const { rows } = await pool.query(
     `SELECT t.id, t.ticker, ${closeDateSql("t")} AS d, ${netPnlSql("t")}::float8 AS net, t.qty::float8 AS qty, t.entry::float8 AS entry,
             t.context_snapshot ->> 'openedAt' AS opened_at, t.context_snapshot ->> 'closedAt' AS closed_at
@@ -861,16 +864,21 @@ function rowToChallenge(r: any): ChallengeRow | null {
   };
 }
 
-/** Evaluates a challenge; on a status change caches it and notifies once per transition. */
-async function evaluateRow(c: ChallengeRow, today: string, notifiedStatus: string | null): Promise<ChallengeResult> {
+/** Pure evaluation of a challenge against its trades — read paths only, writes nothing. */
+async function evaluateRow(c: ChallengeRow, today: string): Promise<ChallengeResult> {
   const trades = await loadChallengeTrades(c.user, c.startsOn, c.endsOn < today ? c.endsOn : today);
-  const result = evaluateChallenge({ startsOn: c.startsOn, endsOn: c.endsOn, rules: c.rules }, trades, today);
-  if (c.archivedAt) return result;
+  return evaluateChallenge({ startsOn: c.startsOn, endsOn: c.endsOn, rules: c.rules }, trades, today);
+}
+
+/** Write path: caches a status change and notifies once per terminal transition (trader + mentors). */
+async function persistResult(c: ChallengeRow, result: ChallengeResult, notifiedStatus: string | null): Promise<boolean> {
+  if (c.archivedAt) return false;
   const summary = {
     status: result.status, reason: result.reason, passedOn: result.passedOn, failure: result.failure, net: result.stats.net,
     tradingDays: result.stats.tradingDays, progress: result.progress.map((p) => ({ key: p.key, pct: p.pct, state: p.state })),
   };
-  if (result.status !== c.status) {
+  const changed = result.status !== c.status;
+  if (changed) {
     await pool.query(`UPDATE academy_challenges SET status = $2, summary = $3, updated_at = NOW() WHERE id = $1`, [c.id, result.status, JSON.stringify(summary)]);
   }
   if ((result.status === "passed" || result.status === "failed" || result.status === "expired") && notifiedStatus !== result.status) {
@@ -884,7 +892,47 @@ async function evaluateRow(c: ChallengeRow, today: string, notifiedStatus: strin
       await notifyUsers(await mentorsOf(c.user), { type, title: `${c.user}: ${title}`, message: msg, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" }, c.user);
     }
   }
-  return result;
+  return changed;
+}
+
+/**
+ * Re-evaluates challenges on the server's NY date, persists status and sends the terminal notices.
+ * `users` given (a PropReports sync changed their trades) → every non-archived challenge of those users;
+ * otherwise (periodic tick) → the ones whose status can still move by date alone (scheduled / active) plus terminal
+ * ones whose notice has not gone out yet. GET endpoints never write — they evaluate on the fly.
+ */
+export async function refreshChallenges(users?: string[] | null): Promise<{ checked: number; changed: number }> {
+  await ensureTables();
+  const today = nyDate();
+  const { rows } = await pool.query(
+    users
+      ? `SELECT * FROM academy_challenges WHERE archived_at IS NULL AND user_name = ANY($1::text[]) ORDER BY id`
+      : `SELECT * FROM academy_challenges WHERE archived_at IS NULL
+           AND (status IN ('scheduled','active') OR notified_status IS DISTINCT FROM status) ORDER BY id`,
+    users ? [users] : [],
+  );
+  let changed = 0;
+  for (const r of rows) {
+    const c = rowToChallenge(r);
+    if (!c) continue;
+    try {
+      if (await persistResult(c, await evaluateRow(c, today), r.notified_status ?? null)) changed++;
+    } catch (err) {
+      logger.warn({ err, id: c.id }, "academy-path: challenge refresh failed");
+    }
+  }
+  return { checked: rows.length, changed };
+}
+
+const CHALLENGE_TICK_MS = 15 * 60_000;
+let challengeTimer: NodeJS.Timeout | null = null;
+/** Periodic challenge refresh (date-driven transitions: scheduled → active, expiry). Idempotent; first run after 1 min. */
+export function startChallengeCron(): void {
+  if (challengeTimer) return;
+  const tick = () => { refreshChallenges().catch((err) => logger.warn({ err }, "academy-path: challenge cron failed")); };
+  setTimeout(tick, 60_000).unref?.();
+  challengeTimer = setInterval(tick, CHALLENGE_TICK_MS);
+  challengeTimer.unref?.();
 }
 
 router.get("/academy/challenges/templates", asyncHandler(async (req, res): Promise<void> => {
@@ -912,7 +960,7 @@ router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> =
   for (const r of rows) {
     const c = rowToChallenge(r);
     if (!c) continue;
-    const result = await evaluateRow(c, today, r.notified_status ?? null);
+    const result = await evaluateRow(c, today);
     if (status && result.status !== status) continue;
     const { timeline, ...light } = result;
     items.push({ ...c, result: { ...light, lastDays: timeline.slice(-10).map((d) => ({ date: d.date, net: d.net, cum: d.cum, events: d.events.length })) } });
@@ -933,7 +981,7 @@ router.get("/academy/challenges/:id", asyncHandler(async (req, res): Promise<voi
   const scope = await scopeTrader(req, c.user);
   if (scope !== c.user) { res.status(404).json({ error: "Экзамен не найден" }); return; }
   const today = clientDate(req.query.date);
-  const result = await evaluateRow(c, today, r.notified_status ?? null);
+  const result = await evaluateRow(c, today);
   res.json({ challenge: c, result, template: c.templateKey ? TEMPLATE_BY_KEY[c.templateKey] ?? null : null, canManage: v.staff });
 }));
 
@@ -988,7 +1036,7 @@ router.post("/academy/challenges", asyncHandler(async (req, res): Promise<void> 
   if (!exists.rows.length) { res.status(404).json({ error: "Пользователь не найден" }); return; }
   const out = await createChallenge(b.user, b.templateKey, b.startsOn, b.endsOn, b.name, b.rules as Partial<ChallengeRules> | undefined, b.comment ?? null, v.name);
   if ("error" in out) { res.status(out.status).json({ error: out.error }); return; }
-  await notifyUser({ userName: b.user, type: "academy_challenge_assigned", title: "Назначен экзамен", message: `${v.name} назначил экзамен «${b.name ?? TEMPLATE_BY_KEY[b.templateKey].name}» с ${b.startsOn}.`, link: CH_LINK(out.id), entityType: "academy_challenge", entityId: out.id, actor: v.name, source: "academy" });
+  await notifyUser({ userName: b.user, type: "academy_challenge_assigned", title: "Назначен экзамен", message: `${v.name}: назначен экзамен «${b.name ?? TEMPLATE_BY_KEY[b.templateKey].name}» с ${b.startsOn}.`, link: CH_LINK(out.id), entityType: "academy_challenge", entityId: out.id, actor: v.name, source: "academy" });
   await logAudit({ actor: v.name, action: "academy.challenge.create", targetType: "academy_challenge", targetId: String(out.id), details: { user: b.user, template: b.templateKey, startsOn: b.startsOn } });
   res.status(201).json({ id: out.id });
 }));

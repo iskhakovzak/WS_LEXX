@@ -7,6 +7,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Loader2, Search, ArrowUpFromLine, UserRound, Undo2 } from "lucide-react";
+import { LanguageSegmented } from "@/i18n/language-switcher";
 
 const LAST_TRADER_KEY = "ws_lexx_last_trader";
 const LOCKOUT_KEY = "ws_lexx_login_lockout_until";
@@ -239,6 +240,11 @@ export default function LoginPage() {
         <div className="absolute bottom-[10%] left-[-12%] h-[360px] w-[420px] max-w-[100vw] rounded-full bg-chart-5/10 blur-[100px]" />
       </div>
 
+      {/* Language before sign-in (saved locally, then to the profile after login: i18n/locale-sync.tsx). */}
+      <div className="absolute right-4 top-[calc(1rem+env(safe-area-inset-top))] z-raised">
+        <LanguageSegmented />
+      </div>
+
       <motion.main
         initial={reduceMotion ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -318,6 +324,7 @@ export default function LoginPage() {
                         aria-checked={active}
                         tabIndex={active || (!filtered.some((f) => f.name === selectedTrader) && i === 0) ? 0 : -1}
                         onClick={() => chooseTrader(u.name)}
+                        title={u.name}
                         className={cn(
                           "chip lift flex min-h-12 items-center gap-2.5 rounded-2xl px-2.5 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                           active && "ring-2 ring-primary",

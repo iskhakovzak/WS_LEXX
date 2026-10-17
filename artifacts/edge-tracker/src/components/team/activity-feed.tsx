@@ -20,6 +20,9 @@ import {
   type ActivitySummary,
   type Burst,
   type FeedItem,
+  detailsText,
+  isExampleChange,
+  ratingLabel,
 } from "./activity-model";
 
 const SOCIAL = new Set(["reviewed", "commented", "reacted", "liked", "rated", "acknowledged"]);
@@ -49,8 +52,8 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
       <TraderAvatar name={item.trader} size="sm" className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <p className="text-sm leading-snug">
-          <span className="font-semibold">{actorName(item.trader)}</span>{" "}
-          <span className="text-muted-foreground">{describe(item)}</span>
+          <span className="font-semibold">{actorName(item.trader)}</span>
+          <span className="text-muted-foreground">: {describe(item)}</span>
           {title && (
             <>
               {" "}
@@ -59,7 +62,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
                   {title}
                 </Link>
               ) : (
-                <span className={cn("font-semibold", item.action === "deleted" && "text-muted-foreground line-through decoration-down/60")}>{title}</span>
+                <span className={cn("font-semibold", item.action === "deleted" && !isExampleChange(item) && "text-muted-foreground line-through decoration-down/60")}>{title}</span>
               )}
             </>
           )}
@@ -71,7 +74,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
               social && "border-l-2 border-border pl-2 italic",
             )}
           >
-            {item.details}
+            {detailsText(item)}
           </p>
         )}
         <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
@@ -79,7 +82,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
             <Icon className="h-3 w-3" aria-hidden="true" />
             {meta.label}
           </Pill>
-          {item.rating && <Pill tone="purple" className="text-2xs">Оценка: {item.rating}</Pill>}
+          {item.rating && <Pill tone="purple" className="text-2xs">Оценка: {ratingLabel(item.rating)}</Pill>}
           <time
             dateTime={item.createdAt}
             title={new Date(item.createdAt).toLocaleString("ru-RU")}
@@ -107,7 +110,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
   );
 }
 
-/** A collapsed run of ≥3 identical actions ("Закир удалил 12 сделок"), expandable. */
+/** A collapsed run of ≥3 identical actions («Закир: удалено 12 сделок»), expandable. */
 export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: FeedItem) => boolean }) {
   const [open, setOpen] = useState(false);
   const first = burst.items[0];
@@ -124,8 +127,8 @@ export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: Fee
         <TraderAvatar name={first.trader} size="sm" className="mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm leading-snug">
-            <span className="font-semibold">{actorName(first.trader)}</span>{" "}
-            <span className="text-muted-foreground">{describeBurst(first.action, first.section, burst.items.length)}</span>
+            <span className="font-semibold">{actorName(first.trader)}</span>
+            <span className="text-muted-foreground">: {describeBurst(first.action, first.section, burst.items.length, isExampleChange(first))}</span>
           </p>
           {uniq.length > 0 && (
             <p className="mt-1 truncate text-xs text-muted-foreground" title={uniq.join(", ")}>

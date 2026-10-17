@@ -15,6 +15,8 @@ import { ExampleCard, checklistOf } from "./examples-board";
 import { RedactedHint } from "./setup-bits";
 import { useUrlParams } from "./url-state";
 import type { PlaybookEntry, SetupExample, SpaceTab } from "./model";
+import { pluralRu } from "@/components/rules/constants";
+import { PersonSelect } from "@/components/people/person-select";
 
 type TierF = "1" | "2" | "3" | "all";
 type PeriodF = "30" | "90" | "365" | "all";
@@ -95,13 +97,15 @@ export function Gallery({
               {setups.map((e) => <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>)}
             </SelectContent>
           </Select>
-          <Select value={trader || "__all"} onValueChange={(v) => set({ gtr: v === "__all" ? null : v })} disabled={!traders.length && !trader}>
-            <SelectTrigger className="h-9 w-full min-w-0 sm:w-48" aria-label="Трейдер"><SelectValue /></SelectTrigger>
-            <SelectContent className="max-h-[min(60dvh,480px)]">
-              <SelectItem value="__all">Все трейдеры</SelectItem>
-              {(trader && !traders.includes(trader) ? [trader, ...traders] : traders).map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-            </SelectContent>
-          </Select>
+          <PersonSelect
+            value={trader || ""}
+            onValueChange={(v) => set({ gtr: v || null })}
+            disabled={!traders.length && !trader}
+            options={trader && !traders.includes(trader) ? [trader, ...traders] : traders}
+            allLabel="Все трейдеры"
+            ariaLabel="Трейдер"
+            className="h-9 w-full min-w-0 sm:w-48"
+          />
           {filtered && (
             <Button variant="ghost" size="sm" className="h-9" onClick={() => set({ gt: null, gp: null, gs: null, gtr: null })}>
               <X className="h-4 w-4" aria-hidden="true" /> Сбросить
@@ -109,7 +113,7 @@ export function Gallery({
           )}
           {items.length > 0 && (
             <span className="ml-auto px-1 text-sm tabular-nums text-muted-foreground">
-              {items.length} · {setupCount} {setupCount === 1 ? "сетап" : setupCount < 5 ? "сетапа" : "сетапов"}
+              {items.length} {pluralRu(items.length, "пример", "примера", "примеров")} · {setupCount} {pluralRu(setupCount, "сетап", "сетапа", "сетапов")}
             </span>
           )}
         </div>

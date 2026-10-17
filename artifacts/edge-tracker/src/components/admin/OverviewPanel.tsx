@@ -14,6 +14,7 @@ import { fmtDateTime, timeAgo, type DeskPulse, type Overview, type RiskDeskLite 
 import { actorName, describeAudit } from "./audit-text";
 import type { DataCheck, EodStatus, HealthData } from "./console-api";
 import type { TraderFilter } from "./TradersTable";
+import { pluralRu } from "@/components/rules/constants";
 
 export type AdminTab = "overview" | "people" | "moderation" | "roles" | "data" | "audit";
 
@@ -56,10 +57,11 @@ export function KpiRow({
         icon={Users}
         value={s ? <span>{s.activeToday}<span className="text-base font-medium text-muted-foreground"> / {s.deskTraders}</span></span> : "—"}
         tone={s && s.deskTraders && s.activeToday === s.deskTraders ? "up" : "neutral"}
-        hint={s ? `${s.tradesToday} сделок сегодня` : undefined}
+        hint={s ? `${s.tradesToday} ${pluralRu(s.tradesToday, "сделка", "сделки", "сделок")} сегодня` : undefined}
         onClick={() => onGo("people", "traders")}
       />
       <StatCard
+        loading={eod === undefined}
         label="День не закрыт"
         icon={BookX}
         value={eod ? notClosed.length : "—"}
@@ -67,6 +69,7 @@ export function KpiRow({
         hint={!eod ? "статус дня недоступен" : notClosed.length ? `${eod.date}: ${names(notClosed, 2)}` : `все закрыли ${eod.date}`}
       />
       <StatCard
+        loading={queue === undefined}
         label="Ревью куратора"
         icon={ClipboardCheck}
         value={queue ? queue.count : "—"}
@@ -76,13 +79,14 @@ export function KpiRow({
         hint={queue ? (queue.count ? `SLA ${queue.slaHours} ч` : "очередь пуста") : "очередь недоступна"}
       />
       <StatCard
+        loading={risk === undefined}
         label="Риск-лимиты"
         icon={Gauge}
         value={risk ? risk.summary.breach : "—"}
         tone={!risk ? "neutral" : risk.summary.breach > 0 ? "down" : risk.summary.warn > 0 ? "warn" : "up"}
         delta={risk && risk.summary.warn > 0 ? `${risk.summary.warn} близко` : undefined}
         deltaTone="warn"
-        hint={!risk ? "риск-деск недоступен" : risk.summary.breach > 0 ? "превышений" : "превышений нет"}
+        hint={!risk ? "риск-деск недоступен" : risk.summary.breach > 0 ? pluralRu(risk.summary.breach, "превышение", "превышения", "превышений") : "превышений нет"}
       />
     </StatGrid>
   );
@@ -106,7 +110,7 @@ function buildItems({
   const items: AttentionItem[] = [];
   const s = pulse?.summary;
   const reports = s?.openReports ?? overview?.openReports ?? 0;
-  if (reports > 0) items.push({ key: "reports", tone: "down", icon: Flag, title: `${reports} ${reports === 1 ? "жалоба ждёт" : "жалоб ждут"} решения`, action: { label: "Разобрать", go: () => onGo("moderation") } });
+  if (reports > 0) items.push({ key: "reports", tone: "down", icon: Flag, title: `${reports} ${pluralRu(reports, "жалоба ждёт", "жалобы ждут", "жалоб ждут")} решения`, action: { label: "Разобрать", go: () => onGo("moderation") } });
 
   const breach = risk?.traders.filter((t) => t.status === "breach").map((t) => t.trader) ?? [];
   if (breach.length) items.push({ key: "risk", tone: "down", icon: Gauge, title: `Превышен риск-лимит: ${breach.length}`, detail: names(breach), action: { label: "Риск-деск", href: links.risk() } });
@@ -205,10 +209,10 @@ function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; er
           {run && (
             <StatRow
               label={run.source === "file" ? "Из файла" : "Через API"}
-              value={<span className="tabular-nums">+{run.inserted} · обновлено {run.updated}{run.conflicts ? ` · на сверку ${run.conflicts}` : ""}</span>}
+              value={<span className="tabular-nums">+{Number(run.inserted).toLocaleString("ru-RU")} · обновлено {Number(run.updated).toLocaleString("ru-RU")}{run.conflicts ? ` · на сверку ${run.conflicts}` : ""}</span>}
             />
           )}
-          <StatRow label="Сделок из брокера" value={<span className="tabular-nums">{sy.imported}</span>} />
+          <StatRow label="Сделок из брокера" value={<span className="tabular-nums">{Number(sy.imported).toLocaleString("ru-RU")}</span>} />
           <StatRow
             label="Счета"
             value={<span className="tabular-nums">{sy.accounts.mapped}/{sy.accounts.total} привязано{sy.unmatched.length ? ` · ${sy.unmatched.length} новых` : ""}</span>}

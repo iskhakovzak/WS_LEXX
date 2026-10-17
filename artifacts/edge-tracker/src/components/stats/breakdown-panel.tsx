@@ -4,13 +4,14 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { EVENT_LABEL } from "@/components/trades/trade-utils";
 import { fmtPct, fmtValue, groupBy, sessionKey, sessionLabel, type GroupStat, type Metric } from "./metrics";
 
 export type Dimension = "trader" | "setup" | "sector" | "ticker" | "session" | "conviction";
 
 const DIMS: { value: Dimension; label: string; col: string; key: (t: Trade) => string | null | undefined }[] = [
   { value: "trader", label: "Трейдер", col: "Трейдер", key: (t) => t.trader },
-  { value: "setup", label: "Сетап", col: "Сетап / событие", key: (t) => t.setup || t.eventType },
+  { value: "setup", label: "Сетап", col: "Сетап / событие", key: (t) => t.setup || (t.eventType ? EVENT_LABEL[t.eventType] ?? t.eventType : null) },
   { value: "sector", label: "Сектор", col: "Сектор", key: (t) => t.sector },
   { value: "ticker", label: "Тикер", col: "Тикер", key: (t) => t.ticker?.toUpperCase() },
   { value: "session", label: "Сессия", col: "Сессия", key: (t) => sessionLabel(sessionKey(t)) },
@@ -22,17 +23,20 @@ const LIMIT = 8;
 
 /** Compact "where do I make / lose" scorecard table. Deep breakdowns live in /analytics. */
 export function BreakdownPanel({
-  trades, metric, dimension, onDimension, onPickTrader,
+  trades, metric, dimension, onDimension, onPickTrader, hideTrader = false,
 }: {
   trades: Trade[];
   metric: Metric;
   dimension: Dimension;
   onDimension: (d: Dimension) => void;
   onPickTrader?: (name: string) => void;
+  /** A trader sees only own trades: the «Трейдер» cut is one row, so it is not offered. */
+  hideTrader?: boolean;
 }) {
+  const dims = hideTrader ? DIMS.filter((d) => d.value !== "trader") : DIMS;
   const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: "value", dir: -1 });
   const [showAll, setShowAll] = useState(false);
-  const dim = DIMS.find((d) => d.value === dimension) ?? DIMS[0];
+  const dim = dims.find((d) => d.value === dimension) ?? dims[0];
 
   const rows = useMemo(() => {
     const g = groupBy(trades, dim.key, metric);
@@ -76,9 +80,9 @@ export function BreakdownPanel({
       <Segmented<Dimension>
         size="sm"
         ariaLabel="Группировать по"
-        value={dimension}
+        value={dim.value}
         onChange={(d) => { onDimension(d); setShowAll(false); }}
-        options={DIMS.map((d) => ({ value: d.value, label: d.label }))}
+        options={dims.map((d) => ({ value: d.value, label: d.label }))}
         className="mb-3"
       />
       {rows.length === 0 ? (

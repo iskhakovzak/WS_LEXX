@@ -18,6 +18,7 @@ import { ToastAction } from "@/components/ui/toast";
 import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
+import { pluralRu } from "@/components/rules/constants";
 import { dayOf, fmtDay, weekStartOf } from "@/components/events/event-meta";
 import { EventDetailSheet } from "@/components/events/event-detail-sheet";
 import { EventFormDialog, blankEvent, eventToForm, formToBody, type EventFormData } from "@/components/events/event-form-dialog";
@@ -28,6 +29,7 @@ import { DayBrief, MyTickerEarnings } from "@/components/events/catalyst-today";
 import { WeekGrid } from "@/components/events/catalyst-week";
 import { EdgeView } from "@/components/events/catalyst-edge";
 import { nextTradingDay, prevTradingDay } from "@/components/events/catalyst-math";
+import { PersonSelect } from "@/components/people/person-select";
 
 type View = "today" | "week" | "edge";
 const VIEWS: View[] = ["today", "week", "edge"];
@@ -128,7 +130,7 @@ export default function Events() {
   function handleSubmit(body: ReturnType<typeof formToBody>) {
     if (editing) {
       updateMut.mutate({ id: editing.id, data: body as UpdateEventBody }, {
-        onSuccess: () => { setFormOpen(false); setEditing(null); toast({ title: "Заметка обновлена" }); },
+        onSuccess: () => { setFormOpen(false); toast({ title: "Заметка обновлена" }); },
       });
     } else {
       createMut.mutate({ data: body }, {
@@ -221,20 +223,14 @@ export default function Events() {
         meta={
           <span>
             {focus === data.today ? "Сегодня" : `Следующая сессия — ${fmtDay(focus, { weekday: "long", day: "numeric", month: "long" })}`}
-            {data.myTickers.length > 0 && ` · следим за ${data.myTickers.length} тикерами`}
+            {data.myTickers.length > 0 && ` · следим за ${data.myTickers.length} ${pluralRu(data.myTickers.length, "тикером", "тикерами", "тикерами")}`}
             {isStaff && ` · ${scopeLabel}`}
           </span>
         }
         actions={
           <>
             {isStaff && (
-              <Select value={traderPick} onValueChange={setTraderPick}>
-                <SelectTrigger className="h-9 w-[180px] rounded-full" aria-label="Чьи сделки"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={DESK}>Весь деск</SelectItem>
-                  {traderOptions.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={traderPick} onValueChange={setTraderPick} allValue={DESK} allLabel="Весь деск" options={traderOptions} className="h-9 w-[180px]" ariaLabel="Чьи сделки" />
             )}
             <Segmented<View> ariaLabel="Вид" value={view} onChange={setView} options={viewOptions} />
             <Button variant="outline" onClick={() => openCreate({ date: selected })}>
@@ -303,7 +299,7 @@ export default function Events() {
 
       <EventFormDialog
         open={formOpen}
-        onOpenChange={(v) => { setFormOpen(v); if (!v) setEditing(null); }}
+        onOpenChange={setFormOpen}
         editing={editing}
         initial={formInitial}
         onSubmit={handleSubmit}

@@ -3,7 +3,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import type { Candle } from "@/components/chart-engine/types";
 import { BASE } from "@/lib/api";
 import {
-  DAY_CHANGE_EVENT, getTickerDay, updateTickerDayField, getMarketContext, saveMarketContext,
+  DAY_CHANGE_EVENT, big7Today, getTickerDay, updateTickerDayField, getMarketContext, saveMarketContext,
   type AutoEarning, type Catalyst, type GapRiskResponse, type MarketCtx, type RiskMeLite, type StockQuote, type TickerDay,
 } from "./lib";
 
@@ -17,6 +17,21 @@ async function readError(res: Response) {
 }
 
 export const CATALYSTS_KEY = ["big7-catalysts"] as const;
+
+/**
+ * Current NY trading date that re-renders the caller when it changes (checked every 30 s and when the tab
+ * becomes visible again) — the board, hot list and catalyst week roll over at NY midnight without a reload.
+ */
+export function useBig7Today(): string {
+  const [today, setToday] = useState(big7Today);
+  useEffect(() => {
+    const tick = () => setToday((prev) => { const next = big7Today(); return next === prev ? prev : next; });
+    const id = setInterval(tick, 30_000);
+    document.addEventListener("visibilitychange", tick);
+    return () => { clearInterval(id); document.removeEventListener("visibilitychange", tick); };
+  }, []);
+  return today;
+}
 
 export type SessionBars = { candles: Candle[]; prevClose: number | null };
 
@@ -124,6 +139,7 @@ export function useGapRisk(symbols: string[]) {
       if (!r.ok) throw new Error(await readError(r));
       return (await r.json()) as GapRiskResponse;
     },
+    enabled: symbols.length > 0,
     staleTime: 20 * 60_000,
     gcTime: 60 * 60_000,
     refetchOnWindowFocus: false,

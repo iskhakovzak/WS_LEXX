@@ -143,7 +143,7 @@ export function EquityPanel({
           </ResponsiveContainer>
         </div>
       ) : (
-        <EmptyState icon={LineIcon} title="Нет данных по месяцам" description={`Заполните ${metric === "r" ? "R-multiple" : "P&L"} в закрытых сделках.`} />
+        <EmptyState icon={LineIcon} title="Нет данных по месяцам" description={metric === "r" ? "Укажите стоп в закрытых сделках — R посчитается сам." : "В закрытых сделках нет P&L — он приходит с синхронизацией брокера."} />
       )}
     </Panel>
   );

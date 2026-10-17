@@ -24,6 +24,7 @@ import { ExcludedTable } from "@/components/simulator/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/simulator/questions-bar";
 import { type Question, buildQuestions, changedDays } from "@/components/simulator/presets";
 import { useLocation } from "wouter";
+import { PersonSelect } from "@/components/people/person-select";
 
 /**
  * /simulator — «Что если»: the trader's own closed trades re-run under other rules (server engine
@@ -152,17 +153,19 @@ export default function Simulator() {
     <>
       <Segmented<PeriodKey> ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
       {isCurator && (
-        <Select value={trader || ALL} onValueChange={setTrader}>
-          <SelectTrigger className="h-10 w-[200px] rounded-full" aria-label="Трейдер">
-            <SelectValue placeholder="Вся команда" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Вся команда</SelectItem>
-            {me && traders.includes(me) && <SelectItem value={me}>Мои сделки ({me})</SelectItem>}
-            {traders.filter((t) => t !== me).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {trader && trader !== ALL && !traders.includes(trader) && <SelectItem value={trader}>{trader}</SelectItem>}
-          </SelectContent>
-        </Select>
+        <PersonSelect
+          value={trader || ALL}
+          onValueChange={setTrader}
+          allValue={ALL}
+          allLabel="Вся команда"
+          options={[
+            ...(me && traders.includes(me) ? [{ value: me, label: `Мои сделки (${me})` }] : []),
+            ...traders.filter((t) => t !== me),
+            ...(trader && trader !== ALL && !traders.includes(trader) ? [trader] : []),
+          ]}
+          className="h-10 w-[200px]"
+          ariaLabel="Трейдер"
+        />
       )}
     </>
   );
@@ -220,7 +223,7 @@ export default function Simulator() {
           <EmptyState
             icon={SearchX}
             title={`Нет закрытых сделок${scopeTrader ? ` у ${scopeTrader}` : ""} ${periodPhrase}`}
-            description="Симулятор считает по закрытым сделкам. Выбери период подлиннее или другого трейдера."
+            description={`Симулятор считает по закрытым сделкам с известным результатом. ${period !== "all" ? "Выбери период подлиннее" : "Они появятся после синхронизации с PropReports"}${isCurator ? " или выбери другого трейдера" : ""}.`}
             action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>Показать всё время</Button> : undefined}
           />
         </Panel>

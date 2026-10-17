@@ -89,7 +89,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
     <Page>
       <PageHeader
         title="Интеграции"
-        description="PropReports → журнал: раунд-трипы, комиссии, овернайт/свинг, сверка с ручными записями"
+        description="PropReports → журнал: раунд-трипы, комиссии, овернайт/свинг и сверка с брокером"
         icon={Plug}
         actions={
           <>

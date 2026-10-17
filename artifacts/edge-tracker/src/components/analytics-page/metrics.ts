@@ -598,7 +598,9 @@ export function pluralRu(n: number, one: string, few: string, many: string): str
   return many;
 }
 
-export const sdeal = (n: number) => `${n} ${pluralRu(n, "сделка", "сделки", "сделок")}`;
+export const sdeal = (n: number) => `${n.toLocaleString("ru-RU")} ${pluralRu(n, "сделка", "сделки", "сделок")}`;
+/** Dative, after «по»: «по 1 сделке», «по 5 сделкам». */
+export const sdealDat = (n: number) => `${n.toLocaleString("ru-RU")} ${pluralRu(n, "сделке", "сделкам", "сделкам")}`;
 
 /* ───────────────────────── CSV ───────────────────────── */
 

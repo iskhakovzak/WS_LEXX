@@ -24,6 +24,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { shellI18n } from "@/i18n/ns/shell"
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
@@ -198,8 +199,8 @@ function Sidebar({
           side={side}
         >
           <SheetHeader className="sr-only">
-            <SheetTitle>Меню навигации</SheetTitle>
-            <SheetDescription>Разделы приложения</SheetDescription>
+            <SheetTitle>{shellI18n.t("ui.navMenu")}</SheetTitle>
+            <SheetDescription>{shellI18n.t("ui.navMenuDesc")}</SheetDescription>
           </SheetHeader>
           <div className="flex h-full w-full flex-col">{children}</div>
         </SheetContent>
@@ -231,10 +232,11 @@ function Sidebar({
       <div
         data-slot="sidebar-container"
         className={cn(
-          "fixed inset-y-0 z-nav hidden h-svh w-[var(--sidebar-width)] transition-[left,right,width] duration-[var(--dur-3)] ease-smooth md:flex",
+          // Slides with transform (compositor) instead of animating left/right.
+          "fixed inset-y-0 z-nav hidden h-svh w-[var(--sidebar-width)] transition-[translate,width] duration-[var(--dur-3)] ease-smooth md:flex",
           side === "left"
-            ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
-            : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
+            ? "left-0 group-data-[collapsible=offcanvas]:-translate-x-full"
+            : "right-0 group-data-[collapsible=offcanvas]:translate-x-full",
           // Adjust the padding for floating and inset variants.
           variant === "floating" || variant === "inset"
             ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+var(--spacing-4)+2px)]"
@@ -279,7 +281,7 @@ function SidebarTrigger({
       {...props}
     >
       <PanelLeftIcon />
-      <span className="sr-only">Показать или скрыть меню</span>
+      <span className="sr-only">{shellI18n.t("header.toggleMenu")}</span>
     </Button>
   )
 }
@@ -292,12 +294,12 @@ function SidebarRail({ className, ...props }: React.ComponentProps<"button">) {
     <button
       data-sidebar="rail"
       data-slot="sidebar-rail"
-      aria-label="Показать или скрыть меню"
+      aria-label={shellI18n.t("header.toggleMenu")}
       tabIndex={-1}
       onClick={toggleSidebar}
-      title="Показать или скрыть меню"
+      title={shellI18n.t("header.toggleMenu")}
       className={cn(
-        "hover:after:bg-sidebar-border absolute inset-y-0 z-raised hidden w-4 -translate-x-1/2 transition-all ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] sm:flex",
+        "hover:after:bg-sidebar-border absolute inset-y-0 z-raised hidden w-4 -translate-x-1/2 transition-[background-color,translate] ease-linear group-data-[side=left]:-right-4 group-data-[side=right]:left-0 after:absolute after:inset-y-0 after:left-1/2 after:w-[2px] sm:flex",
         "in-data-[side=left]:cursor-w-resize in-data-[side=right]:cursor-e-resize",
         "[[data-side=left][data-state=collapsed]_&]:cursor-e-resize [[data-side=right][data-state=collapsed]_&]:cursor-w-resize",
         "hover:group-data-[collapsible=offcanvas]:bg-sidebar group-data-[collapsible=offcanvas]:translate-x-0 group-data-[collapsible=offcanvas]:after:left-full",

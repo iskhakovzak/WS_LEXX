@@ -89,7 +89,7 @@ function CohortCard({ c, active, onClick }: { c: CohortListItem; active: boolean
     <button type="button" onClick={onClick} aria-current={active ? "true" : undefined}
       className={cn("glass-panel lift rounded-2xl p-3 text-left", active && "ring-2 ring-primary")}>
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-sm font-semibold text-foreground">{c.name}</span>
+        <span className="truncate text-sm font-semibold text-foreground" title={c.name}>{c.name}</span>
         <Pill tone={c.format === "office" ? "accent" : c.format === "remote" ? "purple" : "neutral"}>{FORMAT_LABELS[c.format]}</Pill>
       </div>
       <div className="mt-1 text-xs text-muted-foreground">
@@ -199,7 +199,10 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const { rows: members, thProps } = useTableSort(d.enrollments, MEMBER_ACCESSORS, "name", "asc");
   const remove = (e: Enrollment) => {
     if (!window.confirm(`Убрать ${e.userName} из когорты? Запись уйдёт в архив (история и посещаемость сохранятся). Для выпуска/отчисления лучше сменить статус.`)) return;
-    archive.mutate(e.id, { onError: (err) => toast({ title: "Не получилось", description: err.message, variant: "destructive" }) });
+    archive.mutate(e.id, {
+      onSuccess: () => toast({ title: "Убран из когорты", description: e.userName }),
+      onError: (err) => toast({ title: "Не получилось", description: err.message, variant: "destructive" }),
+    });
   };
   return (
     <Panel title="Состав" icon={Users} description="Ступени: Стажёр → Джун → Трейдер → Сеньор. Изменения ступени и статуса пишутся в историю."
@@ -232,7 +235,7 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   {staff && (
                     <td className="whitespace-nowrap text-right">
                       <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>Ступень / статус</Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={`Убрать ${e.userName}`}><Archive className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={`Убрать ${e.userName}`} title="Убрать из когорты"><Archive className="h-4 w-4" /></Button>
                     </td>
                   )}
                 </tr>
@@ -261,7 +264,10 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const now = Date.now();
   const removeSession = (s: Session) => {
     if (!window.confirm(`Убрать занятие «${s.title}» из расписания? Прошедшие отметки сохранятся.`)) return;
-    archive.mutate(s.id, { onError: (e) => toast({ title: "Не получилось", description: e.message, variant: "destructive" }) });
+    archive.mutate(s.id, {
+      onSuccess: () => toast({ title: "Занятие убрано из расписания", description: s.title }),
+      onError: (e) => toast({ title: "Не получилось", description: e.message, variant: "destructive" }),
+    });
   };
   const byDay = useMemo(() => {
     const m = new Map<string, typeof occ>();
@@ -290,8 +296,8 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
               </div>
               {staff && (
                 <div className="flex gap-1">
-                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={`Изменить «${s.title}»`}><Pencil className="h-4 w-4" /></Button>
-                  <Button size="sm" variant="ghost" onClick={() => removeSession(s)} aria-label={`Убрать «${s.title}»`}><Archive className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEdit(s)} aria-label={`Изменить «${s.title}»`} title="Изменить"><Pencil className="h-4 w-4" /></Button>
+                  <Button size="sm" variant="ghost" onClick={() => removeSession(s)} aria-label={`Убрать «${s.title}»`} title="Убрать из расписания"><Archive className="h-4 w-4" /></Button>
                 </div>
               )}
             </li>

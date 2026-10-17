@@ -182,7 +182,8 @@ export function EquityPanel({
                 <span className={toneText(toneOf(worst))}>{fmt(worst)}</span>
               </Stat>
               <Stat label="Макс. просадка" title={KPI_FORMULAS.maxDrawdown}>
-                <span className={toneText(toneOf(dd))}>{fmt(dd)}</span>
+                {/* A drawdown is a loss from the peak: «−$340», never «+$0.00». */}
+                <span className={toneText(dd ? "down" : "neutral")}>{dd ? fmt(-Math.abs(dd)) : effMetric === "pnl" ? "$0" : "0R"}</span>
               </Stat>
             </div>
           )}

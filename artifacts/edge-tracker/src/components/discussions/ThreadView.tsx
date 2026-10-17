@@ -31,6 +31,8 @@ import {
   buildCommentTree, buildCommentText, teamPositions, splitNotes, userTags, isPinned, isResolved, toggleTag,
   TAG_PINNED, TAG_RESOLVED, relTime, absTime,
 } from "./lib";
+import { pluralRu } from "@/components/rules/constants";
+import { rankPeople, usePeopleAliases } from "@/components/people/search";
 
 type StatusChoice = PositionStatus | "none";
 
@@ -141,7 +143,10 @@ export function ThreadView({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [draft, setDraft] = React.useState("");
+  // Unsent comment survives a reload / switching threads (per user, per thread; browser-local only).
+  const draftKey = (id: number) => `ws_lexx.disc.draft.${me}.${id}`;
+  const loadDraft = (id: number) => { try { return localStorage.getItem(draftKey(id)) ?? ""; } catch { return ""; } };
+  const [draft, setDraft] = React.useState(() => loadDraft(thread.id));
   const [status, setStatus] = React.useState<StatusChoice>(() => {
     try { return (localStorage.getItem("ws_lexx_disc_status") as StatusChoice) || "observing"; } catch { return "observing"; }
   });
@@ -155,18 +160,26 @@ export function ThreadView({
   const [flagBusy, setFlagBusy] = React.useState(false);
   const [caret, setCaret] = React.useState(0);
 
-  // Reset per-thread UI when switching threads (keep per-thread drafts in memory).
-  const drafts = React.useRef<Record<number, string>>({});
+  // Reset per-thread UI when switching threads; each thread keeps its own saved draft.
   const prevId = React.useRef(thread.id);
   React.useEffect(() => {
     if (prevId.current !== thread.id) {
-      drafts.current[prevId.current] = draft;
-      setDraft(drafts.current[thread.id] ?? "");
+      setDraft(loadDraft(thread.id));
       setReplyTo(null);
       setEditing(null);
       prevId.current = thread.id;
     }
   }, [thread.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  React.useEffect(() => {
+    if (prevId.current !== thread.id) return; // the switch effect above loads the new thread's draft first
+    const id = setTimeout(() => {
+      try {
+        if (draft.trim()) localStorage.setItem(draftKey(thread.id), draft);
+        else localStorage.removeItem(draftKey(thread.id));
+      } catch { /* storage unavailable — the draft just isn't kept */ }
+    }, 400);
+    return () => clearTimeout(id);
+  }, [draft, thread.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   React.useEffect(() => {
     try { localStorage.setItem("ws_lexx_disc_status", status); } catch { /* ignore */ }
@@ -215,7 +228,7 @@ export function ThreadView({
     addMut.mutate({ id: thread.id, data: { text } }); // author = signed-in user (server-side)
     setDraft("");
     setReplyTo(null);
-    drafts.current[thread.id] = "";
+    try { localStorage.removeItem(draftKey(thread.id)); } catch { /* ignore */ }
   }
 
   async function saveEdit() {
@@ -329,7 +342,17 @@ export function ThreadView({
     const m = before.match(/(?:^|\s)@([\p{L}\d_]*)$/u);
     return m ? m[1].toLowerCase() : null;
   }, [draft, caret]);
-  const mentionOptions = mentionQuery == null ? [] : traderNames.filter((n) => n !== me && n.toLowerCase().startsWith(mentionQuery)).slice(0, 6);
+  // Keyboard: ↑/↓ choose, Enter/Tab insert, Esc hides the suggestions for this token.
+  const [mentionIdx, setMentionIdx] = React.useState(0);
+  const [mentionHiddenFor, setMentionHiddenFor] = React.useState<string | null>(null);
+  React.useEffect(() => { setMentionIdx(0); if (mentionQuery == null) setMentionHiddenFor(null); }, [mentionQuery]);
+  // Cross-script: «@zak», «@Закир» and «@pfr» (wrong layout) all suggest «Закир».
+  const mentionAliases = usePeopleAliases();
+  const mentionOptions = React.useMemo(() => mentionQuery == null || mentionHiddenFor === mentionQuery
+    ? []
+    : rankPeople(traderNames.filter((n) => n !== me), mentionQuery, (n) => n, mentionAliases, undefined, 6).map((h) => h.item),
+  [mentionQuery, mentionHiddenFor, traderNames, me, mentionAliases]);
+  const activeMention = mentionOptions[Math.min(mentionIdx, mentionOptions.length - 1)];
 
   function insertMention(name: string) {
     const before = draft.slice(0, caret).replace(/@([\p{L}\d_]*)$/u, `@${name} `);
@@ -369,7 +392,7 @@ export function ThreadView({
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ?? "Гость"}</span>
               <span title={absTime(thread.createdAt)}>{relTime(thread.createdAt)}</span>
-              <span>· {comments.length} {comments.length === 1 ? "ответ" : comments.length >= 2 && comments.length <= 4 ? "ответа" : "ответов"}</span>
+              <span>· {comments.length} {pluralRu(comments.length, "ответ", "ответа", "ответов")}</span>
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
@@ -482,7 +505,7 @@ export function ThreadView({
 
       {/* Composer */}
       {canEdit && (
-        <div className="glass-thick sticky bottom-0 z-sticky rounded-b-2xl bg-[var(--sticky-bg)] border-x-0 border-b-0 px-4 pb-4 pt-3 sm:px-5">
+        <div className="glass-thick glass-solid sticky bottom-0 z-sticky rounded-b-2xl bg-[var(--sticky-bg)] border-x-0 border-b-0 px-4 pb-4 pt-3 sm:px-5">
           {replyTo && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-1.5 text-xs">
               <Reply className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
@@ -508,7 +531,15 @@ export function ThreadView({
           {mentionOptions.length > 0 && (
             <div className="mb-2 flex flex-wrap gap-1.5" role="listbox" aria-label="Упомянуть участника">
               {mentionOptions.map((n) => (
-                <button key={n} type="button" role="option" aria-selected="false" onMouseDown={(e) => e.preventDefault()} onClick={() => insertMention(n)} className="chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs">
+                <button
+                  key={n}
+                  type="button"
+                  role="option"
+                  aria-selected={n === activeMention}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => insertMention(n)}
+                  className={cn("chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs", n === activeMention && "!border-primary/50 !bg-primary/15 text-foreground")}
+                >
                   <Avatar name={n} size="xs" />@{n}
                 </button>
               ))}
@@ -525,8 +556,17 @@ export function ThreadView({
               onChange={(e) => { setDraft(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); }}
               onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
               onKeyDown={(e) => {
-                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); }
-                if (e.key === "Tab" && mentionOptions.length > 0) { e.preventDefault(); insertMention(mentionOptions[0]); }
+                if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); send(); return; }
+                if (mentionOptions.length > 0) {
+                  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                    e.preventDefault();
+                    const d = e.key === "ArrowDown" ? 1 : -1;
+                    setMentionIdx((i) => (i + d + mentionOptions.length) % mentionOptions.length);
+                    return;
+                  }
+                  if ((e.key === "Enter" && !e.shiftKey) || e.key === "Tab") { e.preventDefault(); insertMention(activeMention ?? mentionOptions[0]); return; }
+                  if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setMentionHiddenFor(mentionQuery); return; }
+                }
                 if (e.key === "Escape") {
                   if (replyTo) { e.preventDefault(); e.stopPropagation(); setReplyTo(null); }
                   else (e.target as HTMLTextAreaElement).blur();

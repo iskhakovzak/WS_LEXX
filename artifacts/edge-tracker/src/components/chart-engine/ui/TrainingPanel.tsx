@@ -251,7 +251,7 @@ export function TrainingOutcomeCard({
       <p className="text-2xs leading-snug text-muted-foreground">На графике: {traderName !== null ? "реальные исполнения (стрелки), " : ""}твои (кружки B/S, ✓ — цель, × — стоп) и идеальный ход (жёлтый пунктир).</p>
       <div className="flex gap-1.5">
         <Button variant="outline" size="sm" className="h-8 flex-1 gap-1" onClick={onRestart}><RotateCcw className="h-3.5 w-3.5" /> Ещё раз</Button>
-        {onNext && <Button size="sm" className="h-8 flex-[1.4] gap-1" onClick={onNext}><Shuffle className="h-3.5 w-3.5" /> Следующая <ArrowRight className="h-3.5 w-3.5" /></Button>}
+        {onNext && <Button size="sm" className="h-8 flex-[1.4] gap-1" onClick={onNext} title="Следующая задача — N"><Shuffle className="h-3.5 w-3.5" /> Следующая <ArrowRight className="h-3.5 w-3.5" /></Button>}
       </div>
     </AsideCard>
   );
@@ -274,7 +274,8 @@ function Stat({ value, label, className, title }: { value: React.ReactNode; labe
   );
 }
 
-export function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] }) {
+/** Memoised: it sits beside the chart and must not recompute its stats on every replay tick. */
+export const TrainingHistoryCard = React.memo(function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] }) {
   const [scope, setScope] = React.useState<"session" | "all">("session");
   const [since, setSince] = React.useState<number>(loadSessionStart);
   const newSession = () => {
@@ -327,4 +328,4 @@ export function TrainingHistoryCard({ list }: { list: readonly TrainingRecord[] 
       </Button>
     </AsideCard>
   );
-}
+});

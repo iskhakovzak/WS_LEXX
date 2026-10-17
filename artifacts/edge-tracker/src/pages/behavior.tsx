@@ -26,6 +26,7 @@ import { SetupsTable } from "@/components/behavior/setups-table";
 import { SetupsAggregates } from "@/components/behavior/setups-aggregates";
 import { SetupsMatrix } from "@/components/behavior/setups-matrix";
 import { ComputeAllBar } from "@/components/behavior/setups-compute";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "behavior" | "setups";
 type Period = "30d" | "90d" | "ytd" | "all";
@@ -64,16 +65,33 @@ function writeParams(trader: string | null, period: Period, tab: Tab, day: strin
   window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
 }
 
+const TRADER_KEY = "behavior.trader";
+function readStoredTrader(): string | null {
+  try { return localStorage.getItem(TRADER_KEY) || null; } catch { return null; }
+}
+function storeTrader(name: string) {
+  try { localStorage.setItem(TRADER_KEY, name); } catch { /* storage unavailable */ }
+}
+
 export default function BehaviorPage() {
   const { user, isCurator, dbUsers, canEdit } = useAuth();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const initial = React.useMemo(readParams, []);
   const [tab, setTab] = React.useState<Tab>(initial.tab);
   const [period, setPeriod] = React.useState<Period>(initial.period);
-  const [trader, setTrader] = React.useState<string | null>(initial.trader && isCurator ? initial.trader : me);
+  // Staff: an explicit ?trader= wins, then the trader picked last time on this device.
+  const [trader, setTrader] = React.useState<string | null>(initial.trader && isCurator ? initial.trader : isCurator ? (readStoredTrader() ?? me) : me);
   const [day, setDay] = React.useState<string | null>(initial.day);
 
   React.useEffect(() => { if (!trader && me) setTrader(me); }, [trader, me]);
+  React.useEffect(() => { if (isCurator && trader) storeTrader(trader); }, [isCurator, trader]);
+  // A curator who does not trade landed on own (empty) book: open the first trader instead of «Нет сделок».
+  React.useEffect(() => {
+    if (!isCurator || initial.trader || trader !== me || !dbUsers.length) return;
+    if (dbUsers.some((u) => u.name === me && u.role === "trader")) return;
+    const first = dbUsers.filter((u) => u.active && !u.banned && u.role === "trader").sort((a, b) => a.name.localeCompare(b.name, "ru"))[0];
+    if (first) setTrader(first.name);
+  }, [isCurator, initial.trader, trader, me, dbUsers]);
   React.useEffect(() => { writeParams(isCurator ? trader : null, period, tab, day); }, [trader, period, tab, day, isCurator]);
 
   const traders = React.useMemo(() => {
@@ -97,12 +115,7 @@ export default function BehaviorPage() {
         actions={
           <>
             {isCurator && (
-              <Select value={trader ?? ""} onValueChange={(v) => { setTrader(v); setDay(null); }}>
-                <SelectTrigger className="w-44" aria-label="Трейдер"><SelectValue placeholder="Трейдер" /></SelectTrigger>
-                <SelectContent>
-                  {traders.map((u) => <SelectItem key={u.name} value={u.name}>{u.name}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={trader ?? ""} onValueChange={(v) => { setTrader(v); setDay(null); }} options={traders.map((u) => u.name)} className="w-44" ariaLabel="Трейдер" />
             )}
             <Segmented ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
           </>
@@ -252,13 +265,26 @@ function BehaviorTab({
 
 /* ─── Вкладка «Сетапы» ────────────────────────────────────────────────────── */
 
+/** Сколько недостающих предложений досчитывать в фоне без клика (≈ 4 пакета по 30). */
+const AUTO_COMPUTE_MAX = 120;
+
 function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: Range; canEdit: boolean }) {
   const [withSetup, setWithSetup] = React.useState(false);
-  // budget 0: страница открывается мгновенно из кэша предложений; недостающие считает «Посчитать всё».
+  // budget 0: страница открывается мгновенно из кэша предложений; недостающие досчитываются в фоне
+  // (небольшой хвост — сразу, большой — по кнопке «Посчитать всё», чтобы не жечь лимиты рыночных данных).
   const list = useSetupsAuto(trader, range, { withSetup, budget: 0 });
   const agg = useSetupAggregates(trader, range, withSetup);
   const compute = useComputeAll(trader, range, withSetup);
   const pending = compute.state.status === "running" ? compute.state.pending : list.data?.pending ?? 0;
+  const autoKey = `${trader ?? ""}|${range.from ?? ""}|${range.to ?? ""}|${withSetup ? 1 : 0}`;
+  const autoRan = React.useRef<string | null>(null);
+  const listPending = list.data && !list.isPlaceholderData ? list.data.pending : null;
+  const { run: runCompute, state: { status: computeStatus } } = compute;
+  React.useEffect(() => {
+    if (!canEdit || listPending == null || autoRan.current === autoKey || computeStatus !== "idle") return;
+    autoRan.current = autoKey;
+    if (listPending > 0 && listPending <= AUTO_COMPUTE_MAX) void runCompute();
+  }, [canEdit, listPending, autoKey, computeStatus, runCompute]);
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">

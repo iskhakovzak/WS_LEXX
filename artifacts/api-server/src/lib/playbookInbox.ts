@@ -85,7 +85,7 @@ export function suggestSetup(trade: InboxTradeInput, setups: InboxSetup[]): Inbo
   }
   if (trade.setup) {
     const s = bestByLabel(trade.setup, writable);
-    if (s) return { id: s.id, name: s.name, reason: `Сетап в сделке: ${trade.setup}`, via: "text" };
+    if (s) return { id: s.id, name: s.name, reason: `Название похоже на метку сделки «${trade.setup}»`, via: "text" };
   }
   return null;
 }

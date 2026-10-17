@@ -143,8 +143,8 @@ export function AddTickerBar({
   const activeDesc = showList ? `${listId}-opt-${hi}` : undefined;
 
   return (
-    <div className="relative min-w-[300px] flex-[1_1_400px]">
-      <div className={cn("glass-field flex h-10 items-center gap-2 pl-3 pr-1.5", showList && "ring-1 ring-primary/40")}>
+    <div className="relative min-w-[280px] flex-[1_1_320px]">
+      <div className={cn("glass-field flex h-9 items-center gap-2 pl-3 pr-1", showList && "ring-1 ring-primary/40")}>
         {busy ? <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground motion-reduce:animate-none" aria-hidden="true" />
           : <Plus className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />}
         <input
@@ -208,7 +208,7 @@ export function AddTickerBar({
           id={listId}
           role="listbox"
           aria-label="Подсказки тикеров"
-          className="glass-thick absolute inset-x-0 top-[calc(100%+6px)] z-popover max-h-80 overflow-auto rounded-2xl bg-popover p-1.5 shadow-xl"
+          className="glass-thick absolute inset-x-0 top-[calc(100%+4px)] z-popover max-h-80 overflow-auto rounded-xl bg-popover p-1 shadow-xl"
         >
           {!lastToken && <li className="px-2.5 pb-1 pt-0.5 text-xs text-muted-foreground" aria-hidden="true">Часто торгуешь, нет в списках</li>}
           {suggestions.map((s, i) => (
@@ -220,7 +220,7 @@ export function AddTickerBar({
               onMouseDown={(e) => { e.preventDefault(); void commit(s.ticker); }}
               onMouseEnter={() => setHi(i)}
               className={cn(
-                "flex cursor-pointer items-center gap-3 rounded-xl px-2.5 py-1.5 text-sm",
+                "flex cursor-pointer items-center gap-3 rounded-item px-2.5 py-1.5 text-sm",
                 i === hi ? "bg-[var(--glass-hover-bg)] text-foreground" : "text-foreground/90",
               )}
             >

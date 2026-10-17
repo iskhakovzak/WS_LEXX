@@ -3,7 +3,7 @@ import { CalendarClock, LineChart, Pin, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { fmtShortDate } from "./earnings-api";
 import type { UpcomingByTicker } from "./research-preview";
-import { Highlight, confidenceTone, formatDay, noteDay, splitTags, splitTickers, type ResearchNote, type SearchHit } from "./research-utils";
+import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote, type SearchHit } from "./research-utils";
 
 const BAR: Record<string, string> = {
   up: "bg-up",
@@ -41,7 +41,8 @@ export const ResearchRow = memo(function ResearchRow({
 }) {
   const tickers = splitTickers(r.ticker);
   const tags = splitTags(r.tags);
-  const tone = confidenceTone(r.confidenceLevel);
+  const conf = noteConfidence(r);
+  const tone = confidenceTone(conf.value);
   const report = tickers.map((t) => upcoming.get(t)).find(Boolean);
   const preview = hit?.snippet ?? r.whatWorked ?? r.context ?? r.marketCondition ?? "";
   const ev = r.evidence && r.evidence.tradeCount > 0 ? r.evidence : null;
@@ -73,7 +74,7 @@ export const ResearchRow = memo(function ResearchRow({
                   {ev.tradeCount}{ev.winRate != null ? ` · ${Math.round(ev.winRate)}%` : ""}
                 </span>
               )}
-              {r.confidenceLevel != null && <span className={TXT[tone]} title={r.confidenceSource === "trades" ? "Уверенность по сделкам" : "Уверенность (ручная оценка)"}>{r.confidenceSource === "trades" && r.derivedConfidence != null ? Math.round(r.derivedConfidence) : r.confidenceLevel}%</span>}
+              {conf.value != null && <span className={TXT[tone]} title={conf.byTrades ? "Уверенность по сделкам" : "Уверенность (ручная оценка)"}>{conf.value}%</span>}
               {(r.repeatCount ?? 0) > 1 && (
                 <span className="inline-flex items-center gap-0.5 text-muted-foreground" title="Повторений">
                   <Repeat className="h-3 w-3" aria-hidden="true" />

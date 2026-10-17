@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { EarningsHistoryView, CallTypePill } from "./earnings-history";
 import { fmtMoney, fmtShortDate, type UpcomingItem } from "./earnings-api";
 import { ResearchEvidence } from "./research-evidence";
-import { Highlight, confidenceTone, formatDay, noteDay, splitTags, splitTickers, type ResearchNote } from "./research-utils";
+import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote } from "./research-utils";
 
 function Section({
   label,
@@ -67,8 +67,7 @@ export function ResearchPreview({
   const tickers = splitTickers(r.ticker);
   const tags = splitTags(r.tags);
   // Confidence: the manual slider until the note has real evidence (≥5 closed trades), then the observed win rate.
-  const byTrades = r.confidenceSource === "trades" && r.derivedConfidence != null;
-  const conf = byTrades ? Math.round(r.derivedConfidence!) : r.confidenceLevel ?? null;
+  const { value: conf, byTrades } = noteConfidence(r);
   const tone = confidenceTone(conf);
   const [histTicker, setHistTicker] = useState<string | null>(null);
   const activeHist = histTicker && tickers.includes(histTicker) ? histTicker : tickers[0] ?? null;

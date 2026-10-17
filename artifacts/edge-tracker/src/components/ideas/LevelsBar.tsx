@@ -38,7 +38,7 @@ export function LevelsBar({
         <div className="absolute inset-y-0 right-0 rounded-r-full bg-up/30" style={{ left: pct(entry) }} />
         <div className="absolute inset-y-0 bg-foreground/25" style={{ left: `${zoneA * 100}%`, width: `${Math.max(0.8, (zoneB - zoneA) * 100)}%` }} />
         {targets.map((t, i) => (
-          <span key={i} className="absolute inset-y-[-2px] w-0.5 rounded-full bg-up" style={{ left: pct(t) }} aria-hidden="true" />
+          <span key={i} className="absolute inset-y-[-2px] w-0.5 rounded-full bg-up" style={{ left: `min(${pct(t)}, calc(100% - 2px))` }} aria-hidden="true" />
         ))}
         {pricePos != null && (
           <span
@@ -47,7 +47,8 @@ export function LevelsBar({
               lg ? "h-4 w-4" : "h-2.5 w-2.5",
               (pricePos < 0 || pricePos > 1) && "ring-2 ring-primary/40",
             )}
-            style={{ left: `${Math.min(100, Math.max(0, pricePos * 100))}%` }}
+            // Kept inside the bar at the ends (a price past the target / stop sat half outside the card edge).
+            style={{ left: `clamp(${lg ? 8 : 5}px, ${Math.min(100, Math.max(0, pricePos * 100))}%, calc(100% - ${lg ? 8 : 5}px))` }}
             aria-hidden="true"
           />
         )}

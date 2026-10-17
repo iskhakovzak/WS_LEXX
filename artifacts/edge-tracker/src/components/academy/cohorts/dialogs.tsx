@@ -21,6 +21,7 @@ import {
   useUpdateCohort, useUpdateEnrollment, useUpdateSession,
 } from "./api";
 import { AttendancePill, DualTime, ErrorNote, Field, LOCAL_TZ, NY_TZ, UserSelect, fmtYmd } from "./shared";
+import { PersonSelect } from "@/components/people/person-select";
 
 const TZ_OPTIONS = Array.from(new Set([NY_TZ, "Asia/Tashkent", "Asia/Almaty", "Asia/Bishkek", "Europe/Moscow", "UTC", LOCAL_TZ]));
 
@@ -430,10 +431,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
           </DialogHeader>
           <div className="grid grid-cols-2 gap-3">
             <Field id="m-student" label="Студент">
-              <Select value={student ?? undefined} onValueChange={setStudent}>
-                <SelectTrigger id="m-student"><SelectValue placeholder="Выберите студента" /></SelectTrigger>
-                <SelectContent>{names.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}</SelectContent>
-              </Select>
+              <PersonSelect id="m-student" value={student ?? ""} onValueChange={setStudent} options={names} placeholder="Выберите студента" ariaLabel="Студент" />
             </Field>
             <Field id="m-at" label="Когда (ваше время)"><Input id="m-at" type="datetime-local" value={metAt} onChange={(e) => setMetAt(e.target.value)} required /></Field>
           </div>

@@ -5,6 +5,7 @@ import {
   SECTION_GROUPS, SECTIONS, parseNote, serializeNote,
   type Horizon, type SectionKey,
 } from "./author-model";
+import { pluralRu } from "@/components/rules/constants";
 
 export type EditorTarget = SectionKey | "free";
 export type EditorMode = "sections" | "free";
@@ -147,7 +148,7 @@ export function AuthorEditor({
                       {s.label}
                       {count != null && count > 0 && (
                         <span className="rounded-full bg-primary/15 px-1.5 text-2xs font-medium tabular-nums text-primary">
-                          {count} {count === 1 ? "сделка" : count < 5 ? "сделки" : "сделок"}
+                          {count} {pluralRu(count, "сделка", "сделки", "сделок")}
                         </span>
                       )}
                     </label>

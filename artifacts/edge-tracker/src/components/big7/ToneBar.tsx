@@ -68,7 +68,7 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
   return (
     <section
       aria-label="Тон рынка"
-      className="glass-panel grid min-h-[92px] grid-cols-1 items-center gap-x-6 gap-y-3 rounded-2xl p-[var(--panel-p)] lg:grid-cols-[minmax(240px,1.1fr)_2fr]"
+      className="glass-panel grid min-h-[92px] grid-cols-1 items-center gap-x-6 gap-y-3 rounded-2xl p-[var(--panel-p)] lg:grid-cols-[minmax(240px,1fr)_minmax(0,2.2fr)]"
     >
       <div className="flex min-w-0 items-center gap-3">
         <span className={cn("grid h-11 w-11 shrink-0 place-items-center rounded-xl", cls?.ring ?? "bg-[var(--glass-bg)]")} aria-hidden="true">
@@ -81,14 +81,14 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
             </span>
             <span className="text-xs text-muted-foreground">{PHASE_LABEL[phase]}</span>
           </div>
-          <p className="truncate text-xs text-muted-foreground" title={tone ? `${tone.reasons.join(" · ")}\n${toneHint(tone)}` : undefined}>
+          <p className="line-clamp-2 text-xs text-muted-foreground" title={tone ? `${tone.reasons.join(" · ")}\n${toneHint(tone)}` : undefined}>
             {tone ? tone.reasons.join(" · ") : "Котировки ещё не пришли"}
           </p>
-          {tone && <p className="truncate text-xs text-foreground/90">{toneHint(tone)}</p>}
+          {tone && <p className="truncate text-xs text-foreground/90" title={toneHint(tone)}>{toneHint(tone)}</p>}
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-3 gap-x-5 gap-y-3 sm:grid-cols-6">
+      <div className="grid min-w-0 grid-cols-3 gap-x-6 gap-y-3 sm:grid-cols-[repeat(5,auto)_minmax(0,1fr)]">
         <Cell label="QQQ"><Signed value={qqq?.chg} /></Cell>
         <Cell label="SPY"><Signed value={spy?.chg} /></Cell>
         <Cell label="В плюсе"><Breadth up={agg.up} down={agg.down} n={agg.n} /></Cell>
@@ -102,10 +102,9 @@ export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
           </span>
         </Cell>
         <Cell label="Ведут / отстают" title="RS к QQQ, п.п.">
-          <span className="block truncate text-xs font-medium">
-            <span className="text-up">{names(agg.leaders) || "—"}</span>
-            <span className="text-muted-foreground"> / </span>
-            <span className="text-down">{names(agg.laggards) || "—"}</span>
+          <span className="flex flex-col text-xs font-medium leading-snug">
+            <span className="truncate text-up" title={names(agg.leaders) || undefined}>{names(agg.leaders) || "—"}</span>
+            <span className="truncate text-down" title={names(agg.laggards) || undefined}>{names(agg.laggards) || "—"}</span>
           </span>
         </Cell>
       </div>

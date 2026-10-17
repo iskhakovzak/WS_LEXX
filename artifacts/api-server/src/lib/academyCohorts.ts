@@ -543,7 +543,7 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
   return {
     value, progress: closeness(def, value, target, met), met, achieved: met, sample: value, required: target,
     windowFrom: goal.startDate, windowTo: ctx.today,
-    detail: `${value} из ${target} ${goal.metric === "journal_days" ? "дней дневника с разбором" : "торговых дней"} с ${goal.startDate}`,
+    detail: `${value} из ${target} ${goal.metric === "journal_days" ? pluralRuGen(target, "дня дневника с разбором", "дней дневника с разбором") : pluralRuGen(target, "торгового дня", "торговых дней")} с ${ruDate(goal.startDate)}`,
   };
 }
 
@@ -604,7 +604,7 @@ export function lagReasons(i: LagInput): LagReason[] {
   if (a.rate != null && a.present + a.late + a.absent >= 3 && a.rate < 0.75) {
     out.push({ code: "attendance_low", severity: a.rate < 0.5 ? "critical" : "warn", text: `Посещаемость ${Math.round(a.rate * 100)} %` });
   }
-  if (a.absentStreak >= 2) out.push({ code: "absent_streak", severity: a.absentStreak >= 3 ? "critical" : "warn", text: `${a.absentStreak} пропуска подряд` });
+  if (a.absentStreak >= 2) out.push({ code: "absent_streak", severity: a.absentStreak >= 3 ? "critical" : "warn", text: `${a.absentStreak} ${pluralRuNom(a.absentStreak, "пропуск", "пропуска", "пропусков")} подряд` });
   if (i.overdueActions > 0) out.push({ code: "overdue_actions", severity: i.overdueActions >= 3 ? "critical" : "warn", text: `Просрочено договорённостей: ${i.overdueActions}` });
   if (i.missedGoals > 0) out.push({ code: "missed_goals", severity: "critical", text: `Сорвано целей ИПР: ${i.missedGoals}` });
   if (i.atRiskGoals > 0) out.push({ code: "goals_at_risk", severity: "warn", text: `Цели под угрозой срыва: ${i.atRiskGoals}` });
@@ -613,7 +613,7 @@ export function lagReasons(i: LagInput): LagReason[] {
   if (settled) {
     const gap = i.lastTradeDate ? weekdaysBetween(i.lastTradeDate, i.today) : null;
     if (gap == null) out.push({ code: "no_trades", severity: "warn", text: "Нет ни одной сделки" });
-    else if (gap >= 3) out.push({ code: "no_trades", severity: gap >= 7 ? "critical" : "warn", text: `Не торгует ${gap} раб. дн. (последняя сделка ${i.lastTradeDate})` });
+    else if (gap >= 3) out.push({ code: "no_trades", severity: gap >= 7 ? "critical" : "warn", text: `Не торгует ${gap} раб. дн. (последняя сделка ${ruDate(i.lastTradeDate ?? "")})` });
     const jgap = i.lastJournalDate ? weekdaysBetween(i.lastJournalDate, i.today) : null;
     if (jgap == null) out.push({ code: "no_journal", severity: "warn", text: "Дневник ещё не вёлся" });
     else if (jgap >= 3) out.push({ code: "no_journal", severity: "warn", text: `Дневник не заполнялся ${jgap} раб. дн.` });
@@ -623,4 +623,22 @@ export function lagReasons(i: LagInput): LagReason[] {
 
 export function lagScore(reasons: ReadonlyArray<LagReason>): number {
   return reasons.reduce((s, r) => s + (r.severity === "critical" ? 3 : 1), 0);
+}
+
+/** «из 1 дня», «из 21 дня», но «из 10 дней»: родительный падеж после «из N». */
+function pluralRuGen(n: number, one: string, many: string): string {
+  return n % 10 === 1 && n % 100 !== 11 ? one : many;
+}
+
+/** «2026-10-01» → «01.10.2026». */
+function ruDate(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : ymd;
+}
+
+function pluralRuNom(n: number, one: string, few: string, many: string): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
 }

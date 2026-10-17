@@ -42,7 +42,29 @@ const num = (v: unknown): number | null => {
   return Number.isFinite(n) ? n : null;
 };
 
-export function enrichIdea(i: TradeIdea): EnrichedIdea {
+/** Live price tracking of an idea (GET /trade-ideas/tracking): did price reach the target or the stop first. */
+export type PriceTrack = { hit: "target" | "final_target" | "stop" | null; plannedR: number | null };
+/** Where an idea's outcome comes from: the linked trade, or price vs. the idea's own target / stop. */
+export type OutcomeBasis = "trades" | "price";
+
+/**
+ * Price basis: target first → win at the planned R to target 1, stop first → loss at −1R, tracked without a hit → open.
+ * Ideas without numeric levels (not tracked) or drafts have no outcome. Money stays null — no position was measured.
+ */
+function enrichByPrice(i: TradeIdea, track: PriceTrack | null | undefined): EnrichedIdea {
+  const published = i.status === "published" || i.status === "converted";
+  let outcome: Outcome = "none";
+  let r: number | null = null;
+  if (published && track) {
+    if (track.hit === "stop") { outcome = "loss"; r = -1; }
+    else if (track.hit === "target" || track.hit === "final_target") { outcome = "win"; r = track.plannedR != null && Number.isFinite(track.plannedR) ? track.plannedR : null; }
+    else outcome = "open";
+  }
+  return { ...i, date: (i.ideaDate || i.createdAt || "").slice(0, 10), outcome, r, pnl: null, published, converted: !!i.linkedTrade };
+}
+
+export function enrichIdea(i: TradeIdea, opts?: { basis?: OutcomeBasis; track?: PriceTrack | null }): EnrichedIdea {
+  if (opts?.basis === "price") return enrichByPrice(i, opts.track);
   const lt = i.linkedTrade ?? null;
   let outcome: Outcome = "none";
   if (lt) {

@@ -1,6 +1,7 @@
 /**
  * «Описание» → the living part of a setup: Tier 1 showcase first (how it looks when played by plan),
- * Tier 3 «Типичные ошибки» (notes from trades that went wrong) and related setups (same folder / type, same space).
+ * Tier 3 «Типичные ошибки» (notes from trades that went wrong). Related setups (same folder / type, same space) are a
+ * separate section the setup view puts under the card.
  * Pure data from the examples query already loaded by SetupView — no extra requests.
  */
 import * as React from "react";
@@ -38,7 +39,6 @@ export function SetupHighlights({
   const t1 = React.useMemo(() => (examples ?? []).filter((x) => x.tier === 1).slice(0, 3), [examples]);
   const t1Total = (examples ?? []).filter((x) => x.tier === 1).length;
   const t3 = React.useMemo(() => (examples ?? []).filter((x) => x.tier === 3), [examples]);
-  const related = React.useMemo(() => relatedSetups(entry, allEntries, summary, viewer), [entry, allEntries, summary, viewer]);
   const checklist = React.useMemo(() => checklistOf(entry), [entry]);
   if (!examples) return null;
 
@@ -94,6 +94,23 @@ export function SetupHighlights({
         </DocSection>
       )}
 
+    </>
+  );
+}
+
+/** «Похожие сетапы» — rendered under the card (it is a pointer elsewhere, not part of the setup itself). */
+export function RelatedSetupsSection({
+  entry, allEntries, summary, viewer, onOpen,
+}: {
+  entry: PlaybookEntry;
+  allEntries: PlaybookEntry[];
+  summary: Map<number, SetupSummary>;
+  viewer: ViewerLike;
+  onOpen: (id: number) => void;
+}) {
+  const related = React.useMemo(() => relatedSetups(entry, allEntries, summary, viewer), [entry, allEntries, summary, viewer]);
+  return (
+    <>
       {related.length > 0 && (
         <DocSection title="Похожие сетапы" icon={Shapes}>
           <ul className="grid grid-cols-1 gap-1 sm:grid-cols-2">

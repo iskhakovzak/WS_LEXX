@@ -142,7 +142,10 @@ export type RatingEvidence = {
   currentRating: Rating | null;
 };
 
+/** Tier choices: the desk ladder Стажёр → Джун → Трейдер → Сеньор (same codes as trader_risk_limits.tier). */
 export const TIER_LABELS: Record<string, string> = {
-  starter: "Старт", junior: "Junior", standard: "Стандарт", senior: "Senior", lead: "Лид",
+  trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор",
 };
-export const tierLabel = (t: string | null | undefined): string => (t ? TIER_LABELS[t] ?? t : "");
+/** Older ratings may carry pre-ladder codes; they still read in Russian. */
+const LEGACY_TIER_LABELS: Record<string, string> = { starter: "Старт", standard: "Стандарт", lead: "Лид" };
+export const tierLabel = (t: string | null | undefined): string => (t ? TIER_LABELS[t] ?? LEGACY_TIER_LABELS[t] ?? t : "");

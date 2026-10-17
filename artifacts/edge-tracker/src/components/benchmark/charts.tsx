@@ -131,6 +131,8 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
 export type RadarAxis = { key: string; label: string };
 export type RadarSeries = { name: string; color: string; values: Record<string, number | null> };
 
+const RADAR_PAD_X = 64;
+
 /** Radar of desk percentiles (0..1 per axis, 1 = best). Missing values are drawn at the centre and marked «—». */
 export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis[]; series: RadarSeries[]; size?: number; className?: string }) {
   const c = size / 2, R = size / 2 - 52;
@@ -139,7 +141,8 @@ export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis
   const ang = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
   const pt = (i: number, v: number) => [c + Math.cos(ang(i)) * R * v, c + Math.sin(ang(i)) * R * v] as const;
   return (
-    <svg viewBox={`0 0 ${size} ${size}`} className={cn("h-auto w-full max-w-[360px]", className)} role="img"
+    // Side padding: the axis labels («Лучший день / прибыль») run outward from the circle and must not be clipped.
+    <svg viewBox={`${-RADAR_PAD_X} 0 ${size + RADAR_PAD_X * 2} ${size}`} className={cn("h-auto w-full max-w-[440px] overflow-visible", className)} role="img"
       aria-label={`Радар перцентилей: ${series.map((s) => s.name).join(" vs ")}`}>
       {[0.25, 0.5, 0.75, 1].map((g) => (
         <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="hsl(var(--border))" strokeDasharray={g === 0.5 ? undefined : "2 3"} />

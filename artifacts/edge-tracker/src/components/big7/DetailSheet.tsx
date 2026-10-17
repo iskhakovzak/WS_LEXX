@@ -2,12 +2,17 @@
  * Ticker detail sheet: metric strip, 5-minute chart of the session (chart-engine WsChart, with its own
  * PDH/PDL/premarket/VWAP overlays), the automatic day-level ladder, saved levels, own stats and catalysts.
  */
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Flame, Loader2 } from "lucide-react";
+import { Link } from "wouter";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Pill, toneOf, TermTooltip } from "@/components/ds";
 import { WsChart } from "@/components/chart-engine";
 import { cn } from "@/lib/utils";
+import { links } from "@/lib/links";
+import { useAuth } from "@/contexts/auth-context";
+import { LIST_LABELS } from "@/components/watchlist/lib";
+import { useQuickAddToWatchlist, useWatchlistIndex } from "@/components/watchlist/use-quick-add";
 import { fmtSigned, type GapStats, type MergedCatalyst, type StockQuote } from "./lib";
 import type { Big7Row, LevelPoint, Phase } from "./context";
 import { LevelsLadder } from "./LevelsLadder";
@@ -81,11 +86,15 @@ export function DetailSheet({
   onAddCatalyst: (symbol: string) => void;
   onEditCatalyst: (c: MergedCatalyst) => void;
 }) {
+  const { canEdit } = useAuth();
+  const wl = useWatchlistIndex(open);
+  const quick = useQuickAddToWatchlist();
+  const inList = row ? wl.get(row.symbol.toUpperCase()) : undefined;
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent
         side="right"
-        className="flex w-full flex-col gap-4 p-5 sm:max-w-[min(1180px,94vw)]"
+        className="flex w-full flex-col gap-4 p-5 sm:max-w-[min(1180px,94vw)] [&>*]:shrink-0"
         onKeyDown={(e) => {
           const el = e.target as HTMLElement;
           if (el.closest("input,textarea,select,[contenteditable=true]")) return;
@@ -102,8 +111,17 @@ export function DetailSheet({
                 <Pill tone={toneOf(row.chg)}>{fmtSigned(row.chg)}</Pill>
                 {earnings && <Pill tone="warn">{earningsLabel(earnings)}</Pill>}
                 <div className="ml-auto flex items-center gap-1">
-                  <Button variant="ghost" size="icon" aria-label="Предыдущий тикер" title="←" onClick={() => onStep(-1)}><ChevronLeft /></Button>
-                  <Button variant="ghost" size="icon" aria-label="Следующий тикер" title="→" onClick={() => onStep(1)}><ChevronRight /></Button>
+                  {inList ? (
+                    <Button variant="ghost" size="sm" asChild title="Открыть карточку в вотчлисте">
+                      <Link href={links.watchlist(row.symbol)}><Check /> В вотчлисте · {LIST_LABELS[inList]}</Link>
+                    </Button>
+                  ) : canEdit ? (
+                    <Button variant="outline" size="sm" disabled={quick.busy === row.symbol.toUpperCase()} onClick={() => void quick.add(row.symbol, "today")} title="Добавить в вотчлист «Сегодня»">
+                      {quick.busy === row.symbol.toUpperCase() ? <Loader2 className="animate-spin" /> : <Flame />} В «Сегодня»
+                    </Button>
+                  ) : null}
+                  <Button variant="ghost" size="icon-sm" aria-label="Предыдущий тикер" title="←" onClick={() => onStep(-1)}><ChevronLeft /></Button>
+                  <Button variant="ghost" size="icon-sm" aria-label="Следующий тикер" title="→" onClick={() => onStep(1)}><ChevronRight /></Button>
                 </div>
               </div>
               <SheetDescription className="text-xs">

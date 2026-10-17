@@ -440,9 +440,11 @@ export function WsChart({
   const updateDrawings = React.useCallback((fn: (d: Drawing[]) => Drawing[]) => setDrawings((d) => { const n = fn(d); saveDrawings(trade.id, n); return n; }), [trade.id]);
   const [tool, setTool] = React.useState<DrawingType | null>(null);
   const [selected, setSelected] = React.useState<string | null>(null);
+  const clearDrawings = React.useCallback(() => { updateDrawings(() => []); setSelected(null); }, [updateDrawings]);
   const pendingRef = React.useRef<DrawingPoint[]>([]);
   const [pendingCount, setPendingCount] = React.useState(0);
-  const [hover, setHover] = React.useState<number | null>(null);
+  // Hovered bar lives outside React state: the crosshair updates only the legend, not the whole chart + panels.
+  const [hoverStore] = React.useState(createHoverStore);
 
   live.current = { mode, tool, bars, barSec, cursorIdx, revealAll, replayActive, startIdx, speed, last, limitIdx, pauseIdx, pauseOnFills: prefs.pauseOnFills, hideReal };
 
@@ -553,7 +555,7 @@ export function WsChart({
       }
       if (idx !== lastHover) {
         lastHover = idx;
-        if (!raf) raf = window.requestAnimationFrame(() => { raf = 0; setHover(lastHover); });
+        if (!raf) raf = window.requestAnimationFrame(() => { raf = 0; hoverStore.set(lastHover); });
       }
       if (st.tool && pendingRef.current.length && param.point && param.paneIndex === 0 && param.logical != null) {
         const price = candles.coordinateToPrice(param.point.y);
@@ -608,7 +610,7 @@ export function WsChart({
       for (const p of seriesPrims) candles.detachPrimitive(p);
       chart.remove();
       refs.current = null;
-      setHover(null);
+      hoverStore.set(null);
     };
     // Rebuild only when the bar set, timeframe or theme changes; everything else is pushed by the effects below.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -772,6 +774,7 @@ export function WsChart({
       else if (code === "KeyH") { e.preventDefault(); placeOrder("half"); }
       else if (code === "KeyE") { e.preventDefault(); breakeven(); }
       else if (k === "Enter" && !btn) { e.preventDefault(); reveal(); }
+      else if (code === "KeyN" && revealed && onNextTask) { e.preventDefault(); onNextTask(); }
       return;
     }
     if (code === "KeyE") { e.preventDefault(); jumpEntry(); }
@@ -821,7 +824,7 @@ export function WsChart({
     return Math.max(0, (idx === geo.entryIdx ? bar.t + Math.min(barSec, 60) : bar.t + barSec) - entryT);
   }, [bars, geo.entryTime, geo.entryIdx, barSec]);
 
-  const legend: LegendInfo | null = React.useMemo(() => {
+  const legendAt = React.useCallback((hover: number | null): LegendInfo | null => {
     if (!bars.length) return null;
     const idx = hover ?? (cursorIdx != null && !revealAll ? cursorIdx : (cursorIdx ?? (geo.exitIdx ?? last)));
     const bar = bars[idx];
@@ -830,7 +833,7 @@ export function WsChart({
     const v = ov.vwap && geo.vwap.length ? bsearch(geo.vwap, idx) : null;
     const av = ov.avwap && geo.avwap.length ? bsearch(geo.avwap, idx) : null;
     return { bar, idx, hovered: hover != null, position: pos, sinceEntry: sinceEntryAt(idx), vwap: v, avwap: av?.vwap ?? null, rvol: geo.rvol[idx] ?? null, risk: geo.risk, side: geo.side, prevClose: geo.levels.pdc ?? data.prevClose, redacted };
-  }, [bars, hover, cursorIdx, revealAll, geo, last, hideReal, visibleFills, trade.qty, ov.vwap, ov.avwap, sinceEntryAt, data.prevClose, redacted]);
+  }, [bars, cursorIdx, revealAll, geo, last, hideReal, visibleFills, trade.qty, ov.vwap, ov.avwap, sinceEntryAt, data.prevClose, redacted]);
 
   const marks: ReplayMark[] = React.useMemo(() => visibleFills.map((f) => ({ idx: f.idx, kind: f.kind, label: f.label })), [visibleFills]);
   const livePosition = React.useMemo(() => {
@@ -844,19 +847,23 @@ export function WsChart({
   const suggestLong = cursorIdx != null && training ? suggestStop(bars, cursorIdx, 1) : null;
   const suggestShort = cursorIdx != null && training ? suggestStop(bars, cursorIdx, -1) : null;
 
+  const hasNextTask = !!onNextTask;
   const hotkeys: HotkeyRow[] = React.useMemo(() => {
     const rows: HotkeyRow[] = [];
     if (replayActive) {
       rows.push([["Space"], "играть / пауза"], [["→"], "бар вперёд (Shift — 10)"]);
       if (!training) rows.push([["←"], "бар назад (Shift — 10)"]);
       rows.push([["+", "−"], "быстрее / медленнее"]);
-      if (training) rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["H"], "закрыть половину"], [["E"], "стоп в безубыток"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
+      if (training) {
+        rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["H"], "закрыть половину"], [["E"], "стоп в безубыток"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
+        if (hasNextTask) rows.push([["N"], "следующая задача (после разбора)"]);
+      }
       else rows.push([["E"], "к входу"], [["X"], "к выходу"], [["N"], "к следующему исполнению"], [["P"], "пауза на исполнениях"]);
       rows.push([["Home"], "в начало"]);
     }
     rows.push([["T"], "сменить таймфрейм"], [["F"], "показать сделку целиком"], [["Shift", "F"], "на весь экран"], [["Колесо"], "масштаб"], [["Esc"], "отменить рисование"]);
     return rows;
-  }, [replayActive, training]);
+  }, [replayActive, training, hasNextTask]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   const isWorkspace = layout === "workspace" || fullscreen;
@@ -940,7 +947,7 @@ export function WsChart({
         mode={mode} onMode={setMode} showModes={showModes}
         overlays={overlays} onOverlay={setOverlay} panes={panes} onPane={setPane} hasPosition={geo.position.length > 0}
         hasEvents={geo.events.length > 0} hasStopOrTarget={geo.stop != null || geo.target != null} lockTrade={hideReal}
-        tool={tool} onTool={setTool} drawingsCount={drawings.length} onClearDrawings={() => { updateDrawings(() => []); setSelected(null); }}
+        tool={tool} onTool={setTool} drawingsCount={drawings.length} onClearDrawings={clearDrawings}
         onScreenshot={screenshot} onFit={fitView} onFullscreen={toggleFullscreen} fullscreen={fullscreen}
         fetching={data.fetching || (useDaily && data.daily.loading)} hotkeys={hotkeys}
       />
@@ -948,14 +955,14 @@ export function WsChart({
         <div className={cn("flex min-w-0 flex-col gap-2", isWorkspace && "min-h-0 lg:flex-1")}>
           <div className={chartBoxCls} style={isWorkspace ? undefined : { height }}>
             <div ref={containerRef} className={cn("absolute inset-0 isolate overflow-hidden tabular-nums", tool && "cursor-crosshair")} />
-            <ChartLegend info={legend} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
+            <LiveLegend store={hoverStore} build={legendAt} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
             <FillsKey fills={visibleFills} structure={hideReal ? null : geo.structure} layer={structureLayer} />
-            {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/80 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">{hint}</div>}
+            {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/90 px-2.5 py-1 text-xs text-muted-foreground">{hint}</div>}
             {training && (
               <div className="pointer-events-none absolute bottom-8 right-[4.5rem] z-raised flex max-w-[calc(100%-6rem)] flex-wrap justify-end gap-1">
-                {hideReal && <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-muted-foreground backdrop-blur">будущее скрыто</span>}
+                {hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">будущее скрыто</span>}
                 {data.baseSec > 60 && intraday && (
-                  <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))] backdrop-blur" title="Мельче баров за этот день нет: 1-минутки Yahoo хранит 7 дней, 5-минутки — 60 дней (если день не попал в кэш)">
+                  <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))]" title="Мельче баров за этот день нет: 1-минутки Yahoo хранит 7 дней, 5-минутки — 60 дней (если день не попал в кэш)">
                     бары {baseBarLabel(data.baseSec)}: мельче за этот день нет
                   </span>
                 )}
@@ -1009,6 +1016,25 @@ function applyReveal(r: ChartRefs, limit: number | null): void {
     }
   }
   r.revealed = target;
+}
+
+/** Hovered bar index as a tiny external store (see `hoverStore` in WsChart). */
+function createHoverStore() {
+  let value: number | null = null;
+  const subs = new Set<() => void>();
+  return {
+    get: (): number | null => value,
+    set: (v: number | null): void => { if (v === value) return; value = v; for (const f of subs) f(); },
+    subscribe: (f: () => void): (() => void) => { subs.add(f); return () => { subs.delete(f); }; },
+  };
+}
+type HoverStore = ReturnType<typeof createHoverStore>;
+
+/** The legend is the only thing that follows the mouse: it alone re-renders on hover. */
+function LiveLegend({ store, build, ticker, tfLabel }: { store: HoverStore; build: (hover: number | null) => LegendInfo | null; ticker: string; tfLabel: string }) {
+  const hover = React.useSyncExternalStore(store.subscribe, store.get);
+  const info = React.useMemo(() => build(hover), [build, hover]);
+  return <ChartLegend info={info} ticker={ticker} tfLabel={tfLabel} />;
 }
 
 /** Last point with idx <= i, or null (points sorted by idx). */

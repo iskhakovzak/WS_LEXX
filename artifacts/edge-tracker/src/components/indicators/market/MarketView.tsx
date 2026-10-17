@@ -7,7 +7,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { useToast } from "@/hooks/use-toast";
 import { useSectors } from "@/lib/market-intel";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import {
   DIMENSIONS, INDICATORS, INDICATOR_BY_ID, alertFires, analogues as findAnalogues, baseline, bucketize, buildFrame, joinDays, readings,
@@ -20,6 +20,7 @@ import { RegimePanel } from "./RegimePanel";
 import { EdgeByRegime, type DimResult } from "./EdgeByRegime";
 import { AnaloguesPanel, TodayForYou } from "./TodayForYou";
 import { dayLabel, daysWord, nextWeekday, nyMinutes, sessionInProgress } from "./format";
+import { PersonSelect } from "@/components/people/person-select";
 
 const SYMBOL_NAME: Record<string, string> = { qqq: "QQQ", iwm: "IWM", rsp: "RSP", vix: "VIX", vix3m: "VIX3M", tnx: "доходность 10-летних", dxy: "доллар" };
 
@@ -40,8 +41,9 @@ export function MarketView() {
   const trader = isStaff ? (picked && traders.includes(picked) ? picked : me || traders[0] || "") : me;
 
   const market = useMarketData();
-  const from = useMemo(() => addDays(nyDate(), -760), []);
-  const tradesQ = useTradesWindow({ trader: trader || undefined, from }, { enabled: !!trader, staleTime: 5 * 60_000 });
+  // Same window as «Вотчлист» / «Катализаторы» ({ trader }) → one cached download of the book across the premarket
+  // pages; only days inside the 2-year market frame are joined anyway (joinDays).
+  const tradesQ = useTradesWindow({ trader: trader || undefined }, { enabled: !!trader, staleTime: 5 * 60_000 });
   const { alerts, setAlert } = useMarketAlerts();
   const sectorsQ = useSectors();
   const { toast } = useToast();
@@ -120,12 +122,7 @@ export function MarketView() {
   const toolbar = (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
       {isStaff && traders.length > 0 && (
-        <Select value={trader} onValueChange={setPicked}>
-          <SelectTrigger className="h-9 w-[12rem]" aria-label="Трейдер"><SelectValue placeholder="Трейдер" /></SelectTrigger>
-          <SelectContent>
-            {traders.map((t) => <SelectItem key={t} value={t}>{t}{t === me ? " (я)" : ""}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <PersonSelect value={trader} onValueChange={setPicked} options={traders} self={me} ariaLabel="Трейдер" className="h-9 w-[12rem]" />
       )}
       <span className="text-xs text-muted-foreground">SPY, VIX, IWM, RSP, доходности и доллар · дневные данные за 2 года</span>
       <span className="ml-auto flex items-center gap-2 text-xs text-muted-foreground">
@@ -198,7 +195,7 @@ export function MarketView() {
         <EmptyState
           icon={CalendarX}
           title="Нет торговых дней для сравнения"
-          description={trader ? `У ${trader} нет закрытых сделок за последние два года — эдж по режимам появится после первых торговых дней.` : "Выбери трейдера, чтобы увидеть его результат по режимам рынка."}
+          description={trader ? `${trader}: закрытых сделок за последние два года нет — эдж по режимам появится после первых торговых дней.` : "Выбери трейдера, чтобы увидеть его результат по режимам рынка."}
         />
       ) : (
         <BentoGrid>

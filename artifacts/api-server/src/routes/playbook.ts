@@ -276,6 +276,17 @@ router.get("/playbook", asyncHandler(async (req, res): Promise<void> => {
   const v = await loadViewer(req);
   const params: unknown[] = [];
   const vis = visibleSql(v, params, "p");
+  // ?lite=1 — ids / names / folders / source only (duplicate checks, pickers): no review join, no access hints.
+  if (req.query.lite === "1") {
+    const { rows } = await pool.query<any>(
+      `SELECT p.id, p.name, p.folder, p.parent_id AS "parentId", p.source_type AS "sourceType", p.source_id AS "sourceId"
+         FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}
+        ORDER BY p.created_at DESC`,
+      params,
+    );
+    res.json(rows);
+    return;
+  }
   const { rows } = await pool.query<any>(
     `SELECT q.*, rv.verdict AS "reviewVerdict", rv.created_at AS "reviewVerdictAt"
        FROM (SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}) q
@@ -755,19 +766,36 @@ router.get("/playbook/folder-settings", asyncHandler(async (_req, res): Promise<
   res.json(rows.map(r => ({ folderName: r.folder_name, colorIndex: r.color_index, sortOrder: r.sort_order })));
 }));
 
+/** One row of PATCH /playbook/folder-settings; null fields = «leave as is». Exported for tests. */
+export function parseFolderSettingUpdates(body: unknown): { folderName: string; colorIndex: number | null; sortOrder: number | null }[] | null {
+  if (!Array.isArray(body) || body.length === 0 || body.length > 500) return null;
+  const out: { folderName: string; colorIndex: number | null; sortOrder: number | null }[] = [];
+  for (const raw of body) {
+    if (!raw || typeof raw !== "object") continue;
+    const u = raw as Record<string, unknown>;
+    const folderName = typeof u.folderName === "string" ? u.folderName.trim().slice(0, 200) : "";
+    if (!folderName) continue;
+    const int = (v: unknown) => (typeof v === "number" && Number.isInteger(v) && v >= 0 && v <= 100_000 ? v : null);
+    out.push({ folderName, colorIndex: int(u.colorIndex), sortOrder: int(u.sortOrder) });
+  }
+  return out;
+}
+
+// Folder order / colours are desk-wide (the office library's folders): only staff change them. A field that is not
+// sent keeps its value — an update without `sortOrder` used to write 0 and jump the folder to the top.
 router.patch("/playbook/folder-settings", asyncHandler(async (req, res): Promise<void> => {
-  const updates = req.body as { folderName: string; colorIndex?: number | null; sortOrder?: number }[];
-  if (!Array.isArray(updates) || updates.length === 0) { res.status(400).json({ error: "array required" }); return; }
+  if (!(await requireStaffOr403(req, res))) return;
+  const updates = parseFolderSettingUpdates(req.body);
+  if (!updates) { res.status(400).json({ error: "array required" }); return; }
   for (const u of updates) {
-    if (!u.folderName) continue;
     await pool.query(
       `INSERT INTO playbook_folder_settings (folder_name, color_index, sort_order, updated_at)
-       VALUES ($1, $2, $3, NOW())
+       VALUES ($1, $2, COALESCE($3::int, (SELECT COALESCE(MAX(sort_order) + 1, 0) FROM playbook_folder_settings)), NOW())
        ON CONFLICT (folder_name) DO UPDATE
        SET color_index = COALESCE($2, playbook_folder_settings.color_index),
-           sort_order  = COALESCE($3, playbook_folder_settings.sort_order),
+           sort_order  = COALESCE($3::int, playbook_folder_settings.sort_order),
            updated_at  = NOW()`,
-      [u.folderName, u.colorIndex ?? null, u.sortOrder ?? 0]
+      [u.folderName, u.colorIndex, u.sortOrder]
     );
   }
   res.json({ success: true });
@@ -871,7 +899,9 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const id = Number(req.params.id);
   const auth = req.authUser!;
-  const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, parentId, trader, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = req.body as Record<string, unknown>;
+  // `trader` is NOT read here: editors send the whole form (owner included), and for staff that silently took over a
+  // trader's personal setup. Re-assigning the owner needs the explicit `reassignTo` (staff, personal setups only).
+  const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, parentId, reassignTo, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = req.body as Record<string, unknown>;
 
   const { rows: prevRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
   if (!prevRows[0]) { res.status(404).json({ error: "Not found" }); return; }
@@ -921,9 +951,17 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   if (tags !== undefined) { fields.push(`tags = $${i++}`); vals.push(tags ? String(tags) : null); }
   if (parentId !== undefined) { fields.push(`parent_id = $${i++}`); vals.push(parentId ? Number(parentId) : null); }
-  // Reassigning authorship of a personal setup is a curator action; a trader's `trader` field is ignored.
+  // Reassigning authorship of a personal setup is a curator action (explicit `reassignTo`); traders get 403.
   // Office setups stay ownerless (moving between spaces = copy / promote endpoints).
-  if (trader !== undefined && staff && prevRows[0].space === "personal" && trader) { fields.push(`trader = $${i++}`); vals.push(String(trader)); }
+  const newOwner = typeof reassignTo === "string" ? reassignTo.trim().slice(0, 120) : "";
+  if (reassignTo !== undefined) {
+    if (!staff) { res.status(403).json({ error: "Сменить автора сетапа может только куратор" }); return; }
+    if (prevRows[0].space !== "personal") { res.status(400).json({ error: "У офисного сетапа нет автора — используйте копирование в «Мой»" }); return; }
+    if (!newOwner) { res.status(400).json({ error: "reassignTo: укажите трейдера" }); return; }
+    const { rowCount } = await pool.query(`SELECT 1 FROM users WHERE name = $1`, [newOwner]);
+    if (!rowCount) { res.status(400).json({ error: "Трейдер не найден" }); return; }
+    fields.push(`trader = $${i++}`); vals.push(newOwner);
+  }
   for (const [key, col] of STRUCTURED_FIELDS) {
     if (body[key] === undefined) continue;
     fields.push(`${col} = $${i++}`); vals.push(textOrNull(body[key]));

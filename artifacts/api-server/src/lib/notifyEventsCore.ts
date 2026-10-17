@@ -163,15 +163,19 @@ const LIMIT_FIELDS: ReadonlyArray<{ key: keyof LimitsLike; label: string; money:
   { key: "tier", label: "тир", money: false },
 ];
 
+/** Default tier keys → names shown to people (a renamed tier still reads fine: unknown keys pass through). */
+const TIER_LABEL: Record<string, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор", lead: "Лид" };
+
 /** «дневной $150 → $200» parts for the fields that changed (null = «нет»). */
 export function limitsDiff(before: LimitsLike | null | undefined, after: LimitsLike | null | undefined): string[] {
   const out: string[] = [];
-  const show = (v: unknown, money: boolean) => (v == null || v === "" ? "нет" : money ? fmtUsd(Number(v)) : String(v));
+  const show = (v: unknown, money: boolean, key?: string) =>
+    v == null || v === "" ? "нет" : money ? fmtUsd(Number(v)) : key === "tier" ? TIER_LABEL[String(v)] ?? String(v) : String(v);
   for (const f of LIMIT_FIELDS) {
     const a = before?.[f.key] ?? null;
     const b = after?.[f.key] ?? null;
     const same = f.money || f.key === "maxOpenPositions" ? (a == null ? null : Number(a)) === (b == null ? null : Number(b)) : a === b;
-    if (!same) out.push(`${f.label} ${show(a, f.money)} → ${show(b, f.money)}`);
+    if (!same) out.push(`${f.label} ${show(a, f.money, f.key)} → ${show(b, f.money, f.key)}`);
   }
   return out;
 }

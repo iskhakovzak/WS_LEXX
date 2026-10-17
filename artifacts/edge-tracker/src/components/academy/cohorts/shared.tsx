@@ -13,6 +13,7 @@ import {
   ATTENDANCE_LABELS, type AttendanceStatus, type AttendanceSummary, type EnrollmentStatus, GOAL_STATUS_LABELS, type Goal, type GoalStatus,
   MODE_LABELS, type SessionMode, STAGE_LABELS, STATUS_LABELS, type Stage,
 } from "./api";
+import { PersonSelect } from "@/components/people/person-select";
 
 export const NY_TZ = "America/New_York";
 export const LOCAL_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || NY_TZ; } catch { return NY_TZ; } })();
@@ -158,13 +159,17 @@ export function UserSelect({
   return (
     <div className="flex flex-col gap-1.5">
       <Label htmlFor={id}>{label}</Label>
-      <Select value={value ?? (allowNone ? NONE : undefined)} onValueChange={(v) => onChange(v === NONE ? null : v)} disabled={disabled}>
-        <SelectTrigger id={id}><SelectValue placeholder="Выберите пользователя" /></SelectTrigger>
-        <SelectContent>
-          {allowNone && <SelectItem value={NONE}>{noneLabel}</SelectItem>}
-          {users.map((u) => <SelectItem key={u.name} value={u.name}>{u.name}</SelectItem>)}
-        </SelectContent>
-      </Select>
+      <PersonSelect
+        id={id}
+        value={value ?? (allowNone ? NONE : "")}
+        onValueChange={(v) => onChange(v === NONE || !v ? null : v)}
+        disabled={disabled}
+        allValue={NONE}
+        allLabel={allowNone ? noneLabel : undefined}
+        options={users.map((u) => u.name)}
+        placeholder="Выберите пользователя"
+        ariaLabel={label}
+      />
     </div>
   );
 }

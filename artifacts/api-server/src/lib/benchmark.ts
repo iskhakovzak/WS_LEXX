@@ -392,7 +392,7 @@ export const METRIC_DEFS: readonly MetricDef[] = [
   { key: "expectancy", label: "Ожидание $", unit: "usd", better: "higher", hint: "Нетто / сделки с $", radar: true },
   { key: "winRate", label: "Win rate", unit: "pct", better: "higher", hint: "W / (W + L), безубыток исключён", radar: true },
   { key: "profitFactor", label: "PF", unit: "ratio", better: "higher", hint: "Σ нетто⁺ / |Σ нетто⁻|; нет убытков → —", radar: true },
-  { key: "payoff", label: "Avg win / loss", unit: "ratio", better: "higher", hint: "Средний плюс / |средний минус|" },
+  { key: "payoff", label: "Плюс / минус", unit: "ratio", better: "higher", hint: "Средний плюс / |средний минус|" },
   { key: "sharpe", label: "Sharpe", unit: "ratio", better: "higher", hint: "Среднее / σ дневного нетто × √252 (≥ 5 дней)", radar: true },
   { key: "sortino", label: "Sortino", unit: "ratio", better: "higher", hint: "Среднее / нисходящее σ × √252 (≥ 5 дней)" },
   { key: "dailyVol", label: "Волатильность дня", unit: "usd", better: "lower", hint: "σ дневного нетто" },
@@ -475,7 +475,7 @@ export function badgesFor(m: TraderMetrics, pct: PercentileMap | undefined, desk
   if (m.feeShare != null && m.feeShare > 0.3) out.push({ kind: "weakness", key: "fees", label: "Комиссии съедают", detail: `${pctTxt(m.feeShare)} брутто уходит в комиссии` });
   if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor >= 2) out.push({ kind: "strength", key: "pf", label: "Высокий PF", detail: `PF ${m.profitFactor.toFixed(2)}` });
   if (m.profitFactor != null && m.pnlTrades >= 20 && m.profitFactor < 1) out.push({ kind: "weakness", key: "pf", label: "PF < 1", detail: `PF ${m.profitFactor.toFixed(2)} — система теряет` });
-  if (m.payoff != null && m.payoff < 0.7 && (m.winRate ?? 0) < 0.6) out.push({ kind: "weakness", key: "payoff", label: "Режет плюс, держит минус", detail: `Avg win / loss ${m.payoff.toFixed(2)}` });
+  if (m.payoff != null && m.payoff < 0.7 && (m.winRate ?? 0) < 0.6) out.push({ kind: "weakness", key: "payoff", label: "Режет плюс, держит минус", detail: `Средний плюс / средний минус ${m.payoff.toFixed(2)}` });
   if (m.maxLossStreak >= 6) out.push({ kind: "weakness", key: "streak", label: "Длинные серии минусов", detail: `${m.maxLossStreak} убыточных подряд` });
   if (m.first15Trades >= 10 && m.first15Net != null && m.first15Net < 0) out.push({ kind: "weakness", key: "open", label: "Минус на открытии", detail: `${m.first15Trades} входов 9:30–9:45, нетто ${r2(m.first15Net)} $` });
   if (m.ddRecovered === false && (m.maxDd ?? 0) > 0) out.push({ kind: "weakness", key: "dd", label: "Ещё в просадке", detail: `Не восстановлен пик ${m.maxDd} $` });

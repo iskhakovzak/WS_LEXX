@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCuratorProfile, type ProfilePayload } from "./api";
 import { BreachReviewPanel } from "./breach-review";
-import { actionTone, curatorLinks, dateTime, disciplineTone, riskTone, shortDate, usd } from "./curator-math";
+import { actionTone, curatorLinks, dateTime, disciplineTone, riskTone, shortDate, usd, waitLabel } from "./curator-math";
+import { useCuratorEodReview, type EodTarget } from "./eod-review";
 import { GoalDialog } from "./goal-dialog";
 import { NotesPanel } from "./notes-panel";
 import { TemplateDialog } from "./template-dialog";
+import { pluralRu } from "@/components/rules/constants";
 
 export type ProfileTab = "overview" | "risk" | "journal" | "weekly" | "academy" | "notes";
 export const PROFILE_TABS: ProfileTab[] = ["overview", "risk", "journal", "weekly", "academy", "notes"];
@@ -111,21 +113,21 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
             {s.tierName && <Pill tone="neutral">тир {s.tierName}</Pill>}
             <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : "Без лимитов"}</Pill>
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">{people || "куратор не закреплён"}{s.lastTradeDate ? ` · посл. сделка ${shortDate(s.lastTradeDate)}` : ""}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={people || undefined}>{people || "куратор не закреплён"}{s.lastTradeDate ? ` · посл. сделка ${shortDate(s.lastTradeDate)}` : ""}</p>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
+        <div className="flex shrink-0 flex-wrap items-center gap-2">
           {p.canEditLimits && <Button type="button" size="sm" variant="outline" onClick={onTemplate}><Layers className="h-3.5 w-3.5" /> Шаблон лимитов</Button>}
           <Button type="button" size="sm" onClick={onGoal}><Target className="h-3.5 w-3.5" /> Назначить цель</Button>
         </div>
       </div>
-      <div className="mt-3 flex min-w-0 items-center gap-2 border-t border-[var(--glass-border)] pt-3">
+      <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3">
         <span className="micro-label shrink-0">Следующий шаг</span>
-        <StatusDot tone={actionTone(s.nextAction.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{s.nextAction.label}</span></StatusDot>
+        <StatusDot tone={actionTone(s.nextAction.kind)} className="min-w-0 flex-1 basis-48"><span className="text-sm text-foreground">{s.nextAction.label}</span></StatusDot>
         {s.nextAction.kind !== "none" && !s.nextAction.href.startsWith(`/curator?`) && (
           <Button asChild size="sm" variant="ghost"><Link href={s.nextAction.href}>Перейти <ArrowRight className="h-3.5 w-3.5" /></Link></Button>
         )}
         <span className="mx-1 h-5 w-px shrink-0 bg-[var(--glass-border)]" aria-hidden="true" />
-        <nav aria-label="Разделы по трейдеру" className="flex shrink-0 items-center gap-1">
+        <nav aria-label="Разделы по трейдеру" className="flex shrink-0 flex-wrap items-center gap-1">
           <Button asChild size="sm" variant="ghost"><Link href={curatorLinks.risk(p.trader)}>Риск-деск</Link></Button>
           <Button asChild size="sm" variant="ghost"><Link href={curatorLinks.journalQueue()}>Очередь дней</Link></Button>
           <Button asChild size="sm" variant="ghost"><Link href={curatorLinks.weeklyCurator(p.trader)}>Неделя</Link></Button>
@@ -143,7 +145,7 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGrid cols={4}>
-        <StatCard label="Сегодня, нетто" value={s.risk.todayTrades ? usd(s.risk.todayPnl) : "—"} tone={(s.risk.todayPnl ?? 0) > 0 ? "up" : (s.risk.todayPnl ?? 0) < 0 ? "down" : "neutral"} hint={`${s.risk.todayTrades} сделок`} term="net" />
+        <StatCard label="Сегодня, нетто" value={s.risk.todayTrades ? usd(s.risk.todayPnl) : "—"} tone={(s.risk.todayPnl ?? 0) > 0 ? "up" : (s.risk.todayPnl ?? 0) < 0 ? "down" : "neutral"} hint={`${s.risk.todayTrades} ${pluralRu(s.risk.todayTrades, "сделка", "сделки", "сделок")}`} term="net" />
         <StatCard label="Неделя, нетто" value={usd(s.risk.weekPnl)} tone={(s.risk.weekPnl ?? 0) > 0 ? "up" : (s.risk.weekPnl ?? 0) < 0 ? "down" : "neutral"} hint={p.metrics?.week.limitUsedPct != null ? `${Math.round(p.metrics.week.limitUsedPct)}% недельного лимита` : undefined} />
         <StatCard label="4 недели" value={usd(fourWeekNet)} tone={fourWeekNet > 0 ? "up" : fourWeekNet < 0 ? "down" : "neutral"} spark={s.trend.map((w) => w.net)} hint={s.trend.map((w) => w.trades).reduce((a, b) => a + b, 0) + " сделок"} />
         <StatCard
@@ -190,7 +192,7 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
               </dd>
             </dl>
           </Panel>
-          <NotesPanel trader={p.trader} notes={p.notes} compact />
+          <NotesPanel trader={p.trader} notes={p.notes} compact onShowAll={() => onTab("notes")} />
         </div>
       </BentoGrid>
     </div>
@@ -280,46 +282,96 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
 
 function JournalTab({ p }: { p: ProfilePayload }) {
   const { rows, thProps } = useTableSort(p.eodDays, EOD_ACCESSORS, "date");
+  const pending = React.useMemo<EodTarget[]>(
+    () => (p.eodPending ?? []).map((d) => ({ eodId: d.id, trader: p.trader, date: d.date, closedAt: d.closedAt, hoursWaiting: d.hoursWaiting })),
+    [p.eodPending, p.trader],
+  );
+  const review = useCuratorEodReview(pending);
+  const [allPending, setAllPending] = React.useState(false);
+  const thisYear = String(new Date().getFullYear());
+  const target = (d: { id: number; date: string; closedAt: string | null }): EodTarget =>
+    pending.find((x) => x.eodId === d.id) ?? { eodId: d.id, trader: p.trader, date: d.date, closedAt: d.closedAt, hoursWaiting: null };
   return (
-    <Panel
-      title="Закрытые дни"
-      icon={BookOpen}
-      description="Последние 15 дней дневника: самооценка дисциплины (1–5) и разбор куратора (1–5)"
-      actions={<Button asChild size="sm" variant="ghost"><Link href={curatorLinks.journalQueue()}>Очередь разборов <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
-    >
-      {p.eodDays.length === 0 ? (
-        <EmptyState compact icon={BookOpen} title="Дней в дневнике нет" description="Трейдер ещё не закрывал день." />
-      ) : (
-        <DataTable ariaLabel="Дни дневника">
-          <table>
-            <thead>
-              <tr>
-                <SortableTh {...thProps("date")}>Дата</SortableTh>
-                <SortableTh {...thProps("status")}>Статус</SortableTh>
-                <SortableTh {...thProps("discipline")} align="right">Дисциплина</SortableTh>
-                <SortableTh {...thProps("score")} align="right">Оценка куратора</SortableTh>
-                <th>Комментарий</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((d) => (
-                <tr key={d.id}>
-                  <td className="whitespace-nowrap">{shortDate(d.date)}</td>
-                  <td>
-                    {d.reviewedAt ? <Pill tone="up">Разобран · {d.reviewedBy}</Pill> : d.closedAt ? <Pill tone="accent" dot>Ждёт разбора</Pill> : <Pill tone="neutral">Не закрыт</Pill>}
-                  </td>
-                  <td className={cn("text-right", d.discipline != null && toneText(d.discipline >= 4 ? "up" : d.discipline >= 3 ? "warn" : "down"))}>{d.discipline != null ? `${d.discipline}/5` : "—"}</td>
-                  <td className="text-right">{d.curatorScore != null ? `${d.curatorScore}/5` : "—"}</td>
-                  <td className="min-w-[14rem] max-w-[36rem] whitespace-pre-line break-words text-muted-foreground">{d.curatorComment ?? ""}</td>
-                  <td className="text-right"><Link href={curatorLinks.journalDay(p.trader, d.date)} className="text-xs text-primary hover:underline">Открыть</Link></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </DataTable>
+    <div className="flex flex-col gap-[var(--grid-gap)]">
+      {pending.length > 0 && (
+        <Panel
+          title="Ждут разбора"
+          icon={BookOpen}
+          description="Закрытые дни без отзыва куратора, свежие первыми. Отзыв и оценка сразу приходят трейдеру уведомлением."
+          actions={<Button type="button" size="sm" onClick={() => review.open(pending[0])}>Разбирать по очереди · {pending.length}</Button>}
+        >
+          <ul className="flex flex-wrap gap-1.5">
+            {(allPending ? pending : pending.slice(0, 24)).map((d) => (
+              <li key={d.eodId}>
+                <button
+                  type="button"
+                  onClick={() => review.open(d)}
+                  className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium tabular-nums", (d.hoursWaiting ?? 0) > 24 && "text-warn")}
+                  title={`Закрыт ${dateTime(d.closedAt)} · ждёт ${waitLabel(d.hoursWaiting)}`}
+                >
+                  {shortDate(d.date)}{d.date.slice(0, 4) !== thisYear ? ` ${d.date.slice(0, 4)}` : ""}
+                </button>
+              </li>
+            ))}
+            {pending.length > 24 && (
+              <li>
+                <button type="button" onClick={() => setAllPending((v) => !v)} className="inline-flex min-h-8 items-center px-2 text-xs text-primary hover:underline">
+                  {allPending ? "Свернуть" : `Ещё ${pending.length - 24}`}
+                </button>
+              </li>
+            )}
+          </ul>
+        </Panel>
       )}
-    </Panel>
+      <Panel
+        title="Закрытые дни"
+        icon={BookOpen}
+        description="Последние 15 дней дневника: самооценка дисциплины (1–5) и разбор куратора (1–5)"
+        actions={<Button asChild size="sm" variant="ghost"><Link href={curatorLinks.journalQueue()}>Очередь всего деска <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
+      >
+        {p.eodDays.length === 0 ? (
+          <EmptyState compact icon={BookOpen} title="Дней в дневнике нет" description="Трейдер ещё не закрывал день." />
+        ) : (
+          <DataTable ariaLabel="Дни дневника">
+            <table>
+              <thead>
+                <tr>
+                  <SortableTh {...thProps("date")}>Дата</SortableTh>
+                  <SortableTh {...thProps("status")}>Статус</SortableTh>
+                  <SortableTh {...thProps("discipline")} align="right">Дисциплина</SortableTh>
+                  <SortableTh {...thProps("score")} align="right">Оценка куратора</SortableTh>
+                  <th>Комментарий</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((d) => (
+                  <tr key={d.id}>
+                    <td className="whitespace-nowrap">{shortDate(d.date)}</td>
+                    <td>
+                      {d.reviewedAt ? <Pill tone="up">Разобран · {d.reviewedBy}</Pill> : d.closedAt ? <Pill tone="accent" dot>Ждёт разбора</Pill> : <Pill tone="neutral">Не закрыт</Pill>}
+                    </td>
+                    <td className={cn("text-right", d.discipline != null && toneText(d.discipline >= 4 ? "up" : d.discipline >= 3 ? "warn" : "down"))}>{d.discipline != null ? `${d.discipline}/5` : "—"}</td>
+                    <td className="text-right">{d.curatorScore != null ? `${d.curatorScore}/5` : "—"}</td>
+                    <td className="min-w-[14rem] max-w-[36rem] whitespace-pre-line break-words text-muted-foreground">{d.curatorComment ?? ""}</td>
+                    <td className="whitespace-nowrap text-right">
+                      {d.closedAt ? (
+                        <button type="button" onClick={() => review.open(target(d))} className="text-xs text-primary hover:underline">
+                          {d.reviewedAt ? "Изменить отзыв" : "Разобрать"}
+                        </button>
+                      ) : (
+                        <Link href={curatorLinks.journalDay(p.trader, d.date)} className="text-xs text-primary hover:underline">Открыть</Link>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </DataTable>
+        )}
+      </Panel>
+      {review.sheet}
+    </div>
   );
 }
 
@@ -412,7 +464,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
                 <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm">
                   <StatusDot tone={a.status !== "open" ? "up" : a.overdue ? "down" : "accent"}><span className="sr-only">{ACTION_STATUS[a.status] ?? a.status}</span></StatusDot>
                   <span className={cn("line-clamp-2 min-w-0 flex-1 break-words", a.status !== "open" ? "text-muted-foreground line-through" : "text-foreground")} title={a.title}>{a.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{a.owner === p.trader ? "трейдер" : a.owner}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{a.owner === "student" || a.owner === p.trader ? "трейдер" : a.owner === "mentor" ? "ментор" : a.owner}</span>
                   <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", a.overdue ? "text-down" : "text-muted-foreground")}>{a.dueOn ? shortDate(a.dueOn) : "—"}</span>
                 </li>
               ))}

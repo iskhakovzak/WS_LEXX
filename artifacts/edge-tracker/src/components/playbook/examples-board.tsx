@@ -295,7 +295,7 @@ export function exampleFigure(ex: SetupExample): { text: string; tone: ReturnTyp
 /** Price path for the card. Another trader's trade: pass the known prices / fill times instead of loading it by id. */
 function ExampleChart({ ex, compact }: { ex: SetupExample; compact?: boolean }) {
   const day = ex.closeDate ?? ex.date;
-  const size = { width: compact ? 220 : 280, height: compact ? 40 : 56 };
+  const size = { width: compact ? 220 : 280, height: compact ? 64 : 88 };
   const trade = React.useMemo(
     () => (ex.redacted
       ? {
@@ -455,7 +455,14 @@ export function ExampleCard({
         )}
       </div>
 
-      {ex.mediaId ? <ExampleShot id={ex.mediaId} alt={`Скриншот ${ex.ticker} ${ddmm(day)}`} compact={compact} /> : <ExampleChart ex={ex} compact={compact} />}
+      {/* One media box height for chart and screenshot, so cards in a row line up. */}
+      {ex.mediaId ? (
+        <ExampleShot id={ex.mediaId} alt={`Скриншот ${ex.ticker} ${ddmm(day)}`} compact={compact} />
+      ) : (
+        <div className={cn("flex items-center justify-center overflow-hidden rounded-lg", compact ? "h-24" : "h-32")}>
+          <ExampleChart ex={ex} compact={compact} />
+        </div>
+      )}
       {uploading && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Загружаем скриншот…</p>}
 
       {editingNote ? (
@@ -489,7 +496,7 @@ export function ExampleCard({
         </button>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-1.5">
+      <div className="mt-auto flex flex-wrap items-center gap-1.5">
         {checklist.length > 0 && (
           <Popover>
             <PopoverTrigger asChild>
@@ -534,7 +541,7 @@ export function ExampleCard({
 
 function ExampleShot({ id, alt, compact }: { id: number; alt: string; compact?: boolean }) {
   const url = usePlaybookMediaUrl(id);
-  if (url === "error") return <div className="grid h-16 place-items-center rounded-lg bg-[var(--glass-bg)] text-xs text-muted-foreground">Скриншот недоступен</div>;
+  if (url === "error") return <div className={cn("grid place-items-center rounded-lg bg-[var(--glass-bg)] text-xs text-muted-foreground", compact ? "h-24" : "h-32")}>Скриншот недоступен</div>;
   if (!url) return <div className={cn("animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none", compact ? "h-24" : "h-32")} />;
   return (
     <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-border/60" draggable={false}>

@@ -359,7 +359,7 @@ export function EventDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl [&>*]:shrink-0">
         {e && (
           <>
             <SheetHeader className="space-y-2 p-5 pb-3 pr-14 text-left">

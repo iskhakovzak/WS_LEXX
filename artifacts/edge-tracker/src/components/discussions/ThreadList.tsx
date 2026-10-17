@@ -1,5 +1,4 @@
 import * as React from "react";
-import { motion, useReducedMotion } from "framer-motion";
 import { ArrowBigUp, CheckCircle2, MessageSquare, Pin, AtSign, Lock, Flame } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
@@ -41,7 +40,6 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
   onSelect: (id: number) => void;
   index: number;
 }) {
-  const reduce = useReducedMotion();
   const score = votes[t.id]?.score ?? 0;
   const replies = t.comments?.length ?? 0;
   const people = participants(t);
@@ -49,11 +47,7 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
   const resolved = isResolved(t);
   const live = isLiveNow(t);
   return (
-    <motion.li
-      initial={reduce ? false : { opacity: 0, y: 4 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: [0.2, 0.8, 0.2, 1], delay: reduce ? 0 : Math.min(index, 10) * 0.015 }}
-    >
+    <li>
       <button
         type="button"
         data-thread-id={t.id}
@@ -106,6 +100,6 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
           {lastActivityBy(t) && <span className="ml-auto truncate">{lastActivityBy(t)}</span>}
         </div>
       </button>
-    </motion.li>
+    </li>
   );
 }

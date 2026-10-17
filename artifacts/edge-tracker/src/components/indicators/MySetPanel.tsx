@@ -6,6 +6,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { DESK_PRESETS, HORIZONS, HORIZON_META, LIB_BY_ID, type LibIndicator } from "./library";
 import type { IndicatorStats } from "./stats";
 import { EMPTY_STATS } from "./stats";
@@ -24,7 +25,7 @@ export function buildMarkdown(ids: string[], notes: Record<string, string>, stat
     lines.push(`Таймфрейм: ${ind.timeframe}`);
     if (ind.settings.length) lines.push(`Настройки: ${ind.settings.map((x) => `${x.label} — ${x.value}`).join("; ")}`);
     lines.push(`- Лонг: ${ind.signals.long}`, `- Шорт: ${ind.signals.short}`, `- Не торговать: ${ind.signals.avoid}`);
-    if (s.count) lines.push(`Моя статистика: ${s.count} сделок, WR ${s.winRate}%${s.avgR != null ? `, средний ${s.avgR.toFixed(2)}R` : ""}`);
+    if (s.count) lines.push(`Моя статистика: ${s.count} ${pluralRu(s.count, "сделка", "сделки", "сделок")}, WR ${s.winRate}%${s.avgR != null ? `, средний ${s.avgR.toFixed(2)}R` : ""}`);
     if (notes[id]) lines.push(``, `> ${notes[id].replace(/\n/g, "\n> ")}`);
     lines.push(``);
   });

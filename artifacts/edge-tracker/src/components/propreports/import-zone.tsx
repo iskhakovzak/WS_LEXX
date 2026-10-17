@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { isPerformanceResponse, useImportFile, useUsers, type AccountMapping, type ApplyResult, type ImportKind, type PerformancePreview, type Preview } from "./api";
 import { PreviewSummary, PreviewTable } from "./preview-table";
 import { PerformanceReportBody } from "./PerformanceReportPanel";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Kind = ImportKind;
 
@@ -182,12 +183,7 @@ export function ImportZone({ accounts, staff, viewerName }: { accounts: AccountM
               <div className="grid gap-1">
                 <Label className="text-xs text-muted-foreground">Трейдер</Label>
                 {staff ? (
-                  <Select value={perfTrader} onValueChange={setPerfTrader}>
-                    <SelectTrigger className="w-56"><SelectValue placeholder="Выберите трейдера" /></SelectTrigger>
-                    <SelectContent>
-                      {(users.data ?? []).filter((u) => u.active).map((u) => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)}
-                    </SelectContent>
-                  </Select>
+                  <PersonSelect value={perfTrader} onValueChange={setPerfTrader} options={(users.data ?? []).filter((u) => u.active).map((u) => u.name)} placeholder="Выберите трейдера" ariaLabel="Трейдер" className="w-56" />
                 ) : (
                   <div className="text-sm font-medium">{perfTrader || viewerName}</div>
                 )}

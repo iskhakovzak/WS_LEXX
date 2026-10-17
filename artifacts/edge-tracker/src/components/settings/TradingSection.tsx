@@ -228,7 +228,7 @@ export function TradingSection() {
         {/* Form */}
         <Panel
           title="Счёт и риск"
-          description="Подставляются в калькулятор позиции и новые сделки"
+          description="Ваш 1R подставляется в опционный калькулятор (не выше лимита деска)"
           icon={SlidersHorizontal}
           actions={
             <div className="flex items-center gap-2">
@@ -280,10 +280,10 @@ export function TradingSection() {
               </div>
             </div>
 
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0">
                 <div className="text-sm font-medium text-foreground">Горизонт по умолчанию</div>
-                <p className="text-xs text-muted-foreground">Предвыбран в новых сделках и калькуляторе</p>
+                <p className="text-xs text-muted-foreground">Определяет плечо и buying power в примере справа</p>
               </div>
               <Segmented<Horizon> ariaLabel="Горизонт по умолчанию" value={horizon} onChange={setHorizon}
                 options={(["intraday", "overnight", "swing"] as Horizon[]).map((h) => ({ value: h, label: HORIZON_LABEL[h] }))} />

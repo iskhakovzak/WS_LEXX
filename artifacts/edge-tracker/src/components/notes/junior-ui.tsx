@@ -148,7 +148,7 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
       {note.curator_feedback ? (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{note.curator_feedback}</p>
       ) : (
-        <p className="text-sm text-muted-foreground">Куратор поставил оценку без комментария.</p>
+        <p className="text-sm text-muted-foreground">Оценка куратора — без комментария.</p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
         {note.reviewed_by ?? "Наставник"} · {relTime(note.reviewed_at)}

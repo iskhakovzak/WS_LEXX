@@ -68,6 +68,11 @@ export function toneBg(tone: Tone) {
   return TONE_BG[tone];
 }
 
+/** Counters in chips / segments / tabs: grouped like the rest of the app («20 343»). */
+function fmtCount(n: number): string {
+  return Number.isFinite(n) ? n.toLocaleString("ru-RU") : String(n);
+}
+
 /** `title` for truncated text: only when the content is plain text. */
 function textTitle(node: React.ReactNode): string | undefined {
   return typeof node === "string" || typeof node === "number" ? String(node) : undefined;
@@ -126,23 +131,25 @@ export function PageHeader({
 }) {
   return (
     <header className={cn("flex flex-col gap-4", className)}>
-      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+      {/* items-start + a 40px title row (icon, h1 line-height, actions min-h): actions stay on the title line
+          even when the description wraps to 2–3 lines, instead of floating in the middle of the block. */}
+      <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         {/* min width: on narrow screens the actions wrap below instead of squeezing the title to a sliver */}
-        <div className="flex min-w-[min(100%,15rem)] flex-1 items-center gap-3">
+        <div className="flex min-w-[min(100%,15rem)] flex-1 items-start gap-3">
           {Icon && (
             <span className="glass-panel grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary">
               <Icon className="h-5 w-5" aria-hidden="true" />
             </span>
           )}
           <div className="min-w-0">
-            <h1 className="truncate text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl" title={textTitle(title)}>
+            <h1 className="truncate text-xl font-semibold leading-10 tracking-tight text-foreground sm:text-2xl" title={textTitle(title)}>
               {title}
             </h1>
-            {description && <p className="mt-1 line-clamp-3 max-w-3xl text-sm text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
+            {description && <p className="line-clamp-3 max-w-3xl text-sm text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
             {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
           </div>
         </div>
-        {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
+        {actions && <div className="flex min-h-10 max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
       </div>
       {children}
     </header>
@@ -185,7 +192,7 @@ export function Panel({
   return (
     <As className={cn("glass-panel min-w-0 rounded-2xl", fill && "flex h-full flex-col", className)} {...rest}>
       {hasHeader && (
-        <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-[var(--panel-p)] pt-[var(--panel-p)]">
+        <div className="flex min-h-[calc(var(--panel-p)+2rem)] flex-wrap items-center justify-between gap-x-3 gap-y-2 px-[var(--panel-p)] pt-[var(--panel-p)]">
           <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-2">
             {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
             <div className="min-w-0">
@@ -389,7 +396,7 @@ export function Pill({
     <span
       title={title}
       className={cn(
-        "inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium tabular-nums",
+        "inline-flex min-h-5.5 items-center gap-1.5 whitespace-nowrap rounded-full px-2 text-xs font-medium leading-none tabular-nums [&_svg]:size-3 [&_svg]:shrink-0",
         TONE_PILL[tone],
         className,
       )}
@@ -428,7 +435,7 @@ export function Segmented<T extends string>({
     <div
       role="group"
       aria-label={ariaLabel}
-      className={cn("glass-field inline-flex max-w-full items-center gap-0.5 overflow-x-auto p-1", className)}
+      className={cn("glass-field inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
     >
       {options.map((o) => {
         const active = o.value === value;
@@ -442,14 +449,14 @@ export function Segmented<T extends string>({
             onClick={() => onChange(o.value as T)}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-smooth disabled:opacity-50",
-              size === "sm" ? "min-h-7 px-2.5 text-xs" : "min-h-8 px-3.5 text-sm",
+              size === "sm" ? "h-6.5 px-2.5 text-xs [&_svg]:size-3.5" : "h-7 px-3 text-sm [&_svg]:size-4",
               active
                 ? "bg-primary-solid text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)]"
                 : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
             )}
           >
             {o.label}
-            {o.count != null && <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{o.count}</span>}
+            {o.count != null && <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{fmtCount(o.count)}</span>}
           </button>
         );
       })}
@@ -464,22 +471,36 @@ export function FilterChip({
   children,
   className,
   count,
+  size = "md",
+  title,
+  disabled,
 }: {
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
   className?: string;
   count?: number;
+  /** md 36px (default, lines up with inputs / selects / segmented), sm 32px for dense chip rows. */
+  size?: "sm" | "md";
+  title?: string;
+  disabled?: boolean;
 }) {
   return (
     <button
       type="button"
       aria-pressed={active}
       onClick={onClick}
-      className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-3 text-sm font-medium", className)}
+      title={title}
+      disabled={disabled}
+      className={cn(
+        "chip inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap font-medium disabled:pointer-events-none disabled:opacity-50",
+        // min-h (single line, so it acts as the height) keeps page overrides like `min-h-7` working via tailwind-merge.
+        size === "sm" ? "min-h-8 px-3 text-xs [&_svg]:size-3.5" : "min-h-9 px-3 text-sm [&_svg]:size-4",
+        className,
+      )}
     >
       {children}
-      {count != null && <span className="tabular-nums opacity-80">{count}</span>}
+      {count != null && <span className="tabular-nums opacity-80">{fmtCount(count)}</span>}
     </button>
   );
 }
@@ -632,7 +653,8 @@ export function StatusDot({
   return (
     <span className={cn("inline-flex min-w-0 items-center gap-1.5 text-xs", className)}>
       <span className="relative flex h-2 w-2 shrink-0" aria-hidden="true">
-        {pulse && <span className={cn("absolute inset-0 rounded-full opacity-60 motion-safe:animate-ping", TONE_BG[tone])} />}
+        {/* A few pings on mount, then a calm dot: an endless ping keeps the compositor busy all session. */}
+        {pulse && <span className={cn("absolute inset-0 rounded-full opacity-60 motion-safe:animate-ping [animation-iteration-count:4]", TONE_BG[tone])} />}
         <span className={cn("relative h-2 w-2 rounded-full", TONE_BG[tone])} />
       </span>
       {children != null && <span className="truncate">{children}</span>}
@@ -829,7 +851,7 @@ export function Delta({
     <span
       className={cn(
         "inline-flex items-center gap-0.5 whitespace-nowrap text-xs font-medium tabular-nums",
-        bare ? TONE_TEXT[t] : cn("rounded-full px-1.5 py-0.5", TONE_PILL[t]),
+        bare ? TONE_TEXT[t] : cn("min-h-5.5 rounded-full px-1.5 leading-none", TONE_PILL[t]),
         className,
       )}
     >
@@ -929,7 +951,7 @@ export function SectionTabs<T extends string>({
             {t.label}
             {t.count != null && (
               <span className={cn("rounded-full px-1.5 text-2xs tabular-nums", active ? "bg-primary/12 text-accent-soft" : "bg-[var(--glass-bg)] text-muted-foreground")}>
-                {t.count}
+                {fmtCount(t.count)}
               </span>
             )}
             {active && (
@@ -991,7 +1013,10 @@ export const DataTable = React.forwardRef<
           "[&_table]:w-full [&_table]:border-separate [&_table]:border-spacing-0 [&_table]:text-sm [&_table]:tabular-nums",
           // Opaque header (no backdrop blur): rows scrolling under it stay unreadable-free and cheap to paint.
           "[&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-sticky [&_thead_th]:border-b [&_thead_th]:border-[var(--glass-border)] [&_thead_th]:bg-surface-solid",
-          "[&_thead_th]:px-3 [&_thead_th]:py-2 [&_thead_th]:text-left [&_thead_th]:text-xs [&_thead_th]:font-medium [&_thead_th]:text-muted-foreground [&_thead_th]:whitespace-nowrap",
+          // Header row 36px. Default alignment is left, but only for cells that don't ask for right/center: a plain
+          // `[&_thead_th]:text-left` out-specified `text-right` on the cell, so numeric headers sat left of their numbers.
+          "[&_thead_th]:h-9 [&_thead_th]:px-3 [&_thead_th]:py-1 [&_thead_th]:align-middle [&_thead_th]:text-xs [&_thead_th]:font-medium [&_thead_th]:text-muted-foreground [&_thead_th]:whitespace-nowrap",
+          "[&_thead_th:not(.text-right):not(.text-center)]:text-left",
           "[&_tbody_td]:border-b [&_tbody_td]:border-border/50 [&_tbody_td]:px-3",
           density === "compact" ? "[&_tbody_td]:py-2" : "[&_tbody_td]:py-2.5",
           "[&_tbody_tr:last-child_td]:border-b-0 [&_tbody_tr]:transition-colors [&_tbody_tr]:duration-[var(--dur-1)] [&_tbody_tr:hover]:bg-[var(--tile-hover-bg)]",
@@ -1028,18 +1053,21 @@ export function SortableTh({
   term?: TermKey;
 }) {
   const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
+  const name = nodeText(children).trim();
+  const state = active ? (dir === "asc" ? "по возрастанию" : "по убыванию") : null;
   return (
     <th
       scope="col"
       aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}
       className={cn(align === "right" && "text-right", align === "center" && "text-center", className)}
     >
+      {term && align === "right" && <span className="mr-0.5 inline-flex align-middle"><TermTooltip term={term} icon /></span>}
       <button
         type="button"
         onClick={onSort}
-        title={active ? (dir === "asc" ? "По возрастанию — нажмите, чтобы сменить" : "По убыванию — нажмите, чтобы сменить") : "Сортировать"}
+        title={state ? `${name ? `${name}: ` : ""}${state} — нажмите, чтобы сменить` : name ? `Сортировать по: ${name}` : "Сортировать"}
         className={cn(
-          "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
+          "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           active && "text-foreground",
           align === "right" && "flex-row-reverse",
         )}
@@ -1047,9 +1075,18 @@ export function SortableTh({
         {children}
         <Icon className={cn("h-3 w-3", !active && "opacity-50")} aria-hidden="true" />
       </button>
-      {term && <span className="ml-0.5 inline-flex align-middle"><TermTooltip term={term} icon /></span>}
+      {term && align !== "right" && <span className="ml-0.5 inline-flex align-middle"><TermTooltip term={term} icon /></span>}
     </th>
   );
+}
+
+/** Plain text of a header label (strings inside fragments/spans), for titles like «Сортировать по: Тикер». */
+function nodeText(node: React.ReactNode): string {
+  if (node == null || typeof node === "boolean") return "";
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(nodeText).join("");
+  if (React.isValidElement(node)) return nodeText((node.props as { children?: React.ReactNode }).children);
+  return "";
 }
 
 /**
@@ -1180,10 +1217,11 @@ export function LimitBar({
         )}
       >
         {hasLimit && (
+          // Full-width bar slid in from the left (transform, no relayout per frame); the track clips it.
           <motion.div
-            className={cn("h-full rounded-full", LIMIT_BAR[t])}
-            initial={reduce ? false : { width: 0 }}
-            animate={{ width: `${Math.min(100, ratio * 100)}%` }}
+            className={cn("h-full w-full rounded-full", LIMIT_BAR[t])}
+            initial={reduce ? false : { x: "-100%" }}
+            animate={{ x: `${Math.min(100, ratio * 100) - 100}%` }}
             transition={{ duration: reduce ? 0 : 0.45, ease: [0.2, 0.8, 0.2, 1] }}
           />
         )}
@@ -1214,7 +1252,33 @@ function agoText(ms: number): string {
   return `${Math.floor(h / 24)} дн назад`;
 }
 
-/** "обновлено 12 сек назад" — pass react-query's `dataUpdatedAt`. Re-renders itself every 5 s. */
+/* One shared 5 s clock for every UpdatedAgo on screen (was one setInterval per instance; a dashboard has a dozen).
+   Paused while the tab is hidden; catches up on return. */
+let agoNow = Date.now();
+const agoSubs = new Set<() => void>();
+let agoTimer: ReturnType<typeof setInterval> | null = null;
+function agoEmit() { agoNow = Date.now(); agoSubs.forEach((f) => f()); }
+function agoVisibility() { if (document.visibilityState === "visible") agoEmit(); }
+function agoSubscribe(cb: () => void) {
+  agoSubs.add(cb);
+  if (!agoTimer) {
+    agoTimer = setInterval(() => { if (document.visibilityState !== "hidden") agoEmit(); }, 5000);
+    document.addEventListener("visibilitychange", agoVisibility);
+  }
+  return () => {
+    agoSubs.delete(cb);
+    if (!agoSubs.size && agoTimer) {
+      clearInterval(agoTimer);
+      agoTimer = null;
+      document.removeEventListener("visibilitychange", agoVisibility);
+    }
+  };
+}
+function useAgoTick() {
+  return React.useSyncExternalStore(agoSubscribe, () => agoNow, () => agoNow);
+}
+
+/** "обновлено 12 сек назад" — pass react-query's `dataUpdatedAt`. Re-renders every 5 s (shared clock). */
 export function UpdatedAgo({
   at,
   prefix = "обновлено",
@@ -1224,11 +1288,7 @@ export function UpdatedAgo({
   prefix?: string;
   className?: string;
 }) {
-  const [, tick] = React.useReducer((x: number) => x + 1, 0);
-  React.useEffect(() => {
-    const t = setInterval(tick, 5000);
-    return () => clearInterval(t);
-  }, []);
+  useAgoTick();
   const ts = at == null ? NaN : at instanceof Date ? at.getTime() : typeof at === "number" ? at : Date.parse(at);
   if (!Number.isFinite(ts) || ts <= 0) return null;
   return (

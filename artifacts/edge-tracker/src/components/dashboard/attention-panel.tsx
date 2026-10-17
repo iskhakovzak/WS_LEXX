@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import {
   AlertTriangle,
@@ -55,6 +55,7 @@ const TONE_ICON: Record<Tone, string> = {
 
 const CLOSE_MIN = 16 * 60;
 const VISIBLE_ROWS = 5;
+const INPUT_WAIT_MS = 2500;
 
 function dayReportHref(date: string, trader?: string | null) {
   const q = new URLSearchParams({ date });
@@ -188,14 +189,22 @@ export function AttentionPanel({
   /** Macro calendar for today (OPEX, CPI, holidays…). */
   marketEvents: { name: string; type?: string | null; importance?: string | null }[];
   unread: { unread: number; critical: number; warn: number } | undefined;
+  /** True until every input above has answered (the task count would otherwise jump as they arrive). */
   isLoading: boolean;
   updatedAt?: number;
   onCheckin: () => void;
   fill?: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
+  // A slow / retrying secondary input must not hold the panel back for long: after INPUT_WAIT_MS render what we have.
+  const [waited, setWaited] = useState(false);
+  useEffect(() => {
+    if (!isLoading || !data) return;
+    const t = window.setTimeout(() => setWaited(true), INPUT_WAIT_MS);
+    return () => window.clearTimeout(t);
+  }, [isLoading, data]);
 
-  if (isLoading && !data) {
+  if (!data ? isLoading : isLoading && !waited) {
     return (
       <Panel title="Что важно сейчас" icon={Compass} fill={fill}>
         <div className="flex flex-col gap-3" role="status" aria-label="Загрузка">

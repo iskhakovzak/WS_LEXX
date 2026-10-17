@@ -13,7 +13,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
 import { parseAsk, removeToken, replaceToken, type ParseContext } from "@/lib/ask/parse";
 import { askBookKey, askBookScope, fetchAskBook, runAsk, type AskBook, type AskLoadProgress } from "@/lib/ask/run";
-import { dmy, tradesWord } from "@/lib/ask/aggregate";
+import { dmy, plural } from "@/lib/ask/aggregate";
 import { AskBar } from "@/components/ask/AskBar";
 import { AskNotUnderstood, AskResult, AskResultSkeleton } from "@/components/ask/AskResult";
 import { AskSidebar } from "@/components/ask/AskSidebar";
@@ -102,7 +102,7 @@ export default function AskPage() {
     : "";
   const meta = book.data ? (
     <span className="tabular-nums">
-      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{tradesWord(book.data.trades.length)} в журнале
+      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{book.data.trades.length.toLocaleString("ru-RU")} {plural(book.data.trades.length, "сделка", "сделки", "сделок")} в журнале
       {book.data.firstDate && book.data.lastDate ? ` · ${dmy(book.data.firstDate)} — ${dmy(book.data.lastDate)}` : ""}
       {book.data.truncated ? " · загружены не все" : ""}
     </span>

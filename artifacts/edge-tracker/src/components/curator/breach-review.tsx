@@ -14,10 +14,10 @@ import { dateTime, shortDate, usd } from "./curator-math";
 export const BREACH_REASONS = [
   { key: "revenge", label: "Отыгрыш после убытка" },
   { key: "size", label: "Размер позиции больше плана" },
-  { key: "no_stop", label: "Не поставил / двигал стоп" },
+  { key: "no_stop", label: "Стоп не выставлен или сдвинут" },
   { key: "overtrading", label: "Овертрейдинг" },
   { key: "news", label: "Новости / гэп против позиции" },
-  { key: "overnight", label: "Оставил позицию без разрешения" },
+  { key: "overnight", label: "Позиция на ночь без разрешения" },
   { key: "tilt", label: "Эмоции / тильт" },
   { key: "technical", label: "Техническая проблема" },
   { key: "other", label: "Другое" },

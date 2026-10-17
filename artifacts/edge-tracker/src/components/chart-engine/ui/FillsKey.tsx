@@ -43,7 +43,7 @@ export function FillsKey({ fills, structure, layer, className }: { fills: readon
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-2 top-11 z-raised flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-2.5 gap-y-1 rounded-xl border border-[var(--glass-border)] bg-background/75 px-2 py-1 text-[11px] text-muted-foreground shadow-[var(--glass-shadow-sm)] backdrop-blur",
+        "pointer-events-none absolute left-2 top-11 z-raised flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-2.5 gap-y-1 rounded-xl border border-[var(--glass-border)] bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-[var(--glass-shadow-sm)]",
         className,
       )}
       title={structure?.stats.notes?.join("\n") || undefined}

@@ -169,8 +169,12 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
     );
   }
 
+  // Saturday / Sunday: no session, so no countdown to today's 15:45 cut-off.
+  const weekend = data ? [0, 6].includes(new Date(`${data.date}T12:00:00Z`).getUTCDay()) : false;
   const keyPill = data
-    ? data.afterKey
+    ? weekend
+      ? <Pill tone="neutral">выходной — рынок закрыт</Pill>
+      : data.afterKey
       ? <Pill tone="accent" dot>срез 15:45 ET прошёл — в книге все открытые</Pill>
       : data.minutesToKey != null
         ? <Pill tone={data.minutesToKey <= 30 ? "warn" : "neutral"} dot>до среза 15:45 ET: {data.minutesToKey >= 60 ? `${Math.floor(data.minutesToKey / 60)} ч ${data.minutesToKey % 60} мин` : `${data.minutesToKey} мин`}</Pill>

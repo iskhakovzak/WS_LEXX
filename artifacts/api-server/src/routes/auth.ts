@@ -3,6 +3,7 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { timingSafeEqual } from "node:crypto";
+import { localeOfUser } from "../i18n";
 import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPassword, isGuest, isGuestModeEnabled, GUEST_NAME, GUEST_ROLE, GUEST_USER_ID } from "../lib/auth";
 
 /**
@@ -64,7 +65,9 @@ router.post("/auth/guest", asyncHandler(async (_req, res): Promise<void> => {
 
 router.get("/auth/me", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
-  res.json({ user: req.authUser, guest: isGuest(req) });
+  // `locale`: the saved interface language (the client adopts it on a new device; see edge-tracker i18n/locale-sync).
+  const locale = isGuest(req) ? null : await localeOfUser(req.authUser.id);
+  res.json({ user: req.authUser, guest: isGuest(req), locale });
 }));
 
 router.post("/auth/logout", asyncHandler(async (req, res): Promise<void> => {

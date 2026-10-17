@@ -18,6 +18,7 @@ import {
 } from "./catalyst-math";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
 import { fmtDay, fmtWeekday, macroTime } from "./event-meta";
+import { MarketReporters } from "./catalyst-market";
 
 /* ───────────── small pieces ───────────── */
 
@@ -169,7 +170,8 @@ export function DayBrief({
       <Panel
         className="lg:col-span-7"
         icon={CalendarClock}
-        title={<span className="flex items-center gap-2">{title}{whenLabel && <Pill tone={day === today ? "accent" : "neutral"}>{whenLabel}</Pill>}</span>}
+        title={title}
+        actions={whenLabel ? <Pill tone={day === today ? "accent" : "neutral"}>{whenLabel}</Pill> : undefined}
         description={past ? "Что было в календаре и как прошёл ваш день" : "Что важно знать до открытия"}
       >
         {closedRow ? (
@@ -235,6 +237,8 @@ export function DayBrief({
                 )}
               </section>
             )}
+
+            {!past && <MarketReporters day={day} prev={rep.prev} data={data} onOpenTicker={onOpenTicker} />}
 
             {past && (
               <section aria-label="Ваш день" className="rounded-xl bg-[var(--glass-bg)] px-3 py-2.5">
@@ -323,7 +327,7 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
                 onClick={() => onPickDay?.(it.date)}
                 className="flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="w-20 shrink-0 pt-0.5 text-sm tabular-nums text-muted-foreground">{fmtWeekday(it.date)}, {fmtDay(it.date)}</span>
+                <span className="w-24 shrink-0 whitespace-nowrap pt-0.5 text-sm tabular-nums text-muted-foreground">{fmtWeekday(it.date)}, {fmtDay(it.date)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-foreground">{it.label}</span>
                   {it.sub && <span className="ml-2 text-xs text-muted-foreground">{it.sub}</span>}

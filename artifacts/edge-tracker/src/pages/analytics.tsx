@@ -137,12 +137,12 @@ export default function Analytics() {
 
   const summary = useMemo(() => {
     const parts = [sdeal(current.length)];
-    parts.push(filters.trader || "вся команда");
+    parts.push(filters.trader || (isCurator ? "вся команда" : "мои сделки"));
     parts.push(PERIOD_OPTIONS.find((p) => p.value === filters.period)?.label.toLowerCase() ?? "");
     if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
     if (!hasPnl && hasR) parts.push("P&L не заполнен — считаем в R");
     return parts.filter(Boolean).join(" · ");
-  }, [current.length, filters, hasPnl, hasR]);
+  }, [current.length, filters, hasPnl, hasR, isCurator]);
 
   return (
     <Page>

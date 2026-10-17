@@ -124,12 +124,12 @@ export function DocSection({
 }) {
   return (
     <section id={id} className={cn("glass-panel rounded-2xl p-[var(--panel-p)]", className)}>
-      <div className="mb-3 flex min-h-8 items-center justify-between gap-2">
-        <h3 className="flex items-center gap-2 text-sm font-semibold text-foreground">
+      <div className="mb-3 flex min-h-8 flex-wrap items-center justify-between gap-2">
+        <h3 className="flex shrink-0 items-center gap-2 text-sm font-semibold text-foreground">
           {Icon && <Icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
           {title}
         </h3>
-        {actions && <div className="flex items-center gap-1">{actions}</div>}
+        {actions && <div className="flex min-w-0 flex-wrap items-center justify-end gap-1">{actions}</div>}
       </div>
       {children}
     </section>

@@ -808,7 +808,7 @@ router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): P
   await notifyUsers(mentors, {
     type: "academy_submitted",
     title: `Задание на проверку: ${a.title}`.slice(0, 200),
-    message: `${user} сдал задание «${a.title}»${tradeIds.length ? ` (сделок: ${tradeIds.length})` : ""}.`,
+    message: `${user}: задание «${a.title}» сдано на проверку${tradeIds.length ? ` (сделок: ${tradeIds.length})` : ""}.`,
     link: learnLink.assignment(id, `&submission=${sub.id}`),
     entityType: "academy_submission", entityId: sub.id, actor: user, source: "academy",
   }, user);

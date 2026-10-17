@@ -66,7 +66,7 @@ export function SubSetupsSection({
 
   async function setParent(child: PlaybookEntry, parentId: number | null) {
     try {
-      await pbRequest(`/api/playbook/${child.id}`, { method: "PATCH", json: { parentId, trader } });
+      await pbRequest(`/api/playbook/${child.id}`, { method: "PATCH", json: { parentId } });
       invalidatePlaybook(qc, child.id);
       return true;
     } catch (e: any) {

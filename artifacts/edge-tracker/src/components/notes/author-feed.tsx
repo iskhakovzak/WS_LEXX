@@ -160,7 +160,7 @@ function FeedCard({
             {mine && <Pill>моя</Pill>}
             {unread && <Pill tone="accent" dot>новая</Pill>}
           </span>
-          <span className="text-xs capitalize text-muted-foreground">
+          <span className="inline-block text-xs text-muted-foreground first-letter:uppercase">
             {showDate ? fmtDayLong(note.note_date) : `обновлено ${new Date(note.updated_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`}
           </span>
         </div>
@@ -198,7 +198,7 @@ function FeedCard({
       <footer className="flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
         {mine ? <ReadReceipts note={note} /> : note.legacy ? <span /> : (
           <span className="text-xs text-muted-foreground">
-            {note.read_by_me ? "Ты отметил как прочитанное" : "Прочитай и отметь — автор увидит"}
+            {note.read_by_me ? "Отмечено как прочитанное" : "Прочитай и отметь — автор увидит"}
           </span>
         )}
         {!mine && !note.legacy && (

@@ -20,6 +20,7 @@ import { logger } from "./logger";
 import { closeDateSql, netPnlSql, resultSql } from "./tradeMath";
 import { addDays, nyDate, nyMinutes } from "./tradingDate";
 import { ANONYMOUS_VIEWER, audienceSql, audienceViewerByName } from "./discussionAudience";
+import { spaceSql, visibleSql, type PlaybookViewer } from "./playbookAccess";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
@@ -94,6 +95,12 @@ const NY = "America/New_York";
 const nyDay = (col: string) => `to_char((${col}) AT TIME ZONE '${NY}', 'YYYY-MM-DD')`;
 
 /** Runs a query; a missing table / column (optional module not deployed) yields no rows instead of failing the feed. */
+/** Feed audience of a playbook row: «Офис» / opened to everyone → public; otherwise the owner's own or staff-only. */
+function setupFeedVis(row: Record<string, unknown>, mine: boolean): FeedItem["visibility"] {
+  if (row.space === "office" || row.vis === "all") return "public";
+  return mine ? "own" : "staff";
+}
+
 async function safe<T extends Record<string, unknown>>(label: string, sql: string, params: unknown[]): Promise<T[]> {
   try {
     return (await pool.query<T>(sql, params)).rows;
@@ -178,6 +185,8 @@ const href = {
   weekly: (week: string, trader?: string | null) => `/weekly-review${q({ trader, week })}`,
   risk: (trader?: string | null) => `/risk${q({ trader })}`,
   scaling: (trader?: string | null) => `/scaling${q({ trader })}`,
+  /** Staff reading someone else's violations land on that trader's error tracker, not their own. */
+  errors: (trader?: string | null) => `/error-tracker${q({ trader })}`,
 };
 
 // ─── per-day series (one query, whole history ≤ to) ─────────────────────────
@@ -240,6 +249,15 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
   });
   const threadParams: unknown[] = [from, to];
   const threadVis = audienceSql(threadViewer, (v) => { threadParams.push(v); return `$${threadParams.length}`; });
+  // Personal setups are private unless shared: the feed shows «Офис», setups opened to everyone, and the viewer's own /
+  // team-scope ones (same rule as /playbook — lib/playbookAccess.visibleSql). Cohort shares are left out here.
+  const pbViewer: PlaybookViewer = {
+    name: me, guest: !me, teamScope: scope, editOwn: false, editAny: false, review: false, stage: null, cohorts: [],
+  };
+  const setupParams: unknown[] = [from, to];
+  const setupVis = visibleSql(pbViewer, setupParams, "p");
+  const exampleParams: unknown[] = [from, to];
+  const exampleVis = visibleSql(pbViewer, exampleParams, "p");
 
   const [
     days, bestTrades, violations, rulesFor, limits, alerts,
@@ -336,16 +354,16 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
           AND ${nyDay("COALESCE(published_at, created_at)")} BETWEEN $1 AND $2`, [from, to]),
     safe<Record<string, unknown>>(
       "playbook",
-      `SELECT id, name, folder, trader, confidence_level, created_at AS at, ${nyDay("created_at")} AS d
-         FROM playbook
-        WHERE deleted_at IS NULL AND ${nyDay("created_at")} BETWEEN $1 AND $2`, [from, to]),
+      `SELECT p.id, p.name, p.folder, p.trader, p.confidence_level, ${spaceSql("p")} AS space, COALESCE(p.visibility, 'private') AS vis, p.created_at AS at, ${nyDay("p.created_at")} AS d
+         FROM playbook p
+        WHERE p.deleted_at IS NULL AND ${nyDay("p.created_at")} BETWEEN $1 AND $2 AND ${setupVis}`, setupParams),
     safe<Record<string, unknown>>(
       "playbook-examples",
-      `SELECT i.id, UPPER(i.ticker) AS ticker, i.status, i.playbook_id, p.name AS setup, i.trader, i.created_at AS at, ${nyDay("i.created_at")} AS d
+      `SELECT i.id, UPPER(i.ticker) AS ticker, i.status, i.playbook_id, p.name AS setup, i.trader, ${spaceSql("p")} AS space, COALESCE(p.visibility, 'private') AS vis, i.created_at AS at, ${nyDay("i.created_at")} AS d
          FROM trade_ideas i JOIN playbook p ON p.id = i.playbook_id AND p.deleted_at IS NULL
         WHERE i.deleted_at IS NULL AND i.playbook_id IS NOT NULL AND i.published_at IS NULL
           AND i.status IN ('watching', 'worked', 'partial', 'failed', 'studying')
-          AND ${nyDay("i.created_at")} BETWEEN $1 AND $2`, [from, to]),
+          AND ${nyDay("i.created_at")} BETWEEN $1 AND $2 AND ${exampleVis}`, exampleParams),
     safe<Record<string, unknown>>(
       "threads",
       `SELECT d.id, d.topic, d.type, d.trader, UPPER(d.ticker) AS ticker, d.created_at AS at, ${nyDay("d.created_at")} AS d,
@@ -486,7 +504,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
             id: `clean:${trader}:${r.d}`, kind: "clean_streak", cats: ownCats(trader, "achievement"), date: r.d, at, trader, actor: null,
             title: `${clean} ${plural(clean, "торговый день", "торговых дня", "торговых дней")} без нарушений`,
             subtitle: isMine(trader) ? "Дисциплина держится" : trader, tone: "accent", value: clean, valueFmt: "int", ticker: null,
-            href: "/error-tracker", group: null, visibility: "own", meta: { clean },
+            href: href.errors(isMine(trader) ? null : trader), group: null, visibility: "own", meta: { clean },
           });
         }
       }
@@ -496,7 +514,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
           id: `vio:${trader}:${r.d}`, kind: "violations", cats: ownCats(trader), date: r.d, at: iso(v.at) ?? at, trader, actor: null,
           title: `${vioN} ${plural(vioN, "нарушение правил", "нарушения правил", "нарушений правил")}${isMine(trader) ? "" : ` · ${trader}`}`,
           subtitle: [v.last_message ? String(v.last_message) : null, cost ? `цена ${usd(-Math.abs(cost))}` : null].filter(Boolean).join(" · ") || null,
-          tone: Number(v.severe) > 0 ? "down" : "warn", value: vioN, valueFmt: "int", ticker: null, href: "/error-tracker",
+          tone: Number(v.severe) > 0 ? "down" : "warn", value: vioN, valueFmt: "int", ticker: null, href: href.errors(isMine(trader) ? null : trader),
           group: null, visibility: "own", meta: { severe: Number(v.severe), cost },
         });
       }
@@ -623,7 +641,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
     const curator = String(r.curator ?? "Куратор");
     items.push({
       id: `trade-review:${r.id}`, kind: "review", cats: ownCats(t), date: String(r.d), at: iso(r.at)!, trader: t, actor: curator,
-      title: `${curator} разобрал сделку ${r.ticker ?? ""}`.trim() + (isMine(t) ? "" : ` · ${t}`),
+      title: `${curator}: разбор сделки ${r.ticker ?? ""}`.trim() + (isMine(t) ? "" : ` · ${t}`),
       subtitle: r.comment ? String(r.comment).slice(0, 160) : r.rating ? `оценка: ${r.rating}` : null,
       tone: "accent", value: null, valueFmt: null, ticker: (r.ticker as string) ?? null, href: href.trade(Number(r.trade_id)),
       group: `reviews:${r.d}:${t}`, visibility: "own",
@@ -634,7 +652,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
     const score = num(r.curator_score);
     items.push({
       id: `day-review:${r.id}`, kind: "review", cats: ownCats(t), date: String(r.d), at: iso(r.at)!, trader: t, actor: r.reviewed_by ? String(r.reviewed_by) : null,
-      title: `${r.reviewed_by ?? "Куратор"} оценил день ${String(r.date).slice(5).split("-").reverse().join(".")}${isMine(t) ? "" : ` · ${t}`}`,
+      title: `${r.reviewed_by ?? "Куратор"}: оценка дня ${String(r.date).slice(5).split("-").reverse().join(".")}${isMine(t) ? "" : ` · ${t}`}`,
       subtitle: r.curator_comment ? String(r.curator_comment).slice(0, 160) : null,
       tone: "accent", value: score, valueFmt: score == null ? null : "int", ticker: null, href: href.dayReport(String(r.date), isMine(t) ? null : t),
       group: null, visibility: "own", meta: { score },
@@ -652,14 +670,20 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
       group: null, visibility: "own",
     });
   }
+  /** "2026-10-12" → " с 12.10" (gender-neutral title, no raw ISO in the feed). */
+  const weekShort = (w: unknown): string => {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(w ?? ""));
+    return m ? ` с ${m[3]}.${m[2]}` : "";
+  };
   for (const r of ratings) {
     const t = String(r.trader);
     const overall = num(r.overall);
     items.push({
       id: `rating:${r.id}`, kind: "review", cats: ownCats(t), date: String(r.d), at: iso(r.at)!, trader: t, actor: r.curator ? String(r.curator) : null,
-      title: `${r.curator ?? "Куратор"} поставил оценку за ${String(r.week ?? "неделю")}${isMine(t) ? "" : ` · ${t}`}`,
+      title: `${r.curator ?? "Куратор"}: оценка за неделю${weekShort(r.week)}${isMine(t) ? "" : ` · ${t}`}`,
       subtitle: r.comment ? String(r.comment).slice(0, 160) : null, tone: "accent", value: overall, valueFmt: overall == null ? null : "int",
-      ticker: null, href: "/ratings", group: null, visibility: "own",
+      // Staff see a rating per trader every week: fold the day's ratings of others into one card.
+      ticker: null, href: "/ratings", group: isMine(t) ? null : `ratings:${r.d}`, visibility: "own",
     });
   }
 
@@ -680,7 +704,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
     items.push({
       id: `setup:${p.id}`, kind: "playbook", cats: isMine(author) ? ["desk", "mine"] : ["desk"], date: String(p.d), at: iso(p.at)!, trader: author, actor: author,
       title: `Новый сетап: ${p.name}`, subtitle: [p.folder ? String(p.folder) : null, author ? (isMine(author) ? "вы" : author) : null].filter(Boolean).join(" · ") || null,
-      tone: "neutral", value: null, valueFmt: null, ticker: null, href: href.setup(Number(p.id)), group: `playbook:${p.d}`, visibility: "public",
+      tone: "neutral", value: null, valueFmt: null, ticker: null, href: href.setup(Number(p.id)), group: `playbook:${p.d}`, visibility: setupFeedVis(p, isMine(author)),
     });
   }
   for (const e of examples) {
@@ -691,7 +715,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date):
       date: String(e.d), at: iso(e.at)!, trader: author, actor: author,
       title: `${worked ? "Эталонный пример" : "Пример"} в плейбуке: ${e.ticker}`, subtitle: `${e.setup}${author ? ` · ${isMine(author) ? "вы" : author}` : ""}`,
       tone: worked ? "up" : "neutral", value: null, valueFmt: null, ticker: (e.ticker as string) ?? null, href: href.setup(Number(e.playbook_id)),
-      group: `playbook:${e.d}`, visibility: "public",
+      group: `playbook:${e.d}`, visibility: setupFeedVis(e, isMine(author)),
     });
   }
   for (const d of threads) {

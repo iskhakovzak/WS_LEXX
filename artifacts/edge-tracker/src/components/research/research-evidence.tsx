@@ -26,6 +26,10 @@ type LinkedTrade = {
 type TradeStats = { n: number; wins: number; losses: number; be: number; open: number; winRate: number | null; sumR: number | null; grossPnl: number | null; fees: number | null; netPnl: number | null };
 type TradesPayload = { scope: string | null; trades: LinkedTrade[]; stats: TradeStats };
 type PlaybookLite = { id: number; name: string; folder?: string | null; sourceType: string | null; sourceId: number | null };
+type Candidate = {
+  id: number; ticker: string; date: string; side: string | null; setup: string | null; result: string | null;
+  netPnl: number | null; signedR: number | null; trader: string | null; patternId: number | null;
+};
 
 const MIN_EVIDENCE = 5;
 
@@ -65,10 +69,14 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
   });
 
   // Setups promoted from this note (playbook.source_type = research). Same cache prefix as AddToPlaybook's invalidation.
+  // Lean per-note lookup; an API without it (404) falls back to the full playbook list.
   const lineage = useQuery({
-    queryKey: ["playbook", "lineage"],
-    queryFn: async (): Promise<PlaybookLite[]> => {
-      const res = await fetch(`${BASE}/api/playbook`);
+    queryKey: ["playbook", "lineage", r.id],
+    queryFn: async ({ signal }): Promise<PlaybookLite[]> => {
+      const lean = await fetch(`${BASE}/api/research/${r.id}/setups`, { signal });
+      if (lean.ok) return (await lean.json()) as PlaybookLite[];
+      if (lean.status !== 404) return [];
+      const res = await fetch(`${BASE}/api/playbook`, { signal });
       if (!res.ok) return [];
       const data = (await res.json()) as PlaybookLite[] | { items?: PlaybookLite[] };
       return Array.isArray(data) ? data : data.items ?? [];
@@ -106,11 +114,26 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
     onSuccess: (_d, v) => {
       setTradeId("");
       void qc.invalidateQueries({ queryKey: ["research-trades", r.id] });
+      void qc.invalidateQueries({ queryKey: ["research-candidates", r.id] });
       void qc.invalidateQueries({ queryKey: getListResearchQueryKey() });
       toast({ title: v.unlink ? "Сделка отвязана" : "Сделка привязана к заметке" });
     },
     onError: (e) => toast({ title: "Не удалось изменить привязку", description: (e as Error).message, variant: "destructive" }),
   });
+
+  // Trades in the note's ticker(s) that can be linked in one click (no trade-ID lookup in the journal).
+  const candidates = useQuery({
+    queryKey: ["research-candidates", r.id],
+    queryFn: async ({ signal }): Promise<Candidate[]> => {
+      const res = await fetch(`${BASE}/api/research/${r.id}/candidates`, { signal });
+      if (!res.ok) return [];
+      return (await res.json()) as Candidate[];
+    },
+    enabled: canEdit && !!ticker,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const cands = candidates.data ?? [];
 
   if (q.data === null) return null; // endpoint not deployed
   // Live payload when available, else the evidence summary that rides along with the list.
@@ -199,6 +222,41 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
             </ul>
           )}
 
+          {canEdit && cands.length > 0 && (
+            <div className="mt-3 border-t border-border/60 pt-3">
+              <div className="micro-label mb-1">Сделки по {splitTickers(r.ticker).join(", ")} без привязки</div>
+              <ul className="flex flex-col">
+                {cands.slice(0, 6).map((c) => {
+                  const rr = c.signedR;
+                  return (
+                    <li key={c.id} className="flex items-center gap-2 rounded-lg px-2 py-1 text-sm hover:bg-[var(--glass-hover-bg)]">
+                      <Link href={links.trade(c.id)} className="flex min-w-0 flex-1 items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+                        <span className="font-semibold text-foreground">{c.ticker}</span>
+                        <span className="text-xs tabular-nums text-muted-foreground">{c.date}</span>
+                        {c.side && <span className="text-xs text-muted-foreground">{c.side}</span>}
+                        {c.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.setup}>{c.setup}</span> : <span className="flex-1" />}
+                        {c.trader && <span className="hidden text-xs text-muted-foreground xl:inline">{c.trader}</span>}
+                        {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{rr > 0 ? "+" : ""}{rr.toFixed(1)}R</span>}
+                        {c.netPnl != null && <span className={cn("w-16 text-right text-xs tabular-nums", toneText(toneOf(c.netPnl)))}>{fmtUsd(c.netPnl)}</span>}
+                      </Link>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-7 min-h-7 shrink-0 px-2.5"
+                        disabled={link.isPending}
+                        onClick={() => link.mutate({ id: c.id, unlink: false })}
+                        title={c.patternId != null ? "Сделка привязана к другой заметке — перепривязать сюда" : "Привязать к заметке"}
+                      >
+                        <Link2 className="h-3.5 w-3.5" aria-hidden="true" /> {c.patternId != null ? "Сюда" : "Привязать"}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
           {canEdit && (
             <form
               className="mt-3 flex items-center gap-2"
@@ -207,7 +265,7 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
               <label htmlFor={`rs-link-${r.id}`} className="sr-only">ID сделки</label>
               <Input id={`rs-link-${r.id}`} value={tradeId} onChange={(e) => setTradeId(e.target.value.replace(/\D/g, ""))} inputMode="numeric" placeholder="ID сделки" className="h-8 w-28 text-sm" />
               <Button type="submit" variant="outline" size="sm" disabled={!tradeId || link.isPending}><Link2 className="h-3.5 w-3.5" /> Привязать</Button>
-              <span className="text-2xs text-muted-foreground">только свои сделки; ID виден в журнале</span>
+              <span className="text-2xs text-muted-foreground">или по ID сделки из журнала</span>
             </form>
           )}
         </>
@@ -218,7 +276,7 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
           <BookOpen className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <span className="text-muted-foreground">В плейбуке:</span>
           {playbookList.map((id) => {
-            const p = promoted.find((x) => x.id === id);
+            const p = (lineage.data ?? []).find((x) => x.id === id);
             return (
               <Link key={id} href={links.setup(id)} className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs text-primary hover:underline">
                 {p?.name ?? `сетап #${id}`}

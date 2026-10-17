@@ -5,7 +5,9 @@
  */
 import { useMemo } from "react";
 import { Link } from "wouter";
-import { Users } from "lucide-react";
+import { Download, Users } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { downloadCsv } from "@/components/analytics-page/metrics";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, useTableSort } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -13,6 +15,7 @@ import { STAGE_LABELS, useProgressMatrix, type ProgressStudent, type Stage } fro
 import { PctBar } from "./bits";
 import { academyLinks } from "./links";
 import { relativeDays } from "./time";
+import { pluralRu } from "@/components/rules/constants";
 
 function cellTone(pct: number, total: number) {
   if (!total) return "text-muted-foreground";
@@ -55,7 +58,24 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
       {!rows.length ? (
         <Panel><EmptyState icon={Users} title="Нет учеников" description={cohortId ? "В этой когорте пока нет зачисленных." : "Никто ещё не начал эту программу."} /></Panel>
       ) : (
-        <Panel padded={false} title={d.program.title} description={`${d.modules.length} модул. · клик по ученику — его прогресс глазами ученика`}>
+        <Panel padded={false} title={d.program.title} description={`${d.modules.length} ${pluralRu(d.modules.length, "модуль", "модуля", "модулей")} · клик по ученику — его прогресс глазами ученика`}
+          actions={
+            <Button variant="outline" size="sm" className="h-8" title="Прогресс учеников — CSV для Excel / Google Таблиц" onClick={() => {
+              const quizzes = d.quizzes ?? [];
+              downloadCsv(
+                `academy_progress_${d.program!.id}.csv`,
+                ["Ученик", "Ступень", "Прогресс, %", ...d.modules.map((m, i) => `М${i + 1}. ${m.title}`), ...quizzes.map((qz) => qz.title), "На проверке", "Последняя активность", "Дальше"],
+                sort.rows.map((r) => [
+                  r.userName, r.stage ? STAGE_LABELS[r.stage as Stage] ?? r.stage : "", Math.round(r.pct),
+                  ...r.modules.map((m) => (m.total ? `${m.done} из ${m.total}` : "")), // «4/4» would turn into a date in Excel
+                  ...quizzes.map((qz) => { const v = r.quizBest[String(qz.id)]; return v == null ? "" : Math.round(v); }),
+                  r.pendingReviews, r.lastActivity ?? "", r.next?.title ?? "курс пройден",
+                ]),
+              );
+            }}>
+              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />CSV
+            </Button>
+          }>
           <DataTable ariaLabel="Прогресс учеников" stickyFirstCol maxHeight="65vh">
             <table>
               <thead>

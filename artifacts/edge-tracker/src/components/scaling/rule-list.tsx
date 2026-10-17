@@ -73,9 +73,9 @@ export function RuleList({
                 className="relative h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]"
               >
                 <motion.div
-                  className={cn("h-full rounded-full", BAR_CLS[r.status])}
-                  initial={reduce ? false : { width: 0 }}
-                  animate={{ width: `${pct}%` }}
+                  className={cn("h-full w-full rounded-full", BAR_CLS[r.status])}
+                  initial={reduce ? false : { x: "-100%" }}
+                  animate={{ x: `${pct - 100}%` }}
                   transition={{ duration: reduce ? 0 : 0.45, ease: [0.2, 0.8, 0.2, 1] }}
                 />
               </div>

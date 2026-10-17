@@ -571,7 +571,7 @@ export default function AuthorNotesPage() {
               {/* Header: date + status */}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 id="author-editor-title" className="text-lg font-semibold capitalize tracking-tight">{fmtDayLong(date)}</h2>
+                  <h2 id="author-editor-title" className="text-lg font-semibold tracking-tight first-letter:uppercase">{fmtDayLong(date)}</h2>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <SaveIndicator status={status} savedAt={savedAt} now={now} onRetry={() => void save({ force: true })} />
                     {audienceQ.data && audienceQ.data.total > 0 && (
@@ -591,7 +591,7 @@ export default function AuthorNotesPage() {
                   />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Ещё действия" disabled={editorDisabled}>
+                      <Button variant="ghost" size="icon-sm" aria-label="Ещё действия" disabled={editorDisabled}>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>

@@ -8,6 +8,7 @@ import { Delta, EmptyState, Panel, Pill, TermTooltip } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { GradeChange, KindPill, Marks, RowActions, TargetChange } from "./ActionRow";
 import { REACTION_KIND_LABEL, REACTION_MIN_N, type Row } from "./rows";
 import { fmtPct, gapOf, nyTime, shortDay, SESSION_LABEL, sessionOf } from "./lib";
@@ -47,10 +48,11 @@ export type PremarketPanelProps = {
   onOpen: (ticker: string) => void;
   onAddWatch: (r: Row) => void;
   onAddPlan: (r: Row) => void;
+  className?: string;
 };
 
 export function PremarketPanel({
-  rows, isLoading, fallbackDay, windowLabel, canEdit, inPlan, addingWatch, addingPlan, onOpen, onAddWatch, onAddPlan,
+  rows, isLoading, fallbackDay, windowLabel, canEdit, inPlan, addingWatch, addingPlan, onOpen, onAddWatch, onAddPlan, className,
 }: PremarketPanelProps) {
   const [all, setAll] = React.useState(false);
   const groups = React.useMemo(() => groupByTicker(rows), [rows]);
@@ -60,6 +62,7 @@ export function PremarketPanel({
   return (
     <Panel
       fill
+      className={className}
       icon={Sunrise}
       title={
         <span className="inline-flex items-center gap-1.5">
@@ -70,7 +73,7 @@ export function PremarketPanel({
       description={
         fallbackDay
           ? `К сессии новых действий пока нет — показана сессия ${shortDay(fallbackDay)}`
-          : `${windowLabel} · ${groups.length} тикеров, смен рейтинга ${ratingCount}`
+          : `${windowLabel} · ${groups.length} ${pluralRu(groups.length, "тикер", "тикера", "тикеров")}, смен рейтинга ${ratingCount}`
       }
       bodyClassName="min-h-[320px]"
     >
@@ -153,7 +156,7 @@ function PremarketCard({
           <span className="text-sm font-semibold tracking-tight text-foreground">{a.ticker}</span>
           <Marks held={r.held} watched={r.watched} traded={r.traded} />
           <KindPill kind={a.action} />
-          <span className="min-w-0 truncate text-xs text-foreground">{a.firm}</span>
+          <span className="min-w-0 truncate text-xs text-foreground" title={a.firm}>{a.firm}</span>
           <span className="ml-auto shrink-0 text-2xs tabular-nums text-muted-foreground" title={session ? `${SESSION_LABEL[session]} (ET)` : undefined}>
             {nyTime(a.gradedAt)}
           </span>

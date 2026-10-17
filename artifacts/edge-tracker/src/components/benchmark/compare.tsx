@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { BenchRow, MetricDef } from "./api";
 import { EquityLines, Radar } from "./charts";
 import { SERIES_COLORS, fmtMetric } from "./format";
+import { PersonSelect } from "@/components/people/person-select";
 
 /** Two traders side by side: percentile radar, equity curves, metric-by-metric table with the winner marked. */
 export function CompareView({
@@ -21,16 +22,14 @@ export function CompareView({
   const rb = rows.find((r) => r.trader === b) ?? null;
   const radarAxes = useMemo(() => metrics.filter((m) => m.radar).map((m) => ({ key: m.key, label: m.label })), [metrics]);
   const pick = (which: "a" | "b") => (
-    <Select value={(which === "a" ? a : b) ?? ""} onValueChange={(v) => (which === "a" ? onChange(v, b) : onChange(a, v))}>
-      <SelectTrigger className="w-48" aria-label={which === "a" ? "Первый трейдер" : "Второй трейдер"}>
-        <SelectValue placeholder={which === "a" ? "Трейдер A" : "Трейдер B"} />
-      </SelectTrigger>
-      <SelectContent>
-        {rows.map((r) => (
-          <SelectItem key={r.trader} value={r.trader} disabled={r.trader === (which === "a" ? b : a)}>{r.trader} · {r.trades} сд.</SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <PersonSelect
+      value={(which === "a" ? a : b) ?? ""}
+      onValueChange={(v) => (which === "a" ? onChange(v, b) : onChange(a, v))}
+      options={rows.filter((r) => r.trader !== (which === "a" ? b : a)).map((r) => ({ value: r.trader, hint: `${r.trades} сд.` }))}
+      placeholder={which === "a" ? "Трейдер A" : "Трейдер B"}
+      ariaLabel={which === "a" ? "Первый трейдер" : "Второй трейдер"}
+      className="w-48"
+    />
   );
   const header = (
     <div className="flex flex-wrap items-center gap-2">

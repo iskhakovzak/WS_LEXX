@@ -161,7 +161,7 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
   const windowTitle = `Свечи: ${q.interval}, ${q.barsUsed} баров${data.window ? ` · ${data.window.from}${data.window.to !== data.window.from ? ` → ${data.window.to}` : ""}` : ""}${timed ? `\n${PARTIAL_BAR_NOTE}` : "\nИсполнения без времени: бары входа и выхода считаются целиком."}`;
 
   return (
-    <div className="space-y-3">
+    <div className="@container space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <QualitySummaryLine q={q} />
         <div className="ml-auto flex items-center gap-2">
@@ -175,7 +175,7 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
         </div>
       </div>
 
-      <div className={cn("grid grid-cols-2 gap-2", compact ? "sm:grid-cols-4" : "sm:grid-cols-3 lg:grid-cols-5")}>
+      <div className={cn("grid grid-cols-2 gap-2", compact ? "sm:grid-cols-4" : "@lg:grid-cols-3 @4xl:grid-cols-5")}>
         <Big
           label="MFE"
           value={mfe ? excValue(mfe, 1) : "—"}

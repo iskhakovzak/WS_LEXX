@@ -13,6 +13,7 @@ import { EmptyState, Panel, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { api, invalidateAcademy, useMyTrades, type AssignmentResponse, type RubricCriterion, type Submission, type TradeRef } from "./api";
 import { fmtMoney, fmtR, SubmissionPill, toneOfNum } from "./bits";
 import { Markdown } from "./markdown";
@@ -165,7 +166,7 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
         <TradePicker selected={tradeIds} onChange={setTradeIds} />
       </div>
       <div className="flex flex-wrap items-center justify-end gap-2">
-        {short && <span className="text-xs text-[hsl(var(--chart-3))]">Привяжите ещё {minTrades - tradeIds.length}</span>}
+        {short && <span className="text-xs text-[hsl(var(--chart-3))]">Привяжите ещё {minTrades - tradeIds.length} {pluralRu(minTrades - tradeIds.length, "сделку", "сделки", "сделок")}</span>}
         {editing && <Button type="button" variant="ghost" onClick={onDone}>Отмена</Button>}
         <Button type="submit" disabled={busy || short || (!text.trim() && !url.trim() && !tradeIds.length)}>
           {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Send aria-hidden="true" />}
@@ -366,7 +367,7 @@ export function AssignmentPanel({ data, canSubmit, staff, focusSubmission }: { d
       </div>
 
       <aside className="flex flex-col gap-4">
-        <Panel title="Как оценивается" description={`Зачёт от ${assignment.passPct}%${assignment.minTrades ? ` · минимум ${assignment.minTrades} сделки` : ""}`}>
+        <Panel title="Как оценивается" description={`Зачёт от ${assignment.passPct}%${assignment.minTrades ? ` · минимум ${assignment.minTrades} ${pluralRu(assignment.minTrades, "сделка", "сделки", "сделок")}` : ""}`}>
           <RubricTable rubric={assignment.rubric} />
         </Panel>
       </aside>

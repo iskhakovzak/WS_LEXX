@@ -4,6 +4,7 @@ import { ArrowRight, Clock, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, ProgressRing } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { KIND_LABEL, STAGE_LABELS, type CatalogProgram, type ProgramTree, type TreeItem } from "./api";
 import { KindIcon, PctBar, StatusIcon, SubmissionPill } from "./bits";
 import { academyLinks } from "./links";
@@ -28,9 +29,9 @@ export function ProgramCard({ p, active, onSelect }: { p: CatalogProgram; active
         </span>
         {p.description && <span className="mt-1 line-clamp-2 block text-xs text-muted-foreground">{p.description}</span>}
         <span className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs text-muted-foreground tabular-nums">
-          <span>{p.counts.lessons} урок.</span>
-          <span>{p.counts.quizzes} тест.</span>
-          <span>{p.counts.assignments} задан.</span>
+          <span>{p.counts.lessons} {pluralRu(p.counts.lessons, "урок", "урока", "уроков")}</span>
+          <span>{p.counts.quizzes} {pluralRu(p.counts.quizzes, "тест", "теста", "тестов")}</span>
+          <span>{p.counts.assignments} {pluralRu(p.counts.assignments, "задание", "задания", "заданий")}</span>
           {p.durationMin > 0 && <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" aria-hidden="true" />≈{p.durationMin} мин</span>}
           <span>{p.progress.done}/{p.progress.total} пройдено</span>
         </span>
@@ -43,8 +44,8 @@ function itemMeta(i: TreeItem): string {
   const parts: string[] = [KIND_LABEL[i.kind]];
   if (i.kind === "lesson" && i.durationMin) parts.push(`${i.durationMin} мин`);
   if (i.kind === "lesson" && i.hasVideo) parts.push("видео");
-  if (i.kind === "quiz") { if (i.questionCount) parts.push(`${i.questionCount} вопр.`); if (i.passPct != null) parts.push(`зачёт ${i.passPct}%`); }
-  if (i.kind === "assignment" && i.minTrades) parts.push(`≥ ${i.minTrades} сделки`);
+  if (i.kind === "quiz") { if (i.questionCount) parts.push(`${i.questionCount} ${pluralRu(i.questionCount, "вопрос", "вопроса", "вопросов")}`); if (i.passPct != null) parts.push(`зачёт ${i.passPct}%`); }
+  if (i.kind === "assignment" && i.minTrades) parts.push(`от ${i.minTrades} ${pluralRu(i.minTrades, "сделки", "сделок", "сделок")}`);
   return parts.join(" · ");
 }
 
@@ -56,7 +57,8 @@ export function ProgramOutline({ tree, user, viewingOther }: { tree: ProgramTree
       <Panel>
         <div className="flex flex-wrap items-center gap-4">
           <ProgressRing value={tree.progress.pct} size={64} stroke={6} tone={tree.progress.pct >= 100 ? "up" : "accent"} ariaLabel="Прогресс программы" />
-          <div className="min-w-0 flex-1">
+          {/* Keeps the text readable: the «Начать: …» button wraps under it instead of squeezing it into a narrow column. */}
+          <div className="min-w-[min(100%,20rem)] flex-1">
             <h2 className="text-lg font-semibold text-foreground">{tree.program.title}</h2>
             {tree.program.description && <p className="mt-0.5 text-sm text-muted-foreground">{tree.program.description}</p>}
             <p className="mt-1 text-xs text-muted-foreground tabular-nums">

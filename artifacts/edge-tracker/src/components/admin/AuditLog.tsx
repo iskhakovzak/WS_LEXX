@@ -9,6 +9,7 @@ import { addDays, nyDate } from "@/lib/trading-date";
 import { downloadCsv, type AuditEntry } from "./api";
 import { OBJECT_TYPE_LABEL, actorName, auditSentence, describeAudit, objectLabel } from "./audit-text";
 import { nyDayOf, useAuditSearch, type AuditQuery } from "./console-api";
+import { pluralRu } from "@/components/rules/constants";
 
 const ALL = "__all";
 type Quick = "1" | "7" | "30" | "all" | "custom";
@@ -42,8 +43,8 @@ export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: 
   const obj = objectLabel(entry.targetType, entry.targetId);
   return (
     <li className="flex items-start gap-3 py-2.5">
-      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={new Date(entry.createdAt).toLocaleString("ru-RU")}>
-        {new Date(entry.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={`${new Date(entry.createdAt).toLocaleString("ru-RU", { timeZone: "America/New_York" })} NY · у вас ${new Date(entry.createdAt).toLocaleString("ru-RU")}`}>
+        {new Date(entry.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" })}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -145,7 +146,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
       actions={<Button variant="outline" size="sm" onClick={exportCsv} disabled={!entries.length}><Download /> CSV</Button>}
     >
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1.35fr)]">
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
             <Input
@@ -200,7 +201,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
           {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>Сбросить</Button>}
           {data && (
             <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-              {data.total > entries.length ? `показано ${entries.length} из ${data.total}` : `${entries.length} записей`}
+              {data.total > entries.length ? `показано ${entries.length} из ${data.total}` : `${entries.length} ${pluralRu(entries.length, "запись", "записи", "записей")}`}
             </span>
           )}
         </div>

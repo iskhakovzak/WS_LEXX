@@ -92,7 +92,7 @@ export function FirmStatsPanel({
                 >
                   <ProgressRing value={f.confirmRate ?? 0} max={1} size={34} stroke={3} tone={confirmTone(f, base)} ariaLabel={`Подтверждаемость ${pct(f.confirmRate)}`} label={f.confirmRate == null ? "—" : Math.round(f.confirmRate * 100)} />
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-sm font-medium text-foreground">{firm}</span>
+                    <span className="block truncate text-sm font-medium text-foreground" title={firm}>{firm}</span>
                     <span className="block truncate text-2xs text-muted-foreground tabular-nums">
                       {n ? `${n} за период · ` : ""}▲{f.upgrades} ▼{f.downgrades} · {f.total} за {data.days} дн
                     </span>
@@ -198,7 +198,7 @@ export function FirmWeightPanel({
                 >
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
-                      <span className="truncate text-sm font-medium text-foreground">{f.firm}</span>
+                      <span className="truncate text-sm font-medium text-foreground" title={f.firm}>{f.firm}</span>
                       {inFeed > 0 && <span className="shrink-0 text-2xs tabular-nums text-muted-foreground">· {inFeed} в ленте</span>}
                     </span>
                     <span className="mt-1 block h-1 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
@@ -269,7 +269,7 @@ export function FirmStatsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-3xl xl:max-w-4xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-3xl xl:max-w-4xl [&>*]:shrink-0">
         <SheetHeader>
           <SheetTitle>Надёжность аналитических фирм</SheetTitle>
           <SheetDescription>
@@ -320,7 +320,8 @@ export function FirmStatsSheet({
                         <button
                           type="button"
                           onClick={() => { onPickFirm(f.firm); onOpenChange(false); }}
-                          className="truncate text-left font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+                          title={f.firm}
+                          className="max-w-full truncate text-left font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                         >
                           {f.firm}
                         </button>

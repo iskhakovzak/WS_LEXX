@@ -845,7 +845,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     inBackground("scaling.assign", () => notifyUser({
       userName: b.trader, type: "limit_change", actor, source: "scaling",
       title: `Тир изменён: ${fromName} → ${tier.name}`,
-      message: `${actor} назначил тир «${tier.name}»${limitsSummary(tier) ? `. Лимиты: ${limitsSummary(tier)}` : ""}${b.comment ? `. «${textPreview(b.comment, 120)}»` : ""}`,
+      message: `${actor}: назначен тир «${tier.name}»${limitsSummary(tier) ? `. Лимиты: ${limitsSummary(tier)}` : ""}${b.comment ? `. «${textPreview(b.comment, 120)}»` : ""}`,
       link: notifLinks.scaling(b.trader), entityType: "scaling_tier", entityId: b.trader,
     }));
   }

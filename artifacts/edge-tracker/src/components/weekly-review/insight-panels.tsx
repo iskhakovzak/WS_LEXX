@@ -220,6 +220,7 @@ export function GoalPanel({ doc, inject, className }: { doc: WeeklyReview; injec
           <Textarea
             value={focus}
             onChange={(e) => { setFocus(e.target.value); setDirty(true); }}
+            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && dirty && !save.isPending) { e.preventDefault(); onSave(); } }}
             rows={3}
             maxLength={6000}
             aria-label="Цель на следующую неделю"
@@ -227,7 +228,7 @@ export function GoalPanel({ doc, inject, className }: { doc: WeeklyReview; injec
           />
           <div className="flex flex-wrap items-center gap-2" data-print-hide>
             <Button type="button" size="sm" onClick={onSave} disabled={save.isPending || !dirty}>Сохранить цель</Button>
-            {dirty && <span className="text-xs text-muted-foreground">Не сохранено</span>}
+            {dirty && <span className="text-xs text-muted-foreground">Не сохранено · Ctrl+Enter</span>}
           </div>
         </div>
       ) : s.focus ? (

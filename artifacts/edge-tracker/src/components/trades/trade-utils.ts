@@ -11,6 +11,7 @@ import { nyDate, addDays } from "@/lib/trading-date";
 import { normalizeResult } from "@/lib/trade-result";
 import { signedR, priceR, netPnl as sharedNetPnl, isOpen as sharedIsOpen } from "@/lib/trade-math";
 import type { Tone } from "@/components/ds";
+import type { PlaybookPayload } from "@/components/add-to-playbook";
 
 export const EVENT_TYPES = ["earnings", "momentum", "news", "ipo", "fed", "macro", "other"];
 export const RESULTS = ["win", "loss", "breakeven", "open"] as const;
@@ -146,6 +147,21 @@ export function splitTags(tags: string | null | undefined): string[] {
 
 export function dayOf(t: Pick<Trade, "date">): string {
   return t.date.substring(0, 10);
+}
+
+/** «В плейбук» / «Новый сетап из сделки»: the setup form prefilled from a trade (trade sheet and the trades list). */
+export function tradePlaybookPayload(t: Trade): PlaybookPayload {
+  return {
+    name: `${t.ticker} ${t.setup || t.eventType || ""} (${dayOf(t)})`.trim(),
+    setupType: t.setup || t.eventType || undefined,
+    conditions: t.notes || undefined,
+    notes: [t.whatWorked ? `Что сработало: ${t.whatWorked}` : "", t.whatFailed ? `Что не сработало: ${t.whatFailed}` : "", t.conclusion ? `Вывод: ${t.conclusion}` : ""].filter(Boolean).join("\n") || undefined,
+    screenshotUrl: t.screenshotUrl || undefined,
+    screenshotNotes: t.screenshotNotes || undefined,
+    tags: t.tags || undefined,
+    sourceType: "trade",
+    sourceId: t.id,
+  };
 }
 
 export function horizonOf(t: Trade): Horizon {

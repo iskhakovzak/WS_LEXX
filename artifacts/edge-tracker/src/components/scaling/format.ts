@@ -25,7 +25,7 @@ export function fmtMetric(unit: MetricUnit, v: number | null | undefined): strin
 export const OP_LABEL: Record<Op, string> = { ">=": "≥", ">": ">", "<=": "≤", "<": "<", "=": "=" };
 
 export function fmtThreshold(unit: MetricUnit, raw: number, ruleUnit: Unit, resolved: number | null): string {
-  if (ruleUnit === "x_daily_limit") return `${raw}× дневной лимит${resolved != null ? ` (${fmtUsd(resolved)})` : ""}`;
+  if (ruleUnit === "x_daily_limit") return `${String(raw).replace("-", "−")}× дневной лимит${resolved != null ? ` (${fmtUsd(resolved)})` : ""}`;
   if (ruleUnit === "pct_account") return `${raw}% счёта${resolved != null ? ` (${fmtUsd(resolved)})` : ""}`;
   return fmtMetric(unit, raw);
 }

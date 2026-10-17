@@ -4,8 +4,9 @@
  * mutations stay in the page.
  */
 import type * as React from "react";
+import { useEffect, useState } from "react";
 import {
-  Activity, AlertTriangle, Archive, ArchiveRestore, CalendarClock, Clock, Crosshair, Download, Eye, Flame, Keyboard,
+  Activity, AlertTriangle, Archive, ArchiveRestore, CalendarClock, Clock, Copy, Crosshair, Download, Eye, Flame, Keyboard,
   MoreHorizontal, MoveVertical, Radar, Rows3, Rows4, Search, Trash2, Volume2, X,
 } from "lucide-react";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FilterChip, Kbd } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { pluralRu } from "@/components/rules/constants";
 import { LISTS, LIST_HINT, LIST_LABELS, type ListName, type WatchlistItem } from "./lib";
 import type { Density } from "./WatchlistTable";
 
@@ -40,6 +42,7 @@ const HOTKEYS: [string[], string][] = [
   [["E"], "заметка к строке"],
   [["1", "2", "3"], "перенести в Сегодня / Свинги / Наблюдаю"],
   [["X"], "выбрать строку"],
+  [["C"], "скопировать тикеры (выбранные или весь список)"],
   [["Del"], "в архив (с отменой)"],
   [["R"], "обновить котировки"],
   [["D"], "плотность строк"],
@@ -47,12 +50,15 @@ const HOTKEYS: [string[], string][] = [
 ];
 
 /** Hotkeys popover + «Ещё действия» menu (next to the quote status in the page header). */
-export function WatchlistHeaderMenus({ helpOpen, onHelpOpen, canEdit, canExport, onExport, onAddDetailed, canScoreAll, scoringAll, onScoreAll }: {
+export function WatchlistHeaderMenus({ helpOpen, onHelpOpen, canEdit, canExport, onExport, copyCount, onCopy, onAddDetailed, canScoreAll, scoringAll, onScoreAll }: {
   helpOpen: boolean;
   onHelpOpen: (v: boolean) => void;
   canEdit: boolean;
   canExport: boolean;
   onExport: () => void;
+  /** Visible tickers that «Скопировать тикеры» would copy. */
+  copyCount: number;
+  onCopy: () => void;
   onAddDetailed: () => void;
   canScoreAll: boolean;
   scoringAll: boolean;
@@ -83,7 +89,10 @@ export function WatchlistHeaderMenus({ helpOpen, onHelpOpen, canEdit, canExport,
         <DropdownMenuTrigger asChild>
           <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Ещё действия"><MoreHorizontal className="h-4 w-4" /></Button>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-60">
+        <DropdownMenuContent align="end" className="w-64">
+          <DropdownMenuItem onSelect={onCopy} disabled={copyCount === 0}>
+            <Copy className="mr-2 h-4 w-4" />Скопировать тикеры{copyCount ? ` (${copyCount})` : ""}<Kbd className="ml-auto">C</Kbd>
+          </DropdownMenuItem>
           <DropdownMenuItem onSelect={onExport} disabled={!canExport}><Download className="mr-2 h-4 w-4" />Экспорт видимых строк в CSV</DropdownMenuItem>
           {canEdit && (
             <>
@@ -131,7 +140,7 @@ export function WatchlistTabs({ view, onView, counts, canEdit, dragging, dropOve
   });
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <div role="tablist" aria-label="Списки" className="glass-field inline-flex max-w-full items-center gap-0.5 overflow-x-auto p-1">
+      <div role="tablist" aria-label="Списки" className="glass-field inline-flex h-9 max-w-full items-center gap-0.5 overflow-x-auto p-[3px]">
         {TABS.map((t) => {
           const active = view === t.v;
           const droppable = dragging && t.v !== "all";
@@ -146,7 +155,7 @@ export function WatchlistTabs({ view, onView, counts, canEdit, dragging, dropOve
               onClick={() => onView(t.v)}
               {...dragProps(t.v, droppable)}
               className={cn(
-                "inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)]",
+                "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)]",
                 active ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
                 droppable && !active && "ring-1 ring-dashed ring-primary/50",
                 dropOver === t.v && "ring-2 ring-primary",
@@ -166,7 +175,7 @@ export function WatchlistTabs({ view, onView, counts, canEdit, dragging, dropOve
         {...dragProps("archive", dragging)}
         title="Пропущенные тикеры. Перетащите строку сюда, чтобы убрать из работы"
         className={cn(
-          "inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-sm transition-colors",
+          "inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-sm transition-colors",
           view === "archive" ? "bg-[var(--glass-hover-bg)] font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
           dragging && "ring-1 ring-dashed ring-border",
           dropOver === "archive" && "ring-2 ring-primary",
@@ -240,7 +249,7 @@ export function WatchlistSearch({ inputRef, query, onQuery, filters, onToggleFil
 }
 
 /** Sticky bar with bulk actions for the selected rows. */
-export function SelectionBar({ items, view, mayModify, onRestore, onMove, onArchive, onDelete, onClear }: {
+export function SelectionBar({ items, view, mayModify, onRestore, onMove, onArchive, onDelete, onCopy, onClear }: {
   items: WatchlistItem[];
   view: View;
   mayModify: (i: WatchlistItem) => boolean;
@@ -249,11 +258,12 @@ export function SelectionBar({ items, view, mayModify, onRestore, onMove, onArch
   onMove: (list: ListName) => void;
   onArchive: () => void;
   onDelete: (items: WatchlistItem[]) => void;
+  onCopy: () => void;
   onClear: () => void;
 }) {
   const deletable = items.filter(mayModify);
   return (
-    <div className="glass-thick sticky-top flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2" role="region" aria-label="Действия с выбранными">
+    <div className="glass-thick glass-solid sticky-top flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2" role="region" aria-label="Действия с выбранными">
       <span className="text-sm font-medium text-foreground">Выбрано: {items.length}</span>
       <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
       {view === "archive" ? (
@@ -272,6 +282,7 @@ export function SelectionBar({ items, view, mayModify, onRestore, onMove, onArch
           <Button size="sm" variant="outline" onClick={onArchive}><Archive className="h-4 w-4" />В архив</Button>
         </>
       )}
+      <Button size="sm" variant="outline" onClick={onCopy} title="Тикеры через запятую — вставить в платформу (C)"><Copy className="h-4 w-4" />Копировать</Button>
       {deletable.length > 0 && (
         <Button
           size="sm" variant="ghost" className="text-down"
@@ -293,15 +304,19 @@ export function DeleteTickersDialog({ items, busy, onCancel, onConfirm }: {
   onCancel: () => void;
   onConfirm: (items: WatchlistItem[]) => void;
 }) {
+  // Keep the last list while the dialog animates out (otherwise it flashes «Удалить 0 тикеров?»).
+  const [last, setLast] = useState<WatchlistItem[]>([]);
+  useEffect(() => { if (items) setLast(items); }, [items]);
+  const shown = items ?? last;
   return (
     <AlertDialog open={!!items} onOpenChange={(v) => { if (!v) onCancel(); }}>
       <AlertDialogContent>
         <AlertDialogHeader>
           <AlertDialogTitle>
-            {items && items.length === 1 ? `Удалить ${items[0].ticker}?` : `Удалить ${items?.length ?? 0} тикеров?`}
+            {shown.length === 1 ? `Удалить ${shown[0].ticker}?` : `Удалить ${shown.length} ${pluralRu(shown.length, "тикер", "тикера", "тикеров")}?`}
           </AlertDialogTitle>
           <AlertDialogDescription>
-            {items && items.length > 1 ? `${items.map((d) => d.ticker).join(", ")}. ` : ""}
+            {shown.length > 1 ? `${shown.map((d) => d.ticker).join(", ")}. ` : ""}
             Чтобы просто убрать из работы, используйте «В архив». Удаление можно отменить кнопкой в уведомлении.
           </AlertDialogDescription>
         </AlertDialogHeader>

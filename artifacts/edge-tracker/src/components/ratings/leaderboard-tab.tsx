@@ -178,7 +178,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
           <EmptyState
             icon={Trophy}
             title={`Нет сделок за ${periodLabel === "всё" ? "всё время" : `период «${periodLabel}»`}`}
-            description="Рейтинг строится автоматически по журналу сделок. Выберите период побольше или добавьте сделки."
+            description="Рейтинг строится автоматически по сделкам из PropReports. Выберите период побольше."
             action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPeriod("all")}>Показать за всё время</Button> : undefined}
           />
         </Panel>

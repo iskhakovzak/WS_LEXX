@@ -20,6 +20,8 @@ import { cn } from "@/lib/utils";
 import { invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest, useTradePicker } from "./api";
 import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, type PickerTrade, type PlaybookEntry, type Tier } from "./model";
 import { REDACTED_HINT, RedactedHint } from "./setup-bits";
+import { pluralRu } from "@/components/rules/constants";
+import { PersonSelect } from "@/components/people/person-select";
 
 type Period = "30" | "90" | "365" | "all";
 type PickKey = "ticker" | "date" | "trader" | "auto" | "setup" | "net";
@@ -106,7 +108,7 @@ export function TradePickerDialog({
       if (r.linked) invalidateTradeLinks(qc);
       const n = r.examples?.length ?? selected.size;
       toast({
-        title: `${n} ${n === 1 ? "сделка добавлена" : "сделок добавлено"} в эталоны`,
+        title: `${n} ${pluralRu(n, "сделка добавлена", "сделки добавлены", "сделок добавлено")} в эталоны`,
         description: [TIERS.find((t) => t.tier === tier)?.label, r.skipped?.length ? `пропущено ${r.skipped.length}` : ""].filter(Boolean).join(" · "),
       });
       onOpenChange(false);
@@ -154,13 +156,7 @@ export function TradePickerDialog({
             <Sparkles className="h-3.5 w-3.5" aria-hidden="true" /> Подходят по сетапу
           </FilterChip>
           {isCurator && (
-            <Select value={trader || "__all"} onValueChange={(v) => setTrader(v === "__all" ? "" : v)}>
-              <SelectTrigger className="h-9 w-44" aria-label="Трейдер"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">Все трейдеры</SelectItem>
-                {traders.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={trader || ""} onValueChange={setTrader} options={traders} allLabel="Все трейдеры" ariaLabel="Трейдер" className="h-9 w-44" />
           )}
         </div>
 

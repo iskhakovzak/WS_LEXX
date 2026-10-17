@@ -19,6 +19,7 @@ import {
   FEE_ROUNDING_LABEL, ReconcileHttpError, discrepanciesCsv, downloadText, useReconcile,
   type Compare, type CompareStatus, type DayRow, type Issue, type ReportCheck, type Severity,
 } from "./reconcile-api";
+import { PersonSelect } from "@/components/people/person-select";
 
 const ALL = "__all__";
 
@@ -249,13 +250,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
           {staff && !traderProp && (
             <div className="grid gap-1">
               <label className="text-xs text-muted-foreground" id="rc-trader-label">Трейдер</label>
-              <Select value={picked} onValueChange={setPicked}>
-                <SelectTrigger className="h-9 w-48" aria-labelledby="rc-trader-label"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ALL}>Весь деск</SelectItem>
-                  {traders.map((n) => <SelectItem key={n} value={n}>{n}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={picked} onValueChange={setPicked} allValue={ALL} allLabel="Весь деск" options={traders} ariaLabel="Трейдер" className="h-9 w-48" />
             </div>
           )}
           <div className="grid gap-1">

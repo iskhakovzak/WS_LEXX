@@ -100,7 +100,7 @@ export function HotkeysHelp({ rows, className }: { rows: HotkeyRow[]; className?
  * One compact row: timeframe · mode · VWAP / Уровни / Объём chips · «Слои ▾» · drawing · fit · screenshot · hotkeys ·
  * fullscreen. Scrolls sideways on a phone instead of wrapping into three rows.
  */
-export function ChartToolbar({
+export const ChartToolbar = React.memo(function ChartToolbar({
   timeframe, timeframes, allTimeframes, baseSec, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget, lockTrade,
   tool, onTool, drawingsCount, onClearDrawings, onScreenshot, onFit, onFullscreen, fullscreen, fetching, hotkeys, className,
 }: {
@@ -140,6 +140,9 @@ export function ChartToolbar({
   const menu = MENU.filter((k) => (k !== "events" || hasEvents) && (k !== "stopTarget" || hasStopOrTarget));
   const onCount = menu.filter((k) => overlays[k] && !(lockTrade && TRADE_OVERLAYS.includes(k))).length + (panes.pnl && hasPosition ? 1 : 0);
   const ToolIcon = tool ? TOOL_ICON[tool] : Pencil;
+  // The drawing menu closes once a tool is picked, so the next click lands on the chart.
+  const [drawOpen, setDrawOpen] = React.useState(false);
+  const pickTool = (t: DrawingType | null) => { onTool(t); setDrawOpen(false); };
   return (
     <div className={cn("flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none]", className)} role="toolbar" aria-label="Панель графика">
       <Segmented
@@ -181,25 +184,25 @@ export function ChartToolbar({
 
       <div className="ml-auto flex shrink-0 items-center gap-0.5 pl-2">
         {fetching && <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin text-muted-foreground" aria-label="Загрузка" />}
-        <Popover>
+        <Popover open={drawOpen} onOpenChange={setDrawOpen}>
           <PopoverTrigger asChild>
             <Button variant={tool ? "secondary" : "ghost"} size="icon" className="h-8 w-8" aria-label={tool ? `Рисование: ${DRAWING_LABEL[tool]}` : "Рисование"} title="Рисование">
               <ToolIcon />
             </Button>
           </PopoverTrigger>
           <PopoverContent align="end" className="w-56 p-1.5">
-            <button type="button" className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--glass-bg)]", tool == null && "text-primary")} onClick={() => onTool(null)}>
+            <button type="button" className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--glass-bg)]", tool == null && "text-primary")} onClick={() => pickTool(null)}>
               <MousePointer2 className="h-4 w-4" aria-hidden="true" /> Курсор <Kbd className="ml-auto">Esc</Kbd>
             </button>
             {(Object.keys(TOOL_ICON) as DrawingType[]).map((t) => {
               const Icon = TOOL_ICON[t];
               return (
-                <button key={t} type="button" aria-pressed={tool === t} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--glass-bg)]", tool === t && "text-primary")} onClick={() => onTool(tool === t ? null : t)}>
+                <button key={t} type="button" aria-pressed={tool === t} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-[var(--glass-bg)]", tool === t && "text-primary")} onClick={() => pickTool(tool === t ? null : t)}>
                   <Icon className="h-4 w-4" aria-hidden="true" /> {DRAWING_LABEL[t]}
                 </button>
               );
             })}
-            <button type="button" disabled={!drawingsCount} className="mt-1 flex w-full items-center gap-2 rounded-md border-t border-[var(--glass-border)] px-2 py-1.5 text-sm text-muted-foreground hover:bg-[var(--glass-bg)] disabled:opacity-50" onClick={onClearDrawings}>
+            <button type="button" disabled={!drawingsCount} className="mt-1 flex w-full items-center gap-2 rounded-md border-t border-[var(--glass-border)] px-2 py-1.5 text-sm text-muted-foreground hover:bg-[var(--glass-bg)] disabled:opacity-50" onClick={() => { onClearDrawings(); setDrawOpen(false); }}>
               <Eraser className="h-4 w-4" aria-hidden="true" /> Удалить рисунки{drawingsCount ? ` (${drawingsCount})` : ""}
             </button>
           </PopoverContent>
@@ -213,4 +216,4 @@ export function ChartToolbar({
       </div>
     </div>
   );
-}
+});

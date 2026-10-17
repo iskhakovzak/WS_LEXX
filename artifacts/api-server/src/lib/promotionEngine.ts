@@ -35,8 +35,12 @@ export interface StageMeta {
   scalingTier: string | null;
 }
 
+/** Old seeded text (mentioned the pre-trainee selection, which is not part of the ladder) — replaced on startup if untouched. */
+export const LEGACY_TRAINEE_DESCRIPTION = "После отбора и буткемпа: минимальный размер, жёсткие лимиты, обучение и экзамены";
+export const TRAINEE_DESCRIPTION = "Первая ступень деска: минимальный размер, жёсткие лимиты, обучение и экзамены";
+
 export const DEFAULT_STAGES: StageMeta[] = [
-  { key: "trainee", name: "Стажёр", order: 1, scalingTier: "trainee", description: "После отбора и буткемпа: минимальный размер, жёсткие лимиты, обучение и экзамены" },
+  { key: "trainee", name: "Стажёр", order: 1, scalingTier: "trainee", description: TRAINEE_DESCRIPTION },
   { key: "junior", name: "Джун", order: 2, scalingTier: "junior", description: "Капитал фирмы, малый лот, только интрадей" },
   { key: "trader", name: "Трейдер", order: 3, scalingTier: "trader", description: "Полноценный трейдер деска: интрадей + овернайт" },
   { key: "senior", name: "Сеньор", order: 4, scalingTier: "senior", description: "Полный BP, свинг, наставничество" },
@@ -359,7 +363,7 @@ export function adviceFor(metric: PromoMetricKey, op: Op, actual: number | null,
   const usd = (x: number) => formatPromo("net_pnl", x);
   switch (metric) {
     case "net_pnl":
-      return actual == null ? "Нет сделок с P&L в окне — торгуйте и импортируйте отчёт PropReports." :
+      return actual == null ? "Нет сделок с P&L в окне — торгуйте: сделки подтягиваются из PropReports автоматически." :
         `Не хватает ${usd(Math.max(0, target - actual))} нетто за ${ctx.windowDays} торговых дней (≈ ${usd(Math.max(0, target - actual) / Math.max(1, ctx.windowDays))} в день сверх текущего).`;
     case "trading_days":
       return `Нужно ещё ${Math.max(0, Math.ceil(target - (actual ?? 0)))} торговых дней в окне ${ctx.windowDays} дн. — торгуйте регулярно, пропуски не засчитываются.`;
@@ -402,7 +406,7 @@ export function adviceFor(metric: PromoMetricKey, op: Op, actual: number | null,
     case "limit_breaches":
       return `${actual ?? 0} пробоев дневного/недельного лимита: после достижения лимита торговля прекращается — без исключений.`;
     case "red_streak_max":
-      return `Серия из ${actual ?? 0} красных дней (допуск ${target}): после 2 красных дней подряд — половинный размер и разбор с наставником.`;
+      return actual == null ? "Нет данных по $." : `Серия из ${actual} красных дней (допуск ${target}): после 2 красных дней подряд — половинный размер и разбор с наставником.`;
     case "green_days_pct":
       return `Зелёных дней ${actual?.toFixed(0) ?? "—"}%, нужно ${target}%: закрывайте день в плюс раньше, не отдавайте утреннюю прибыль.`;
     case "discipline_index":
@@ -553,7 +557,7 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
       target: cr.value,
       windowDays: n,
       windowFrom: from,
-      windowLabel: cr.windowDays != null && cr.windowDays > 0 ? `${n} торг. дн.` : input.stageSince ? `с ${input.stageSince} (начало ступени)` : "за всё время",
+      windowLabel: cr.windowDays != null && cr.windowDays > 0 ? `${n} торг. дн.` : input.stageSince ? `с ${ymdRu(input.stageSince)} (начало ступени)` : "за всё время",
       value,
       prevValue: prev?.value ?? null,
       display: formatPromo(cr.metric, value),
@@ -603,4 +607,10 @@ export function evaluatePromotion(input: PromotionInput, criteriaIn: Criterion[]
       disciplineIndex: s.discipline_index.value,
     },
   };
+}
+
+/** «2026-09-01» → «01.09.2026» for window labels. */
+function ymdRu(ymd: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
+  return m ? `${m[3]}.${m[2]}.${m[1]}` : ymd;
 }

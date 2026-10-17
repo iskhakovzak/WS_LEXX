@@ -15,6 +15,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader, isStaffRole, viewerRole, GUEST_SCOPE } from "../lib/auth";
 import { closeDateSql, netPnlSql, resultSql } from "../lib/tradeMath";
+import { execSpanJoin } from "../lib/execSpan";
 import { nyDate } from "../lib/tradingDate";
 import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
 
@@ -47,17 +48,11 @@ type Row = {
 
 async function loadDayTrades(trader: string, date: string): Promise<Row[]> {
   const { rows } = await pool.query<Row>(
-    `WITH ex AS (
-       SELECT trade_id,
-              MIN(executed_at) FILTER (WHERE kind IN ('entry','add')) AS first_entry,
-              MAX(executed_at) FILTER (WHERE kind IN ('exit','stop','trim')) AS last_exit
-       FROM trade_executions WHERE executed_at IS NOT NULL GROUP BY trade_id
-     )
-     SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
+    `SELECT t.id, t.ticker, t.side, t.setup, t.playbook_id, ${resultSql("t")} AS result,
             t.pnl::float8 AS pnl, t.fees::float8 AS fees, t.qty::float8 AS qty, t.entry::float8 AS entry, t.exit::float8 AS exit,
             t.context_snapshot->>'openedAt' AS opened_at, t.context_snapshot->>'closedAt' AS closed_at,
             e.first_entry, e.last_exit
-     FROM trades t LEFT JOIN ex e ON e.trade_id = t.id
+     FROM trades t ${execSpanJoin("lateral")}
      WHERE t.deleted_at IS NULL AND t.trader = $1 AND ${CDATE} = $2
      ORDER BY COALESCE(e.first_entry, e.last_exit) NULLS LAST, t.id`,
     [trader, date],

@@ -11,6 +11,8 @@ type Props = {
   title?: string;
   /** Optional: inline single-row variant for small panels and lists. */
   compact?: boolean;
+  /** Retry button text (default «Повторить»). */
+  retryLabel?: string;
   className?: string;
 };
 
@@ -34,14 +36,15 @@ const COPY: Record<Kind, { title: string; hint: string; icon: typeof AlertCircle
   generic: { title: "Не удалось загрузить данные", hint: "Попробуйте ещё раз.", icon: AlertCircle },
 };
 
-export function QueryError({ error, onRetry, message, title, compact, className }: Props) {
+export function QueryError({ error, onRetry, message, title, compact, retryLabel = "Повторить", className }: Props) {
   const [retrying, setRetrying] = useState(false);
   const [showDetails, setShowDetails] = useState(false);
   const { kind, status, raw } = classify(error);
   const copy = COPY[kind];
   const Icon = copy.icon;
   const heading = title ?? message ?? copy.title;
-  const text = message && error == null ? null : copy.hint;
+  // With both a title and a message the message is the explanation line (it used to be dropped).
+  const text = title && message ? message : message && error == null ? null : copy.hint;
   const details = raw && raw !== heading ? raw : null;
 
   const retry = () => {
@@ -58,7 +61,7 @@ export function QueryError({ error, onRetry, message, title, compact, className 
         {onRetry && (
           <Button type="button" variant="ghost" size="sm" onClick={retry} disabled={retrying} className="h-7 text-down hover:text-down">
             <RefreshCw className={cn(retrying && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-            Повторить
+            {retryLabel}
           </Button>
         )}
       </div>
@@ -80,7 +83,7 @@ export function QueryError({ error, onRetry, message, title, compact, className 
       {onRetry && (
         <Button type="button" variant="outline" size="sm" onClick={retry} disabled={retrying}>
           <RefreshCw className={cn(retrying && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
-          Повторить
+          {retryLabel}
         </Button>
       )}
       {details && (

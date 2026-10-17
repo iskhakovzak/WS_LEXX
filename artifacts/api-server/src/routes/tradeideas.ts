@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, and, desc, isNull, sql, inArray } from "drizzle-orm";
-import { db, pool, tradeIdeasTable, tradeIdeaReactionsTable, tradesTable, preTradeChecklistResponsesTable } from "@workspace/db";
+import { db, pool, tradeIdeasTable, tradeIdeaReactionsTable, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { logger } from "../lib/logger";
@@ -8,7 +8,10 @@ import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { notifyReviewersOnPublish, applyIdeaReview } from "../lib/notifyUtils";
 import { GUEST_SCOPE, isGuest, requireMember, scopeTrader } from "../lib/auth";
 import { can, requireCap } from "../lib/permissions";
-import { nyDate, addDays, isWeekend } from "../lib/tradingDate";
+import { nyDate } from "../lib/tradingDate";
+import { defaultValidUntil, ensureIdeaLinkColumns, ensureIdeaLinksFresh } from "../lib/ideaTradeMatch";
+import { loadMoneyViewer } from "../lib/playbookAccess";
+import { redactTradeRow, type MoneyViewer } from "../lib/playbookPrivacy";
 import { signedR, netPnl, normResult } from "../lib/tradeMath";
 
 const router: IRouter = Router();
@@ -50,19 +53,7 @@ function parseHorizon(v: unknown): "intraday" | "overnight" | "swing" | null {
   return HORIZONS.has(s) ? (s as "intraday" | "overnight" | "swing") : null;
 }
 
-/** Next trading day (weekends skipped; holidays are not consulted here — the UI treats them as expired a day early at worst). */
-function nextSession(date: string, n = 1): string {
-  let d = date;
-  for (let i = 0; i < n; i++) { do { d = addDays(d, 1); } while (isWeekend(d)); }
-  return d;
-}
-
-/** Default expiry of a published idea by horizon, counted from the publish (NY) date. */
-export function defaultValidUntil(horizon: string | null, from: string = nyDate()): string {
-  if (horizon === "overnight") return nextSession(from, 1);
-  if (horizon === "swing") return nextSession(from, 10);
-  return from;
-}
+export { defaultValidUntil };
 
 function parseDateOrNull(v: unknown): string | null {
   const s = String(v ?? "").trim();
@@ -117,7 +108,12 @@ async function attachReactions<T extends IdeaRow>(rows: T[]): Promise<(T & { rea
   return rows.map((r) => ({ ...r, reactions: map.get(r.id) ?? [] }));
 }
 
-async function attachLinkedTrades<T extends IdeaRow>(rows: T[]): Promise<(T & { linkedTrade: LinkedTrade | null })[]> {
+/**
+ * Linked trade of each idea. $ facts (P&L, fees, size, risk $) follow the desk privacy rule (lib/playbookPrivacy):
+ * only the trade's owner and staff see them; others keep prices, R and the outcome. Ideas are team-wide and now
+ * auto-link to the author's broker trade, so this matters for every published idea.
+ */
+async function attachLinkedTrades<T extends IdeaRow>(rows: T[], viewer: MoneyViewer): Promise<(T & { linkedTrade: (LinkedTrade & { redacted: boolean }) | null })[]> {
   const tradeIds = rows.map((r) => r.convertedTradeId).filter((v): v is number => typeof v === "number");
   if (tradeIds.length === 0) return rows.map((r) => ({ ...r, linkedTrade: null }));
   const trades = await db
@@ -141,15 +137,16 @@ async function attachLinkedTrades<T extends IdeaRow>(rows: T[]): Promise<(T & { 
     })
     .from(tradesTable)
     .where(inArray(tradesTable.id, tradeIds));
-  const tradeMap = new Map<number, LinkedTrade>();
+  const tradeMap = new Map<number, LinkedTrade & { redacted: boolean }>();
   for (const t of trades) {
     if (t.deletedAt) continue;
-    tradeMap.set(t.id, {
+    const row = redactTradeRow({
       id: t.id, result: t.result, pnl: t.pnl, rMultiple: t.rMultiple, date: t.date,
       side: t.side, entry: t.entry, exit: t.exit, stop: t.stop, fees: t.fees, riskUsd: t.riskUsd, qty: t.qty,
       horizon: t.horizon, exitDate: t.exitDate, trader: t.trader,
       r: signedR(t), net: netPnl(t), outcome: normResult(t.result),
-    });
+    }, viewer);
+    tradeMap.set(t.id, row.redacted ? { ...row, net: null } : row); // `net` is not in TRADE_MONEY_FIELDS
   }
   return rows.map((r) => ({ ...r, linkedTrade: r.convertedTradeId ? tradeMap.get(r.convertedTradeId) ?? null : null }));
 }
@@ -159,6 +156,9 @@ type IdeaMeta = {
   commentCount: number; lastCommentAt: string | null; unreadCount: number;
   /** Real columns (see ensureIdeaColumns). `expired` = published, not converted, valid_until < NY today. */
   horizon: "intraday" | "overnight" | "swing" | null; validUntil: string | null; expired: boolean;
+  /** How `convertedTradeId` was set: 'auto' = matched to the author's PropReports trade (lib/ideaTradeMatch),
+   *  'manual' = linked by hand (legacy); null without a link. */
+  tradeLinkSource: "auto" | "manual" | null; tradeLinkedAt: string | null;
 };
 
 /**
@@ -172,9 +172,11 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
   const isReviewer = viewer?.role === "curator" || viewer?.role === "admin";
   const empty = { rows: [] as unknown[] };
   await ensureIdeaColumns().catch(() => undefined);
+  await ensureIdeaLinkColumns().catch(() => undefined);
   const [review, comments, unread] = await Promise.all([
     pool.query(
-      `SELECT id, review_status, review_reason, reviewed_by, reviewed_at, horizon, valid_until FROM trade_ideas WHERE id = ANY($1::int[])`,
+      `SELECT id, review_status, review_reason, reviewed_by, reviewed_at, horizon, valid_until, trade_link_source, trade_linked_at
+         FROM trade_ideas WHERE id = ANY($1::int[])`,
       [ids],
     ),
     pool.query(
@@ -197,7 +199,7 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
   ]);
   type ReviewRow = {
     id: number; review_status: string | null; review_reason: string | null; reviewed_by: string | null; reviewed_at: string | null;
-    horizon: string | null; valid_until: string | null;
+    horizon: string | null; valid_until: string | null; trade_link_source: string | null; trade_linked_at: Date | string | null;
   };
   const reviewMap = new Map((review.rows as ReviewRow[]).map((r) => [r.id, r]));
   const commentMap = new Map((comments.rows as { idea_id: number; cnt: number; last_at: string | null }[]).map((r) => [r.idea_id, r]));
@@ -221,6 +223,8 @@ async function attachMeta<T extends IdeaRow>(rows: T[], viewer: { name?: string;
       horizon,
       validUntil,
       expired: status === "published" && !r.convertedTradeId && !!validUntil && validUntil < today,
+      tradeLinkSource: r.convertedTradeId ? (rv?.trade_link_source === "auto" ? "auto" : "manual") : null,
+      tradeLinkedAt: r.convertedTradeId && rv?.trade_linked_at ? new Date(rv.trade_linked_at).toISOString() : null,
     };
   });
 }
@@ -392,6 +396,7 @@ router.get("/trade-ideas/tracking", asyncHandler(async (req, res): Promise<void>
 router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   const vis = await ideaVisibility(req);
   if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const { status, trader, ticker, horizon, expired } = req.query as Record<string, string | undefined>;
   const conds = [isNull(tradeIdeasTable.deletedAt)];
   if (status && IDEA_STATUSES.has(status)) conds.push(eq(tradeIdeasTable.status, status));
@@ -407,7 +412,7 @@ router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
     .orderBy(desc(tradeIdeasTable.createdAt))
     .limit(2000);
   const withReactions = await attachReactions(rows);
-  const withLinked = await attachLinkedTrades(withReactions);
+  const withLinked = await attachLinkedTrades(withReactions, await loadMoneyViewer(req));
   let out = await attachMeta(withLinked, req.authUser);
   const h = parseHorizon(horizon);
   if (h) out = out.filter((r) => r.horizon === h);
@@ -423,6 +428,7 @@ router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
 router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
   if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const from = parseDateOrNull(req.query.from);
   const to = parseDateOrNull(req.query.to);
   const conds = [isNull(tradeIdeasTable.deletedAt)];
@@ -565,11 +571,12 @@ router.get("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   const vis = await ideaVisibility(req);
   if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const [row] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   // Another trader's draft is indistinguishable from a missing idea (no draft leaks).
   if (!row || row.deletedAt || !isVisible(vis, row)) { res.status(404).json({ error: "not found" }); return; }
   const [withR] = await attachReactions([row]);
-  const [withLinked] = await attachLinkedTrades([withR]);
+  const [withLinked] = await attachLinkedTrades([withR], await loadMoneyViewer(req));
   const [withMeta] = await attachMeta([withLinked], req.authUser);
   res.json(withMeta);
 }));
@@ -731,6 +738,14 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   if (!row) { res.status(404).json({ error: "not found" }); return; }
   if (extra.horizon !== undefined) await pool.query(`UPDATE trade_ideas SET horizon = $2 WHERE id = $1`, [id, extra.horizon]);
   if (extra.validUntil !== undefined) await pool.query(`UPDATE trade_ideas SET valid_until = $2 WHERE id = $1`, [id, extra.validUntil]);
+  if (b.convertedTradeId !== undefined) {
+    // A hand-set link is never moved by the auto-matcher; a hand-removed one switches auto-matching off for the idea.
+    await ensureIdeaLinkColumns().catch(() => undefined);
+    await pool.query(
+      `UPDATE trade_ideas SET trade_link_source = CASE WHEN converted_trade_id IS NULL THEN 'off' ELSE 'manual' END, trade_linked_at = NOW() WHERE id = $1`,
+      [id],
+    ).catch(() => undefined);
+  }
   const [withMeta] = await attachMeta([{ ...row, reactions: [], linkedTrade: null }], req.authUser);
   res.json(withMeta);
 }));
@@ -806,146 +821,15 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
 }));
 
 /**
- * POST /trade-ideas/:id/convert — open a trade from a published idea (author or staff).
- * Maps the idea plan onto the trade: horizon → trades.horizon, riskAmount → trades.risk_usd, plus
- * qty/fees/brokerAccount from the body. Date = NY trading date. Returns the full trade for the client.
+ * POST /trade-ideas/:id/convert — retired. It created a manual trade, but trades come only from PropReports now:
+ * a published idea is linked to the author's broker trade automatically (lib/ideaTradeMatch).
  */
-router.post("/trade-ideas/:id/convert", asyncHandler(async (req, res): Promise<void> => {
-  const id = parseId(req.params.id, res); if (id == null) return;
-  if (!requireMember(req, res)) return;
-  await ensureIdeaColumns().catch(() => undefined);
-  const b = req.body as Record<string, unknown>;
-  const [idea] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!idea || idea.deletedAt) { res.status(404).json({ error: "idea not found" }); return; }
-  const staff = await can(req, "ideas.review");
-  // A trader may take someone else's *published* idea into their own trade; drafts belong to the author.
-  if (idea.status === "draft" && !(await canManageIdea(req, idea.trader))) { res.status(404).json({ error: "idea not found" }); return; }
-  if (idea.status === "converted" || idea.convertedTradeId) {
-    res.status(409).json({
-      error: "Trade idea already converted",
-      code: "IDEA_ALREADY_CONVERTED",
-      message: `Idea #${idea.id} was already converted to trade #${idea.convertedTradeId ?? "?"}.`,
-      convertedTradeId: idea.convertedTradeId,
-    });
-    return;
-  }
-
-  const skipChecklist = req.query.skipChecklist === "true" || b.skipChecklist === true;
-  const submittedChecklistId = typeof b.checklistResponseId === "number" ? b.checklistResponseId : null;
-  let validatedChecklistId: number | null = null;
-  if (submittedChecklistId) {
-    const [row] = await db
-      .select({
-        id: preTradeChecklistResponsesTable.id,
-        ticker: preTradeChecklistResponsesTable.ticker,
-        trader: preTradeChecklistResponsesTable.trader,
-        tradeId: preTradeChecklistResponsesTable.tradeId,
-        passed: preTradeChecklistResponsesTable.passed,
-      })
-      .from(preTradeChecklistResponsesTable)
-      .where(eq(preTradeChecklistResponsesTable.id, submittedChecklistId))
-      .limit(1);
-    if (!row || row.ticker.toUpperCase() !== idea.ticker.toUpperCase()) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_INVALID_ID",
-        message: `Checklist response does not exist or does not match idea ticker ${idea.ticker}.`,
-      });
-      return;
-    }
-    if (row.tradeId !== null) {
-      res.status(422).json({
-        error: "Pre-trade checklist already used",
-        code: "CHECKLIST_ALREADY_LINKED",
-        message: `Checklist response ${row.id} is already linked to trade ${row.tradeId}. Each checklist response is a 1:1 audit record and cannot be reused.`,
-      });
-      return;
-    }
-    if (!row.passed) {
-      res.status(422).json({
-        error: "Pre-trade checklist did not pass",
-        code: "CHECKLIST_NOT_PASSED",
-        message: `Checklist response ${row.id} is recorded as failed (passed=false). Re-complete the checklist with all required items checked, or pass skipChecklist=true to override (curator only).`,
-      });
-      return;
-    }
-    validatedChecklistId = row.id;
-  } else if (!skipChecklist) {
-    res.status(422).json({
-      error: "Pre-trade checklist required",
-      code: "CHECKLIST_REQUIRED",
-      message: "Convert requires a completed checklist response (checklistResponseId) or skipChecklist=true override. The recommended flow is to open the prefilled trade form in the UI.",
-    });
-    return;
-  }
-
-  if (skipChecklist && !submittedChecklistId && !staff) {
-    res.status(403).json({ error: "Пропустить чек-лист может только куратор", code: "CHECKLIST_SKIP_FORBIDDEN" }); return;
-  }
-
-  const date = parseDateOrNull(b.date) ?? nyDate();
-  const numOrNull = (v: unknown): string | null => {
-    if (v === undefined || v === null || v === "") return null;
-    const n = Number(String(v).replace(",", "."));
-    return Number.isFinite(n) ? String(n) : null;
-  };
-  const { rows: hv } = await pool.query<{ horizon: string | null }>(`SELECT horizon FROM trade_ideas WHERE id = $1`, [id]);
-  const horizon = parseHorizon(b.horizon) ?? parseHorizon(hv[0]?.horizon) ?? "intraday";
-  const result = b.result ? String(b.result) : "open";
-  if (normResult(result) === null) { res.status(400).json({ error: "result must be open | win | loss | be" }); return; }
-  // The trade belongs to the caller; staff may file it for the idea's author (or anyone named in the body).
-  const trader = staff && b.trader ? String(b.trader) : req.authUser!.name;
-  const plannedEntry = parseLevelNumbers(idea.entryZone);
-  const plannedStop = parseLevelNumbers(idea.stop);
-  const [trade] = await db.insert(tradesTable).values({
-    ticker: idea.ticker,
-    date,
-    setup: idea.setup ?? null,
-    side: idea.side ?? null,
-    result,
-    notes: b.notes ? String(b.notes) : (idea.thesis ?? null),
-    trader,
-    tags: idea.tags ?? null,
-    playbookId: idea.playbookId ?? null,
-    screenshotUrl: sanitizeMultiLineUrls(idea.screenshotUrl as string | null | undefined),
-    // Fill prices from the body; the idea's plan is the fallback so R can be computed from the plan.
-    entry: numOrNull(b.entry) ?? (plannedEntry.length ? String(plannedEntry.reduce((a, c) => a + c, 0) / plannedEntry.length) : null),
-    exit: numOrNull(b.exit),
-    stop: numOrNull(b.stop) ?? (plannedStop.length ? String(plannedStop[0]) : null),
-    pnl: numOrNull(b.pnl),
-    rMultiple: numOrNull(b.rMultiple),
-    horizon,
-    qty: numOrNull(b.qty),
-    fees: numOrNull(b.fees),
-    riskUsd: numOrNull(b.riskUsd) ?? (idea.riskAmount != null ? String(idea.riskAmount) : null),
-    brokerAccount: b.brokerAccount ? String(b.brokerAccount).slice(0, 100) : null,
-    exitDate: parseDateOrNull(b.exitDate),
-  }).returning();
-  if (validatedChecklistId) {
-    await db.update(preTradeChecklistResponsesTable)
-      .set({ tradeId: trade.id })
-      .where(eq(preTradeChecklistResponsesTable.id, validatedChecklistId));
-  }
-  await db.update(tradeIdeasTable)
-    .set({ status: "converted", convertedTradeId: trade.id })
-    .where(eq(tradeIdeasTable.id, id));
-
-  logActivity({ action: "converted", section: "trade-ideas", entityId: String(idea.id), entityTitle: idea.ticker, trader: idea.trader ?? undefined, details: `→ trade #${trade.id}` });
-  // Planned vs fill: how far the actual entry/stop drifted from the idea (positive entry slippage = worse fill).
-  const fillEntry = trade.entry != null ? Number(trade.entry) : null;
-  const fillStop = trade.stop != null ? Number(trade.stop) : null;
-  const isShort = (idea.side ?? "").toLowerCase() === "short";
-  const planEntry = plannedEntry.length ? plannedEntry.reduce((a, c) => a + c, 0) / plannedEntry.length : null;
-  const planStop = plannedStop[0] ?? null;
-  res.status(201).json({
-    trade: { ...trade, r: signedR(trade), net: netPnl(trade) },
-    ideaId: idea.id,
-    slippage: {
-      entry: planEntry != null && fillEntry != null ? (isShort ? planEntry - fillEntry : fillEntry - planEntry) : null,
-      stop: planStop != null && fillStop != null ? fillStop - planStop : null,
-    },
+router.post("/trade-ideas/:id/convert", (_req, res): void => {
+  res.status(410).json({
+    error: "Сделки приходят из PropReports — идея связывается со сделкой автоматически (тикер, сторона и время входа)",
+    code: "IDEA_CONVERT_RETIRED",
   });
-}));
+});
 
 router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
@@ -962,6 +846,20 @@ router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =
     .where(eq(tradeIdeasTable.id, id))
     .returning();
   if (!row) { res.status(404).json({ error: "not found" }); return; }
+  res.json({ success: true });
+}));
+
+/** Undo of DELETE (the page offers it for a few seconds): author or staff, only for an idea that is soft-deleted. */
+router.post("/trade-ideas/:id/restore", asyncHandler(async (req, res): Promise<void> => {
+  const id = parseId(req.params.id, res); if (id == null) return;
+  if (!requireMember(req, res)) return;
+  const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
+    .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
+  if (!existing || !existing.deletedAt) { res.status(404).json({ error: "Идея не найдена" }); return; }
+  if (!(await canManageIdea(req, existing.trader))) {
+    res.status(403).json({ error: "Восстановить идею может только автор или куратор" }); return;
+  }
+  await db.update(tradeIdeasTable).set({ deletedAt: null }).where(eq(tradeIdeasTable.id, id));
   res.json({ success: true });
 }));
 

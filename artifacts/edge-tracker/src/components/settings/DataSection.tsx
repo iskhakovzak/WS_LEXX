@@ -17,6 +17,7 @@ import { BASE } from "@/lib/api";
 import { downloadBlob } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Callout, fmtDate } from "./shared";
+import { pluralRu } from "@/components/rules/constants";
 
 /** Serialises an array of flat-ish JSON records to CSV (RFC 4180 quoting, UTF-8 BOM for Excel). */
 function toCsv(rows: Record<string, unknown>[]): string {
@@ -97,9 +98,9 @@ function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; p
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
-        <span className="block text-xs text-muted-foreground tabular-nums">{count != null ? `${count.toLocaleString("ru-RU")} записей` : "CSV"}</span>
+        <span className="block text-xs text-muted-foreground tabular-nums">{count != null ? `${count.toLocaleString("ru-RU")} ${pluralRu(count, "запись", "записи", "записей")}` : "CSV"}</span>
       </span>
-      <Download className={cn("h-4 w-4 shrink-0 text-muted-foreground", loading && "animate-pulse")} aria-hidden="true" />
+      <Download className={cn("h-4 w-4 shrink-0 text-muted-foreground", loading && "motion-safe:animate-pulse")} aria-hidden="true" />
     </button>
   );
 }
@@ -335,8 +336,9 @@ export function DataSection() {
   const loading = l1 || l2 || l3 || l4 || l5;
   const total = tradesCount + events.length + research.length + feed.length + discussions.length;
 
-  const counts: Record<string, number | undefined> = loading ? {} : {
-    trades: tradesCount, events: events.length, research: research.length, dailyfeed: feed.length, discussions: discussions.length,
+  const counts: Record<string, number | undefined> = {
+    trades: l1 ? undefined : tradesCount, events: l2 ? undefined : events.length, research: l3 ? undefined : research.length,
+    dailyfeed: l4 ? undefined : feed.length, discussions: l5 ? undefined : discussions.length,
   };
   // Keys used by the db-export format → current counts for the backup comparison.
   const currentForBackup: Record<string, number | undefined> = loading ? {} : {
@@ -367,16 +369,14 @@ export function DataSection() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-busy={loading}>
-        {loading ? Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-[76px] rounded-2xl" />) : (
-          <>
-            <StatCard label="Всего записей" value={total.toLocaleString("ru-RU")} tone="accent" icon={Database} />
-            <StatCard label="Сделки" value={tradesCount.toLocaleString("ru-RU")} />
-            <StatCard label="События" value={events.length.toLocaleString("ru-RU")} />
-            <StatCard label="Исследования" value={research.length.toLocaleString("ru-RU")} />
-            <StatCard label="Дневная лента" value={feed.length.toLocaleString("ru-RU")} />
-            <StatCard label="Обсуждения" value={discussions.length.toLocaleString("ru-RU")} />
-          </>
-        )}
+        {/* Each tile shows its number as soon as its own list arrives — the trade count (/trades/page summary) is
+            the slow one and used to hold every tile on a skeleton. */}
+        <StatCard label="Всего записей" value={total.toLocaleString("ru-RU")} tone="accent" icon={Database} loading={loading} />
+        <StatCard label="Сделки" value={tradesCount.toLocaleString("ru-RU")} loading={l1} />
+        <StatCard label="События" value={events.length.toLocaleString("ru-RU")} loading={l2} />
+        <StatCard label="Исследования" value={research.length.toLocaleString("ru-RU")} loading={l3} />
+        <StatCard label="Дневная лента" value={feed.length.toLocaleString("ru-RU")} loading={l4} />
+        <StatCard label="Обсуждения" value={discussions.length.toLocaleString("ru-RU")} loading={l5} />
       </div>
 
       <Panel title="Экспорт в CSV" description="Открывается в Excel и Google Sheets (UTF-8)" icon={Download}

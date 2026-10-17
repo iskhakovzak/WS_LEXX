@@ -11,14 +11,15 @@
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useLocation, useSearch } from "wouter";
-import { CandlestickChart, ChevronDown, Dices, Search } from "lucide-react";
+import { Link, useLocation, useSearch } from "wouter";
+import { CalendarDays, CandlestickChart, ChevronDown, Dices, ListChecks, Search } from "lucide-react";
 import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BASE } from "@/lib/api";
+import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
 import { TaskSettingsButton } from "@/components/training/TaskSettings";
@@ -276,7 +277,7 @@ export default function ChartLabPage() {
   ) : <span className="text-muted-foreground">Выбрать сделку</span>;
 
   return (
-    <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-2 md:-mb-[2.25rem] md:h-[calc(100svh-6.25rem)] md:min-h-[520px]">
+    <div className="mx-auto flex w-full min-w-0 max-w-[var(--page-max)] flex-col gap-2 lg:-mb-[2.25rem] lg:h-[calc(100svh-6.25rem)] lg:min-h-[520px]">
       <header className="flex items-center gap-2">
         <h1 className="sr-only text-lg font-semibold tracking-tight sm:not-sr-only sm:mr-1">{training ? "Тренировка" : mode === "replay" ? "Реплей" : "График"}</h1>
         <TradePicker
@@ -284,6 +285,17 @@ export default function ChartLabPage() {
           onPick={(t) => navigate(`/chart-lab?trade=${t.id}${mode !== "analysis" ? `&mode=${mode}` : ""}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
           onTickerDay={(tk, d) => navigate(`/chart-lab?ticker=${encodeURIComponent(tk)}&date=${d}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
         />
+        {tradeId != null && current && !hideHints && !current.redacted && (
+          // Back to where an own trade is reviewed: its row in «Сделки» and the report of that day.
+          <span className="flex shrink-0 items-center">
+            <Button variant="ghost" size="icon" className="h-9 w-9" asChild title="Открыть в «Сделках»">
+              <Link href={links.trade(tradeId)} aria-label="Открыть сделку в «Сделках»"><ListChecks className="h-4 w-4" /></Link>
+            </Button>
+            <Button variant="ghost" size="icon" className="h-9 w-9" asChild title="Разбор этого дня">
+              <Link href={links.dayReport(current.date.slice(0, 10), current.trader && current.trader !== user?.traderName ? current.trader : undefined)} aria-label="Разбор этого дня"><CalendarDays className="h-4 w-4" /></Link>
+            </Button>
+          </span>
+        )}
         {tradeId != null && current && !hideHints && !viaTraining && (
           <AddToPlaybookButton payload={{ name: `${current.ticker} ${current.date.slice(0, 10)}`, ticker: current.ticker, sourceType: "trade", sourceId: tradeId }} className="h-9 shrink-0" />
         )}
@@ -313,7 +325,7 @@ export default function ChartLabPage() {
       ) : current ? (
         <WsChart
           key={`${current.id}`}
-          className={cn("md:min-h-0 md:flex-1")}
+          className="lg:min-h-0 lg:flex-1"
           layout="workspace"
           trade={current}
           executions={adHoc ? [] : viaTraining ? trade.data?.executions : undefined}

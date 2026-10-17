@@ -6,12 +6,14 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
-import { BarChart3, Flame, GitCompare, Gauge, Table2, TrendingUp, Users } from "lucide-react";
+import { BarChart3, Download, Flame, GitCompare, Gauge, Table2, TrendingUp, Users } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Pill, SectionTabs, Segmented, StatCard, StatGrid, Toolbar, toneOf, type SectionTab, type SegmentOption } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { downloadCsv } from "@/components/analytics-page/metrics";
 import { QueryError } from "@/components/query-error";
-import { useBenchmark, useSameTicker, type BenchPeriod } from "@/components/benchmark/api";
+import { useBenchmark, useSameTicker, type BenchPeriod, type BenchmarkResponse } from "@/components/benchmark/api";
 import { BenchmarkTable } from "@/components/benchmark/benchmark-table";
 import { BenchmarkHeatmap } from "@/components/benchmark/heatmap";
 import { SameTickerView } from "@/components/benchmark/same-ticker";
@@ -29,6 +31,24 @@ const PERIOD_OPTIONS: SegmentOption<BenchPeriod>[] = [
   { value: "quarter", label: "Квартал" },
   { value: "all", label: "Всё время" },
 ];
+
+const MIN_TRADES_KEY = "ws.benchmark.minTrades.v1";
+function loadMinTrades(): number {
+  try {
+    const n = Math.floor(Number(localStorage.getItem(MIN_TRADES_KEY)));
+    return Number.isFinite(n) && n >= 1 && n <= 500 ? n : 5;
+  } catch { return 5; }
+}
+
+/** The table as a report: raw values (no $ / % formatting) so it opens cleanly in a spreadsheet. */
+function exportCsv(data: BenchmarkResponse) {
+  const header = ["Трейдер", "Сделки", "В перцентилях", ...data.metrics.map((m) => m.label)];
+  const rows = data.rows.map((r) => [
+    r.trader, r.trades, r.qualified ? "да" : "нет",
+    ...data.metrics.map((m) => { const v = r[m.key] as unknown; return typeof v === "number" && Number.isFinite(v) ? Math.round(v * 10000) / 10000 : ""; }),
+  ]);
+  downloadCsv(`benchmark_${data.period.from}_${data.period.to}.csv`, header, rows);
+}
 
 function useUrlState() {
   const search = useSearch();
@@ -57,7 +77,16 @@ export default function BenchmarkPage() {
   const { q, set } = useUrlState();
   const tab: Tab = TABS.includes(q.get("tab") as Tab) ? (q.get("tab") as Tab) : "table";
   const period: BenchPeriod = PERIODS.includes(q.get("period") as BenchPeriod) ? (q.get("period") as BenchPeriod) : "quarter";
-  const [minTrades, setMinTrades] = useState(5);
+  // The field may be cleared while typing; the query follows the last valid number, 400 ms after typing stops.
+  const [minTrades, setMinTrades] = useState(loadMinTrades);
+  const [minText, setMinText] = useState(() => String(minTrades));
+  useEffect(() => { try { localStorage.setItem(MIN_TRADES_KEY, String(minTrades)); } catch { /* storage unavailable */ } }, [minTrades]);
+  useEffect(() => {
+    const n = Math.floor(Number(minText));
+    if (minText.trim() === "" || !Number.isFinite(n) || n < 1) return;
+    const id = window.setTimeout(() => setMinTrades(Math.min(n, 500)), 400);
+    return () => window.clearTimeout(id);
+  }, [minText]);
   const [selected, setSelected] = useState<string[]>([]);
   const a = q.get("a");
   const b = q.get("b");
@@ -121,13 +150,25 @@ export default function BenchmarkPage() {
         <label className="ml-2 flex items-center gap-2 text-sm text-muted-foreground">
           Мин. сделок
           <Input
-            type="number" min={1} max={500} value={minTrades} className="h-8 w-20 tabular-nums"
-            onChange={(e) => { const n = Math.floor(Number(e.target.value)); if (Number.isFinite(n) && n >= 1) setMinTrades(Math.min(n, 500)); }}
+            type="number" min={1} max={500} value={minText} className="h-8 w-20 tabular-nums"
+            onChange={(e) => setMinText(e.target.value)}
+            onBlur={() => {
+              const n = Math.floor(Number(minText));
+              const v = minText.trim() !== "" && Number.isFinite(n) && n >= 1 ? Math.min(n, 500) : minTrades;
+              setMinTrades(v); setMinText(String(v));
+            }}
             aria-label="Минимум сделок для перцентилей и медианы"
           />
         </label>
         {summary.isFetching && data && <span className="text-xs text-muted-foreground">обновление…</span>}
-        {data?.viewer.scope === "assigned" && <Pill tone="accent" className="ml-auto">мои подопечные</Pill>}
+        <span className="ml-auto flex items-center gap-2">
+          {data?.viewer.scope === "assigned" && <Pill tone="accent">мои подопечные</Pill>}
+          {staff && data && data.rows.length > 0 && (
+            <Button variant="outline" size="sm" className="h-8" onClick={() => exportCsv(data)} title="Таблица трейдеров за период — CSV для Excel / Google Таблиц">
+              <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />CSV
+            </Button>
+          )}
+        </span>
       </Toolbar>
 
       {summary.isLoading ? (
@@ -148,7 +189,7 @@ export default function BenchmarkPage() {
             <StatCard label="Комиссии / брутто" value={fmtPct(desk.feeShare)} tone={(desk.feeShare ?? 0) > 0.3 ? "down" : "neutral"} hint="доля брутто, ушедшая в комиссии" />
             <StatCard label="Требуют внимания" value={String(desk.breaches + desk.weaker)}
               tone={desk.breaches + desk.weaker > 0 ? "warn" : "neutral"}
-              hint={`${desk.breaches} нарушают консистентность · ${desk.weaker} хуже за 4 нед.`} />
+              hint={`консистентность: ${desk.breaches} · хуже за 4 нед.: ${desk.weaker}`} />
           </StatGrid>
 
           <SectionTabs<Tab> ariaLabel="Виды бенчмарка" tabs={tabs} value={tab} onChange={(v) => set({ tab: v })} />

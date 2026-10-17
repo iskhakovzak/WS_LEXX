@@ -7,6 +7,7 @@ import { startDigestCron } from "./lib/digest";
 import { startWeeklyReportCron } from "./lib/weeklyPsychologyReport";
 import { startDailyQuoteCron } from "./lib/dailyQuoteCron";
 import { startDbBackupCron } from "./lib/dbBackupCron";
+import { startChallengeCron } from "./routes/academy-path";
 import { registerWebhook } from "./lib/telegramBot";
 import { TELEGRAM_WEBHOOK_SECRET } from "./routes/telegram";
 
@@ -59,6 +60,10 @@ function startBackgroundServices(): void {
 
   try { startDbBackupCron(); } catch (e: any) {
     logger.warn({ error: e.message }, "Failed to start db backup cron");
+  }
+
+  try { startChallengeCron(); } catch (e: any) {
+    logger.warn({ error: e.message }, "Failed to start academy challenge cron");
   }
 
   // Register Telegram webhook only in production to avoid dev server stealing the webhook.

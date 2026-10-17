@@ -95,6 +95,9 @@ export async function fetchTrades(trader: string): Promise<TradeForRule[]> {
                            WHEN kind IN ('trim','exit','stop') THEN -COALESCE(qty, 0) ELSE 0 END)
                     OVER (PARTITION BY trade_id ORDER BY sort_order, executed_at NULLS LAST, id ROWS UNBOUNDED PRECEDING) AS pos
              FROM trade_executions
+            -- only this trader's fills: the running position is per trade, so the result is identical,
+            -- without a window pass over the whole executions table
+            WHERE trade_id IN (SELECT id FROM trades WHERE trader = $1 AND deleted_at IS NULL)
          ) e GROUP BY trade_id
        ) x ON x.trade_id = t.id
       WHERE t.trader = $1 AND t.deleted_at IS NULL

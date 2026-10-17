@@ -7,6 +7,7 @@
  * Screenshots are stored as `![скриншот](url)` lines at the end of notes.
  */
 import type { Discussion, Comment } from "@workspace/api-client-react";
+import { matchesAny, prepareQuery } from "@workspace/text-search";
 
 export type Thread = Discussion & {
   commentCount?: number;
@@ -236,7 +237,9 @@ export function threadMatches(t: Thread, q: string): boolean {
   const needle = q.toLowerCase();
   const hay = [t.topic, t.notes, t.ticker, t.trader, t.tags, ...(t.comments ?? []).map((c) => `${c.trader ?? ""} ${c.text}`)]
     .filter(Boolean).join("\n").toLowerCase();
-  return hay.includes(needle);
+  if (hay.includes(needle)) return true;
+  // Authors by name in any script / layout: «olga», «Ольга», «Jkmuf» → threads of «Ольга Н.».
+  return matchesAny(prepareQuery(q), t.trader, ...(t.comments ?? []).map((c) => c.trader));
 }
 
 // ── Unread store ─────────────────────────────────────────────────────────

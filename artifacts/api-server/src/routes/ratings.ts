@@ -435,7 +435,7 @@ router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => 
   if (r && !found[0].acknowledged_at && r.curator && r.curator !== acker) {
     inBackground("ratings.ack", () => notifyUser({
       userName: r.curator, type: "rating_ack", actor: acker, source: "ratings",
-      title: `${r.trader} подтвердил оценку`,
+      title: `Оценка подтверждена: ${r.trader}`,
       message: `Неделя ${String(r.week).slice(0, 10)}: ${r.overall ?? "—"}/10${acker !== r.trader ? ` (отметил ${acker})` : ""}`,
       link: notifLinks.ratings(r.trader), entityType: "rating", entityId: r.id,
     }));

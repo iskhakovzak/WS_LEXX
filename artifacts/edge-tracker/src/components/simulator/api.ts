@@ -17,16 +17,17 @@ export type SimTrade = {
   side: Side | null;
   qty: number | null;
   entry: number | null;
-  exit: number | null;
   gross: number | null;
   fees: number;
   holdSec: number | null;
-  r: number | null;
-  stop: number | null;
   setup: string | null;
-  tags: string[];
-  horizon: "intraday" | "overnight" | "swing";
-  result: "win" | "loss" | "be" | null;
+  /** Engine-only fields: /whatif/base no longer sends them (payload size); kept optional for older API builds. */
+  exit?: number | null;
+  r?: number | null;
+  stop?: number | null;
+  tags?: string[];
+  horizon?: "intraday" | "overnight" | "swing";
+  result?: "win" | "loss" | "be" | null;
   feeBreakdown?: Record<string, number> | null;
   fills?: number | null;
   seq: number;

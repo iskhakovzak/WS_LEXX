@@ -23,6 +23,8 @@ const MINUS = "−";
 export function fmtUsd(v: number | null | undefined, digits = 0): string {
   if (v == null || !Number.isFinite(v)) return "—";
   const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  // A value that rounds to zero carries no sign («−$0» read like a loss).
+  if (Number(abs.replace(/,/g, "")) === 0) return `$${abs}`;
   return `${v < 0 ? MINUS : v > 0 ? "+" : ""}$${abs}`;
 }
 

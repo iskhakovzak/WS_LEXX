@@ -13,6 +13,7 @@ import { ProgramCard, ProgramOutline } from "@/components/academy/content/progra
 import { ReviewQueue } from "@/components/academy/content/review-queue";
 import { ProgressMatrix } from "@/components/academy/content/progress-matrix";
 import { academyLinks } from "@/components/academy/content/links";
+import { PersonSelect } from "@/components/people/person-select";
 
 /**
  * /academy/learn — «Обучение»: каталог программ с прогрессом, дерево модулей выбранной программы,
@@ -21,6 +22,7 @@ import { academyLinks } from "@/components/academy/content/links";
  */
 
 type Tab = "catalog" | "review" | "progress";
+const SEED_LABEL: Record<string, string> = { programs: "программ", modules: "модулей", lessons: "уроков", quizzes: "тестов", assignments: "заданий" };
 const ME = "__me__";
 const ALL = "__all__";
 
@@ -68,7 +70,7 @@ export default function AcademyLearn() {
     setSeeding(true);
     try {
       const r = await api.seedDemo();
-      toast({ title: r.alreadySeeded ? "Демо-курс уже загружен" : "Демо-курс загружен", description: Object.entries(r.created).filter(([, n]) => n).map(([k, n]) => `${k}: ${n}`).join(", ") || "Новых элементов нет" });
+      toast({ title: r.alreadySeeded ? "Демо-курс уже загружен" : "Демо-курс загружен", description: Object.entries(r.created).filter(([, n]) => n).map(([k, n]) => `${SEED_LABEL[k] ?? k}: ${n}`).join(", ") || "Новых элементов нет" });
       await invalidateAcademy(qc);
       setParams({ program: r.programId });
     } catch (e) {
@@ -122,13 +124,7 @@ export default function AcademyLearn() {
           {staff && (
             <Toolbar>
               <span className="px-2 text-sm text-muted-foreground">Смотреть как</span>
-              <Select value={viewUser || ME} onValueChange={(v) => setParams({ user: v === ME ? null : v })}>
-                <SelectTrigger className="h-9 w-full rounded-full sm:w-[220px]" aria-label="Чей прогресс показать"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value={ME}>Я (превью)</SelectItem>
-                  {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
+              <PersonSelect value={viewUser || ME} onValueChange={(v) => setParams({ user: v === ME ? null : v })} allValue={ME} allLabel="Я (превью)" options={traders} ariaLabel="Чей прогресс показать" className="h-9 w-full sm:w-[220px]" />
             </Toolbar>
           )}
 
@@ -156,7 +152,16 @@ export default function AcademyLearn() {
                 {list.map((p) => <ProgramCard key={p.id} p={p} active={p.id === selectedId} onSelect={() => setParams({ program: p.id })} />)}
               </nav>
               <div className="min-w-0">
-                {tree.isLoading || !tree.data ? (
+                {tree.isError ? (
+                  <Panel>
+                    <EmptyState
+                      icon={BookOpenCheck}
+                      title="Не удалось загрузить программу"
+                      description={(tree.error as Error | null)?.message ?? "Попробуйте ещё раз."}
+                      action={<Button variant="outline" onClick={() => void tree.refetch()} disabled={tree.isFetching}>Повторить</Button>}
+                    />
+                  </Panel>
+                ) : tree.isLoading || !tree.data ? (
                   <Skeleton className="h-96 rounded-2xl" />
                 ) : (
                   <ProgramOutline tree={tree.data} user={viewUser || undefined} viewingOther={!!viewUser} />

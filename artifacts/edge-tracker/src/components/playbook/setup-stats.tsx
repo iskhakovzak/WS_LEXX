@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { notLiveMessage, useSetupStats } from "./api";
 import { DocSection, REDACTED_AGG_HINT, RedactedHint } from "./setup-bits";
 import { HORIZON_LABEL, ddmm, fmtPct, fmtR, fmtUsd, moneyTone, type SetupSummary, type SlotStat, type UsdStats } from "./model";
+import { pluralRu } from "@/components/rules/constants";
 
 const slotLabel = (s: string) => (s === "pre" ? "Премаркет" : s === "post" ? "После закрытия" : `${s}–${endOf(s)}`);
 function endOf(s: string) {
@@ -119,7 +120,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
 
       {s.recent.n >= 5 && u.n >= 25 && s.recent.expectancy != null && u.expectancy != null && s.recent.expectancy < u.expectancy - Math.abs(u.expectancy) && (
         <p className="rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-sm text-[hsl(var(--chart-3))]">
-          Edge проседает: последние {s.recent.n} сделок дают {fmtUsd(s.recent.expectancy, 2)} на сделку против {fmtUsd(u.expectancy, 2)} за всю историю.
+          Edge проседает: последние {s.recent.n} {pluralRu(s.recent.n, "сделка", "сделки", "сделок")} дают {fmtUsd(s.recent.expectancy, 2)} на сделку против {fmtUsd(u.expectancy, 2)} за всю историю.
         </p>
       )}
 

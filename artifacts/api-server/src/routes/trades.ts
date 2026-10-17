@@ -25,6 +25,7 @@ import {
   TRADES_PAGE_INDEX_SQL,
   buildPageQuery,
   buildSummaryQuery,
+  buildCountQuery,
   buildCurveQuery,
   buildStreakQuery,
   buildOutcomeFacetQuery,
@@ -138,12 +139,15 @@ async function forbiddenFor(req: Parameters<typeof can>[0], cap: "trades.read.te
 //            A superset of "closeDate in [from,to]" and of "entry date in [from,to]" — callers refine client-side.
 //   limit    ≥1 (clamped to 5000) — newest by trade date first (date desc, id desc) when set.
 //   tagged   1|true — only trades with a non-empty setup or tags (the indicators page needs nothing else).
+//   lite     1|true — omit the bulky `contextSnapshot` (raw broker snapshot, ~35% of the payload) — calendar /
+//            journal views that never read it. Field stays in the shape as null.
 const LEGACY_YMD = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional();
 const LegacyWindowQuery = z.object({
   from: LEGACY_YMD,
   to: LEGACY_YMD,
   limit: z.coerce.number().int().min(1).transform((n) => Math.min(n, 5000)).optional(),
   tagged: z.enum(["1", "true", "0", "false"]).optional(),
+  lite: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
@@ -187,7 +191,10 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
     : await base.orderBy(desc(tradesTable.createdAt));
 
   // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; anyone else's $ is nulled for non-staff.
-  res.json(redactTradeRows(ListTradesResponse.parse(rows.map(toTradeResponseShape)), await loadMoneyViewer(req)));
+  const lite = win.data.lite === "1" || win.data.lite === "true";
+  const shaped = rows.map(toTradeResponseShape);
+  if (lite) for (const t of shaped) t.contextSnapshot = null;
+  res.json(redactTradeRows(ListTradesResponse.parse(shaped), await loadMoneyViewer(req)));
 }));
 
 // ── Paginated book: GET /trades/page ─────────────────────────────────────────
@@ -258,6 +265,8 @@ const TradesPageQuery = z.object({
   limit: z.coerce.number().int().min(1).max(PAGE_LIMIT_MAX).default(PAGE_LIMIT_DEFAULT),
   offset: z.coerce.number().int().min(0).max(PAGE_OFFSET_MAX).default(0),
   cursor: z.string().max(400).optional(),
+  // lite=1: only summary.total / firstDate / lastDate + horizon & option facets (no rows, curve, streak, presets).
+  lite: z.enum(["1", "true", "0", "false"]).optional(),
 });
 
 /** Empty strings (`?setup=&tag=`) mean "not set" — strip them before validation. */
@@ -340,8 +349,12 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   await ensurePageIndexes().catch((err) => req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: ensure indexes failed"));
   const quality = await qualityTableExists();
 
+  // lite=1 (counters, global search, pickers): rows + total / date span + option facets only — the summary aggregates,
+  // curve, streak, outcome and preset counts are the costly part on a 45k-trade desk and are skipped.
+  const lite = q.lite === "1" || q.lite === "true";
+  const none = <T,>() => Promise.resolve({ rows: [] as T[] });
   const pageQ = buildPageQuery({ filters, sort, limit: q.limit, offset: q.offset, cursor, quality });
-  const summaryQ = buildSummaryQuery(filters, quality);
+  const summaryQ = lite ? buildCountQuery(filters, quality) : buildSummaryQuery(filters, quality);
   const curveQ = buildCurveQuery(filters, quality);
   const streakQ = buildStreakQuery(filters, quality);
   const outcomeQ = buildOutcomeFacetQuery(filters, quality);
@@ -352,13 +365,13 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const [pageRes, summaryRes, curveRes, streakRes, outcomeRes, horizonRes, optionsRes, presetRes] = await Promise.all([
     pool.query<{ id: number; sv: unknown }>(pageQ.sql, pageQ.params),
     pool.query<Record<string, unknown>>(summaryQ.sql, summaryQ.params),
-    pool.query<{ i: string | number; cum: string | number; label: string }>(curveQ.sql, curveQ.params),
-    pool.query<{ res: string | null }>(streakQ.sql, streakQ.params),
-    pool.query<{ k: string; n: number }>(outcomeQ.sql, outcomeQ.params),
+    lite ? none<{ i: string | number; cum: string | number; label: string }>() : pool.query<{ i: string | number; cum: string | number; label: string }>(curveQ.sql, curveQ.params),
+    lite ? none<{ res: string | null }>() : pool.query<{ res: string | null }>(streakQ.sql, streakQ.params),
+    lite ? none<{ k: string; n: number }>() : pool.query<{ k: string; n: number }>(outcomeQ.sql, outcomeQ.params),
     pool.query<{ k: string; n: number }>(horizonQ.sql, horizonQ.params),
     pool.query<{ kind: string; name: string; n: number }>(optionsQ.sql, optionsQ.params),
     // Preset badges are a nicety: a failure there must not break the book.
-    pool.query<Record<string, number>>(presetQ.sql, presetQ.params).catch((err) => {
+    lite ? none<Record<string, number>>() : pool.query<Record<string, number>>(presetQ.sql, presetQ.params).catch((err) => {
       req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: preset facets failed");
       return { rows: [] as Record<string, number>[] };
     }),
@@ -406,6 +419,19 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   }
   traders.sort((a, b) => a.localeCompare(b));
   sectors.sort((a, b) => a.localeCompare(b));
+  if (lite) {
+    // No $ in the lite summary (count and dates only) — nothing to redact beyond the rows themselves.
+    res.json({
+      items,
+      page: { limit: q.limit, offset: cursor ? null : q.offset, returned: items.length, hasMore, nextCursor, sort: sort.col, dir: sort.dir },
+      summary: { total, firstDate: (s.first_date as string | null) ?? null, lastDate: (s.last_date as string | null) ?? null, lite: true },
+      facets: { outcomes: null, horizons, setups, traders, sectors, presets: null },
+      quality: { available: quality, applied: hasQualityFilters(filters) },
+      preset: filters.preset || null,
+      lite: true,
+    });
+    return;
+  }
   const presetRow = presetRes.rows[0];
   const presets: Record<string, number> | null = presetRow ? Object.fromEntries(PAGE_PRESETS.map((k) => [k, Number(presetRow[k] ?? 0)])) : null;
   const winNetN = Number(s.win_net_n ?? 0), lossNetN = Number(s.loss_net_n ?? 0);

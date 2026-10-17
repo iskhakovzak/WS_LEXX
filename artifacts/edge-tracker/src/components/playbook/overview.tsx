@@ -33,8 +33,10 @@ function MiniList({ items, summary, onOpen, right }: {
 }
 
 export function Overview({
-  entries, summary, summaryLoaded, onOpen, onQuickFilter, showHealth = true, before,
+  entries, summary, summaryLoaded, onOpen, onQuickFilter, showHealth = true, showReview = true, before,
 }: {
+  /** «Не проверено» is a curator check of office setups — off for personal spaces. */
+  showReview?: boolean;
   /** Office-wide health widget — only meaningful in «Офис» (the page passes office && curator). */
   showHealth?: boolean;
   /** Blocks above the setup lists (inbox, Tier 1 strip). */
@@ -73,11 +75,11 @@ export function Overview({
   ];
   if (summaryLoaded) {
     facts.push({ key: "covered", label: `${stats.covered} со сделками`, f: stats.covered < stats.total ? "untested" : undefined });
-    if (stats.tier1 > 0) facts.push({ key: "tier1", label: `${stats.tier1} эталонов Tier 1` });
+    if (stats.tier1 > 0) facts.push({ key: "tier1", label: `${stats.tier1} ${plural(stats.tier1, "эталон", "эталона", "эталонов")} Tier 1` });
     if (stats.noExamples > 0) facts.push({ key: "noEx", label: `${stats.noExamples} без эталонов`, f: "noExamples" });
     if (stats.today > 0) facts.push({ key: "today", label: `${stats.today} в работе сегодня`, f: "today" });
   }
-  if (stats.unreviewed > 0) facts.push({ key: "unrev", label: `${stats.unreviewed} не проверено`, f: "unreviewed" });
+  if (showReview && stats.unreviewed > 0) facts.push({ key: "unrev", label: `${stats.unreviewed} не ${plural(stats.unreviewed, "проверен", "проверено", "проверено")}`, f: "unreviewed" });
 
   const list = stats.recent.length ? stats.recent : stats.newest;
 
@@ -168,13 +170,15 @@ export function SetupCard({
         <span className="truncate">{e.folder ?? "Без папки"}</span>
         {isSameLocalDay(s?.lastUsedAt) && <span className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 text-xs text-primary">сегодня</span>}
       </div>
-      <div className="line-clamp-2 text-base font-semibold leading-snug text-foreground">{e.name}</div>
+      <div className="line-clamp-2 min-h-[2lh] text-base font-semibold leading-snug text-foreground" title={e.name.length > 60 ? e.name : undefined}>{e.name}</div>
       <div className="flex flex-wrap items-center gap-2">
         <SetupTypePill type={e.setupType} />
         {e.ticker && <span className="text-xs text-muted-foreground">{e.ticker}</span>}
       </div>
-      {e.conditions && <p className="line-clamp-2 text-xs text-muted-foreground">{e.conditions}</p>}
-      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-1">
+      {(e.contextText || e.conditions) && <p className="line-clamp-2 text-xs text-muted-foreground">{e.contextText || e.conditions}</p>}
+      <TagChips tags={e.tags} max={3} />
+      {/* Footer pinned to the bottom: the edge / checklist lines line up across a row of cards. */}
+      <div className="mt-auto flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2">
         <EdgeMini s={s} />
         <ConfidenceMeter level={e.confidenceLevel} />
       </div>
@@ -183,7 +187,6 @@ export function SetupCard({
         {(s?.tier1Count ?? 0) > 0 && <span className="inline-flex items-center gap-1"><Trophy className="h-3 w-3" aria-hidden="true" />{s!.tier1Count} Tier 1</span>}
         {e.reviewed && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />проверен</span>}
       </div>
-      <TagChips tags={e.tags} max={3} />
     </button>
   );
 }

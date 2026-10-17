@@ -13,6 +13,7 @@ import {
   fmtDate, fmtWindow, sendJson, stageName, suggestedTemplate, usd, useChallenge, useFunnel, usePathMutation,
 } from "./api";
 import { ChallengeStatusPill, ChallengeTimeline, Field, RuleBar, selectCls } from "./bits";
+import { PersonSelect } from "@/components/people/person-select";
 
 export function rulesSummary(r: ChallengeRules): string {
   const parts = [
@@ -41,7 +42,7 @@ export function ChallengeCard({ c, active, onOpen, showUser }: { c: ChallengeLis
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-foreground">{c.name}</p>
+          <p className="truncate text-sm font-semibold text-foreground" title={c.name}>{c.name}</p>
           <p className="text-xs text-muted-foreground">{showUser ? `${c.user} · ` : ""}{fmtDate(c.startsOn)} – {fmtDate(c.endsOn)}</p>
         </div>
         <ChallengeStatusPill status={r.status} label={r.statusLabel} />
@@ -170,9 +171,7 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
           }}
         >
           <Field label="Ученик" htmlFor="ch-user">
-            <select id="ch-user" className={selectCls} value={user} onChange={(e) => setUser(e.target.value)} required>
-              {people.map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
+            <PersonSelect id="ch-user" value={user} onValueChange={setUser} options={people} placeholder="Выберите ученика" ariaLabel="Ученик" />
           </Field>
           <Field label="Шаблон" htmlFor="ch-tpl"
             hint={userStage ? (suggested ? `Ступень ${user}: ${stageName(funnel.data?.stages, userStage)} — рекомендован «${suggested.name}»` : `Ступень ${user}: ${stageName(funnel.data?.stages, userStage)} — экзамена на перевод выше нет`) : undefined}>

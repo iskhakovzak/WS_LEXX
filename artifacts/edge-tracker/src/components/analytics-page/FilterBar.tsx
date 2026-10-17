@@ -8,6 +8,7 @@ import {
   type AnalyticsFilters, type Period, type SideFilter, type Unit, type Horizon, type HorizonFilter,
   PERIOD_OPTIONS, DEFAULT_FILTERS, HORIZON_LABEL, activeFilterCount,
 } from "./metrics";
+import { PersonSelect } from "@/components/people/person-select";
 
 const ALL = "__all__";
 
@@ -91,15 +92,7 @@ export function FilterBar({
       />
 
       {showTrader && options.traders.length > 1 && (
-        <Select value={filters.trader || ALL} onValueChange={(v) => set("trader", v === ALL ? "" : v)}>
-          <SelectTrigger aria-label="Трейдер" className="h-9 w-auto min-w-[140px] max-w-[200px]">
-            <SelectValue placeholder="Все трейдеры" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ALL}>Все трейдеры</SelectItem>
-            {options.traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <PersonSelect value={filters.trader || ""} onValueChange={(v) => set("trader", v)} options={options.traders} allLabel="Все трейдеры" ariaLabel="Трейдер" className="h-9 w-auto min-w-[140px] max-w-[200px]" />
       )}
 
       {(options.setups.length > 0 || filters.setup) && (

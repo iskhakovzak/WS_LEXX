@@ -22,7 +22,7 @@ export function ResultPill({ result }: { result: string }) {
 export function SidePill({ side }: { side?: string | null }) {
   if (!side) return null;
   const long = side.toLowerCase() === "long";
-  return <Pill tone={long ? "up" : "down"}>{long ? "Long" : "Short"}</Pill>;
+  return <Pill tone={long ? "up" : "down"}>{long ? "Лонг" : "Шорт"}</Pill>;
 }
 
 /** Screenshot thumbnail with graceful fallback (TradingView links resolved to snapshot PNG). */

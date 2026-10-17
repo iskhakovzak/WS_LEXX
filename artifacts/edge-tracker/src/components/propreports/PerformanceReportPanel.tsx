@@ -13,10 +13,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+const TIGHT = "xl:p-3";
 import {
   HttpError, feeLabel, fmtSigned, fmtUsd, orderedFeeKeys, useDeletePerformance, usePerformance,
   type PerfRow, type PerformanceReport, type PerformanceReportRow,
 } from "./api";
+import { PersonSelect } from "@/components/people/person-select";
 
 const WEEKDAY_RU: Record<string, string> = { monday: "Пн", tuesday: "Вт", wednesday: "Ср", thursday: "Чт", friday: "Пт", saturday: "Сб", sunday: "Вс" };
 const TIME_RU: Record<string, string> = { "pre-market": "Премаркет", "post-market": "Постмаркет" };
@@ -180,14 +183,15 @@ export function PerformanceReportBody({ data, compact = false }: { data: Perform
   const dayLabel = (l: string) => WEEKDAY_RU[l.toLowerCase()] ?? l;
   return (
     <div className="grid gap-4">
+      {/* Seven cards in one row from xl: tighter padding so «+$932.33» / «20 м 15 с» fit a 1280–1440 screen. */}
       <StatGrid className="md:grid-cols-4 xl:grid-cols-7">
-        <StatCard label="Сделок" value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
-        <StatCard label="Gross P&L" value={fmtSigned(s.gross)} tone={toneOf(s.gross)} />
-        <StatCard label="Комиссии" value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? `${s.feesPctOfGross.toFixed(0)}% от gross` : undefined} />
-        <StatCard label="Net P&L" value={fmtSigned(s.net)} tone={toneOf(s.net)} />
-        <StatCard label="W/L ratio" value={s.wlRatio?.toFixed(2) ?? "—"} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
-        <StatCard label="Ср. удержание" value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
+        <StatCard className={TIGHT} label="Сделок" value={s.trades} hint={`${s.wins} W / ${s.losses} L`} />
+        <StatCard className={TIGHT} label="Win rate" value={pct(s.winRate)} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
+        <StatCard className={TIGHT} label="Gross P&L" value={fmtSigned(s.gross)} tone={toneOf(s.gross)} />
+        <StatCard className={TIGHT} label="Комиссии" value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"} hint={s.feesPctOfGross != null ? `${s.feesPctOfGross.toFixed(0)}% от gross` : undefined} />
+        <StatCard className={TIGHT} label="Net P&L" value={fmtSigned(s.net)} tone={toneOf(s.net)} />
+        <StatCard className={TIGHT} label="W/L ratio" value={s.wlRatio?.toFixed(2) ?? "—"} hint={`${fmtUsd(s.avgWin)} / ${fmtUsd(s.avgLoss)}`} />
+        <StatCard className={TIGHT} label="Ср. удержание" value={fmtHold(s.avgHoldSeconds, s.avgHold)} />
       </StatGrid>
 
       {s.feesPctOfGross != null && s.feesPctOfGross >= 50 && (
@@ -272,13 +276,7 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
       actions={
         <>
           {!trader && traders.length > 1 && (
-            <Select value={traderFilter || "__all"} onValueChange={(v) => { setTraderFilter(v === "__all" ? "" : v); setReportId(null); }}>
-              <SelectTrigger className="h-8 w-44 text-xs" aria-label="Трейдер"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="__all">Все трейдеры</SelectItem>
-                {traders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-              </SelectContent>
-            </Select>
+            <PersonSelect value={traderFilter || ""} onValueChange={(v) => { setTraderFilter(v); setReportId(null); }} options={traders} allLabel="Все трейдеры" ariaLabel="Трейдер" className="h-8 w-44 text-xs" />
           )}
           {reports.length > 1 && (
             <Select value={String(latest?.id ?? reports[0]?.id ?? "")} onValueChange={(v) => setReportId(Number(v))}>

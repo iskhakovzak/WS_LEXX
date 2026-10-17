@@ -6,7 +6,8 @@ const MINUS = "−";
 export function fmtR(r: number | null | undefined, digits = 2): string {
   if (r == null || !Number.isFinite(r)) return "—";
   const v = Math.round(r * 10 ** digits) / 10 ** digits;
-  const abs = Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: digits });
+  // Dot decimals like every other R on the desk (+0.21R, not +0,21R).
+  const abs = Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: digits });
   return `${v > 0 ? "+" : v < 0 ? MINUS : ""}${abs}R`;
 }
 

@@ -17,12 +17,16 @@ import { TradeIdeaForm, type TradeIdeaFormData } from "@/components/trade-idea-f
 import { IdeaBoard } from "@/components/ideas/IdeaBoard";
 import { IdeaCard } from "@/components/ideas/IdeaCard";
 import { IdeaDetailSheet } from "@/components/ideas/IdeaDetailSheet";
-import { useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
+import { IDEAS_KEY, useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
 import {
   HORIZONS, STAGES, fmtR, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
   type Horizon, type IdeaTracking, type Stage, type TradeIdea,
 } from "@/components/ideas/model";
 import { nyDate, addDays } from "@/lib/trading-date";
+import { useQueryClient } from "@tanstack/react-query";
+import { useUndoDelete } from "@/hooks/use-undo-delete";
+import { UndoToast } from "@/components/undo-toast";
+import { PersonSelect } from "@/components/people/person-select";
 
 type View = "board" | "list";
 type Scope = "all" | "mine";
@@ -32,8 +36,8 @@ type StageFilter = "all" | Stage;
 const PREF = { view: "ideas.view", scope: "ideas.scope", sort: "ideas.sort", author: "ideas.author" };
 
 function isTypingTarget(t: EventTarget | null): boolean {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
+  if (!(t instanceof HTMLElement)) return false;
+  const el = t;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
 }
 
@@ -69,6 +73,8 @@ export default function TradeIdeas() {
   const [, setLocation] = useLocation();
   const reduceMotion = useReducedMotion();
   const m = useIdeaMutations();
+  const qc = useQueryClient();
+  const undo = useUndoDelete(() => qc.invalidateQueries({ queryKey: IDEAS_KEY }));
 
   const { data: ideas = [], isLoading, isError, error, refetch } = useIdeas();
   const trackable = ideas.some((i) => i.status !== "draft");
@@ -242,7 +248,9 @@ export default function TradeIdeas() {
 
   function openCreate() { setEditing(null); setPrefillTicker(tickerFilter); setFormOpen(true); }
   function openEdit(i: TradeIdea) { setEditing(i); setFormOpen(true); }
-  function closeForm() { setFormOpen(false); setEditing(null); setPrefillTicker(null); }
+  // Only close here: `editing` is cleared after the close animation (onCloseAutoFocus), so the title doesn't flip
+  // to «Новая идея» while the dialog fades out.
+  function closeForm() { setFormOpen(false); }
 
   const formInitial = useMemo(
     () => (editing ? toFormInitial(editing) : prefillTicker ? { ticker: prefillTicker } : undefined),
@@ -311,9 +319,9 @@ export default function TradeIdeas() {
               <BarChart3 className="h-4 w-4" aria-hidden="true" /> Статистика
             </Button>
             <WriteOnly>
-              <Button onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title="Новая идея (N)">
+              <Button size="sm" onClick={openCreate} className="hidden gap-1.5 sm:inline-flex" title="Новая идея (N)">
                 <Plus className="h-4 w-4" aria-hidden="true" /> Новая идея
-                <kbd className="ml-1 rounded-md bg-white/20 px-1.5 text-2xs font-medium">N</kbd>
+                <kbd className="ml-0.5 rounded-full bg-white/20 px-1.5 text-2xs font-medium">N</kbd>
               </Button>
             </WriteOnly>
           </>
@@ -367,26 +375,17 @@ export default function TradeIdeas() {
             aria-label="Поиск идей"
             className="pl-10 pr-10"
           />
-          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
+          <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-full border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
         </div>
         <Segmented<Scope>
           ariaLabel="Чьи идеи"
-          size="sm"
           value={scope}
           onChange={setScope}
           options={[{ value: "all", label: "Все" }, { value: "mine", label: "Мои", disabled: !me }]}
         />
-        <Select value={author} onValueChange={setAuthor}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Автор">
-            <SelectValue placeholder="Автор" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Все авторы</SelectItem>
-            {authors.map((a) => <SelectItem key={a} value={a}>{a}</SelectItem>)}
-          </SelectContent>
-        </Select>
+        <PersonSelect value={author} onValueChange={setAuthor} allValue="all" allLabel="Все авторы" options={authors} placeholder="Автор" ariaLabel="Автор" className="h-9 w-[150px]" />
         <Select value={horizon} onValueChange={(v) => setHorizon(v as "all" | Horizon)}>
-          <SelectTrigger className="h-9 w-[150px]" aria-label="Горизонт">
+          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label="Горизонт">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -395,7 +394,7 @@ export default function TradeIdeas() {
           </SelectContent>
         </Select>
         <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
-          <SelectTrigger className="h-9 w-[140px]" aria-label="Сортировка">
+          <SelectTrigger className="h-9 w-auto min-w-[150px]" aria-label="Сортировка">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -406,7 +405,6 @@ export default function TradeIdeas() {
         </Select>
         <Segmented<View>
           ariaLabel="Вид"
-          size="sm"
           className="sm:ml-auto"
           value={view}
           onChange={setView}
@@ -544,7 +542,10 @@ export default function TradeIdeas() {
       />
 
       <Dialog open={formOpen} onOpenChange={(v) => { if (!v) closeForm(); }}>
-        <DialogContent className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl">
+        <DialogContent
+          className="max-h-[92vh] w-[calc(100vw-1.5rem)] max-w-2xl overflow-y-auto rounded-2xl"
+          onCloseAutoFocus={() => { setEditing(null); setPrefillTicker(null); }}
+        >
           <DialogHeader>
             <DialogTitle>{editing ? `Редактировать ${editing.ticker}` : "Новая идея"}</DialogTitle>
             <DialogDescription>
@@ -568,7 +569,7 @@ export default function TradeIdeas() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить идею {deleting?.ticker}?</AlertDialogTitle>
-            <AlertDialogDescription>Идея исчезнет из ленты команды вместе с реакциями. Комментарии останутся в архиве.</AlertDialogDescription>
+            <AlertDialogDescription>Идея исчезнет из ленты команды. Несколько секунд её можно будет вернуть кнопкой «Отменить».</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Отмена</AlertDialogCancel>
@@ -577,8 +578,12 @@ export default function TradeIdeas() {
               onClick={() => {
                 if (!deleting) return;
                 const id = deleting.id;
+                const ticker = deleting.ticker;
                 m.remove.mutate(id, {
-                  onSuccess: () => { if (selectedId === id) { setSheetOpen(false); syncUrl(null); } },
+                  onSuccess: () => {
+                    if (selectedId === id) { setSheetOpen(false); syncUrl(null); }
+                    undo.scheduleUndo(id, "trade-ideas", `Идея ${ticker}`);
+                  },
                   onSettled: () => setDeleting(null),
                 });
               }}
@@ -589,6 +594,10 @@ export default function TradeIdeas() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {undo.pending && (
+        <UndoToast key={undo.pending.id} label={undo.pending.label} onUndo={undo.restore} onDismiss={undo.dismiss} restoring={undo.restoring} actionText="удалена" />
+      )}
     </Page>
   );
 }

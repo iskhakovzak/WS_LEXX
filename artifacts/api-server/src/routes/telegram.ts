@@ -203,7 +203,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       );
       if (idea.trader && idea.trader !== sender.name) {
         await createNotification(idea.trader, "reply_private", ideaId,
-          `${sender.name} отправил личный ответ по идее ${idea.ticker}: "${text.slice(0, 100)}"`);
+          `Личный ответ по идее ${idea.ticker} от ${sender.name}: "${text.slice(0, 100)}"`);
       }
       await sendMessage(chatId, `✅ Личный ответ по идее <b>#${ideaId} ${idea.ticker}</b> отправлен.`);
       await notifyTraderTelegram(idea.trader,
@@ -245,7 +245,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
             { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId) } });
         }
         await createNotification(reviewerName, "reply_private", ideaId,
-          `${sender.name} ответил по идее ${idea.ticker}: "${text.slice(0, 100)}"`);
+          `Ответ по идее ${idea.ticker} от ${sender.name}: "${text.slice(0, 100)}"`);
       }
       await sendMessage(chatId, `✅ Ответ отправлен куратору/риску по идее <b>#${ideaId} ${idea.ticker}</b>.`);
     }
