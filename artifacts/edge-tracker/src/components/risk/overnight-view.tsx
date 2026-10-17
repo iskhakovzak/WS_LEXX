@@ -9,14 +9,14 @@ import { AlertTriangle, Briefcase, CalendarClock, Download, Layers, Moon, Printe
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { nyDate, addDays } from "@/lib/trading-date";
-import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf } from "@/components/ds";
+import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Catalyst, EarningsHit, OfferingHit, OvernightBook, OvernightTrader, RiskPosition } from "./use-risk";
 import { HttpError, useEarningsMap, useOfferingsMap, useOvernightBook, useQuotes } from "./use-risk";
-import { HORIZON_LABEL, HORIZON_TONE, LimitBar, StopPill, fmtPct, fmtSignedUsd, fmtUsd, usageText, useStoredState } from "./primitives";
+import { HORIZON_LABEL, HORIZON_TONE, LimitBar, SortableTableHead, StopPill, fmtPct, fmtSignedUsd, fmtUsd, usageText, useStoredState } from "./primitives";
 import {
   DEFAULT_SHOCKS, concentration, customPctShock, markPosition, runShock, toCsv,
   type BookPosition, type Marked, type ShockMode, type ShockResult, type TraderRoom,
@@ -301,7 +301,21 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
   );
 }
 
-function TraderBlock({ name, t, rows, showTrader }: { name: string; t: OvernightTrader | undefined; rows: Row[]; showTrader: boolean }) {
+const OVERNIGHT_ACCESSORS = {
+  ticker: (r: Row) => r.p.ticker,
+  side: (r: Row) => r.p.side,
+  qty: (r: Row) => r.p.qty,
+  entry: (r: Row) => r.p.entry,
+  last: (r: Row) => r.m.unrealizedPct ?? null,
+  unreal: (r: Row) => r.m.unrealizedUsd ?? null,
+  stop: (r: Row) => r.m.riskToStopUsd ?? null,
+  // Within one trader the limit is shared, so market value orders rows exactly like «% овернайт».
+  mv: (r: Row) => r.m.marketValueUsd ?? null,
+  sector: (r: Row) => r.p.sector ?? null,
+};
+
+function TraderBlock({ name, t, rows: data, showTrader }: { name: string; t: OvernightTrader | undefined; rows: Row[]; showTrader: boolean }) {
+  const { rows, thProps } = useTableSort(data, OVERNIGHT_ACCESSORS, "mv");
   const mv = rows.reduce((s, r) => s + (r.m.marketValueUsd ?? 0), 0);
   const unreal = rows.filter((r) => r.m.unrealizedUsd != null);
   const unrealSum = unreal.length ? unreal.reduce((s, r) => s + (r.m.unrealizedUsd ?? 0), 0) : null;
@@ -337,16 +351,16 @@ function TraderBlock({ name, t, rows, showTrader }: { name: string; t: Overnight
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Тикер</TableHead>
-              <TableHead>Сторона</TableHead>
-              <TableHead className="text-right">Кол-во</TableHead>
-              <TableHead className="text-right">Средняя</TableHead>
-              <TableHead className="text-right">Последняя</TableHead>
-              <TableHead className="text-right">Нереализ.</TableHead>
-              <TableHead className="text-right">До стопа</TableHead>
-              <TableHead className="text-right">% овернайт</TableHead>
+              <SortableTableHead {...thProps("ticker")}>Тикер</SortableTableHead>
+              <SortableTableHead {...thProps("side")}>Сторона</SortableTableHead>
+              <SortableTableHead {...thProps("qty")} align="right">Кол-во</SortableTableHead>
+              <SortableTableHead {...thProps("entry")} align="right">Средняя</SortableTableHead>
+              <SortableTableHead {...thProps("last")} align="right">Последняя</SortableTableHead>
+              <SortableTableHead {...thProps("unreal")} align="right">Нереализ.</SortableTableHead>
+              <SortableTableHead {...thProps("stop")} align="right">До стопа</SortableTableHead>
+              <SortableTableHead {...thProps("mv")} align="right">% овернайт</SortableTableHead>
               <TableHead>Катализаторы</TableHead>
-              <TableHead>Сектор</TableHead>
+              <SortableTableHead {...thProps("sector")}>Сектор</SortableTableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -376,7 +390,7 @@ function TraderBlock({ name, t, rows, showTrader }: { name: string; t: Overnight
                 </TableCell>
                 <TableCell className={cn("text-right tabular-nums", usageText(pctOfMax))}>{pctOfMax != null ? fmtPct(pctOfMax) : <span className="text-muted-foreground">—</span>}</TableCell>
                 <TableCell><CatalystPills items={cats} /></TableCell>
-                <TableCell className="max-w-[140px] truncate text-xs text-muted-foreground">{p.sector ?? "—"}</TableCell>
+                <TableCell className="max-w-[200px] text-xs text-muted-foreground">{p.sector ?? "—"}</TableCell>
               </TableRow>
             ))}
           </TableBody>

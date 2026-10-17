@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "wouter";
-import { BarChart3, FileDown, Microscope, Plus, Printer, RefreshCw, SearchX } from "lucide-react";
+import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -263,7 +263,7 @@ export default function Stats() {
             <SelectItem value="all">Вся команда</SelectItem>
             {me && traders.includes(me) && <SelectItem value={me}>Мои сделки ({me})</SelectItem>}
             {traders.filter((t) => t !== me).map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-            {reportTraders.map((t) => <SelectItem key={t} value={t}>{t} · PropReports</SelectItem>)}
+            {reportTraders.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
             {prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) && <SelectItem value={prefs.trader}>{prefs.trader}</SelectItem>}
           </SelectContent>
         </Select>
@@ -281,12 +281,7 @@ export default function Stats() {
           <EmptyState
             icon={BarChart3}
             title="Пока нет сделок"
-            description="Добавьте сделки в журнал — здесь появится отчёт: win rate, матожидание, кривая результата, календарь и лучшие сделки."
-            action={
-              <Button className="rounded-full" asChild>
-                <Link href="/trades"><Plus className="mr-1.5 h-4 w-4" aria-hidden="true" /> Добавить сделку</Link>
-              </Button>
-            }
+            description="Сделки подтягиваются автоматически после торговой сессии — тогда здесь появится отчёт: win rate, матожидание, кривая результата, календарь и лучшие сделки."
           />
         </Panel>
       ) : trades.length === 0 && hasBroker ? null : trades.length === 0 ? (

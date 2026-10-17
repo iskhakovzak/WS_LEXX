@@ -10,7 +10,7 @@ import { links } from "@/lib/links";
 import { nyDate } from "@/lib/trading-date";
 import { putSelfCheck, useRulePreview, useSelfChecks } from "./api";
 import { DisciplineCalendar } from "./DisciplineCalendar";
-import { ORIGIN_LABEL, fmtDay, fmtPct, fmtUsd, originOf } from "./constants";
+import { ORIGIN_LABEL, fmtDay, fmtPct, fmtUsd, originOf, violationsWord } from "./constants";
 import { starterTemplates, type RuleDraft } from "./templates";
 import type { MistakePrefill, RuleReport, RulesReportResponse, SelfMark } from "./types";
 
@@ -84,7 +84,7 @@ function TemplateCard({ t, trader, days, onUse }: { t: RuleDraft & { why: string
           <span className="text-foreground">Ни одного нарушения — уже соблюдаете</span>
         ) : (
           <span className="text-foreground">
-            <b className="tabular-nums">{r.violations}</b> нарушений в {r.violatedDays} из {r.days} дн.
+            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в {r.violatedDays} из {r.days} дн.
             {r.impact != null && r.impact !== 0 && (
               <> · {r.impact < 0 ? "стоили " : "принесли "}<b className={cn("tabular-nums", r.impact < 0 ? "text-down" : "text-up")}>{fmtUsd(r.impact, { sign: false })}</b></>
             )}
@@ -235,7 +235,7 @@ function RuleRow({
               : r.status === "no_data" ? "Нельзя проверить: в сделках нет нужных данных"
               : !r.auto ? (r.unmarkedDays > 0 ? `Самооценка · не отмечено дней: ${r.unmarkedDays}` : "Самооценка в журнале")
               : r.violations === 0 ? `Без нарушений за ${r.days} дн.`
-              : `${r.violations} нарушений в ${r.violatedDays} из ${r.days} дн.${r.lastViolation ? ` · последнее ${fmtDay(r.lastViolation)}` : ""}`}
+              : `${r.violations} ${violationsWord(r.violations)} в ${r.violatedDays} из ${r.days} дн.${r.lastViolation ? ` · последнее ${fmtDay(r.lastViolation)}` : ""}`}
           </span>
         </span>
 

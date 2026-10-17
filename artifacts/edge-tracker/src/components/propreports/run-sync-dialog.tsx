@@ -44,7 +44,7 @@ export function RunSyncDialog({ open, onOpenChange, configured }: { open: boolea
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) { setPreview(null); setApplied(null); } }}>
-      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-5xl">
+      <DialogContent className="max-h-[92dvh] overflow-y-auto sm:max-w-[min(96vw,80rem)]">
         <DialogHeader>
           <DialogTitle>Синхронизация по API</DialogTitle>
           <DialogDescription>Fills за период подтягиваются с хоста PropReports, собираются в раунд-трипы и сравниваются с журналом. Сначала предпросмотр, затем запись.</DialogDescription>

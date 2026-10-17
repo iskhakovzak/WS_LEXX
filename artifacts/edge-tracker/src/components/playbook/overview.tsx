@@ -33,8 +33,12 @@ function MiniList({ items, summary, onOpen, right }: {
 }
 
 export function Overview({
-  entries, summary, summaryLoaded, onOpen, onQuickFilter,
+  entries, summary, summaryLoaded, onOpen, onQuickFilter, showHealth = true, before,
 }: {
+  /** Office-wide health widget — only meaningful in «Офис» (the page passes office && curator). */
+  showHealth?: boolean;
+  /** Blocks above the setup lists (inbox, Tier 1 strip). */
+  before?: ReactNode;
   entries: PlaybookEntry[];
   summary: Map<number, SetupSummary>;
   summaryLoaded: boolean;
@@ -99,6 +103,8 @@ export function Overview({
         ))}
       </p>
 
+      {before}
+
       <div className={cn("grid min-w-0 gap-[var(--grid-gap)]", stats.top.length > 0 && "lg:grid-cols-2")}>
         {stats.top.length > 0 && (
           <Panel title="Лучший edge" description="Ожидание нетто на сделку, от 3 сделок" icon={Sparkles}>
@@ -134,7 +140,7 @@ export function Overview({
         </Panel>
       </div>
 
-      <PlaybookHealthWidget onJump={onOpen} />
+      {showHealth && <PlaybookHealthWidget onJump={onOpen} />}
     </div>
   );
 }

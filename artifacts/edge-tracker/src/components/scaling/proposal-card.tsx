@@ -112,8 +112,7 @@ export function ProposalCard({
       </div>
       {proposal.reasons.length > 0 && (
         <ul className="flex flex-col gap-0.5 text-xs text-muted-foreground">
-          {proposal.reasons.slice(0, 6).map((r, i) => <li key={i} className="truncate">• {r}</li>)}
-          {proposal.reasons.length > 6 && <li>… ещё {proposal.reasons.length - 6}</li>}
+          {proposal.reasons.map((r, i) => <li key={i} className="break-words">• {r}</li>)}
         </ul>
       )}
       <div className="flex flex-wrap gap-x-3 text-2xs text-muted-foreground">

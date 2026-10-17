@@ -470,7 +470,7 @@ export function PeoplePanel({
                           </td>
                           <td>
                             <Pill tone={STATUS[p.status].tone} dot={p.status !== "archived"}>{STATUS[p.status].label}</Pill>
-                            {p.status === "frozen" && p.bannedReason && <div className="max-w-[12rem] truncate text-2xs text-muted-foreground" title={p.bannedReason}>{p.bannedReason}</div>}
+                            {p.status === "frozen" && p.bannedReason && <div className="max-w-[16rem] whitespace-normal break-words text-2xs text-muted-foreground">{p.bannedReason}</div>}
                           </td>
                           <td className="whitespace-nowrap text-muted-foreground" title={p.seen ? new Date(p.seen).toLocaleString("ru-RU") : undefined}>{timeAgo(p.seen)}</td>
                           <td className="text-right tabular-nums">{p.trades30 || <span className="text-muted-foreground">0</span>}</td>

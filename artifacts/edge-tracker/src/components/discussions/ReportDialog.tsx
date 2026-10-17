@@ -13,14 +13,17 @@ export type ReportTarget = { type: "discussion" | "comment"; id: number; preview
 const REASONS = ["Спам или реклама", "Оскорбление", "Дезинформация", "Не по теме", "Другое"];
 
 /** Replaces the old window.prompt: preset reasons + optional details. */
-export function ReportDialog({ target, reporter, onClose }: { target: ReportTarget | null; reporter: string; onClose: () => void }) {
+/** The reporter is the signed-in member — the server takes it from the token. */
+export function ReportDialog({ target, onClose }: { target: ReportTarget | null; onClose: () => void }) {
   const { toast } = useToast();
   const [reason, setReason] = React.useState<string | null>(null);
   const [details, setDetails] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // Last opened target: keeps the title/preview stable while the dialog animates out (target is already null then).
+  const [shown, setShown] = React.useState<ReportTarget | null>(target);
 
   React.useEffect(() => {
-    if (target) { setReason(null); setDetails(""); setBusy(false); }
+    if (target) { setShown(target); setReason(null); setDetails(""); setBusy(false); }
   }, [target]);
 
   const needsDetails = reason === "Другое";
@@ -34,7 +37,7 @@ export function ReportDialog({ target, reporter, onClose }: { target: ReportTarg
       const r = await fetch(`${BASE}/api/reports`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter, targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) }),
+        body: JSON.stringify({ targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) }),
       });
       if (!r.ok) {
         const body = await r.json().catch(() => null);
@@ -52,9 +55,9 @@ export function ReportDialog({ target, reporter, onClose }: { target: ReportTarg
     <Dialog open={!!target} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
       <DialogContent className="max-w-md rounded-2xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Flag className="h-4 w-4 text-down" aria-hidden="true" />Пожаловаться на {target?.type === "comment" ? "комментарий" : "тему"}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Flag className="h-4 w-4 text-down" aria-hidden="true" />Пожаловаться на {shown?.type === "comment" ? "комментарий" : "тему"}</DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {target?.author ? `${target.author}: ` : ""}{target?.preview}
+            {shown?.author ? `${shown.author}: ` : ""}{shown?.preview}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">

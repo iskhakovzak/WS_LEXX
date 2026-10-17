@@ -129,6 +129,7 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
               data-nav
               aria-current={isActive ? "page" : undefined}
               onClick={() => onSelect(s.id)}
+              title={s.description}
               className={cn(
                 "group flex items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                 isActive ? "bg-primary/12 text-foreground" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
@@ -139,7 +140,7 @@ export const SettingsNav = forwardRef<HTMLInputElement, NavProps>(function Setti
               </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate text-sm font-medium">{s.label}</span>
-                <span className="block truncate text-xs text-muted-foreground">{s.description}</span>
+                <span className="line-clamp-2 text-xs leading-snug text-muted-foreground">{s.description}</span>
               </span>
               {badges?.[s.id]}
               {s.href && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Откроется в пульте деска" />}

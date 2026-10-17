@@ -53,6 +53,25 @@ export function availableTimeframes(baseSec: number, all: readonly Timeframe[]):
   return all.filter((tf) => TF_SECONDS[tf] >= baseSec);
 }
 
+/**
+ * Why a timeframe cannot be drawn from bars of `baseSec` (null when it can). The server serves the finest bars the day
+ * has: 1-minute ones only for the last 7 days (or when they were cached while fresh), 5-minute for the last 60 days,
+ * hourly for older days — a finer timeframe cannot be built from coarser bars.
+ */
+export function timeframeUnavailableReason(tf: Timeframe, baseSec: number): string | null {
+  if (TF_SECONDS[tf] >= baseSec) return null;
+  if (baseSec <= 300) return "1-минутные бары Yahoo отдаёт только за последние 7 дней, а этот день старше и не сохранён в кэше — есть только 5-минутки";
+  if (baseSec <= 3600) return "Минутные и 5-минутные бары есть только за последние 60 дней (или если день был сохранён в кэше) — для этого дня только часовые";
+  return "Внутридневных баров за этот день нет — только дневные";
+}
+
+/** Short label of the base bar size for notices: «1 мин», «5 мин», «1 ч». */
+export function baseBarLabel(baseSec: number): string {
+  if (baseSec >= 86400) return "дневные";
+  if (baseSec >= 3600) return `${Math.round(baseSec / 3600)} ч`;
+  return `${Math.round(baseSec / 60)} мин`;
+}
+
 /** Effective bar length in seconds for a timeframe (daily bars are one ET day). */
 export function barSeconds(tf: Timeframe, baseSec: number): number {
   return Math.max(TF_SECONDS[tf], baseSec);

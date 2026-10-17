@@ -1,18 +1,19 @@
 /**
  * Series primitive: the trainee's paper position in training — their own fills (circles with B/S), the average price
- * of the open position, its stop, and after the reveal the «ideal» round trip (dashed) for comparison.
+ * of the open position, its stop and target, and after the reveal the «ideal» round trip (dashed) for comparison.
  * Deliberately different from the real fills' arrows so the two never get confused.
  */
 import { fmtPrice } from "../lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, line } from "./canvas";
 
-export type SimDrawFill = { idx: number; price: number; qty: number; reason: "buy" | "sell" | "flat" | "stop" };
+export type SimDrawFill = { idx: number; price: number; qty: number; reason: "buy" | "sell" | "flat" | "half" | "stop" | "target" };
 export type SimDrawData = {
   fills: readonly SimDrawFill[];
   /** Open position: signed shares, average price, stop and the bar it was opened on. */
   pos: number;
   avg: number | null;
   stop: number | null;
+  target?: number | null;
   openIdx: number | null;
   cursor: number | null;
   ideal: { fromIdx: number; toIdx: number; fromPrice: number; toPrice: number; side: "long" | "short" } | null;
@@ -30,6 +31,7 @@ export class SimPositionPrimitive extends SeriesPrimitiveBase {
     const labels: { price: number; text: string; color: string }[] = [];
     if (data && data.pos !== 0 && data.avg != null) labels.push({ price: data.avg, text: fmtPrice(data.avg), color: this.theme.c1(1) });
     if (data && data.pos !== 0 && data.stop != null) labels.push({ price: data.stop, text: fmtPrice(data.stop), color: this.theme.down(1) });
+    if (data && data.pos !== 0 && data.target != null) labels.push({ price: data.target, text: fmtPrice(data.target), color: this.theme.up(1) });
     this.setAxisLabels(labels);
     this.requestUpdate();
   }
@@ -62,12 +64,20 @@ export class SimPositionPrimitive extends SeriesPrimitiveBase {
           label(ctx, theme, `Стоп ${fmtPrice(d.stop)}`, Math.max(4, x0), ys + 3, { anchor: "tl", bg: theme.down(0.85), size: 10, clamp: { width, height } });
         }
       }
+      if (d.target != null) {
+        const yt = rc.y(d.target);
+        if (yt != null && yt >= 0 && yt <= height) {
+          hline(ctx, x0, width, yt, theme.up(0.9), 1, [6, 4]);
+          const above = d.pos > 0;
+          label(ctx, theme, `Цель ${fmtPrice(d.target)}`, Math.max(4, x0), above ? yt - 3 : yt + 3, { anchor: above ? "bl" : "tl", bg: theme.up(0.85), size: 10, clamp: { width, height } });
+        }
+      }
     }
     for (const f of d.fills) {
       const x = rc.x(f.idx), y = rc.y(f.price);
       if (x == null || y == null) continue;
       const buy = f.qty > 0;
-      const col = f.reason === "stop" ? theme.down(1) : buy ? theme.up(1) : theme.c4(1);
+      const col = f.reason === "stop" ? theme.down(1) : f.reason === "target" ? theme.c3(1) : buy ? theme.up(1) : theme.c4(1);
       ctx.beginPath();
       ctx.arc(x, y, 7, 0, Math.PI * 2);
       ctx.fillStyle = col;
@@ -79,7 +89,7 @@ export class SimPositionPrimitive extends SeriesPrimitiveBase {
       ctx.font = `600 9px ${theme.font}`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(f.reason === "stop" ? "×" : buy ? "B" : "S", x, y + 0.5);
+      ctx.fillText(f.reason === "stop" ? "×" : f.reason === "target" ? "✓" : buy ? "B" : "S", x, y + 0.5);
     }
   }
 }

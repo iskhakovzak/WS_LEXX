@@ -1,5 +1,6 @@
 // Dashboard = the trader's command screen. Top to bottom: header (NY session, today / week net, risk limit) →
-// «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → optional blocks.
+// «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → opt-in extras
+// (check-in, brief, sectors, macro, DNA, quote, psychology — off by default, switched on in «Настроить»).
 // Each block answers one question; trades arrive automatically, so there are no entry CTAs here.
 import { useCallback, type ReactNode } from "react";
 import { Page } from "@/components/ds";
@@ -105,7 +106,7 @@ export default function Dashboard() {
   const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
 
   const goToCheckin = useCallback(() => {
-    if (prefs.hidden.includes("ritual")) update({ hidden: prefs.hidden.filter((h) => h !== "ritual") });
+    if (prefs.hidden.includes("checkin")) update({ hidden: prefs.hidden.filter((h) => h !== "checkin") });
     window.setTimeout(() => {
       const el = document.getElementById(RITUAL_ANCHOR);
       if (!el) return;
@@ -168,32 +169,22 @@ export default function Dashboard() {
         return <StreaksPanel fill data={today} isLoading={todayQ.isLoading} />;
       case "positions":
         return today?.positions && today.positions.length > 0 ? <PositionsPanel data={today} /> : null;
-      case "ritual":
+      case "checkin":
         return (
-          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label="Утренний ритуал" className="grid scroll-mt-24 grid-cols-1 items-start gap-[var(--grid-gap)] outline-none lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-7">
-              <MorningCheckin />
-            </div>
-            <div className="min-w-0 lg:col-span-5">
-              <DailyQuoteCard />
-            </div>
-            <div className="min-w-0 lg:col-span-12">
-              <MarketOpenBrief />
-            </div>
+          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label="Утренний чек-ин" className="scroll-mt-24 outline-none">
+            <MorningCheckin />
           </section>
         );
-      case "market":
-        return (
-          <section aria-label="Рынок" className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
-            <div className="min-w-0 lg:col-span-8">
-              <SectorRadar />
-            </div>
-            <div className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:col-span-4">
-              <UpcomingEventsList />
-              <MarketDnaWidget />
-            </div>
-          </section>
-        );
+      case "brief":
+        return <MarketOpenBrief />;
+      case "quote":
+        return <DailyQuoteCard />;
+      case "sectors":
+        return <SectorRadar />;
+      case "macro":
+        return <UpcomingEventsList />;
+      case "dna":
+        return <MarketDnaWidget />;
       case "psychology":
         return <WeeklyPsychologyReport />;
     }

@@ -9,12 +9,14 @@ export const big7CatalystsTable = pgTable("big7_catalysts", {
   type: text("type").notNull(),
   description: text("description"),
   impact: text("impact").notNull().default("medium"),
+  /** Member who created the row (owner-or-staff edit rule). NULL = legacy/seeded → staff-only. */
+  createdBy: text("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 }, (table) => [
   index("big7_catalysts_ticker_idx").on(table.ticker),
   index("big7_catalysts_date_idx").on(table.date),
 ]);
 
-export const insertBig7CatalystSchema = createInsertSchema(big7CatalystsTable).omit({ id: true, createdAt: true });
+export const insertBig7CatalystSchema = createInsertSchema(big7CatalystsTable).omit({ id: true, createdAt: true, createdBy: true });
 export type InsertBig7Catalyst = z.infer<typeof insertBig7CatalystSchema>;
 export type Big7Catalyst = typeof big7CatalystsTable.$inferSelect;

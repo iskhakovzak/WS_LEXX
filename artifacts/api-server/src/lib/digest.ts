@@ -3,6 +3,9 @@ import { logger } from "./logger";
 import { getLatestReview } from "./aiReview";
 import { nyDate } from "./tradingDate";
 
+/** Outbound request budget for Telegram / Resend sends (a hung API must not stall the digest job). */
+const FETCH_TIMEOUT_MS = 15_000;
+
 export type DigestSubscription = {
   id: number;
   trader: string;
@@ -455,6 +458,7 @@ export async function sendTelegram(chatId: string, text: string): Promise<void> 
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const err = await res.text().catch(() => "");
@@ -479,6 +483,7 @@ export async function sendEmail(to: string, subject: string, html: string): Prom
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body,
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     const err = await res.text().catch(() => "");

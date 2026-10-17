@@ -209,7 +209,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
       </div>
       <LinksPanel doc={doc} />
       <p className="text-2xs text-muted-foreground">
-        Нетто = брутто − |комиссии|. День = дата закрытия по Нью-Йорку. Время входа/выхода — из исполнений, иначе из PropReports.
+        Нетто = брутто − |комиссии|. День = дата закрытия по Нью-Йорку. Время входа/выхода — по исполнениям брокера.
         Сравнение — последние {doc.comparison.days || 20} торговых дней со сделками. Сформировано {new Date(doc.generatedAt).toLocaleString("ru-RU")}.
       </p>
     </div>

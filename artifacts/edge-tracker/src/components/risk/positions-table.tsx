@@ -3,10 +3,10 @@ import { Link } from "wouter";
 import { Moon, Briefcase, AlertTriangle, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { EmptyState, Pill, Segmented, TableScroll } from "@/components/ds";
+import { EmptyState, Pill, Segmented, TableScroll, useTableSort } from "@/components/ds";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RiskLimits, RiskPosition } from "./use-risk";
-import { HORIZON_LABEL, HORIZON_TONE, fmtUsd, useStoredState } from "./primitives";
+import { HORIZON_LABEL, HORIZON_TONE, SortableTableHead, fmtUsd, useStoredState } from "./primitives";
 
 /** Planned vs stop-implied risk disagree by >25%: show both so the curator sees which one counts. */
 function mismatchText(p: RiskPosition): string | null {
@@ -17,7 +17,18 @@ function mismatchText(p: RiskPosition): string | null {
 export type HorizonFilter = "all" | "carried" | "intraday" | "overnight" | "swing";
 const FILTERS: readonly HorizonFilter[] = ["all", "carried", "intraday", "overnight", "swing"];
 
-type SortKey = "risk" | "exposure" | "days" | "trader";
+const HORIZON_ORDER: Record<string, number> = { intraday: 0, overnight: 1, swing: 2 };
+const POSITION_ACCESSORS = {
+  ticker: (p: RiskPosition) => p.ticker,
+  trader: (p: RiskPosition) => p.trader,
+  horizon: (p: RiskPosition) => HORIZON_ORDER[p.horizon] ?? 9,
+  side: (p: RiskPosition) => p.side,
+  qty: (p: RiskPosition) => p.qty,
+  days: (p: RiskPosition) => p.daysHeld,
+  risk: (p: RiskPosition) => p.riskUsd,
+  exposure: (p: RiskPosition) => p.exposureUsd,
+};
+type SortKey = keyof typeof POSITION_ACCESSORS;
 
 function matches(p: RiskPosition, f: HorizonFilter) {
   if (f === "all") return true;
@@ -55,7 +66,6 @@ export function PositionsTable({
   compact?: boolean;
 }) {
   const [filter, setFilter] = useStoredState<HorizonFilter>(storageKey, defaultFilter, FILTERS);
-  const [sort, setSort] = React.useState<SortKey>("risk");
 
   const counts = React.useMemo(() => {
     const c: Record<HorizonFilter, number> = { all: 0, carried: 0, intraday: 0, overnight: 0, swing: 0 };
@@ -63,26 +73,14 @@ export function PositionsTable({
     return c;
   }, [positions]);
 
-  const rows = React.useMemo(() => {
-    const r = positions.filter((p) => matches(p, filter));
-    const by: Record<SortKey, (a: RiskPosition, b: RiskPosition) => number> = {
-      risk: (a, b) => (b.riskUsd ?? -1) - (a.riskUsd ?? -1),
-      exposure: (a, b) => (b.exposureUsd ?? -1) - (a.exposureUsd ?? -1),
-      days: (a, b) => b.daysHeld - a.daysHeld,
-      trader: (a, b) => a.trader.localeCompare(b.trader),
-    };
-    return [...r].sort(by[sort]);
-  }, [positions, filter, sort]);
+  const filtered = React.useMemo(() => positions.filter((p) => matches(p, filter)), [positions, filter]);
+  const { rows, thProps } = useTableSort(filtered, POSITION_ACCESSORS, "risk");
 
   const totalRisk = rows.reduce((s, p) => s + (p.riskUsd ?? 0), 0);
   const totalExp = rows.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
 
-  const sortHead = (k: SortKey, children: React.ReactNode, className?: string) => (
-    <TableHead className={className} aria-sort={sort === k ? "descending" : "none"}>
-      <button type="button" onClick={() => setSort(k)} className={cn("inline-flex items-center gap-1 rounded-full hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", sort === k && "text-foreground")}>
-        {children}{sort === k && <span aria-hidden="true">↓</span>}
-      </button>
-    </TableHead>
+  const sortHead = (k: SortKey, children: React.ReactNode, align?: "right") => (
+    <SortableTableHead {...thProps(k)} align={align}>{children}</SortableTableHead>
   );
 
   const traderCell = (name: string) =>
@@ -161,15 +159,15 @@ export function PositionsTable({
             <Table>
               <TableHeader className="sticky top-0">
                 <TableRow>
-                  <TableHead>Тикер</TableHead>
+                  {sortHead("ticker", "Тикер")}
                   {showTrader && sortHead("trader", "Трейдер")}
-                  <TableHead>Горизонт</TableHead>
-                  <TableHead>Сторона</TableHead>
-                  <TableHead className="text-right">Кол-во</TableHead>
+                  {sortHead("horizon", "Горизонт")}
+                  {sortHead("side", "Сторона")}
+                  {sortHead("qty", "Кол-во", "right")}
                   <TableHead className="text-right">Вход / стоп</TableHead>
-                  {sortHead("days", "В позиции", "text-right")}
-                  {sortHead("risk", "$ риска", "text-right")}
-                  {sortHead("exposure", "Экспозиция", "text-right")}
+                  {sortHead("days", "В позиции", "right")}
+                  {sortHead("risk", "$ риска", "right")}
+                  {sortHead("exposure", "Экспозиция", "right")}
                   <TableHead className="w-10"><span className="sr-only">Действия</span></TableHead>
                 </TableRow>
               </TableHeader>
@@ -190,7 +188,7 @@ export function PositionsTable({
                             </span>
                           )}
                         </div>
-                        {p.setup && <div className="max-w-[160px] truncate text-xs text-muted-foreground">{p.setup}</div>}
+                        {p.setup && <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={p.setup}>{p.setup}</div>}
                       </TableCell>
                       {showTrader && <TableCell>{traderCell(p.trader)}</TableCell>}
                       <TableCell>

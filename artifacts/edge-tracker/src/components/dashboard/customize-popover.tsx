@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import { ArrowDown, ArrowUp, RotateCcw, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -45,7 +46,12 @@ export function CustomizePopover({
           <SlidersHorizontal aria-hidden="true" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-[min(92vw,340px)] p-3">
+      {/* bottom 80: clear the fixed mobile bottom nav; height follows the space Radix reports. */}
+      <PopoverContent
+        align="end"
+        collisionPadding={{ top: 12, right: 12, left: 12, bottom: 80 }}
+        className="max-h-[min(640px,var(--radix-popover-content-available-height,80dvh))] w-[min(92vw,360px)] overflow-y-auto p-3"
+      >
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <div>
             <p className="text-sm font-semibold">Разделы дашборда</p>
@@ -57,38 +63,46 @@ export function CustomizePopover({
             const visible = !hidden.includes(id);
             const meta = SECTION_META[id];
             const switchId = `dash-sec-${id}`;
+            const firstExtra = meta.extra && !list.slice(0, idx).some((x) => SECTION_META[x].extra);
             return (
-              <li key={id} className="flex items-center gap-2 rounded-xl px-1 py-1.5 hover:bg-[var(--glass-hover-bg)]">
-                <Switch id={switchId} checked={visible} onCheckedChange={(v) => toggle(id, v)} />
-                <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
-                  <span className={`block truncate text-sm ${visible ? "" : "text-muted-foreground"}`}>
-                    {meta.label}
-                  </span>
-                  <span className="block truncate text-2xs text-muted-foreground">{meta.hint}</span>
-                </label>
-                <div className="flex shrink-0">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={idx === 0}
-                    onClick={() => move(idx, -1)}
-                    aria-label={`Поднять «${meta.label}»`}
-                  >
-                    <ArrowUp aria-hidden="true" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    disabled={idx === list.length - 1}
-                    onClick={() => move(idx, 1)}
-                    aria-label={`Опустить «${meta.label}»`}
-                  >
-                    <ArrowDown aria-hidden="true" />
-                  </Button>
-                </div>
-              </li>
+              <Fragment key={id}>
+                {firstExtra && (
+                  <li className="mt-1 border-t border-border/60 px-1 pb-0.5 pt-2" aria-hidden="true">
+                    <span className="micro-label">Дополнительно</span>
+                  </li>
+                )}
+                <li className="flex items-center gap-2 rounded-xl px-1 py-1.5 hover:bg-[var(--glass-hover-bg)]">
+                  <Switch id={switchId} checked={visible} onCheckedChange={(v) => toggle(id, v)} />
+                  <label htmlFor={switchId} className="min-w-0 flex-1 cursor-pointer">
+                    <span className={`block truncate text-sm ${visible ? "" : "text-muted-foreground"}`}>
+                      {meta.label}
+                    </span>
+                    <span className="block truncate text-2xs text-muted-foreground">{meta.hint}</span>
+                  </label>
+                  <div className="flex shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={idx === 0}
+                      onClick={() => move(idx, -1)}
+                      aria-label={`Поднять «${meta.label}»`}
+                    >
+                      <ArrowUp aria-hidden="true" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={idx === list.length - 1}
+                      onClick={() => move(idx, 1)}
+                      aria-label={`Опустить «${meta.label}»`}
+                    >
+                      <ArrowDown aria-hidden="true" />
+                    </Button>
+                  </div>
+                </li>
+              </Fragment>
             );
           })}
         </ul>

@@ -114,7 +114,6 @@ type Props = {
   onPatch: (t: Trade, patch: TradePatch, opts?: { silent?: boolean }) => Promise<boolean>;
   traderName: string | null;
   isCurator: boolean;
-  userKey: string;
   voiceNoteKey: number;
   holidayEvents: HolidayEvent[];
 };
@@ -378,7 +377,6 @@ export function TradeDetailSheet(p: Props) {
                     <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
                       <LazyAiReviewPanel
                         tradeId={t.id}
-                        userKey={p.userKey}
                         conviction={t.conviction}
                         confidenceGrade={t.confidenceGrade}
                         tradeDate={t.date}

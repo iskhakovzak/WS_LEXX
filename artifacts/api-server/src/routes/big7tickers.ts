@@ -3,6 +3,7 @@ import { eq, asc, and, inArray } from "drizzle-orm";
 import { db, big7TickersTable, pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
+import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { netPnlSql, resultSql, num } from "../lib/tradeMath";
 import { nyDate, addDays as nyAddDays } from "../lib/tradingDate";
 
@@ -50,6 +51,7 @@ router.post("/big7/tickers", asyncHandler(async (req, res): Promise<void> => {
     name: name ? String(name) : sym,
     groupName: group,
     position: typeof position === "number" ? position : 999,
+    createdBy: await creatorName(req),
   }).returning();
   res.status(201).json(row);
 }));
@@ -80,6 +82,7 @@ router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> =
   const toInsert = cleaned.filter((s) => !existingSet.has(s));
   let added: typeof existing = [];
   if (toInsert.length > 0) {
+    const createdBy = await creatorName(req);
     added = await db.insert(big7TickersTable).values(
       toInsert.map((s, i) => ({
         symbol: s,
@@ -87,6 +90,7 @@ router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> =
         name: s,
         groupName: group,
         position: 1000 + i,
+        createdBy,
       })),
     ).returning();
   }
@@ -96,6 +100,10 @@ router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> =
 router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
+  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  // Reordering (position) and moving between groups touch a shared board row → same owner-or-staff rule.
+  if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const { symbol, exchange, name, groupName, position } = req.body as Record<string, unknown>;
   const [row] = await db.update(big7TickersTable).set({
     symbol: symbol !== undefined ? String(symbol).toUpperCase() : undefined,
@@ -114,6 +122,9 @@ router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> =
 router.delete("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
+  if (!owned) { res.status(204).send(); return; }
+  if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   await db.delete(big7TickersTable).where(eq(big7TickersTable.id, id));
   res.status(204).send();
 }));

@@ -347,11 +347,12 @@ export function ThreadView({
     <div className="flex h-full min-h-0 flex-col">
       {/* Header */}
       <div className="border-b border-[var(--field-border)] px-4 pb-3 pt-4 sm:px-5">
-        <div className="flex items-start gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           <Button variant="ghost" size="icon" onClick={onBack} aria-label="Назад к списку тем" className="-ml-2 h-9 w-9 shrink-0 lg:hidden">
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="min-w-0 flex-1">
+          {/* min width: on phones the vote/menu cluster wraps below instead of squeezing the topic into a narrow column */}
+          <div className="min-w-[min(100%,14rem)] flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
               {pinned && <Pill tone="accent" className="py-0 text-2xs"><Pin className="h-3 w-3" aria-hidden="true" />Закреплено</Pill>}
               {thread.type && <Pill tone={TYPE_TONE[thread.type] ?? "neutral"} className="py-0 text-2xs">{TYPE_LABELS[thread.type] ?? thread.type}</Pill>}
@@ -371,7 +372,7 @@ export function ThreadView({
               <span>· {comments.length} {comments.length === 1 ? "ответ" : comments.length >= 2 && comments.length <= 4 ? "ответа" : "ответов"}</span>
             </div>
           </div>
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <VoteControl id={thread.id} votes={votes} disabled={!canEdit} onVote={onVote} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>

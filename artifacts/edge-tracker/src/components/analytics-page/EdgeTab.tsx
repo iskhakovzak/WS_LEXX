@@ -29,6 +29,7 @@ export function EdgeTab({
   hasR,
   hasPnl,
   topPatterns,
+  isStaff = false,
 }: {
   trades: Trade[];
   dimension: DimensionKey;
@@ -38,6 +39,8 @@ export function EdgeTab({
   hasR: boolean;
   hasPnl: boolean;
   topPatterns: PatternStat[] | undefined;
+  /** The «Источник» (manual / broker) split is a staff concern — traders' trades all come from the broker. */
+  isStaff?: boolean;
 }) {
   const hasFees = useMemo(() => trades.some((t) => t.fees != null && Number(t.fees) !== 0), [trades]);
   const [metric, setMetric] = useState<MetricKey>(hasR ? "avgR" : "winRate");
@@ -109,7 +112,7 @@ export function EdgeTab({
       <Segmented<DimensionKey>
         ariaLabel="Разрез"
         size="sm"
-        options={DIMENSIONS.map((d) => ({ value: d.key, label: d.label }))}
+        options={DIMENSIONS.filter((d) => isStaff || d.key !== "source").map((d) => ({ value: d.key, label: d.label }))}
         value={dimension}
         onChange={onDimensionChange}
         className="self-start"

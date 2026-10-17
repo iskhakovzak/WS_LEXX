@@ -7,6 +7,7 @@ import { Kbd, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { ChartMode, DrawingType, Timeframe } from "../types";
 import { TF_LABEL } from "../types";
+import { timeframeUnavailableReason } from "../lib/aggregate";
 import { DRAWING_LABEL } from "../lib/drawings";
 
 export type Overlays = {
@@ -100,11 +101,16 @@ export function HotkeysHelp({ rows, className }: { rows: HotkeyRow[]; className?
  * fullscreen. Scrolls sideways on a phone instead of wrapping into three rows.
  */
 export function ChartToolbar({
-  timeframe, timeframes, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget, lockTrade,
+  timeframe, timeframes, allTimeframes, baseSec, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget, lockTrade,
   tool, onTool, drawingsCount, onClearDrawings, onScreenshot, onFit, onFullscreen, fullscreen, fetching, hotkeys, className,
 }: {
   timeframe: Timeframe;
+  /** Timeframes the loaded bars allow. */
   timeframes: readonly Timeframe[];
+  /** All timeframes to show; those not in `timeframes` are drawn disabled with the reason in the tooltip. */
+  allTimeframes?: readonly Timeframe[];
+  /** Seconds per served bar (for the reason text). */
+  baseSec?: number;
   onTimeframe: (tf: Timeframe) => void;
   mode: ChartMode;
   onMode: (m: ChartMode) => void;
@@ -136,7 +142,13 @@ export function ChartToolbar({
   const ToolIcon = tool ? TOOL_ICON[tool] : Pencil;
   return (
     <div className={cn("flex min-w-0 items-center gap-1.5 overflow-x-auto [scrollbar-width:none]", className)} role="toolbar" aria-label="Панель графика">
-      <Segmented size="sm" ariaLabel="Таймфрейм (T)" value={timeframe} onChange={onTimeframe} options={timeframes.map((tf) => ({ value: tf, label: TF_LABEL[tf] }))} className="shrink-0" />
+      <Segmented
+        size="sm" ariaLabel="Таймфрейм (T)" value={timeframe} onChange={onTimeframe} className="shrink-0"
+        options={(allTimeframes ?? timeframes).map((tf) => {
+          const reason = timeframes.includes(tf) ? null : baseSec != null ? timeframeUnavailableReason(tf, baseSec) : "Нет данных";
+          return { value: tf, label: TF_LABEL[tf], disabled: reason != null, title: reason ?? undefined };
+        })}
+      />
       {showModes && (
         <Segmented size="sm" ariaLabel="Режим" value={mode} onChange={onMode} options={(["analysis", "replay", "training"] as ChartMode[]).map((m) => ({ value: m, label: MODE_LABEL[m] }))} className="shrink-0" />
       )}

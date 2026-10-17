@@ -343,7 +343,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
       {/* Notes of the day */}
       <Panel
         title="Сводки за день"
-        description={isReviewer ? "Открой, чтобы оценить и ответить. Отметь несколько для общей AI-сводки." : "Сводки команды — учись на разборах коллег"}
+        description={isReviewer ? "Открой, чтобы оценить и ответить. Отметь несколько для общей AI-сводки." : "Твоя сводка за день. Сводки коллег видят только они сами, их кураторы и наставники"}
         actions={
           reviewable.length > 0 ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -380,7 +380,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         ) : notes.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={scope === "mine" ? "Твои джуны ещё не написали сводку за этот день" : "Никто ещё не написал сводку за этот день"}
+            title={!isReviewer ? "Ты ещё не написал сводку за этот день" : scope === "mine" ? "Твои джуны ещё не написали сводку за этот день" : "Никто ещё не написал сводку за этот день"}
             description={date === today ? "Сводки появятся здесь, как только трейдеры их сохранят." : undefined}
           />
         ) : (

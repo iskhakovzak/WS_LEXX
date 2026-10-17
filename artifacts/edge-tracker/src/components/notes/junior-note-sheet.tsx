@@ -344,7 +344,7 @@ export function JuniorNoteSheet({
                   value={feedback}
                   onChange={(e) => changeFeedback(e.target.value)}
                   placeholder="Что хорошо, что исправить, выполнен ли вчерашний фокус. Конкретно и по сделкам."
-                  className="[field-sizing:content] max-h-[30vh] min-h-[76px]"
+                  className="[field-sizing:content] max-h-[50vh] min-h-[76px]"
                 />
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <div className="flex flex-wrap items-center gap-2">

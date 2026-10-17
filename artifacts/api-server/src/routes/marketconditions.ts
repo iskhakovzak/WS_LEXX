@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { scopeTrader } from "../lib/auth";
 import { captureContext } from "../lib/marketContext";
 import { closedSql, netPnl, normResult, signedR } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
@@ -107,9 +108,11 @@ function aggregateSetupRegime(rows: any[]): { best: SetupRegime[]; worst: SetupR
 }
 
 router.get("/market-conditions/dna", asyncHandler(async (req, res): Promise<void> => {
-  let userKey = typeof req.query.userKey === "string" && req.query.userKey ? req.query.userKey : null;
-  // Traders only see DNA built from their own trades; curators/admins may pick any trader or the whole team.
-  if (req.authUser?.role === "trader") userKey = req.authUser.name;
+  const requested = typeof req.query.userKey === "string" && req.query.userKey ? req.query.userKey : null;
+  // lib/auth scopeTrader: members see DNA built from their own trades; staff may pick any trader or the whole team
+  // (null); a guest gets the no-match sentinel → empty buckets (the live market context is still returned).
+  const userKey = await scopeTrader(req, requested);
+  if (userKey === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
   const today = nyDate();
 
   const currentContext = await captureContext({ tradeDate: today }).catch(() => null);

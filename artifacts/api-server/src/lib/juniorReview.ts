@@ -7,7 +7,7 @@
  *   - "scoped" — journal.review at "assigned" scope (wards) and/or an academy mentor (users.assigned_mentor or the
  *                mentor of an active cohort the junior is enrolled in): only those juniors. A trader who mentors
  *                juniors reviews, scores and reminds their own mentees — nobody else.
- *   - "none"   — everyone else (read-only team feed).
+ *   - "none"   — everyone else (reads only their own summaries — canReadJuniorNotes / juniorTeamFilter).
  * Nobody reviews their own summary.
  */
 
@@ -62,6 +62,43 @@ export function reviewTraderFilter(scope: ReviewScope, mineOnly: boolean): strin
   if (scope.kind === "desk") return mineOnly ? scope.mine : null;
   if (scope.kind === "scoped") return scope.traders;
   return [];
+}
+
+/* ─────────────────────────── Who may READ summaries ─────────────────────────── */
+
+/**
+ * The reader of junior summaries. `teamScope` = journal.read.team readable traders (lib/permissionsMatrix
+ * readableTraders): null = the whole desk (curators/admins by default), string[] = only these names.
+ */
+export interface JuniorNotesViewer {
+  me: string;
+  guest: boolean;
+  teamScope: readonly string[] | null;
+}
+
+/**
+ * May the viewer read `trader`'s summaries (text, curator feedback, score)? The junior themself, a reviewer of
+ * that junior (desk reviewer / assigned curator / academy mentor — `scope`), or a holder of journal.read.team that
+ * covers the trader. Guests never.
+ */
+export function canReadJuniorNotes(viewer: JuniorNotesViewer, scope: ReviewScope, trader: string | null | undefined): boolean {
+  const t = trader?.trim();
+  if (viewer.guest || !viewer.me || !t) return false;
+  if (t === viewer.me) return true;
+  if (viewer.teamScope === null || viewer.teamScope.includes(t)) return true;
+  return canReviewTrader(scope, t, viewer.me);
+}
+
+/**
+ * Which juniors GET /junior-notes/team may list: null = everyone (desk reviewer or desk-wide journal.read.team),
+ * string[] = only these names (always the viewer's own, plus wards / mentees). Guests: nobody.
+ */
+export function juniorTeamFilter(viewer: JuniorNotesViewer, scope: ReviewScope): string[] | null {
+  if (viewer.guest || !viewer.me) return [];
+  if (viewer.teamScope === null || scope.kind === "desk") return null;
+  const names = new Set<string>([viewer.me, ...viewer.teamScope]);
+  if (scope.kind === "scoped") scope.traders.forEach((t) => names.add(t));
+  return [...names].sort((a, b) => a.localeCompare(b, "ru"));
 }
 
 /* ─────────────────────────── Trading-day helpers ─────────────────────────── */

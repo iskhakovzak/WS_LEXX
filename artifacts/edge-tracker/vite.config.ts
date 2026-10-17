@@ -51,7 +51,8 @@ export default defineConfig({
     allowedHosts: true,
     proxy: {
       "/api": {
-        target: "http://localhost:8080",
+        // API_TARGET lets a second dev server (own port = own localStorage session) talk to another API instance.
+        target: process.env.API_TARGET || "http://localhost:8080",
         changeOrigin: true,
       },
     },

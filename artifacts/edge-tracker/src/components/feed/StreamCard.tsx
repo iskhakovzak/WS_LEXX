@@ -61,10 +61,10 @@ function RowBody({ item, isNew, showTime = true }: { item: StreamItem; isNew: bo
       <IconTile icon={iconFor(item)} tone={item.tone} />
       <div className="min-w-0 flex-1">
         <div className="flex min-w-0 items-center gap-2">
-          <Truncate className="text-sm font-medium text-foreground">{item.title}</Truncate>
+          <Truncate lines={2} className="text-sm font-medium leading-snug text-foreground">{item.title}</Truncate>
           <NewDot on={isNew} />
         </div>
-        {item.subtitle && <Truncate className="mt-0.5 text-xs text-muted-foreground">{item.subtitle}</Truncate>}
+        {item.subtitle && <Truncate lines={2} className="mt-0.5 text-xs leading-snug text-muted-foreground">{item.subtitle}</Truncate>}
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         {value && <span className={cn("text-sm font-semibold tabular-nums", toneText(valueTone))}>{value}</span>}

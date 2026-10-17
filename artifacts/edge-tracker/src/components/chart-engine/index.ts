@@ -15,7 +15,7 @@ export { readChartTheme, type ChartTheme } from "./theme";
 
 export type {
   Candle, Bar, Timeframe, ApiInterval, Session, Side, ExecutionKind, Execution, Fill, TradeLike, PositionPoint, PositionState,
-  ExcursionResult, VwapPoint, DayLevels, VolumeProfile, MarketEventLite, DrawingType, DrawingPoint, Drawing, ChartMode, TrainingResult, SparkData,
+  ExcursionResult, VwapPoint, DayLevels, VolumeProfile, MarketEventLite, DrawingType, DrawingPoint, Drawing, ChartMode, TrainingResult, SparkData, TradeStructureDto,
 } from "./types";
 export { TIMEFRAMES, TF_SECONDS, TF_LABEL, API_INTERVAL_SECONDS } from "./types";
 

@@ -1,6 +1,6 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { CircleDot, Download, Trash2, X } from "lucide-react";
+import { BookOpen, CircleDot, Download, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { RESULTS, plural } from "./trade-utils";
@@ -24,6 +24,7 @@ export function BulkActionBar({
   onSetResult,
   onDelete,
   onClear,
+  onAddToPlaybook,
 }: {
   count: number;
   canTag: boolean;
@@ -39,6 +40,8 @@ export function BulkActionBar({
   /** Staff, or a selection of manual trades only. */
   onDelete?: () => void;
   onClear: () => void;
+  /** «В плейбук» — add the selected trades as examples of one setup (components/playbook/quick-add.tsx). */
+  onAddToPlaybook?: () => void;
 }) {
   const reduce = useReducedMotion();
   const [open, setOpen] = React.useState<TagKind | null>(null);
@@ -76,6 +79,11 @@ export function BulkActionBar({
       <span className="px-2 text-sm font-semibold tabular-nums">
         {count} {plural(count, ["сделка", "сделки", "сделок"])}
       </span>
+      {onAddToPlaybook && (
+        <Button size="sm" className="gap-1.5 bg-primary-solid" onClick={onAddToPlaybook} disabled={pending}>
+          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> В плейбук
+        </Button>
+      )}
       {canTag && (["setup", "mistake", "emotion"] as const).map(picker)}
       {onSetResult && (
         <DropdownMenu>

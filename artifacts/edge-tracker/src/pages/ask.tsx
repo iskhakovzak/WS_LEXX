@@ -1,7 +1,8 @@
 /**
  * «Спроси журнал» — questions about the trade book in plain Russian, parsed deterministically (no AI).
- * Route /ask?q=<phrase> (the command palette can deep-link here). The book is loaded once and every question
- * runs on the client.
+ * Route /ask?q=<phrase> (the command palette can deep-link here). The book is loaded once per scope and every
+ * question runs on the client: the viewer's own trades by default; staff load the whole desk only when the question
+ * needs it («весь деск», another trader's name, «по трейдерам») — lib/ask/run askBookScope.
  */
 import { useEffect, useMemo, useState } from "react";
 import { useLocation, useSearch } from "wouter";
@@ -11,7 +12,7 @@ import { ErrorState, Page, PageHeader, Panel } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
 import { parseAsk, removeToken, replaceToken, type ParseContext } from "@/lib/ask/parse";
-import { ASK_BOOK_KEY, fetchAskBook, runAsk, type AskBook } from "@/lib/ask/run";
+import { askBookKey, askBookScope, fetchAskBook, runAsk, type AskBook, type AskLoadProgress } from "@/lib/ask/run";
 import { dmy, tradesWord } from "@/lib/ask/aggregate";
 import { AskBar } from "@/components/ask/AskBar";
 import { AskNotUnderstood, AskResult, AskResultSkeleton } from "@/components/ask/AskResult";
@@ -39,25 +40,42 @@ export default function AskPage() {
   const [input, setInput] = useState(submitted);
   useEffect(() => { setInput(submitted); }, [submitted]);
 
-  const book = useQuery<AskBook>({
-    queryKey: ASK_BOOK_KEY,
-    queryFn: ({ signal }) => fetchAskBook(signal),
+  // Own book first (fast); the desk book only when a staff question needs it. Both cached for 5 min.
+  const [progress, setProgress] = useState<Record<string, AskLoadProgress | undefined>>({});
+  const mine = useQuery<AskBook>({
+    queryKey: askBookKey("mine"),
+    queryFn: ({ signal }) => fetchAskBook("mine", { me, signal, onProgress: (p) => setProgress((s) => ({ ...s, mine: p })) }),
     staleTime: 5 * 60_000,
+    enabled: !(isStaff && !me),
   });
+  const ownEmpty = mine.data ? mine.data.trades.length === 0 : false;
 
   const today = nyDate();
+  const [deskWanted, setDeskWanted] = useState(false);
+  const desk = useQuery<AskBook>({
+    queryKey: askBookKey("desk"),
+    queryFn: ({ signal }) => fetchAskBook("desk", { me, signal, onProgress: (p) => setProgress((s) => ({ ...s, desk: p })) }),
+    staleTime: 5 * 60_000,
+    enabled: isStaff && deskWanted,
+  });
+  // Parsing and suggestions need the known tickers / setups: the widest book already loaded.
+  const parseBook = desk.data ?? mine.data;
+
   const traderNames = useMemo(() => {
-    const fromBook = book.data?.traders.map((t) => t.value) ?? [];
+    const fromBook = parseBook?.traders.map((t) => t.value) ?? [];
     return [...new Set([...fromBook, ...dbUsers.map((u) => u.name).filter(Boolean)])];
-  }, [book.data, dbUsers]);
-  const tickerNames = useMemo(() => book.data?.tickers.map((t) => t.value) ?? [], [book.data]);
-  const setupNames = useMemo(() => book.data?.setups.map((t) => t.value) ?? [], [book.data]);
+  }, [parseBook, dbUsers]);
+  const tickerNames = useMemo(() => parseBook?.tickers.map((t) => t.value) ?? [], [parseBook]);
+  const setupNames = useMemo(() => parseBook?.setups.map((t) => t.value) ?? [], [parseBook]);
   const ctx = useMemo<ParseContext>(
     () => ({ today, traders: isStaff ? traderNames : [], tickers: tickerNames, setups: setupNames }),
     [today, isStaff, traderNames, tickerNames, setupNames],
   );
 
   const query = useMemo(() => (submitted ? parseAsk(submitted, ctx) : null), [submitted, ctx]);
+  const scope = askBookScope(query, { me, isStaff, ownEmpty });
+  useEffect(() => { if (scope === "desk") setDeskWanted(true); }, [scope]);
+  const book = scope === "desk" ? desk : mine;
   const result = useMemo(() => (query?.ok && book.data ? runAsk(query, book.data, { me }) : null), [query, book.data, me]);
 
   const ask = (text: string) => {
@@ -78,13 +96,19 @@ export default function AskPage() {
     if (query) ask(replaceToken(query, key, text));
   };
 
+  const prog = progress[scope];
+  const loadingText = prog
+    ? prog.total ? ` ${Math.min(99, Math.round((prog.loaded / prog.total) * 100))}%` : prog.loaded > 1e5 ? ` ${(prog.loaded / 1e6).toFixed(1)} МБ` : ""
+    : "";
   const meta = book.data ? (
     <span className="tabular-nums">
-      {tradesWord(book.data.trades.length)} в журнале
+      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{tradesWord(book.data.trades.length)} в журнале
       {book.data.firstDate && book.data.lastDate ? ` · ${dmy(book.data.firstDate)} — ${dmy(book.data.lastDate)}` : ""}
       {book.data.truncated ? " · загружены не все" : ""}
     </span>
-  ) : book.isLoading ? <span>Загружаю сделки…</span> : null;
+  ) : book.isLoading || (scope === "desk" && !desk.data && !desk.isError) ? (
+    <span className="tabular-nums" role="status">{scope === "desk" ? "Загружаю сделки деска…" : "Загружаю сделки…"}{loadingText}</span>
+  ) : null;
 
   return (
     <Page>
@@ -103,8 +127,8 @@ export default function AskPage() {
               onChange={setInput}
               onSubmit={ask}
               ctx={ctx}
-              tickers={book.data?.tickers}
-              setups={book.data?.setups}
+              tickers={parseBook?.tickers}
+              setups={parseBook?.setups}
               history={memory.history}
               pinned={memory.pinned}
               autoFocus={!submitted}

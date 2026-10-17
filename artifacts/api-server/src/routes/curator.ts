@@ -1,8 +1,9 @@
 /**
  * «Кабинет куратора» — агрегирующие эндпоинты (только чтение чужих таблиц) + приватные заметки персонала.
  *
- *   GET  /curator/today                 ?scope=mine|desk&date= — фаза дня, кто торгует, риск, нет плана / не закрыт день,
- *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения),
+ *   GET  /curator/today                 ?scope=mine|desk&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
+ *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения;
+ *                                       по умолчанию за последние 14 дн., old=1 — со старыми; важное и свежее сверху),
  *                                       просроченные договорённости 1:1, приоритетные «следующие шаги»
  *   GET  /curator/traders               ?scope=mine|desk — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
@@ -12,6 +13,7 @@
  *   POST /curator/notes                 {trader, body, kind?, pinned?}
  *   PATCH /curator/notes/:id            {body?, kind?, pinned?}
  *   POST /curator/notes/:id/archive     мягкое удаление
+ *   POST /curator/queue/archive-old     {scope?, olderThanDays?} — мягко скрыть из очереди элементы старше N дн. (curator_queue_acks)
  *
  * Доступ: journal.review (куратор / админ); ?scope=mine — подопечные (assigned_*), иначе весь деск в пределах readScope.
  * Необязательные таблицы (планы, EOD, недельные, Академия) читаются с catch → пустые данные, если модуль ещё не создан.
@@ -25,15 +27,14 @@ import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { ensureCuratorTables, rowToBreachReview, rowToNote } from "../lib/curatorStore";
 import {
-  STAGE_LABELS, mondayOf, nextActionFor, prevTradingDay, tradingPhase, trendDirection, weeklyTrend,
-  type NextAction, type WeekPoint,
+  QUEUE_DEFAULT_DAYS, STAGE_LABELS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, staleQueueIds, tradingPhase,
+  trendDirection, weeklyTrend, type NextAction, type QueueKind, type WeekPoint,
 } from "../lib/curatorLogic";
 import { BREACH_KIND_LABELS, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
 
 const router: IRouter = Router();
 
 const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
-const SLA_HOURS = { eod: 24, weekly: 48, academy: 72, breach: 24 } as const;
 
 function clientDate(raw: unknown): string {
   return typeof raw === "string" && YMD_RE.test(raw) ? raw : nyDate();
@@ -113,17 +114,17 @@ async function loadBulk(traders: string[], today: string) {
   const from35 = addDays(today, -35);
   const from42 = addDays(today, -42);
   const from30 = addDays(today, -29);
-  const [plansTable, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals] = await Promise.all([
+  const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
     deskSnapshot(today),
     templateStatus(traders),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
-    safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at ASC LIMIT 200`, [traders]),
+    safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at DESC LIMIT 500`, [traders]),
     safe(`SELECT id, trader, week, TO_CHAR(week_start, 'YYYY-MM-DD') AS week_start, status, submitted_at, reviewed_at FROM weekly_reviews
            WHERE trader = ANY($1) AND (week_start >= $2::date OR status = 'submitted') ORDER BY week_start DESC`, [traders, from42]),
     safe(`SELECT s.id, s.user_name, s.created_at, a.title FROM academy_submissions s JOIN academy_assignments a ON a.id = s.assignment_id
-           WHERE s.status = 'submitted' AND s.archived_at IS NULL AND s.user_name = ANY($1) ORDER BY s.created_at ASC LIMIT 200`, [traders]),
+           WHERE s.status = 'submitted' AND s.archived_at IS NULL AND s.user_name = ANY($1) ORDER BY s.created_at DESC LIMIT 500`, [traders]),
     safe(`SELECT id, student, owner, title, TO_CHAR(due_on, 'YYYY-MM-DD') AS due_on, status FROM academy_action_items
            WHERE archived_at IS NULL AND status = 'open' AND student = ANY($1) ORDER BY due_on ASC NULLS LAST`, [traders]),
     safe(`SELECT student, MAX(met_at) AS last FROM academy_one_on_ones WHERE archived_at IS NULL AND student = ANY($1) GROUP BY student`, [traders]),
@@ -135,8 +136,13 @@ async function loadBulk(traders: string[], today: string) {
            WHERE a.level = 'breach' AND a.date >= $1 AND a.trader = ANY($2) ORDER BY a.date DESC`, [from30, traders]),
     safe(`SELECT DISTINCT ON (trader) trader, body, author, created_at FROM curator_notes WHERE archived_at IS NULL AND trader = ANY($1) ORDER BY trader, pinned DESC, created_at DESC`, [traders]),
     safe(`SELECT student, COUNT(*)::int AS n FROM academy_idp_goals WHERE archived_at IS NULL AND status = 'active' AND student = ANY($1) GROUP BY student`, [traders]),
+    safe<{ item_id: string }>(`SELECT item_id FROM curator_queue_acks WHERE revoked_at IS NULL AND trader = ANY($1)`, [traders]),
   ]);
-  return { today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals };
+  // Элементы, мягко убранные из очереди («архивировать старые»), не считаются ожидающими разбора.
+  const acked = new Set(ackRows.map((r) => String(r.item_id)));
+  const eodPending = eodPendingAll.filter((e: any) => !acked.has(`eod:${e.id}`));
+  const subs = subsAll.filter((x: any) => !acked.has(`academy:${x.id}`));
+  return { today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked };
 }
 
 function buildSignal(name: string, b: Bulk): TraderSignal {
@@ -231,19 +237,12 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
   return { ...signalBase, nextAction };
 }
 
-// ─── today ──────────────────────────────────────────────────────────────────
+// ─── очередь разборов ───────────────────────────────────────────────────────
 
-router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "journal.review"))) return;
-  const today = clientDate(req.query.date);
-  const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today);
-  const signals = roster.traders.map((t) => buildSignal(t, b));
-  const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
-  const now = Date.now();
-  const weekday = phase !== "weekend";
+type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string };
 
-  const queue = [
+function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
+  return [
     ...b.eodPending.map((e: any) => ({
       kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: `Закрытый день ${e.date}`,
       since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now), href: "/journal?view=queue",
@@ -259,10 +258,34 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     })),
     ...b.breaches.filter((x: any) => x.review_id == null).map((x: any) => ({
       kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: `Разбор нарушения: ${BREACH_KIND_LABELS[String(x.kind)] ?? x.kind}, ${x.date}`,
-      since: iso(x.created_at), hoursWaiting: hoursSince(x.created_at, now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
+      since: iso(breachSince(x)), hoursWaiting: hoursSince(breachSince(x), now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
     })),
-  ].map((q) => ({ ...q, overdue: (q.hoursWaiting ?? 0) > SLA_HOURS[q.kind], slaHours: SLA_HOURS[q.kind] }))
-    .sort((x, y) => Number(y.overdue) - Number(x.overdue) || (y.hoursWaiting ?? 0) - (x.hoursWaiting ?? 0));
+  ];
+}
+
+/** Нарушение ждёт разбора с конца своего торгового дня; created_at — время записи (у бэкфилла это «сейчас»). */
+function breachSince(x: { date?: unknown; created_at?: unknown }): string | null {
+  const created = x.created_at ? new Date(x.created_at as string).toISOString() : null;
+  const day = typeof x.date === "string" && YMD_RE.test(x.date) ? `${x.date}T21:00:00.000Z` : null; // ~17:00 NY
+  if (!created) return day;
+  return day && day < created ? day : created;
+}
+
+// ─── today ──────────────────────────────────────────────────────────────────
+
+router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "journal.review"))) return;
+  const today = clientDate(req.query.date);
+  const roster = await loadRoster(req, req.query.scope);
+  const b = await loadBulk(roster.traders, today);
+  const signals = roster.traders.map((t) => buildSignal(t, b));
+  const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
+  const now = Date.now();
+  const weekday = phase !== "weekend";
+
+  const includeOld = req.query.old === "1" || req.query.old === "true";
+  const arranged = arrangeQueue(buildQueueItems(b, now), { includeOld, acked: b.acked });
+  const queue = arranged.items;
 
   const overdueActions = b.actions
     .filter((a: any) => a.due_on && a.due_on < today)
@@ -302,6 +325,8 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
       missingEod: missingEod.length,
       queue: queue.length,
       queueOverdue: queue.filter((q) => q.overdue).length,
+      queueOld: arranged.old.count,
+      queueOldOverdue: arranged.old.overdue,
       overdueActions: overdueActions.length,
     },
     trading,
@@ -314,9 +339,40 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     missingEod,
     openToday,
     queue,
+    queueWindow: { days: QUEUE_DEFAULT_DAYS, includeOld, old: arranged.old.count, oldOverdue: arranged.old.overdue },
     overdueActions,
     nextActions,
   });
+}));
+
+const archiveOldSchema = z.object({
+  scope: z.enum(["mine", "desk"]).optional(),
+  olderThanDays: z.number().int().min(1).max(365).optional(),
+});
+
+/** «Архивировать старые»: мягко скрыть из очереди всё старше N дней. Исходные дни/отчёты/задания не меняются. */
+router.post("/curator/queue/archive-old", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "journal.review"))) return;
+  const parsed = archiveOldSchema.safeParse(req.body ?? {});
+  if (!parsed.success) { res.status(400).json({ error: "Некорректные параметры" }); return; }
+  const days = parsed.data.olderThanDays ?? QUEUE_DEFAULT_DAYS;
+  const roster = await loadRoster(req, parsed.data.scope);
+  const b = await loadBulk(roster.traders, nyDate());
+  const items = buildQueueItems(b, Date.now());
+  const ids = new Set(staleQueueIds(items, days, b.acked));
+  const stale = items.filter((q) => ids.has(q.id));
+  if (stale.length) {
+    await pool.query(
+      `INSERT INTO curator_queue_acks (item_id, trader, kind, acked_by)
+       SELECT t.item_id, t.trader, t.kind, $4::text FROM UNNEST($1::text[], $2::text[], $3::text[]) AS t(item_id, trader, kind)
+       ON CONFLICT (item_id) DO UPDATE SET acked_by = EXCLUDED.acked_by, acked_at = NOW(), revoked_at = NULL`,
+      [stale.map((q) => q.id), stale.map((q) => q.trader), stale.map((q) => q.kind), req.authUser!.name],
+    );
+  }
+  const byKind: Record<string, number> = {};
+  for (const q of stale) byKind[q.kind] = (byKind[q.kind] ?? 0) + 1;
+  await logAudit({ actor: req.authUser!.name, action: "curator.queue.archive_old", targetType: "curator_queue_acks", details: { olderThanDays: days, archived: stale.length, byKind, scope: roster.scope } });
+  res.json({ archived: stale.length, byKind, olderThanDays: days });
 }));
 
 // ─── traders ────────────────────────────────────────────────────────────────

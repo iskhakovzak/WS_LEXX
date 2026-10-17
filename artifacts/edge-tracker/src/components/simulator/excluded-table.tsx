@@ -54,7 +54,7 @@ export function ExcludedTable({ excluded, changed }: { excluded: ExcludedTrade[]
           )}
         </div>
       </div>
-      <DataTable maxHeight={420} ariaLabel="Убранные и изменённые сделки">
+      <DataTable maxHeight="60vh" ariaLabel="Убранные и изменённые сделки">
         <table>
           <thead>
             <tr>

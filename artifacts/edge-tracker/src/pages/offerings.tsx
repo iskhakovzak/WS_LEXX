@@ -215,7 +215,8 @@ export default function OfferingsPage() {
       if (va == null && vb == null) return 0;
       if (va == null) return 1;
       if (vb == null) return -1;
-      return (va - vb) * dir;
+      const cmp = typeof va === "number" && typeof vb === "number" ? va - vb : String(va).localeCompare(String(vb), "ru", { numeric: true });
+      return cmp * dir;
     });
   }, [exposure, sort.dir, sortKey]);
 

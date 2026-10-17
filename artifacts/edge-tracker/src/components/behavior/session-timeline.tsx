@@ -7,7 +7,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, ArrowRight, CalendarDays, Rows3 } from "lucide-react";
-import { DataTable, EmptyState, ErrorState, Pill, SkeletonBlock, toneOf, toneText, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, ErrorState, Pill, SkeletonBlock, SortableTh, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
@@ -195,22 +195,33 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
 
 /* ─── Таблица сделок дня ──────────────────────────────────────────────────── */
 
+const TRADE_ACCESSORS = {
+  entry: (t: TimelineTrade) => t.entryMin,
+  ticker: (t: TimelineTrade) => t.ticker,
+  hold: (t: TimelineTrade) => t.holdMin,
+  net: (t: TimelineTrade) => t.net,
+  cum: (t: TimelineTrade) => t.cum,
+  flags: (t: TimelineTrade) => t.flags.length,
+} as const;
+
 function TradesList({ tl }: { tl: DayTimeline }) {
+  // Default: by entry time (the day's story); headers re-sort, e.g. by net or by number of flags.
+  const { rows, thProps } = useTableSort(tl.trades, TRADE_ACCESSORS, "entry", "asc");
   return (
-    <DataTable maxHeight="40vh" ariaLabel={`Сделки ${tl.date}`}>
+    <DataTable maxHeight="60vh" ariaLabel={`Сделки ${tl.date}`}>
       <table>
         <thead>
           <tr>
-            <th scope="col">Вход</th>
-            <th scope="col">Тикер</th>
-            <th scope="col">Удержание</th>
-            <th scope="col" className="text-right">Нетто</th>
-            <th scope="col" className="text-right">Накоплено</th>
-            <th scope="col">Флаги</th>
+            <SortableTh {...thProps("entry")}>Вход</SortableTh>
+            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+            <SortableTh {...thProps("hold")}>Удержание</SortableTh>
+            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+            <SortableTh {...thProps("cum")} align="right">Накоплено</SortableTh>
+            <SortableTh {...thProps("flags")}>Флаги</SortableTh>
           </tr>
         </thead>
         <tbody>
-          {tl.trades.map((t) => (
+          {rows.map((t) => (
             <tr key={t.id}>
               <td className="tabular-nums">
                 <Link href={links.trade(t.id)} className="underline-offset-2 hover:underline">{fmtClock(t.entryMin)}</Link>

@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { asyncHandler } from "../lib/asyncHandler";
+import { aiTextLimiter } from "../lib/rateLimits";
 import { can } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
@@ -436,7 +437,7 @@ router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> =
   res.json(rows[0]);
 }));
 
-router.post("/author-notes/improve", asyncHandler(async (req, res): Promise<void> => {
+router.post("/author-notes/improve", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { text, note_id, note_date } = req.body as { text: string; note_id?: number; note_date?: string };
   if (!text?.trim()) { res.status(400).json({ error: "text required" }); return; }
@@ -501,7 +502,7 @@ ${text.slice(0, 4000)}
   }
 }));
 
-router.post("/author-notes/weekly-summary", asyncHandler(async (req, res): Promise<void> => {
+router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { week_start } = req.body as { week_start?: string };
   const weekStart = week_start || getWeekStart(todayNy());
@@ -590,7 +591,7 @@ ${notesText.slice(0, 8000)}
   }
 }));
 
-router.post("/author-notes/team-summary", asyncHandler(async (req, res): Promise<void> => {
+router.post("/author-notes/team-summary", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const raw = (req.body as { note_ids?: unknown }).note_ids;
   const note_ids = Array.isArray(raw) ? raw.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 100) : [];
   if (note_ids.length === 0) {

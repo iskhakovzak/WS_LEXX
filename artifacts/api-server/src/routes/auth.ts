@@ -3,7 +3,7 @@ import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { timingSafeEqual } from "node:crypto";
-import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPassword, isGuest, GUEST_NAME, GUEST_ROLE, GUEST_USER_ID } from "../lib/auth";
+import { signToken, signGuestToken, verifyPassword, bumpTokenVersion, hashPassword, isGuest, isGuestModeEnabled, GUEST_NAME, GUEST_ROLE, GUEST_USER_ID } from "../lib/auth";
 
 /**
  * Admin secret for /auth/init-passwords. No hard-coded fallback: if ADMIN_PASSWORD
@@ -53,6 +53,11 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
  * personal scope. Public (no token needed) — this is how an anonymous visitor gets in.
  */
 router.post("/auth/guest", asyncHandler(async (_req, res): Promise<void> => {
+  // GUEST_MODE switch (DEPLOY.md): off → no new guest tokens (and authMiddleware ignores old ones).
+  if (!isGuestModeEnabled()) {
+    res.status(403).json({ error: "Гостевой вход отключён", code: "GUEST_DISABLED" });
+    return;
+  }
   const token = signGuestToken();
   res.json({ token, user: { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE }, expiresInSec: 12 * 3600 });
 }));

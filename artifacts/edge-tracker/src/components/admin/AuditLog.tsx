@@ -52,7 +52,7 @@ export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: 
         </div>
         {(t.detail || obj) && (
           <div className="mt-0.5 flex flex-wrap gap-x-3 text-xs text-muted-foreground">
-            {t.detail && <span className="min-w-0 max-w-full truncate" title={t.detail}>{t.detail}</span>}
+            {t.detail && <span className="min-w-0 max-w-full whitespace-pre-line break-words">{t.detail}</span>}
             {obj && <span className="shrink-0">{obj}</span>}
           </div>
         )}

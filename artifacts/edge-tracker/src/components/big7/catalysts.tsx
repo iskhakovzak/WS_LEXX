@@ -10,6 +10,7 @@ import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { canModifyOwned } from "@/lib/ownership";
 import { useCatalystMutations } from "./use-big7";
 import {
   CATALYST_TYPES, TODAY, addDays, catalystMeta, dayMonth, mondayOf, relDayLabel, weekdayShort,
@@ -228,7 +229,11 @@ export function CatalystWeek({
 function CatalystActions({ c, onEdit }: { c: MergedCatalyst; onEdit: (c: MergedCatalyst) => void }) {
   const { remove } = useCatalystMutations();
   const { toast } = useToast();
+  const { user, isCurator } = useAuth();
+  const me = user && user.role !== "guest" ? user.traderName : null;
   if (c.auto || c.id == null) return null;
+  // Edit / delete: the catalyst's author or staff (server: 403 NOT_OWNER otherwise).
+  if (!canModifyOwned(c.createdBy, me, isCurator)) return null;
   const del = async () => {
     if (!window.confirm(`Удалить катализатор ${c.ticker} ${c.date}?`)) return;
     try {

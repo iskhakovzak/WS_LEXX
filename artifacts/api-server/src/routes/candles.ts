@@ -3,6 +3,8 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { fetchYahooWithSession } from "../lib/marketDataService";
 import { pool } from "@workspace/db";
 import { nyDate } from "../lib/tradingDate";
+import { INTRADAY_LADDER, intervalAllowedForAge, pickServedInterval, type CandleInterval } from "../lib/candleLimits";
+import { cleanCandles } from "../lib/candleClean";
 
 const router: IRouter = Router();
 
@@ -216,7 +218,8 @@ async function fetchYahooCandles(ticker: string, parsed: { y: number; m: number;
       c: q.close?.[i],
       v: q.volume?.[i] ?? 0,
     })).filter((c: Candle) => c.o != null && c.h != null && c.l != null && c.c != null);
-    return candles;
+    // Stray Yahoo prints (lib/candleClean): absurd wicks clamped, single-bar spikes dropped; bodies untouched.
+    return cleanCandles(candles);
   } catch {
     return null;
   }
@@ -237,7 +240,9 @@ export async function readCachedDay(ticker: string, dateStr: string, interval: I
     [ticker, dateStr, interval, extended],
   );
   const cached = rows[0]?.ohlcv as Candle[] | undefined;
-  return cached && cached.length > 0 ? cached : null;
+  // Days cached before the bad-tick filter existed may still hold stray wicks — clean on every read.
+  const clean = cached && cached.length > 0 ? cleanCandles(cached) : [];
+  return clean.length > 0 ? clean : null;
 }
 
 // Single-day cache lookup + Yahoo fetch + cache write. Returns candles + a
@@ -363,22 +368,25 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   const oldestAge = ageDaysOf(days[0]);
   const requestedRaw = String(req.query.interval || "").toLowerCase().trim();
   const requested = ALLOWED_INTERVALS.has(requestedRaw as Interval) ? (requestedRaw as Interval) : null;
-  const allowed = (iv: Interval, age: number) => iv === "1m" ? age <= 7 : (iv === "5m" || iv === "15m" || iv === "30m") ? age <= 60 : iv === "60m" ? age <= 730 : true;
-  let interval: Interval = requested && allowed(requested, oldestAge) ? requested : pickIntervalForAge(oldestAge);
+  let interval: Interval = requested && intervalAllowedForAge(requested, oldestAge) ? requested : pickIntervalForAge(oldestAge);
   let rangeDays = days;
   if (requested && requested !== "1d" && interval !== requested) {
-    // Only the context days are too old for the finer bars: keep the requested interval (1m → the 1/2/3-minute
-    // charts) for the trailing run of days that allow it — by age, or already in the cache — and drop the older
-    // context days instead of coarsening the whole series to 5m.
+    // Too old for the requested bars by age. Before coarsening, look in the cache: a day cached while it was fresh
+    // keeps its 1m / 5m bars. Serve the finest interval the trailing run of days (always the trade day) has — by age
+    // or cached — and drop older context days instead of coarsening the whole series (lib/candleLimits).
     const { rows } = await pool.query(
-      `SELECT DISTINCT date::text AS d FROM candles_cache WHERE ticker = $1 AND interval = $2 AND extended = $3 AND date = ANY($4::date[])`,
-      [ticker, requested, extended, days.map((d) => d.str)],
-    ).catch(() => ({ rows: [] as { d: string }[] }));
-    const inCache = new Set(rows.map((r) => String(r.d).slice(0, 10)));
-    const ok = (d: (typeof days)[number]) => allowed(requested, ageDaysOf(d)) || inCache.has(d.str);
-    let i = days.length;
-    while (i > 0 && ok(days[i - 1])) i--;
-    if (i < days.length) { rangeDays = days.slice(i); interval = requested; }
+      `SELECT DISTINCT interval, date::text AS d FROM candles_cache WHERE ticker = $1 AND extended = $2 AND date = ANY($3::date[]) AND interval = ANY($4::text[])`,
+      [ticker, extended, days.map((d) => d.str), INTRADAY_LADDER],
+    ).catch(() => ({ rows: [] as { interval: string; d: string }[] }));
+    const cached = new Map<CandleInterval, Set<string>>();
+    for (const r of rows) {
+      const iv = r.interval as CandleInterval;
+      if (!cached.has(iv)) cached.set(iv, new Set());
+      cached.get(iv)!.add(String(r.d).slice(0, 10));
+    }
+    const pick = pickServedInterval(days.map((d) => ({ str: d.str, age: ageDaysOf(d) })), requested, interval, cached);
+    interval = pick.interval;
+    rangeDays = days.slice(pick.fromIndex);
   }
   const spanDays = (Date.UTC(to.y, to.m - 1, to.d) - Date.UTC(from.y, from.m - 1, from.d)) / 86400000;
   if (spanDays > 45 && interval !== "1d") { interval = "1d"; rangeDays = days; }

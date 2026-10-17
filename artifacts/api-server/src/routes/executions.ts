@@ -7,6 +7,8 @@ import { ROLE_LABEL_RU } from "../lib/tradeStructure";
 import { refreshTradeStructures, structureForTrade } from "../lib/tradeStructureStore";
 import { structureSummary } from "../lib/tradeStructure";
 import { logger } from "../lib/logger";
+import { can, resolveActor } from "../lib/permissions";
+import { canReadTradeExecutions } from "../lib/accessRules";
 
 const router: IRouter = Router();
 
@@ -90,10 +92,12 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateExecutionInput
 }
 
 /**
- * Resolves the parent trade and enforces ownership: traders may only modify executions of their own
- * (non-deleted) trades; curators/admins may access all. A trader may also READ the fills of another trader's
- * trade that is an example of a setup they can read (the chart of «Открыть сделку»; qty is redacted).
- * Sends the error response itself and returns false when access is denied; otherwise the trade's owner.
+ * Resolves the parent trade and enforces access through the permission matrix (same rule as GET/PATCH /trades/:id):
+ *   write — own trade (trades.write.own) or trades.write.any (curators/admins by default);
+ *   read  — own trade, trades.read.team, or the trade is an example of a setup the viewer may read in the playbook
+ *           (the chart of «Открыть сделку»; qty / $ are redacted for non-staff by lib/playbookPrivacy).
+ * Guests never (lib/accessRules canReadTradeExecutions). Sends the error response itself and returns false when
+ * access is denied; otherwise the trade's owner.
  */
 async function assertTradeAccess(req: Request, res: Response, tradeId: number, mode: "read" | "write" = "write"): Promise<{ trader: string | null } | false> {
   const { rows } = await pool.query<{ trader: string | null }>(
@@ -104,12 +108,28 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
     res.status(404).json({ error: "trade not found" });
     return false;
   }
-  const auth = req.authUser;
-  if (auth && auth.role === "trader" && rows[0].trader !== auth.name && !(mode === "read" && (await isReadableExampleTrade(req, tradeId)))) {
-    res.status(403).json({ error: "Можно изменять исполнения только своих трейдов" });
+  const owner = rows[0].trader;
+  const actor = await resolveActor(req);
+  if (!actor) {
+    res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" });
     return false;
   }
-  return { trader: rows[0].trader };
+  if (mode === "write") {
+    const own = owner === actor.name && (await can(req, "trades.write.own", { trader: owner }));
+    if (actor.guest || !(own || (await can(req, "trades.write.any", { trader: owner })))) {
+      res.status(403).json({ error: "Можно изменять исполнения только своих трейдов" });
+      return false;
+    }
+    return { trader: owner };
+  }
+  const isOwn = !!owner && owner === actor.name;
+  const teamAllowed = !isOwn && !actor.guest && (await can(req, "trades.read.team", { trader: owner }));
+  const readableExample = !isOwn && !teamAllowed && !actor.guest && (await isReadableExampleTrade(req, tradeId));
+  if (!canReadTradeExecutions(actor, owner, { teamAllowed, readableExample })) {
+    res.status(403).json({ error: "Можно просматривать исполнения только своих трейдов" });
+    return false;
+  }
+  return { trader: owner };
 }
 
 // GET /api/trades/:tradeId/executions

@@ -20,13 +20,39 @@ import {
 import { isMissingEndpoint, useMyTickerTrades, useTickerDetail, useTickerHistory } from "./use-offerings-data";
 import {
   HORIZON_LABEL, fmtDay, fmtM, fmtPctCap, fmtPrice, fmtShares, fmtSignedUsd, fmtUsd, pctOfMcap,
-  type Exposure, type HistoryEvent, type Offering, type TimelineKind,
+  type Exposure, type HistoryEvent, type InsiderTxn, type Offering, type TimelineKind,
 } from "./types";
 
 // The chart engine is heavy (lightweight-charts + primitives): load it only when a sheet opens.
 const WsChart = lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 
 const TXN_LABEL: Record<string, string> = { P: "Покупка", S: "Продажа", A: "Грант", M: "Исполнение опц.", F: "Налог", G: "Подарок" };
+
+const TXNS_COLLAPSED = 6;
+
+function InsiderTxns({ txns }: { txns: InsiderTxn[] }) {
+  const [all, setAll] = useState(false);
+  const rows = all ? txns : txns.slice(0, TXNS_COLLAPSED);
+  return (
+    <>
+      <ul className="divide-y divide-border/50 rounded-xl bg-[var(--glass-bg)]">
+        {rows.map((t, i) => (
+          <li key={`${t.url}-${i}`} className="flex items-center gap-3 px-3 py-1.5 text-sm">
+            <span className="w-14 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date)}</span>
+            <Pill tone={t.code === "P" ? "up" : t.code === "S" ? "down" : "neutral"} className="px-1.5 text-2xs">{TXN_LABEL[t.code] ?? t.code}</Pill>
+            <span className="min-w-0 flex-1 truncate" title={t.title ? `${t.owner} · ${t.title}` : t.owner}>{t.owner}{t.title && <span className="text-muted-foreground"> · {t.title}</span>}</span>
+            <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd) : fmtShares(t.shares)}</span>
+          </li>
+        ))}
+      </ul>
+      {txns.length > TXNS_COLLAPSED && (
+        <button type="button" className="self-start text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
+          {all ? "Свернуть" : `Показать все ${txns.length}`}
+        </button>
+      )}
+    </>
+  );
+}
 const KIND_TEXT: Record<TimelineKind, string> = { priced: "Сделка", atm: "ATM", shelf: "Шелф", s1: "S-1", effect: "EFFECT" };
 const KIND_TONE: Record<TimelineKind, "purple" | "warn" | "neutral" | "accent"> = { priced: "purple", atm: "warn", shelf: "neutral", s1: "accent", effect: "neutral" };
 const SESSION_SHORT = { pre: "до рынка", rth: "в сессию", post: "после закр." } as const;
@@ -397,18 +423,7 @@ export function OfferingDetailSheet({
                   <span className="text-down">Продажи: {ins.sells.count} · {fmtUsd(ins.sells.usd)}</span>
                   {ins.planSellPct != null && <span>по плану 10b5-1: {ins.planSellPct}%</span>}
                 </div>
-                {ins.txns.length > 0 && (
-                  <ul className="divide-y divide-border/50 rounded-xl bg-[var(--glass-bg)]">
-                    {ins.txns.slice(0, 6).map((t, i) => (
-                      <li key={`${t.url}-${i}`} className="flex items-center gap-3 px-3 py-1.5 text-sm">
-                        <span className="w-14 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date)}</span>
-                        <Pill tone={t.code === "P" ? "up" : t.code === "S" ? "down" : "neutral"} className="px-1.5 text-2xs">{TXN_LABEL[t.code] ?? t.code}</Pill>
-                        <span className="min-w-0 flex-1 truncate">{t.owner}{t.title && <span className="text-muted-foreground"> · {t.title}</span>}</span>
-                        <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd) : fmtShares(t.shares)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
+                {ins.txns.length > 0 && <InsiderTxns txns={ins.txns} />}
               </>
             )}
           </Section>

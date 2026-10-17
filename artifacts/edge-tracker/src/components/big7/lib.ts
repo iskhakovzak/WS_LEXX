@@ -311,6 +311,8 @@ export type Catalyst = {
   type: string;
   description: string | null;
   impact: string;
+  /** Author (server created_by). null = legacy → staff-only edit/delete. */
+  createdBy?: string | null;
 };
 /** Earnings found in the shared earnings calendar (not stored in big7_catalysts). */
 export type AutoEarning = { ticker: string; date: string; callType: string; epsEstimate: number | null };
@@ -400,11 +402,12 @@ export type MergedCatalyst = {
   auto: boolean;
   marketWide: boolean;
   id?: number;
+  createdBy?: string | null;
 };
 export function mergeCatalysts(catalysts: Catalyst[], auto: AutoEarning[]): MergedCatalyst[] {
   const out: MergedCatalyst[] = catalysts.map((c) => ({
     key: `c${c.id}`, ticker: c.ticker, date: c.date, type: c.type, description: c.description,
-    impact: c.impact, auto: false, marketWide: isMarketWide(c), id: c.id,
+    impact: c.impact, auto: false, marketWide: isMarketWide(c), id: c.id, createdBy: c.createdBy ?? null,
   }));
   const manualEarnings = new Set(catalysts.filter((c) => c.type === "earnings").map((c) => `${c.ticker}|${c.date}`));
   for (const a of auto) {

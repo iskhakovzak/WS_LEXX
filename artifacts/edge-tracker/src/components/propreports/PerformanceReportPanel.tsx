@@ -116,7 +116,9 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
   const visible = React.useMemo(() => {
     if (mode === "all") return sorted.rows;
     const byNet = [...rows].sort((a, b) => b.totals.net - a.totals.net);
-    return mode === "best" ? byNet.slice(0, 15) : byNet.slice(-15).reverse();
+    const pick = new Set(mode === "best" ? byNet.slice(0, 15) : byNet.slice(-15));
+    // the subset is chosen by net, but displayed in the column order the user picked
+    return sorted.rows.filter((r) => pick.has(r));
   }, [mode, rows, sorted.rows]);
   const best = rows.length ? Math.max(...rows.map((r) => r.totals.net)) : 0;
   const worst = rows.length ? Math.min(...rows.map((r) => r.totals.net)) : 0;
@@ -127,11 +129,14 @@ function SymbolTable({ rows }: { rows: PerfRow[] }) {
         <Segmented
           ariaLabel="Фильтр тикеров"
           value={mode}
-          onChange={setMode}
+          onChange={(m) => {
+            setMode(m);
+            if (m !== "all") { sorted.setSortKey("net"); sorted.setSortDir(m === "best" ? "desc" : "asc"); }
+          }}
           options={[{ value: "all", label: "Все" }, { value: "best", label: "Лучшие 15" }, { value: "worst", label: "Худшие 15" }]}
         />
       </div>
-      <DataTable maxHeight={420} stickyFirstCol ariaLabel="Статистика по тикерам">
+      <DataTable maxHeight="70vh" stickyFirstCol ariaLabel="Статистика по тикерам">
         <table>
           <thead>
             <tr>

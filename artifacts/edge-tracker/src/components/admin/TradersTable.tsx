@@ -407,7 +407,7 @@ function TraderSheet({
   const journalPct = u ? Math.min(1, u.journal30 / 21) : 0;
   return (
     <Sheet open={!!u} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-lg">
         {u && (
           <>
             <SheetHeader className="gap-2 border-b border-[var(--glass-border)] p-5 text-left">

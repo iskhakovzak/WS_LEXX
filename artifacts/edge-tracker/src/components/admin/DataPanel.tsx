@@ -127,7 +127,7 @@ function IntegrationStatusCard() {
             {errors && errors.items.length > 0 ? (
               <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {errors.items.slice(0, 5).map((e, i) => (
-                  <li key={i} className="truncate" title={e.text}>{e.at ? `${fmtDateTime(e.at)} · ` : ""}{e.text}</li>
+                  <li key={i} className="break-words">{e.at ? `${fmtDateTime(e.at)} · ` : ""}{e.text}</li>
                 ))}
               </ul>
             ) : (
@@ -187,7 +187,7 @@ function ImportHistoryCard() {
                     </td>
                     <td>
                       <Pill tone={s.tone} dot>{s.label}</Pill>
-                      {r.errorText && <div className="max-w-[12rem] truncate text-2xs text-down" title={r.errorText}>{r.errorText}</div>}
+                      {r.errorText && <div className="max-w-[20rem] whitespace-normal break-words text-2xs text-down">{r.errorText}</div>}
                     </td>
                     <td className="text-right tabular-nums">{r.inserted}</td>
                     <td className="text-right tabular-nums">{r.updated}</td>
@@ -277,7 +277,7 @@ function DataQualityCard() {
                     <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Примеры ({Math.min(c.sample.length, 25)})</summary>
                     <ul className="mt-1 flex flex-col gap-0.5 tabular-nums">
                       {c.sample.slice(0, 25).map((row, i) => (
-                        <li key={i} className="truncate">
+                        <li key={i} className="break-words">
                           {typeof row.id === "number"
                             ? <Link href={links.trade(row.id)} className="text-primary underline-offset-2 hover:underline">#{row.id}</Link>
                             : null}{" "}

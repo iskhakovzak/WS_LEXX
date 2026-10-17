@@ -150,7 +150,7 @@ export function SubSetupsSection({
       )}
 
       <Dialog open={pickOpen} onOpenChange={(v) => { setPickOpen(v); if (!v) setSearch(""); }}>
-        <DialogContent className="flex max-h-[80vh] max-w-xl flex-col">
+        <DialogContent className="flex max-h-[85dvh] max-w-2xl flex-col">
           <DialogHeader>
             <DialogTitle>Вложить существующий сетап</DialogTitle>
             <DialogDescription>Он станет вариантом «{entry.name}».</DialogDescription>

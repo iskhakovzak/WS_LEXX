@@ -52,6 +52,7 @@ import { TradeFormDialog, ChecklistDialog, formSaveError } from "@/components/tr
 import { useTradesQuality } from "@/components/replay/hooks";
 import { useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { BulkActionBar } from "@/components/trades/BulkActionBar";
+import { AddTradesToPlaybookDialog } from "@/components/playbook/quick-add";
 import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
 import { PRESET_META, hasTag, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
 import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
@@ -75,6 +76,8 @@ const SHORTCUTS: [string, string][] = [
 
 const EMPTY_OUTCOMES: Record<Outcome, number> = { all: 0, win: 0, loss: 0, breakeven: 0, open: 0 };
 const DAYS_PAGE = 30;
+/** Min width of the ROW_GRID rows (sum of its fixed tracks + gaps + padding). */
+const ROWS_MIN_W = "min-w-[900px]";
 const KEY_KIND: Record<string, TagKind> = { s: "setup", "ы": "setup", m: "mistake", "ь": "mistake", e: "emotion", "у": "emotion" };
 
 /** Strip a one-shot param (?highlight, ?new, ?fromIdea) without touching the filter state in the URL. */
@@ -212,6 +215,8 @@ export default function Trades() {
 
   // ── Selection / focus / sheet ────────────────────────────────────────────
   const [selected, setSelected] = useState<Set<number>>(new Set());
+  // «В плейбук» from a row icon or the bulk bar (one dialog for the page).
+  const [pbTradeIds, setPbTradeIds] = useState<number[] | null>(null);
   const lastToggledRef = useRef<number | null>(null);
   const [activeId, setActiveId] = useState<number | null>(null);
   const [openId, setOpenId] = useState<number | null>(null);
@@ -601,7 +606,7 @@ export default function Trades() {
 
   // ── Keyboard ─────────────────────────────────────────────────────────────
   const [helpOpen, setHelpOpen] = useState(false);
-  const modalOpen = formOpen || checklistOpen || confirmBulkDelete;
+  const modalOpen = formOpen || checklistOpen || confirmBulkDelete || !!pbTradeIds;
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || modalOpen) return;
@@ -643,6 +648,7 @@ export default function Trades() {
     onOpen: openTradeSheet,
     onToggle: toggle,
     onFocusRow: setActiveId,
+    onAddToPlaybook: user?.role !== "guest" ? (t: Trade) => setPbTradeIds([t.id]) : undefined,
   });
 
   const isPending = createMut.isPending || updateMut.isPending;
@@ -753,8 +759,13 @@ export default function Trades() {
             )
           ) : (
             <div role="table" aria-label="Сделки" className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
-              <RowsHeader showDate />
-              {P.items.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate />)}
+              {/* Fixed-width grid columns (~900px): scroll sideways on narrow screens instead of clipping Нетто/Захват. */}
+              <div className="overflow-x-auto">
+                <div className={ROWS_MIN_W}>
+                  <RowsHeader showDate sort={sort} onSort={F.toggleSort} />
+                  {P.items.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate />)}
+                </div>
+              </div>
               <TradePagination
                 page={page}
                 pageSize={pageSize}
@@ -783,8 +794,12 @@ export default function Trades() {
               <DayCard key={d.date} day={d} expanded={isOpen} onToggle={() => toggleDay(d.date)} trader={traderForLinks}>
                 {rows == null ? <RowsSkeleton rows={Math.min(6, d.count)} /> : (
                   <div role="table" aria-label={`Сделки за ${d.date}`}>
-                    <RowsHeader showDate={false} />
-                    {rows.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate={false} />)}
+                    <div className="overflow-x-auto">
+                      <div className={ROWS_MIN_W}>
+                        <RowsHeader showDate={false} />
+                        {rows.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate={false} />)}
+                      </div>
+                    </div>
                     {rows.length >= 500 && d.count > rows.length && (
                       <p className="px-3 py-2 text-xs text-muted-foreground">Показаны первые 500 из {d.count}. Остальные — в режиме «Списком» с фильтром по дате.</p>
                     )}
@@ -826,8 +841,14 @@ export default function Trades() {
           } : undefined}
           onDelete={canDeleteSelection ? () => (selectedIds.length === 1 ? deleteTrades(selectedIds) : setConfirmBulkDelete(true)) : undefined}
           onClear={() => setSelected(new Set())}
+          onAddToPlaybook={user?.role !== "guest" ? () => setPbTradeIds(selectedIds) : undefined}
         />
       )}
+      <AddTradesToPlaybookDialog
+        open={!!pbTradeIds}
+        onOpenChange={(v) => { if (!v) setPbTradeIds(null); }}
+        tradeIds={pbTradeIds ?? []}
+      />
 
       <TradeDetailSheet
         trade={openTrade}
@@ -848,7 +869,6 @@ export default function Trades() {
         setupOptions={setupOptions}
         traderName={me}
         isCurator={isStaff}
-        userKey={user?.traderName || "Guest"}
         voiceNoteKey={voiceNoteKey}
         holidayEvents={openTrade ? holidayByDate.get(dayOf(openTrade)) ?? [] : []}
       />

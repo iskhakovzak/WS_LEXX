@@ -42,7 +42,7 @@ export type ChartData = {
   baseSec: number;
   prevClose: number | null;
   executions: Execution[];
-  /** Recognised structure of the trade (null when executions were passed in or the API sent none). */
+  /** Recognised structure of the trade (passed in with the executions, or from the API; null when it sent none). */
   structure: TradeStructureDto | null;
   events: MarketEventLite[];
   daily: { bars: Candle[]; loading: boolean; requested: boolean; request: () => void };
@@ -52,7 +52,7 @@ export type ChartData = {
   multiDay: boolean;
 };
 
-export function useChartData(trade: TradeLike, opts: { executions?: Execution[]; contextDays?: number; enabled?: boolean } = {}): ChartData {
+export function useChartData(trade: TradeLike, opts: { executions?: Execution[]; structure?: TradeStructureDto | null; contextDays?: number; enabled?: boolean } = {}): ChartData {
   const contextDays = opts.contextDays ?? 2;
   const enabled = opts.enabled !== false && Boolean(trade.ticker && trade.date);
   const { dateKey, toKey, fromKey, multiDay } = React.useMemo(() => tradeWindow(trade, contextDays), [trade, contextDays]);
@@ -105,7 +105,7 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
     baseInterval, baseSec,
     prevClose: bars.data?.prevClose ?? null,
     executions,
-    structure: opts.executions === undefined ? execs.data?.structure ?? null : null,
+    structure: opts.executions === undefined ? execs.data?.structure ?? null : opts.structure ?? null,
     events: events.data ?? [],
     daily: { bars: daily.data?.candles ?? [], loading: daily.isLoading, requested: dailyRequested, request: requestDaily },
     loading: bars.isLoading || (opts.executions === undefined && execs.isLoading),

@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
 import { Receipt, RefreshCw } from "lucide-react";
-import { Panel, StatCard, StatGrid, Segmented, EmptyState, TableScroll, toneOf } from "@/components/ds";
+import { Panel, StatCard, StatGrid, Segmented, EmptyState, SortableTh, TableScroll, toneOf, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { type AnalyticsFilters, fmtUsd, fmtPct, sdeal, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
-import { type EdgeCostGroup, useEdgeCosts, edgeKeyLabel } from "./edge-api";
+import { type EdgeCostGroup, type EdgeCostRow, useEdgeCosts, edgeKeyLabel } from "./edge-api";
 
 const GROUP_LABEL: Record<EdgeCostGroup, string> = { trader: "Трейдер", account: "Счёт", month: "Месяц", setup: "Сетап", horizon: "Горизонт" };
 
@@ -28,7 +28,7 @@ export function CostsTab({ filters, isCurator }: { filters: AnalyticsFilters; is
         <StatGrid>{Array.from({ length: 6 }, (_, i) => <Skeleton key={i} className="h-[96px] rounded-2xl" />)}</StatGrid>
       ) : noPnl ? (
         <Panel>
-          <EmptyState icon={Receipt} title="Нет сделок с P&L" description="Издержки считаются по сделкам с заполненным P&L и комиссиями (вручную или из PropReports). Пока таких сделок под фильтры нет." />
+          <EmptyState icon={Receipt} title="Нет сделок с P&L" description="Издержки считаются по сделкам с P&L и комиссиями. Пока таких сделок под фильтры нет." />
         </Panel>
       ) : (
         <>
@@ -63,38 +63,7 @@ export function CostsTab({ filters, isCurator }: { filters: AnalyticsFilters; is
                     </BarChart>
                   </ResponsiveContainer>
                 </div>
-                <TableScroll className="mt-3">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="text-muted-foreground">
-                        <th className="px-2 py-1.5 text-left font-medium">{GROUP_LABEL[group]}</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Сделок</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Брутто</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Комиссии</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Нетто</th>
-                        <th className="px-2 py-1.5 text-right font-medium">% от прибыли</th>
-                        <th className="px-2 py-1.5 text-right font-medium">$/сделка</th>
-                        <th className="px-2 py-1.5 text-right font-medium">¢/акция</th>
-                        <th className="px-2 py-1.5 text-right font-medium">Проскальз.</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.items.map((r) => (
-                        <tr key={r.key} className="border-t border-border/50 tabular-nums">
-                          <td className="px-2 py-1.5 font-medium">{edgeKeyLabel(group, r.key, 30)}</td>
-                          <td className="px-2 py-1.5 text-right text-muted-foreground">{r.tradesWithPnl}<span className="text-muted-foreground/60"> / {r.trades}</span></td>
-                          <td className={cn("px-2 py-1.5 text-right", toneOf(r.gross) === "up" ? "text-up" : toneOf(r.gross) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(r.gross)}</td>
-                          <td className="px-2 py-1.5 text-right text-muted-foreground">{r.fees ? `−${money(r.fees, r.fees >= 100 ? 0 : 2)}` : "—"}</td>
-                          <td className={cn("px-2 py-1.5 text-right font-medium", toneOf(r.net) === "up" ? "text-up" : toneOf(r.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(r.net)}</td>
-                          <td className={cn("px-2 py-1.5 text-right", r.feePctOfGrossWins != null && r.feePctOfGrossWins > 0.3 ? "text-down" : "text-muted-foreground")}>{fmtPct(r.feePctOfGrossWins, 1)}</td>
-                          <td className="px-2 py-1.5 text-right text-muted-foreground">{money(r.feePerTrade)}</td>
-                          <td className="px-2 py-1.5 text-right text-muted-foreground">{r.feePerShare != null ? (r.feePerShare * 100).toFixed(2) : "—"}</td>
-                          <td className="px-2 py-1.5 text-right text-muted-foreground">{r.slippageAvg != null ? r.slippageAvg.toFixed(2) : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </TableScroll>
+                <CostsTable key={group} group={group} items={data.items} />
               </>
             )}
             <p className="mt-2 text-2xs text-muted-foreground">Нетто = брутто − |комиссии|. «% от прибыли» — комиссии относительно суммы прибыльных сделок до комиссий: сколько заработанного уходит брокеру. Сделки без P&L в суммы не входят.</p>
@@ -102,5 +71,63 @@ export function CostsTab({ filters, isCurator }: { filters: AnalyticsFilters; is
         </>
       )}
     </div>
+  );
+}
+
+type CostRow = EdgeCostRow & { order: number };
+const COST_ACCESSORS = {
+  // Hidden key: server order (chronological for months, natural for horizons).
+  order: (r: CostRow) => r.order,
+  key: (r: CostRow) => r.key,
+  trades: (r: CostRow) => r.tradesWithPnl,
+  gross: (r: CostRow) => r.gross,
+  fees: (r: CostRow) => r.fees,
+  net: (r: CostRow) => r.net,
+  feePct: (r: CostRow) => r.feePctOfGrossWins,
+  perTrade: (r: CostRow) => r.feePerTrade,
+  perShare: (r: CostRow) => r.feePerShare,
+  slippage: (r: CostRow) => r.slippageAvg,
+} as const;
+
+const TH = "px-2 py-1.5 font-medium";
+
+/** Gross vs net per group; sortable headers (months / horizons keep their natural order until a header is clicked). */
+function CostsTable({ group, items }: { group: EdgeCostGroup; items: EdgeCostRow[] }) {
+  const indexed = useMemo(() => items.map((r, order) => ({ ...r, order })), [items]);
+  const natural = group === "month" || group === "horizon";
+  const { rows, thProps } = useTableSort(indexed, COST_ACCESSORS, natural ? "order" : "net", natural ? "asc" : "desc");
+  return (
+    <TableScroll className="mt-3">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="text-muted-foreground">
+            <SortableTh {...thProps("key")} className={cn(TH, "text-left")}>{GROUP_LABEL[group]}</SortableTh>
+            <SortableTh {...thProps("trades")} align="right" className={TH}>Сделок</SortableTh>
+            <SortableTh {...thProps("gross")} align="right" className={TH}>Брутто</SortableTh>
+            <SortableTh {...thProps("fees")} align="right" className={TH}>Комиссии</SortableTh>
+            <SortableTh {...thProps("net")} align="right" className={TH}>Нетто</SortableTh>
+            <SortableTh {...thProps("feePct")} align="right" className={TH}>% от прибыли</SortableTh>
+            <SortableTh {...thProps("perTrade")} align="right" className={TH}>$/сделка</SortableTh>
+            <SortableTh {...thProps("perShare")} align="right" className={TH}>¢/акция</SortableTh>
+            <SortableTh {...thProps("slippage")} align="right" className={TH}>Проскальз.</SortableTh>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.key} className="border-t border-border/50 tabular-nums">
+              <td className="px-2 py-1.5 font-medium">{edgeKeyLabel(group, r.key, 30)}</td>
+              <td className="px-2 py-1.5 text-right text-muted-foreground">{r.tradesWithPnl}<span className="text-muted-foreground/60"> / {r.trades}</span></td>
+              <td className={cn("px-2 py-1.5 text-right", toneOf(r.gross) === "up" ? "text-up" : toneOf(r.gross) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(r.gross)}</td>
+              <td className="px-2 py-1.5 text-right text-muted-foreground">{r.fees ? `−${money(r.fees, r.fees >= 100 ? 0 : 2)}` : "—"}</td>
+              <td className={cn("px-2 py-1.5 text-right font-medium", toneOf(r.net) === "up" ? "text-up" : toneOf(r.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(r.net)}</td>
+              <td className={cn("px-2 py-1.5 text-right", r.feePctOfGrossWins != null && r.feePctOfGrossWins > 0.3 ? "text-down" : "text-muted-foreground")}>{fmtPct(r.feePctOfGrossWins, 1)}</td>
+              <td className="px-2 py-1.5 text-right text-muted-foreground">{money(r.feePerTrade)}</td>
+              <td className="px-2 py-1.5 text-right text-muted-foreground">{r.feePerShare != null ? (r.feePerShare * 100).toFixed(2) : "—"}</td>
+              <td className="px-2 py-1.5 text-right text-muted-foreground">{r.slippageAvg != null ? r.slippageAvg.toFixed(2) : "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </TableScroll>
   );
 }

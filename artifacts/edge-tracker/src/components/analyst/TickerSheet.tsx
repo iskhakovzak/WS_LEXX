@@ -10,7 +10,7 @@ import {
 import {
   CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Scatter, Tooltip, XAxis, YAxis, Cell,
 } from "recharts";
-import { Delta, EmptyState, Pill, Sparkline, StatRow, TermTooltip } from "@/components/ds";
+import { Delta, EmptyState, Pill, SortableTh, Sparkline, StatRow, TermTooltip, useTableSort } from "@/components/ds";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,6 +46,65 @@ function consensus(items: FeedAction[]) {
   const avg = pts.length ? pts.reduce((s, x) => s + x, 0) / pts.length : null;
   const median = pts.length ? pts[Math.floor(pts.length / 2)] : null;
   return { firms: latest.size, counts, avg, median, low: pts[0] ?? null, high: pts[pts.length - 1] ?? null };
+}
+
+type FirmOnTicker = ReactionDetail["byFirm"][number];
+type FirmKey = "firm" | "events" | "power" | "hit" | "last";
+/** Strength / hit rate are only meaningful from 2 measured reactions (same rule as the cells). */
+const FIRM_ACCESSORS: Record<FirmKey, (f: FirmOnTicker) => number | string | null> = {
+  firm: (f) => f.firm,
+  events: (f) => f.events,
+  power: (f) => (f.all.n >= 2 ? f.all.avgRatio : null),
+  hit: (f) => (f.all.n >= 2 ? f.all.hitRate : null),
+  last: (f) => (f.lastAt ? Date.parse(f.lastAt) : null),
+};
+const FIRMS_COLLAPSED = 8;
+
+function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
+  const { rows: sorted, thProps } = useTableSort(rows, FIRM_ACCESSORS, "events");
+  const [all, setAll] = React.useState(false);
+  const shown = all ? sorted : sorted.slice(0, FIRMS_COLLAPSED);
+  return (
+    <>
+      <table className="w-full table-fixed text-xs tabular-nums">
+        <colgroup>
+          <col />
+          <col style={{ width: 72 }} />
+          <col style={{ width: 64 }} />
+          <col style={{ width: 88 }} />
+          <col style={{ width: 96 }} />
+        </colgroup>
+        <thead>
+          <tr className="text-2xs text-muted-foreground">
+            <SortableTh {...thProps("firm")} className="pb-1 text-left font-medium">Фирма</SortableTh>
+            <SortableTh {...thProps("events")} align="right" className="pb-1 font-medium">Событий</SortableTh>
+            <SortableTh {...thProps("power")} align="right" className="pb-1 font-medium">Сила</SortableTh>
+            <SortableTh {...thProps("hit")} align="right" className="pb-1 font-medium">В сторону</SortableTh>
+            <SortableTh {...thProps("last")} align="right" className="pb-1 font-medium">Последнее</SortableTh>
+          </tr>
+        </thead>
+        <tbody>
+          {shown.map((f) => {
+            const agg = f.all;
+            return (
+              <tr key={f.firm} className="border-t border-border/50">
+                <td className="truncate py-1.5 pr-2 text-foreground" title={f.firm}>{f.firm}</td>
+                <td className="py-1.5 text-right">{f.events}</td>
+                <td className="py-1.5 text-right">{agg.n >= 2 && agg.avgRatio != null ? `×${agg.avgRatio.toFixed(1)}` : "—"}</td>
+                <td className="py-1.5 text-right">{agg.n >= 2 && agg.hitRate != null ? `${Math.round(agg.hitRate * 100)}%` : "—"}</td>
+                <td className="py-1.5 text-right text-muted-foreground">{f.lastAt ? relAgo(f.lastAt) : "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {rows.length > FIRMS_COLLAPSED && (
+        <button type="button" className="mt-1 text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
+          {all ? "Свернуть" : `Показать все ${rows.length}`}
+        </button>
+      )}
+    </>
+  );
 }
 
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
@@ -348,38 +407,7 @@ export function TickerSheet({
             {rx.data && rx.data.byFirm.length > 0 && (
               <section aria-label="Фирмы по тикеру">
                 <div className="micro-label mb-2">Фирмы по тикеру</div>
-                <table className="w-full table-fixed text-xs tabular-nums">
-                  <colgroup>
-                    <col />
-                    <col style={{ width: 56 }} />
-                    <col style={{ width: 72 }} />
-                    <col style={{ width: 84 }} />
-                    <col style={{ width: 84 }} />
-                  </colgroup>
-                  <thead>
-                    <tr className="text-2xs text-muted-foreground">
-                      <th scope="col" className="pb-1 text-left font-medium">Фирма</th>
-                      <th scope="col" className="pb-1 text-right font-medium">Событий</th>
-                      <th scope="col" className="pb-1 text-right font-medium">Сила</th>
-                      <th scope="col" className="pb-1 text-right font-medium">В сторону</th>
-                      <th scope="col" className="pb-1 text-right font-medium">Последнее</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rx.data.byFirm.slice(0, 8).map((f) => {
-                      const agg = f.all;
-                      return (
-                        <tr key={f.firm} className="border-t border-border/50">
-                          <td className="truncate py-1.5 pr-2 text-foreground" title={f.firm}>{f.firm}</td>
-                          <td className="py-1.5 text-right">{f.events}</td>
-                          <td className="py-1.5 text-right">{agg.n >= 2 && agg.avgRatio != null ? `×${agg.avgRatio.toFixed(1)}` : "—"}</td>
-                          <td className="py-1.5 text-right">{agg.n >= 2 && agg.hitRate != null ? `${Math.round(agg.hitRate * 100)}%` : "—"}</td>
-                          <td className="py-1.5 text-right text-muted-foreground">{f.lastAt ? relAgo(f.lastAt) : "—"}</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                <FirmsOnTicker rows={rx.data.byFirm} />
                 {rx.data.byFirm.some((f) => f.all.n < WEIGHT_MIN_N) && (
                   <p className="mt-1 text-2xs text-muted-foreground">Сила и «в сторону» по 2+ событиям с измеренной реакцией; меньше {WEIGHT_MIN_N} — ориентир, не статистика.</p>
                 )}

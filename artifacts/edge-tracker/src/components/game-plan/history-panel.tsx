@@ -51,7 +51,7 @@ export function HistoryPanel({
           }}
         />
       </label>
-      <div className="mt-3 max-h-[480px] overflow-y-auto pr-1">
+      <div className="mt-3 max-h-[min(70dvh,720px)] overflow-y-auto pr-1">
         {hq.isLoading ? (
           <div className="flex flex-col gap-2">
             {Array.from({ length: 5 }).map((_, i) => (

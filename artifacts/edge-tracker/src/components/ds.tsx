@@ -127,7 +127,8 @@ export function PageHeader({
   return (
     <header className={cn("flex flex-col gap-4", className)}>
       <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-        <div className="flex min-w-0 flex-1 items-center gap-3">
+        {/* min width: on narrow screens the actions wrap below instead of squeezing the title to a sliver */}
+        <div className="flex min-w-[min(100%,15rem)] flex-1 items-center gap-3">
           {Icon && (
             <span className="glass-panel grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary">
               <Icon className="h-5 w-5" aria-hidden="true" />
@@ -137,11 +138,11 @@ export function PageHeader({
             <h1 className="truncate text-xl font-semibold leading-tight tracking-tight text-foreground sm:text-2xl" title={textTitle(title)}>
               {title}
             </h1>
-            {description && <p className="mt-1 line-clamp-2 max-w-3xl text-sm text-muted-foreground">{description}</p>}
+            {description && <p className="mt-1 line-clamp-3 max-w-3xl text-sm text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
             {meta && <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">{meta}</div>}
           </div>
         </div>
-        {actions && <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
+        {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center justify-end gap-2">{actions}</div>}
       </div>
       {children}
     </header>
@@ -185,14 +186,14 @@ export function Panel({
     <As className={cn("glass-panel min-w-0 rounded-2xl", fill && "flex h-full flex-col", className)} {...rest}>
       {hasHeader && (
         <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-2 px-[var(--panel-p)] pt-[var(--panel-p)]">
-          <div className="flex min-w-0 flex-1 items-center gap-2">
+          <div className="flex min-w-[min(100%,12rem)] flex-1 items-center gap-2">
             {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
             <div className="min-w-0">
               {title && <h2 className="truncate text-sm font-semibold text-foreground" title={textTitle(title)}>{title}</h2>}
-              {description && <p className="line-clamp-2 text-xs text-muted-foreground">{description}</p>}
+              {description && <p className="line-clamp-3 text-xs text-muted-foreground sm:line-clamp-2" title={textTitle(description)}>{description}</p>}
             </div>
           </div>
-          {actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
+          {actions && <div className="flex max-w-full shrink-0 flex-wrap items-center gap-2">{actions}</div>}
         </div>
       )}
       <div
@@ -399,7 +400,7 @@ export function Pill({
   );
 }
 
-export type SegmentOption<T extends string> = { value: T; label: React.ReactNode; count?: number; disabled?: boolean };
+export type SegmentOption<T extends string> = { value: T; label: React.ReactNode; count?: number; disabled?: boolean; /** Native tooltip (e.g. why the option is disabled). */ title?: string };
 
 /**
  * Segmented control: pill track, active segment solid accent. Single-select.
@@ -437,6 +438,7 @@ export function Segmented<T extends string>({
             type="button"
             aria-pressed={active}
             disabled={o.disabled}
+            title={o.title}
             onClick={() => onChange(o.value as T)}
             className={cn(
               "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)] ease-smooth disabled:opacity-50",
@@ -1035,8 +1037,9 @@ export function SortableTh({
       <button
         type="button"
         onClick={onSort}
+        title={active ? (dir === "asc" ? "По возрастанию — нажмите, чтобы сменить" : "По убыванию — нажмите, чтобы сменить") : "Сортировать"}
         className={cn(
-          "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground",
+          "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           active && "text-foreground",
           align === "right" && "flex-row-reverse",
         )}
@@ -1054,20 +1057,24 @@ export function SortableTh({
  *   const { rows, thProps } = useTableSort(trades, { pnl: (t) => t.pnl, ticker: (t) => t.ticker }, "pnl");
  *   <SortableTh {...thProps("pnl")} align="right">P&L</SortableTh>
  * Keep `accessors` stable (module constant or useMemo) to avoid re-sorting every render.
+ * `firstDir` (optional) — direction applied when a column is first clicked; default "desc".
+ * Handy for text columns: `{ name: "asc" }` sorts А→Я on the first click.
  */
 export function useTableSort<Row, K extends string>(
   data: readonly Row[],
   accessors: Record<K, (row: Row) => number | string | null | undefined>,
   initialKey: NoInfer<K>,
   initialDir: SortDir = "desc",
+  firstDir?: Partial<Record<NoInfer<K>, SortDir>>,
 ) {
   const [sortKey, setSortKey] = React.useState<K>(initialKey);
   const [sortDir, setSortDir] = React.useState<SortDir>(initialDir);
   const toggle = React.useCallback(
     (k: K) => {
       if (k === sortKey) setSortDir((d) => (d === "asc" ? "desc" : "asc"));
-      else { setSortKey(k); setSortDir("desc"); }
+      else { setSortKey(k); setSortDir(firstDir?.[k] ?? "desc"); }
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [sortKey],
   );
   const get = accessors[sortKey];

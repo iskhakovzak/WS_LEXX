@@ -183,7 +183,7 @@ export function SetupFormDialog({
 
   return (
     <Dialog open={!!mode} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-h-[92vh] w-full max-w-3xl overflow-y-auto">
+      <DialogContent className="max-h-[85dvh] w-full max-w-3xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex flex-wrap items-center gap-2">
             {title}

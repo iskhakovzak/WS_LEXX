@@ -67,7 +67,7 @@ export function MoveToFolderButton({
       <PopoverContent className="w-[min(300px,calc(100vw-2rem))] p-0" align="end">
         <Command className="bg-transparent">
           <CommandInput value={search} onValueChange={setSearch} placeholder="Найти или создать папку" aria-label="Найти или создать папку" />
-          <CommandList className="max-h-72">
+          <CommandList className="max-h-[min(55dvh,440px)]">
             <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">Папок не найдено</CommandEmpty>
             {typed && !exists && (
               <CommandGroup>

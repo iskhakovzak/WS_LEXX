@@ -229,3 +229,46 @@ export function normalizeBreachActions(raw: ReadonlyArray<{ id?: string; title: 
   });
   return out.slice(0, 10);
 }
+
+// ─── очередь разборов ───────────────────────────────────────────────────────
+
+export type QueueKind = "eod" | "weekly" | "academy" | "breach";
+export const QUEUE_SLA_HOURS: Record<QueueKind, number> = { eod: 24, weekly: 48, academy: 72, breach: 24 };
+/** По умолчанию очередь показывает только последние N дней; старое — по запросу или в архив. */
+export const QUEUE_DEFAULT_DAYS = 14;
+/** Важность типа: нарушения риска — первыми, затем дни/недели, затем задания Академии. */
+const QUEUE_KIND_RANK: Record<QueueKind, number> = { breach: 0, eod: 1, weekly: 1, academy: 2 };
+
+export type QueueItemBase = { kind: QueueKind; id: string; since: string | null; hoursWaiting: number | null };
+export type QueueItem<T extends QueueItemBase> = T & { overdue: boolean; slaHours: number; old: boolean };
+
+/**
+ * Упорядочить и отсечь очередь: убрать архивированные (acked), пометить просрочку SLA,
+ * спрятать элементы старше `cutoffDays` (если не `includeOld`), отсортировать —
+ * сначала важные типы, внутри — самые свежие. Возвращает видимые элементы и сводку по скрытым старым.
+ */
+export function arrangeQueue<T extends QueueItemBase>(
+  items: readonly T[],
+  opts: { cutoffDays?: number; includeOld?: boolean; acked?: ReadonlySet<string> } = {},
+): { items: QueueItem<T>[]; old: { count: number; overdue: number } } {
+  const cutoffHours = (opts.cutoffDays ?? QUEUE_DEFAULT_DAYS) * 24;
+  const all = items
+    .filter((q) => !opts.acked?.has(q.id))
+    .map((q) => {
+      const h = q.hoursWaiting ?? 0;
+      return { ...q, overdue: h > QUEUE_SLA_HOURS[q.kind], slaHours: QUEUE_SLA_HOURS[q.kind], old: h > cutoffHours };
+    });
+  const oldItems = all.filter((q) => q.old);
+  const visible = opts.includeOld ? all : all.filter((q) => !q.old);
+  visible.sort((x, y) =>
+    QUEUE_KIND_RANK[x.kind] - QUEUE_KIND_RANK[y.kind]
+    || (x.hoursWaiting ?? Infinity) - (y.hoursWaiting ?? Infinity)
+    || x.id.localeCompare(y.id));
+  return { items: visible, old: { count: oldItems.length, overdue: oldItems.filter((q) => q.overdue).length } };
+}
+
+/** Id элементов, которые «архивировать старые» уберёт из очереди (старше cutoffDays, не архивированы). */
+export function staleQueueIds(items: readonly QueueItemBase[], cutoffDays = QUEUE_DEFAULT_DAYS, acked?: ReadonlySet<string>): string[] {
+  const cutoffHours = cutoffDays * 24;
+  return items.filter((q) => !acked?.has(q.id) && (q.hoursWaiting ?? 0) > cutoffHours).map((q) => q.id);
+}

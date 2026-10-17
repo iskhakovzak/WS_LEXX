@@ -76,6 +76,7 @@ export function CompareView({
         </Panel>
       </div>
       <Panel title="По метрикам" padded={false} bodyClassName="p-2">
+        <div className="overflow-x-auto">
         <table className="w-full text-sm tabular-nums">
           <thead>
             <tr className="text-xs text-muted-foreground">
@@ -101,6 +102,7 @@ export function CompareView({
             })}
           </tbody>
         </table>
+        </div>
       </Panel>
     </div>
   );

@@ -170,13 +170,19 @@ export function useSetupExamples(id: number | null, enabled = true) {
   });
 }
 
-export type GalleryFilter = { tier?: number; setupId?: number | null; trader?: string | null; space?: string | null; limit?: number };
+export type GalleryFilter = {
+  tier?: number; setupId?: number | null; trader?: string | null; space?: string | null; limit?: number;
+  /** Close date range, YYYY-MM-DD (inclusive). */
+  from?: string | null; to?: string | null;
+};
 export function useGallery(f: GalleryFilter, enabled = true) {
   const qs = new URLSearchParams();
   if (f.tier) qs.set("tier", String(f.tier));
   if (f.setupId) qs.set("setupId", String(f.setupId));
   if (f.trader) qs.set("trader", f.trader);
   if (f.space) qs.set("space", f.space);
+  if (f.from) qs.set("from", f.from);
+  if (f.to) qs.set("to", f.to);
   qs.set("limit", String(f.limit ?? 120));
   const s = qs.toString();
   return useQuery<SetupExample[]>({
@@ -241,4 +247,35 @@ export function invalidateExamples(qc: QueryClient, ...ids: (number | null | und
   qc.invalidateQueries({ queryKey: ["playbook-health"] });
   qc.invalidateQueries({ queryKey: ["playbook-for-trade"] });
   qc.invalidateQueries({ queryKey: ["playbook-stats"] });
+  qc.invalidateQueries({ queryKey: ["playbook-inbox"] });
+}
+
+/* ───────────────────────── inbox: own recent trades without an example ───────────────────────── */
+
+export type InboxTrade = {
+  id: number; ticker: string; date: string; closeDate: string | null; side: string | null; result: string | null;
+  netPnl: number | null; signedR: number | null; horizon: string | null; trader: string | null; setup: string | null;
+  playbookId: number | null; playbookName: string | null; autoSetup: string | null;
+  suggestion: { id: number; name: string; reason: string; via: "linked" | "auto" | "text" } | null;
+  suggestedTier: 1 | 2 | 3;
+  redacted?: boolean;
+};
+export type InboxResponse = { trader: string | null; days: number; total: number; trades: InboxTrade[] };
+
+/** GET /api/playbook-tools/inbox — null on an older API (404) so the home hides the block. */
+export function usePlaybookInbox(days = 14, enabled = true) {
+  return useQuery<InboxResponse | null>({
+    queryKey: ["playbook-inbox", days],
+    queryFn: async () => {
+      try {
+        return await pbRequest<InboxResponse>(`/api/playbook-tools/inbox?days=${days}&limit=40`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 404) return null;
+        throw e;
+      }
+    },
+    enabled,
+    staleTime: 30_000,
+    retry: 1,
+  });
 }

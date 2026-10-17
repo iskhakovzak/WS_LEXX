@@ -4,7 +4,7 @@ import {
   ArrowLeft, ArrowRight, BookOpen, CalendarCheck, GraduationCap, Layers, LayoutDashboard, NotebookPen, ShieldAlert, Target, TrendingUp, UserRound,
 } from "lucide-react";
 import {
-  BentoGrid, DataTable, EmptyState, LimitBar, Panel, Pill, QueryState, SectionTabs, Sparkline, StatCard, StatGrid, StatusDot, toneText,
+  BentoGrid, DataTable, EmptyState, LimitBar, Panel, Pill, QueryState, SectionTabs, SortableTh, Sparkline, StatCard, StatGrid, StatusDot, toneText, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +31,24 @@ const GOAL_STATUS: Record<string, { label: string; tone: "accent" | "up" | "down
   cancelled: { label: "Отменена", tone: "neutral" },
 };
 const MEETING_FORMAT: Record<string, string> = { call: "Звонок", video: "Видео", offline: "Встреча", chat: "Чат" };
+
+type EodDay = ProfilePayload["eodDays"][number];
+type WeekRow = ProfilePayload["weeks"][number];
+/** 0 — ждёт разбора (наверх), 1 — не закрыт, 2 — разобран. */
+const EOD_ACCESSORS = {
+  date: (d: EodDay) => d.date,
+  status: (d: EodDay) => (d.reviewedAt ? 2 : d.closedAt ? 0 : 1),
+  discipline: (d: EodDay) => d.discipline,
+  score: (d: EodDay) => d.curatorScore,
+};
+const WEEK_ORDER: Record<string, number> = { submitted: 0, draft: 1, reviewed: 2 };
+const WEEK_ACCESSORS = {
+  week: (w: WeekRow) => w.weekStart,
+  status: (w: WeekRow) => WEEK_ORDER[w.status] ?? 3,
+  submitted: (w: WeekRow) => (w.submittedAt ? Date.parse(w.submittedAt) : null),
+  reviewed: (w: WeekRow) => (w.reviewedAt ? Date.parse(w.reviewedAt) : null),
+  score: (w: WeekRow) => w.score,
+};
 
 /** Trader profile inside the cabinet: header with actions + tabs overview / risk / journal / weekly / academy / notes. */
 export function TraderProfile({ trader, tab, onTab, onBack }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void }) {
@@ -246,7 +264,7 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
             <div className="mt-4 flex flex-col gap-1">
               <span className="micro-label">Последние изменения</span>
               {p.limitEvents.map((e) => (
-                <p key={e.id} className="truncate text-xs text-muted-foreground" title={e.reason ?? undefined}>
+                <p key={e.id} className="break-words text-xs text-muted-foreground">
                   <span className="tabular-nums">{dateTime(e.changedAt)}</span> · {e.changedBy ?? "—"}{e.reason ? ` · ${e.reason}` : ""}
                 </p>
               ))}
@@ -261,6 +279,7 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
 }
 
 function JournalTab({ p }: { p: ProfilePayload }) {
+  const { rows, thProps } = useTableSort(p.eodDays, EOD_ACCESSORS, "date");
   return (
     <Panel
       title="Закрытые дни"
@@ -273,9 +292,18 @@ function JournalTab({ p }: { p: ProfilePayload }) {
       ) : (
         <DataTable ariaLabel="Дни дневника">
           <table>
-            <thead><tr><th>Дата</th><th>Статус</th><th className="!text-right">Дисциплина</th><th className="!text-right">Оценка куратора</th><th>Комментарий</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <SortableTh {...thProps("date")}>Дата</SortableTh>
+                <SortableTh {...thProps("status")}>Статус</SortableTh>
+                <SortableTh {...thProps("discipline")} align="right">Дисциплина</SortableTh>
+                <SortableTh {...thProps("score")} align="right">Оценка куратора</SortableTh>
+                <th>Комментарий</th>
+                <th />
+              </tr>
+            </thead>
             <tbody>
-              {p.eodDays.map((d) => (
+              {rows.map((d) => (
                 <tr key={d.id}>
                   <td className="whitespace-nowrap">{shortDate(d.date)}</td>
                   <td>
@@ -283,7 +311,7 @@ function JournalTab({ p }: { p: ProfilePayload }) {
                   </td>
                   <td className={cn("text-right", d.discipline != null && toneText(d.discipline >= 4 ? "up" : d.discipline >= 3 ? "warn" : "down"))}>{d.discipline != null ? `${d.discipline}/5` : "—"}</td>
                   <td className="text-right">{d.curatorScore != null ? `${d.curatorScore}/5` : "—"}</td>
-                  <td className="max-w-[28rem] truncate text-muted-foreground" title={d.curatorComment ?? undefined}>{d.curatorComment ?? ""}</td>
+                  <td className="min-w-[14rem] max-w-[36rem] whitespace-pre-line break-words text-muted-foreground">{d.curatorComment ?? ""}</td>
                   <td className="text-right"><Link href={curatorLinks.journalDay(p.trader, d.date)} className="text-xs text-primary hover:underline">Открыть</Link></td>
                 </tr>
               ))}
@@ -297,6 +325,7 @@ function JournalTab({ p }: { p: ProfilePayload }) {
 
 function WeeklyTab({ p }: { p: ProfilePayload }) {
   const scores = [...p.weeks].reverse().map((w) => w.score);
+  const { rows, thProps } = useTableSort(p.weeks, WEEK_ACCESSORS, "week");
   return (
     <Panel
       title="Недельные отчёты"
@@ -314,9 +343,18 @@ function WeeklyTab({ p }: { p: ProfilePayload }) {
       ) : (
         <DataTable ariaLabel="Недельные отчёты">
           <table>
-            <thead><tr><th>Неделя</th><th>Статус</th><th>Сдан</th><th>Разобран</th><th className="!text-right">Оценка</th><th /></tr></thead>
+            <thead>
+              <tr>
+                <SortableTh {...thProps("week")}>Неделя</SortableTh>
+                <SortableTh {...thProps("status")}>Статус</SortableTh>
+                <SortableTh {...thProps("submitted")}>Сдан</SortableTh>
+                <SortableTh {...thProps("reviewed")}>Разобран</SortableTh>
+                <SortableTh {...thProps("score")} align="right">Оценка</SortableTh>
+                <th />
+              </tr>
+            </thead>
             <tbody>
-              {p.weeks.map((w) => {
+              {rows.map((w) => {
                 const st = WEEK_STATUS[w.status] ?? { label: w.status, tone: "neutral" as const };
                 return (
                   <tr key={w.id}>
@@ -347,7 +385,7 @@ function GoalsList({ goals }: { goals: ProfilePayload["goals"] }) {
         return (
           <li key={g.id} className="tile flex flex-col gap-1.5 p-2.5">
             <div className="flex items-center gap-2 text-sm">
-              <span className="min-w-0 flex-1 truncate font-medium text-foreground" title={g.title}>{g.title}</span>
+              <span className="line-clamp-2 min-w-0 flex-1 break-words font-medium text-foreground" title={g.title}>{g.title}</span>
               <Pill tone={st.tone}>{st.label}</Pill>
             </div>
             <LimitBar size="sm" used={pctDone ?? 0} limit={100} warnAt={0} tone="ok" showValues={false} hint={`${pctDone != null ? `${pctDone}%` : "ещё не считалось"}${g.dueOn ? ` · срок ${shortDate(g.dueOn)}` : ""}`} />
@@ -373,7 +411,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
               {[...open, ...closed].map((a) => (
                 <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm">
                   <StatusDot tone={a.status !== "open" ? "up" : a.overdue ? "down" : "accent"}><span className="sr-only">{ACTION_STATUS[a.status] ?? a.status}</span></StatusDot>
-                  <span className={cn("min-w-0 flex-1 truncate", a.status !== "open" ? "text-muted-foreground line-through" : "text-foreground")} title={a.title}>{a.title}</span>
+                  <span className={cn("line-clamp-2 min-w-0 flex-1 break-words", a.status !== "open" ? "text-muted-foreground line-through" : "text-foreground")} title={a.title}>{a.title}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{a.owner === p.trader ? "трейдер" : a.owner}</span>
                   <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", a.overdue ? "text-down" : "text-muted-foreground")}>{a.dueOn ? shortDate(a.dueOn) : "—"}</span>
                 </li>

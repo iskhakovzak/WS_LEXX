@@ -31,7 +31,7 @@ export function SetupTypeSelect({ value, onChange, id }: { value: string; onChan
       <PopoverContent className="w-[min(320px,calc(100vw-2rem))] p-0" align="start">
         <Command className="bg-transparent">
           <CommandInput value={search} onValueChange={setSearch} placeholder="Поиск типа сетапа" aria-label="Поиск типа сетапа" />
-          <CommandList className="max-h-72">
+          <CommandList className="max-h-[min(55dvh,440px)]">
             <CommandEmpty className="py-4 text-center text-xs text-muted-foreground">Ничего не найдено</CommandEmpty>
             {custom && !known && (
               <CommandGroup heading="Свой тип">

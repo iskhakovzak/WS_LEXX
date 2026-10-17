@@ -108,7 +108,7 @@ export default function Settings() {
     <Page>
       <PageHeader title="Настройки" description="Профиль, торговые параметры, уведомления и команда" icon={SettingsIcon} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5">
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[296px_minmax(0,1fr)]">
         <aside className="min-w-0">
           <SettingsNav ref={searchRef} sections={sections} active={active} onSelect={select} query={query} onQuery={setQuery} badges={badges} />
         </aside>

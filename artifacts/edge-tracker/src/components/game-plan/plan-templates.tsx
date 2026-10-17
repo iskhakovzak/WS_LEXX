@@ -96,7 +96,7 @@ export function TemplateMenu({
         ) : saved.length === 0 ? (
           <p className="px-2 py-1.5 text-xs text-muted-foreground">Пока нет — сохраните текущий план как шаблон</p>
         ) : (
-          <ul className="flex max-h-48 flex-col overflow-y-auto">
+          <ul className="flex max-h-[min(50dvh,420px)] flex-col overflow-y-auto">
             {saved.map((t) => (
               <li key={t.id} className="group flex items-center gap-1">
                 <button

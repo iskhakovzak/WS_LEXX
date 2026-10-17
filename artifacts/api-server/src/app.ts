@@ -76,6 +76,16 @@ const guestLimiter = rateLimit({
 });
 app.use("/api/auth/guest", guestLimiter);
 
+// Same budget as login: POST /auth/init-passwords is public (first-run bootstrap) and takes a secret.
+const initPasswordsLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: "draft-7",
+  legacyHeaders: false,
+  message: { error: "Слишком много попыток, попробуйте позже", code: "RATE_LIMITED" },
+});
+app.use("/api/auth/init-passwords", initPasswordsLimiter);
+
 // Every /api/* request needs a valid token (member or guest). The explicit allowlist
 // (method + path) lives next to the gate in lib/auth.ts: PUBLIC_API_ROUTES.
 // Anonymous → 401 «Требуется вход»; guest on any mutation → 403 «Гостевой режим: только просмотр».

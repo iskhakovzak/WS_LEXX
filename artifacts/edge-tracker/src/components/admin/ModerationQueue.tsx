@@ -298,6 +298,8 @@ function ReportCard({
   const threadHref = t?.discussionId ? `/discussions?thread=${t.discussionId}` : null;
   const many = (r.openReportsOnTarget ?? 0) > 1;
   const canBan = !!t?.author && !t.authorBanned && t.authorRole !== "admin";
+  const [fullText, setFullText] = useState(false);
+  const longPreview = (t?.preview?.length ?? 0) > 240;
 
   return (
     <>
@@ -330,7 +332,16 @@ function ReportCard({
         <blockquote className="rounded-xl border-l-2 border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2 text-sm">
           {t?.deleted
             ? <span className="italic text-muted-foreground">Контент уже удалён</span>
-            : <span className="line-clamp-3 break-words text-foreground/90">{t?.preview}</span>}
+            : (
+              <>
+                <span className={cn("whitespace-pre-line break-words text-foreground/90", !fullText && "line-clamp-3")}>{t?.preview}</span>
+                {longPreview && (
+                  <button type="button" onClick={(e) => { e.stopPropagation(); setFullText((v) => !v); }} className="mt-1 block text-xs text-primary hover:underline">
+                    {fullText ? "Свернуть" : "Показать полностью"}
+                  </button>
+                )}
+              </>
+            )}
           {t?.author && (
             <footer className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               Автор: <span className="font-medium text-foreground">{t.author}</span>

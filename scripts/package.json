@@ -9,7 +9,10 @@
     "import-propreports": "tsx ./src/import-propreports.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "local-db": "tsx ./src/local-db.ts",
-    "restore-dump": "tsx ./src/restore-dump.ts"
+    "local-whisper": "tsx ./src/local-whisper.ts",
+    "restore-dump": "tsx ./src/restore-dump.ts",
+    "seed-demo": "tsx ./src/seed-demo.ts",
+    "unseed-demo": "tsx ./src/seed-demo.ts --unseed"
   },
   "dependencies": {
     "@workspace/db": "workspace:*",

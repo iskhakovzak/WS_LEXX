@@ -65,17 +65,19 @@ export type TraderSignal = {
 
 export type RiskBrief = { trader: string; state: string; label: string; message: string; pnlNet: number | null; dailyPct: number | null; weeklyPct: number | null; drawdownPct: number | null };
 export type QueueKind = "eod" | "weekly" | "academy" | "breach";
-export type QueueItem = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; overdue: boolean; slaHours: number };
+export type QueueItem = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; overdue: boolean; slaHours: number; old?: boolean };
 
 export type TodayPayload = {
   date: string; prevDay: string; phase: Phase; nyMinutes: number; scope: Scope; wards: number; traders: string[]; plansAvailable: boolean;
-  counts: { traders: number; trading: number; halted: number; nearStop: number; noLimits: number; missingPlan: number; missingEod: number; queue: number; queueOverdue: number; overdueActions: number };
+  counts: { traders: number; trading: number; halted: number; nearStop: number; noLimits: number; missingPlan: number; missingEod: number; queue: number; queueOverdue: number; queueOld?: number; queueOldOverdue?: number; overdueActions: number };
   trading: { trader: string; trades: number; pnlNet: number | null; openPositions: number; state: string; dailyPct: number | null }[];
   risk: { halted: RiskBrief[]; nearStop: RiskBrief[]; noLimits: string[] };
   missingPlan: { trader: string; status: "ready" | "draft" | null }[];
   missingEod: { trader: string; date: string }[];
   openToday: { trader: string; date: string }[];
   queue: QueueItem[];
+  /** Окно очереди: по умолчанию последние `days` дней; `old` — сколько старых скрыто. */
+  queueWindow?: { days: number; includeOld: boolean; old: number; oldOverdue: number };
   overdueActions: { id: number; trader: string; title: string; dueOn: string; owner: string; daysOverdue: number }[];
   nextActions: (NextAction & { trader: string })[];
 };
@@ -161,6 +163,7 @@ export type IdpMetric = { key: string; label: string; unit: string; comparator: 
 export const curatorKeys = {
   all: ["curator"] as const,
   today: (scope: Scope | "auto") => ["curator", "today", scope] as const,
+  todayOld: (scope: Scope | "auto") => ["curator", "today", scope, "old"] as const,
   traders: (scope: Scope | "auto") => ["curator", "traders", scope] as const,
   profile: (trader: string) => ["curator", "profile", trader] as const,
   breaches: (trader: string | null) => ["curator", "breaches", trader ?? "*"] as const,
@@ -173,7 +176,11 @@ export const curatorKeys = {
 const scopeQ = (s: Scope | "auto") => (s === "auto" ? "" : `?scope=${s}`);
 
 export const curatorApi = {
-  today: (scope: Scope | "auto") => fetch(apiUrl(`/api/curator/today${scopeQ(scope)}`)).then((r) => asJson<TodayPayload>(r)),
+  today: (scope: Scope | "auto", includeOld = false) =>
+    fetch(apiUrl(`/api/curator/today${scopeQ(scope)}${includeOld ? `${scope === "auto" ? "?" : "&"}old=1` : ""}`)).then((r) => asJson<TodayPayload>(r)),
+  archiveOldQueue: (scope: Scope | "auto", olderThanDays?: number) =>
+    fetch(apiUrl(`/api/curator/queue/archive-old`), json("POST", { ...(scope === "auto" ? {} : { scope }), ...(olderThanDays ? { olderThanDays } : {}) }))
+      .then((r) => asJson<{ archived: number; byKind: Record<string, number>; olderThanDays: number }>(r)),
   traders: (scope: Scope | "auto") => fetch(apiUrl(`/api/curator/traders${scopeQ(scope)}`)).then((r) => asJson<TradersPayload>(r)),
   profile: (trader: string) => fetch(apiUrl(`/api/curator/trader/${enc(trader)}`)).then((r) => asJson<ProfilePayload>(r)),
   addNote: (body: { trader: string; body: string; kind: NoteKind; pinned?: boolean }) =>

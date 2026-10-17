@@ -1,6 +1,8 @@
+import * as React from "react";
 import { Link } from "wouter";
 import { ChevronRight, Users } from "lucide-react";
-import { EmptyState, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, type Tone } from "@/components/ds";
+import { EmptyState, Panel, Pill, StatusDot, limitTone, limitToneToTone, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
+import { SortHead } from "@/components/trades/sort-head";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
@@ -13,6 +15,22 @@ const STATUS_LABEL: Record<RiskDeskRow["status"], string> = { breach: "лими�
 const RANK: Record<RiskDeskRow["status"], number> = { breach: 0, warn: 1, ok: 2, no_limits: 3 };
 
 const COLS = "grid grid-cols-[minmax(0,1fr)_84px_84px_108px] items-center gap-x-3";
+
+/** Daily-limit use 0…1+ (null without a limit); halted traders sort as fully used. */
+function limitUse(r: RiskDeskRow): number | null {
+  if (r.halted) return Number.MAX_SAFE_INTEGER;
+  const limit = r.limits?.dailyLossLimit ?? null;
+  return limit != null && limit > 0 ? Math.max(0, -(r.today.pnlNet ?? 0)) / limit : null;
+}
+
+const DESK_ACCESSORS = {
+  // Default: stopped first, then breach → warn → ok → no limits (alphabetical inside a status).
+  status: (r: RiskDeskRow) => (r.halted ? -1 : RANK[r.status]),
+  trader: (r: RiskDeskRow) => r.trader,
+  today: (r: RiskDeskRow) => r.today.pnlNet ?? (r.today.trades ? r.today.r : null),
+  week: (r: RiskDeskRow) => r.week.pnlNet ?? (r.week.trades ? r.week.r : null),
+  limit: limitUse,
+} as const;
 
 function money(v: number | null, r: number, trades: number) {
   return v != null ? fmtMoney(v) : trades > 0 && r !== 0 ? fmtR(r) : "—";
@@ -66,8 +84,16 @@ export function DeskTodayPanel({ data, isLoading, fill }: { data: RiskDesk | nul
     );
   }
   if (!data) return null;
+  return <DeskTodayBody data={data} fill={fill} />;
+}
+
+function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
   const s = data.summary;
-  const rows = data.traders.filter((r) => !r.banned).sort((a, b) => (a.halted === b.halted ? RANK[a.status] - RANK[b.status] : a.halted ? -1 : 1) || a.trader.localeCompare(b.trader, "ru"));
+  const base = React.useMemo(
+    () => data.traders.filter((r) => !r.banned).sort((a, b) => a.trader.localeCompare(b.trader, "ru")),
+    [data.traders],
+  );
+  const { rows, thProps } = useTableSort(base, DESK_ACCESSORS, "status", "asc");
 
   return (
     <Panel
@@ -104,13 +130,13 @@ export function DeskTodayPanel({ data, isLoading, fill }: { data: RiskDesk | nul
         <EmptyState compact icon={Users} title="Трейдеров нет" />
       ) : (
         <div className="flex min-h-0 flex-1 flex-col">
-          <div className={cn(COLS, "px-2 pb-1 text-2xs text-muted-foreground")} aria-hidden="true">
-            <span>Трейдер</span>
-            <span className="text-right">Сегодня</span>
-            <span className="text-right">Неделя</span>
-            <span className="text-right">Лимит дня</span>
+          <div className={cn(COLS, "px-2 pb-1 text-2xs text-muted-foreground")}>
+            <SortHead plain {...thProps("trader")}>Трейдер</SortHead>
+            <SortHead plain {...thProps("today")} align="right">Сегодня</SortHead>
+            <SortHead plain {...thProps("week")} align="right">Неделя</SortHead>
+            <SortHead plain {...thProps("limit")} align="right" title="Доля использованного дневного лимита убытка">Лимит дня</SortHead>
           </div>
-          <ul className="flex max-h-[340px] flex-col overflow-y-auto" aria-label="Трейдеры деска">
+          <ul className="flex max-h-[min(60dvh,520px)] flex-col overflow-y-auto" aria-label="Трейдеры деска">
             {rows.map((r) => (
               <TraderRow key={r.trader} r={r} />
             ))}

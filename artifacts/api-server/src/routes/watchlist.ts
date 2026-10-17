@@ -5,6 +5,9 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { calcWatchlistScore } from "../lib/scoreEngine";
 import { logger } from "../lib/logger";
 import { requireMember } from "../lib/auth";
+import { resolveActor } from "../lib/permissions";
+import { canModifyOwnedRow } from "../lib/accessRules";
+import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { nyDate } from "../lib/tradingDate";
 
 const router: IRouter = Router();
@@ -254,6 +257,22 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   if (!ids.length) { res.status(400).json({ error: "ids required" }); return; }
   if (ids.length > 200) { res.status(400).json({ error: "too many ids (max 200)" }); return; }
   const action = String(b.action ?? "");
+  // Soft delete / restore remove a shared row for everyone → only rows the caller created (staff: any).
+  // Workflow flags (status / inplay / list) stay open to every member (watchlist.manage). Rows the caller may
+  // not touch are skipped and reported back in `denied`.
+  let denied: number[] = [];
+  if (action === "delete" || action === "restore") {
+    const actor = await resolveActor(req);
+    const owners = await db.select({ id: watchlistTable.id, createdBy: watchlistTable.createdBy }).from(watchlistTable)
+      .where(inArray(watchlistTable.id, ids));
+    const allowed = new Set(owners.filter((r) => canModifyOwnedRow(actor, r.createdBy)).map((r) => r.id));
+    denied = ids.filter((id) => owners.some((r) => r.id === id) && !allowed.has(id));
+    ids.splice(0, ids.length, ...ids.filter((id) => allowed.has(id)));
+    if (!ids.length) {
+      res.status(403).json({ error: "Удалять и восстанавливать можно только свои тикеры", code: "NOT_OWNER", denied });
+      return;
+    }
+  }
   if (action === "status") {
     const status = normalizeStatus(b.status);
     if (!status) { res.status(400).json({ error: "invalid status" }); return; }
@@ -265,7 +284,7 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   if (action === "delete") {
     const rows = await db.update(watchlistTable).set({ deletedAt: new Date() })
       .where(and(inArray(watchlistTable.id, ids), isNull(watchlistTable.deletedAt))).returning({ id: watchlistTable.id });
-    res.json({ success: true, count: rows.length, ids: rows.map((r) => r.id) });
+    res.json({ success: true, count: rows.length, ids: rows.map((r) => r.id), denied });
     return;
   }
   if (action === "inplay") {
@@ -283,7 +302,7 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   if (action === "restore") {
     const rows = await db.update(watchlistTable).set({ deletedAt: null })
       .where(inArray(watchlistTable.id, ids)).returning({ id: watchlistTable.id });
-    res.json({ success: true, count: rows.length });
+    res.json({ success: true, count: rows.length, denied });
     return;
   }
   if (action === "list") {
@@ -352,8 +371,9 @@ router.post("/watchlist/quick", asyncHandler(async (req, res): Promise<void> => 
   const existing = existingRows.map((r) => ({ id: r.id, ticker: r.ticker }));
   const existingSet = new Set(existing.map((r) => r.ticker.toUpperCase()));
   const toCreate = valid.filter((t) => !existingSet.has(t));
+  const createdBy = toCreate.length ? await creatorName(req) : null;
   const created = toCreate.length
-    ? await db.insert(watchlistTable).values(toCreate.map((ticker) => ({ ticker, status: "watching" }))).returning()
+    ? await db.insert(watchlistTable).values(toCreate.map((ticker) => ({ ticker, status: "watching", createdBy }))).returning()
     : [];
   // Re-adding an archived («Пропустил») ticker brings it back to the working lists.
   const restored = existingRows.filter((r) => String(r.status ?? "").toLowerCase() === "passed").map((r) => r.id);
@@ -432,6 +452,7 @@ router.post("/watchlist", asyncHandler(async (req, res): Promise<void> => {
     beta: numOrNull(b.beta),
     shortInterest: numOrNull(b.shortInterest),
     longName: b.longName ? String(b.longName) : null,
+    createdBy: await creatorName(req),
   }).returning();
   const createList = parseList(b.list);
   if (createList && createList !== "invalid") {
@@ -482,6 +503,15 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
     ...(b.longName !== undefined && { longName: b.longName ? String(b.longName) : null }),
   };
   const hasColumnPatch = Object.values(patch).some((v) => v !== undefined);
+  // Content (ticker, catalyst, levels, notes, sector, tags, fundamentals) is the author's: owner or staff.
+  // Status / list / inPlay are desk workflow flags any member may flip (watchlist.manage).
+  const { status: _status, ...contentPatch } = patch;
+  if (Object.values(contentPatch).some((v) => v !== undefined)) {
+    const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable)
+      .where(and(eq(watchlistTable.id, id), isNull(watchlistTable.deletedAt)));
+    if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+    if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
+  }
   // A flag-only PATCH ({ inPlay }) must not hit drizzle with an empty SET.
   const [row] = hasColumnPatch
     ? await db.update(watchlistTable).set(patch)
@@ -580,6 +610,9 @@ router.delete("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => 
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
   if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable).where(eq(watchlistTable.id, id));
+  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const [row] = await db.update(watchlistTable)
     .set({ deletedAt: new Date() })
     .where(eq(watchlistTable.id, id))
@@ -592,6 +625,9 @@ router.post("/watchlist/:id/restore", asyncHandler(async (req, res): Promise<voi
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
   if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable).where(eq(watchlistTable.id, id));
+  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const [row] = await db.update(watchlistTable)
     .set({ deletedAt: null })
     .where(eq(watchlistTable.id, id))

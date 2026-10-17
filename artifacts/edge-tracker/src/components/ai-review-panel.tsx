@@ -220,7 +220,6 @@ function reviewToText(review: Review, s: ReturnType<typeof structure>, summary: 
 
 export function AiReviewPanel({
   tradeId,
-  userKey,
   conviction,
   confidenceGrade,
   tradeDate,
@@ -228,7 +227,6 @@ export function AiReviewPanel({
   className,
 }: {
   tradeId: number;
-  userKey: string;
   conviction?: number | null;
   confidenceGrade?: string | null;
   tradeDate?: string | null;
@@ -249,12 +247,13 @@ export function AiReviewPanel({
 
   const loadUsage = useCallback(async () => {
     try {
-      const r = await fetch(`${BASE}/api/ai-review/usage?userKey=${encodeURIComponent(userKey)}`);
+      // Usage is keyed by the signed-in member on the server (Bearer token from lib/install-fetch-auth).
+      const r = await fetch(`${BASE}/api/ai-review/usage`);
       if (r.ok) setUsage(await r.json());
     } catch {
       /* usage is informational */
     }
-  }, [userKey]);
+  }, []);
 
   const loadEmotionalState = useCallback(async () => {
     if (!trader || !tradeDate) {
@@ -296,8 +295,8 @@ export function AiReviewPanel({
     try {
       const r = await fetch(`${BASE}/api/trades/${tradeId}/ai-review${force ? "?force=true" : ""}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user": userKey },
-        body: JSON.stringify({ userKey, force }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ force }),
       });
       const data = await r.json().catch(() => ({}));
       if (!r.ok) {

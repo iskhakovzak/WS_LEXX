@@ -2,6 +2,8 @@ import { pool } from "@workspace/db";
 import { logger } from "./logger";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36";
+/** Outbound request budget: a hung upstream (Yahoo / Nasdaq / RSS) must not hold a request or a job forever. */
+const FETCH_TIMEOUT_MS = 12_000;
 
 export type TickerFundamentals = {
   ticker: string;
@@ -185,7 +187,7 @@ let yahooSessionInflight: Promise<{ cookie: string; crumb: string } | null> | nu
 
 async function buildYahooSession(): Promise<{ cookie: string; crumb: string } | null> {
   try {
-    const consentResp = await fetch("https://fc.yahoo.com", { headers: { "User-Agent": UA }, redirect: "manual" });
+    const consentResp = await fetch("https://fc.yahoo.com", { headers: { "User-Agent": UA }, redirect: "manual", signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     const setCookie = consentResp.headers.get("set-cookie") || "";
     const cookies = setCookie.split(/,(?=\s*\w+=)/).map((c) => c.split(";")[0].trim()).filter(Boolean);
     const cookie = cookies.join("; ");
@@ -193,6 +195,7 @@ async function buildYahooSession(): Promise<{ cookie: string; crumb: string } | 
 
     const crumbResp = await fetch("https://query2.finance.yahoo.com/v1/test/getcrumb", {
       headers: { "User-Agent": UA, Cookie: cookie },
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!crumbResp.ok) return null;
     const crumb = (await crumbResp.text()).trim();
@@ -217,12 +220,12 @@ async function getYahooSession(forceRefresh = false): Promise<{ cookie: string; 
 export async function fetchYahooWithSession(url: (s: { cookie: string; crumb: string }) => string): Promise<Response | null> {
   let session = await getYahooSession();
   if (!session) return null;
-  let resp = await fetch(url(session), { headers: { "User-Agent": UA, Accept: "application/json", Cookie: session.cookie } });
+  let resp = await fetch(url(session), { headers: { "User-Agent": UA, Accept: "application/json", Cookie: session.cookie }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (resp.status === 401 || resp.status === 403) {
     // Self-heal: refresh once and retry the call with the new session
     session = await getYahooSession(true);
     if (!session) return null;
-    resp = await fetch(url(session), { headers: { "User-Agent": UA, Accept: "application/json", Cookie: session.cookie } });
+    resp = await fetch(url(session), { headers: { "User-Agent": UA, Accept: "application/json", Cookie: session.cookie }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   }
   return resp;
 }
@@ -248,7 +251,7 @@ async function fetchYahooQuoteSummary(ticker: string): Promise<YahooQuoteSummary
 
 async function fetchYahooChart(ticker: string): Promise<YahooChartResult | null> {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=1mo&interval=1d`;
-  const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" } });
+  const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
   if (!resp.ok) return null;
   const data = (await resp.json()) as YahooChartResponse;
   return data?.chart?.result?.[0] || null;
@@ -431,7 +434,7 @@ function parseYahooRss(xml: string, ticker: string): Array<RichNewsItem> {
 async function fetchTickerRss(ticker: string): Promise<Array<RichNewsItem>> {
   try {
     const url = `https://finance.yahoo.com/rss/headline?s=${encodeURIComponent(ticker)}`;
-    const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" } });
+    const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) return [];
     const xml = await resp.text();
     return parseYahooRss(xml, ticker);
@@ -607,7 +610,7 @@ function parseYahooSearchItems(rawItems: any[]): Array<RichNewsItem> {
 async function fetchYahooSearch(ticker: string, newsCount: number): Promise<Array<RichNewsItem>> {
   try {
     const searchUrl = `https://query1.finance.yahoo.com/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=${newsCount}&quotesCount=0&enableCb=true&enableEnhancedTrivialQuery=true`;
-    const resp = await fetch(searchUrl, { headers: { "User-Agent": UA, Accept: "application/json" } });
+    const resp = await fetch(searchUrl, { headers: { "User-Agent": UA, Accept: "application/json" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) {
       logger.warn({ status: resp.status, ticker }, "yahoo news search non-ok");
       return [];
@@ -811,7 +814,7 @@ export async function getSectorStrength(opts: { force?: boolean } = {}): Promise
   await Promise.all(SECTOR_ETFS.map(async (etf) => {
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${etf.symbol}?range=5d&interval=1d`;
-      const resp = await fetch(url, { headers: { "User-Agent": UA } });
+      const resp = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
       if (!resp.ok) return;
       const data = (await resp.json()) as YahooChartResponse;
       const r = data?.chart?.result?.[0];
@@ -1297,7 +1300,7 @@ export type ExtraScanResult = {
 async function fetchSeekingAlphaTickerRss(ticker: string): Promise<Array<{ title: string; link: string | null; publishedAt: Date | null }>> {
   try {
     const url = `https://seekingalpha.com/api/sa/combined/${encodeURIComponent(ticker)}.xml`;
-    const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" } });
+    const resp = await fetch(url, { headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) return [];
     const xml = await resp.text();
     const items: Array<{ title: string; link: string | null; publishedAt: Date | null }> = [];
@@ -1422,6 +1425,7 @@ export async function scanNasdaqAnalystActions(opts: { concurrency?: number; tic
         const url = `https://api.nasdaq.com/api/analyst/${encodeURIComponent(ticker)}/ratings`;
         const resp = await fetch(url, {
           headers: { "User-Agent": UA, Accept: "application/json" },
+          signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
         });
         if (!resp.ok) { await new Promise((r) => setTimeout(r, 100)); continue; }
         const data = (await resp.json()) as NasdaqRatingsResponse;
@@ -1497,6 +1501,7 @@ export async function scanGeneralFinanceFeedsForAnalystActions(opts: { tickers?:
     try {
       const resp = await fetch(feed.url, {
         headers: { "User-Agent": UA, Accept: "application/rss+xml, application/xml, text/xml" },
+        signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (!resp.ok) continue;
       const xml = await resp.text();

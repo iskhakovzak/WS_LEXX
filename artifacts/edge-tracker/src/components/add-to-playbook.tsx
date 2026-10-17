@@ -13,8 +13,7 @@ import { Pill } from "@/components/ds";
 import { BookOpen, FolderPlus, Folder, Inbox, AlertTriangle, Loader2, X, GitBranch, Search } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toneText } from "@/components/ds";
-import { ApiError, invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest } from "@/components/playbook/api";
-import { TIERS, ddmm, fmtUsd, moneyTone, tierMeta, type Tier } from "@/components/playbook/model";
+import { TradeQuickAdd } from "@/components/playbook/quick-add";
 import { useToast } from "@/hooks/use-toast";
 import { safeHttpUrl } from "@/lib/url";
 import { useAuth } from "@/contexts/auth-context";
@@ -125,13 +124,15 @@ export function AddToPlaybookButton({
           <PopoverTrigger asChild>{trigger}</PopoverTrigger>
           <PopoverContent
             align="start"
-            className="w-[400px] p-0"
+            collisionPadding={12}
+            className="flex max-h-[min(85dvh,var(--radix-popover-content-available-height,85dvh))] w-[min(520px,calc(100vw-1.5rem))] flex-col overflow-hidden p-0"
             onClick={(e) => e.stopPropagation()}
             onOpenAutoFocus={(e) => e.preventDefault()}
           >
             {quickOpen && (
               <TradeQuickAdd
-                tradeId={payload.sourceId}
+                tradeIds={[payload.sourceId]}
+                className="min-h-0 flex-1"
                 onClose={() => setQuickOpen(false)}
                 onNewSetup={() => { setQuickOpen(false); setOpen(true); }}
               />
@@ -143,285 +144,6 @@ export function AddToPlaybookButton({
       )}
       <AddToPlaybookDialog open={open} onOpenChange={setOpen} payload={payload} />
     </>
-  );
-}
-
-/* ───────────────────────── 1–2-click popover for a trade ───────────────────────── */
-
-type ForTradeSetup = {
-  id: number; name: string; folder: string | null; space: "office" | "personal"; mine: boolean; shared: boolean;
-  owner: string | null; canAddExamples: boolean; setupType: string | null; tags: string | null;
-};
-type ForTrade = {
-  trade: { id: number; ticker: string; date: string | null; trader: string | null; setup: string | null; playbookId: number | null; netPnl: number | null; autoSetup?: string | null } | null;
-  setups: ForTradeSetup[];
-  recent: number[];
-  suggested: { id: number; reason: string }[];
-  examples: { id: number; playbookId: number; tier: Tier; note: string | null }[];
-};
-
-function spaceLabel(s: ForTradeSetup) {
-  if (s.space === "office") return "Офис";
-  if (s.mine) return "Мой";
-  return s.owner ?? "Личный";
-}
-
-function TradeQuickAdd({ tradeId, onClose, onNewSetup }: { tradeId: number; onClose: () => void; onNewSetup: () => void }) {
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  const [, navigate] = useLocation();
-  const fid = useId();
-  const q = useQuery<ForTrade>({
-    queryKey: ["playbook-for-trade", tradeId],
-    queryFn: () => pbRequest<ForTrade>(`/api/playbook-tools/for-trade/${tradeId}`),
-    staleTime: 15_000,
-    retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1,
-  });
-  const notLive = q.isError && !!notLiveMessage(q.error);
-  // Older API: no quick add — fall back to the «new setup» dialog.
-  useEffect(() => { if (notLive) onNewSetup(); }, [notLive]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  const [search, setSearch] = useState("");
-  const [picked, setPicked] = useState<number | null>(null);
-  const [tier, setTier] = useState<Tier>(1);
-  const [note, setNote] = useState("");
-  const listRef = useRef<HTMLUListElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  useEffect(() => { const t = window.setTimeout(() => searchRef.current?.focus(), 30); return () => window.clearTimeout(t); }, []);
-
-  const data = q.data;
-  const writable = useMemo(() => (data?.setups ?? []).filter((s) => s.canAddExamples), [data]);
-  const byId = useMemo(() => new Map((data?.setups ?? []).map((s) => [s.id, s])), [data]);
-  const existing = useMemo(() => new Map((data?.examples ?? []).map((e) => [e.playbookId, e])), [data]);
-  const reasons = useMemo(() => new Map((data?.suggested ?? []).map((s) => [s.id, s.reason])), [data]);
-
-  type Row = { s: ForTradeSetup; group: string };
-  const rows: Row[] = useMemo(() => {
-    if (!data) return [];
-    const term = search.trim().toLowerCase();
-    if (term) {
-      const terms = term.split(/\s+/);
-      return writable
-        .filter((s) => { const h = `${s.name} ${s.folder ?? ""} ${s.setupType ?? ""} ${s.tags ?? ""}`.toLowerCase(); return terms.every((t) => h.includes(t)); })
-        .slice(0, 40)
-        .map((s) => ({ s, group: "Найдено" }));
-    }
-    const out: Row[] = [];
-    const seen = new Set<number>();
-    const push = (id: number, group: string) => {
-      const s = byId.get(id);
-      if (!s || !s.canAddExamples || seen.has(id)) return;
-      seen.add(id); out.push({ s, group });
-    };
-    for (const sg of data.suggested) push(sg.id, "Подходят по сделке");
-    for (const id of data.recent) push(id, "Недавние");
-    if (out.length < 6) for (const s of writable) { if (out.length >= 8) break; push(s.id, "Все сетапы"); }
-    return out;
-  }, [data, search, writable, byId]);
-
-  // Preselect the best guess so the common case is one click on «Добавить».
-  useEffect(() => {
-    if (!rows.length) { setPicked(null); return; }
-    if (picked == null || !rows.some((r) => r.s.id === picked)) setPicked(rows[0].s.id);
-  }, [rows]); // eslint-disable-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    const ex = picked != null ? existing.get(picked) : undefined;
-    if (ex) { setTier(ex.tier); setNote(ex.note ?? ""); }
-  }, [picked, existing]);
-
-  const target = picked != null ? byId.get(picked) ?? null : null;
-  const already = picked != null ? existing.get(picked) : undefined;
-
-  const add = useMutation({
-    mutationFn: (setupId: number) => pbRequest<{ examples: { id: number }[]; skipped: { reason: string }[] }>(`/api/playbook/${setupId}/examples`, {
-      method: "POST",
-      json: { tradeIds: [tradeId], tier, note: note.trim() || null },
-    }),
-    onSuccess: (r, setupId) => {
-      if (!r.examples?.length) {
-        toast({ title: "Сделку не удалось добавить", description: r.skipped?.[0]?.reason === "forbidden" ? "Нет доступа к сделке" : undefined, variant: "destructive" });
-        return;
-      }
-      const s = byId.get(setupId);
-      invalidateExamples(qc, setupId);
-      invalidateTradeLinks(qc);
-      qc.invalidateQueries({ queryKey: ["playbook"] });
-      toast({
-        title: existing.has(setupId) ? `Обновлено: ${tierMeta(tier).label}` : `В «${s?.name ?? "сетап"}» · ${tierMeta(tier).label}`,
-        description: s?.space === "office" ? "Эталон в плейбуке офиса" : undefined,
-        action: <ToastAction altText="Открыть эталоны сетапа" onClick={() => navigate(`/playbook?id=${setupId}&tab=examples`)}>Открыть</ToastAction>,
-      });
-      onClose();
-    },
-    onError: (e) => toast({ title: "Не удалось добавить", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
-  });
-  const canAdd = picked != null && !!target?.canAddExamples && !add.isPending;
-  const submit = (id: number | null = picked) => { if (id != null && byId.get(id)?.canAddExamples && !add.isPending) add.mutate(id); };
-
-  const move = (delta: 1 | -1) => {
-    if (!rows.length) return;
-    const i = rows.findIndex((r) => r.s.id === picked);
-    const next = rows[Math.max(0, Math.min(rows.length - 1, (i < 0 ? -1 : i) + delta))];
-    setPicked(next.s.id);
-    listRef.current?.querySelector(`[data-pick="${next.s.id}"]`)?.scrollIntoView({ block: "nearest" });
-  };
-
-  const t = data?.trade;
-  const net = t?.netPnl ?? null;
-
-  if (q.isLoading || notLive) {
-    return (
-      <div className="flex min-h-[320px] flex-col gap-2 p-[var(--panel-p)]" aria-busy="true">
-        <div className="h-5 w-2/3 animate-pulse rounded bg-[var(--glass-bg)] motion-reduce:animate-none" />
-        <div className="h-9 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" />
-        {[0, 1, 2, 3].map((i) => <div key={i} className="h-10 animate-pulse rounded-xl bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
-      </div>
-    );
-  }
-  if (q.isError) {
-    return (
-      <div className="flex flex-col gap-3 p-[var(--panel-p)]">
-        <p className="text-sm text-down">{(q.error as Error)?.message ?? "Не удалось загрузить сетапы"}</p>
-        <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => q.refetch()}>Повторить</Button>
-          <Button size="sm" variant="ghost" onClick={onNewSetup}>Новый сетап из сделки</Button>
-        </div>
-      </div>
-    );
-  }
-
-  let lastGroup = "";
-  return (
-    <div
-      className="flex flex-col"
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); }
-        if (e.altKey && ["1", "2", "3"].includes(e.key)) { e.preventDefault(); setTier(Number(e.key) as Tier); }
-      }}
-    >
-      <div className="flex items-center gap-2 border-b border-border/60 px-[var(--panel-p)] py-3">
-        <BookOpen className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-          Эталон в плейбук{t ? ` · ${t.ticker}` : ""}{t?.date ? ` · ${ddmm(t.date)}` : ""}
-        </span>
-        {net != null && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", toneText(moneyTone(net)))}>{fmtUsd(net)}</span>}
-      </div>
-
-      <div className="flex flex-col gap-3 p-[var(--panel-p)]">
-        {existing.size > 0 && (
-          <p className="text-xs text-muted-foreground">
-            Уже в плейбуке:{" "}
-            {[...existing.values()].map((ex, i) => (
-              <span key={ex.id}>
-                {i > 0 && ", "}
-                <button type="button" className="text-foreground underline-offset-2 hover:underline" onClick={() => { onClose(); navigate(`/playbook?id=${ex.playbookId}&tab=examples`); }}>
-                  {byId.get(ex.playbookId)?.name ?? `#${ex.playbookId}`}
-                </button>{" "}
-                <span className="tabular-nums">T{ex.tier}</span>
-              </span>
-            ))}
-          </p>
-        )}
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-          <Input
-            ref={searchRef}
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "ArrowDown") { e.preventDefault(); move(1); }
-              if (e.key === "ArrowUp") { e.preventDefault(); move(-1); }
-              if (e.key === "Enter" && !e.ctrlKey && !e.metaKey) { e.preventDefault(); submit(); }
-            }}
-            placeholder="Найти сетап"
-            aria-label="Найти сетап"
-            aria-controls={`${fid}-list`}
-            className="h-9 pl-9"
-          />
-        </div>
-
-        <ul id={`${fid}-list`} ref={listRef} role="listbox" aria-label="Сетап" className="-mx-1 max-h-60 min-h-[120px] overflow-y-auto px-1">
-          {rows.length === 0 ? (
-            <li className="px-2 py-6 text-center text-sm text-muted-foreground">
-              {writable.length === 0 ? "Нет сетапов, куда можно добавить эталон. Создайте свой." : "Ничего не найдено"}
-            </li>
-          ) : rows.map(({ s, group }) => {
-            const head = group !== lastGroup ? group : null;
-            lastGroup = group;
-            const active = picked === s.id;
-            const reason = reasons.get(s.id);
-            const ex = existing.get(s.id);
-            return (
-              <React.Fragment key={s.id}>
-                {head && <li role="presentation" className="px-2 pb-1 pt-2 text-xs font-medium text-muted-foreground first:pt-0">{head}</li>}
-                <li
-                  role="option"
-                  aria-selected={active}
-                  data-pick={s.id}
-                  onClick={() => setPicked(s.id)}
-                  onDoubleClick={() => { setPicked(s.id); submit(s.id); }}
-                  className={cn(
-                    "flex cursor-pointer items-center gap-2 rounded-xl px-2 py-1.5",
-                    active ? "bg-primary/15" : "hover:bg-[var(--glass-hover-bg)]",
-                  )}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className={cn("block truncate text-sm text-foreground", active ? "font-semibold" : "font-medium")}>{s.name}</span>
-                    <span className="block truncate text-xs text-muted-foreground">{reason ?? s.folder ?? "Без папки"}</span>
-                  </span>
-                  {ex && <span className="shrink-0 text-xs tabular-nums text-muted-foreground">T{ex.tier}</span>}
-                  <span className="shrink-0 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs text-muted-foreground">{spaceLabel(s)}</span>
-                </li>
-              </React.Fragment>
-            );
-          })}
-        </ul>
-
-        <div role="radiogroup" aria-label="Тир" className="grid grid-cols-3 gap-1.5">
-          {TIERS.map((x) => {
-            const [top, bottom] = x.label.split(" · ");
-            return (
-              <button
-                key={x.tier}
-                type="button"
-                role="radio"
-                aria-checked={tier === x.tier}
-                title={`${x.hint} (Alt+${x.tier})`}
-                onClick={() => setTier(x.tier)}
-                className={cn(
-                  "flex min-h-9 flex-col items-center justify-center rounded-xl border px-2 py-1 text-xs transition-colors duration-[var(--dur-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  tier === x.tier ? "border-primary/60 bg-primary/10 font-semibold text-foreground" : "border-border/60 text-muted-foreground hover:bg-[var(--glass-hover-bg)]",
-                )}
-              >
-                <span>{top}</span>
-                {bottom && <span className="font-normal">{bottom}</span>}
-              </button>
-            );
-          })}
-        </div>
-
-        <Input
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submit(); } }}
-          placeholder="Заметка: почему эталон / в чём ошибка (необязательно)"
-          aria-label="Заметка к эталону"
-          maxLength={2000}
-          className="h-9"
-        />
-      </div>
-
-      <div className="flex items-center justify-between gap-2 border-t border-border/60 px-[var(--panel-p)] py-3">
-        <button type="button" onClick={onNewSetup} className="text-xs text-muted-foreground underline-offset-2 hover:text-foreground hover:underline">
-          Новый сетап из сделки
-        </button>
-        <Button size="sm" className="bg-primary-solid" onClick={() => submit()} disabled={!canAdd} aria-busy={add.isPending} title="Enter или Ctrl+Enter">
-          {add.isPending && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-          {already ? "Обновить" : "Добавить"}
-        </Button>
-      </div>
-    </div>
   );
 }
 
@@ -685,7 +407,7 @@ function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; o
                 </Button>
               </div>
             ) : (
-              <div className="flex max-h-[104px] flex-wrap gap-1.5 overflow-y-auto p-0.5" role="radiogroup" aria-label="Папка">
+              <div className="flex max-h-[min(30dvh,200px)] flex-wrap gap-1.5 overflow-y-auto p-0.5" role="radiogroup" aria-label="Папка">
                 <FolderChip active={!folder} onClick={() => setFolder("")} icon={Inbox}>Без папки</FolderChip>
                 {foldersLoading && <span className="inline-flex items-center px-2 text-xs text-muted-foreground"><Loader2 className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />папки…</span>}
                 {folders.map((f) => (

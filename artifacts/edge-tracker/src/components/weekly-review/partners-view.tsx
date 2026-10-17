@@ -7,7 +7,7 @@
 import * as React from "react";
 import { Award, Briefcase, ListChecks, TrendingDown, Users } from "lucide-react";
 import {
-  BentoGrid, DataTable, EmptyState, ErrorState, Panel, PanelSkeleton, Pill, Sparkline, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, Tile, toneOf, type Tone,
+  BentoGrid, DataTable, EmptyState, ErrorState, Panel, PanelSkeleton, Pill, SortableTh, Sparkline, StatCard, StatGrid, StatGridSkeleton, TableSkeleton, Tile, toneOf, useTableSort, type Tone,
 } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { buildDeskConclusions, type DeskRow } from "@/lib/weeklyInsights";
@@ -24,6 +24,15 @@ const RISK_META: Record<RiskStatus, { label: string; tone: Tone }> = {
 };
 
 type Row = OverviewRow & { trend: BenchTrend | null; riskStatus: RiskStatus | null; riskNow: boolean; note: string | null };
+
+const RISK_ORDER: Record<RiskStatus, number> = { breach: 0, warn: 1, ok: 2, none: 3 };
+const VERDICT_ORDER: Record<BenchTrend["verdict"], number | null> = { worse: 0, flat: 1, better: 2, nodata: null };
+const PARTNER_ACCESSORS = {
+  trader: (r: Row) => r.trader,
+  net: (r: Row) => r.netPnl,
+  trend: (r: Row) => (r.trend ? VERDICT_ORDER[r.trend.verdict] : null),
+  risk: (r: Row) => (r.riskStatus ? RISK_ORDER[r.riskStatus] : null),
+};
 
 export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: string) => void }) {
   const q = useWeeklyOverview(week);
@@ -142,50 +151,7 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
         {active.length === 0 ? (
           <EmptyState compact icon={Users} title="За неделю никто не торговал" className="px-[var(--panel-p)]" />
         ) : (
-          <DataTable ariaLabel="Трейдеры за неделю">
-            <table>
-              <thead>
-                <tr>
-                  <th>Трейдер</th>
-                  <th className="!text-right">Нетто</th>
-                  <th>Тренд</th>
-                  <th>Риск-статус</th>
-                  <th>Заметка</th>
-                </tr>
-              </thead>
-              <tbody>
-                {active.map((r) => (
-                  <tr key={r.trader}>
-                    <td>
-                      <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{r.trader}</button>
-                      <div className="text-xs text-muted-foreground">{r.trades} сд. · WR {fmtPct(r.winRate)} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
-                    </td>
-                    <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true })}</td>
-                    <td>
-                      {r.trend ? (
-                        <div className="flex items-center gap-2">
-                          <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={`Нетто по неделям: ${r.trader}`} />
-                          <Pill tone={VERDICT_TONE[r.trend.verdict]}>{VERDICT_LABEL[r.trend.verdict]}</Pill>
-                        </div>
-                      ) : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-                    <td>
-                      {r.riskStatus ? (
-                        <span className="inline-flex items-center gap-1.5">
-                          <Pill tone={RISK_META[r.riskStatus].tone} dot>{RISK_META[r.riskStatus].label}</Pill>
-                          {r.riskNow && <span className="text-xs text-muted-foreground">сейчас</span>}
-                          {r.risk?.events[0] && <span className="max-w-[12rem] truncate text-xs text-muted-foreground" title={r.risk.events.map((e) => e.label).join(", ")}>{r.risk.events[0].label}</span>}
-                        </span>
-                      ) : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-                    <td className="max-w-[22rem]">
-                      {r.note ? <span className="line-clamp-2 text-sm text-foreground" title={r.note}>{r.note}</span> : <span className="text-xs text-muted-foreground">—</span>}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </DataTable>
+          <PartnersTable rows={active} onOpen={onOpen} />
         )}
         {idle.length > 0 && (
           <p className="border-t border-[var(--glass-border)] px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">
@@ -194,6 +160,57 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
         )}
       </Panel>
     </div>
+  );
+}
+
+/** Sorted by net desc like the original list; headers re-sort for printing/reading. */
+function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string) => void }) {
+  const { rows: sorted, thProps } = useTableSort(rows, PARTNER_ACCESSORS, "net");
+  return (
+    <DataTable ariaLabel="Трейдеры за неделю">
+      <table>
+        <thead>
+          <tr>
+            <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
+            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+            <SortableTh {...thProps("trend")}>Тренд</SortableTh>
+            <SortableTh {...thProps("risk")}>Риск-статус</SortableTh>
+            <th>Заметка</th>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((r) => (
+            <tr key={r.trader}>
+              <td>
+                <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{r.trader}</button>
+                <div className="text-xs text-muted-foreground">{r.trades} сд. · WR {fmtPct(r.winRate)} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
+              </td>
+              <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true })}</td>
+              <td>
+                {r.trend ? (
+                  <div className="flex items-center gap-2">
+                    <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={`Нетто по неделям: ${r.trader}`} />
+                    <Pill tone={VERDICT_TONE[r.trend.verdict]}>{VERDICT_LABEL[r.trend.verdict]}</Pill>
+                  </div>
+                ) : <span className="text-xs text-muted-foreground">—</span>}
+              </td>
+              <td>
+                {r.riskStatus ? (
+                  <span className="inline-flex items-center gap-1.5">
+                    <Pill tone={RISK_META[r.riskStatus].tone} dot>{RISK_META[r.riskStatus].label}</Pill>
+                    {r.riskNow && <span className="text-xs text-muted-foreground">сейчас</span>}
+                    {r.risk?.events[0] && <span className="max-w-[16rem] whitespace-normal text-xs text-muted-foreground">{r.risk.events.map((e) => e.label).join(", ")}</span>}
+                  </span>
+                ) : <span className="text-xs text-muted-foreground">—</span>}
+              </td>
+              <td className="max-w-[22rem]">
+                {r.note ? <span className="whitespace-pre-line break-words text-sm text-foreground">{r.note}</span> : <span className="text-xs text-muted-foreground">—</span>}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataTable>
   );
 }
 

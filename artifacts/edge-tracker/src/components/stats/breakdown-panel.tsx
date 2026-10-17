@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
 import type { Trade } from "@workspace/api-client-react";
-import { ArrowDown, ArrowUp, Layers } from "lucide-react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, Layers } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
@@ -17,7 +17,7 @@ const DIMS: { value: Dimension; label: string; col: string; key: (t: Trade) => s
   { value: "conviction", label: "Убеждённость", col: "Убеждённость", key: (t) => (t.conviction != null ? `${t.conviction}★` : null) },
 ];
 
-type SortKey = "value" | "count" | "winRate" | "avg";
+type SortKey = "key" | "value" | "count" | "winRate" | "avg";
 const LIMIT = 8;
 
 /** Compact "where do I make / lose" scorecard table. Deep breakdowns live in /analytics. */
@@ -36,6 +36,7 @@ export function BreakdownPanel({
 
   const rows = useMemo(() => {
     const g = groupBy(trades, dim.key, metric);
+    if (sort.key === "key") return g.sort((a, b) => a.key.localeCompare(b.key, "ru", { numeric: true }) * sort.dir);
     const val = (r: GroupStat) => (sort.key === "count" ? r.count : sort.key === "winRate" ? r.winRate : sort.key === "avg" ? r.avg : r.value);
     return g.sort((a, b) => {
       const va = val(a);
@@ -53,14 +54,14 @@ export function BreakdownPanel({
   const SortTh = ({ k, children, className }: { k: SortKey; children: ReactNode; className?: string }) => {
     const active = sort.key === k;
     return (
-      <th scope="col" className={cn("px-2 py-2 text-right font-medium", className)} aria-sort={active ? (sort.dir === -1 ? "descending" : "ascending") : "none"}>
+      <th scope="col" className={cn("px-2 py-2 font-medium", k === "key" ? "text-left" : "text-right", className)} aria-sort={active ? (sort.dir === -1 ? "descending" : "ascending") : "none"}>
         <button
           type="button"
-          onClick={() => setSort((s) => (s.key === k ? { key: k, dir: (s.dir * -1) as 1 | -1 } : { key: k, dir: -1 }))}
+          onClick={() => setSort((s) => (s.key === k ? { key: k, dir: (s.dir * -1) as 1 | -1 } : { key: k, dir: k === "key" ? 1 : -1 }))}
           className={cn("inline-flex items-center gap-1 rounded-full px-1 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", active ? "text-foreground" : "text-muted-foreground")}
         >
           {children}
-          {active && (sort.dir === -1 ? <ArrowDown className="h-3 w-3" aria-hidden="true" /> : <ArrowUp className="h-3 w-3" aria-hidden="true" />)}
+          {active ? (sort.dir === -1 ? <ArrowDown className="h-3 w-3" aria-hidden="true" /> : <ArrowUp className="h-3 w-3" aria-hidden="true" />) : <ChevronsUpDown className="h-3 w-3 opacity-50" aria-hidden="true" />}
         </button>
       </th>
     );
@@ -87,7 +88,7 @@ export function BreakdownPanel({
           <table className="w-full min-w-[340px] text-sm">
             <thead className="text-xs text-muted-foreground">
               <tr className="border-b border-[hsl(var(--border))]">
-                <th scope="col" className="px-2 py-2 text-left font-medium">{dim.col}</th>
+                <SortTh k="key">{dim.col}</SortTh>
                 <SortTh k="count">Сделок</SortTh>
                 <SortTh k="winRate">WR</SortTh>
                 <SortTh k="avg" className="hidden sm:table-cell">Ср.</SortTh>

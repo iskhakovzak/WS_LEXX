@@ -2,9 +2,10 @@ import { useMemo, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, ChevronDown, ExternalLink, ListOrdered, ShieldAlert } from "lucide-react";
-import { EmptyState, FilterChip, Panel, Pill, TableScroll, toneOf, toneText } from "@/components/ds";
+import { EmptyState, FilterChip, Panel, Pill, SortableTh, TableScroll, toneOf, toneText, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { cn } from "@/lib/utils";
 import {
   HORIZON_LABEL, feesOf, fmtDayShort, fmtMoney, fmtPct, fmtR, grossPnl, netPnl, plural, signedR, splitTags, tradeOutcome,
@@ -396,6 +397,7 @@ function TradeItem({
                       </a>
                     </Button>
                   )}
+                  <AddToPlaybookButton payload={{ name: `${t.ticker} ${String(t.date ?? "").slice(0, 10)}`, ticker: t.ticker, sourceType: "trade", sourceId: t.id }} />
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/trades?highlight=${t.id}`}>
                       <ArrowUpRight aria-hidden="true" />Открыть сделку
@@ -413,8 +415,21 @@ function TradeItem({
 
 type TickerAgg = { count: number; r: number | null; qty: number | null; gross: number | null; fees: number | null; net: number | null };
 
-/** Per-ticker summary — only real, computed columns. */
+const TICKER_ACCESSORS = {
+  ticker: ([k]: [string, TickerAgg]) => k,
+  count: ([, g]: [string, TickerAgg]) => g.count,
+  qty: ([, g]: [string, TickerAgg]) => g.qty,
+  gross: ([, g]: [string, TickerAgg]) => g.gross,
+  fees: ([, g]: [string, TickerAgg]) => g.fees,
+  net: ([, g]: [string, TickerAgg]) => g.net,
+  r: ([, g]: [string, TickerAgg]) => g.r,
+} as const;
+
+const TH = "px-2 py-1.5 font-medium";
+
+/** Per-ticker summary — only real, computed columns. Headers sort; «Итого» stays in the footer. */
 function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
+  const { rows: sorted, thProps } = useTableSort(rows, TICKER_ACCESSORS, "net");
   const sum = (k: keyof TickerAgg) =>
     rows.reduce<number | null>((acc, [, g]) => (g[k] == null ? acc : (acc ?? 0) + (g[k] as number)), null);
   const total: TickerAgg = { count: sum("count") ?? 0, r: sum("r"), qty: sum("qty"), gross: sum("gross"), fees: sum("fees"), net: sum("net") };
@@ -438,17 +453,17 @@ function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
         <caption className="sr-only">Итоги по тикерам</caption>
         <thead>
           <tr className="border-b border-[var(--glass-border)] text-muted-foreground">
-            <th scope="col" className="px-2 py-1.5 text-left font-medium">Тикер</th>
-            <th scope="col" className="px-2 py-1.5 text-right font-medium">Сделки</th>
-            {showQty && <th scope="col" className="px-2 py-1.5 text-right font-medium">Кол-во</th>}
-            {showMoney && <th scope="col" className="px-2 py-1.5 text-right font-medium">Брутто</th>}
-            {showMoney && <th scope="col" className="px-2 py-1.5 text-right font-medium">Комиссии</th>}
-            {showMoney && <th scope="col" className="px-2 py-1.5 text-right font-medium">Нетто</th>}
-            {showR && <th scope="col" className="px-2 py-1.5 text-right font-medium">R</th>}
+            <SortableTh {...thProps("ticker")} className={cn(TH, "text-left")}>Тикер</SortableTh>
+            <SortableTh {...thProps("count")} align="right" className={TH}>Сделки</SortableTh>
+            {showQty && <SortableTh {...thProps("qty")} align="right" className={TH}>Кол-во</SortableTh>}
+            {showMoney && <SortableTh {...thProps("gross")} align="right" className={TH}>Брутто</SortableTh>}
+            {showMoney && <SortableTh {...thProps("fees")} align="right" className={TH}>Комиссии</SortableTh>}
+            {showMoney && <SortableTh {...thProps("net")} align="right" className={TH}>Нетто</SortableTh>}
+            {showR && <SortableTh {...thProps("r")} align="right" className={TH}>R</SortableTh>}
           </tr>
         </thead>
         <tbody>
-          {rows.map(([k, g]) => (
+          {sorted.map(([k, g]) => (
             <tr key={k} className="border-b border-[var(--glass-border)]">
               <th scope="row" className="px-2 py-1.5 text-left font-semibold">{k}</th>
               {cells(g)}

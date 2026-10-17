@@ -13,7 +13,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { EmptyState, FilterChip, Pill, Segmented, toneText } from "@/components/ds";
+import { EmptyState, FilterChip, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
@@ -22,6 +22,16 @@ import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, type PickerTrade, type PlaybookEn
 import { REDACTED_HINT, RedactedHint } from "./setup-bits";
 
 type Period = "30" | "90" | "365" | "all";
+type PickKey = "ticker" | "date" | "trader" | "auto" | "setup" | "net";
+/** Net column: $ for own trades, R for someone else's (redacted) — sorted by what the cell shows. */
+const PICK_ACCESSORS: Record<PickKey, (t: PickerTrade) => number | string | null | undefined> = {
+  ticker: (t) => t.ticker,
+  date: (t) => t.closeDate ?? t.date,
+  trader: (t) => t.trader,
+  auto: (t) => (t.autoSetup ? `${t.autoMatch ? 0 : 1}${t.autoSetup}` : null),
+  setup: (t) => (t.inSetup ? "0" : t.linkedHere ? "1" : t.playbookName ?? null),
+  net: (t) => (t.redacted ? t.signedR : t.netPnl),
+};
 
 export function TradePickerDialog({
   open, onOpenChange, entry,
@@ -60,7 +70,8 @@ export function TradePickerDialog({
   const today = nyDate();
   const from = period === "all" ? undefined : addDays(today, -Number(period));
   const pick = useTradePicker({ setupId: entry.id, trader: trader || null, q: debQ, from, result, match }, open);
-  const trades = pick.data?.trades ?? [];
+  const fetched = React.useMemo(() => pick.data?.trades ?? [], [pick.data]);
+  const { rows: trades, thProps } = useTableSort<PickerTrade, PickKey>(fetched, PICK_ACCESSORS, "date", "desc", { ticker: "asc", trader: "asc", auto: "asc", setup: "asc" });
   const selectable = trades.filter((t) => !t.inSetup);
   const allSelected = selectable.length > 0 && selectable.every((t) => selected.has(t.id));
 
@@ -112,7 +123,7 @@ export function TradePickerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="flex max-h-[min(860px,calc(100dvh-4rem))] max-w-4xl flex-col gap-4"
+        className="flex max-h-[85dvh] max-w-5xl flex-col gap-4"
         onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } }}
       >
         <DialogHeader>
@@ -153,7 +164,7 @@ export function TradePickerDialog({
           )}
         </div>
 
-        <div className="min-h-[320px] flex-1 overflow-y-auto rounded-xl border border-border/60">
+        <div className="min-h-[320px] flex-1 overflow-auto rounded-xl border border-border/60">
           {pick.isLoading ? (
             <div className="flex flex-col gap-1 p-2" aria-busy="true">
               {Array.from({ length: 8 }).map((_, i) => <div key={i} className="h-10 animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none" />)}
@@ -161,10 +172,15 @@ export function TradePickerDialog({
           ) : pick.isError ? (
             <EmptyState icon={Search} title={liveError ?? "Не удалось загрузить сделки"} description={liveError ? "Подбор сделок появится после перезапуска API." : (pick.error as Error)?.message} />
           ) : trades.length === 0 ? (
-            <EmptyState icon={Search} title="Сделок не найдено" description="Измените период, тикер или снимите фильтр «Подходят по сетапу»." />
+            <EmptyState
+              icon={Search}
+              title={period === "all" ? "Сделок не найдено" : `За ${period === "365" ? "год" : `${period} дней`} сделок не найдено`}
+              description={period === "all" ? "Измените тикер или снимите фильтр «Подходят по сетапу»." : "Сделки старше периода не показаны. Расширьте период, измените тикер или снимите фильтр «Подходят по сетапу»."}
+              action={period !== "all" ? <Button variant="outline" onClick={() => setPeriod("all")}>Показать за всё время</Button> : undefined}
+            />
           ) : (
-            <table className="w-full text-sm">
-              <thead className="sticky-top bg-[hsl(var(--card))] text-xs text-muted-foreground">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="sticky top-0 z-raised bg-surface-solid text-xs text-muted-foreground [&_th]:font-medium">
                 <tr className="border-b border-border/60">
                   <th className="w-10 px-3 py-2 text-left">
                     <Checkbox
@@ -173,12 +189,12 @@ export function TradePickerDialog({
                       onCheckedChange={() => setSelected(allSelected ? new Set() : new Set(selectable.map((t) => t.id)))}
                     />
                   </th>
-                  <th className="px-2 py-2 text-left font-medium">Тикер</th>
-                  <th className="px-2 py-2 text-left font-medium">Дата</th>
-                  {isCurator && <th className="px-2 py-2 text-left font-medium">Трейдер</th>}
-                  <th className="px-2 py-2 text-left font-medium">Автоклассификация</th>
-                  <th className="px-2 py-2 text-left font-medium">Сетап сейчас</th>
-                  <th className="px-3 py-2 text-right font-medium">Нетто</th>
+                  <SortableTh {...thProps("ticker")} className="px-2 py-2">Тикер</SortableTh>
+                  <SortableTh {...thProps("date")} className="px-2 py-2">Дата</SortableTh>
+                  {isCurator && <SortableTh {...thProps("trader")} className="px-2 py-2">Трейдер</SortableTh>}
+                  <SortableTh {...thProps("auto")} className="px-2 py-2">Автоклассификация</SortableTh>
+                  <SortableTh {...thProps("setup")} className="px-2 py-2">Сетап сейчас</SortableTh>
+                  <SortableTh {...thProps("net")} align="right" className="px-3 py-2">Нетто</SortableTh>
                 </tr>
               </thead>
               <tbody>

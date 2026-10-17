@@ -103,7 +103,7 @@ export function IndicatorSheet({
 
   return (
     <Sheet open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-xl lg:max-w-2xl">
         {ind && (
           <>
             <SheetHeader className="space-y-3 border-b border-border/60 p-5 pr-14 text-left">

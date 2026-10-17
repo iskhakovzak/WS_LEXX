@@ -3,12 +3,15 @@
  *   «Офис»  — the office playbook (curators edit, everyone reads);
  *   «Мой»   — the viewer's personal setups (private by default);
  *   «Общие» — personal setups other people (seniors) shared with the viewer; «Команда» — all other personal setups (staff only).
- * Library view: left column (space switcher, search, one filter row, folder tree) + setup card with tabs
- * «Описание / Эталоны / Статистика / История». Other views: «Эталоны» gallery and a card grid.
- * URL: ?id= (setup), ?tab= (setup tab); ?q= and ?highlight= from links / global search are honoured.
+ * The space is picked in a page-level bar under the header (every view), with counts and a one-line hint.
+ * Library view: left column (search, one filter row, folder tree) + setup card with tabs
+ * «Описание / Эталоны / Статистика / История». Nothing open → home: «Разобрать сделки» (own trades without an
+ * example), Tier 1 showcase, edge / recent lists. Other views: «Эталоны» gallery (+ «Все» scope) and a card grid.
+ * URL: ?id= (setup), ?tab= (setup tab), ?space= (office default), ?view= (library default), ?f= (quick filter),
+ * ?tags= (comma list); gallery filters gt/gp/gs/gtr live in gallery.tsx. ?q= and ?highlight= are one-shot.
  * Example trades can be dragged from the «Эталоны» board onto a setup row in the tree to move them.
  */
-import { useCallback, useEffect, useMemo, useState, type DragEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import {
@@ -41,7 +44,9 @@ import {
 import { FolderTree, type FolderGroup } from "@/components/playbook/folder-tree";
 import { SetupView, SETUP_TABS, type SetupTab } from "@/components/playbook/setup-view";
 import { Overview, SetupCard } from "@/components/playbook/overview";
-import { Gallery } from "@/components/playbook/gallery";
+import { Gallery, type GalleryScope } from "@/components/playbook/gallery";
+import { PlaybookInbox, Tier1Strip } from "@/components/playbook/home";
+import { patchSearch } from "@/components/playbook/url-state";
 import { SetupFormDialog, type FormMode } from "@/components/playbook/setup-form-dialog";
 import { CompareDialog } from "@/components/playbook/compare-dialog";
 import { QuickFind } from "@/components/playbook/quick-find";
@@ -71,12 +76,17 @@ const FILTERS: { value: QuickFilter; label: string; short: string }[] = [
   { value: "noExamples", label: "Без эталонов", short: "Без эталонов" },
   { value: "unreviewed", label: "Не проверены", short: "На проверку" },
 ];
-const SPACES: { value: SpaceTab; label: string; icon: LucideIcon; hint: string }[] = [
-  { value: "office", label: "Офис", icon: Building2, hint: "Плейбук офиса — правят кураторы, читают все" },
-  { value: "mine", label: "Мой", icon: User, hint: "Ваши сетапы — видите вы и кураторы" },
-  { value: "shared", label: "Общие", icon: Share2, hint: "Сетапы, которыми с вами поделились" },
-  { value: "team", label: "Команда", icon: Users, hint: "Личные сетапы трейдеров (видно кураторам)" },
+/** `label` — short (menus, export), `long` — the scope bar. */
+const SPACES: { value: SpaceTab; label: string; long: string; icon: LucideIcon; hint: string }[] = [
+  { value: "office", label: "Офис", long: "Плейбук офиса", icon: Building2, hint: "Общий плейбук офиса: читают все, правят кураторы. Свои сделки эталонами сюда может добавить каждый" },
+  { value: "mine", label: "Мой", long: "Мой плейбук", icon: User, hint: "Ваши личные сетапы: видите вы и кураторы. Сеньоры открывают доступ кнопкой «Поделиться» в сетапе" },
+  { value: "shared", label: "Общие", long: "Общие со мной", icon: Share2, hint: "Сетапы, которыми с вами поделились сеньоры: только чтение, «В „Мой“» сделает свою копию" },
+  { value: "team", label: "Команда", long: "Команда", icon: Users, hint: "Личные сетапы трейдеров — видно кураторам и админам" },
 ];
+/** Page scope: a space, or «Все» (gallery only). */
+type Scope = SpaceTab | "all";
+const isScope = (v: unknown): v is Scope => v === "all" || SPACES.some((s) => s.value === v);
+const urlParam = (k: string) => new URLSearchParams(window.location.search).get(k);
 const HOTKEYS: [string[], string][] = [
   [["Ctrl", "K"], "Быстрый поиск сетапа"],
   [["/"], "Быстрый поиск"],
@@ -101,7 +111,6 @@ function overlayOpen() {
   return !!document.querySelector('[role="dialog"][data-state="open"], [role="alertdialog"][data-state="open"], [role="menu"][data-state="open"]');
 }
 const isView = (v: unknown): v is View => VIEWS.includes(v as View);
-const isSpace = (v: unknown): v is SpaceTab => SPACES.some((s) => s.value === v);
 const isSetupTab = (v: unknown): v is SetupTab => SETUP_TABS.includes(v as SetupTab);
 
 export default function Playbook() {
@@ -122,10 +131,20 @@ export default function Playbook() {
   const live = viewer.live || entries.some((e) => !!e.access);
 
   /* ---------- persisted UI state ---------- */
-  const [view, setViewState] = useState<View>(() => { const v = lsGet<string>(LS.view, "library"); return isView(v) ? v : "library"; });
-  const [space, setSpaceState] = useState<SpaceTab>(() => { const v = lsGet<string>(LS_SPACE, "office"); return isSpace(v) ? v : "office"; });
+  // The URL wins (shared links, back / forward), then the remembered choice.
+  const [view, setViewState] = useState<View>(() => {
+    const u = urlParam("view"); if (isView(u)) return u;
+    const v = lsGet<string>(LS.view, "library"); return isView(v) ? v : "library";
+  });
+  const [space, setSpaceState] = useState<Scope>(() => {
+    const u = urlParam("space"); if (isScope(u)) return u;
+    const v = lsGet<string>(LS_SPACE, "office"); return isScope(v) ? v : "office";
+  });
   const [sort, setSortState] = useState<SortKey>(() => lsGet<SortKey>(LS.sort, "folder"));
-  const [quick, setQuickState] = useState<QuickFilter>(() => { const v = lsGet<string>(LS.filter, "all"); return FILTERS.some((f) => f.value === v) ? (v as QuickFilter) : "all"; });
+  const [quick, setQuickState] = useState<QuickFilter>(() => {
+    const u = urlParam("f"); if (FILTERS.some((f) => f.value === u)) return u as QuickFilter;
+    const v = lsGet<string>(LS.filter, "all"); return FILTERS.some((f) => f.value === v) ? (v as QuickFilter) : "all";
+  });
   const [openFolders, setOpenFolders] = useState<Set<string>>(() => new Set(lsGet<string[]>(LS.openFolders, [])));
   const [folderOrder, setFolderOrder] = useState<string[]>(() => lsGet<string[]>(LS.folderOrder, []));
   const [folderColors, setFolderColors] = useState<Record<string, number>>(() => lsGet<Record<string, number>>(LS.folderColors, {}));
@@ -135,13 +154,13 @@ export default function Playbook() {
   });
   const [recentIds, setRecentIds] = useState<number[]>(() => lsGet<number[]>(LS.recent, []));
   const setView = (v: View) => { setViewState(v); lsSet(LS.view, v); };
-  const setSpace = (v: SpaceTab) => { setSpaceState(v); lsSet(LS_SPACE, v); };
+  const setSpace = (v: Scope) => { setSpaceState(v); lsSet(LS_SPACE, v); };
   const setSort = (v: SortKey) => { setSortState(v); lsSet(LS.sort, v); };
   const setQuick = (v: QuickFilter) => { setQuickState(v); lsSet(LS.filter, v); };
 
   /* ---------- transient UI state ---------- */
   const [query, setQuery] = useState("");
-  const [tagFilter, setTagFilter] = useState<string[]>([]);
+  const [tagFilter, setTagFilter] = useState<string[]>(() => (urlParam("tags") ?? "").split(",").map((t) => t.trim()).filter(Boolean));
   const [formMode, setFormMode] = useState<FormMode | null>(null);
   const [deleting, setDeleting] = useState<PlaybookEntry | null>(null);
   const [deletePending, setDeletePending] = useState(false);
@@ -180,8 +199,10 @@ export default function Playbook() {
     return c;
   }, [entries, byId, tabOf]);
   const visibleSpaces = SPACES.filter((s) => s.value !== "team" || (viewer.isCurator && spaceCounts.team > 0));
-  // A remembered «Команда» tab that is no longer available falls back to «Офис».
-  const activeSpace: SpaceTab = visibleSpaces.some((s) => s.value === space) ? space : "office";
+  // A remembered «Команда» tab that is no longer available falls back to «Офис»; «Все» exists only in the gallery.
+  const activeSpace: SpaceTab = visibleSpaces.some((s) => s.value === space) ? (space as SpaceTab) : "office";
+  const galleryScope: GalleryScope = space === "all" ? "all" : activeSpace;
+  const shownScope: Scope = view === "gallery" ? galleryScope : activeSpace;
   const proposed = useMemo(
     () => (viewer.isCurator ? entries.filter((e) => e.officeProposedAt && tabOf.get(e.id) !== "office") : []),
     [entries, tabOf, viewer.isCurator],
@@ -303,6 +324,33 @@ export default function Playbook() {
   }, [urlQuery]);
   const selected = selectedId ? byId.get(selectedId) ?? null : null;
 
+  // URL → state (back / forward, pasted links).
+  const urlSpace = params.get("space");
+  const urlView = params.get("view");
+  const urlF = params.get("f");
+  const urlSynced = useRef(false);
+  useEffect(() => {
+    // On mount the state already came from the URL / localStorage; later a missing param means the default.
+    if (!urlSynced.current) { urlSynced.current = true; return; }
+    const s: Scope = isScope(urlSpace) ? urlSpace : "office";
+    const v: View = isView(urlView) ? urlView : "library";
+    const f: QuickFilter = FILTERS.some((x) => x.value === urlF) ? (urlF as QuickFilter) : "all";
+    if (s !== space) setSpaceState(s);
+    if (v !== view) setViewState(v);
+    if (f !== quick) setQuickState(f);
+  }, [urlSpace, urlView, urlF]); // eslint-disable-line react-hooks/exhaustive-deps
+  // State → URL (replace; defaults stay out so plain links remain clean).
+  useEffect(() => {
+    const cur = window.location.search.replace(/^\?/, "");
+    const next = patchSearch(cur, {
+      space: space === "office" ? null : space,
+      view: view === "library" ? null : view,
+      f: quick === "all" ? null : quick,
+      tags: tagFilter.length ? tagFilter.join(",") : null,
+    });
+    if (next !== cur) navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true });
+  }, [space, view, quick, tagFilter, searchStr]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Opening a setup from another space (link, search, «В Офис» result) switches the sidebar to its space.
   useEffect(() => {
     if (!selected) return;
@@ -322,7 +370,11 @@ export default function Playbook() {
 
   const openSetup = useCallback(
     (id: number | null, opts?: { replace?: boolean; tab?: SetupTab }) => {
-      if (id == null) { navigate("/playbook", { replace: opts?.replace }); return; }
+      if (id == null) {
+        const next = patchSearch(window.location.search, { id: null, tab: null, highlight: null, q: null });
+        navigate(`/playbook${next ? `?${next}` : ""}`, { replace: opts?.replace });
+        return;
+      }
       const e = byId.get(id);
       if (e) {
         const root = e.parentId ? byId.get(e.parentId) ?? e : e;
@@ -333,8 +385,10 @@ export default function Playbook() {
         });
       }
       rememberRecent(id);
-      const tab = opts?.tab && opts.tab !== "about" ? `&tab=${opts.tab}` : "";
-      navigate(`/playbook?id=${id}${tab}`, { replace: opts?.replace });
+      // Keep the page state (space / view / filters) in the link; one-shot params are dropped.
+      const tab = opts?.tab && opts.tab !== "about" ? opts.tab : null;
+      const next = patchSearch(window.location.search, { id: String(id), tab, highlight: null, q: null });
+      navigate(`/playbook?${next}`, { replace: opts?.replace });
     },
     [navigate, byId, rememberRecent],
   );
@@ -345,7 +399,7 @@ export default function Playbook() {
     const h = Number(params.get("highlight"));
     if (!h || !entries.length) return;
     if (byId.has(h)) { setView("library"); openSetup(h, { replace: true }); }
-    else { navigate("/playbook", { replace: true }); toast({ title: "Сетап не найден", description: "Возможно, он был удалён или к нему нет доступа." }); }
+    else { const next = patchSearch(window.location.search, { highlight: null }); navigate(`/playbook${next ? `?${next}` : ""}`, { replace: true }); toast({ title: "Сетап не найден", description: "Возможно, он был удалён или к нему нет доступа." }); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params, entries.length]);
 
@@ -566,7 +620,7 @@ export default function Playbook() {
     (folder?: string | null) => { if (canCreate) setFormMode({ kind: "create", folder: folder ?? null, space: newSpace }); },
     [canCreate, newSpace],
   );
-  const newLabel = newSpace === "office" ? "Новый сетап" : "Новый в «Мой»";
+  const newLabel = newSpace === "office" ? "Новый в «Офис»" : "Новый в «Мой»";
 
   /* ---------- keyboard ---------- */
   // Ctrl/⌘+K inside the section opens the playbook's own quick find (capture phase, before the global palette).
@@ -683,28 +737,51 @@ export default function Playbook() {
     />
   );
 
-  const spaceSwitcher = (
-    <div role="tablist" aria-label="Пространство плейбука" className={cn("grid gap-1 rounded-xl bg-[var(--glass-bg)] p-1", visibleSpaces.length === 4 ? "grid-cols-4" : "grid-cols-3")}>
-      {visibleSpaces.map((s) => {
-        const active = activeSpace === s.value;
-        return (
-          <button
-            key={s.value}
-            type="button"
-            role="tab"
-            aria-selected={active}
-            title={s.hint}
-            onClick={() => { setSpace(s.value); if (selected && tabOf.get(selected.id) !== s.value) openSetup(null, { replace: true }); }}
-            className={cn(
-              "flex min-h-9 min-w-0 items-center justify-center gap-1 rounded-lg px-1.5 text-sm transition-colors duration-[var(--dur-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-              active ? "bg-background font-semibold text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <span className="truncate">{s.label}</span>
-            <span className="text-xs tabular-nums text-muted-foreground">{spaceCounts[s.value]}</span>
-          </button>
-        );
-      })}
+  /** Page-level scope bar: full names + counts, the active space's rule underneath. «Все» only in the gallery. */
+  const scopeOptions: { value: Scope; short: string; long: string; icon: LucideIcon; hint: string; count: number | null }[] = [
+    ...(view === "gallery" ? [{ value: "all" as Scope, short: "Все", long: "Все", icon: Library, hint: "Эталоны из всех сетапов, которые вам видны: офис, ваши и общие", count: null }] : []),
+    ...visibleSpaces.map((s) => ({ value: s.value as Scope, short: s.label, long: s.long, icon: s.icon, hint: s.hint, count: spaceCounts[s.value] })),
+  ];
+  const activeScope = scopeOptions.find((s) => s.value === shownScope) ?? scopeOptions[0];
+  const pickScope = (v: Scope) => {
+    setSpace(v);
+    if (v !== "all" && selected) {
+      const root = selected.parentId ? byId.get(selected.parentId) ?? selected : selected;
+      if (tabOf.get(root.id) !== v) openSetup(null, { replace: true });
+    }
+  };
+  const scopeBar = (
+    <div className="flex flex-col gap-1.5">
+      <div role="tablist" aria-label="Пространство плейбука" className="flex flex-wrap gap-1.5">
+        {scopeOptions.map((s) => {
+          const active = activeScope?.value === s.value;
+          const Icon = s.icon;
+          return (
+            <button
+              key={s.value}
+              type="button"
+              role="tab"
+              aria-selected={active}
+              title={s.hint}
+              onClick={() => pickScope(s.value)}
+              className={cn(
+                "flex min-h-10 items-center gap-1.5 rounded-xl border px-2.5 text-sm sm:gap-2 sm:px-3 transition-colors duration-[var(--dur-1)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                active
+                  ? "border-primary/50 bg-primary/10 font-semibold text-foreground"
+                  : "border-[var(--glass-border)] bg-[var(--glass-bg)] text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
+              )}
+            >
+              <Icon className={cn("hidden h-4 w-4 shrink-0 sm:block", active ? "text-primary" : "")} aria-hidden="true" />
+              <span className="whitespace-nowrap sm:hidden">{s.short}</span>
+              <span className="hidden whitespace-nowrap sm:inline">{s.long}</span>
+              {s.count != null && (
+                <span className={cn("rounded-full px-1.5 text-xs tabular-nums", active ? "bg-primary/15 text-foreground" : "bg-[var(--glass-bg)] text-muted-foreground")}>{s.count}</span>
+              )}
+            </button>
+          );
+        })}
+      </div>
+      {activeScope && <p className="px-1 text-xs text-muted-foreground">{activeScope.hint}.</p>}
     </div>
   );
 
@@ -722,7 +799,7 @@ export default function Playbook() {
           {tagFilter.length > 0 && <button type="button" onClick={() => setTagFilter([])} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">Сбросить</button>}
         </div>
         <p className="mb-2 text-xs text-muted-foreground">Показываются сетапы со всеми выбранными тегами.</p>
-        <div className="flex max-h-64 flex-wrap gap-1.5 overflow-y-auto">
+        <div className="flex max-h-[min(55dvh,420px)] flex-wrap gap-1.5 overflow-y-auto">
           {allTags.map(([t, n]) => (
             <button
               key={t}
@@ -880,7 +957,7 @@ export default function Playbook() {
       </div>
     );
   } else if (view === "gallery") {
-    body = <Gallery entries={entries} onOpenSetup={(id) => openFromElsewhere(id, "examples")} />;
+    body = <Gallery entries={entries} scope={galleryScope} viewerName={viewer.name} onOpenSetup={(id) => openFromElsewhere(id, "examples")} />;
   } else if (view === "grid") {
     const list = flat ?? sortEntries(topLevel.filter(passes), "name", summary);
     const sections: { title: string | null; items: PlaybookEntry[] }[] = flat
@@ -888,15 +965,12 @@ export default function Playbook() {
       : [...allFolders, null].map((f) => ({ title: f ?? "Без папки", items: list.filter((e) => (e.folder ?? null) === f) })).filter((s) => s.items.length);
     body = (
       <div className="flex flex-col gap-[var(--grid-gap)]">
-        <Toolbar className="gap-3">
-          <div className="w-[420px] shrink-0">{spaceSwitcher}</div>
-          {topLevel.length > 0 && (
-            <>
-              <div className="w-72">{searchRow(false)}</div>
-              <div className="w-[300px]">{filterRow}</div>
-            </>
-          )}
-        </Toolbar>
+        {topLevel.length > 0 && (
+          <Toolbar className="gap-3">
+            <div className="w-full sm:w-72">{searchRow(false)}</div>
+            <div className="w-full sm:w-[300px]">{filterRow}</div>
+          </Toolbar>
+        )}
         {activeFilterNote}
         {topLevel.length === 0 ? spaceEmpty : list.length === 0 ? (
           <div className="glass-panel rounded-2xl"><EmptyState icon={Search} title="Ничего не найдено" description="Измените фильтры или поиск." /></div>
@@ -916,15 +990,14 @@ export default function Playbook() {
     );
   } else {
     body = (
-      <div className="grid items-start gap-[var(--grid-gap)] grid-cols-[320px_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside
           aria-label="Сетапы"
-          className="glass-panel sticky-top flex max-h-[calc(100dvh-7rem)] min-w-0 flex-col gap-3 rounded-2xl p-3"
+          className={cn("glass-panel flex min-w-0 flex-col gap-3 rounded-2xl p-3 lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:max-h-[calc(100dvh-7rem)]", selected ? "hidden lg:flex" : "max-h-[60dvh]")}
           onDragOver={onTreeDragOver}
           onDragLeave={onTreeDragLeave}
           onDrop={onTreeDrop}
         >
-          {spaceSwitcher}
           {topLevel.length > 0 ? (
             <>
               {searchRow(true)}
@@ -960,7 +1033,7 @@ export default function Playbook() {
           ) : (
             <>
               {proposedBlock}
-              <p className="px-1 py-2 text-sm text-muted-foreground">{SPACES.find((s) => s.value === activeSpace)?.hint}.</p>
+              <p className="px-1 py-2 text-sm text-muted-foreground">В этом пространстве пока нет сетапов.</p>
             </>
           )}
         </aside>
@@ -1007,6 +1080,19 @@ export default function Playbook() {
               summaryLoaded={summaryQ.isSuccess}
               onOpen={(id) => openSetup(id)}
               onQuickFilter={(f) => { setQuick(f); if (sort === "folder" && f !== "all") setSort("name"); }}
+              showHealth={activeSpace === "office" && viewer.isCurator}
+              before={
+                <>
+                  <PlaybookInbox />
+                  <Tier1Strip
+                    scope={activeSpace}
+                    entries={entries}
+                    viewerName={viewer.name}
+                    onOpenSetup={(id) => openSetup(id, { tab: "examples" })}
+                    onOpenGallery={() => setView("gallery")}
+                  />
+                </>
+              }
             />
           )}
         </div>
@@ -1018,6 +1104,7 @@ export default function Playbook() {
     <Page className={cn(zoom !== 1 && "origin-top-left")}>
       <div className="flex flex-col gap-[var(--page-gap)]" style={zoom !== 1 ? { zoom } : undefined}>
         {header}
+        {!isLoading && !isError && scopeBar}
         {body}
       </div>
 

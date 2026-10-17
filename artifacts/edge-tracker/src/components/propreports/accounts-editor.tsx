@@ -3,7 +3,7 @@
  */
 import * as React from "react";
 import { Loader2, Plus, RefreshCw, Save, Trash2, Users } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -15,6 +15,19 @@ import { agoText, useDeleteAccount, useRefreshAccounts, useSaveAccounts, useUser
 const NONE = "__none";
 
 type Row = { account: string; trader: string | null; active: boolean; notes: string; aliases: string; id: number | null; accountId: string | null; accountName: string | null; lastSyncedAt: string | null; lastFillAt: string | null };
+type Indexed = { r: Row; i: number };
+
+// Free-text columns (aliases, notes) aren't sortable, so typing never makes a row jump;
+// unsaved new rows stay pinned at the bottom in insertion order.
+const ACCOUNT_ACCESSORS = {
+  account: (x: Indexed) => x.r.account,
+  external: (x: Indexed) => [x.r.accountId, x.r.accountName].filter(Boolean).join(" · ") || null,
+  trader: (x: Indexed) => x.r.trader,
+  active: (x: Indexed) => (x.r.active ? 1 : 0),
+  lastFill: (x: Indexed) => (x.r.lastFillAt ? Date.parse(x.r.lastFillAt) || null : null),
+  synced: (x: Indexed) => (x.r.lastSyncedAt ? Date.parse(x.r.lastSyncedAt) || null : null),
+};
+const ACCOUNT_FIRST_DIR = { account: "asc", external: "asc", trader: "asc" } as const;
 
 export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: AccountMapping[]; staff: boolean; apiConfigured: boolean }) {
   const { toast } = useToast();
@@ -63,6 +76,10 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
   };
 
   const unmapped = rows.filter((r) => r.account && !r.trader).length;
+  const saved = React.useMemo(() => rows.map((r, i) => ({ r, i })).filter((x) => x.r.id != null), [rows]);
+  const fresh = React.useMemo(() => rows.map((r, i) => ({ r, i })).filter((x) => x.r.id == null), [rows]);
+  const sort = useTableSort(saved, ACCOUNT_ACCESSORS, "account", "asc", ACCOUNT_FIRST_DIR);
+  const ordered = React.useMemo(() => [...sort.rows, ...fresh], [sort.rows, fresh]);
 
   return (
     <Panel
@@ -91,19 +108,19 @@ export function AccountsEditor({ accounts, staff, apiConfigured }: { accounts: A
           <table>
             <thead>
               <tr>
-                <th>Счёт (Account)</th>
-                <th>Account Id / имя</th>
-                <th>Трейдер</th>
-                <th>Активен</th>
+                <SortableTh {...sort.thProps("account")}>Счёт (Account)</SortableTh>
+                <SortableTh {...sort.thProps("external")}>Account Id / имя</SortableTh>
+                <SortableTh {...sort.thProps("trader")}>Трейдер</SortableTh>
+                <SortableTh {...sort.thProps("active")}>Активен</SortableTh>
                 <th>Псевдонимы</th>
-                <th>Последний fill</th>
-                <th>Синхронизирован</th>
+                <SortableTh {...sort.thProps("lastFill")}>Последний fill</SortableTh>
+                <SortableTh {...sort.thProps("synced")}>Синхронизирован</SortableTh>
                 <th>Заметка</th>
                 {staff && <th className="w-10" />}
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
+              {ordered.map(({ r, i }) => (
                 <tr key={r.id ?? `new-${i}`} className={cn(r.account && !r.trader && "bg-[hsl(var(--chart-3))]/5")}>
                   <td>
                     {staff && r.id == null ? (

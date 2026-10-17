@@ -146,7 +146,7 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
                 className="h-8 pl-8 text-xs"
               />
             </div>
-            <div className="max-h-72 space-y-1 overflow-y-auto">
+            <div className="max-h-[min(55dvh,440px)] space-y-1 overflow-y-auto">
               {categories.length === 0 && <p className="py-3 text-center text-xs text-muted-foreground">Ничего не найдено</p>}
               {categories.map(([key, cat]) => {
                 const isOpen = !!q || openCat === key;

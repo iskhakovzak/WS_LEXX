@@ -24,6 +24,8 @@ export const watchlistTable = pgTable("watchlist", {
   beta: numeric("beta", { precision: 8, scale: 4 }),
   shortInterest: numeric("short_interest", { precision: 8, scale: 4 }),
   longName: text("long_name"),
+  /** Member who created the row (owner-or-staff edit rule). NULL = legacy/seeded → staff-only. */
+  createdBy: text("created_by"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [
@@ -32,6 +34,6 @@ export const watchlistTable = pgTable("watchlist", {
   index("watchlist_score_idx").on(table.score),
 ]);
 
-export const insertWatchlistSchema = createInsertSchema(watchlistTable).omit({ id: true, createdAt: true, deletedAt: true });
+export const insertWatchlistSchema = createInsertSchema(watchlistTable).omit({ id: true, createdAt: true, deletedAt: true, createdBy: true });
 export type InsertWatchlist = z.infer<typeof insertWatchlistSchema>;
 export type WatchlistItem = typeof watchlistTable.$inferSelect;

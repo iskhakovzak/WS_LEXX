@@ -62,7 +62,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="flex max-h-[85dvh] max-w-xl flex-col overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Поделиться «{entry.name}»</DialogTitle>
           <DialogDescription>Читатели видят вас как автора и могут скопировать сетап к себе. Править его можете только вы.</DialogDescription>
@@ -113,7 +113,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
                 <fieldset>
                   <legend className="mb-1.5 text-xs text-muted-foreground">Люди</legend>
                   <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Найти по имени" aria-label="Найти по имени" className="mb-2 h-9" />
-                  <ul className="flex max-h-48 flex-col gap-1 overflow-y-auto">
+                  <ul className="flex max-h-[min(45dvh,360px)] flex-col gap-1 overflow-y-auto">
                     {people.map((u) => (
                       <li key={u.name} className="flex items-center gap-2 text-sm">
                         <Checkbox id={`sh-${u.name}`} checked={users.has(u.name)} onCheckedChange={() => setUsers((s) => toggle(s, u.name))} />

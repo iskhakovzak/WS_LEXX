@@ -1,5 +1,5 @@
 import { TrendingUp } from "lucide-react";
-import { DataTable, Delta, EmptyState, Pill } from "@/components/ds";
+import { DataTable, Delta, EmptyState, Pill, SortableTh, useTableSort } from "@/components/ds";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, weekHref } from "@/lib/period-links";
@@ -26,6 +26,14 @@ const COLS: Col[] = [
   { key: "feeShare", label: "Комиссии", fmt: (v) => fmtPct(v), delta: { scale: 100, suffix: " п.п.", invert: true, precision: 0 } },
   { key: "totalR", label: "Σ R", fmt: (v) => fmtR(v), delta: { scale: 1, suffix: "R", precision: 2 } },
 ];
+
+const VERDICT_ORDER: Record<string, number | null> = { worse: 0, flat: 1, better: 2, nodata: null };
+/** Columns sort by the current 4-week value; «Вердикт» by worse → flat → better (no data sinks). */
+const TREND_ACCESSORS: Record<string, (t: TrendResult) => number | string | null> = {
+  trader: (t) => t.trader,
+  verdict: (t) => VERDICT_ORDER[t.verdict] ?? null,
+  ...Object.fromEntries(COLS.map((c) => [c.key, (t: TrendResult) => (t.curM[c.key] as number | null) ?? null])),
+};
 
 /** Weekly bars of the 8-week window (net $, else R). Each bar opens that week's review of the trader. */
 function WeekBars({ weeks, trader }: { weeks: TrendResult["weeks"]; trader: string }) {
@@ -56,6 +64,11 @@ function WeekBars({ weeks, trader }: { weeks: TrendResult["weeks"]; trader: stri
 export function TrendView({ trend }: { trend: TrendResult[] }) {
   if (!trend.length) return <EmptyState icon={TrendingUp} title="Нет сделок за последние 8 недель" description="Сравнение «последние 4 недели vs предыдущие 4» появится, когда будут закрытые сделки." />;
   const t0 = trend[0];
+  return <TrendTable trend={trend} t0={t0} />;
+}
+
+function TrendTable({ trend, t0 }: { trend: TrendResult[]; t0: TrendResult }) {
+  const { rows, thProps } = useTableSort(trend, TREND_ACCESSORS, "verdict", "asc");
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">
@@ -65,14 +78,14 @@ export function TrendView({ trend }: { trend: TrendResult[] }) {
         <table>
           <thead>
             <tr>
-              <th scope="col">Трейдер</th>
-              <th scope="col">Вердикт</th>
+              <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
+              <SortableTh {...thProps("verdict")}>Вердикт</SortableTh>
               <th scope="col">8 недель</th>
-              {COLS.map((c) => <th key={c.key} scope="col" className="text-right">{c.label}</th>)}
+              {COLS.map((c) => <SortableTh key={c.key} {...thProps(c.key)} align="right">{c.label}</SortableTh>)}
             </tr>
           </thead>
           <tbody>
-            {trend.map((t) => (
+            {rows.map((t) => (
               <tr key={t.trader}>
                 <td className="font-medium text-foreground">{t.trader}</td>
                 <td><Pill tone={VERDICT[t.verdict].tone} dot>{VERDICT[t.verdict].label}</Pill></td>

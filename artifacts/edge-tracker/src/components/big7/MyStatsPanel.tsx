@@ -2,15 +2,26 @@
  * The trader's own results on the board tickers: net, win rate and best hour per ticker plus an
  * hour-of-day strip. Rendered only when there are trades (the page hides it otherwise).
  */
+import * as React from "react";
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
-import { DataTable, Panel, Segmented, TermTooltip, toneOf, toneText } from "@/components/ds";
+import { DataTable, Panel, Segmented, SortableTh, TermTooltip, toneOf, toneText, useTableSort } from "@/components/ds";
 import { fmtMoney } from "@/components/chart-engine/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { MyHour, MyStats, MyTicker } from "./use-big7";
 
 export type StatsPeriod = "90" | "0";
+
+type SortKey = "ticker" | "n" | "net" | "wr" | "long" | "best";
+const SORT_ACCESSORS: Record<SortKey, (r: MyTicker) => number | string | null> = {
+  ticker: (r) => r.ticker,
+  n: (r) => r.n,
+  net: (r) => r.net,
+  wr: (r) => r.wr,
+  long: (r) => r.longNet,
+  best: (r) => r.bestHour?.net ?? null,
+};
 
 /** `wr` comes from the API in percent (52.3). */
 const wrText = (wr: number | null) => (wr == null ? "—" : `${Math.round(wr)}%`);
@@ -58,7 +69,8 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
   onPeriod: (p: StatsPeriod) => void;
   onOpen: (symbol: string) => void;
 }) {
-  const tickers = stats.tickers.filter((t) => t.n > 0);
+  const traded = React.useMemo(() => stats.tickers.filter((t) => t.n > 0), [stats.tickers]);
+  const { rows: tickers, thProps } = useTableSort(traded, SORT_ACCESSORS, "net");
   const t = stats.total;
   return (
     <Panel
@@ -84,12 +96,12 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
             <table>
               <thead>
                 <tr>
-                  <th scope="col">Тикер</th>
-                  <th scope="col" className="text-right">Сделок</th>
-                  <th scope="col" className="text-right">Нетто</th>
-                  <th scope="col" className="text-right"><TermTooltip term="winrate">WR</TermTooltip></th>
-                  <th scope="col" className="text-right">Лонг / шорт</th>
-                  <th scope="col">Лучшее время</th>
+                  <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+                  <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
+                  <SortableTh {...thProps("net")} align="right" term="net">Нетто</SortableTh>
+                  <SortableTh {...thProps("wr")} align="right" term="winrate">WR</SortableTh>
+                  <SortableTh {...thProps("long")} align="right">Лонг / шорт</SortableTh>
+                  <SortableTh {...thProps("best")}>Лучшее время</SortableTh>
                   <th scope="col"><span className="sr-only">Сделки</span></th>
                 </tr>
               </thead>

@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Layers, Moon, Repeat, ShieldAlert, ShieldCheck } from "lucide-react";
 import {
-  BentoGrid, DataTable, EmptyState, Panel, Pill, QueryState, StatCard, StatGrid, toneOf,
+  BentoGrid, DataTable, EmptyState, Panel, Pill, QueryState, SortableTh, StatCard, StatGrid, toneOf, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -101,6 +101,18 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
   );
 }
 
+type TemplateRow = TemplatesPayload["traders"][number];
+const TIER_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
+/** Проблемные строки (нет лимитов → нет тира → расхождение) поднимаются наверх при сортировке по возрастанию. */
+const TEMPLATE_ACCESSORS = {
+  trader: (r: TemplateRow) => r.trader,
+  tier: (r: TemplateRow) => (r.tier ? TIER_ORDER[r.tier] ?? 9 : null),
+  daily: (r: TemplateRow) => r.limits?.dailyLossLimit ?? null,
+  weekly: (r: TemplateRow) => r.limits?.weeklyLossLimit ?? null,
+  dd: (r: TemplateRow) => r.limits?.maxDrawdown ?? null,
+  fit: (r: TemplateRow) => (!r.hasLimits ? 0 : !r.tier ? 1 : r.drift.length ? 2 : 3),
+};
+
 function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader: (trader: string, tab?: string) => void }) {
   const [selected, setSelected] = React.useState<Set<string>>(new Set());
   const [dialog, setDialog] = React.useState<{ traders: string[]; tier: string | null } | null>(null);
@@ -108,6 +120,7 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
   const needs = t.traders.filter((r) => !r.hasLimits || r.drift.length > 0 || !r.tier);
   const toggle = (name: string) => setSelected((s) => { const n = new Set(s); if (n.has(name)) n.delete(name); else n.add(name); return n; });
   const allOn = t.traders.length > 0 && t.traders.every((r) => selected.has(r.trader));
+  const { rows, thProps } = useTableSort(t.traders, TEMPLATE_ACCESSORS, "fit", "asc");
 
   return (
     <BentoGrid>
@@ -133,7 +146,7 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
         {t.traders.length === 0 ? (
           <EmptyState compact icon={Layers} title="Трейдеров нет" />
         ) : (
-          <DataTable ariaLabel="Лимиты трейдеров и шаблоны тиров" maxHeight="28rem">
+          <DataTable ariaLabel="Лимиты трейдеров и шаблоны тиров" maxHeight="65vh">
             <table>
               <thead>
                 <tr>
@@ -146,17 +159,17 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                       />
                     </th>
                   )}
-                  <th>Трейдер</th>
-                  <th>Тир</th>
-                  <th className="!text-right">Дневной</th>
-                  <th className="!text-right">Недельный</th>
-                  <th className="!text-right">Просадка</th>
-                  <th>Соответствие шаблону</th>
+                  <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
+                  <SortableTh {...thProps("tier")}>Тир</SortableTh>
+                  <SortableTh {...thProps("daily")} align="right">Дневной</SortableTh>
+                  <SortableTh {...thProps("weekly")} align="right">Недельный</SortableTh>
+                  <SortableTh {...thProps("dd")} align="right">Просадка</SortableTh>
+                  <SortableTh {...thProps("fit")}>Соответствие шаблону</SortableTh>
                   {t.canEdit && <th />}
                 </tr>
               </thead>
               <tbody>
-                {t.traders.map((r) => (
+                {rows.map((r) => (
                   <tr key={r.trader} className={cn(selected.has(r.trader) && "bg-primary/5")}>
                     {t.canEdit && (
                       <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={`Выбрать ${r.trader}`} /></td>
@@ -166,10 +179,10 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                     <td className="text-right">{usd(r.limits?.dailyLossLimit, false)}</td>
                     <td className="text-right">{usd(r.limits?.weeklyLossLimit, false)}</td>
                     <td className="text-right">{usd(r.limits?.maxDrawdown, false)}</td>
-                    <td className="max-w-[16rem]">
+                    <td className="min-w-[10rem] max-w-[20rem]">
                       {!r.hasLimits ? <Pill tone="warn">Лимитов нет</Pill>
                         : !r.tier ? <Pill tone="neutral">Тир не назначен</Pill>
-                        : r.drift.length ? <span className="block truncate text-xs text-warn" title={r.drift.map((d) => d.label).join(", ")}>Отличается: {r.drift.map((d) => d.label).join(", ")}</span>
+                        : r.drift.length ? <span className="block whitespace-normal break-words text-xs text-warn">Отличается: {r.drift.map((d) => d.label).join(", ")}</span>
                         : <Pill tone="up">Совпадает</Pill>}
                     </td>
                     {t.canEdit && (

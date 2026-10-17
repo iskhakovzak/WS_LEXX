@@ -12,7 +12,7 @@ import {
   type Exposure, type Offering,
 } from "./types";
 
-export type SortKey = "score" | "pct" | "size" | "discount" | "adv" | "delta" | "time" | "gap";
+export type SortKey = "score" | "pct" | "size" | "discount" | "adv" | "delta" | "time" | "gap" | "ticker" | "price";
 export const SORT_LABEL: Record<SortKey, string> = {
   score: "Скор",
   pct: "% мкап",
@@ -22,9 +22,11 @@ export const SORT_LABEL: Record<SortKey, string> = {
   delta: "Δ к офферу",
   time: "Время",
   gap: "Реакция",
+  ticker: "Тикер",
+  price: "Цена",
 };
 
-export function sortValue(o: Offering, k: SortKey): number | null {
+export function sortValue(o: Offering, k: SortKey): number | string | null {
   switch (k) {
     case "score": return dilutionScore(o).score;
     case "pct": return pctOfMcap(o);
@@ -34,6 +36,8 @@ export function sortValue(o: Offering, k: SortKey): number | null {
     case "delta": return o.priceChangePct;
     case "time": return o.acceptedAt ? Date.parse(o.acceptedAt.replace(" ", "T") + ":00Z") : null;
     case "gap": return o.reaction ? o.reaction.o2cPct : null;
+    case "ticker": return o.ticker;
+    case "price": return o.currentPrice ?? o.prevClose ?? o.offerPrice ?? null;
   }
 }
 
@@ -238,14 +242,14 @@ export function OfferingsList({
         <table className="min-w-[720px] [&_td]:!px-2 [&_th]:!px-2">
           <thead>
             <tr>
-              <th scope="col">Тикер</th>
+              <SortableTh active={sort === "ticker"} dir={sortDir} onSort={() => onSort("ticker")}>Тикер</SortableTh>
               <th scope="col">Тип</th>
               <SortableTh active={sort === "time"} dir={sortDir} onSort={() => onSort("time")} className="hidden lg:table-cell">Время</SortableTh>
               {th("size", variant === "overhang" ? "Ёмкость" : "Размер")}
               {th("pct", "% мкап")}
               {variant === "deals" && th("adv", "К объёму", "hidden xl:table-cell")}
               {variant === "deals" && th("discount", "Дисконт")}
-              <th scope="col" className="text-right">Цена</th>
+              {th("price", "Цена")}
               {variant === "deals" && th("gap", "Реакция", "hidden md:table-cell")}
               <SortableTh active={sort === "score"} dir={sortDir} onSort={() => onSort("score")}>Скор</SortableTh>
               <th scope="col"><span className="sr-only">Действия</span></th>

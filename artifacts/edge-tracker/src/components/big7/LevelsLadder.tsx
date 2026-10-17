@@ -11,7 +11,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Panel, Pill, EmptyState } from "@/components/ds";
-import { WriteOnly } from "@/contexts/auth-context";
+import { WriteOnly, useAuth } from "@/contexts/auth-context";
+import { canModifyOwned, createdByOf } from "@/lib/ownership";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
@@ -79,6 +80,8 @@ function LevelForm({
 export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; quote?: StockQuote; stats?: GapStats; atr: number | null }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { user, isCurator } = useAuth();
+  const me = user && user.role !== "guest" ? user.traderName : null;
   const { data: allLevels = [], isLoading, isError, refetch } = useListBig7Levels();
   const createM = useCreateBig7Level();
   const updateM = useUpdateBig7Level();
@@ -191,7 +194,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
           {action && <Pill tone={actionTone(action)} className="shrink-0">{ACTION_RU[action] ?? action}</Pill>}
           {note && <span className="truncate text-xs text-muted-foreground" title={note}>{note}</span>}
         </span>
-        <WriteOnly>
+        {canModifyOwned(createdByOf(l), me, isCurator) && <WriteOnly>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button
@@ -207,7 +210,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
               <DropdownMenuItem onSelect={() => remove(l)} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </WriteOnly>
+        </WriteOnly>}
       </li>
     );
   };

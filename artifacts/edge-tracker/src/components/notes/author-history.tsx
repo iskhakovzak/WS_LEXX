@@ -284,7 +284,7 @@ export function AuthorHistory({
       )}
 
       <Sheet open={!!preview} onOpenChange={(o) => { if (!o) setPreview(null); }}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           {preview && (
             <>
               <SheetHeader>

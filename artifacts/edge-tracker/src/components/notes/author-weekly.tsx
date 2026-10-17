@@ -154,7 +154,7 @@ export function AuthorWeeklyCard({
       </div>
 
       <Sheet open={open && !!summary} onOpenChange={setOpen}>
-        <SheetContent className="w-full overflow-y-auto sm:max-w-xl">
+        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>Разбор недели</SheetTitle>
             <SheetDescription>

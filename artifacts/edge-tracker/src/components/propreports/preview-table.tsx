@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { DataTable, Pill, Segmented, StatCard, StatGrid, type Tone } from "@/components/ds";
+import { DataTable, Pill, Segmented, SortableTh, StatCard, StatGrid, useTableSort, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
   ACTION_LABEL, FIELD_LABEL, feeLabel, orderedFeeKeys, HORIZON_LABEL, REASON_LABEL, SESSION_LABEL,
@@ -13,6 +13,28 @@ import {
 
 const ACTION_TONE: Record<PlanAction, Tone> = { insert: "up", update: "accent", unchanged: "neutral", adopt: "purple", conflict: "warn", skip: "down" };
 type Filter = "all" | PlanAction;
+
+// Action order mirrors the filter chips: what will change first, no-ops last.
+const ACTION_RANK: Record<PlanAction, number> = { insert: 0, update: 1, adopt: 2, conflict: 3, unchanged: 4, skip: 5 };
+const HORIZON_RANK: Record<string, number> = { intraday: 0, overnight: 1, swing: 2 };
+const RESULT_RANK: Record<string, number> = { win: 0, breakeven: 1, loss: 2, open: 3 };
+const PREVIEW_ACCESSORS = {
+  action: (it: PlanItemView) => ACTION_RANK[it.action] ?? null,
+  account: (it: PlanItemView) => it.trader ?? it.account,
+  date: (it: PlanItemView) => it.trip.openedAt || it.trip.date,
+  symbol: (it: PlanItemView) => it.trip.symbol,
+  side: (it: PlanItemView) => it.trip.side,
+  qty: (it: PlanItemView) => it.trip.qty,
+  entry: (it: PlanItemView) => it.trip.avgEntry,
+  exit: (it: PlanItemView) => it.trip.avgExit,
+  gross: (it: PlanItemView) => it.trip.grossPnl,
+  fees: (it: PlanItemView) => it.trip.totalFees,
+  net: (it: PlanItemView) => it.trip.netPnl,
+  horizon: (it: PlanItemView) => HORIZON_RANK[it.trip.horizon] ?? null,
+  hold: (it: PlanItemView) => (it.trip.closedAt && it.trip.openedAt ? (Date.parse(it.trip.closedAt) - Date.parse(it.trip.openedAt)) || null : null),
+  result: (it: PlanItemView) => RESULT_RANK[it.trip.result] ?? null,
+};
+const PREVIEW_FIRST_DIR = { action: "asc", account: "asc", symbol: "asc", side: "asc", horizon: "asc", result: "asc" } as const;
 
 export function resultTone(r: TripView["result"]): Tone {
   return r === "win" ? "up" : r === "loss" ? "down" : r === "open" ? "accent" : "neutral";
@@ -98,7 +120,9 @@ export function PreviewSummary({ preview }: { preview: Preview }) {
 export function PreviewTable({ preview }: { preview: Preview }) {
   const [filter, setFilter] = React.useState<Filter>("all");
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
-  const items = filter === "all" ? preview.items : preview.items.filter((i) => i.action === filter);
+  const filtered = React.useMemo(() => (filter === "all" ? preview.items : preview.items.filter((i) => i.action === filter)), [filter, preview.items]);
+  const sort = useTableSort(filtered, PREVIEW_ACCESSORS, "date", "asc", PREVIEW_FIRST_DIR);
+  const items = sort.rows;
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const options: Array<{ value: Filter; label: string; count: number }> = [
     { value: "all", label: "Все", count: preview.items.length },
@@ -107,25 +131,25 @@ export function PreviewTable({ preview }: { preview: Preview }) {
   return (
     <div className="grid gap-3">
       <Segmented ariaLabel="Фильтр предпросмотра" size="sm" value={filter} onChange={setFilter} options={options} />
-      <DataTable maxHeight="60vh" ariaLabel="Предпросмотр импорта">
+      <DataTable maxHeight="70vh" ariaLabel="Предпросмотр импорта">
         <table>
           <thead>
             <tr>
               <th className="w-6" />
-              <th>Действие</th>
-              <th>Счёт / трейдер</th>
-              <th>Дата</th>
-              <th>Тикер</th>
-              <th>Сторона</th>
-              <th className="text-right">Объём</th>
-              <th className="text-right">Вход</th>
-              <th className="text-right">Выход</th>
-              <th className="text-right">Gross</th>
-              <th className="text-right">Комиссии</th>
-              <th className="text-right">Net</th>
-              <th>Горизонт</th>
-              <th>Удерж.</th>
-              <th>Итог</th>
+              <SortableTh {...sort.thProps("action")}>Действие</SortableTh>
+              <SortableTh {...sort.thProps("account")}>Счёт / трейдер</SortableTh>
+              <SortableTh {...sort.thProps("date")}>Дата</SortableTh>
+              <SortableTh {...sort.thProps("symbol")}>Тикер</SortableTh>
+              <SortableTh {...sort.thProps("side")}>Сторона</SortableTh>
+              <SortableTh {...sort.thProps("qty")} align="right">Объём</SortableTh>
+              <SortableTh {...sort.thProps("entry")} align="right">Вход</SortableTh>
+              <SortableTh {...sort.thProps("exit")} align="right">Выход</SortableTh>
+              <SortableTh {...sort.thProps("gross")} align="right">Gross</SortableTh>
+              <SortableTh {...sort.thProps("fees")} align="right">Комиссии</SortableTh>
+              <SortableTh {...sort.thProps("net")} align="right">Net</SortableTh>
+              <SortableTh {...sort.thProps("horizon")}>Горизонт</SortableTh>
+              <SortableTh {...sort.thProps("hold")}>Удерж.</SortableTh>
+              <SortableTh {...sort.thProps("result")}>Итог</SortableTh>
             </tr>
           </thead>
           <tbody>

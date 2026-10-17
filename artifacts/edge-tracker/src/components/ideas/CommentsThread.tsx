@@ -85,7 +85,7 @@ export function CommentsThread({
       )}
 
       {comments.length > 0 && (
-        <ol ref={listRef} className="flex max-h-[360px] flex-col gap-2 overflow-y-auto pr-1">
+        <ol ref={listRef} className="flex max-h-[60dvh] flex-col gap-2 overflow-y-auto pr-1">
           {comments.map((c) => {
             const mine = c.author_name === currentUser;
             const isAuthor = c.author_name === idea.trader;

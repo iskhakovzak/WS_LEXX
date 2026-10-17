@@ -431,7 +431,7 @@ export default function Discussions() {
 
       {isError && <QueryError error={error} onRetry={() => refetch()} />}
 
-      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)] xl:grid-cols-[minmax(360px,440px)_minmax(0,1fr)]">
         {/* ── Thread list ── */}
         <section
           aria-label="Список тем"
@@ -640,7 +640,7 @@ export default function Discussions() {
         onSaved={(id) => selectThread(id)}
       />
 
-      <ReportDialog target={reportTarget} reporter={me} onClose={() => setReportTarget(null)} />
+      <ReportDialog target={reportTarget} onClose={() => setReportTarget(null)} />
 
       {undo && (
         <UndoToast

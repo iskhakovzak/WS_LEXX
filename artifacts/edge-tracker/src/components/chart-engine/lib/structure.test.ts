@@ -89,3 +89,15 @@ describe("2m / 3m timeframes", () => {
     expect(availableTimeframes(300, ["1m", "2m", "3m", "5m", "15m"])).toEqual(["5m", "15m"]);
   });
 });
+
+describe("unavailable timeframes", () => {
+  it("explains why a finer timeframe cannot be built from the served bars", async () => {
+    const { timeframeUnavailableReason, baseBarLabel } = await import("./aggregate");
+    expect(timeframeUnavailableReason("1m", 60)).toBeNull();
+    expect(timeframeUnavailableReason("5m", 300)).toBeNull();
+    expect(timeframeUnavailableReason("2m", 300)).toMatch(/7 дней/);
+    expect(timeframeUnavailableReason("5m", 3600)).toMatch(/60 дней/);
+    expect(timeframeUnavailableReason("1h", 86400)).toMatch(/только дневные/);
+    expect([baseBarLabel(60), baseBarLabel(300), baseBarLabel(3600)]).toEqual(["1 мин", "5 мин", "1 ч"]);
+  });
+});

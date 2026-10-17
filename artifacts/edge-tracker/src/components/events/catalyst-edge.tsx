@@ -3,20 +3,42 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ChevronDown, Info, Megaphone, Scale } from "lucide-react";
-import { EmptyState, Panel, Pill, StatCard, StatGrid, toneOf, toneText } from "@/components/ds";
+import { EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, toneOf, toneText, useTableSort } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { daysWord, fmtUsd, pooledEarnings, takeaway, type CategoryEdge } from "./catalyst-math";
+import { daysWord, fmtUsd, pooledEarnings, takeaway, type CategoryEdge, type EarningsEdge } from "./catalyst-math";
 import { edgesFrom, useHistories, type CatalystData, type MyEarnings } from "./use-catalysts";
 import { verdictLabel, verdictTone } from "./catalyst-today";
 import { fmtDay } from "./event-meta";
 
 const EARNINGS_TICKERS = 8;
 
+type EdgeKey = "label" | "days" | "net" | "delta" | "green" | "wr" | "tpd";
+const EDGE_ACCESSORS: Record<EdgeKey, (r: CategoryEdge) => number | string | null> = {
+  label: (r) => r.label,
+  days: (r) => r.agg.days,
+  net: (r) => r.agg.avgNetDay,
+  delta: (r) => r.delta,
+  green: (r) => r.agg.greenPct,
+  wr: (r) => r.agg.winRate,
+  tpd: (r) => r.agg.avgTradesDay,
+};
+
+type EarnKey = "ticker" | "gap" | "range" | "up" | "event" | "other";
+const EARN_ACCESSORS: Record<EarnKey, (e: EarningsEdge) => number | string | null> = {
+  ticker: (e) => e.ticker,
+  gap: (e) => e.avgAbsGap,
+  range: (e) => e.avgRange,
+  up: (e) => e.upShare,
+  event: (e) => (e.event.trades ? e.event.net : null),
+  other: (e) => (e.other.trades ? e.other.avgNetTrade : null),
+};
+
 export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTicker: (e: Pick<MyEarnings, "ticker"> & Partial<MyEarnings>) => void }) {
   const { edge, trades } = data;
   const [open, setOpen] = React.useState<string | null>(null);
+  const { rows: edgeRows, thProps } = useTableSort(edge.rows, EDGE_ACCESSORS, "days");
 
   if (trades.isLoading || data.holidays.isLoading) {
     return (
@@ -69,13 +91,13 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
           <table className="w-full min-w-[860px] text-sm">
             <thead>
               <tr className="border-b border-[var(--glass-border)] text-left text-xs text-muted-foreground [&>th]:whitespace-nowrap">
-                <th className="px-[var(--panel-p)] py-2 font-medium">Тип дня</th>
-                <th className="px-2 py-2 text-right font-medium">Торговали</th>
-                <th className="px-2 py-2 text-right font-medium">Net / день</th>
-                <th className="px-2 py-2 text-right font-medium">К обычному</th>
-                <th className="px-2 py-2 text-right font-medium">Зелёных дней</th>
-                <th className="px-2 py-2 text-right font-medium">WR</th>
-                <th className="px-2 py-2 text-right font-medium">Сделок / день</th>
+                <SortableTh {...thProps("label")} className="px-[var(--panel-p)] py-2 font-medium">Тип дня</SortableTh>
+                <SortableTh {...thProps("days")} align="right" className="px-2 py-2 font-medium">Торговали</SortableTh>
+                <SortableTh {...thProps("net")} align="right" className="px-2 py-2 font-medium">Net / день</SortableTh>
+                <SortableTh {...thProps("delta")} align="right" className="px-2 py-2 font-medium">К обычному</SortableTh>
+                <SortableTh {...thProps("green")} align="right" className="px-2 py-2 font-medium">Зелёных дней</SortableTh>
+                <SortableTh {...thProps("wr")} align="right" className="px-2 py-2 font-medium">WR</SortableTh>
+                <SortableTh {...thProps("tpd")} align="right" className="px-2 py-2 font-medium">Сделок / день</SortableTh>
                 <th className="px-[var(--panel-p)] py-2 font-medium">Вывод</th>
               </tr>
             </thead>
@@ -90,7 +112,7 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.avgTradesDay ?? "—"}</td>
                 <td className="px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">база сравнения: торговые дни без событий календаря</td>
               </tr>
-              {edge.rows.map((r) => (
+              {edgeRows.map((r) => (
                 <EdgeRow key={r.key} r={r} base={edge.baseline} open={open === r.key} onToggle={() => setOpen((o) => (o === r.key ? null : r.key))} data={data} />
               ))}
             </tbody>
@@ -180,6 +202,7 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
     return m;
   }, [data.earningsByDate]);
   const missing = tickers.filter((t) => !edges.some((e) => e.ticker === t));
+  const { rows: sortedEdges, thProps } = useTableSort(edges, EARN_ACCESSORS, "event");
 
   return (
     <Panel
@@ -201,17 +224,17 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
         <table className="w-full min-w-[820px] text-sm">
           <thead>
             <tr className="border-b border-[var(--glass-border)] text-left text-xs text-muted-foreground [&>th]:whitespace-nowrap">
-              <th className="px-[var(--panel-p)] py-2 font-medium">Тикер</th>
-              <th className="px-2 py-2 text-right font-medium">Ср. |гэп|</th>
-              <th className="px-2 py-2 text-right font-medium">Ср. диапазон</th>
-              <th className="px-2 py-2 text-right font-medium">Закрылся выше</th>
-              <th className="px-2 py-2 text-right font-medium">Вы в день реакции</th>
-              <th className="px-2 py-2 text-right font-medium">Вы в обычные дни</th>
+              <SortableTh {...thProps("ticker")} className="px-[var(--panel-p)] py-2 font-medium">Тикер</SortableTh>
+              <SortableTh {...thProps("gap")} align="right" className="px-2 py-2 font-medium">Ср. |гэп|</SortableTh>
+              <SortableTh {...thProps("range")} align="right" className="px-2 py-2 font-medium">Ср. диапазон</SortableTh>
+              <SortableTh {...thProps("up")} align="right" className="px-2 py-2 font-medium">Закрылся выше</SortableTh>
+              <SortableTh {...thProps("event")} align="right" className="px-2 py-2 font-medium">Вы в день реакции</SortableTh>
+              <SortableTh {...thProps("other")} align="right" className="px-2 py-2 font-medium">Вы в обычные дни</SortableTh>
               <th className="px-[var(--panel-p)] py-2 text-right font-medium">Следующий отчёт</th>
             </tr>
           </thead>
           <tbody>
-            {edges.map((e) => {
+            {sortedEdges.map((e) => {
               const nx = nextReport.get(e.ticker);
               return (
                 <tr

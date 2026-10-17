@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, desc, gte, lte, isNull } from "drizzle-orm";
 import { db, emotionalStateLogTable, tradesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { requirePersonalAccess } from "../lib/auth";
 import { readinessScore, isValidYmd, addDaysYmd } from "../lib/weeklyPsychologyReport";
 import { netPnl, normResult, signedR } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
@@ -9,28 +10,19 @@ import { nyDate } from "../lib/tradingDate";
 const router: IRouter = Router();
 
 /**
- * Check-ins are personal: traders may only read/write their own; curators/admins any.
+ * Check-ins are personal: the owner, or a member whose journal.read.team grant covers that trader (curators/admins
+ * by default) — lib/auth requirePersonalAccess. Guests never. Writing someone else's check-in needs journal.review.
  * Returns the effective userId, or null after sending an error response.
  */
-function resolveUserId(req: Request, res: Response, raw: unknown): string | null {
-  const userId = typeof raw === "string" ? raw.trim() : "";
-  if (!userId) {
-    res.status(400).json({ error: "userId is required" });
-    return null;
-  }
-  const auth = req.authUser;
-  if (auth && auth.role === "trader" && auth.name !== userId) {
-    res.status(403).json({ error: "Forbidden" });
-    return null;
-  }
-  return userId;
+function resolveUserId(req: Request, res: Response, raw: unknown, mode: "read" | "write" = "read"): Promise<string | null> {
+  return requirePersonalAccess(req, res, raw, mode === "write" ? "journal.review" : "journal.read.team");
 }
 
 type Row = typeof emotionalStateLogTable.$inferSelect;
 const present = (r: Row) => ({ ...r, createdAt: r.createdAt.toISOString(), readiness: readinessScore(r) });
 
 router.get("/emotional-state", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const rows = await db
     .select()
@@ -41,7 +33,7 @@ router.get("/emotional-state", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/emotional-state/by-date", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const date = (req.query.date as string | undefined)?.trim();
   if (!date) {
@@ -57,7 +49,7 @@ router.get("/emotional-state/by-date", asyncHandler(async (req, res): Promise<vo
 }));
 
 router.get("/emotional-state/today", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   // Client sends the trading date it saves check-ins with; the fallback is the New York trading date
   // (audit P1-12) — the UTC date flips to "tomorrow" at 20:00 ET.
@@ -90,7 +82,7 @@ const finish = (a: Agg) => ({
  * GET /emotional-state/insights?userId=&to=YYYY-MM-DD&days=30
  */
 router.get("/emotional-state/insights", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const to = isValidYmd(req.query.to) ? (req.query.to as string) : nyDate();
   const rawDays = Number(req.query.days);
@@ -226,7 +218,7 @@ router.get("/emotional-state/insights", asyncHandler(async (req, res): Promise<v
 
 router.post("/emotional-state", asyncHandler(async (req, res): Promise<void> => {
   const body = req.body ?? {};
-  const userId = resolveUserId(req, res, body.userId);
+  const userId = await resolveUserId(req, res, body.userId, "write");
   if (!userId) return;
   const { date } = body;
   if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {

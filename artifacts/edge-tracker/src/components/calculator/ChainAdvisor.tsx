@@ -368,7 +368,7 @@ export default function ChainAdvisor({
             }
           >
             {showChainTable && (
-              <div className="-mx-1 max-h-96 overflow-auto px-1">
+              <div className="-mx-1 max-h-[70dvh] overflow-auto px-1">
                 <table className="w-full text-xs tabular-nums">
                   <caption className="sr-only">Цепочка опционов {chain.symbol}</caption>
                   <thead className="sticky top-0 z-sticky bg-[hsl(var(--popover))] text-muted-foreground">

@@ -283,6 +283,11 @@ export type TrainingResult = {
   /** Trainee per share − the real trade per share (null when either is unknown). */
   vsRealPerShare: number | null;
   trades: number;
+  /** Task source («mine» / «desk» / «day»); tradeId is 0 for a ticker-day task. Absent in older records. */
+  source?: "mine" | "desk" | "day";
+  /** The real trade per share and in R (null / absent when there was no trade or no stop). */
+  realPerShare?: number | null;
+  realR?: number | null;
 };
 
 export type SparkPoint = { x: number; y: number };

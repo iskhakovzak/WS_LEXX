@@ -8,7 +8,7 @@
 import * as React from "react";
 import { BarChart3, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { EmptyState, Sparkline, StatCard, StatGrid, toneText, type Tone } from "@/components/ds";
+import { EmptyState, SortableTh, Sparkline, StatCard, StatGrid, toneText, useTableSort, type Tone } from "@/components/ds";
 import { winrateTone } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { notLiveMessage, useSetupStats } from "./api";
@@ -160,13 +160,13 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         </DocSection>
       </div>
 
-      <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
+      <div className="grid gap-[var(--grid-gap)] 2xl:grid-cols-2">
         <DocSection title="Тикеры">
-          <UsdTable rows={s.tickers.map((t) => ({ key: t.ticker, label: t.ticker, u: t }))} />
+          <UsdTable head="Тикер" rows={s.tickers.map((t) => ({ key: t.ticker, label: t.ticker, u: t }))} />
         </DocSection>
         <DocSection title={s.traders ? "Трейдеры и горизонт" : "Горизонт"}>
-          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable rows={s.traders.map((t) => ({ key: t.trader, label: t.trader, u: t }))} /></div>}
-          <UsdTable rows={Object.entries(s.byHorizon).map(([k, v]) => ({ key: k, label: HORIZON_LABEL[k] ?? k, u: v }))} />
+          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable head="Трейдер" rows={s.traders.map((t) => ({ key: t.trader, label: t.trader, u: t }))} /></div>}
+          <UsdTable head="Горизонт" rows={Object.entries(s.byHorizon).map(([k, v]) => ({ key: k, label: HORIZON_LABEL[k] ?? k, u: v }))} />
         </DocSection>
       </div>
 
@@ -202,30 +202,44 @@ function SlotRow({ sl, maxN, best }: { sl: SlotStat; maxN: number; best: boolean
   );
 }
 
-function UsdTable({ rows }: { rows: { key: string; label: string; u: UsdStats }[] }) {
-  if (!rows.length) return <p className="text-sm text-muted-foreground">—</p>;
+type UsdRow = { key: string; label: string; u: UsdStats };
+type UsdKey = "label" | "n" | "winrate" | "exp" | "net";
+const USD_ACCESSORS: Record<UsdKey, (r: UsdRow) => number | string | null | undefined> = {
+  label: (r) => r.label,
+  n: (r) => r.u.n,
+  winrate: (r) => r.u.winrate,
+  exp: (r) => r.u.expectancy,
+  net: (r) => r.u.net,
+};
+
+/** Sortable breakdown (ticker / trader / horizon): default — most trades first; long lists scroll inside. */
+function UsdTable({ rows: data, head }: { rows: UsdRow[]; head: string }) {
+  const { rows, thProps } = useTableSort<UsdRow, UsdKey>(data, USD_ACCESSORS, "n", "desc", { label: "asc" });
+  if (!data.length) return <p className="text-sm text-muted-foreground">—</p>;
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="text-xs text-muted-foreground">
-          <th className="py-1 text-left font-medium" />
-          <th className="py-1 text-right font-medium">Сделок</th>
-          <th className="py-1 text-right font-medium">WR</th>
-          <th className="py-1 text-right font-medium">$ / сделка</th>
-          <th className="py-1 text-right font-medium">Нетто</th>
-        </tr>
-      </thead>
-      <tbody>
-        {rows.map(({ key, label, u }) => (
-          <tr key={key} className="border-t border-border/40">
-            <td className="py-1.5 font-medium text-foreground">{label}</td>
-            <td className="py-1.5 text-right tabular-nums text-muted-foreground">{u.n}</td>
-            <td className="py-1.5 text-right tabular-nums">{fmtPct(u.winrate)}</td>
-            <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.expectancy)))}>{fmtUsd(u.expectancy, 2)}</td>
-            <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.net)))}>{fmtUsd(u.net)}</td>
+    <div className="max-h-[min(60dvh,520px)] overflow-auto">
+      <table className="w-full text-sm">
+        <thead className="sticky top-0 z-raised bg-surface-solid">
+          <tr className="text-xs text-muted-foreground [&_th]:py-1 [&_th]:font-medium">
+            <SortableTh {...thProps("label")}>{head}</SortableTh>
+            <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
+            <SortableTh {...thProps("winrate")} align="right">WR</SortableTh>
+            <SortableTh {...thProps("exp")} align="right">$ / сделка</SortableTh>
+            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {rows.map(({ key, label, u }) => (
+            <tr key={key} className="border-t border-border/40">
+              <td className="py-1.5 font-medium text-foreground">{label}</td>
+              <td className="py-1.5 text-right tabular-nums text-muted-foreground">{u.n}</td>
+              <td className="py-1.5 text-right tabular-nums">{fmtPct(u.winrate)}</td>
+              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.expectancy)))}>{fmtUsd(u.expectancy, 2)}</td>
+              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.net)))}>{fmtUsd(u.net)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }

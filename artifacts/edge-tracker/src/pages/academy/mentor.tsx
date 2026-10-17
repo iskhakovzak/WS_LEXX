@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { AlertTriangle, CalendarClock, ClipboardCheck, ListChecks, MessagesSquare, Plus, Target, UserCog, Users, X } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, Segmented, StatCard, StatGrid, StatGridSkeleton, type Tone,
+  DataTable, EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, Segmented, SortableTh, StatCard, StatGrid, StatGridSkeleton, useTableSort, type Tone,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -100,11 +100,27 @@ function Kpis({ d }: { d: MentorDashboard }) {
 
 const sevTone = (s: "warn" | "critical"): Tone => (s === "critical" ? "down" : "warn");
 
+type StudentRow = MentorDashboard["students"][number];
+const STAGE_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
+const STUDENT_ACCESSORS = {
+  name: (s: StudentRow) => s.enrollment.userName,
+  stage: (s: StudentRow) => STAGE_ORDER[s.enrollment.stage] ?? 9,
+  att: (s: StudentRow) => s.attendance30.rate,
+  goals: (s: StudentRow) => {
+    const n = s.goals.active + s.goals.achieved + s.goals.missed;
+    return n ? s.goals.achieved / n : null;
+  },
+  actions: (s: StudentRow) => s.overdueActions * 1000 + s.openActions,
+  last: (s: StudentRow) => s.lastTradeDate ?? s.lastJournalDate ?? null,
+  score: (s: StudentRow) => s.score,
+};
+
 function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; selected: string | null; onSelect: (s: string | null) => void; onMeeting: (s: string) => void }) {
   const [filter, setFilter] = useState<"all" | "lagging">("all");
-  const rows = filter === "lagging" ? d.students.filter((s) => s.score > 0) : d.students;
+  const filtered = useMemo(() => (filter === "lagging" ? d.students.filter((s) => s.score > 0) : d.students), [d.students, filter]);
+  const { rows, thProps } = useTableSort(filtered, STUDENT_ACCESSORS, "score");
   return (
-    <Panel title="Мои студенты" icon={Users} description="Сортировка: сначала отстающие. Нажмите на строку, чтобы открыть цели и встречи."
+    <Panel title="Мои студенты" icon={Users} description="По умолчанию сначала отстающие; столбцы сортируются. Нажмите на строку, чтобы открыть цели и встречи."
       actions={<Segmented ariaLabel="Фильтр студентов" size="sm" value={filter} onChange={setFilter}
         options={[{ value: "all", label: "Все", count: d.students.length }, { value: "lagging", label: "Отстают", count: d.lagging }]} />}>
       {rows.length === 0 ? <p className="text-sm text-muted-foreground">{filter === "lagging" ? "Отстающих нет." : "В когортах нет активных студентов."}</p> : (
@@ -112,8 +128,13 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
           <table>
             <thead>
               <tr>
-                <th scope="col">Студент</th><th scope="col">Ступень</th><th scope="col">Посещ. 30 дн.</th><th scope="col">ИПР</th>
-                <th scope="col">Договор.</th><th scope="col">Сделка / дневник</th><th scope="col">Почему отстаёт</th>
+                <SortableTh {...thProps("name")}>Студент</SortableTh>
+                <SortableTh {...thProps("stage")}>Ступень</SortableTh>
+                <SortableTh {...thProps("att")}>Посещ. 30 дн.</SortableTh>
+                <SortableTh {...thProps("goals")}>ИПР</SortableTh>
+                <SortableTh {...thProps("actions")}>Договор.</SortableTh>
+                <SortableTh {...thProps("last")}>Сделка / дневник</SortableTh>
+                <SortableTh {...thProps("score")}>Почему отстаёт</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -211,6 +232,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
   const u = student.enrollment.userName;
   const idp = useIdp(u);
   const meetings = useMeetings(u);
+  const [allMeetings, setAllMeetings] = useState(false);
   const archive = useArchiveGoal();
   const updGoal = useUpdateGoal();
   const { toast } = useToast();
@@ -254,7 +276,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           <h3 className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">Встречи 1:1</h3>
           {meetings.data && meetings.data.meetings.length === 0 && <p className="text-sm text-muted-foreground">Встреч не было.</p>}
           <ul className="flex flex-col gap-2">
-            {meetings.data?.meetings.slice(0, 6).map((m) => (
+            {meetings.data?.meetings.slice(0, allMeetings ? undefined : 6).map((m) => (
               <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
                 <div className="flex flex-wrap gap-2"><b className="tabular-nums">{dateTimeLocal(m.metAt)}</b><span className="text-muted-foreground">{m.mentor}{m.durationMin ? ` · ${m.durationMin} мин` : ""}</span></div>
                 {m.agenda && <p className="mt-1">{m.agenda}</p>}
@@ -268,6 +290,11 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
               </li>
             ))}
           </ul>
+          {(meetings.data?.meetings.length ?? 0) > 6 && (
+            <button type="button" onClick={() => setAllMeetings((v) => !v)} className="mt-2 text-xs text-primary hover:underline">
+              {allMeetings ? "Свернуть" : `Показать все (${meetings.data!.meetings.length})`}
+            </button>
+          )}
         </section>
       </div>
       <GoalDialog open={goalOpen} onOpenChange={setGoalOpen} student={u} />
@@ -305,11 +332,12 @@ function OpenActions({ items }: { items: ActionItem[] }) {
 }
 
 function MeetingLog({ d }: { d: MentorDashboard }) {
+  const [all, setAll] = useState(false);
   return (
     <Panel title="Журнал 1:1" icon={MessagesSquare} description="Последние 30 встреч со студентами">
       {d.meetings.length === 0 && <p className="text-sm text-muted-foreground">Встреч пока нет.</p>}
       <ul className="flex flex-col gap-2">
-        {d.meetings.slice(0, 12).map((m) => (
+        {d.meetings.slice(0, all ? undefined : 12).map((m) => (
           <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <b className="tabular-nums">{dateTimeLocal(m.metAt)}</b>
@@ -320,6 +348,11 @@ function MeetingLog({ d }: { d: MentorDashboard }) {
           </li>
         ))}
       </ul>
+      {d.meetings.length > 12 && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="mt-2 text-xs text-primary hover:underline">
+          {all ? "Свернуть" : `Показать все (${d.meetings.length})`}
+        </button>
+      )}
     </Panel>
   );
 }

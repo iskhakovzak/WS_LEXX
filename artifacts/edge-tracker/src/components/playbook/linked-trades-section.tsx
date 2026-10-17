@@ -1,4 +1,4 @@
-/** Linked trades of a setup: R-strip, list, link/unlink. Link dialog suggests trades whose setup name matches. */
+/** Linked trades of a setup: R-strip, sortable table, link/unlink. Link dialog suggests trades whose setup name matches. */
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Pill, toneText, type Tone } from "@/components/ds";
+import { Pill, SortableTh, toneText, useTableSort, type Tone } from "@/components/ds";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -53,6 +53,17 @@ function RStrip({ trades }: { trades: LinkedTrade[] }) {
     </div>
   );
 }
+
+type LinkedKey = "ticker" | "date" | "horizon" | "who" | "r" | "result";
+/** «Итог» sorts by net $ when it is shown, else by the result (win > be > loss). */
+const LINKED_ACCESSORS: Record<LinkedKey, (t: LinkedTrade) => number | string | null | undefined> = {
+  ticker: (t) => t.ticker,
+  date: (t) => (t.exitDate || t.date || "").slice(0, 10),
+  horizon: (t) => horizonOf(t),
+  who: (t) => [t.setup, t.trader].filter(Boolean).join(" · ") || null,
+  r: (t) => rOf(t),
+  result: (t) => { const n = t.redacted ? null : netPnl(t); if (n != null) return n; const r = resultOf(t); return r === "win" ? 1 : r === "loss" ? -1 : r === "be" ? 0 : null; },
+};
 
 const HORIZONS: { key: Horizon; label: string }[] = [
   { key: "intraday", label: "Интрадей" },
@@ -113,6 +124,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
     enabled: linkOpen,
   });
 
+  const { rows: sortedLinked, thProps } = useTableSort<LinkedTrade, LinkedKey>(linked, LINKED_ACCESSORS, "date", "desc", { ticker: "asc", horizon: "asc", who: "asc" });
   const linkedIds = useMemo(() => new Set(linked.map((t) => t.id)), [linked]);
   const { suggested, rest } = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -216,15 +228,58 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
         <>
           <RStrip trades={linked} />
           <HorizonSplit trades={linked} />
-          <div className="-mx-2 max-h-80 overflow-y-auto">
-            {byCloseDate(linked).reverse().map((t) => tradeRow(t))}
+          <div className="-mx-2 max-h-[min(60dvh,560px)] overflow-auto">
+            <table className="w-full min-w-[560px] text-sm">
+              <thead className="sticky top-0 z-raised bg-surface-solid text-xs text-muted-foreground [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-medium">
+                <tr className="border-b border-border/60">
+                  <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+                  <SortableTh {...thProps("date")}>Дата</SortableTh>
+                  <SortableTh {...thProps("horizon")}>Горизонт</SortableTh>
+                  <SortableTh {...thProps("who")}>Сетап · трейдер</SortableTh>
+                  <SortableTh {...thProps("r")} align="right">R</SortableTh>
+                  <SortableTh {...thProps("result")} align="right">Итог</SortableTh>
+                  <th className="w-20"><span className="sr-only">Действия</span></th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedLinked.map((t) => {
+                  const r = rOf(t);
+                  const hz = horizonOf(t);
+                  return (
+                    <tr key={t.id} className="group border-b border-border/40 last:border-0 hover:bg-[var(--glass-hover-bg)]">
+                      <td className="px-2 py-1.5 font-semibold text-foreground">
+                        {t.ticker}
+                        {t.side && <span className={cn("ml-1 text-xs", t.side === "Long" ? "text-up" : "text-down")} aria-label={t.side === "Long" ? "лонг" : "шорт"}>{t.side === "Long" ? "▲" : "▼"}</span>}
+                      </td>
+                      <td className="px-2 py-1.5 text-xs tabular-nums text-muted-foreground">{(t.exitDate || t.date)?.slice(0, 10)}</td>
+                      <td className="px-2 py-1.5 text-xs text-muted-foreground">{hz === "swing" ? "свинг" : hz === "overnight" ? "овернайт" : "интрадей"}</td>
+                      <td className="max-w-[220px] truncate px-2 py-1.5 text-xs text-muted-foreground">{[t.setup, t.trader].filter(Boolean).join(" · ") || "—"}</td>
+                      <td className={cn("px-2 py-1.5 text-right text-xs tabular-nums", toneText(r == null ? "neutral" : r > 0 ? "up" : r < 0 ? "down" : "neutral"))}>{r == null ? "—" : `${r > 0 ? "+" : ""}${r.toFixed(1)}R`}</td>
+                      <td className="px-2 py-1.5 text-right"><Pill tone={resultTone(t)}><span title={t.redacted ? REDACTED_HINT : netPnl(t) != null ? "P&L нетто" : undefined}>{resultLabel(t)}</span></Pill></td>
+                      <td className="px-1 py-1 text-right">
+                        <span className="inline-flex">
+                          <IconAction aria-label={`Открыть сделку ${t.ticker}`} onClick={() => setLocation(links.trade(t.id))} className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                            <ExternalLink />
+                          </IconAction>
+                          <WriteOnly>
+                            <IconAction aria-label={`Отвязать сделку ${t.ticker}`} onClick={() => unlink(t)} className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                              <Unlink />
+                            </IconAction>
+                          </WriteOnly>
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
           {linked.some((t) => t.redacted) && <RedactedHint className="mt-2" />}
         </>
       )}
 
       <Dialog open={linkOpen} onOpenChange={(v) => { setLinkOpen(v); if (!v) setSearch(""); }}>
-        <DialogContent className="flex max-h-[80vh] max-w-2xl flex-col">
+        <DialogContent className="flex max-h-[85dvh] max-w-3xl flex-col">
           <DialogHeader>
             <DialogTitle>Привязать сделку</DialogTitle>
             <DialogDescription>к сетапу «{entry.name}»</DialogDescription>

@@ -70,7 +70,7 @@ export function TemplateDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!apply.isPending) onOpenChange(v); }}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Шаблон лимитов по тиру</DialogTitle>
           <DialogDescription>
@@ -96,7 +96,7 @@ export function TemplateDialog({
                   </dl>
                   <div className="flex min-w-0 flex-col gap-2">
                     <span className="text-xs font-medium text-muted-foreground">Что изменится</span>
-                    <ul className="flex max-h-56 flex-col gap-1.5 overflow-auto pr-1">
+                    <ul className="flex max-h-[50dvh] flex-col gap-1.5 overflow-auto pr-1">
                       {traders.map((name) => {
                         const row = rows.find((r) => r.trader === name);
                         const cur = row?.limits ?? null;
@@ -114,8 +114,7 @@ export function TemplateDialog({
                             </div>
                             {cur && changed.length > 0 && (
                               <p className="text-xs tabular-nums text-muted-foreground">
-                                {changed.slice(0, 4).map((r) => `${r.label}: ${fmt((cur as unknown as Record<string, number | boolean | null>)[r.field], r.field)} → ${fmt(tier[r.field] as number | boolean | null, r.field)}`).join(" · ")}
-                                {changed.length > 4 ? ` · ещё ${changed.length - 4}` : ""}
+                                {changed.map((r) => `${r.label}: ${fmt((cur as unknown as Record<string, number | boolean | null>)[r.field], r.field)} → ${fmt(tier[r.field] as number | boolean | null, r.field)}`).join(" · ")}
                               </p>
                             )}
                           </li>

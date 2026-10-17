@@ -86,6 +86,13 @@ export default function Analytics() {
   }, [tab, filters, unitPref, dimension]);
 
   const isCurator = user?.role === "curator" || user?.role === "admin";
+  // The source switch is staff-only; drop a source filter a trader may have saved earlier (it would be invisible).
+  useEffect(() => {
+    if (user && !isCurator && filters.source) setFilters((f) => ({ ...f, source: "" }));
+  }, [user, isCurator, filters.source]);
+  useEffect(() => {
+    if (user && !isCurator && dimension === "source") setDimension("horizon");
+  }, [user, isCurator, dimension]);
   const visibleTabs = useMemo(() => TABS.filter((t) => !t.curatorOnly || isCurator), [isCurator]);
 
   // 1–9 switch tabs (ignored while typing).
@@ -162,6 +169,7 @@ export default function Analytics() {
           hasPnl={hasPnl}
           hasR={hasR}
           showTrader={isCurator || options.traders.length > 1}
+          showSource={isCurator}
           className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
         />
       )}
@@ -237,6 +245,7 @@ export default function Analytics() {
               hasR={hasR}
               hasPnl={hasPnl}
               topPatterns={topPatterns}
+              isStaff={isCurator}
             />
           ) : (
             <AnalyticsPro trades={current} />

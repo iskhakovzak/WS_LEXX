@@ -70,6 +70,9 @@ import academyCohortsRouter from "./academy-cohorts";
 import academyContentRouter from "./academy-content";
 import adminConsoleRouter from "./admin-console";
 import curatorRouter from "./curator";
+import trainingRouter from "./training";
+import officeStatsRouter from "./officeStats";
+import askRouter from "./ask";
 
 const router: IRouter = Router();
 
@@ -144,5 +147,8 @@ router.use(academyCohortsRouter);
 router.use(academyContentRouter);
 router.use(adminConsoleRouter);
 router.use(curatorRouter);
+router.use(trainingRouter);
+router.use(officeStatsRouter);
+router.use(askRouter);
 
 export default router;

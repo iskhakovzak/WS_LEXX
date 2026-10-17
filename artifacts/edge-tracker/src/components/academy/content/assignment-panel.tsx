@@ -86,7 +86,7 @@ function TradePicker({ selected, onChange, user }: { selected: number[]; onChang
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Тикер, сетап или дата (2026-10)" className="pl-9" aria-label="Поиск по своим сделкам" />
       </div>
-      <div className="max-h-64 overflow-y-auto rounded-xl border border-[var(--glass-border)]" role="group" aria-label="Мои сделки">
+      <div className="max-h-[50vh] overflow-y-auto rounded-xl border border-[var(--glass-border)]" role="group" aria-label="Мои сделки">
         {trades.isLoading ? (
           <p className="p-3 text-sm text-muted-foreground">Загрузка…</p>
         ) : !list.length ? (

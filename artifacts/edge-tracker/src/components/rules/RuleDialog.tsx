@@ -10,7 +10,7 @@ import { Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { apiJson, useRulePreview } from "./api";
-import { fmtPct, fmtUsd } from "./constants";
+import { fmtPct, fmtUsd, violationsWord } from "./constants";
 import { autoName, type RuleDraft } from "./templates";
 import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport } from "./types";
 
@@ -368,7 +368,7 @@ function PreviewBox({ q, days }: { q: ReturnType<typeof useRulePreview>; days: n
       ) : (
         <>
           <span className="text-sm text-foreground">
-            <b className="tabular-nums">{r.violations}</b> нарушений в <b className="tabular-nums">{r.violatedDays}</b> из {r.days} дней · соблюдение <b className="tabular-nums">{fmtPct(r.compliance)}</b>
+            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в <b className="tabular-nums">{r.violatedDays}</b> из {r.days} дней · соблюдение <b className="tabular-nums">{fmtPct(r.compliance)}</b>
           </span>
           {r.impact != null && (
             <span className="text-sm">

@@ -29,6 +29,7 @@ export const MistakesTab = forwardRef<HTMLInputElement, {
   const summaryQ = useMistakesSummary(trader, days);
   const s = summaryQ.data;
   const behQ = useBehaviorPatterns(trader, s?.from, s?.to);
+  const [showAllTypes, setShowAllTypes] = useState(false);
 
   const patterns = useMemo(
     () => (behQ.data?.patterns ?? []).filter((p) => p.severity && p.severity !== "none" && (p.cost ?? 0) < 0).sort((a, b) => (a.cost ?? 0) - (b.cost ?? 0)),
@@ -58,7 +59,7 @@ export const MistakesTab = forwardRef<HTMLInputElement, {
             <EmptyState compact icon={Tags} title="Ошибок за период нет" description="Отмечайте ошибки у убыточных сделок ниже — здесь появится, какие из них обходятся дороже всего." />
           ) : (
             <ul className="flex flex-col gap-1.5">
-              {s.byType.slice(0, 8).map((t) => (
+              {(showAllTypes ? s.byType : s.byType.slice(0, 8)).map((t) => (
                 <li key={t.type} className="grid grid-cols-[minmax(0,1fr)_minmax(64px,30%)_84px] items-center gap-3 rounded-lg px-1 py-1.5">
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-medium text-foreground">{t.type}</span>
@@ -74,6 +75,13 @@ export const MistakesTab = forwardRef<HTMLInputElement, {
                   </span>
                 </li>
               ))}
+              {s.byType.length > 8 && (
+                <li>
+                  <Button variant="ghost" size="sm" className="rounded-full" onClick={() => setShowAllTypes((v) => !v)}>
+                    {showAllTypes ? "Свернуть" : `Показать все (${s.byType.length})`}
+                  </Button>
+                </li>
+              )}
             </ul>
           )}
         </Panel>

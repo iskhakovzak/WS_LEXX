@@ -3,6 +3,8 @@
  *
  *   curator_notes        приватные заметки персонала о трейдере (трейдер их не видит); мягкое удаление archived_at
  *   risk_breach_reviews  «Разбор нарушения»: причина, договорённости, последствие по записи risk_alert_log (1:1)
+ *   curator_queue_acks   мягкий архив элементов очереди разборов («архивировать старые»): исходные записи не трогаются,
+ *                        элемент просто скрывается из очереди; отметка с revoked_at ≠ NULL не действует (элемент вернётся)
  */
 import { pool } from "@workspace/db";
 
@@ -42,6 +44,14 @@ export function ensureCuratorTables(): Promise<void> {
         archived_by TEXT
       )`);
       await pool.query(`CREATE INDEX IF NOT EXISTS risk_breach_reviews_trader_idx ON risk_breach_reviews (trader, date DESC)`);
+      await pool.query(`CREATE TABLE IF NOT EXISTS curator_queue_acks (
+        item_id TEXT PRIMARY KEY,
+        trader TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        acked_by TEXT NOT NULL,
+        acked_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        revoked_at TIMESTAMPTZ
+      )`);
     })().catch((e) => {
       ensured = null;
       throw e;

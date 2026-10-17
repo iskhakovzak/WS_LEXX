@@ -1,29 +1,18 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
-import {
-  Radar, Search, X, AlertTriangle, RefreshCw, MoreHorizontal, Download, Activity, Keyboard, Rows3, Rows4, Trash2, Archive,
-  CalendarClock, MoveVertical, Volume2, Crosshair, Flame, Clock, Eye, ArchiveRestore,
-} from "lucide-react";
+import { Radar, Search, AlertTriangle, RefreshCw, Archive, Flame, Clock } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
-  AlertDialogHeader, AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
+import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
 import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { EmptyState, FilterChip, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
+import { EmptyState, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
 import {
-  LISTS, LIST_HINT, LIST_LABELS, apiJson, computePlan, isListName, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
+  LISTS, LIST_LABELS, apiJson, computePlan, isListName, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
   type ListName, type WatchlistItem,
 } from "@/components/watchlist/lib";
 import { useWatchlistLevels, useWatchlistMarket, sessionDays } from "@/components/watchlist/use-market";
@@ -35,17 +24,13 @@ import type { RowActions } from "@/components/watchlist/WatchlistRow";
 import { WatchlistDetailSheet } from "@/components/watchlist/WatchlistDetailSheet";
 import { WatchlistFormDialog, blankForm, itemToForm, type WatchlistFormData } from "@/components/watchlist/WatchlistFormDialog";
 import { IdeaFromWatchlistDialog } from "@/components/watchlist/IdeaFromWatchlistDialog";
+import {
+  DeleteTickersDialog, FILTERS, SelectionBar, WatchlistHeaderMenus, WatchlistSearch, WatchlistTabs, type Filter, type View,
+} from "@/components/watchlist/WatchlistToolbar";
+import { canModifyOwned } from "@/lib/ownership";
 import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc } from "@/components/game-plan/plan-draft";
 
-type View = ListName | "all" | "archive";
-type Filter = "events" | "gap" | "rvol" | "level";
-const FILTERS: { key: Filter; label: string; icon: React.ElementType; hint: string }[] = [
-  { key: "events", label: "События", icon: CalendarClock, hint: "Отчёт сегодня / вчера AMC / в ближайшие 2 дня или новости за 24 ч" },
-  { key: "gap", label: "Гэп ≥ 3%", icon: MoveVertical, hint: "Гэп на открытии не меньше 3% в любую сторону" },
-  { key: "rvol", label: "rVol ≥ 1.5×", icon: Volume2, hint: "Относительный объём от 1.5×" },
-  { key: "level", label: "У уровня", icon: Crosshair, hint: "Цена в пределах 0.25 ATR (или 0.5%) от PDH / PDL / VWAP / стопа / цели" },
-];
 const LS_LISTS = "wl:lists";
 const LS_PINS = "wl:pins";
 const PLAN_MAX = 30;
@@ -81,25 +66,13 @@ async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): 
   return out;
 }
 
-const HOTKEYS: [string[], string][] = [
-  [["A"], "добавить тикеры (поле ввода)"],
-  [["/"], "поиск по списку"],
-  [["J", "K"], "вниз / вверх по строкам (или ↓ ↑)"],
-  [["Enter"], "открыть карточку тикера"],
-  [["E"], "заметка к строке"],
-  [["1", "2", "3"], "перенести в Сегодня / Свинги / Наблюдаю"],
-  [["X"], "выбрать строку"],
-  [["Del"], "в архив (с отменой)"],
-  [["R"], "обновить котировки"],
-  [["D"], "плотность строк"],
-  [["?"], "эта подсказка"],
-];
-
 export default function Watchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const { canEdit, user } = useAuth();
+  const { canEdit, user, isCurator } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName ?? null : null;
+  /** Content edit / delete of a row: its author or staff (server: 403 NOT_OWNER otherwise). */
+  const mayModify = (i: WatchlistItem) => canEdit && canModifyOwned(i.createdBy, me, isCurator);
   const [, navigate] = useLocation();
   const today = nyDate();
 
@@ -472,7 +445,8 @@ export default function Watchlist() {
     },
   });
 
-  const deleteItems = async (list_items: WatchlistItem[]) => {
+  const deleteItems = async (all_items: WatchlistItem[]) => {
+    const list_items = all_items.filter(mayModify);
     const ids = list_items.filter((i) => i.id > 0).map((i) => i.id);
     if (!ids.length) return;
     const label = ids.length === 1 ? `${list_items[0].ticker} удалён` : `Удалено тикеров: ${ids.length}`;
@@ -748,13 +722,6 @@ export default function Watchlist() {
     setSelected(new Set());
   };
 
-  const tabs: { v: View; label: string; icon: React.ElementType; title: string }[] = [
-    { v: "today", label: LIST_LABELS.today, icon: Flame, title: LIST_HINT.today },
-    { v: "swing", label: LIST_LABELS.swing, icon: Clock, title: LIST_HINT.swing },
-    { v: "watch", label: LIST_LABELS.watch, icon: Eye, title: LIST_HINT.watch },
-    { v: "all", label: "Все", icon: Radar, title: "Все рабочие списки" },
-  ];
-
   return (
     <Page>
       <PageHeader
@@ -773,117 +740,34 @@ export default function Watchlist() {
               onInterval={setIntervalMs}
               onRefresh={market.refetchQuotes}
             />
-            <Popover open={helpOpen} onOpenChange={setHelpOpen}>
-              <PopoverTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Горячие клавиши (?)" title="Горячие клавиши (?)">
-                  <Keyboard className="h-4 w-4" />
-                </Button>
-              </PopoverTrigger>
-              <PopoverContent align="end" className="w-96 bg-popover">
-                <p className="mb-2 text-sm font-semibold text-foreground">Горячие клавиши</p>
-                <ul className="space-y-1.5 text-sm">
-                  {HOTKEYS.map(([keys, label]) => (
-                    <li key={label} className="flex items-center gap-3">
-                      <span className="flex w-20 shrink-0 gap-1">{keys.map((k) => <Kbd key={k}>{k}</Kbd>)}</span>
-                      <span className="text-muted-foreground">{label}</span>
-                    </li>
-                  ))}
-                </ul>
-                <p className="mt-3 text-xs text-muted-foreground">Строки можно перетаскивать на вкладки списков. В поле добавления — несколько тикеров через запятую или пробел, можно вставить столбец.</p>
-              </PopoverContent>
-            </Popover>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Ещё действия"><MoreHorizontal className="h-4 w-4" /></Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-60">
-                <DropdownMenuItem onSelect={exportCsv} disabled={!visible.length}><Download className="mr-2 h-4 w-4" />Экспорт видимых строк в CSV</DropdownMenuItem>
-                {canEdit && (
-                  <>
-                    <DropdownMenuItem onSelect={() => { setFormInitial(blankForm()); setEditing(null); setFormOpen(true); }}>
-                      <Radar className="mr-2 h-4 w-4" />Добавить с катализатором и уровнями…
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => scoreAllMut.mutate()} disabled={scoreAllMut.isPending || !realItems.length}>
-                      <Activity className="mr-2 h-4 w-4" />{scoreAllMut.isPending ? "Считаем score…" : "Пересчитать score всех"}
-                    </DropdownMenuItem>
-                  </>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <WatchlistHeaderMenus
+              helpOpen={helpOpen}
+              onHelpOpen={setHelpOpen}
+              canEdit={canEdit}
+              canExport={visible.length > 0}
+              onExport={exportCsv}
+              onAddDetailed={() => { setFormInitial(blankForm()); setEditing(null); setFormOpen(true); }}
+              canScoreAll={realItems.length > 0}
+              scoringAll={scoreAllMut.isPending}
+              onScoreAll={() => scoreAllMut.mutate()}
+            />
           </>
         }
       />
 
-      {/* Lists: tabs are drop targets for dragged rows */}
-      <div className="flex flex-wrap items-center gap-2">
-        <div role="tablist" aria-label="Списки" className="glass-field inline-flex max-w-full items-center gap-0.5 overflow-x-auto p-1">
-          {tabs.map((t) => {
-            const active = view === t.v;
-            const droppable = dragging && t.v !== "all";
-            const Icon = t.icon;
-            return (
-              <button
-                key={t.v}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={t.v === "all" ? t.title : `${t.title}${canEdit ? ` · клавиша ${LISTS.indexOf(t.v as ListName) + 1} переносит строку сюда` : ""}`}
-                onClick={() => setView(t.v)}
-                onDragOver={(e) => { if (!droppable) return; e.preventDefault(); e.dataTransfer.dropEffect = "move"; setDropOver(t.v); }}
-                onDragLeave={() => setDropOver((d) => (d === t.v ? null : d))}
-                onDrop={droppable ? onDropTo(t.v) : undefined}
-                className={cn(
-                  "inline-flex min-h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 text-sm font-medium transition-[background-color,color,box-shadow] duration-[var(--dur-1)]",
-                  active ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground",
-                  droppable && !active && "ring-1 ring-dashed ring-primary/50",
-                  dropOver === t.v && "ring-2 ring-primary",
-                )}
-              >
-                <Icon className="h-3.5 w-3.5" aria-hidden="true" />{t.label}
-                <span className={cn("tabular-nums", active ? "opacity-90" : "opacity-80")}>{counts[t.v]}</span>
-              </button>
-            );
-          })}
-        </div>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={view === "archive"}
-          onClick={() => setView("archive")}
-          onDragOver={(e) => { if (!dragging) return; e.preventDefault(); setDropOver("archive"); }}
-          onDragLeave={() => setDropOver((d) => (d === "archive" ? null : d))}
-          onDrop={dragging ? onDropTo("archive") : undefined}
-          title="Пропущенные тикеры. Перетащите строку сюда, чтобы убрать из работы"
-          className={cn(
-            "inline-flex min-h-8 items-center gap-1.5 rounded-full px-3 text-sm transition-colors",
-            view === "archive" ? "bg-[var(--glass-hover-bg)] font-medium text-foreground" : "text-muted-foreground hover:text-foreground",
-            dragging && "ring-1 ring-dashed ring-border",
-            dropOver === "archive" && "ring-2 ring-primary",
-          )}
-        >
-          <Archive className="h-3.5 w-3.5" aria-hidden="true" />Архив<span className="tabular-nums opacity-80">{counts.archive}</span>
-        </button>
-        <div className="ml-auto flex items-center gap-3">
-          {losingInView.length > 0 && me && view !== "archive" && (
-            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={losingInView.map((r) => `${r.item.ticker}: ${r.history ? Math.round(r.history.net) : 0}$`).join("\n")}>
-              <AlertTriangle className="h-3.5 w-3.5 text-down" aria-hidden="true" />
-              В минусе по истории: {losingInView.slice(0, 4).map((r) => r.item.ticker).join(", ")}{losingInView.length > 4 ? ` +${losingInView.length - 4}` : ""}
-            </span>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-9 w-9"
-            onClick={() => setDensity((d) => (d === "compact" ? "comfortable" : "compact"))}
-            aria-label={density === "compact" ? "Подробные строки (D)" : "Компактные строки (D)"}
-            title={density === "compact" ? "Подробные строки: название, катализатор, график 22 дня (D)" : "Компактные строки (D)"}
-            aria-pressed={density === "comfortable"}
-          >
-            {density === "compact" ? <Rows3 className="h-4 w-4" /> : <Rows4 className="h-4 w-4" />}
-          </Button>
-        </div>
-      </div>
+      <WatchlistTabs
+        view={view}
+        onView={setView}
+        counts={counts}
+        canEdit={canEdit}
+        dragging={dragging}
+        dropOver={dropOver}
+        onDropOver={setDropOver}
+        onDropTo={onDropTo}
+        losing={me && view !== "archive" ? losingInView.map((r) => [r.item.ticker, r.history?.net ?? 0] as [string, number]) : []}
+        density={density}
+        onToggleDensity={() => setDensity((d) => (d === "compact" ? "comfortable" : "compact"))}
+      />
 
       {/* Add · search · filters */}
       <div className="flex flex-wrap items-center gap-2">
@@ -900,60 +784,27 @@ export default function Watchlist() {
             prefill={prefill}
           />
         )}
-        <div className="contents">
-          <div className="relative w-full sm:w-44 2xl:w-52">
-            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <input
-              ref={searchRef}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Поиск"
-              aria-label="Поиск по вотчлисту"
-              className="glass-field h-10 w-full pl-9 pr-8 text-sm outline-none placeholder:text-muted-foreground"
-            />
-            {query ? (
-              <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            ) : <Kbd className="pointer-events-none absolute right-2.5 top-1/2 hidden -translate-y-1/2 sm:inline-flex">/</Kbd>}
-          </div>
-          {FILTERS.map((f) => (
-            <FilterChip
-              key={f.key}
-              active={filters.has(f.key)}
-              onClick={() => setFilters((cur) => { const n = new Set(cur); if (n.has(f.key)) n.delete(f.key); else n.add(f.key); return n; })}
-              count={filterCounts[f.key] || undefined}
-              className="min-h-10"
-            >
-              <f.icon className="h-3.5 w-3.5" aria-hidden="true" /><span title={f.hint}>{f.label}</span>
-            </FilterChip>
-          ))}
-        </div>
+        <WatchlistSearch
+          inputRef={searchRef}
+          query={query}
+          onQuery={setQuery}
+          filters={filters}
+          onToggleFilter={(f) => setFilters((cur) => { const n = new Set(cur); if (n.has(f)) n.delete(f); else n.add(f); return n; })}
+          filterCounts={filterCounts}
+        />
       </div>
 
       {canEdit && selectedItems.length > 0 && (
-        <div className="glass-thick sticky-top flex flex-wrap items-center gap-2 rounded-2xl px-3 py-2" role="region" aria-label="Действия с выбранными">
-          <span className="text-sm font-medium text-foreground">Выбрано: {selectedItems.length}</span>
-          <span className="mx-1 h-4 w-px bg-border" aria-hidden="true" />
-          {view === "archive" ? (
-            LISTS.map((l) => (
-              <Button key={l} size="sm" variant="outline" onClick={() => { void applyLists(selectedItems.map((item) => ({ item, list: l }))); setSelected(new Set()); }}>
-                <ArchiveRestore className="h-4 w-4" />В «{LIST_LABELS[l]}»
-              </Button>
-            ))
-          ) : (
-            <>
-              {LISTS.map((l, k) => (
-                <Button key={l} size="sm" variant="outline" disabled={view === l} onClick={() => { void moveTo(selectedItems, l); setSelected(new Set()); }}>
-                  В «{LIST_LABELS[l]}» <Kbd className="ml-1">{k + 1}</Kbd>
-                </Button>
-              ))}
-              <Button size="sm" variant="outline" onClick={() => void archive(selectedItems)}><Archive className="h-4 w-4" />В архив</Button>
-            </>
-          )}
-          <Button size="sm" variant="ghost" className="text-down" onClick={() => setDeleting(selectedItems)}><Trash2 className="h-4 w-4" />Удалить</Button>
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setSelected(new Set())}><X className="h-4 w-4" />Снять выбор</Button>
-        </div>
+        <SelectionBar
+          items={selectedItems}
+          view={view}
+          mayModify={mayModify}
+          onRestore={(l) => { void applyLists(selectedItems.map((item) => ({ item, list: l }))); setSelected(new Set()); }}
+          onMove={(l) => { void moveTo(selectedItems, l); setSelected(new Set()); }}
+          onArchive={() => void archive(selectedItems)}
+          onDelete={setDeleting}
+          onClear={() => setSelected(new Set())}
+        />
       )}
 
       <Panel padded={false}>
@@ -1043,29 +894,12 @@ export default function Watchlist() {
         onClose={() => setIdeaFor(null)}
       />
 
-      <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {deleting && deleting.length === 1 ? `Удалить ${deleting[0].ticker}?` : `Удалить ${deleting?.length ?? 0} тикеров?`}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {deleting && deleting.length > 1 ? `${deleting.map((d) => d.ticker).join(", ")}. ` : ""}
-              Чтобы просто убрать из работы, используйте «В архив». Удаление можно отменить кнопкой в уведомлении.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={async (e) => { e.preventDefault(); if (!deleting) return; setDeletingBusy(true); await deleteItems(deleting); setDeletingBusy(false); }}
-              disabled={deletingBusy}
-              className={buttonVariants({ variant: "destructive" })}
-            >
-              {deletingBusy ? "Удаляем…" : "Удалить"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteTickersDialog
+        items={deleting}
+        busy={deletingBusy}
+        onCancel={() => setDeleting(null)}
+        onConfirm={async (list) => { setDeletingBusy(true); await deleteItems(list); setDeletingBusy(false); }}
+      />
     </Page>
   );
 }

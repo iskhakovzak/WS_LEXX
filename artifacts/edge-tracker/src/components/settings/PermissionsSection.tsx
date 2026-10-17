@@ -278,7 +278,7 @@ export function PermissionsSection() {
                 ) : (
                   <>
                     <p className="mb-2">Изменения вступят в силу для всех пользователей роли в течение ~15 секунд (кэш API). Ваш собственный доступ администратора не изменится.</p>
-                    <ul className="max-h-60 overflow-auto rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
+                    <ul className="max-h-[45dvh] overflow-auto rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
                       {changes.map((c) => (
                         <li key={`${c.role}:${c.capability}`}>
                           {ROLE_LABEL[c.role] ?? c.role}: {capLabel(c.capability)} — {c.allowed ? "разрешить" : "запретить"}{c.scope && c.allowed ? ` (${SCOPE_LABEL[c.scope].toLowerCase()})` : ""}
