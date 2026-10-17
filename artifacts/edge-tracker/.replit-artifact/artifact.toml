@@ -17,6 +17,21 @@ localPort = 24402
 [services.development]
 run = "pnpm --filter @workspace/edge-tracker run dev"
 
+[services.production]
+serve = "static"
+publicDir = "artifacts/edge-tracker/dist/public"
+
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/edge-tracker", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+BASE_PATH = "/"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
 [services.env]
 PORT = "24402"
 BASE_PATH = "/"

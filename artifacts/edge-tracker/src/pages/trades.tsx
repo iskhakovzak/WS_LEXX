@@ -1,714 +1,905 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
+// /trades — a REVIEW tool, not a data-entry form. Trades arrive automatically from the broker; the trader's job
+// here is to look back: by trading day (default) or through smart presets, tag setup / mistake / emotion with the
+// keyboard, and jump to the day report, behaviour patterns or the trade card.
+// Manual entry survives only for staff (?new / ?fromIdea deep links) and for editing legacy manual trades.
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import {
-  useListTrades,
-  useCreateTrade,
-  useUpdateTrade,
-  useDeleteTrade,
-  getListTradesQueryKey,
-} from "@workspace/api-client-react";
+import { useCreateTrade, useUpdateTrade, getTrade } from "@workspace/api-client-react";
 import type { Trade, CreateTradeBody, UpdateTradeBody } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { formatCurrency } from "@/lib/format";
+import { useQueries, useQueryClient } from "@tanstack/react-query";
+import { BookText, CheckCircle2, Download, Filter, Keyboard, Loader2 } from "lucide-react";
+import { EmptyState, Kbd, Page, PageHeader, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Pencil, Trash2, Plus, ChevronDown, ChevronUp, Tag, ThumbsUp, Star, Send, Shield, Search, X, Calendar } from "lucide-react";
-import { AddToPlaybookButton } from "@/components/add-to-playbook";
-import { useUndoDelete } from "@/hooks/use-undo-delete";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { QueryError } from "@/components/query-error";
 import { UndoToast } from "@/components/undo-toast";
-import { TagSelector } from "@/components/tag-selector";
-import { useAuth, WriteOnly } from "@/contexts/auth-context";
+import type { ChecklistResult } from "@/components/pre-trade-checklist";
+import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { useHolidaysRange, type HolidayEvent } from "@/lib/market-intel";
+import { BASE } from "@/lib/api";
+import { invalidateTradeDependents } from "@/lib/query-keys";
+import {
+  ENTRY_DECISION_FIELDS,
+  HORIZONS,
+  HORIZON_LABEL,
+  RESULT_LABEL,
+  advancedFilterCount,
+  apiErrorMessage,
+  blankForm,
+  dayOf,
+  downloadCsv,
+  formToBody,
+  isBrokerTrade,
+  isDefaultFilters,
+  isTypingTarget,
+  plural,
+  resultKey,
+  tradeToForm,
+  type FormData,
+  type Outcome,
+} from "@/components/trades/trade-utils";
+import { useTradeFilters } from "@/components/trades/use-trade-filters";
+import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
+import { TradeFilterBar } from "@/components/trades/TradeFilterBar";
+import { TradePagination } from "@/components/trades/TradePagination";
+import { TradeDetailSheet, type TradePatch } from "@/components/trades/TradeDetailSheet";
+import { TradeFormDialog, ChecklistDialog, formSaveError } from "@/components/trades/TradeFormDialog";
+import { useTradesQuality } from "@/components/replay/hooks";
+import { useAfterExitMinutes } from "@/components/replay/QualityBlock";
+import { BulkActionBar } from "@/components/trades/BulkActionBar";
+import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
+import { PRESET_META, hasTag, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
+import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
+import { DayCard, PresetBar, ReviewKpis, ReviewTradeRow, RowsHeader, RowsSkeleton } from "@/components/trades/review-list";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
-import { ScreenshotFields, ScreenshotDisplay, screenshotUrlsToString, stringToScreenshotUrls, screenshotNotesToString, stringToScreenshotNotes } from "@/components/screenshot-fields";
+const PERIOD_LABEL = { all: "всё время", today: "сегодня", week: "эта неделя", month: "этот месяц", custom: "диапазон" } as const;
 
-const EVENT_TYPES = ["earnings", "momentum", "news", "ipo", "fed", "macro", "other"];
-const RESULTS = ["win", "loss", "breakeven"];
-const SESSIONS = ["premarket", "regular", "afterhours"];
-const SIDES = ["Long", "Short"];
-
-type FormData = {
-  ticker: string; date: string; setup: string; side: string; eventType: string; entry: string; exit: string;
-  stop: string; result: string; pnl: string; rMultiple: string; holdTime: string; slippage: string;
-  marketCap: string; float: string; relativeVolume: string; session: string; screenshotUrls: string[];
-  screenshotNotes: string[]; notes: string; whatWorked: string; whatFailed: string; conclusion: string; trader: string; tags: string;
-};
-
-const blank = (): FormData => ({
-  ticker: "", date: new Date().toISOString().split("T")[0], setup: "", side: "Long", eventType: "", entry: "",
-  exit: "", stop: "", result: "win", pnl: "", rMultiple: "", holdTime: "", slippage: "",
-  marketCap: "", float: "", relativeVolume: "", session: "regular", screenshotUrls: [""], screenshotNotes: [""], notes: "",
-  whatWorked: "", whatFailed: "", conclusion: "", trader: "", tags: "",
-});
-
-function tradeToForm(t: Trade & { tags?: string | null; side?: string | null }): FormData {
-  const urls = stringToScreenshotUrls(t.screenshotUrl);
-  return {
-    ticker: t.ticker, date: t.date.substring(0, 10), setup: (t as any).setup ?? "", side: (t as any).side ?? "Long",
-    eventType: t.eventType ?? "",
-    entry: t.entry != null ? String(t.entry) : "", exit: t.exit != null ? String(t.exit) : "",
-    stop: t.stop != null ? String(t.stop) : "", result: t.result,
-    pnl: t.pnl != null ? String(t.pnl) : "", rMultiple: t.rMultiple != null ? String(t.rMultiple) : "",
-    holdTime: t.holdTime ?? "", slippage: t.slippage != null ? String(t.slippage) : "",
-    marketCap: t.marketCap ?? "", float: t.float ?? "",
-    relativeVolume: t.relativeVolume != null ? String(t.relativeVolume) : "",
-    session: t.session ?? "regular", screenshotUrls: urls, screenshotNotes: stringToScreenshotNotes(t.screenshotNotes, urls.length), notes: t.notes ?? "",
-    whatWorked: t.whatWorked ?? "", whatFailed: t.whatFailed ?? "",
-    conclusion: t.conclusion ?? "", trader: t.trader ?? "", tags: t.tags ?? "",
-  };
-}
-
-function formToBody(f: FormData): CreateTradeBody & { tags?: string | null; side?: string | null } {
-  return {
-    ticker: f.ticker.toUpperCase(), date: f.date, setup: f.setup || null, side: f.side || null, result: f.result,
-    eventType: f.eventType || null, entry: f.entry ? Number(f.entry) : null,
-    exit: f.exit ? Number(f.exit) : null, stop: f.stop ? Number(f.stop) : null,
-    pnl: f.pnl ? Number(f.pnl) : null, rMultiple: f.rMultiple ? Number(f.rMultiple) : null,
-    holdTime: f.holdTime || null, slippage: f.slippage ? Number(f.slippage) : null,
-    marketCap: f.marketCap || null, float: f.float || null,
-    relativeVolume: f.relativeVolume ? Number(f.relativeVolume) : null,
-    session: f.session || null, screenshotUrl: screenshotUrlsToString(f.screenshotUrls) || null,
-    screenshotNotes: screenshotNotesToString(f.screenshotNotes) || null,
-    notes: f.notes || null, whatWorked: f.whatWorked || null,
-    whatFailed: f.whatFailed || null, conclusion: f.conclusion || null,
-    trader: f.trader || null, tags: f.tags || null,
-  };
-}
-
-const FILTER_TABS = [
-  { key: "all", label: "Все" },
-  { key: "win", label: "Прибыльные" },
-  { key: "loss", label: "Убыточные" },
-  { key: "long", label: "Long" },
-  { key: "short", label: "Short" },
-  { key: "earnings", label: "Отчётность" },
-  { key: "premarket", label: "Предмаркет" },
+const SHORTCUTS: [string, string][] = [
+  ["J / K", "Следующая / предыдущая сделка"],
+  ["Enter", "Открыть карточку"],
+  ["S", "Сетап"],
+  ["M", "Ошибка"],
+  ["E", "Эмоция"],
+  ["1–9", "Выбрать вариант в списке"],
+  ["X", "Выбрать строку (Shift — диапазон)"],
+  ["/", "Поиск"],
+  ["← / →", "Страница (в режиме списка)"],
+  ["Esc", "Снять выделение"],
+  ["?", "Эта подсказка"],
 ];
 
-function TagChips({ tags }: { tags?: string | null }) {
-  if (!tags) return null;
-  const chips = tags.split(",").map((t) => t.trim()).filter(Boolean);
-  if (!chips.length) return null;
-  return (
-    <div className="flex flex-wrap gap-1 mt-0.5">
-      {chips.map((tag, i) => (
-        <span key={i} className="px-1.5 py-0 text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 leading-4">{tag}</span>
-      ))}
-    </div>
-  );
-}
+const EMPTY_OUTCOMES: Record<Outcome, number> = { all: 0, win: 0, loss: 0, breakeven: 0, open: 0 };
+const DAYS_PAGE = 30;
+const KEY_KIND: Record<string, TagKind> = { s: "setup", "ы": "setup", m: "mistake", "ь": "mistake", e: "emotion", "у": "emotion" };
 
-function SideBadge({ side }: { side?: string | null }) {
-  if (!side) return null;
-  const isLong = side === "Long";
-  return (
-    <span className={`inline-flex items-center gap-1 px-2 py-0.5 text-[10px] font-mono font-bold border ${isLong ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" : "bg-red-500/15 text-red-400 border-red-500/30"}`}>
-      <span className={isLong ? "text-emerald-400" : "text-red-400"}>{isLong ? "▲" : "▼"}</span>
-      {side}
-    </span>
-  );
-}
-
-type Reaction = { id: number; tradeId: number; trader: string; reactionType: string };
-type Review = { id: number; tradeId: number; curator: string; comment: string; rating?: string; createdAt: string };
-
-function TradeActions({ tradeId, traderName, isCurator }: { tradeId: number; traderName: string; isCurator: boolean }) {
-  const [reactions, setReactions] = useState<Reaction[]>([]);
-  const [reviews, setReviews] = useState<Review[]>([]);
-  const [reviewText, setReviewText] = useState("");
-  const [reviewRating, setReviewRating] = useState("good");
-
-  useEffect(() => {
-    fetch(`${BASE}/api/trades/${tradeId}/reactions`).then((r) => r.json()).then(setReactions).catch(() => {});
-    fetch(`${BASE}/api/trades/${tradeId}/reviews`).then((r) => r.json()).then(setReviews).catch(() => {});
-  }, [tradeId]);
-
-  const hasLiked = reactions.some((r) => r.trader === traderName);
-  const likeCount = reactions.length;
-
-  async function toggleLike() {
-    await fetch(`${BASE}/api/trades/${tradeId}/reactions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ trader: traderName, reactionType: "like" }),
-    });
-    const updated = await fetch(`${BASE}/api/trades/${tradeId}/reactions`).then((r) => r.json());
-    setReactions(updated);
-  }
-
-  async function submitReview() {
-    if (!reviewText.trim()) return;
-    await fetch(`${BASE}/api/trades/${tradeId}/reviews`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ curator: traderName, comment: reviewText, rating: reviewRating }),
-    });
-    setReviewText("");
-    const updated = await fetch(`${BASE}/api/trades/${tradeId}/reviews`).then((r) => r.json());
-    setReviews(updated);
-  }
-
-  async function deleteReview(reviewId: number) {
-    await fetch(`${BASE}/api/trades/${tradeId}/reviews/${reviewId}?curator=${encodeURIComponent(traderName)}`, { method: "DELETE" });
-    setReviews((prev) => prev.filter((r) => r.id !== reviewId));
-  }
-
-  const ratingLabels: Record<string, { label: string; color: string }> = {
-    excellent: { label: "Отлично", color: "text-emerald-400" },
-    good: { label: "Хорошо", color: "text-primary" },
-    needs_work: { label: "Нужно доработать", color: "text-yellow-400" },
-    poor: { label: "Плохо", color: "text-red-400" },
-  };
-
-  return (
-    <div className="space-y-3 mt-3 pt-3 border-t border-border/50">
-      <div className="flex items-center gap-4">
-        <button onClick={toggleLike} className={`flex items-center gap-1.5 px-2 py-1 text-xs font-mono transition-colors border ${hasLiked ? "border-yellow-500/30 bg-yellow-500/10 text-yellow-400" : "border-border text-muted-foreground hover:text-yellow-400 hover:border-yellow-500/30"}`}>
-          <ThumbsUp className="h-3 w-3" />
-          <span>{likeCount > 0 ? likeCount : ""} {hasLiked ? "Liked" : "Like"}</span>
-        </button>
-        {reactions.length > 0 && (
-          <span className="text-xs text-muted-foreground font-mono">
-            {reactions.map((r) => r.trader).join(", ")}
-          </span>
-        )}
-      </div>
-
-      {reviews.length > 0 && (
-        <div className="space-y-2">
-          <div className="text-xs font-mono text-muted-foreground uppercase flex items-center gap-1">
-            <Shield className="h-3 w-3" /> Curator Reviews
-          </div>
-          {reviews.map((r) => (
-            <div key={r.id} className="flex gap-3 py-2 px-3 bg-violet-500/5 border border-violet-500/20">
-              <div className="w-1 bg-violet-500/50 shrink-0 self-stretch" />
-              <div className="flex-1 min-w-0">
-                <div className="flex gap-2 items-center mb-0.5 text-xs font-mono">
-                  <span className="text-violet-400 font-bold flex items-center gap-1"><Shield className="h-3 w-3" />{r.curator}</span>
-                  {r.rating && <span className={ratingLabels[r.rating]?.color ?? "text-muted-foreground"}>{ratingLabels[r.rating]?.label ?? r.rating}</span>}
-                  <span className="text-muted-foreground">{r.createdAt.substring(0, 10)}</span>
-                  {r.curator === traderName && (
-                    <button onClick={() => deleteReview(r.id)} className="ml-auto p-0.5 text-muted-foreground hover:text-red-400"><Trash2 className="h-3 w-3" /></button>
-                  )}
-                </div>
-                <div className="text-xs text-foreground font-mono">{r.comment}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {isCurator && (
-        <div className="space-y-2">
-          <div className="text-xs font-mono text-violet-400 uppercase flex items-center gap-1">
-            <Star className="h-3 w-3" /> Оставить Review (куратор)
-          </div>
-          <div className="flex gap-2 items-start">
-            <select value={reviewRating} onChange={(e) => setReviewRating(e.target.value)}
-              className="bg-background border border-border text-xs font-mono px-2 py-1.5 text-foreground">
-              <option value="excellent">Отлично</option>
-              <option value="good">Хорошо</option>
-              <option value="needs_work">Доработать</option>
-              <option value="poor">Плохо</option>
-            </select>
-            <textarea value={reviewText} onChange={(e) => setReviewText(e.target.value)} rows={2} placeholder="Комментарий куратора..."
-              className="flex-1 bg-background border border-border text-xs font-mono px-2 py-1.5 resize-none text-foreground"
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submitReview(); } }}
-            />
-            <button onClick={submitReview} className="px-3 py-1.5 bg-violet-500/20 text-violet-400 border border-violet-500/30 text-xs font-mono hover:bg-violet-500/30 transition-colors flex items-center gap-1">
-              <Send className="h-3 w-3" /> Send
-            </button>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-type SortConfig = { col: string; dir: "asc" | "desc" };
-
-function SortIcon({ col, sort }: { col: string; sort: SortConfig | null }) {
-  if (!sort || sort.col !== col) return <span className="text-muted-foreground/30 ml-0.5">⇅</span>;
-  return <span className="text-primary ml-0.5">{sort.dir === "asc" ? "↑" : "↓"}</span>;
+/** Strip a one-shot param (?highlight, ?new, ?fromIdea) without touching the filter state in the URL. */
+function stripParam(name: string) {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has(name)) return;
+  params.delete(name);
+  const qs = params.toString();
+  window.history.replaceState({}, "", window.location.pathname + (qs ? `?${qs}` : ""));
 }
 
 export default function Trades() {
   const qc = useQueryClient();
-  const { user, dbUsers } = useAuth();
+  const { user, dbUsers, canEdit } = useAuth();
+  const { toast } = useToast();
+  const [location] = useLocation();
   const traderNames = dbUsers.filter((u) => u.active).map((u) => u.name);
-  const [location, setLocation] = useLocation();
-  const [tab, setTab] = useState("all");
-  const [open, setOpen] = useState(false);
-  const [editing, setEditing] = useState<Trade | null>(null);
-  const [deleting, setDeleting] = useState<Trade | null>(null);
-  const [form, setForm] = useState<FormData>(blank());
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [sort, setSort] = useState<SortConfig | null>({ col: "date", dir: "desc" });
-  const [search, setSearch] = useState("");
-  const [dateFilter, setDateFilter] = useState("");
-  const [highlightId, setHighlightId] = useState<number | null>(null);
-  const highlightRef = useRef<HTMLTableRowElement | null>(null);
+  const me = user && user.role !== "guest" ? user.traderName : null;
+  const isStaff = useMemo(
+    () => user?.role === "curator" || user?.role === "admin" || dbUsers.some((u) => u.name === user?.traderName && u.role === "curator"),
+    [dbUsers, user?.traderName, user?.role],
+  );
+  // Mirrors the API: traders may only change their own trades; curators/admins any.
+  const canEditTrade = useCallback(
+    (t: Trade) => canEdit && (user?.role !== "trader" || !t.trader || t.trader === me),
+    [canEdit, user?.role, me],
+  );
+  /** Broker numbers are read-only for traders: the full form / result / delete stay for manual trades or staff. */
+  const canEditForm = useCallback((t: Trade) => canEditTrade(t) && (isStaff || !isBrokerTrade(t)), [canEditTrade, isStaff]);
 
-  function toggleSort(col: string) {
-    setSort((prev) => prev?.col === col ? { col, dir: prev.dir === "asc" ? "desc" : "asc" } : { col, dir: "desc" });
-  }
+  const F = useTradeFilters();
+  const { filters, sort, page, pageSize, preset, view } = F;
+  const listMode = !!preset || view === "list";
+  const searchRef = useRef<HTMLInputElement | null>(null);
 
-  const { data: trades = [], isLoading } = useListTrades();
+  // ── Data ────────────────────────────────────────────────────────────────
+  const [afterExit] = useAfterExitMinutes();
+  const [qualityIds, setQualityIds] = useState<number[]>([]);
+  const { quality, pending: qualityPending } = useTradesQuality(qualityIds, { afterExit });
+  const pendingSet = useMemo(() => new Set(qualityPending), [qualityPending]);
+
+  // Summary + facets always; rows only in list mode (the day view loads trades per expanded day).
+  const P = useTradesPage({
+    filters,
+    sort: listMode ? sort : { col: "date", dir: "desc" },
+    page: listMode ? page : 1,
+    pageSize: listMode ? pageSize : 1,
+    quality,
+    preset,
+  });
+  const D = useTradeDays(filters, { limit: DAYS_PAGE });
+  const summary = P.summary;
+  const facets = P.facets;
+  const total = summary?.total ?? 0;
+  const setupOptions = useMemo(() => (facets?.setups ?? []).map((s) => s.name), [facets?.setups]);
+  const distinctTraders = facets?.traders ?? [];
+  const showTrader = distinctTraders.length > 1 && !filters.trader;
+  const traderForLinks = filters.trader || (distinctTraders.length === 1 ? distinctTraders[0] : null) || me;
+
+  // ── Day view: expanded days and their trades ───────────────────────────
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const expandKeyRef = useRef<string | null>(null);
+  const filtersKey = JSON.stringify(filters);
+  useEffect(() => {
+    // Newest day open by default (again after the filters change).
+    if (!D.days.length || expandKeyRef.current === filtersKey) return;
+    expandKeyRef.current = filtersKey;
+    setExpanded(new Set([D.days[0].date]));
+  }, [D.days, filtersKey]);
+  const toggleDay = useCallback((date: string) => {
+    setExpanded((prev) => { const n = new Set(prev); if (n.has(date)) n.delete(date); else n.add(date); return n; });
+  }, []);
+
+  const expandedDates = useMemo(() => D.days.filter((d) => expanded.has(d.date)).map((d) => d.date), [D.days, expanded]);
+  const dayQs = useQueries({
+    queries: expandedDates.map((date) => dayTradesQuery(filters, date, !listMode && !D.listByDay)),
+  });
+  const dayRows = useCallback((date: string): Trade[] | undefined => {
+    if (D.listByDay) return D.listByDay.get(date) ?? [];
+    const i = expandedDates.indexOf(date);
+    return i >= 0 ? dayQs[i]?.data : undefined;
+  }, [D.listByDay, expandedDates, dayQs]);
+
+  const visibleRows: Trade[] = useMemo(() => {
+    if (listMode) return P.items;
+    const out: Trade[] = [];
+    for (const d of expandedDates) out.push(...(dayRows(d) ?? []));
+    return out;
+  }, [listMode, P.items, expandedDates, dayRows]);
+  const rowsRef = useRef(visibleRows);
+  rowsRef.current = visibleRows;
 
   useEffect(() => {
-    function tryHighlight() {
-      const params = new URLSearchParams(window.location.search);
-      const hid = params.get("highlight");
-      if (!hid || !trades.length) return false;
-      const id = Number(hid);
-      if (!id) return false;
-      const trade = trades.find((t) => t.id === id);
-      if (!trade) return false;
-      setExpanded(id);
-      setHighlightId(id);
-      setTab("all");
-      setSearch("");
-      setTimeout(() => {
-        highlightRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
-      }, 150);
-      setTimeout(() => setHighlightId(null), 2800);
-      window.history.replaceState({}, "", window.location.pathname);
+    const ids = visibleRows.slice(0, 400).map((t) => t.id);
+    setQualityIds((prev) => (prev.length === ids.length && prev.every((v, i) => v === ids[i]) ? prev : ids));
+  }, [visibleRows]);
+
+  // A page beyond the end (filters narrowed, rows deleted) snaps back to the last one.
+  useEffect(() => {
+    if (!listMode || !summary || P.isPlaceholder) return;
+    if (page > 1 && P.items.length === 0 && summary.total > 0) F.setPage(Math.max(1, Math.ceil(summary.total / pageSize)));
+  }, [summary, P.items.length, page, pageSize, P.isPlaceholder, listMode]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Cumulative net by day, oldest → newest (spark on the net KPI). */
+  const dayCurve = useMemo(() => {
+    let c = 0;
+    return [...D.days].reverse().map((d) => (c += d.net ?? 0));
+  }, [D.days]);
+
+  const scopeLabel = useMemo(() => {
+    const parts: string[] = [PERIOD_LABEL[filters.period]];
+    if (filters.outcome !== "all") parts.push(filters.outcome === "open" ? "открытые позиции" : RESULT_LABEL[filters.outcome].toLowerCase());
+    if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
+    if (filters.side) parts.push(filters.side);
+    if (filters.setup) parts.push(filters.setup);
+    if (filters.ticker) parts.push(filters.ticker);
+    const adv = advancedFilterCount(filters) - (filters.period === "custom" ? 1 : 0) - (filters.ticker ? 1 : 0);
+    if (adv > 0) parts.push(`+${adv} ${plural(adv, ["фильтр", "фильтра", "фильтров"])}`);
+    if (filters.q.trim()) parts.push(`«${filters.q.trim()}»`);
+    return parts.join(" · ");
+  }, [filters]);
+
+  // Holidays: only for the badge in the trade card header.
+  const { data: holidaysData } = useHolidaysRange(summary?.firstDate ?? "", summary?.lastDate ?? "");
+  const holidayByDate = useMemo(() => {
+    const m = new Map<string, HolidayEvent[]>();
+    for (const e of holidaysData?.events ?? []) {
+      const k = e.date.substring(0, 10);
+      const arr = m.get(k) ?? [];
+      arr.push(e);
+      m.set(k, arr);
+    }
+    return m;
+  }, [holidaysData]);
+
+  // ── Selection / focus / sheet ────────────────────────────────────────────
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const lastToggledRef = useRef<number | null>(null);
+  const [activeId, setActiveId] = useState<number | null>(null);
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [picker, setPicker] = useState<PickerTarget>(null);
+  /** A trade opened from a deep link / global search that is not among the visible rows. */
+  const [detached, setDetached] = useState<Trade | null>(null);
+  const [highlightId, setHighlightId] = useState<number | null>(null);
+  const [scrollReq, setScrollReq] = useState<{ id: number; n: number } | null>(null);
+  const openTrade = useMemo(() => {
+    if (openId == null) return null;
+    return visibleRows.find((t) => t.id === openId) ?? (detached?.id === openId ? detached : null);
+  }, [openId, visibleRows, detached]);
+  const openIndex = openTrade ? visibleRows.findIndex((t) => t.id === openTrade.id) : -1;
+
+  const scrollTo = useCallback((id: number) => setScrollReq((r) => ({ id, n: (r?.n ?? 0) + 1 })), []);
+  useEffect(() => {
+    if (!scrollReq) return;
+    const el = document.querySelector(`[data-trade-id="${scrollReq.id}"]`);
+    el?.scrollIntoView({ block: "nearest", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+  }, [scrollReq]);
+
+  // Keep the selection inside the visible rows.
+  useEffect(() => {
+    setSelected((prev) => {
+      if (!prev.size) return prev;
+      const vis = new Set(visibleRows.map((t) => t.id));
+      const next = new Set([...prev].filter((id) => vis.has(id)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [visibleRows]);
+
+  const toggle = useCallback((id: number, range: boolean) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      const list = rowsRef.current;
+      const last = lastToggledRef.current;
+      if (range && last != null) {
+        const a = list.findIndex((t) => t.id === last);
+        const b = list.findIndex((t) => t.id === id);
+        if (a >= 0 && b >= 0) {
+          const [lo, hi] = a < b ? [a, b] : [b, a];
+          for (let i = lo; i <= hi; i++) next.add(list[i].id);
+          lastToggledRef.current = id;
+          return next;
+        }
+      }
+      if (next.has(id)) next.delete(id); else next.add(id);
+      lastToggledRef.current = id;
+      return next;
+    });
+  }, []);
+
+  const openTradeSheet = useCallback((t: Trade) => { setOpenId(t.id); setActiveId(t.id); setPicker(null); }, []);
+
+  // J/K step through the visible rows; in list mode they continue on the neighbouring page.
+  const pendingStepRef = useRef<"first" | "last" | null>(null);
+  const stepOpen = useCallback((dir: 1 | -1) => {
+    const list = rowsRef.current;
+    if (!list.length) return;
+    const cur = openId ?? activeId;
+    const idx = cur != null ? list.findIndex((t) => t.id === cur) : -1;
+    const nextIdx = idx + dir;
+    if (nextIdx >= list.length) {
+      if (listMode && P.hasMore) { pendingStepRef.current = "first"; F.setPage((p) => p + 1); }
+      return;
+    }
+    if (nextIdx < 0) {
+      if (listMode && idx === 0 && page > 1) { pendingStepRef.current = "last"; F.setPage((p) => p - 1); return; }
+      if (idx !== -1) return;
+    }
+    const t = list[Math.max(0, nextIdx)];
+    if (openId != null) setOpenId(t.id);
+    setActiveId(t.id);
+    setPicker(null);
+    scrollTo(t.id);
+  }, [openId, activeId, scrollTo, P.hasMore, page, F, listMode]);
+
+  useEffect(() => {
+    const want = pendingStepRef.current;
+    if (!want || P.isPlaceholder || !P.items.length) return;
+    pendingStepRef.current = null;
+    const t = want === "first" ? P.items[0] : P.items[P.items.length - 1];
+    if (openId != null) setOpenId(t.id);
+    setActiveId(t.id);
+    scrollTo(t.id);
+  }, [P.items, P.isPlaceholder]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Deep links: ?highlight=id and global search ──────────────────────────
+  const focusTrade = useCallback(async (id: number) => {
+    const visible = rowsRef.current.find((x) => x.id === id);
+    if (visible) {
+      setOpenId(id); setActiveId(id); setHighlightId(id); scrollTo(id);
+      window.setTimeout(() => setHighlightId((h) => (h === id ? null : h)), 2800);
       return true;
     }
-    tryHighlight();
-  }, [trades, location]);
+    try {
+      const t = await getTrade(id);
+      setDetached(t);
+      setOpenId(id);
+      setActiveId(id);
+      return true;
+    } catch {
+      toast({ title: "Сделка не найдена", description: `#${id} нет в журнале или нет доступа.`, variant: "destructive" });
+      return false;
+    }
+  }, [scrollTo, toast]);
 
-  const createMut = useCreateTrade({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListTradesQueryKey() }); setOpen(false); } } });
-  const updateMut = useUpdateTrade({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListTradesQueryKey() }); setOpen(false); setEditing(null); } } });
-  const invalidateTrades = useCallback(() => { qc.invalidateQueries({ queryKey: getListTradesQueryKey() }); }, [qc]);
-  const undo = useUndoDelete(invalidateTrades);
-  const deleteMut = useDeleteTrade({ mutation: { onSuccess: (_data, variables) => { invalidateTrades(); const t = deleting; setDeleting(null); if (t) undo.scheduleUndo(t.id, "trades", t.ticker); } } });
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const hid = Number(params.get("highlight"));
+    if (!hid || P.isLoading) return;
+    stripParam("highlight");
+    void focusTrade(hid);
+  }, [P.isLoading, location]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    const base = trades.filter((t) => {
-      const tabOk = (() => {
-        if (tab === "all") return true;
-        if (tab === "win") return t.result === "win";
-        if (tab === "loss") return t.result === "loss";
-        if (tab === "long") return (t as any).side === "Long";
-        if (tab === "short") return (t as any).side === "Short";
-        if (tab === "earnings") return t.eventType === "earnings";
-        if (tab === "premarket") return t.session === "premarket";
-        return true;
-      })();
-      if (!tabOk) return false;
-      if (dateFilter && t.date?.substring(0, 10) !== dateFilter) return false;
-      if (!q) return true;
-      const fields = [
-        t.ticker,
-        t.date,
-        (t as any).setup,
-        (t as any).side,
-        t.eventType,
-        t.session,
-        t.trader,
-        (t as any).tags,
-        t.notes,
-        t.whatWorked,
-        t.whatFailed,
-        t.conclusion,
-        t.pnl != null ? String(t.pnl) : "",
-        t.rMultiple != null ? String(t.rMultiple) : "",
-        t.float,
-        t.marketCap,
-      ].filter(Boolean).join(" ").toLowerCase();
-      return fields.includes(q);
-    });
-    if (!sort) return base;
-    return [...base].sort((a, b) => {
-      let av: any, bv: any;
-      if (sort.col === "ticker") { av = a.ticker; bv = b.ticker; }
-      else if (sort.col === "date") { av = a.date; bv = b.date; }
-      else if (sort.col === "pnl") { av = a.pnl ?? -Infinity; bv = b.pnl ?? -Infinity; }
-      else if (sort.col === "r") { av = a.rMultiple ?? -Infinity; bv = b.rMultiple ?? -Infinity; }
-      else if (sort.col === "result") { av = a.result; bv = b.result; }
-      else if (sort.col === "trader") { av = (a as any).trader ?? ""; bv = (b as any).trader ?? ""; }
-      else if (sort.col === "entry") { av = a.entry ?? 0; bv = b.entry ?? 0; }
-      else { av = a.date; bv = b.date; }
-      if (av < bv) return sort.dir === "asc" ? -1 : 1;
-      if (av > bv) return sort.dir === "asc" ? 1 : -1;
-      return 0;
-    });
-  }, [trades, tab, sort, search, dateFilter]);
+  useEffect(() => {
+    function onSearchNav(e: Event) {
+      const { path, highlightId: hid } = (e as CustomEvent<{ path: string; highlightId: number }>).detail ?? {};
+      if (path !== "/trades" || !hid) return;
+      void focusTrade(Number(hid));
+    }
+    window.addEventListener("ws-search-navigate", onSearchNav);
+    return () => window.removeEventListener("ws-search-navigate", onSearchNav);
+  }, [focusTrade]);
 
-  function openCreate() {
-    const f = blank();
+  // ── Mutations ────────────────────────────────────────────────────────────
+  // Every screen that derives numbers from the trade book is invalidated in one place (lib/query-keys.ts).
+  const invalidateTrades = useCallback((tradeId?: number | null) => { void invalidateTradeDependents(qc, { tradeId }); }, [qc]);
+  // Rapid tagging (J, S, 2, J, M, 1 …) would refetch the book after every key: batch it.
+  const invalidateTimer = useRef<number | null>(null);
+  const invalidateSoon = useCallback(() => {
+    if (invalidateTimer.current != null) window.clearTimeout(invalidateTimer.current);
+    invalidateTimer.current = window.setTimeout(() => { invalidateTimer.current = null; invalidateTrades(); }, 1200);
+  }, [invalidateTrades]);
+  useEffect(() => () => { if (invalidateTimer.current != null) window.clearTimeout(invalidateTimer.current); }, []);
+
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Trade | null>(null);
+  const [form, setForm] = useState<FormData>(blankForm());
+  const [checklistOpen, setChecklistOpen] = useState(false);
+  const [checklistResult, setChecklistResult] = useState<ChecklistResult | null>(null);
+  const [fromIdeaId, setFromIdeaId] = useState<number | null>(null);
+  const [voiceNoteKey, setVoiceNoteKey] = useState(0);
+
+  const createMut = useCreateTrade({
+    mutation: {
+      onSuccess: async (data: { id: number } | undefined) => {
+        invalidateTrades();
+        if (fromIdeaId && data?.id) {
+          try {
+            await fetch(`${BASE}/api/trade-ideas/${fromIdeaId}`, {
+              method: "PATCH",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ status: "converted", convertedTradeId: data.id }),
+            });
+            qc.invalidateQueries({ queryKey: ["trade-ideas"] });
+          } catch {
+            // non-blocking: the trade exists; the idea can be re-linked from the ideas page
+          }
+        }
+        setFromIdeaId(null);
+        setFormOpen(false);
+        setChecklistResult(null);
+        toast({ title: "Сделка сохранена" });
+        if (data?.id) setActiveId(data.id);
+      },
+      onError: (e: unknown) => toast({ title: "Ошибка сохранения сделки", description: apiErrorMessage(e), variant: "destructive" }),
+    },
+  });
+  const updateMut = useUpdateTrade({
+    mutation: {
+      onSuccess: (_d, vars) => { invalidateTrades(vars?.id); setVoiceNoteKey((k) => k + 1); setFormOpen(false); setEditing(null); toast({ title: "Сделка обновлена" }); },
+      onError: (e: unknown) => toast({ title: "Ошибка обновления сделки", description: apiErrorMessage(e), variant: "destructive" }),
+    },
+  });
+  const patchMut = useUpdateTrade();
+
+  /** Inline edits (tags / setup / review / result) with an optimistic cache update. */
+  const patchTrade = useCallback(async (t: Trade, patch: TradePatch, opts?: { silent?: boolean }) => {
+    const rollback = patchTradeInPages(qc, t.id, patch);
+    setDetached((d) => (d && d.id === t.id ? { ...d, ...patch } : d));
+    try {
+      await patchMut.mutateAsync({ id: t.id, data: patch as UpdateTradeBody });
+      if (opts?.silent) invalidateSoon();
+      else {
+        invalidateTrades(t.id);
+        toast({ title: patch.result ? `${t.ticker}: ${RESULT_LABEL[resultKey(patch.result)]}` : `${t.ticker}: сохранено` });
+      }
+      return true;
+    } catch (e) {
+      rollback();
+      setDetached((d) => (d && d.id === t.id ? t : d));
+      const msg = apiErrorMessage(e);
+      toast({
+        title: "Не удалось сохранить",
+        // An API build older than this page still gates `setup` on imported trades behind the pre-trade checklist.
+        description: /checklist/i.test(msg) ? "Сервер ещё не обновлён: сетап для этой сделки сохранится после обновления API. Ошибки и эмоции сохраняются уже сейчас." : msg,
+        variant: "destructive",
+      });
+      return false;
+    }
+  }, [qc, patchMut, invalidateTrades, invalidateSoon, toast]);
+
+  /** Quick tagging: setup is one value (PATCH setup), mistakes / emotions toggle inside `tags`. */
+  const tagTrade = useCallback((t: Trade, kind: TagKind, value: string | null) => {
+    if (!canEditTrade(t)) return;
+    if (kind === "setup") {
+      const next = value && (t.setup ?? "").trim().toLowerCase() === value.toLowerCase() ? null : value;
+      void patchTrade(t, { setup: next }, { silent: true });
+      return;
+    }
+    if (!value) return;
+    void patchTrade(t, { tags: toggleTag(t.tags, value) }, { silent: true });
+  }, [canEditTrade, patchTrade]);
+
+  // ?fromIdea=id → prefilled full form (staff only: traders' trades come from the broker).
+  const prefillHandledRef = useRef(false);
+  useEffect(() => {
+    if (prefillHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const id = Number(params.get("fromIdea"));
+    if (!id) return;
+    if (!user || !dbUsers.length) return;
+    prefillHandledRef.current = true;
+    if (!isStaff) { stripParam("fromIdea"); return; }
+    (async () => {
+      try {
+        const r = await fetch(`${BASE}/api/trade-ideas/${id}`);
+        if (!r.ok) {
+          toast({ title: "Не удалось загрузить идею", description: `Статус ${r.status}`, variant: "destructive" });
+          return;
+        }
+        const idea = await r.json();
+        const f = blankForm();
+        f.ticker = idea.ticker ?? "";
+        if (idea.side === "Long" || idea.side === "Short") f.side = idea.side;
+        f.setup = idea.setup ?? "";
+        const entryFirst = idea.entryZone ? String(idea.entryZone).split(/[-/]/)[0]?.trim() : "";
+        if (entryFirst) f.entry = entryFirst;
+        if (idea.stop) f.stop = String(idea.stop);
+        f.result = "open";
+        f.notes = idea.thesis ?? "";
+        if (idea.tags) f.tags = idea.tags;
+        f.trader = idea.trader ?? user?.traderName ?? "";
+        setForm(f);
+        setEditing(null);
+        setChecklistResult(null);
+        setFromIdeaId(id);
+        setFormOpen(true);
+      } catch (err) {
+        toast({ title: "Ошибка загрузки идеи", description: String((err as Error)?.message ?? err), variant: "destructive" });
+      } finally {
+        stripParam("fromIdea");
+      }
+    })();
+  }, [location, user, dbUsers.length, isStaff, toast]);
+
+  const openCreate = useCallback(() => {
+    const f = blankForm();
     if (user?.traderName) f.trader = user.traderName;
     setForm(f);
     setEditing(null);
-    setOpen(true);
+    setChecklistResult(null);
+    setFromIdeaId(null);
+    setFormOpen(true);
+  }, [user?.traderName]);
+
+  // ?new=1 → full form, staff only (hidden route for manual corrections). Traders just get the param stripped.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.get("new")) return;
+    if (!user || !dbUsers.length) return;
+    if (isStaff && canEdit) openCreate();
+    stripParam("new");
+  }, [location, canEdit, user, dbUsers.length, isStaff, openCreate]);
+
+  const openEdit = useCallback((t: Trade) => {
+    setForm(tradeToForm(t)); setEditing(t); setChecklistResult(null); setFromIdeaId(null); setFormOpen(true);
+  }, []);
+
+  function createWithChecklist(r: ChecklistResult) {
+    const payload: CreateTradeBody & Record<string, unknown> = { ...formToBody(form) };
+    if (r.responseId > 0) payload.checklistResponseId = r.responseId;
+    if (r.responseId === 0) payload.skipChecklist = true;
+    createMut.mutate({ data: payload as CreateTradeBody });
   }
-  function openEdit(t: Trade) { setForm(tradeToForm(t)); setEditing(t); setOpen(true); }
-  function set(k: keyof FormData, v: string) { setForm((f) => ({ ...f, [k]: v })); }
 
   function handleSave() {
     const body = formToBody(form);
     if (!body.ticker || !body.result) return;
-    if (editing) {
-      updateMut.mutate({ id: editing.id, data: body as UpdateTradeBody });
-    } else {
-      createMut.mutate({ data: body });
+    if (!form.conviction || form.conviction < 1 || form.conviction > 5) {
+      toast({ title: "Укажите убеждённость (1–5)", variant: "destructive" });
+      return;
     }
+    if (!["A+", "A", "B", "C"].includes(form.confidenceGrade)) {
+      toast({ title: "Укажите грейд уверенности (A+, A, B или C)", variant: "destructive" });
+      return;
+    }
+    if (form.horizon !== "intraday" && form.exitDate && form.exitDate < form.date) {
+      toast({ title: "Дата выхода раньше даты входа", variant: "destructive" });
+      return;
+    }
+    const saveErr = formSaveError(form);
+    if (saveErr) {
+      toast({ title: "Проверьте стоп и вход", description: saveErr, variant: "destructive" });
+      return;
+    }
+    if (editing) {
+      // Untouched entry-decision fields are omitted so that editing notes etc. doesn't hit the checklist gate.
+      const original: Record<string, unknown> = { ...formToBody(tradeToForm(editing)) };
+      const patch: Record<string, unknown> = { ...body };
+      for (const f of ENTRY_DECISION_FIELDS) if (patch[f] === original[f]) delete patch[f];
+      updateMut.mutate({ id: editing.id, data: patch as UpdateTradeBody });
+      return;
+    }
+    if (!checklistResult) { setChecklistOpen(true); return; }
+    createWithChecklist(checklistResult);
   }
 
+  // ── Delete with undo + bulk actions ──────────────────────────────────────
+  const [undo, setUndo] = useState<{ ids: number[]; label: string; key: number; restoring?: boolean } | null>(null);
+  const [bulkPending, setBulkPending] = useState(false);
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
+
+  const runBulk = useCallback(async (body: BulkBody) => {
+    setBulkPending(true);
+    try {
+      const done = await bulkTrades(body, rowsRef.current);
+      invalidateTrades();
+      return done;
+    } catch (e) {
+      toast({ title: "Действие не выполнено", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      return null;
+    } finally {
+      setBulkPending(false);
+    }
+  }, [invalidateTrades, toast]);
+
+  const deleteTrades = useCallback(async (ids: number[]) => {
+    if (!ids.length) return;
+    const label = ids.length === 1
+      ? (rowsRef.current.find((t) => t.id === ids[0]) ?? (detached?.id === ids[0] ? detached : null))?.ticker ?? `#${ids[0]}`
+      : `${ids.length} ${plural(ids.length, ["сделка", "сделки", "сделок"])}`;
+    const done = await runBulk({ action: "delete", ids });
+    if (!done?.length) return;
+    setOpenId((cur) => (cur != null && done.includes(cur) ? null : cur));
+    setSelected(new Set());
+    setUndo({ ids: done, label, key: Date.now() });
+    if (done.length < ids.length) toast({ title: `Удалено ${done.length} из ${ids.length}`, description: "Чужие сделки удалить нельзя." });
+  }, [runBulk, toast, detached]);
+
+  const restoreUndo = useCallback(async () => {
+    if (!undo) return;
+    const u = undo;
+    if (u.restoring) return;
+    setUndo({ ...u, restoring: true });
+    const done = await runBulk({ action: "restore", ids: u.ids });
+    setUndo((cur) => (cur?.key === u.key ? null : cur));
+    if (done) toast({ title: `${u.label}: восстановлено` });
+  }, [undo, runBulk, toast]);
+
+  const selectedTrades = useMemo(() => visibleRows.filter((t) => selected.has(t.id)), [visibleRows, selected]);
+  const selectedIds = useMemo(() => selectedTrades.map((t) => t.id), [selectedTrades]);
+  const bulkStateOf = useCallback((kind: TagKind, value: string): PickState => {
+    if (!selectedTrades.length) return "none";
+    const n = selectedTrades.filter((t) => (kind === "setup" ? (t.setup ?? "").trim().toLowerCase() === value.toLowerCase() : hasTag(t.tags, value))).length;
+    return n === 0 ? "none" : n === selectedTrades.length ? "all" : "some";
+  }, [selectedTrades]);
+  const canDeleteSelection = selectedTrades.length > 0 && selectedTrades.every((t) => canEditForm(t));
+  const nTrades = (n: number) => `${n} ${plural(n, ["сделка", "сделки", "сделок"])}`;
+
+  // ── CSV export of the whole filtered set ────────────────────────────────
+  const [exporting, setExporting] = useState(false);
+  const exportAll = useCallback(async () => {
+    setExporting(true);
+    try {
+      const all = await P.fetchAll();
+      if (!all.length) { toast({ title: "Нечего экспортировать" }); return; }
+      downloadCsv(all);
+      toast({ title: `CSV: ${nTrades(all.length)}` });
+    } catch (e) {
+      toast({ title: "Экспорт не удался", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }, [P, toast]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Keyboard ─────────────────────────────────────────────────────────────
+  const [helpOpen, setHelpOpen] = useState(false);
+  const modalOpen = formOpen || checklistOpen || confirmBulkDelete;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || modalOpen) return;
+      if (isTypingTarget(e.target)) return;
+      if (document.querySelector("[data-radix-popper-content-wrapper]")) return;
+      const k = e.key;
+      if (k === "?") { e.preventDefault(); setHelpOpen((v) => !v); return; }
+      const lower = k.toLowerCase();
+      if (lower === "j" || lower === "k" || lower === "о" || lower === "л") { e.preventDefault(); stepOpen(lower === "j" || lower === "о" ? 1 : -1); return; }
+      if (openId != null) return; // the sheet owns the rest of the keyboard
+      if (k === "ArrowRight" && listMode && P.hasMore) { e.preventDefault(); F.setPage((p) => p + 1); return; }
+      if (k === "ArrowLeft" && listMode && page > 1) { e.preventDefault(); F.setPage((p) => p - 1); return; }
+      if (k === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      const active = activeId != null ? rowsRef.current.find((t) => t.id === activeId) : undefined;
+      if (k === "Enter" && active) { e.preventDefault(); openTradeSheet(active); return; }
+      if ((lower === "x" || lower === "ч") && active) { e.preventDefault(); toggle(active.id, e.shiftKey); return; }
+      const kind = KEY_KIND[lower];
+      if (kind && !e.shiftKey && active && canEditTrade(active)) { e.preventDefault(); setPicker({ id: active.id, kind }); return; }
+      if (k === "Escape" && selected.size) { e.preventDefault(); setSelected(new Set()); }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [modalOpen, openId, activeId, selected.size, canEditTrade, stepOpen, openTradeSheet, toggle, P.hasMore, page, F, listMode]);
+
+  // ── Render helpers ───────────────────────────────────────────────────────
+  const rowProps = (t: Trade) => ({
+    trade: t,
+    showTrader,
+    quality,
+    qualityPending: pendingSet.has(t.id),
+    active: activeId === t.id,
+    selected: selected.has(t.id),
+    highlight: highlightId === t.id,
+    canTag: canEditTrade(t),
+    picker,
+    setPicker,
+    onPick: tagTrade,
+    setupOptions,
+    onOpen: openTradeSheet,
+    onToggle: toggle,
+    onFocusRow: setActiveId,
+  });
+
   const isPending = createMut.isPending || updateMut.isPending;
+  const noFilters = isDefaultFilters(filters);
+  const isLoading = P.isLoading;
+  const isError = P.isError || (!listMode && D.isError);
+  const noTrades = !isLoading && !P.isError && total === 0 && noFilters && !preset;
+  const days = summary?.days ?? D.totalDays;
+  const headerText = isLoading
+    ? "Загрузка…"
+    : `${nTrades(total)}${days ? ` · ${days} ${plural(days, ["торговый день", "торговых дня", "торговых дней"])}` : ""} · ${scopeLabel}`;
+  const presetMeta = preset ? PRESET_META[preset] : null;
+
+  const presetEmpty = (p: Preset) => (
+    <EmptyState
+      icon={p === "review" ? CheckCircle2 : Filter}
+      title={p === "review" ? "Все сделки размечены" : `«${PRESET_META[p].label}»: пусто`}
+      description={p === "review" ? "Неразобранных сделок нет в выбранном периоде." : `Сейчас: ${scopeLabel}. Расширьте период или снимите фильтры.`}
+      action={<Button variant="outline" onClick={() => F.setPreset(null)}>К дням</Button>}
+    />
+  );
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight">Трейды</h1>
-          <p className="text-xs text-muted-foreground font-mono mt-0.5">
-            {filtered.length !== trades.length ? `${filtered.length} из ${trades.length}` : `${trades.length}`} трейдов
-          </p>
-        </div>
-        <WriteOnly>
-          <Button onClick={openCreate} className="font-mono uppercase tracking-tight text-xs gap-1">
-            <Plus className="h-3 w-3" /> Новый Трейд
-          </Button>
-        </WriteOnly>
-      </div>
-
-      <div className="flex gap-2 items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Поиск по тикеру, сетапу, трейдеру, тегам, заметкам..."
-            className="w-full h-9 pl-9 pr-8 bg-card border border-border text-xs font-mono text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-primary/50 transition-colors"
-          />
-          {search && (
-            <button onClick={() => setSearch("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-        </div>
-        <div className="relative flex items-center flex-shrink-0">
-          <Calendar className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-          <input
-            type="date"
-            value={dateFilter}
-            onChange={(e) => setDateFilter(e.target.value)}
-            className="h-9 pl-8 pr-7 bg-card border border-border text-xs font-mono text-foreground focus:outline-none focus:border-primary/50 transition-colors"
-          />
-          {dateFilter && (
-            <button onClick={() => setDateFilter("")} className="absolute right-2 text-muted-foreground hover:text-foreground transition-colors">
-              <X className="h-3 w-3" />
-            </button>
-          )}
-        </div>
-      </div>
-
-      <div className="flex gap-0 border border-border overflow-x-auto">
-        {FILTER_TABS.map((t) => (
-          <button key={t.key} onClick={() => setTab(t.key)}
-            className={`px-4 py-2 text-xs font-mono uppercase whitespace-nowrap border-r border-border last:border-r-0 transition-colors ${tab === t.key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground hover:bg-muted"}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="bg-card border border-border rounded-none overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm font-mono text-left">
-            <thead className="bg-muted text-muted-foreground border-b border-border">
-              <tr>
-                <th className="px-3 py-3 font-normal uppercase text-xs w-8"></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("ticker")}>Тикер<SortIcon col="ticker" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("date")}>Дата<SortIcon col="date" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap">Side</th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap">Тип</th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("trader")}>Трейдер<SortIcon col="trader" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("entry")}>Вход<SortIcon col="entry" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap">Выход</th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("r")}>R<SortIcon col="r" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("result")}>Результат<SortIcon col="result" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs text-right whitespace-nowrap cursor-pointer hover:text-foreground select-none" onClick={() => toggleSort("pnl")}>PnL<SortIcon col="pnl" sort={sort} /></th>
-                <th className="px-3 py-3 font-normal uppercase text-xs text-right whitespace-nowrap">Действия</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {filtered.map((t) => (
-                <React.Fragment key={t.id}>
-                  <tr
-                    ref={highlightId === t.id ? highlightRef : null}
-                    className={`transition-colors cursor-pointer border-l-[3px] ${
-                      highlightId === t.id ? "bg-primary/10 border-l-primary animate-pulse" :
-                      t.result === "win" ? "border-l-emerald-500/60 hover:bg-emerald-500/5" :
-                      t.result === "loss" ? "border-l-red-500/60 hover:bg-red-500/5" :
-                      "border-l-muted hover:bg-muted/40"
-                    }`}
-                    onClick={() => setExpanded(expanded === t.id ? null : t.id)}
-                  >
-                    <td className="px-3 py-3 text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        {expanded === t.id ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="font-bold text-foreground">{t.ticker}</div>
-                      <TagChips tags={(t as any).tags} />
-                    </td>
-                    <td className="px-3 py-3 text-muted-foreground">{t.date.substring(0, 10)}</td>
-                    <td className="px-3 py-3"><SideBadge side={(t as any).side} /></td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">{t.eventType || "-"}</td>
-                    <td className="px-3 py-3 text-xs text-muted-foreground">{t.trader || "-"}</td>
-                    <td className="px-3 py-3">{t.entry?.toFixed(2) || "-"}</td>
-                    <td className="px-3 py-3">{t.exit?.toFixed(2) || "-"}</td>
-                    <td className="px-3 py-3 text-xs">{t.rMultiple != null ? <span className={t.rMultiple >= 2 ? "text-emerald-400 font-bold" : t.rMultiple >= 1 ? "text-emerald-400/70" : t.rMultiple < 0 ? "text-red-400" : ""}>{t.rMultiple.toFixed(1)}R</span> : "-"}</td>
-                    <td className="px-3 py-3">
-                      <span className={`inline-flex items-center px-2 py-0.5 text-xs font-bold ${t.result === "win" ? "bg-emerald-500/15 text-emerald-400" : t.result === "loss" ? "bg-red-500/15 text-red-400" : "bg-muted text-muted-foreground"}`}>
-                        {t.result === "win" ? "WIN" : t.result === "loss" ? "LOSS" : "BE"}
-                      </span>
-                    </td>
-                    <td className={`px-3 py-3 text-right font-bold ${(t.pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                      {formatCurrency(t.pnl)}
-                    </td>
-                    <td className="px-3 py-3 text-right">
-                      <div className="flex gap-1 justify-end" onClick={(e) => e.stopPropagation()}>
-                        <WriteOnly>
-                          <AddToPlaybookButton payload={{
-                            name: `${t.ticker} ${(t as any).setup || t.eventType || ""} (${t.date.substring(0, 10)})`.trim(),
-                            setupType: (t as any).setup || t.eventType || undefined,
-                            conditions: t.notes || undefined,
-                            notes: [t.whatWorked ? `Что сработало: ${t.whatWorked}` : "", t.whatFailed ? `Что не сработало: ${t.whatFailed}` : "", t.conclusion ? `Вывод: ${t.conclusion}` : ""].filter(Boolean).join("\n") || undefined,
-                            screenshotUrl: t.screenshotUrl || undefined,
-                            screenshotNotes: t.screenshotNotes || undefined,
-                            tags: (t as any).tags || undefined,
-                            sourceType: "trade",
-                            sourceId: t.id,
-                          }} size="icon" />
-                          <button onClick={() => openEdit(t)} className="p-1 text-muted-foreground hover:text-primary transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                          <button onClick={() => setDeleting(t)} className="p-1 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                        </WriteOnly>
-                      </div>
-                    </td>
-                  </tr>
-                  {expanded === t.id && (
-                    <tr className="bg-muted/10">
-                      <td colSpan={12} className="px-6 py-4">
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs font-mono">
-                          {t.notes && (
-                            <div className="bg-muted/30 border border-border/50 p-3">
-                              <div className="text-muted-foreground uppercase mb-2 flex items-center gap-1.5 text-[10px]">
-                                <div className="w-1.5 h-1.5 bg-muted-foreground rounded-full" />Заметки
-                              </div>
-                              <div className="text-foreground/90 leading-relaxed whitespace-pre-wrap">{t.notes}</div>
-                            </div>
-                          )}
-                          {t.whatWorked && (
-                            <div className="bg-emerald-500/5 border border-emerald-500/20 p-3">
-                              <div className="text-emerald-400 uppercase mb-2 flex items-center gap-1.5 text-[10px]">
-                                <div className="w-1.5 h-1.5 bg-emerald-400 rounded-full" />Что сработало
-                              </div>
-                              <div className="text-foreground/90 leading-relaxed whitespace-pre-wrap">{t.whatWorked}</div>
-                            </div>
-                          )}
-                          {t.whatFailed && (
-                            <div className="bg-red-500/5 border border-red-500/20 p-3">
-                              <div className="text-red-400 uppercase mb-2 flex items-center gap-1.5 text-[10px]">
-                                <div className="w-1.5 h-1.5 bg-red-400 rounded-full" />Что не сработало
-                              </div>
-                              <div className="text-foreground/90 leading-relaxed whitespace-pre-wrap">{t.whatFailed}</div>
-                            </div>
-                          )}
-                          {t.conclusion && (
-                            <div className="bg-primary/5 border border-primary/20 p-3 md:col-span-3">
-                              <div className="text-primary uppercase mb-2 flex items-center gap-1.5 text-[10px]">
-                                <div className="w-1.5 h-1.5 bg-primary rounded-full" />Вывод
-                              </div>
-                              <div className="text-foreground/90 leading-relaxed whitespace-pre-wrap">{t.conclusion}</div>
-                            </div>
-                          )}
-                          <div className="flex gap-4 flex-wrap md:col-span-3 text-foreground/70">
-                            {t.holdTime && <div className="bg-muted/30 px-2 py-1 border border-border/30"><span className="text-muted-foreground">Время: </span>{t.holdTime}</div>}
-                            {t.session && <div className="bg-muted/30 px-2 py-1 border border-border/30"><span className="text-muted-foreground">Сессия: </span>{t.session}</div>}
-                            {t.relativeVolume != null && <div className="bg-muted/30 px-2 py-1 border border-border/30"><span className="text-muted-foreground">RVOL: </span>{t.relativeVolume}x</div>}
-                            {t.float && <div className="bg-muted/30 px-2 py-1 border border-border/30"><span className="text-muted-foreground">Float: </span>{t.float}</div>}
-                            {(t as any).setup && <div className="bg-muted/30 px-2 py-1 border border-border/30"><span className="text-muted-foreground">Setup: </span>{(t as any).setup}</div>}
-                          </div>
-                          {(t as any).tags && (
-                            <div>
-                              <div className="text-muted-foreground uppercase mb-1 flex items-center gap-1"><Tag className="h-3 w-3" />Теги</div>
-                              <TagChips tags={(t as any).tags} />
-                            </div>
-                          )}
-                          {t.screenshotUrl && (
-                            <div className="md:col-span-3">
-                              <ScreenshotDisplay
-                                urls={t.screenshotUrl}
-                                notes={t.screenshotNotes}
-                                onNotesChange={async (newNotes) => {
-                                  try {
-                                    await fetch(`${BASE}/api/trades/${t.id}`, {
-                                      method: "PATCH",
-                                      headers: { "Content-Type": "application/json" },
-                                      body: JSON.stringify({ screenshotNotes: newNotes }),
-                                    });
-                                    qc.invalidateQueries({ queryKey: getListTradesQueryKey() });
-                                  } catch {}
-                                }}
-                              />
-                            </div>
-                          )}
-                        </div>
-                        <TradeActions
-                          tradeId={t.id}
-                          traderName={user?.role === "trader" ? user.traderName : "Guest"}
-                          isCurator={dbUsers.some((u) => u.name === user?.traderName && u.role === "curator")}
-                        />
-                      </td>
-                    </tr>
-                  )}
-                </React.Fragment>
-              ))}
-              {filtered.length === 0 && !isLoading && (
-                <tr><td colSpan={12} className="px-4 py-10 text-center text-muted-foreground text-xs font-mono">Нет трейдов</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <Dialog open={open} onOpenChange={(v) => { if (!v) { setOpen(false); setEditing(null); } }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto bg-card border-border font-mono">
-          <DialogHeader>
-            <DialogTitle className="uppercase text-sm tracking-tight">{editing ? "Редактировать трейд" : "Новый трейд"}</DialogTitle>
-          </DialogHeader>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Тикер *</Label>
-              <Input value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase())} placeholder="NVDA" className="font-mono bg-background h-8 text-xs uppercase" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Дата *</Label>
-              <Input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Side *</Label>
-              <div className="flex gap-0 border border-border h-8">
-                {SIDES.map((s) => (
-                  <button key={s} type="button" onClick={() => set("side", s)}
-                    className={`flex-1 text-xs font-mono uppercase transition-colors ${form.side === s ? (s === "Long" ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30" : "bg-red-500/20 text-red-400 border-red-500/30") : "text-muted-foreground hover:bg-muted"}`}>
-                    {s}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Тип события</Label>
-              <Select value={form.eventType} onValueChange={(v) => set("eventType", v)}>
-                <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue placeholder="-" /></SelectTrigger>
-                <SelectContent>{EVENT_TYPES.map((s) => <SelectItem key={s} value={s} className="text-xs font-mono">{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Результат *</Label>
-              <Select value={form.result} onValueChange={(v) => set("result", v)}>
-                <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{RESULTS.map((s) => <SelectItem key={s} value={s} className="text-xs font-mono">{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Сессия</Label>
-              <Select value={form.session} onValueChange={(v) => set("session", v)}>
-                <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue /></SelectTrigger>
-                <SelectContent>{SESSIONS.map((s) => <SelectItem key={s} value={s} className="text-xs font-mono">{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Трейдер</Label>
-              <Select value={form.trader} onValueChange={(v) => set("trader", v)}>
-                <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue placeholder="-" /></SelectTrigger>
-                <SelectContent>{traderNames.map((s) => <SelectItem key={s} value={s} className="text-xs font-mono">{s}</SelectItem>)}</SelectContent>
-              </Select>
-            </div>
-            {(["entry", "exit", "stop", "pnl", "rMultiple", "slippage", "relativeVolume"] as const).map((field) => (
-              <div key={field} className="space-y-1">
-                <Label className="text-muted-foreground uppercase text-xs">{field === "entry" ? "Вход" : field === "exit" ? "Выход" : field === "stop" ? "Стоп" : field === "pnl" ? "PnL $" : field === "rMultiple" ? "R-кратное" : field === "slippage" ? "Проскальзывание" : "RVOL"}</Label>
-                <Input type="number" step="any" value={form[field]} onChange={(e) => set(field, e.target.value)} className="font-mono bg-background h-8 text-xs" />
-              </div>
-            ))}
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Время удержания</Label>
-              <Input value={form.holdTime} onChange={(e) => set("holdTime", e.target.value)} placeholder="1h 30m" className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Market Cap</Label>
-              <Input value={form.marketCap} onChange={(e) => set("marketCap", e.target.value)} placeholder="Large Cap" className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Float</Label>
-              <Input value={form.float} onChange={(e) => set("float", e.target.value)} placeholder="2.45B" className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="col-span-2 md:col-span-4 space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs flex items-center gap-1.5"><Tag className="h-3 w-3" />Теги</Label>
-              <TagSelector 
-                selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}
-                onChange={(tags) => set("tags", tags.join(", "))}
-              />
-            </div>
-            <div className="col-span-2 md:col-span-4 space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Заметки</Label>
-              <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={2} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Что сработало</Label>
-              <Textarea value={form.whatWorked} onChange={(e) => set("whatWorked", e.target.value)} rows={2} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="col-span-2 space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Что не сработало</Label>
-              <Textarea value={form.whatFailed} onChange={(e) => set("whatFailed", e.target.value)} rows={2} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="col-span-2 md:col-span-4 space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Вывод</Label>
-              <Textarea value={form.conclusion} onChange={(e) => set("conclusion", e.target.value)} rows={2} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="col-span-2 md:col-span-4">
-              <ScreenshotFields
-                urls={form.screenshotUrls}
-                onChange={(urls) => setForm((f) => ({ ...f, screenshotUrls: urls }))}
-                notes={form.screenshotNotes}
-                onNotesChange={(notes) => setForm((f) => ({ ...f, screenshotNotes: notes }))}
-              />
-            </div>
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)} className="font-mono uppercase text-xs">Отмена</Button>
-            <Button onClick={handleSave} disabled={isPending || !form.ticker} className="font-mono uppercase text-xs">
-              {isPending ? "Сохраняем..." : "Сохранить"}
+    <Page className="pb-24">
+      <PageHeader
+        title="Сделки"
+        icon={BookText}
+        description={headerText}
+        actions={
+          <>
+            <Popover open={helpOpen} onOpenChange={setHelpOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="ghost" size="icon" aria-label="Горячие клавиши (?)" title="Горячие клавиши (?)"><Keyboard /></Button>
+              </PopoverTrigger>
+              <PopoverContent align="end" side="bottom" collisionPadding={12} className="w-72 p-3">
+                <p className="pb-2 text-sm font-semibold">Горячие клавиши</p>
+                <ul className="space-y-1.5">
+                  {SHORTCUTS.map(([key, label]) => (
+                    <li key={key} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <Kbd>{key}</Kbd>
+                    </li>
+                  ))}
+                </ul>
+                <p className="pt-2 text-xs text-muted-foreground">Разбор без мыши: J, затем S / M / E и цифра.</p>
+              </PopoverContent>
+            </Popover>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={!total || exporting} onClick={() => void exportAll()} aria-label={`Экспорт ${total} сделок в CSV`}>
+              {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} CSV
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </>
+        }
+      />
 
-      <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
-        <AlertDialogContent className="bg-card border-border font-mono">
+      {!noTrades && (
+        <TradeFilterBar
+          filters={filters}
+          patch={F.patch}
+          reset={F.reset}
+          outcomeCounts={facets?.outcomes ?? EMPTY_OUTCOMES}
+          horizonCounts={facets?.horizons ?? {}}
+          setups={facets?.setups ?? []}
+          traders={distinctTraders}
+          sectors={facets?.sectors ?? []}
+          views={F.views}
+          onSaveView={(n) => { F.saveView(n); toast({ title: `Вид «${n}» сохранён` }); }}
+          onApplyView={F.applyView}
+          onRemoveView={F.removeView}
+          searchRef={searchRef}
+          showSource={isStaff}
+        />
+      )}
+
+      {!noTrades && !P.isError && (
+        <ReviewKpis summary={summary} loading={isLoading} dayCurve={preset ? [] : dayCurve} onPreset={(p) => F.setPreset(p)} />
+      )}
+
+      {!noTrades && (
+        <PresetBar
+          view={view}
+          onView={(v) => { if (v === "days") F.setPreset(null); F.setView(v); }}
+          preset={preset}
+          onPreset={F.setPreset}
+          counts={facets?.presets ?? null}
+          sort={sort}
+          onSort={F.setSort}
+          trader={traderForLinks}
+        />
+      )}
+
+      {isError ? (
+        <Panel><QueryError error={P.error ?? D.error} onRetry={() => { void P.refetch(); void D.refetch(); }} /></Panel>
+      ) : noTrades ? (
+        <Panel>
+          <EmptyState
+            icon={BookText}
+            title="Сделок пока нет"
+            description="Сделки появятся здесь автоматически после торговой сессии. Тогда их можно будет разобрать по дням."
+          />
+        </Panel>
+      ) : listMode ? (
+        <Panel padded={false} className="overflow-hidden" aria-label={presetMeta ? presetMeta.label : "Все сделки"}>
+          {isLoading ? (
+            <RowsSkeleton rows={8} />
+          ) : total === 0 ? (
+            preset ? presetEmpty(preset) : (
+              <EmptyState icon={Filter} title="Нет сделок по фильтрам" description={`Сейчас: ${scopeLabel}. Попробуйте расширить период или снять часть фильтров.`} action={<Button variant="outline" onClick={F.reset}>Сбросить фильтры</Button>} />
+            )
+          ) : (
+            <div role="table" aria-label="Сделки" className={P.isPlaceholder ? "opacity-70 transition-opacity" : "transition-opacity"} aria-busy={P.isPlaceholder || undefined}>
+              <RowsHeader showDate />
+              {P.items.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate />)}
+              <TradePagination
+                page={page}
+                pageSize={pageSize}
+                total={total}
+                returned={P.items.length}
+                hasMore={P.hasMore}
+                fetching={P.isFetching}
+                onPage={F.setPage}
+                onPageSize={F.setPageSize}
+              />
+            </div>
+          )}
+        </Panel>
+      ) : D.isLoading ? (
+        <Panel padded={false}><RowsSkeleton rows={6} /></Panel>
+      ) : !D.days.length ? (
+        <Panel>
+          <EmptyState icon={Filter} title="Нет сделок по фильтрам" description={`Сейчас: ${scopeLabel}. Попробуйте расширить период или снять часть фильтров.`} action={<Button variant="outline" onClick={F.reset}>Сбросить фильтры</Button>} />
+        </Panel>
+      ) : (
+        <div className="space-y-[var(--grid-gap)]" aria-busy={D.isFetching || undefined}>
+          {D.days.map((d) => {
+            const isOpen = expanded.has(d.date);
+            const rows = isOpen ? dayRows(d.date) : undefined;
+            return (
+              <DayCard key={d.date} day={d} expanded={isOpen} onToggle={() => toggleDay(d.date)} trader={traderForLinks}>
+                {rows == null ? <RowsSkeleton rows={Math.min(6, d.count)} /> : (
+                  <div role="table" aria-label={`Сделки за ${d.date}`}>
+                    <RowsHeader showDate={false} />
+                    {rows.map((t) => <ReviewTradeRow key={t.id} {...rowProps(t)} showDate={false} />)}
+                    {rows.length >= 500 && d.count > rows.length && (
+                      <p className="px-3 py-2 text-xs text-muted-foreground">Показаны первые 500 из {d.count}. Остальные — в режиме «Списком» с фильтром по дате.</p>
+                    )}
+                  </div>
+                )}
+              </DayCard>
+            );
+          })}
+          {D.hasMore && (
+            <div className="flex justify-center pt-1">
+              <Button variant="outline" onClick={D.loadMore} disabled={D.isFetching} className="gap-1.5">
+                {D.isFetching && <Loader2 className="h-3.5 w-3.5 animate-spin" />} Показать ещё дни
+                <span className="text-muted-foreground">· {D.days.length} из {D.totalDays}</span>
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {selected.size > 0 && (
+        <BulkActionBar
+          count={selectedIds.length}
+          canTag={selectedTrades.every((t) => canEditTrade(t))}
+          pending={bulkPending}
+          setupOptions={setupOptions}
+          stateOf={bulkStateOf}
+          onSetSetup={async (setup) => {
+            const done = await runBulk({ action: "setSetup", ids: selectedIds, setup });
+            if (done) toast({ title: setup ? `Сетап «${setup}»: ${nTrades(done.length)}` : `Сетап убран: ${nTrades(done.length)}` });
+          }}
+          onToggleTag={async (tag, mode) => {
+            const done = await runBulk({ action: mode === "add" ? "addTags" : "removeTags", ids: selectedIds, tags: [tag] });
+            if (done) toast({ title: mode === "add" ? `«${tag}» добавлено` : `«${tag}» убрано`, description: nTrades(done.length) });
+          }}
+          onExport={() => downloadCsv(selectedTrades, `trades-selected-${selectedIds.length}.csv`)}
+          onSetResult={isStaff ? async (r) => {
+            const done = await runBulk({ action: "setResult", ids: selectedIds, result: r });
+            if (done) toast({ title: `${RESULT_LABEL[r]}: ${nTrades(done.length)}` });
+          } : undefined}
+          onDelete={canDeleteSelection ? () => (selectedIds.length === 1 ? deleteTrades(selectedIds) : setConfirmBulkDelete(true)) : undefined}
+          onClear={() => setSelected(new Set())}
+        />
+      )}
+
+      <TradeDetailSheet
+        trade={openTrade}
+        onClose={() => setOpenId(null)}
+        allTrades={visibleRows}
+        onOpenTrade={(t) => { setDetached(t); setOpenId(t.id); setActiveId(t.id); }}
+        onPrev={openIndex > 0 || (listMode && openIndex === 0 && page > 1) ? () => stepOpen(-1) : undefined}
+        onNext={openIndex >= 0 && (openIndex < visibleRows.length - 1 || (listMode && P.hasMore)) ? () => stepOpen(1) : undefined}
+        position={openIndex >= 0 ? (listMode ? { index: (page - 1) * pageSize + openIndex, total } : { index: openIndex, total: visibleRows.length }) : undefined}
+        canEdit={openTrade ? canEditTrade(openTrade) : false}
+        canEditForm={openTrade ? canEditForm(openTrade) : false}
+        canEditResult={openTrade ? canEditForm(openTrade) : false}
+        canDelete={openTrade ? canEditForm(openTrade) : false}
+        onEdit={openEdit}
+        onDelete={(t) => deleteTrades([t.id])}
+        onPatch={patchTrade}
+        onTag={tagTrade}
+        setupOptions={setupOptions}
+        traderName={me}
+        isCurator={isStaff}
+        userKey={user?.traderName || "Guest"}
+        voiceNoteKey={voiceNoteKey}
+        holidayEvents={openTrade ? holidayByDate.get(dayOf(openTrade)) ?? [] : []}
+      />
+
+      <TradeFormDialog
+        open={formOpen}
+        onClose={() => { setFormOpen(false); setEditing(null); setFromIdeaId(null); setChecklistResult(null); }}
+        form={form}
+        setForm={setForm}
+        editing={editing}
+        traderNames={traderNames}
+        checklistResult={checklistResult}
+        onResetChecklist={() => setChecklistResult(null)}
+        onSave={handleSave}
+        isPending={isPending}
+        onVoiceUploaded={() => setVoiceNoteKey((k) => k + 1)}
+      />
+
+      <ChecklistDialog
+        open={checklistOpen}
+        onClose={() => setChecklistOpen(false)}
+        ticker={form.ticker}
+        date={form.date}
+        trader={form.trader}
+        onConfirm={(r) => { setChecklistResult(r); setChecklistOpen(false); createWithChecklist(r); }}
+      />
+
+      <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-sm uppercase">Удалить трейд?</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs">
-              {deleting?.ticker} — {deleting?.date?.substring(0, 10)}. Это действие нельзя отменить.
-            </AlertDialogDescription>
+            <AlertDialogTitle>Удалить {selectedIds.length} {plural(selectedIds.length, ["сделку", "сделки", "сделок"])}?</AlertDialogTitle>
+            <AlertDialogDescription>Отменить удаление можно будет в течение 8 секунд.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono text-xs uppercase">Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && deleteMut.mutate({ id: deleting.id })} className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700">Удалить</AlertDialogAction>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setConfirmBulkDelete(false); void deleteTrades(selectedIds); }}
+              className="border border-destructive/30 bg-destructive/15 text-destructive hover:bg-destructive/25"
+            >
+              Удалить
+            </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+
+      {undo && (
+        <UndoToast key={undo.key} label={undo.label} onUndo={restoreUndo} restoring={undo.restoring} onDismiss={() => setUndo((cur) => (cur?.restoring ? cur : null))} />
+      )}
+
+      {/* Used by tests / other pages to know which horizons exist. */}
+      <span hidden data-horizons={HORIZONS.join(",")} />
+    </Page>
   );
 }

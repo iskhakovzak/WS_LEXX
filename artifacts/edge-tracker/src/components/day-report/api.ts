@@ -1,0 +1,216 @@
+/**
+ * Data layer for «Разбор дня»: types (mirror of api-server lib/dayReport.ts + routes/day-report.ts),
+ * react-query hooks, trading-day navigation (weekends + market holidays) and formatting.
+ */
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { apiUrl } from "@/lib/api";
+import { addDays, nyDate } from "@/lib/trading-date";
+
+// ── Types ────────────────────────────────────────────────────────────────────
+export type Side = "long" | "short";
+export type TimeSource = "executions" | "snapshot" | "none";
+
+export type TradeRef = {
+  id: number; ticker: string; side: Side | null; net: number | null; gross: number | null; fees: number;
+  qty: number | null; entryTime: string | null; exitTime: string | null; holdMin: number | null; setup: string | null;
+};
+
+export type Summary = {
+  trades: number; closed: number; open: number; wins: number; losses: number; be: number;
+  winRate: number | null; net: number; gross: number; fees: number; feeShareOfGross: number | null;
+  profitFactor: number | null; avgWin: number | null; avgLoss: number | null; expectancy: number | null;
+  best: TradeRef | null; worst: TradeRef | null; volumeShares: number;
+};
+
+export type DailyNet = { date: string; net: number };
+
+export type Comparison = {
+  days: number; avg: number | null; std: number | null; z: number | null; betterThanPct: number | null; rank: number | null;
+  bestDay: DailyNet | null; worstDay: DailyNet | null; label: string;
+};
+
+export type EquityPoint = { t: number | null; time: string | null; tradeId: number | null; ticker: string | null; net: number; cum: number };
+
+export type Equity = {
+  timeSource: TimeSource;
+  points: EquityPoint[];
+  peak: { value: number; time: string | null; tradeId: number | null };
+  trough: { value: number; time: string | null; tradeId: number | null };
+  maxDrawdown: { value: number; fromTime: string | null; toTime: string | null; fromTradeId: number | null; toTradeId: number | null };
+  final: number;
+  giveback: number;
+};
+
+export type TimelineRow = TradeRef & {
+  index: number; result: "win" | "loss" | "be" | "open" | null;
+  gapMin: number | null; overlap: boolean; cumAfter: number | null; afterLoss: boolean;
+};
+
+export type Bucket = { key: string; label: string; trades: number; wins: number; losses: number; winRate: number | null; net: number; gross: number; fees: number };
+
+export type LeakKind = "fee_over_gross" | "after_peak" | "revenge" | "size_up" | "after_limit";
+
+export type Leak = {
+  kind: LeakKind; title: string; detail: string; count: number; tradeIds: number[];
+  netUsd: number; costUsd: number; severity: "high" | "medium" | "low";
+};
+
+export type EdgeItem = { key: string; label: string; trades: number; wins: number; losses: number; net: number; winRate: number | null };
+
+export type PlanItem = { id: string; text: string; reason: string; costUsd: number | null; source: LeakKind | "stat" };
+
+export type DayReport = {
+  trader: string; date: string; weekday: string;
+  summary: Summary; comparison: Comparison; equity: Equity; timeline: TimelineRow[];
+  breakdown: { byTicker: Bucket[]; byHour: Bucket[]; bySide: Bucket[] };
+  leaks: Leak[]; leaksTotalUsd: number;
+  strengths: { topTrades: TradeRef[]; tickers: EdgeItem[]; setups: EdgeItem[]; sides: EdgeItem[]; bestHour: Bucket | null };
+  plan: PlanItem[];
+  dailyLossLimit: number | null;
+  dailyLossLimitSource: "personal" | "tier" | null;
+  firstEntry: string | null; lastExit: string | null; activeMinutes: number | null;
+  nav: { prevTradeDate: string | null; nextTradeDate: string | null };
+  traders: string[];
+  canPickTrader: boolean;
+  today: string;
+  generatedAt: string;
+};
+
+// ── HTTP ─────────────────────────────────────────────────────────────────────
+export class HttpError extends Error {
+  constructor(public status: number, message: string) {
+    super(message);
+  }
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const r = await fetch(apiUrl(path));
+  if (!r.ok) {
+    let msg = `HTTP ${r.status}`;
+    try {
+      const j = (await r.json()) as { error?: string };
+      if (j?.error) msg = j.error;
+    } catch { /* not json */ }
+    throw new HttpError(r.status, msg);
+  }
+  return (await r.json()) as T;
+}
+
+const retry = (count: number, err: unknown) => !(err instanceof HttpError && [400, 401, 403, 404].includes(err.status)) && count < 2;
+
+export const dayReportKeys = {
+  all: ["day-report"] as const,
+  doc: (trader: string, date: string) => ["day-report", trader, date] as const,
+  holidays: (year: number) => ["day-report", "holidays", year] as const,
+};
+
+export function useDayReport(trader: string | null, date: string, enabled = true) {
+  return useQuery({
+    queryKey: dayReportKeys.doc(trader ?? "", date),
+    queryFn: () => {
+      const q = new URLSearchParams({ date });
+      if (trader) q.set("trader", trader);
+      return getJson<DayReport>(`/api/day-report?${q.toString()}`);
+    },
+    enabled: enabled && isYmd(date),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+    retry,
+  });
+}
+
+type HolidayEvent = { date: string; type: string };
+
+/** Market-closed days (type "holiday") for the year of `date` ± a week of margin. */
+export function useMarketHolidays(date: string) {
+  const year = Number(date.slice(0, 4)) || new Date().getFullYear();
+  return useQuery({
+    queryKey: dayReportKeys.holidays(year),
+    queryFn: async () => {
+      const j = await getJson<{ events: HolidayEvent[] }>(`/api/holidays?from=${year - 1}-12-01&to=${year + 1}-01-31&types=holiday`);
+      return new Set(j.events.filter((e) => String(e.type).toLowerCase() === "holiday").map((e) => String(e.date).slice(0, 10)));
+    },
+    staleTime: 6 * 60 * 60_000,
+    retry,
+  });
+}
+
+// ── Trading-day helpers ──────────────────────────────────────────────────────
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function isYmd(v: string | null | undefined): v is string {
+  if (!v || !YMD_RE.test(v)) return false;
+  const [y, m, d] = v.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d;
+}
+
+export function isWeekendYmd(date: string): boolean {
+  const wd = new Date(`${date}T12:00:00Z`).getUTCDay();
+  return wd === 0 || wd === 6;
+}
+
+export function isTradingDay(date: string, holidays: ReadonlySet<string> | undefined): boolean {
+  return !isWeekendYmd(date) && !(holidays?.has(date) ?? false);
+}
+
+/** Next (dir = 1) or previous (dir = −1) trading day, skipping weekends and market holidays. */
+export function shiftTradingDay(date: string, dir: 1 | -1, holidays: ReadonlySet<string> | undefined): string {
+  let d = addDays(date, dir);
+  for (let i = 0; i < 14 && !isTradingDay(d, holidays); i++) d = addDays(d, dir);
+  return d;
+}
+
+/** Last trading day on or before today (NY). */
+export function lastTradingDay(holidays: ReadonlySet<string> | undefined): string {
+  const today = nyDate();
+  return isTradingDay(today, holidays) ? today : shiftTradingDay(today, -1, holidays);
+}
+
+// ── Formatting ───────────────────────────────────────────────────────────────
+export function fmtUsd(v: number | null | undefined, signed = false): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const a = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}$${a}`;
+}
+
+export function fmtPct(v: number | null | undefined, digits = 0): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return `${(v * 100).toFixed(digits)}%`;
+}
+
+export function fmtHold(min: number | null | undefined): string {
+  if (min == null || !Number.isFinite(min)) return "—";
+  if (min < 1) return `${Math.max(1, Math.round(min * 60))} с`;
+  if (min < 60) return `${Math.round(min)} мин`;
+  const h = Math.floor(min / 60);
+  const m = Math.round(min - h * 60);
+  return m ? `${h} ч ${m} мин` : `${h} ч`;
+}
+
+const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const WEEKDAYS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+
+/** "Чт, 15 октября 2026". */
+export function fmtDayLong(ymd: string): string {
+  if (!isYmd(ymd)) return ymd;
+  const [y, m, d] = ymd.split("-").map(Number);
+  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  return `${WEEKDAYS[wd]}, ${d} ${MONTHS_GEN[m - 1]} ${y}`;
+}
+
+/** "15 окт". */
+export function fmtDayShort(ymd: string): string {
+  if (!isYmd(ymd)) return ymd;
+  const [, m, d] = ymd.split("-").map(Number);
+  return `${d} ${MONTHS_GEN[m - 1].slice(0, 3)}`;
+}
+
+export const SIDE_LABEL: Record<Side, string> = { long: "Лонг", short: "Шорт" };
+
+export function pluralTrades(n: number): string {
+  const m10 = n % 10, m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return "сделка";
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "сделки";
+  return "сделок";
+}

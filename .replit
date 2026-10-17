@@ -1,8 +1,8 @@
-modules = ["nodejs-24", "postgresql-16", "python-3.11"]
+modules = ["nodejs-24", "python-3.11", "postgresql-16"]
 
 [deployment]
 router = "application"
-deploymentTarget = "cloudrun"
+deploymentTarget = "gce"
 
 [deployment.postBuild]
 args = ["pnpm", "store", "prune"]
@@ -23,6 +23,10 @@ args = "artifacts/api-server: API Server"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "artifacts/edge-tracker: web"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Binance News Monitor"
 
 [[workflows.workflow]]
 name = "artifacts/api-server: API Server"
@@ -48,6 +52,17 @@ task = "shell.exec"
 args = "pnpm --filter @workspace/edge-tracker run dev"
 waitForPort = 5000
 
+[[workflows.workflow]]
+name = "Binance News Monitor"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd artifacts/binance-monitor && python3 main.py"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
 [agent]
 stack = "PNPM_WORKSPACE"
 expertMode = true
@@ -61,20 +76,40 @@ localPort = 5000
 externalPort = 5000
 
 [[ports]]
-localPort = 5173
-externalPort = 5173
-
-[[ports]]
 localPort = 8080
 externalPort = 8080
 
 [[ports]]
-localPort = 8081
-externalPort = 80
+localPort = 19400
+externalPort = 8008
+
+[[ports]]
+localPort = 22320
+externalPort = 8099
+
+[[ports]]
+localPort = 23982
+externalPort = 4200
 
 [[ports]]
 localPort = 24402
+externalPort = 80
+
+[[ports]]
+localPort = 24403
 externalPort = 3000
+
+[[ports]]
+localPort = 24404
+externalPort = 3001
+
+[[ports]]
+localPort = 24405
+externalPort = 3002
+
+[[ports]]
+localPort = 24406
+externalPort = 3003
 
 [nix]
 channel = "stable-25_05"
@@ -82,4 +117,10 @@ channel = "stable-25_05"
 [userenv]
 
 [userenv.production]
-USE_SUPABASE = "true"
+TELEGRAM_WEBHOOK_URL = "https://zakit.website/api/telegram/webhook"
+
+[userenv.shared]
+TELEGRAM_CHAT_ID = "-1003858687114"
+
+[objectStorage]
+defaultBucketID = "replit-objstore-45151b94-ae10-4ae7-8eaa-4b3957c07d0a"

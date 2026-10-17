@@ -1,0 +1,231 @@
+/**
+ * Кабинет куратора и риск-процессы — чистая логика (без БД), покрыта lib/curatorLogic.test.ts.
+ *
+ *   tradingPhase       премаркет / сессия / после закрытия / выходной по минутам Нью-Йорка
+ *   prevTradingDay     предыдущий будний день (праздники не учитываются — на них просто нет сделок)
+ *   breachStats        нарушения за 7 календарных дней → повторное ли сегодняшнее (эскалация руководителю деска)
+ *   templateDiff       расхождение лимитов трейдера с шаблоном тира (Стажёр / Джун / Трейдер / Сеньор)
+ *   weeklyTrend        P&L нетто по неделям (пн–пт) за N последних недель
+ *   nextActionFor      следующий шаг куратора по трейдеру (один, самый важный)
+ *   BREACH_REASONS     справочник причин нарушения для «Разбора нарушения»
+ */
+import { addDays, isWeekend } from "./tradingDate";
+
+// ─── время ──────────────────────────────────────────────────────────────────
+
+export type TradingPhase = "premarket" | "session" | "afterclose" | "weekend";
+
+export const OPEN_MINUTES = 9 * 60 + 30;
+export const CLOSE_MINUTES = 16 * 60;
+
+/** Фаза дня куратора по дате и минутам NY. */
+export function tradingPhase(date: string, nyMinutes: number): TradingPhase {
+  if (isWeekend(date)) return "weekend";
+  if (nyMinutes < OPEN_MINUTES) return "premarket";
+  if (nyMinutes < CLOSE_MINUTES) return "session";
+  return "afterclose";
+}
+
+/** Предыдущий будний день (NY-дата). */
+export function prevTradingDay(date: string): string {
+  let d = addDays(date, -1);
+  for (let i = 0; i < 7 && isWeekend(d); i++) d = addDays(d, -1);
+  return d;
+}
+
+/** Понедельник недели, в которую попадает дата. */
+export function mondayOf(ymd: string): string {
+  const dow = new Date(`${ymd}T12:00:00Z`).getUTCDay();
+  return addDays(ymd, dow === 0 ? -6 : 1 - dow);
+}
+
+// ─── эскалация нарушений ────────────────────────────────────────────────────
+
+export const REPEAT_WINDOW_DAYS = 7;
+
+/**
+ * Даты нарушений (level = breach) трейдера → сколько разных дней с нарушением за последние 7 календарных дней
+ * (включая today) и повторное ли сегодняшнее: было хотя бы одно другое нарушение в окне.
+ */
+export function breachStats(dates: readonly string[], today: string): { days7: number; repeat: boolean; prior: string[] } {
+  const from = addDays(today, -(REPEAT_WINDOW_DAYS - 1));
+  const inWindow = [...new Set(dates.filter((d) => d >= from && d <= today))].sort();
+  const prior = inWindow.filter((d) => d !== today);
+  return { days7: inWindow.length, repeat: inWindow.includes(today) && prior.length > 0, prior };
+}
+
+/** Ключ дедупликации: одно уведомление руководителю деска на трейдера в день. */
+export function repeatBreachKey(trader: string, date: string): string {
+  return `risk:repeat_breach:${trader}:${date}`;
+}
+
+// ─── шаблоны лимитов ────────────────────────────────────────────────────────
+
+export type LimitFields = {
+  accountSize: number | null;
+  dailyLossLimit: number | null;
+  weeklyLossLimit: number | null;
+  maxDrawdown: number | null;
+  maxRiskPerTrade: number | null;
+  maxPositionUsd: number | null;
+  maxOvernightExposure: number | null;
+  maxOpenPositions: number | null;
+  allowOvernight: boolean;
+  allowSwing: boolean;
+};
+
+export const LIMIT_FIELD_LABELS: Record<keyof LimitFields, string> = {
+  accountSize: "Размер счёта",
+  dailyLossLimit: "Дневной лимит",
+  weeklyLossLimit: "Недельный лимит",
+  maxDrawdown: "Макс. просадка",
+  maxRiskPerTrade: "Риск на сделку",
+  maxPositionUsd: "Макс. позиция",
+  maxOvernightExposure: "Овернайт-экспозиция",
+  maxOpenPositions: "Открытых позиций",
+  allowOvernight: "Овернайт",
+  allowSwing: "Свинг",
+};
+
+export type LimitDiff = { field: keyof LimitFields; label: string; current: number | boolean | null; template: number | boolean | null };
+
+const sameNum = (a: number | null, b: number | null) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.005);
+
+/** Поля, где лимиты трейдера отличаются от шаблона тира (пусто = совпадают). null limits ⇒ отличается всё заданное. */
+export function templateDiff(limits: LimitFields | null, template: LimitFields): LimitDiff[] {
+  const out: LimitDiff[] = [];
+  for (const field of Object.keys(LIMIT_FIELD_LABELS) as (keyof LimitFields)[]) {
+    const cur = limits ? limits[field] : null;
+    const tpl = template[field];
+    const differs = typeof tpl === "boolean" ? (limits ? cur !== tpl : true) : !sameNum(cur as number | null, tpl as number | null);
+    if (differs) out.push({ field, label: LIMIT_FIELD_LABELS[field], current: cur, template: tpl });
+  }
+  return out;
+}
+
+/** Академические ступени ↔ ключи тиров масштабирования (одни и те же ключи; «lead» — только в масштабировании). */
+export const STAGE_TIER_KEYS = ["trainee", "junior", "trader", "senior"] as const;
+export const STAGE_LABELS: Record<string, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор", lead: "Лид" };
+
+// ─── тренд ──────────────────────────────────────────────────────────────────
+
+export type WeekPoint = { week: string; net: number | null; trades: number };
+
+/** P&L нетто по неделям: последние `weeks` недель, самая старая первой. Недели без $-данных → net = null. */
+export function weeklyTrend(days: ReadonlyArray<{ date: string; pnl: number | null; trades: number }>, today: string, weeks = 4): WeekPoint[] {
+  const thisMon = mondayOf(today);
+  const starts = Array.from({ length: weeks }, (_, i) => addDays(thisMon, -7 * (weeks - 1 - i)));
+  return starts.map((ws) => {
+    const we = addDays(ws, 6);
+    const rows = days.filter((d) => d.date >= ws && d.date <= we);
+    const priced = rows.filter((d) => d.pnl != null);
+    return {
+      week: ws,
+      net: priced.length ? Math.round(priced.reduce((s, d) => s + (d.pnl ?? 0), 0) * 100) / 100 : null,
+      trades: rows.reduce((s, d) => s + d.trades, 0),
+    };
+  });
+}
+
+/** Направление тренда по последним неделям: up / down / flat / none (недостаточно данных). */
+export function trendDirection(points: readonly WeekPoint[]): "up" | "down" | "flat" | "none" {
+  const vals = points.map((p) => p.net).filter((v): v is number => v != null);
+  if (vals.length < 2) return "none";
+  const half = Math.floor(vals.length / 2);
+  const a = vals.slice(0, half).reduce((s, v) => s + v, 0) / Math.max(1, half);
+  const b = vals.slice(half).reduce((s, v) => s + v, 0) / Math.max(1, vals.length - half);
+  const scale = Math.max(1, ...vals.map((v) => Math.abs(v)));
+  if (Math.abs(b - a) < 0.1 * scale) return "flat";
+  return b > a ? "up" : "down";
+}
+
+// ─── следующий шаг ──────────────────────────────────────────────────────────
+
+export type NextActionKind =
+  | "breach_review" | "stopped" | "near_stop" | "eod_review" | "weekly_review" | "overdue_action"
+  | "no_limits" | "template_drift" | "missing_plan" | "missing_eod" | "one_on_one" | "none";
+
+export type NextAction = { kind: NextActionKind; label: string; priority: number; href: string };
+
+export type NextActionInput = {
+  trader: string;
+  halted: boolean;
+  nearStop: boolean;
+  unreviewedBreaches: number;
+  eodPending: number;
+  weeklySubmitted: boolean;
+  overdueActions: number;
+  hasLimits: boolean;
+  templateDrift: number;
+  missingPlan: boolean;
+  missingEod: boolean;
+  /** Дней с последней 1:1 (null — не было ни одной). */
+  daysSinceOneOnOne: number | null;
+};
+
+const enc = encodeURIComponent;
+
+/** Один следующий шаг: самое срочное из того, что куратор может сделать по трейдеру прямо сейчас. */
+export function nextActionFor(x: NextActionInput): NextAction {
+  const t = enc(x.trader);
+  const cands: NextAction[] = [];
+  if (x.unreviewedBreaches > 0) cands.push({ kind: "breach_review", priority: 100, label: `Разобрать нарушение${x.unreviewedBreaches > 1 ? ` (${x.unreviewedBreaches})` : ""}`, href: `/curator?trader=${t}&tab=risk` });
+  if (x.halted) cands.push({ kind: "stopped", priority: 95, label: "На стопе — связаться и проверить книгу", href: `/risk?trader=${t}` });
+  if (x.nearStop) cands.push({ kind: "near_stop", priority: 80, label: "Близко к стопу — предупредить", href: `/risk?trader=${t}` });
+  if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: `Разобрать закрытый день${x.eodPending > 1 ? ` (${x.eodPending})` : ""}`, href: "/journal?view=queue" });
+  if (x.weeklySubmitted) cands.push({ kind: "weekly_review", priority: 65, label: "Ответить на недельный отчёт", href: `/weekly-review?view=curator&trader=${t}` });
+  if (x.overdueActions > 0) cands.push({ kind: "overdue_action", priority: 60, label: `Договорённости 1:1 просрочены (${x.overdueActions})`, href: `/curator?trader=${t}&tab=academy` });
+  if (!x.hasLimits) cands.push({ kind: "no_limits", priority: 55, label: "Задать лимиты по шаблону тира", href: `/curator?trader=${t}&tab=risk` });
+  else if (x.templateDrift > 0) cands.push({ kind: "template_drift", priority: 30, label: "Лимиты отличаются от шаблона тира", href: `/curator?trader=${t}&tab=risk` });
+  if (x.missingEod) cands.push({ kind: "missing_eod", priority: 45, label: "Не закрыт вчерашний день — напомнить", href: `/journal?trader=${t}` });
+  if (x.missingPlan) cands.push({ kind: "missing_plan", priority: 40, label: "Нет плана на день — напомнить", href: `/curator?trader=${t}&tab=journal` });
+  if (x.daysSinceOneOnOne == null || x.daysSinceOneOnOne > 14) {
+    cands.push({ kind: "one_on_one", priority: 20, label: x.daysSinceOneOnOne == null ? "Провести первую 1:1" : `1:1 не было ${x.daysSinceOneOnOne} дн.`, href: `/academy/mentor?student=${t}` });
+  }
+  if (!cands.length) return { kind: "none", priority: 0, label: "Всё в порядке", href: `/curator?trader=${t}` };
+  return cands.sort((a, b) => b.priority - a.priority)[0];
+}
+
+// ─── разбор нарушения ───────────────────────────────────────────────────────
+
+export const BREACH_REASONS = [
+  { key: "revenge", label: "Отыгрыш после убытка" },
+  { key: "size", label: "Размер позиции больше плана" },
+  { key: "no_stop", label: "Не поставил / двигал стоп" },
+  { key: "overtrading", label: "Овертрейдинг" },
+  { key: "news", label: "Новости / гэп против позиции" },
+  { key: "overnight", label: "Оставил позицию без разрешения" },
+  { key: "tilt", label: "Эмоции / тильт" },
+  { key: "technical", label: "Техническая проблема" },
+  { key: "other", label: "Другое" },
+] as const;
+export type BreachReason = (typeof BREACH_REASONS)[number]["key"];
+export const BREACH_REASON_KEYS = BREACH_REASONS.map((r) => r.key) as unknown as readonly [BreachReason, ...BreachReason[]];
+
+export const BREACH_CONSEQUENCES = [
+  { key: "none", label: "Без последствий" },
+  { key: "warning", label: "Предупреждение" },
+  { key: "reduced", label: "Лимиты урезаны" },
+  { key: "pause", label: "Пауза в торговле" },
+  { key: "demote", label: "Понижение тира" },
+] as const;
+export type BreachConsequence = (typeof BREACH_CONSEQUENCES)[number]["key"];
+export const BREACH_CONSEQUENCE_KEYS = BREACH_CONSEQUENCES.map((r) => r.key) as unknown as readonly [BreachConsequence, ...BreachConsequence[]];
+
+export type BreachAction = { id: string; title: string; dueOn: string | null; status: "open" | "done" | "dropped" };
+
+/** Нормализация договорённостей разбора: id, обрезка, статус по умолчанию, не больше 10. */
+export function normalizeBreachActions(raw: ReadonlyArray<{ id?: string; title: string; dueOn?: string | null; status?: string }>): BreachAction[] {
+  const seen = new Set<string>();
+  const out: BreachAction[] = [];
+  raw.forEach((a, i) => {
+    const title = String(a.title ?? "").trim().slice(0, 300);
+    if (!title) return;
+    let id = (a.id ?? "").trim().slice(0, 40) || `a${i + 1}`;
+    while (seen.has(id)) id = `${id}_`;
+    seen.add(id);
+    const status = a.status === "done" || a.status === "dropped" ? a.status : "open";
+    out.push({ id, title, dueOn: a.dueOn && /^\d{4}-\d{2}-\d{2}$/.test(a.dueOn) ? a.dueOn : null, status });
+  });
+  return out.slice(0, 10);
+}

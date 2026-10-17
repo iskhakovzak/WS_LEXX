@@ -1,0 +1,467 @@
+/**
+ * Insight blocks of «Отчёт недели»: KPI strip vs the previous 4 weeks, data-driven tips with $,
+ * «что получилось», the weekly goal, Mon–Fri day tiles, the curator checklist, desk comparison and
+ * the days-without-review / risk block. All read-only except the goal (saved into the self-review).
+ */
+import * as React from "react";
+import { Link } from "wouter";
+import {
+  AlertTriangle, ArrowUpRight, CalendarDays, CheckCircle2, ClipboardCheck, Lightbulb, MinusCircle, NotebookPen, ShieldAlert,
+  Sparkles, Target, Users, XCircle,
+} from "lucide-react";
+import { EmptyState, ListSkeleton, Panel, Pill, StatCard, StatGrid, Tile, toneOf, toneText, type Tone } from "@/components/ds";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import { toast } from "@/hooks/use-toast";
+import { links } from "@/lib/links";
+import { cn } from "@/lib/utils";
+import { TIP_SOURCE_LABEL, pfOf, type CheckItem, type CheckStatus, type Positive, type Tip } from "@/lib/weeklyInsights";
+import { fmtDay, fmtPct, fmtR, fmtUsd, fmtValue, fmtX, useSaveSelf, weekLabel, weekdayShort, type WeeklyReview } from "./api";
+import type { BenchRow, Benchmark, BenchTrend } from "./insights-api";
+import type { WeekInsights } from "./use-week-insights";
+
+const dayReportHref = (trader: string, date: string) => `/day-report?${new URLSearchParams({ trader, date }).toString()}`;
+
+function signedDelta(d: number | null, fmt: (abs: number) => string): string | undefined {
+  if (d == null || !Number.isFinite(d) || Math.abs(d) < 1e-9) return undefined;
+  return `${d > 0 ? "+" : "−"}${fmt(Math.abs(d))}`;
+}
+
+export const VERDICT_LABEL: Record<BenchTrend["verdict"], string> = {
+  better: "лучше прошлых 4 нед.",
+  worse: "хуже прошлых 4 нед.",
+  flat: "без изменений",
+  nodata: "мало данных",
+};
+export const VERDICT_TONE: Record<BenchTrend["verdict"], Tone> = { better: "up", worse: "down", flat: "neutral", nodata: "neutral" };
+
+// ── KPI strip ────────────────────────────────────────────────────────────────
+export function WeekKpiStrip({ doc, ins }: { doc: WeeklyReview; ins: WeekInsights }) {
+  const { current: k, avg4, avg4Weeks } = doc.kpis;
+  const money = k.unit === "usd";
+  const has4 = avg4Weeks > 0;
+  const spark = ins.trend?.weeks.map((w) => w.net) ?? undefined;
+  const net = money ? k.netPnl : k.totalR;
+  const netAvg = money ? avg4.netPnl : avg4.totalR;
+  const netDelta = has4 && net != null && netAvg != null ? net - netAvg : null;
+  const wrDelta = has4 && k.winRate != null && avg4.winRate != null ? k.winRate - avg4.winRate : null;
+  const pf = pfOf(k);
+  const pfAvg = pfOf(avg4);
+  const pfDelta = has4 && pf != null && pfAvg != null ? pf - pfAvg : null;
+  const fs = ins.feeShare;
+  const fsDelta = has4 && fs != null && ins.avgFeeShare != null ? fs - ins.avgFeeShare : null;
+  const disc = ins.discipline;
+  const discDelta = disc.current != null && disc.prevAvg != null ? disc.current - disc.prevAvg : null;
+  const avgLabel = has4 ? `ср. ${avg4Weeks} нед.` : "нет истории";
+  return (
+    <StatGrid cols={5}>
+      <StatCard
+        label={money ? "Нетто за неделю" : "Результат, R"}
+        term={money ? "net" : "r"}
+        value={money ? fmtUsd(k.netPnl, { signed: true }) : fmtR(k.totalR)}
+        tone={toneOf(net)}
+        delta={signedDelta(netDelta, (d) => (money ? fmtUsd(d) : fmtR(d, false)))}
+        deltaTone={toneOf(netDelta)}
+        hint={`${avgLabel}: ${has4 ? fmtValue(netAvg, k.unit) : "—"}`}
+        spark={spark && spark.filter((v) => v != null).length > 1 ? spark : undefined}
+      />
+      <StatCard
+        label="Win rate"
+        term="winrate"
+        value={fmtPct(k.winRate)}
+        tone={k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down"}
+        delta={signedDelta(wrDelta, (d) => `${Math.round(d * 100)} п.п.`)}
+        deltaTone={toneOf(wrDelta)}
+        hint={`${k.wins}W · ${k.losses}L · ${avgLabel} ${has4 ? fmtPct(avg4.winRate) : ""}`.trim()}
+      />
+      <StatCard
+        label="Profit factor"
+        term="pf"
+        value={fmtX(pf)}
+        tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
+        delta={signedDelta(pfDelta, (d) => d.toFixed(2))}
+        deltaTone={toneOf(pfDelta)}
+        hint={pf == null ? "нет убыточных или прибыльных сделок" : `${avgLabel}: ${fmtX(pfAvg)}`}
+      />
+      <StatCard
+        label="Комиссии / брутто"
+        term="fees"
+        value={fs != null ? fmtPct(fs) : fmtUsd(k.fees)}
+        tone={fs == null ? "neutral" : fs > 0.4 ? "down" : fs > 0.25 ? "warn" : "neutral"}
+        delta={signedDelta(fsDelta, (d) => `${Math.round(d * 100)} п.п.`)}
+        deltaTone={fsDelta == null ? undefined : fsDelta > 0 ? "down" : "up"}
+        hint={fs != null ? `${fmtUsd(k.fees)} комиссий` : k.trades ? "брутто ≤ 0 — доля не считается" : "сделок не было"}
+      />
+      <StatCard
+        label="Дисциплина"
+        value={disc.current != null ? `${Math.round(disc.current)}/100` : doc.discipline.avgDiscipline != null ? `${doc.discipline.avgDiscipline}/5` : "—"}
+        tone={disc.current == null ? "neutral" : disc.current >= 80 ? "up" : disc.current >= 60 ? "warn" : "down"}
+        delta={signedDelta(discDelta, (d) => String(Math.round(d)))}
+        deltaTone={toneOf(discDelta)}
+        hint={disc.current != null ? (disc.prevAvg != null ? `ср. ${disc.prevWeeks} нед.: ${Math.round(disc.prevAvg)}` : "индекс поведения") : "оценка из журнала"}
+      />
+    </StatGrid>
+  );
+}
+
+// ── Tips ─────────────────────────────────────────────────────────────────────
+export function TipsPanel({
+  tips, loading, onMakeGoal, title = "Три совета на неделю", description = "по вашим сделкам — где ушли деньги и что поменять", compact = false, className,
+}: {
+  tips: Tip[];
+  loading: boolean;
+  onMakeGoal?: (t: Tip) => void;
+  title?: string;
+  description?: string;
+  compact?: boolean;
+  className?: string;
+}) {
+  return (
+    <Panel title={title} description={description} icon={Lightbulb} fill className={cn("min-w-0", className)}>
+      {loading && tips.length === 0 ? (
+        <ListSkeleton rows={3} />
+      ) : tips.length === 0 ? (
+        <EmptyState compact icon={CheckCircle2} title="Явных утечек не нашли" description="Ни поведенческих срывов, ни дорогих окон по времени и комиссиям на этой неделе." />
+      ) : (
+        <ol className="flex flex-col gap-2">
+          {tips.map((t, i) => (
+            <li key={t.id}>
+              <Tile className="flex gap-3">
+                <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary tabular-nums" aria-hidden="true">{i + 1}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className={cn("text-sm font-semibold", t.amount != null && t.amount < 0 ? "text-down" : t.amount != null && t.amount > 0 ? "text-up" : "text-foreground")}>{t.title}</p>
+                    <Pill tone="neutral">{TIP_SOURCE_LABEL[t.source]}</Pill>
+                  </div>
+                  {!compact && <p className="mt-0.5 text-xs text-muted-foreground">{t.evidence}</p>}
+                  <p className="mt-1 flex items-start gap-1.5 text-sm text-foreground">
+                    <Target className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
+                    <span>{t.action}</span>
+                  </p>
+                  {(t.href || onMakeGoal) && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-3 text-xs" data-print-hide>
+                      {onMakeGoal && (
+                        <button type="button" onClick={() => onMakeGoal(t)} className="font-medium text-primary hover:underline">Сделать целью</button>
+                      )}
+                      {t.href && (
+                        <Link href={t.href} className="inline-flex items-center gap-0.5 text-muted-foreground hover:text-foreground">
+                          Разобрать <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                        </Link>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </Tile>
+            </li>
+          ))}
+        </ol>
+      )}
+    </Panel>
+  );
+}
+
+// ── What went well ───────────────────────────────────────────────────────────
+export function PositivesPanel({ items, className }: { items: Positive[]; className?: string }) {
+  return (
+    <Panel title="Что получилось" icon={Sparkles} className={cn("min-w-0", className)}>
+      {items.length === 0 ? (
+        <p className="py-2 text-sm text-muted-foreground">На этой неделе сильных сторон в цифрах не видно — опирайтесь на советы слева.</p>
+      ) : (
+        <ul className="flex flex-col gap-1.5">
+          {items.map((p) => (
+            <li key={p.id} className="flex items-start gap-2 text-sm text-foreground">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-up" aria-hidden="true" />
+              <span>{p.text}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Panel>
+  );
+}
+
+// ── Goal for next week (saved into the self-review «фокус») ───────────────────
+export function GoalPanel({ doc, inject, className }: { doc: WeeklyReview; inject?: { text: string; n: number } | null; className?: string }) {
+  const s = doc.review?.selfReview ?? {};
+  const editable = doc.viewer.isOwner;
+  const [focus, setFocus] = React.useState(s.focus ?? "");
+  const [dirty, setDirty] = React.useState(false);
+  const save = useSaveSelf();
+  const key = `${doc.trader}:${doc.week.key}:${s.updatedAt ?? ""}`;
+  const lastKey = React.useRef(key);
+  React.useEffect(() => {
+    if (lastKey.current === key) return;
+    lastKey.current = key;
+    if (!dirty) setFocus(s.focus ?? "");
+  }, [key, dirty, s.focus]);
+  const lastInject = React.useRef(0);
+  React.useEffect(() => {
+    if (!inject || inject.n === lastInject.current) return;
+    lastInject.current = inject.n;
+    setFocus((f) => (f.includes(inject.text) ? f : f.trim() ? `${f.trim()}\n${inject.text}` : inject.text));
+    setDirty(true);
+  }, [inject]);
+
+  const curatorGoals = doc.review?.goals ?? [];
+  const onSave = () => {
+    save.mutate(
+      { week: doc.week.key, well: s.well ?? "", badly: s.badly ?? "", lessons: s.lessons ?? "", focus, mood: s.mood ?? null, submit: false },
+      {
+        onSuccess: () => { setDirty(false); toast({ title: "Цель на неделю сохранена", description: "Видна куратору в отчёте." }); },
+        onError: (e) => toast({ title: "Не удалось сохранить цель", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+      },
+    );
+  };
+
+  return (
+    <Panel title="Цель на следующую неделю" description={editable ? "одно-два правила, которые проверите в пятницу" : "фокус трейдера"} icon={Target} className={cn("min-w-0", className)}>
+      {editable ? (
+        <div className="flex flex-col gap-2">
+          <Textarea
+            value={focus}
+            onChange={(e) => { setFocus(e.target.value); setDirty(true); }}
+            rows={3}
+            maxLength={6000}
+            aria-label="Цель на следующую неделю"
+            placeholder="Например: после убытка — следующий вход тем же объёмом; не больше 4 сделок в день."
+          />
+          <div className="flex flex-wrap items-center gap-2" data-print-hide>
+            <Button type="button" size="sm" onClick={onSave} disabled={save.isPending || !dirty}>Сохранить цель</Button>
+            {dirty && <span className="text-xs text-muted-foreground">Не сохранено</span>}
+          </div>
+        </div>
+      ) : s.focus ? (
+        <p className="whitespace-pre-wrap text-sm text-foreground">{s.focus}</p>
+      ) : (
+        <p className="py-1 text-sm text-muted-foreground">Трейдер ещё не поставил цель.</p>
+      )}
+      {curatorGoals.length > 0 && (
+        <div className="mt-3 border-t border-[var(--glass-border)] pt-3">
+          <p className="micro-label mb-1 text-primary">От куратора{doc.review?.curatorReview.by ? ` · ${doc.review.curatorReview.by}` : ""}</p>
+          <ol className="list-decimal space-y-1 pl-5 text-sm text-foreground">{curatorGoals.map((g) => <li key={g.id}>{g.text}</li>)}</ol>
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ── Mon–Fri tiles ────────────────────────────────────────────────────────────
+export function DayStrip({ doc, ins, className }: { doc: WeeklyReview; ins: WeekInsights; className?: string }) {
+  const u = doc.kpis.current.unit;
+  const journal = new Map(doc.discipline.days.map((d) => [d.date, d]));
+  return (
+    <Panel title="По дням" description="нажмите день — откроется разбор дня" icon={CalendarDays} className={cn("min-w-0", className)}>
+      <ul className="grid grid-cols-5 gap-2">
+        {doc.days.map((d) => {
+          const v = u === "usd" ? d.net : d.r;
+          const j = journal.get(d.date);
+          const leak = ins.dayLeaks.get(d.date);
+          const traded = d.trades > 0;
+          const body = (
+            <>
+              <div className="flex items-center justify-between gap-1 text-xs text-muted-foreground">
+                <span className="font-medium text-foreground">{weekdayShort(d.date)}</span>
+                <span className="tabular-nums">{fmtDay(d.date)}</span>
+              </div>
+              <p className={cn("mt-1 text-lg font-semibold tabular-nums", !traded || v == null ? "text-muted-foreground" : v >= 0 ? "text-up" : "text-down")}>
+                {traded ? fmtValue(v, u) : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground tabular-nums">{traded ? `${d.trades} сд. · ${d.wins}W/${d.losses}L` : "без сделок"}</p>
+              {leak != null && <p className="mt-1 text-xs text-down tabular-nums">утечки {fmtUsd(-leak)}</p>}
+              {traded && (
+                <p className={cn("mt-1 flex items-center gap-1 text-xs", j?.hasReview ? "text-up" : "text-muted-foreground")}>
+                  <NotebookPen className="h-3 w-3" aria-hidden="true" /> {j?.hasReview ? "разобран" : j ? "без разбора" : "нет записи"}
+                </p>
+              )}
+            </>
+          );
+          return (
+            <li key={d.date} className="min-w-0">
+              {traded ? (
+                <Link href={dayReportHref(doc.trader, d.date)} className="tile tile-interactive press block h-full min-w-0 p-3" aria-label={`Разбор дня ${fmtDay(d.date, true)}`}>
+                  {body}
+                </Link>
+              ) : (
+                <div className="tile h-full min-w-0 p-3 opacity-60">{body}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
+  );
+}
+
+// ── Curator checklist ────────────────────────────────────────────────────────
+const CHECK_ICON: Record<CheckStatus, { icon: typeof CheckCircle2; tone: Tone; label: string }> = {
+  ok: { icon: CheckCircle2, tone: "up", label: "в порядке" },
+  warn: { icon: AlertTriangle, tone: "warn", label: "внимание" },
+  fail: { icon: XCircle, tone: "down", label: "нарушение" },
+  na: { icon: MinusCircle, tone: "neutral", label: "нет данных" },
+};
+
+export function ChecklistPanel({ items, className }: { items: CheckItem[]; className?: string }) {
+  const ok = items.filter((i) => i.status === "ok").length;
+  const bad = items.filter((i) => i.status === "fail").length;
+  return (
+    <Panel
+      title="Чек-лист недели"
+      description={`${ok} из ${items.length} в порядке${bad ? ` · ${bad} нарушен${bad === 1 ? "" : "о"}` : ""}`}
+      icon={ClipboardCheck}
+      fill
+      className={cn("min-w-0", className)}
+    >
+      <ul className="divide-y divide-border/50">
+        {items.map((it) => {
+          const meta = CHECK_ICON[it.status];
+          const Icon = meta.icon;
+          const row = (
+            <>
+              <Icon className={cn("mt-0.5 h-4 w-4 shrink-0", it.status === "na" ? "text-muted-foreground" : toneText(meta.tone))} aria-label={meta.label} />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-medium text-foreground">{it.label}</p>
+                <p className="text-xs text-muted-foreground">{it.detail}</p>
+              </div>
+              {it.amount != null && it.amount !== 0 && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", it.amount < 0 ? "text-down" : "text-up")}>{fmtUsd(it.amount, { signed: true })}</span>}
+              {it.href && <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+            </>
+          );
+          return (
+            <li key={it.id}>
+              {it.href ? (
+                <Link href={it.href} className="-mx-2 flex items-start gap-3 rounded-lg px-2 py-2 transition-colors hover:bg-[var(--tile-hover-bg)]">{row}</Link>
+              ) : (
+                <div className="flex items-start gap-3 py-2">{row}</div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </Panel>
+  );
+}
+
+// ── Desk comparison (benchmark row vs desk median) ───────────────────────────
+type CmpMetric = { key: keyof BenchRow & string; label: string; better: "higher" | "lower"; fmt: (v: number) => string };
+const CMP_METRICS: CmpMetric[] = [
+  { key: "net", label: "Нетто", better: "higher", fmt: (v) => fmtUsd(v, { signed: true }) },
+  { key: "winRate", label: "Win rate", better: "higher", fmt: (v) => fmtPct(v) },
+  { key: "profitFactor", label: "Profit factor", better: "higher", fmt: (v) => fmtX(v) },
+  { key: "expectancy", label: "Ожидание, $ / сделка", better: "higher", fmt: (v) => fmtUsd(v, { signed: true }) },
+  { key: "feeShare", label: "Комиссии / брутто", better: "lower", fmt: (v) => fmtPct(v) },
+  { key: "tradesPerDay", label: "Сделок в день", better: "lower", fmt: (v) => v.toFixed(1) },
+  { key: "avgHoldMin", label: "Среднее удержание", better: "higher", fmt: (v) => `${v.toFixed(1)} мин` },
+  { key: "maxDd", label: "Макс. просадка", better: "lower", fmt: (v) => fmtUsd(v) },
+];
+
+export function DeskComparePanel({ bench, row, trend, loading, className }: { bench: Benchmark | null; row: BenchRow | null; trend: BenchTrend | null; loading: boolean; className?: string }) {
+  const median = bench?.median ?? {};
+  const hasMedian = (bench?.deskSize ?? 0) >= 3 && Object.values(median).some((v) => v != null);
+  const badges = row?.badges ?? [];
+  return (
+    <Panel
+      title="Сравнение с деском"
+      description={hasMedian ? `медиана по ${bench?.deskSize} трейдерам за ту же неделю` : "медиана появится, когда за неделю торгуют ≥ 3 трейдеров"}
+      icon={Users}
+      fill
+      className={cn("min-w-0", className)}
+      actions={<Link href="/benchmark" className="text-xs text-primary hover:underline" data-print-hide>Бенчмарк →</Link>}
+    >
+      {loading ? (
+        <ListSkeleton rows={4} dense />
+      ) : !row ? (
+        <EmptyState compact icon={Users} title="Нет данных бенчмарка" description="За неделю у трейдера нет закрытых сделок, или сервис сравнения недоступен." />
+      ) : (
+        <div className="flex flex-col gap-3">
+          <table className="w-full text-sm tabular-nums">
+            <thead>
+              <tr className="text-xs text-muted-foreground">
+                <th className="py-1 text-left font-medium">Метрика</th>
+                <th className="py-1 text-right font-medium">Трейдер</th>
+                {hasMedian && <th className="py-1 text-right font-medium">Медиана</th>}
+              </tr>
+            </thead>
+            <tbody>
+              {CMP_METRICS.map((m) => {
+                const v = row[m.key] as number | null | undefined;
+                const med = median[m.key] ?? null;
+                const tone: Tone = !hasMedian || v == null || med == null || v === med ? "neutral" : (m.better === "higher" ? v > med : v < med) ? "up" : "down";
+                if (v == null && med == null) return null;
+                return (
+                  <tr key={m.key} className="border-t border-border/40">
+                    <td className="py-1.5 text-muted-foreground">{m.label}</td>
+                    <td className={cn("py-1.5 text-right font-medium", tone === "neutral" ? "text-foreground" : toneText(tone))}>{v != null ? m.fmt(v) : "—"}</td>
+                    {hasMedian && <td className="py-1.5 text-right text-muted-foreground">{med != null ? m.fmt(med) : "—"}</td>}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {(trend || badges.length > 0) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              {trend && <Pill tone={VERDICT_TONE[trend.verdict]} dot>4 нед.: {VERDICT_LABEL[trend.verdict]}</Pill>}
+              {badges.slice(0, 4).map((b) => (
+                <Pill key={b.key} tone={b.kind === "strength" ? "up" : "warn"} className="max-w-full"><span className="truncate" title={b.detail}>{b.label}</span></Pill>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Panel>
+  );
+}
+
+// ── Days without review + risk events (curator) ──────────────────────────────
+export function JournalRiskPanel({ doc, ins, className }: { doc: WeeklyReview; ins: WeekInsights; className?: string }) {
+  const { limits, events, weeklyLossPct } = doc.risk;
+  return (
+    <Panel title="Журнал и риск" description="дни без разбора и события по лимитам" icon={ShieldAlert} fill className={cn("min-w-0", className)}>
+      <div className="flex flex-col gap-3">
+        <div>
+          <p className="micro-label mb-1.5">Дни без разбора</p>
+          {ins.daysWithoutReview.length === 0 ? (
+            <p className="flex items-center gap-1.5 text-sm text-up"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {doc.kpis.current.tradingDays ? "Каждый торговый день разобран" : "Торговых дней не было"}</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {ins.daysWithoutReview.map((d) => (
+                <Link key={d} href={links.journalDay(d, doc.trader)} className="chip min-h-7 px-2.5 text-xs font-medium text-[hsl(var(--warn))]">
+                  {fmtDay(d, true)}
+                </Link>
+              ))}
+            </div>
+          )}
+        </div>
+        <div>
+          <p className="micro-label mb-1.5">Риск-события</p>
+          {!limits ? (
+            <p className="text-sm text-muted-foreground">Лимиты не заданы — <Link href={links.risk(doc.trader)} className="text-primary hover:underline">задать на риск-деске</Link>.</p>
+          ) : events.length === 0 ? (
+            <p className="flex items-center gap-1.5 text-sm text-up"><CheckCircle2 className="h-4 w-4" aria-hidden="true" /> Лимиты не нарушались{weeklyLossPct != null ? ` · недельный использован на ${weeklyLossPct}%` : ""}</p>
+          ) : (
+            <ul className="divide-y divide-border/50">
+              {events.map((e, i) => (
+                <li key={`${e.kind}-${e.date}-${i}`} className="flex items-center gap-2 py-1.5 text-sm">
+                  <AlertTriangle className={cn("h-4 w-4 shrink-0", e.level === "breach" ? "text-down" : "text-[hsl(var(--warn))]")} aria-hidden="true" />
+                  <span className="w-12 shrink-0 text-xs text-muted-foreground tabular-nums">{fmtDay(e.date)}</span>
+                  <span className="min-w-0 flex-1 truncate text-foreground" title={e.detail}>{e.label}</span>
+                  <Pill tone={e.level === "breach" ? "down" : "warn"}>{e.pct != null ? `${e.pct}%` : e.level === "breach" ? "нарушение" : "внимание"}</Pill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </Panel>
+  );
+}
+
+/** One-line summary under the header: «8 сделок за 3 дня · 0 в плюс, 3 в минус · …». */
+export function weekHeadline(doc: WeeklyReview): string {
+  const k = doc.kpis.current;
+  if (k.trades === 0) return `${weekLabel(doc.week.key)}: закрытых сделок нет.`;
+  const parts = [`${k.trades} сдел${k.trades % 10 === 1 && k.trades % 100 !== 11 ? "ка" : [2, 3, 4].includes(k.trades % 10) && ![12, 13, 14].includes(k.trades % 100) ? "ки" : "ок"} за ${k.tradingDays} дн.`];
+  if (k.greenDays || k.redDays) parts.push(`${k.greenDays} в плюс, ${k.redDays} в минус`);
+  if (doc.violations.items.length) parts.push(`${doc.violations.items.length} наруш.`);
+  if (doc.openPositions.length) parts.push(`${doc.openPositions.length} поз. через выходные`);
+  return parts.join(" · ");
+}

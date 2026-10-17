@@ -1,426 +1,606 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+/**
+ * Command palette (Ctrl/⌘K): search trades, tickers, setups, ideas, feed, research, events and pages;
+ * run actions (Новая сделка, Новая идея…); jump anywhere ("Перейти к…", or G then a letter); recent items.
+ * Built on cmdk with our own filtering (corpora can be large), loaded lazily on first open.
+ */
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
+import { Command as CommandPrimitive } from "cmdk";
 import { useLocation } from "wouter";
-import { useListTrades, useListEvents, useListResearch, useListDailyFeed } from "@workspace/api-client-react";
-import { useQuery } from "@tanstack/react-query";
-import { Search, X, TrendingUp, Activity, BookOpen, Calendar, Library, ArrowRight, StickyNote } from "lucide-react";
+import {
+  useListEvents, useListResearch, useListDailyFeed,
+  getListEventsQueryKey, getListResearchQueryKey, getListDailyFeedQueryKey,
+} from "@workspace/api-client-react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { fetchTradesPage, TRADES_PAGE_KEY } from "@/hooks/use-trades-page";
+import {
+  Search, X, CandlestickChart, CalendarClock, BookOpen, Newspaper, BookMarked, Lightbulb, StickyNote,
+  Plus, CornerDownLeft, History, Hash, Eye, MessageSquare, SunMoon, ArrowRight, Loader2,
+} from "lucide-react";
+import { BASE } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { Kbd } from "@/components/ds";
+import { useAuth } from "@/contexts/auth-context";
+import { useTheme } from "@/contexts/theme-context";
+import { ALL_NAV_ITEMS, GO_KEYS, type NavItem } from "@/components/shell/nav";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD = IS_MAC ? "⌘" : "Ctrl";
+const HOTKEY_LABEL = IS_MAC ? "⌘K" : "Ctrl+K";
+const OPEN_EVENT = "ws-open-palette";
+const RECENT_KEY = "ws_lexx_palette_recent";
+
+/** Open the command palette from anywhere (e.g. a mobile button or an empty state). */
+export function openCommandPalette(query?: string) {
+  window.dispatchEvent(new CustomEvent(OPEN_EVENT, { detail: { query } }));
+}
+
+type Section = "Сделки" | "Идеи" | "Плейбук" | "Лента" | "Исследования" | "События";
 
 type ResultItem = {
   id: string;
-  section: string;
+  section: Section;
   title: string;
   subtitle?: string;
   badge?: string;
-  badgeColor?: string;
+  badgeTone?: "up" | "down" | "warn" | "neutral" | "accent";
   meta?: string;
   path: string;
+  /** Fires the in-page `ws-search-navigate` event for pages already mounted. */
   highlight?: number;
 };
 
-const SECTION_ICONS: Record<string, React.ReactNode> = {
-  "Трейды":       <TrendingUp className="h-3 w-3" />,
-  "Плейбук":      <Library className="h-3 w-3" />,
-  "Дневная лента":<Calendar className="h-3 w-3" />,
-  "Исследования": <BookOpen className="h-3 w-3" />,
-  "События":      <Activity className="h-3 w-3" />,
+type RecentItem = { id: string; title: string; subtitle?: string; path: string; kind: string; highlight?: number };
+
+const SECTION_ICON: Record<Section, React.ElementType> = {
+  "Сделки": CandlestickChart,
+  "Идеи": Lightbulb,
+  "Плейбук": BookMarked,
+  "Лента": Newspaper,
+  "Исследования": BookOpen,
+  "События": CalendarClock,
 };
 
-const SECTION_COLORS: Record<string, string> = {
-  "Трейды":        "text-primary",
-  "Плейбук":       "text-purple-400",
-  "Дневная лента": "text-cyan-400",
-  "Исследования":  "text-amber-400",
-  "События":       "text-blue-400",
+const BADGE_TONE: Record<NonNullable<ResultItem["badgeTone"]>, string> = {
+  up: "bg-up/15 text-up",
+  down: "bg-down/15 text-down",
+  warn: "bg-[hsl(var(--chart-3)/0.15)] text-[hsl(var(--chart-3))]",
+  accent: "bg-primary/15 text-primary",
+  neutral: "bg-[var(--glass-bg)] text-muted-foreground",
 };
+
+async function fetchList(url: string): Promise<any[]> {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  const data = await r.json();
+  return Array.isArray(data) ? data : [];
+}
+
+const asArray = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
+const has = (v: unknown, q: string) => typeof v === "string" && v.toLowerCase().includes(q);
+const clip = (v: unknown, n = 80) => (typeof v === "string" && v.trim() ? v.trim().slice(0, n) : undefined);
+
+function loadRecent(): RecentItem[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(RECENT_KEY) || "[]");
+    return Array.isArray(raw) ? raw.filter((r) => r && typeof r.path === "string" && typeof r.title === "string").slice(0, 7) : [];
+  } catch {
+    return [];
+  }
+}
+function saveRecent(item: RecentItem) {
+  try {
+    const next = [item, ...loadRecent().filter((r) => r.id !== item.id)].slice(0, 7);
+    localStorage.setItem(RECENT_KEY, JSON.stringify(next));
+  } catch {}
+}
+
+function isTypingTarget(el: EventTarget | null) {
+  const t = el as HTMLElement | null;
+  if (!t) return false;
+  const tag = t.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || t.isContentEditable;
+}
+
+function tradeResult(t: any): Pick<ResultItem, "badge" | "badgeTone"> {
+  const pnl = typeof t.pnl === "number" ? t.pnl - (typeof t.fees === "number" ? t.fees : 0) : null;
+  if (pnl != null && Number.isFinite(pnl) && pnl !== 0) {
+    const s = `${pnl > 0 ? "+" : "−"}$${Math.abs(pnl).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
+    return { badge: s, badgeTone: pnl > 0 ? "up" : "down" };
+  }
+  if (t.result === "win") return { badge: "Плюс", badgeTone: "up" };
+  if (t.result === "loss") return { badge: "Минус", badgeTone: "down" };
+  if (t.result) return { badge: "В ноль", badgeTone: "neutral" };
+  return {};
+}
+
+const IDEA_STATUS: Record<string, { label: string; tone: ResultItem["badgeTone"] }> = {
+  approved: { label: "Одобрена", tone: "up" },
+  published: { label: "Опубликована", tone: "warn" },
+  draft: { label: "Черновик", tone: "neutral" },
+  rejected: { label: "Отклонена", tone: "down" },
+};
+
+function Item({
+  value,
+  onSelect,
+  icon: Icon,
+  title,
+  subtitle,
+  right,
+  className,
+}: {
+  value: string;
+  onSelect: () => void;
+  icon?: React.ElementType;
+  title: React.ReactNode;
+  subtitle?: React.ReactNode;
+  right?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <CommandPrimitive.Item
+      value={value}
+      onSelect={onSelect}
+      className={cn(
+        "group flex min-h-10 cursor-pointer select-none items-center gap-3 rounded-xl px-2.5 py-2 text-sm outline-none",
+        "data-[selected=true]:bg-primary/12 data-[selected=true]:text-foreground",
+        className,
+      )}
+    >
+      {Icon && (
+        <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg border border-[var(--glass-border)] bg-[var(--glass-bg)] text-muted-foreground group-data-[selected=true]:text-primary">
+          <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+        </span>
+      )}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-foreground">{title}</span>
+        {subtitle && <span className="block truncate text-xs text-muted-foreground">{subtitle}</span>}
+      </span>
+      {right}
+      <CornerDownLeft className="h-3.5 w-3.5 shrink-0 text-muted-foreground opacity-0 group-data-[selected=true]:opacity-100" aria-hidden="true" />
+    </CommandPrimitive.Item>
+  );
+}
+
+const groupCls =
+  "px-1.5 pb-1 [&_[cmdk-group-heading]]:px-2.5 [&_[cmdk-group-heading]]:pb-1 [&_[cmdk-group-heading]]:pt-2.5 [&_[cmdk-group-heading]]:text-xs [&_[cmdk-group-heading]]:font-medium [&_[cmdk-group-heading]]:text-muted-foreground";
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [cursor, setCursor] = useState(0);
   const [notesOnly, setNotesOnly] = useState(false);
+  const [recent, setRecent] = useState<RecentItem[]>(() => loadRecent());
   const [, navigate] = useLocation();
+  const { canEdit, isCurator } = useAuth();
+  const { cycleTheme, themeLabel } = useTheme();
   const inputRef = useRef<HTMLInputElement>(null);
-  const listRef = useRef<HTMLDivElement>(null);
 
-  const { data: trades = [] } = useListTrades();
-  const { data: events = [] } = useListEvents();
-  const { data: research = [] } = useListResearch();
-  const { data: feeds = [] } = useListDailyFeed();
-  const { data: playbook = [] } = useQuery<any[]>({
+  // Trades are searched server-side (P1-5): GET /api/trades/page?q=&limit=20 per (deferred) query instead of
+  // loading the whole book into the palette. Other corpora load after the first open (then stay cached).
+  const tradeQ = useDeferredValue(query).trim().replace(/^\$/, "").slice(0, 120);
+  const { data: tradesRaw, isLoading: l1 } = useQuery<any[]>({
+    queryKey: [TRADES_PAGE_KEY, "search", tradeQ.toLowerCase()],
+    queryFn: async ({ signal }) => (await fetchTradesPage(new URLSearchParams({ q: tradeQ, limit: "20" }), signal)).items ?? [],
+    enabled: open && tradeQ.length > 0,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
+  });
+  const { data: eventsRaw, isLoading: l2 } = useListEvents(undefined, { query: { queryKey: getListEventsQueryKey(), enabled: open } });
+  const { data: researchRaw, isLoading: l3 } = useListResearch({ query: { queryKey: getListResearchQueryKey(), enabled: open } });
+  const { data: feedsRaw, isLoading: l4 } = useListDailyFeed({ query: { queryKey: getListDailyFeedQueryKey(), enabled: open } });
+  const { data: playbookRaw, isLoading: l5 } = useQuery<any[]>({
     queryKey: ["playbook"],
-    queryFn: () => fetch(`${BASE}/api/playbook`).then((r) => r.json()),
+    queryFn: () => fetchList(`${BASE}/api/playbook`),
     enabled: open,
     staleTime: 30_000,
   });
+  const { data: tradeIdeasRaw, isLoading: l6 } = useQuery<any[]>({
+    queryKey: ["trade-ideas-search"],
+    queryFn: () => fetchList(`${BASE}/api/trade-ideas`),
+    enabled: open,
+    staleTime: 30_000,
+  });
+  const trades = asArray<any>(tradesRaw);
+  const events = asArray<any>(eventsRaw);
+  const research = asArray<any>(researchRaw);
+  const feeds = asArray<any>(feedsRaw);
+  const playbook = asArray<any>(playbookRaw);
+  const tradeIdeas = asArray<any>(tradeIdeasRaw);
+  const loading = open && ((tradeQ.length > 0 && l1) || l2 || l3 || l4 || l5 || l6);
 
+  // ── Global keys: Ctrl/⌘K toggles; "G then letter" jumps to a section (outside text fields). ──
   useEffect(() => {
+    let gAt = 0;
     function onKey(e: KeyboardEvent) {
-      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && (e.key === "k" || e.key === "K" || e.key === "л" || e.key === "Л")) {
         e.preventDefault();
         setOpen((v) => !v);
+        return;
       }
-      if (e.key === "Escape") setOpen(false);
+      if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || isTypingTarget(e.target)) return;
+      if (document.querySelector("[role='dialog'][data-state='open'], [role='alertdialog']")) return;
+      const k = e.key.toLowerCase();
+      if (k === "g" || k === "п") { gAt = Date.now(); return; }
+      if (gAt && Date.now() - gAt < 1200) {
+        gAt = 0;
+        const LAYOUT: Record<string, string> = { в: "d", з: "p", к: "r", е: "t", о: "j", с: "c", ф: "a", ы: "s", и: "b", ц: "w", у: "e", ш: "i" };
+        const href = GO_KEYS[k] ?? GO_KEYS[LAYOUT[k] ?? ""];
+        if (href) { e.preventDefault(); navigate(href); }
+      }
+    }
+    function onOpen(e: Event) {
+      const q = (e as CustomEvent<{ query?: string }>).detail?.query;
+      if (typeof q === "string") setQuery(q);
+      setOpen(true);
     }
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, []);
+    window.addEventListener(OPEN_EVENT, onOpen);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener(OPEN_EVENT, onOpen);
+    };
+  }, [navigate]);
 
   useEffect(() => {
-    if (open) { setTimeout(() => inputRef.current?.focus(), 10); }
-    else { setQuery(""); setCursor(0); }
+    if (open) setRecent(loadRecent());
+    else { setQuery(""); setNotesOnly(false); }
   }, [open]);
 
-  const q = query.toLowerCase().trim();
+  const deferredQuery = useDeferredValue(query);
+  const raw = deferredQuery.trim();
+  const q = raw.toLowerCase().replace(/^\$/, "");
+  const isStale = query !== deferredQuery;
 
+  // ── Data results ──
   const results: ResultItem[] = useMemo(() => {
     if (!q) return [];
     const items: ResultItem[] = [];
+    const tradeItem = (t: any): ResultItem => ({
+      id: `trade-${t.id}`,
+      section: "Сделки",
+      title: t.ticker ?? "—",
+      subtitle: notesOnly ? clip(t.notes) : [t.setup, t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : null, t.horizon && t.horizon !== "intraday" ? (t.horizon === "swing" ? "свинг" : "овернайт") : null].filter(Boolean).join(" · ") || undefined,
+      ...tradeResult(t),
+      meta: t.date?.substring(0, 10),
+      path: "/trades",
+      highlight: t.id,
+    });
+    const ideaItem = (i: any): ResultItem => ({
+      id: `idea-${i.id}`,
+      section: "Идеи",
+      title: i.ticker ?? "—",
+      subtitle: notesOnly ? clip(i.notes || i.description) : [i.setup, i.trader].filter(Boolean).join(" · ") || undefined,
+      badge: IDEA_STATUS[i.status]?.label ?? i.status,
+      badgeTone: IDEA_STATUS[i.status]?.tone ?? "neutral",
+      meta: i.createdAt?.substring?.(0, 10),
+      path: `/trade-ideas?idea=${i.id}`,
+    });
+    const pbItem = (e: any): ResultItem => ({
+      id: `playbook-${e.id}`,
+      section: "Плейбук",
+      title: e.name ?? "Сетап",
+      subtitle: notesOnly ? clip(e.notes || e.conditions) : (e.parentId ? "вариация сетапа" : e.folder || clip(e.conditions, 60)),
+      badge: e.confidenceLevel != null ? `${e.confidenceLevel}%` : undefined,
+      badgeTone: e.confidenceLevel >= 85 ? "up" : e.confidenceLevel >= 70 ? "accent" : "warn",
+      path: "/playbook",
+      highlight: e.id,
+    });
+    const feedItem = (f: any): ResultItem => ({
+      id: `feed-${f.id}`,
+      section: "Лента",
+      title: f.date?.substring(0, 10) ?? "Запись",
+      subtitle: clip(notesOnly ? f.notes || f.whatWorksNow : f.marketTheme || f.notes, 70),
+      path: "/dailyfeed",
+      highlight: f.id,
+    });
+    const resItem = (r: any): ResultItem => ({
+      id: `research-${r.id}`,
+      section: "Исследования",
+      title: r.patternName ?? "Исследование",
+      subtitle: notesOnly ? clip(r.description || r.context) : r.ticker || clip(r.description, 60),
+      badge: r.confidenceLevel != null ? `${r.confidenceLevel}%` : undefined,
+      badgeTone: r.confidenceLevel >= 70 ? "up" : "neutral",
+      path: "/research",
+    });
+    const evItem = (e: any): ResultItem => ({
+      id: `event-${e.id}`,
+      section: "События",
+      title: e.ticker ?? "Событие",
+      subtitle: clip(notesOnly ? e.summary : e.headline || e.summary),
+      meta: e.date?.substring(0, 10),
+      path: `/events?id=${e.id}`,
+    });
 
     if (notesOnly) {
-      trades
-        .filter((t) => t.notes?.toLowerCase().includes(q))
-        .slice(0, 6)
-        .forEach((t) => items.push({
-          id: `trade-${t.id}`,
-          section: "Трейды",
-          title: t.ticker,
-          subtitle: t.notes?.substring(0, 80) || undefined,
-          badge: t.result === "win" ? "WIN" : t.result === "loss" ? "LOSS" : "BE",
-          badgeColor: t.result === "win" ? "text-emerald-400" : t.result === "loss" ? "text-red-400" : "text-muted-foreground",
-          meta: t.date?.substring(0, 10),
-          path: "/trades",
-          highlight: t.id,
-        }));
-
-      playbook
-        .filter((e: any) =>
-          e.notes?.toLowerCase().includes(q) ||
-          e.conditions?.toLowerCase().includes(q) ||
-          e.checklist?.toLowerCase().includes(q)
-        )
-        .slice(0, 5)
-        .forEach((e: any) => items.push({
-          id: `playbook-${e.id}`,
-          section: "Плейбук",
-          title: e.name,
-          subtitle: (e.notes || e.conditions || "")?.substring(0, 80) || undefined,
-          badge: e.confidenceLevel != null ? `${e.confidenceLevel}%` : undefined,
-          badgeColor: e.confidenceLevel >= 85 ? "text-emerald-400" : e.confidenceLevel >= 70 ? "text-primary" : "text-amber-400",
-          path: "/playbook",
-          highlight: e.id,
-        }));
-
-      feeds
-        .filter((f: any) =>
-          f.notes?.toLowerCase().includes(q) ||
-          f.whatWorksNow?.toLowerCase().includes(q) ||
-          f.whatDoesntWork?.toLowerCase().includes(q)
-        )
-        .slice(0, 4)
-        .forEach((f: any) => items.push({
-          id: `feed-${f.id}`,
-          section: "Дневная лента",
-          title: f.date?.substring(0, 10),
-          subtitle: (f.notes || f.whatWorksNow || "")?.substring(0, 80) || undefined,
-          path: "/dailyfeed",
-        }));
-
-      research
-        .filter((r: any) =>
-          r.description?.toLowerCase().includes(q) ||
-          r.context?.toLowerCase().includes(q) ||
-          r.whatWorked?.toLowerCase().includes(q)
-        )
-        .slice(0, 3)
-        .forEach((r: any) => items.push({
-          id: `research-${r.id}`,
-          section: "Исследования",
-          title: r.patternName,
-          subtitle: (r.description || r.context || "")?.substring(0, 80) || undefined,
-          badge: r.confidenceLevel != null ? `${r.confidenceLevel}%` : undefined,
-          badgeColor: r.confidenceLevel >= 70 ? "text-emerald-400" : "text-muted-foreground",
-          path: "/research",
-        }));
-
-      events
-        .filter((e: any) => e.summary?.toLowerCase().includes(q))
-        .slice(0, 3)
-        .forEach((e: any) => items.push({
-          id: `event-${e.id}`,
-          section: "События",
-          title: e.ticker,
-          subtitle: e.summary?.substring(0, 80) || undefined,
-          meta: e.date?.substring(0, 10),
-          path: "/events",
-        }));
-
-    } else {
-      trades
-        .filter((t) =>
-          t.ticker.toLowerCase().includes(q) ||
-          t.setup?.toLowerCase().includes(q) ||
-          t.notes?.toLowerCase().includes(q) ||
-          t.tags?.toLowerCase().includes(q) ||
-          t.trader?.toLowerCase().includes(q) ||
-          (t as any).side?.toLowerCase().includes(q)
-        )
-        .slice(0, 5)
-        .forEach((t) => items.push({
-          id: `trade-${t.id}`,
-          section: "Трейды",
-          title: t.ticker,
-          subtitle: t.setup || undefined,
-          badge: t.result === "win" ? "WIN" : t.result === "loss" ? "LOSS" : "BE",
-          badgeColor: t.result === "win" ? "text-emerald-400" : t.result === "loss" ? "text-red-400" : "text-muted-foreground",
-          meta: t.date?.substring(0, 10),
-          path: "/trades",
-          highlight: t.id,
-        }));
-
-      playbook
-        .filter((e: any) =>
-          e.name?.toLowerCase().includes(q) ||
-          e.conditions?.toLowerCase().includes(q) ||
-          e.notes?.toLowerCase().includes(q) ||
-          e.tags?.toLowerCase().includes(q) ||
-          e.folder?.toLowerCase().includes(q) ||
-          e.checklist?.toLowerCase().includes(q)
-        )
-        .slice(0, 4)
-        .forEach((e: any) => items.push({
-          id: `playbook-${e.id}`,
-          section: "Плейбук",
-          title: e.name,
-          subtitle: e.parentId ? `↳ дочерний` : (e.folder || undefined),
-          badge: e.confidenceLevel != null ? `${e.confidenceLevel}%` : undefined,
-          badgeColor: e.confidenceLevel >= 85 ? "text-emerald-400" : e.confidenceLevel >= 70 ? "text-primary" : "text-amber-400",
-          path: "/playbook",
-          highlight: e.id,
-        }));
-
-      feeds
-        .filter((f: any) =>
-          f.marketTheme?.toLowerCase().includes(q) ||
-          f.notes?.toLowerCase().includes(q) ||
-          f.tags?.toLowerCase().includes(q) ||
-          f.bestTickers?.toLowerCase().includes(q) ||
-          f.whatWorksNow?.toLowerCase().includes(q) ||
-          f.whatDoesntWork?.toLowerCase().includes(q) ||
-          f.date?.includes(q)
-        )
-        .slice(0, 4)
-        .forEach((f: any) => items.push({
-          id: `feed-${f.id}`,
-          section: "Дневная лента",
-          title: f.date?.substring(0, 10),
-          subtitle: f.marketTheme || f.notes?.slice(0, 60) || undefined,
-          path: "/dailyfeed",
-        }));
-
-      research
-        .filter((r: any) =>
-          r.patternName?.toLowerCase().includes(q) ||
-          r.description?.toLowerCase().includes(q) ||
-          r.ticker?.toLowerCase().includes(q) ||
-          r.context?.toLowerCase().includes(q) ||
-          r.whatWorked?.toLowerCase().includes(q)
-        )
-        .slice(0, 3)
-        .forEach((r: any) => items.push({
-          id: `research-${r.id}`,
-          section: "Исследования",
-          title: r.patternName,
-          subtitle: r.ticker || undefined,
-          badge: r.confidenceLevel != null ? `${r.confidenceLevel}%` : undefined,
-          badgeColor: r.confidenceLevel >= 70 ? "text-emerald-400" : "text-muted-foreground",
-          path: "/research",
-        }));
-
-      events
-        .filter((e: any) =>
-          e.ticker?.toLowerCase().includes(q) ||
-          e.headline?.toLowerCase().includes(q) ||
-          e.summary?.toLowerCase().includes(q)
-        )
-        .slice(0, 3)
-        .forEach((e: any) => items.push({
-          id: `event-${e.id}`,
-          section: "События",
-          title: e.ticker,
-          subtitle: e.headline,
-          meta: e.date?.substring(0, 10),
-          path: "/events",
-        }));
+      tradeIdeas.filter((i) => has(i.notes, q) || has(i.description, q)).slice(0, 4).forEach((i) => items.push(ideaItem(i)));
+      trades.filter((t) => has(t.notes, q)).slice(0, 6).forEach((t) => items.push(tradeItem(t)));
+      playbook.filter((e) => has(e.notes, q) || has(e.conditions, q) || has(e.checklist, q)).slice(0, 5).forEach((e) => items.push(pbItem(e)));
+      feeds.filter((f) => has(f.notes, q) || has(f.whatWorksNow, q) || has(f.whatDoesntWork, q)).slice(0, 4).forEach((f) => items.push(feedItem(f)));
+      research.filter((r) => has(r.description, q) || has(r.context, q) || has(r.whatWorked, q)).slice(0, 3).forEach((r) => items.push(resItem(r)));
+      events.filter((e) => has(e.summary, q)).slice(0, 3).forEach((e) => items.push(evItem(e)));
+      return items;
     }
-
+    // Exact ticker hits first, then partial matches.
+    const tickerFirst = <T,>(arr: T[], get: (x: T) => unknown) =>
+      [...arr].sort((a, b) => Number(String(get(b) ?? "").toLowerCase() === q) - Number(String(get(a) ?? "").toLowerCase() === q));
+    tickerFirst(trades.filter((t) => has(t.ticker, q) || has(t.setup, q) || has(t.notes, q) || has(t.tags, q) || has(t.trader, q)), (t: any) => t.ticker)
+      .slice(0, 5).forEach((t) => items.push(tradeItem(t)));
+    tickerFirst(tradeIdeas.filter((i) => has(i.ticker, q) || has(i.setup, q) || has(i.trader, q) || has(i.tags, q) || has(i.notes, q) || has(i.description, q)), (i: any) => i.ticker)
+      .slice(0, 5).forEach((i) => items.push(ideaItem(i)));
+    playbook.filter((e) => has(e.name, q) || has(e.conditions, q) || has(e.notes, q) || has(e.tags, q) || has(e.folder, q) || has(e.checklist, q))
+      .slice(0, 4).forEach((e) => items.push(pbItem(e)));
+    feeds.filter((f) => has(f.marketTheme, q) || has(f.notes, q) || has(f.tags, q) || has(f.bestTickers, q) || has(f.whatWorksNow, q) || has(f.whatDoesntWork, q) || (typeof f.date === "string" && f.date.includes(q)))
+      .slice(0, 4).forEach((f) => items.push(feedItem(f)));
+    research.filter((r) => has(r.patternName, q) || has(r.description, q) || has(r.ticker, q) || has(r.context, q) || has(r.whatWorked, q))
+      .slice(0, 3).forEach((r) => items.push(resItem(r)));
+    events.filter((e) => has(e.ticker, q) || has(e.headline, q) || has(e.summary, q))
+      .slice(0, 3).forEach((e) => items.push(evItem(e)));
     return items;
-  }, [q, notesOnly, trades, playbook, feeds, research, events]);
-
-  useEffect(() => { setCursor(0); }, [results]);
-
-  function goTo(item: ResultItem) {
-    setOpen(false);
-    setQuery("");
-    if (item.highlight) {
-      navigate(`${item.path}?highlight=${item.highlight}`);
-    } else {
-      navigate(item.path);
-    }
-  }
-
-  function handleKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "ArrowDown") {
-      e.preventDefault();
-      setCursor((c) => Math.min(c + 1, results.length - 1));
-    } else if (e.key === "ArrowUp") {
-      e.preventDefault();
-      setCursor((c) => Math.max(c - 1, 0));
-    } else if (e.key === "Enter" && results[cursor]) {
-      goTo(results[cursor]);
-    }
-  }
-
-  useEffect(() => {
-    const el = listRef.current?.querySelectorAll("[data-result]")[cursor] as HTMLElement;
-    el?.scrollIntoView({ block: "nearest" });
-  }, [cursor]);
+  }, [q, notesOnly, trades, playbook, feeds, research, events, tradeIdeas]);
 
   const sections = useMemo(() => {
-    const map = new Map<string, ResultItem[]>();
+    const map = new Map<Section, ResultItem[]>();
     for (const item of results) {
-      if (!map.has(item.section)) map.set(item.section, []);
-      map.get(item.section)!.push(item);
+      const arr = map.get(item.section);
+      if (arr) arr.push(item); else map.set(item.section, [item]);
     }
     return map;
   }, [results]);
 
-  if (!open) {
-    return (
+  // ── Tickers known to the desk (trades + ideas), with counts ──
+  const tickerIndex = useMemo(() => {
+    const m = new Map<string, { trades: number; ideas: number }>();
+    for (const t of trades) {
+      const k = String(t.ticker ?? "").toUpperCase();
+      if (!k) continue;
+      const e = m.get(k) ?? { trades: 0, ideas: 0 };
+      e.trades++; m.set(k, e);
+    }
+    for (const i of tradeIdeas) {
+      const k = String(i.ticker ?? "").toUpperCase();
+      if (!k) continue;
+      const e = m.get(k) ?? { trades: 0, ideas: 0 };
+      e.ideas++; m.set(k, e);
+    }
+    return m;
+  }, [trades, tradeIdeas]);
+
+  const looksLikeTicker = !notesOnly && /^\$?[a-zA-Z][a-zA-Z.]{0,5}$/.test(raw);
+  const ticker = looksLikeTicker ? raw.replace(/^\$/, "").toUpperCase() : "";
+  const otherTickers = useMemo(() => {
+    if (!q || notesOnly || q.length > 6) return [];
+    const up = q.toUpperCase();
+    return [...tickerIndex.entries()]
+      .filter(([k]) => k.startsWith(up) && k !== up)
+      .sort((a, b) => b[1].trades + b[1].ideas - (a[1].trades + a[1].ideas))
+      .slice(0, 5);
+  }, [q, notesOnly, tickerIndex]);
+
+  // ── Pages ──
+  const pages = useMemo(() => {
+    const visible = ALL_NAV_ITEMS.filter((i) => !i.staff || isCurator);
+    if (!q) return visible.filter((i) => !i.hidden);
+    return visible.filter((i) => i.name.toLowerCase().includes(q) || (i.keywords ?? "").toLowerCase().includes(q)).slice(0, 6);
+  }, [q, isCurator]);
+
+  const go = useCallback(
+    (path: string, rec?: Omit<RecentItem, "path">, highlight?: number) => {
+      setOpen(false);
+      if (rec) saveRecent({ ...rec, path, highlight });
+      navigate(path);
+      if (highlight != null) {
+        const base = path.split("?")[0];
+        setTimeout(() => {
+          window.dispatchEvent(new CustomEvent("ws-search-navigate", { detail: { path: base, highlightId: highlight } }));
+        }, 0);
+      }
+    },
+    [navigate],
+  );
+
+  const goResult = (item: ResultItem) => {
+    const path = item.highlight != null && !item.path.includes("?") ? `${item.path}?highlight=${item.highlight}` : item.path;
+    go(path, { id: item.id, title: item.title, subtitle: item.subtitle, kind: item.section }, item.highlight);
+  };
+  const goPage = (p: NavItem) => go(p.href, { id: `page-${p.href}`, title: p.name, kind: "Раздел" });
+
+  type Action = { id: string; label: string; hint?: string; icon: React.ElementType; run: () => void; keywords: string; when?: boolean };
+  const actions: Action[] = [
+    { id: "new-trade", label: "Новая сделка", icon: Plus, run: () => go("/trades?new=1"), keywords: "new trade добавить сделку записать", when: isCurator },
+    { id: "new-idea", label: "Новая идея", icon: Lightbulb, run: () => go("/trade-ideas?new=1"), keywords: "new idea добавить идею", when: canEdit },
+    { id: "new-event", label: "Новое событие", icon: CalendarClock, run: () => go("/events?new=1"), keywords: "new event катализатор отчёт", when: canEdit },
+    { id: "theme", label: "Сменить тему", hint: `сейчас: ${themeLabel}`, icon: SunMoon, run: () => cycleTheme(), keywords: "theme тема dark light тёмная светлая" },
+  ].filter((a) => a.when !== false);
+  const visibleActions = q ? actions.filter((a) => a.label.toLowerCase().includes(q) || a.keywords.toLowerCase().includes(q)) : actions;
+
+  const tickerActions = ticker
+    ? [
+        { id: "t-ideas", label: `Идеи по ${ticker}`, icon: Lightbulb, path: `/trade-ideas?ticker=${encodeURIComponent(ticker)}` },
+        { id: "t-watch", label: `${ticker} в вотчлисте`, icon: Eye, path: `/watchlist?ticker=${encodeURIComponent(ticker)}` },
+        { id: "t-events", label: `Катализаторы ${ticker}`, icon: CalendarClock, path: `/events?ticker=${encodeURIComponent(ticker)}` },
+        { id: "t-disc", label: `Обсуждения ${ticker}`, icon: MessageSquare, path: `/discussions?ticker=${encodeURIComponent(ticker)}` },
+      ]
+    : [];
+  const tickerStats = ticker ? tickerIndex.get(ticker) : undefined;
+
+  const nothing =
+    !!q && !loading && !isStale && results.length === 0 && pages.length === 0 && visibleActions.length === 0 && !ticker && otherTickers.length === 0;
+
+  const trigger = (
+    <DialogPrimitive.Trigger asChild>
       <button
-        onClick={() => setOpen(true)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-none border border-border bg-muted/40 text-muted-foreground hover:text-foreground hover:bg-muted text-xs font-mono transition-colors"
-        title="Поиск (Cmd+K)"
+        type="button"
+        // Fixed width + short label: never clipped to «Поиск или к…» next to the logo and the market clock.
+        className="glass-field flex h-10 min-w-10 shrink-0 items-center justify-center gap-2 px-3 text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring sm:w-44 sm:min-w-0 sm:shrink sm:justify-start sm:pl-3.5 sm:pr-1.5 2xl:w-56"
+        title={`Поиск и команды (${HOTKEY_LABEL})`}
+        aria-label={`Поиск и команды (${HOTKEY_LABEL})`}
       >
-        <Search className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">Поиск...</span>
-        <kbd className="hidden sm:inline text-[10px] bg-background border border-border px-1 py-0.5 rounded-sm">⌘K</kbd>
+        <Search className="h-4 w-4 shrink-0" aria-hidden="true" />
+        <span className="hidden min-w-0 flex-1 truncate text-left sm:inline">Поиск…</span>
+        <Kbd keys={[MOD, "K"]} className="hidden min-[1360px]:inline-flex" />
       </button>
-    );
-  }
+    </DialogPrimitive.Trigger>
+  );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[12vh]" onClick={() => setOpen(false)}>
-      <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" />
-      <div
-        className="relative w-full max-w-xl mx-4 bg-card border border-border shadow-2xl z-10"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex items-center border-b border-border px-4">
-          <Search className="h-4 w-4 text-muted-foreground mr-3 shrink-0" />
-          <input
-            ref={inputRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={notesOnly ? "Поиск в заметках..." : "Трейды, плейбук, дневная лента, события..."}
-            className="flex-1 bg-transparent py-4 text-sm font-mono outline-none placeholder:text-muted-foreground"
-          />
-          <button
-            onClick={() => setNotesOnly((v) => !v)}
-            title={notesOnly ? "Поиск в заметках (вкл)" : "Поиск в заметках (выкл)"}
-            className={`flex items-center gap-1 px-2 py-1 mr-2 text-[10px] font-mono border transition-colors shrink-0 ${
-              notesOnly
-                ? "bg-primary/15 text-primary border-primary/40"
-                : "bg-muted/40 text-muted-foreground border-border hover:text-foreground hover:border-foreground/30"
-            }`}
-          >
-            <StickyNote className="h-3 w-3" />
-            Заметки
-          </button>
-          {query && (
-            <button onClick={() => setQuery("")} className="p-1 text-muted-foreground hover:text-foreground mr-1">
-              <X className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button onClick={() => setOpen(false)} className="p-1 text-muted-foreground hover:text-foreground">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-
-        {!q && (
-          <div className="px-4 py-8 text-center space-y-3">
-            <div className="text-xs text-muted-foreground font-mono">
-              {notesOnly ? "Поиск только в заметках, условиях и описаниях" : "Введите тикер, дату, ключевое слово"}
+    <DialogPrimitive.Root open={open} onOpenChange={setOpen}>
+      {trigger}
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-modal bg-[var(--overlay)] backdrop-blur-[2px] data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => { e.preventDefault(); inputRef.current?.focus(); }}
+          className="glass-thick fixed left-1/2 top-[max(10vh,calc(env(safe-area-inset-top)+0.75rem))] z-modal flex max-h-[min(640px,80dvh)] w-[calc(100%-1.5rem)] max-w-2xl -translate-x-1/2 flex-col overflow-hidden rounded-2xl bg-popover/80 text-popover-foreground outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-[0.98] data-[state=open]:zoom-in-[0.98]"
+        >
+          <DialogPrimitive.Title className="sr-only">Поиск и команды</DialogPrimitive.Title>
+          <CommandPrimitive shouldFilter={false} loop label="Поиск и команды" className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center gap-2 border-b border-[var(--glass-border)] px-4">
+              {loading || isStale ? (
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
+              ) : (
+                <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              )}
+              <CommandPrimitive.Input
+                ref={inputRef}
+                value={query}
+                onValueChange={setQuery}
+                placeholder={notesOnly ? "Искать в заметках…" : "Тикер, сетап, идея, раздел или команда…"}
+                aria-label="Поисковый запрос"
+                autoComplete="off"
+                spellCheck={false}
+                enterKeyHint="go"
+                className="h-14 min-w-0 flex-1 bg-transparent text-base outline-none placeholder:text-muted-foreground sm:text-sm"
+              />
+              <button
+                type="button"
+                onClick={() => { setNotesOnly((v) => !v); inputRef.current?.focus(); }}
+                aria-pressed={notesOnly}
+                title="Искать только в заметках и описаниях"
+                className="chip inline-flex h-8 shrink-0 items-center gap-1.5 px-2.5 text-xs font-medium"
+              >
+                <StickyNote className="h-3.5 w-3.5" aria-hidden="true" />
+                <span className="hidden sm:inline">Заметки</span>
+              </button>
+              {query && (
+                <button type="button" aria-label="Очистить запрос" onClick={() => { setQuery(""); inputRef.current?.focus(); }} className="chip grid h-8 w-8 shrink-0 place-items-center">
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              )}
+              <DialogPrimitive.Close className="chip hidden h-8 shrink-0 items-center px-2.5 text-2xs font-medium sm:inline-flex" aria-label="Закрыть">
+                Esc
+              </DialogPrimitive.Close>
             </div>
-            <div className="flex flex-wrap justify-center gap-2">
-              {["Трейды", "Плейбук", "Дневная лента", "Исследования", "События"].map((s) => (
-                <span key={s} className={`flex items-center gap-1 text-[10px] font-mono px-2 py-1 bg-muted border border-border/50 ${SECTION_COLORS[s]}`}>
-                  {SECTION_ICONS[s]} {s}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
 
-        {q && results.length === 0 && (
-          <div className="px-4 py-8 text-center text-xs text-muted-foreground font-mono">
-            Ничего не найдено по запросу «{query}»{notesOnly ? " в заметках" : ""}
-          </div>
-        )}
-
-        {results.length > 0 && (
-          <div ref={listRef} className="max-h-[55vh] overflow-y-auto">
-            {[...sections.entries()].map(([sectionName, items]) => (
-              <div key={sectionName}>
-                <div className={`px-4 py-1.5 text-[10px] font-mono uppercase bg-muted/40 flex items-center gap-1.5 border-b border-border/30 ${SECTION_COLORS[sectionName]}`}>
-                  {SECTION_ICONS[sectionName]}
-                  {sectionName}
-                  <span className="ml-auto text-muted-foreground normal-case">{items.length}</span>
+            <CommandPrimitive.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1">
+              {nothing && (
+                <div role="status" className="px-4 py-10 text-center text-sm text-muted-foreground">
+                  Ничего не найдено по запросу «{raw}»{notesOnly ? " в заметках" : ""}
                 </div>
-                {items.map((item) => {
-                  const idx = results.indexOf(item);
-                  const isActive = idx === cursor;
-                  return (
-                    <button
-                      key={item.id}
-                      data-result
-                      onClick={() => goTo(item)}
-                      onMouseEnter={() => setCursor(idx)}
-                      className={`w-full flex items-center justify-between px-4 py-2.5 text-left border-b border-border/30 last:border-b-0 transition-colors group ${
-                        isActive ? "bg-primary/10" : "hover:bg-muted/50"
-                      }`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-sm font-mono text-foreground">{item.title}</span>
-                          {item.badge && (
-                            <span className={`text-[10px] font-mono font-bold ${item.badgeColor}`}>{item.badge}</span>
-                          )}
-                        </div>
-                        {item.subtitle && (
-                          <div className="text-[11px] text-muted-foreground font-mono truncate mt-0.5">{item.subtitle}</div>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0 ml-3">
-                        {item.meta && <span className="text-[11px] text-muted-foreground font-mono">{item.meta}</span>}
-                        <ArrowRight className={`h-3 w-3 transition-opacity ${isActive ? "opacity-100 text-primary" : "opacity-0"}`} />
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        )}
+              )}
 
-        <div className="border-t border-border px-4 py-2 flex gap-4 text-[10px] font-mono text-muted-foreground">
-          <span>↑↓ навигация</span>
-          <span>↵ перейти</span>
-          <span>ESC закрыть</span>
-          <span className="ml-auto">⌘K открыть</span>
-        </div>
-      </div>
-    </div>
+              {!q && recent.length > 0 && (
+                <CommandPrimitive.Group heading="Недавнее" className={groupCls}>
+                  {recent.map((r) => (
+                    <Item
+                      key={r.id}
+                      value={`recent-${r.id}`}
+                      icon={History}
+                      title={r.title}
+                      subtitle={[r.kind, r.subtitle].filter(Boolean).join(" · ")}
+                      onSelect={() => go(r.path, { id: r.id, title: r.title, subtitle: r.subtitle, kind: r.kind }, r.highlight)}
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              )}
+
+              {ticker && (
+                <CommandPrimitive.Group heading={`Тикер ${ticker}${tickerStats ? ` · ${tickerStats.trades} сд. · ${tickerStats.ideas} ид.` : ""}`} className={groupCls}>
+                  {tickerActions.map((a) => (
+                    <Item key={a.id} value={a.id} icon={a.icon} title={a.label} onSelect={() => go(a.path, { id: a.id, title: a.label, kind: "Тикер" })} />
+                  ))}
+                </CommandPrimitive.Group>
+              )}
+
+              {otherTickers.length > 0 && (
+                <CommandPrimitive.Group heading="Тикеры" className={groupCls}>
+                  {otherTickers.map(([k, c]) => (
+                    <Item
+                      key={k}
+                      value={`ticker-${k}`}
+                      icon={Hash}
+                      title={k}
+                      subtitle={`${c.trades} сделок · ${c.ideas} идей`}
+                      right={<ArrowRight className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />}
+                      onSelect={() => { setQuery(k); inputRef.current?.focus(); }}
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              )}
+
+              {visibleActions.length > 0 && (
+                <CommandPrimitive.Group heading="Действия" className={groupCls}>
+                  {visibleActions.map((a) => (
+                    <Item
+                      key={a.id}
+                      value={`action-${a.id}`}
+                      icon={a.icon}
+                      title={a.label}
+                      subtitle={a.hint}
+                      onSelect={a.run}
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              )}
+
+              {[...sections.entries()].map(([name, items]) => (
+                <CommandPrimitive.Group key={name} heading={name} className={groupCls}>
+                  {items.map((item) => (
+                    <Item
+                      key={item.id}
+                      value={item.id}
+                      icon={SECTION_ICON[item.section]}
+                      title={item.title}
+                      subtitle={item.subtitle}
+                      onSelect={() => goResult(item)}
+                      right={
+                        <span className="flex shrink-0 items-center gap-2">
+                          {item.badge && (
+                            <span className={cn("rounded-full px-2 py-0.5 text-2xs font-medium tabular-nums", BADGE_TONE[item.badgeTone ?? "neutral"])}>{item.badge}</span>
+                          )}
+                          {item.meta && <span className="hidden text-2xs tabular-nums text-muted-foreground sm:inline">{item.meta}</span>}
+                        </span>
+                      }
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              ))}
+
+              {pages.length > 0 && (
+                <CommandPrimitive.Group heading="Перейти к…" className={groupCls}>
+                  {pages.map((p) => (
+                    <Item
+                      key={p.href}
+                      value={`page-${p.href}`}
+                      icon={p.icon}
+                      title={p.name}
+                      onSelect={() => goPage(p)}
+                      right={p.goKey ? <Kbd keys={["G", p.goKey.toUpperCase()]} className="hidden sm:inline-flex" /> : undefined}
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              )}
+            </CommandPrimitive.List>
+
+            <div aria-hidden="true" className="hidden items-center gap-4 border-t border-[var(--glass-border)] px-4 py-2 text-2xs text-muted-foreground sm:flex">
+              <span className="inline-flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> выбор</span>
+              <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> открыть</span>
+              <span className="inline-flex items-center gap-1"><Kbd>$</Kbd> тикер</span>
+              <span className="ml-auto inline-flex items-center gap-1"><Kbd>G</Kbd> затем буква — быстрый переход</span>
+            </div>
+          </CommandPrimitive>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }

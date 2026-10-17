@@ -53,3 +53,14 @@ Thumbs.db
 *.zip
 *.sql.bak
 *.tmp
+
+# Local dev database
+.local-db/
+.env.local
+
+# Database dumps and local DB files — never commit (kept locally only)
+db-backup/
+db_backup_v3.sql
+accounts.db
+*.sql
+!lib/db/**/*.sql

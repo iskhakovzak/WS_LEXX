@@ -157,19 +157,6 @@ export async function runMigrations() {
       "rating" TEXT,
       "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
-    `CREATE TABLE IF NOT EXISTS "playbook_trade_ideas" (
-      "id" SERIAL PRIMARY KEY,
-      "playbook_entry_id" INTEGER NOT NULL,
-      "ticker" TEXT NOT NULL,
-      "side" TEXT,
-      "entry_zone" TEXT,
-      "target" TEXT,
-      "stop" TEXT,
-      "status" TEXT DEFAULT 'watching',
-      "notes" TEXT,
-      "date" TEXT,
-      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
-    )`,
     `CREATE TABLE IF NOT EXISTS "big7_levels" (
       "id" SERIAL PRIMARY KEY,
       "ticker" TEXT NOT NULL,
@@ -190,11 +177,43 @@ export async function runMigrations() {
     `CREATE TABLE IF NOT EXISTS "users" (
       "id" SERIAL PRIMARY KEY,
       "name" TEXT NOT NULL UNIQUE,
-      "password" TEXT NOT NULL,
       "role" TEXT NOT NULL DEFAULT 'trader',
       "active" BOOLEAN NOT NULL DEFAULT true,
       "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "banned" BOOLEAN NOT NULL DEFAULT false`,
+    `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "banned_at" TIMESTAMPTZ`,
+    `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "banned_reason" TEXT`,
+    `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "password_hash" TEXT`,
+    `ALTER TABLE "users" ADD COLUMN IF NOT EXISTS "token_version" INTEGER NOT NULL DEFAULT 0`,
+    `ALTER TABLE "users" DROP COLUMN IF EXISTS "password"`,
+    `CREATE TABLE IF NOT EXISTS "audit_log" (
+      "id" SERIAL PRIMARY KEY,
+      "actor" TEXT NOT NULL,
+      "action" TEXT NOT NULL,
+      "target_type" TEXT,
+      "target_id" TEXT,
+      "details" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "audit_log_actor_idx" ON "audit_log"("actor")`,
+    `CREATE INDEX IF NOT EXISTS "audit_log_action_idx" ON "audit_log"("action")`,
+    `CREATE INDEX IF NOT EXISTS "audit_log_created_at_idx" ON "audit_log"("created_at")`,
+    `CREATE TABLE IF NOT EXISTS "content_reports" (
+      "id" SERIAL PRIMARY KEY,
+      "reporter" TEXT NOT NULL,
+      "target_type" TEXT NOT NULL,
+      "target_id" TEXT NOT NULL,
+      "reason" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'open',
+      "resolved_by" TEXT,
+      "resolved_at" TIMESTAMPTZ,
+      "resolution" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "content_reports_status_idx" ON "content_reports"("status")`,
+    `CREATE INDEX IF NOT EXISTS "content_reports_target_idx" ON "content_reports"("target_type", "target_id")`,
+    `CREATE INDEX IF NOT EXISTS "content_reports_created_at_idx" ON "content_reports"("created_at")`,
     `CREATE TABLE IF NOT EXISTS "trader_ratings" (
       "id" SERIAL PRIMARY KEY,
       "trader" TEXT NOT NULL,
@@ -233,6 +252,355 @@ export async function runMigrations() {
       "sort_order" INTEGER NOT NULL DEFAULT 0,
       "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )`,
+    `CREATE TABLE IF NOT EXISTS "ticker_data_cache" (
+      "ticker" TEXT PRIMARY KEY,
+      "market_cap" TEXT,
+      "float" TEXT,
+      "shares_outstanding" TEXT,
+      "short_interest" NUMERIC(8,2),
+      "atr" NUMERIC(12,4),
+      "relative_volume" NUMERIC(8,2),
+      "beta" NUMERIC(8,4),
+      "average_daily_volume" TEXT,
+      "sector" TEXT,
+      "industry" TEXT,
+      "long_name" TEXT,
+      "raw" JSONB,
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "news_cache" (
+      "id" SERIAL PRIMARY KEY,
+      "ticker" TEXT NOT NULL,
+      "guid" TEXT,
+      "title" TEXT NOT NULL,
+      "source" TEXT,
+      "url" TEXT,
+      "category" TEXT,
+      "summary" TEXT,
+      "published_at" TIMESTAMPTZ,
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "candles_cache" (
+      "id" SERIAL PRIMARY KEY,
+      "ticker" TEXT NOT NULL,
+      "date" TEXT NOT NULL,
+      "interval" TEXT NOT NULL,
+      "extended" BOOLEAN NOT NULL DEFAULT FALSE,
+      "ohlcv" JSONB NOT NULL,
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "trade_executions" (
+      "id" SERIAL PRIMARY KEY,
+      "trade_id" INTEGER NOT NULL REFERENCES "trades"("id") ON DELETE CASCADE,
+      "kind" TEXT NOT NULL,
+      "price" NUMERIC(12,4) NOT NULL,
+      "qty" NUMERIC(12,2),
+      "executed_at" TIMESTAMPTZ,
+      "note" TEXT,
+      "sort_order" INTEGER NOT NULL DEFAULT 0,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      CONSTRAINT trade_executions_kind_enum CHECK (kind IN ('entry', 'add', 'trim', 'exit', 'stop'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS "sector_strength_cache" (
+      "symbol" TEXT PRIMARY KEY,
+      "name" TEXT,
+      "price" NUMERIC(12,4),
+      "change_pct" NUMERIC(8,4),
+      "prev_close" NUMERIC(12,4),
+      "trend_5d" NUMERIC(8,4),
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "holiday_calendar" (
+      "id" SERIAL PRIMARY KEY,
+      "date" TEXT NOT NULL,
+      "type" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "description" TEXT,
+      "importance" TEXT NOT NULL DEFAULT 'medium'
+    )`,
+    `CREATE TABLE IF NOT EXISTS "market_open_brief_cache" (
+      "id" SERIAL PRIMARY KEY,
+      "date" TEXT NOT NULL UNIQUE,
+      "data" JSONB NOT NULL,
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "analyst_actions_cache" (
+      "id" SERIAL PRIMARY KEY,
+      "ticker" TEXT NOT NULL,
+      "graded_at" TIMESTAMPTZ NOT NULL,
+      "firm" TEXT NOT NULL,
+      "action" TEXT NOT NULL,
+      "to_grade" TEXT,
+      "from_grade" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'yahoo',
+      "fetched_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "pre_trade_checklist_template" (
+      "id" SERIAL PRIMARY KEY,
+      "label" TEXT NOT NULL,
+      "description" TEXT,
+      "required" BOOLEAN NOT NULL DEFAULT TRUE,
+      "sort_order" INTEGER NOT NULL DEFAULT 0,
+      "active" BOOLEAN NOT NULL DEFAULT TRUE,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "pre_trade_checklist_responses" (
+      "id" SERIAL PRIMARY KEY,
+      "ticker" TEXT NOT NULL,
+      "trade_date" TEXT NOT NULL,
+      "trader" TEXT,
+      "trade_id" INTEGER,
+      "responses" TEXT NOT NULL,
+      "passed" BOOLEAN NOT NULL DEFAULT FALSE,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "trade_ideas" (
+      "id" SERIAL PRIMARY KEY,
+      "ticker" TEXT NOT NULL,
+      "side" TEXT,
+      "setup" TEXT,
+      "entry_zone" TEXT,
+      "target" TEXT,
+      "stop" TEXT,
+      "thesis" TEXT,
+      "score" INTEGER,
+      "score_breakdown" TEXT,
+      "status" TEXT NOT NULL DEFAULT 'draft',
+      "trader" TEXT,
+      "playbook_id" INTEGER,
+      "watchlist_id" INTEGER,
+      "screenshot_url" TEXT,
+      "tags" TEXT,
+      "published_at" TIMESTAMPTZ,
+      "converted_trade_id" INTEGER,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "deleted_at" TIMESTAMPTZ
+    )`,
+    `CREATE TABLE IF NOT EXISTS "trade_idea_reactions" (
+      "id" SERIAL PRIMARY KEY,
+      "trade_idea_id" INTEGER NOT NULL,
+      "trader" TEXT NOT NULL,
+      "reaction" TEXT NOT NULL,
+      "comment" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "ai_trade_reviews" (
+      "id" SERIAL PRIMARY KEY,
+      "trade_id" INTEGER NOT NULL,
+      "model" TEXT NOT NULL,
+      "prompt_hash" TEXT NOT NULL,
+      "review_text" TEXT NOT NULL,
+      "sections" JSONB,
+      "input_tokens" INTEGER,
+      "output_tokens" INTEGER,
+      "cost_usd" NUMERIC(10,6),
+      "generated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "ai_review_rate_limit" (
+      "id" SERIAL PRIMARY KEY,
+      "user_key" TEXT NOT NULL,
+      "trade_id" INTEGER,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "emotional_state_log" (
+      "id" SERIAL PRIMARY KEY,
+      "user_id" TEXT NOT NULL,
+      "date" TEXT NOT NULL,
+      "sleep_well" BOOLEAN NOT NULL DEFAULT false,
+      "stressed" BOOLEAN NOT NULL DEFAULT false,
+      "tilted" BOOLEAN NOT NULL DEFAULT false,
+      "focused" BOOLEAN NOT NULL DEFAULT false,
+      "anxious" BOOLEAN NOT NULL DEFAULT false,
+      "revenge" BOOLEAN NOT NULL DEFAULT false,
+      "free_text" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "voice_notes" (
+      "id" SERIAL PRIMARY KEY,
+      "user_id" TEXT NOT NULL,
+      "trade_id" INTEGER,
+      "daily_feed_id" INTEGER,
+      "audio_url" TEXT NOT NULL,
+      "transcript" TEXT,
+      "duration_sec" INTEGER,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "digest_subscriptions" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL UNIQUE,
+      "enabled" BOOLEAN NOT NULL DEFAULT true,
+      "channel" TEXT NOT NULL DEFAULT 'none',
+      "telegram_chat_id" TEXT,
+      "email" TEXT,
+      "send_morning" BOOLEAN NOT NULL DEFAULT true,
+      "send_evening" BOOLEAN NOT NULL DEFAULT true,
+      "trades_window_hours" INTEGER NOT NULL DEFAULT 24,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE TABLE IF NOT EXISTS "weekly_psychology_reports" (
+      "id" SERIAL PRIMARY KEY,
+      "user_id" TEXT NOT NULL,
+      "week_start" TEXT NOT NULL,
+      "week_end" TEXT NOT NULL,
+      "total_trades" INTEGER NOT NULL DEFAULT 0,
+      "total_checkins" INTEGER NOT NULL DEFAULT 0,
+      "emotional_breakdown" JSONB,
+      "best_state" TEXT,
+      "worst_state" TEXT,
+      "total_pnl" TEXT NOT NULL DEFAULT '0',
+      "avg_pnl_per_trade" TEXT NOT NULL DEFAULT '0',
+      "win_rate" TEXT NOT NULL DEFAULT '0',
+      "key_insights" JSONB,
+      "raw_stats" JSONB,
+      "generated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "weekly_psych_reports_user_idx" ON "weekly_psychology_reports"("user_id")`,
+    `CREATE INDEX IF NOT EXISTS "weekly_psych_reports_week_start_idx" ON "weekly_psychology_reports"("week_start")`,
+    `CREATE INDEX IF NOT EXISTS "weekly_psych_reports_user_week_idx" ON "weekly_psychology_reports"("user_id", "week_start")`,
+    `CREATE TABLE IF NOT EXISTS "big7_tickers" (
+      "id" SERIAL PRIMARY KEY,
+      "symbol" TEXT NOT NULL,
+      "exchange" TEXT NOT NULL DEFAULT 'NASDAQ',
+      "name" TEXT NOT NULL,
+      "group_name" TEXT NOT NULL DEFAULT 'core',
+      "position" INTEGER NOT NULL DEFAULT 0,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "big7_tickers_group_idx" ON "big7_tickers"("group_name")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "big7_tickers_group_symbol_unique" ON "big7_tickers"("group_name", "symbol")`,
+    `CREATE TABLE IF NOT EXISTS "daily_quotes" (
+      "id" SERIAL PRIMARY KEY,
+      "date" TEXT NOT NULL,
+      "trading_ru" TEXT NOT NULL,
+      "trading_uz" TEXT NOT NULL,
+      "trading_uk" TEXT NOT NULL,
+      "trading_author" TEXT,
+      "psychology_ru" TEXT NOT NULL,
+      "psychology_uz" TEXT NOT NULL,
+      "psychology_uk" TEXT NOT NULL,
+      "psychology_author" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'ai',
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `ALTER TABLE "daily_quotes" ADD COLUMN IF NOT EXISTS "trading_en" TEXT`,
+    `ALTER TABLE "daily_quotes" ADD COLUMN IF NOT EXISTS "psychology_en" TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "daily_quotes_date_unique" ON "daily_quotes"("date")`,
+    `CREATE TABLE IF NOT EXISTS "discussion_votes" (
+      "id" SERIAL PRIMARY KEY,
+      "discussion_id" INTEGER NOT NULL REFERENCES "discussions"("id") ON DELETE CASCADE,
+      "trader" TEXT NOT NULL,
+      "value" INTEGER NOT NULL,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "discussion_votes_unique" ON "discussion_votes"("discussion_id", "trader")`,
+    `CREATE INDEX IF NOT EXISTS "discussion_votes_discussion_idx" ON "discussion_votes"("discussion_id")`,
+    `CREATE TABLE IF NOT EXISTS "trading_rules" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "kind" TEXT NOT NULL,
+      "threshold" JSONB NOT NULL,
+      "enabled" BOOLEAN NOT NULL DEFAULT true,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "trading_rules_trader_idx" ON "trading_rules"("trader")`,
+    `CREATE TABLE IF NOT EXISTS "rule_violations" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL,
+      "rule_id" INTEGER NOT NULL REFERENCES "trading_rules"("id") ON DELETE CASCADE,
+      "trade_id" INTEGER,
+      "occurred_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "severity" TEXT NOT NULL DEFAULT 'medium',
+      "message" TEXT NOT NULL,
+      "details" JSONB
+    )`,
+    `CREATE INDEX IF NOT EXISTS "rule_violations_trader_idx" ON "rule_violations"("trader")`,
+    `CREATE INDEX IF NOT EXISTS "rule_violations_rule_idx" ON "rule_violations"("rule_id")`,
+    `CREATE INDEX IF NOT EXISTS "rule_violations_occurred_idx" ON "rule_violations"("occurred_at")`,
+    // Archive marker (lib/violationArchive): violations of disabled / deleted rules and stale ones with human input are
+    // kept, not deleted. Also added by rulesEngine.ensureRulesSchema; here so every query sees the column at startup.
+    `ALTER TABLE "rule_violations" ADD COLUMN IF NOT EXISTS "archived_at" TIMESTAMPTZ`,
+    `ALTER TABLE "rule_violations" ADD COLUMN IF NOT EXISTS "archived_reason" TEXT`,
+    `CREATE INDEX IF NOT EXISTS "analyst_actions_ticker_idx" ON "analyst_actions_cache"("ticker")`,
+    `CREATE INDEX IF NOT EXISTS "analyst_actions_graded_at_idx" ON "analyst_actions_cache"("graded_at")`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS "analyst_actions_unique" ON "analyst_actions_cache"("ticker", "graded_at", "firm", "action")`,
+    `CREATE TABLE IF NOT EXISTS "author_notes" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL,
+      "note_date" DATE NOT NULL DEFAULT CURRENT_DATE,
+      "raw_text" TEXT NOT NULL DEFAULT '',
+      "refined_text" TEXT,
+      "mood" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE("trader", "note_date")
+    )`,
+    `CREATE INDEX IF NOT EXISTS "author_notes_trader_date_idx" ON "author_notes"("trader", "note_date")`,
+    `CREATE TABLE IF NOT EXISTS "author_weekly_summaries" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL,
+      "week_start" DATE NOT NULL,
+      "week_end" DATE NOT NULL,
+      "summary" TEXT NOT NULL,
+      "quote_of_week" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE("trader", "week_start")
+    )`,
+
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id TEXT`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS users_telegram_chat_id_idx ON users(telegram_chat_id) WHERE telegram_chat_id IS NOT NULL`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_linked_at TIMESTAMPTZ`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_curator TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_risk_manager TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS assigned_mentor TEXT`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS tg_notifications_enabled BOOLEAN NOT NULL DEFAULT TRUE`,
+
+    `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS review_status TEXT`,
+    `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS review_reason TEXT`,
+    `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS reviewed_by TEXT`,
+    `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`,
+
+    `CREATE TABLE IF NOT EXISTS "telegram_link_tokens" (
+      "id" SERIAL PRIMARY KEY,
+      "token" TEXT NOT NULL UNIQUE,
+      "user_name" TEXT NOT NULL,
+      "expires_at" TIMESTAMPTZ NOT NULL,
+      "used" BOOLEAN NOT NULL DEFAULT FALSE,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS "telegram_pending_actions" (
+      "id" SERIAL PRIMARY KEY,
+      "telegram_chat_id" TEXT NOT NULL UNIQUE,
+      "action" TEXT NOT NULL,
+      "idea_id" INTEGER NOT NULL,
+      "expires_at" TIMESTAMPTZ NOT NULL,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+
+    `CREATE TABLE IF NOT EXISTS "trade_idea_comments" (
+      "id" SERIAL PRIMARY KEY,
+      "idea_id" INTEGER NOT NULL,
+      "author_name" TEXT NOT NULL,
+      "text" TEXT NOT NULL,
+      "is_private" BOOLEAN NOT NULL DEFAULT FALSE,
+      "source" TEXT NOT NULL DEFAULT 'website',
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "trade_idea_comments_idea_idx" ON "trade_idea_comments"("idea_id")`,
+
+    `CREATE TABLE IF NOT EXISTS "notifications" (
+      "id" SERIAL PRIMARY KEY,
+      "user_name" TEXT NOT NULL,
+      "type" TEXT NOT NULL,
+      "idea_id" INTEGER,
+      "message" TEXT NOT NULL,
+      "is_read" BOOLEAN NOT NULL DEFAULT FALSE,
+      "source" TEXT NOT NULL DEFAULT 'system',
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )`,
+    `CREATE INDEX IF NOT EXISTS "notifications_user_unread_idx" ON "notifications"("user_name", "is_read")`,
   ];
 
   for (const sql of createStatements) {
@@ -256,6 +624,7 @@ export async function runMigrations() {
     { table: "discussions", column: "tags", type: "TEXT" },
     { table: "discussions", column: "type", type: "TEXT" },
     { table: "discussions", column: "trader", type: "TEXT" },
+    { table: "discussions", column: "ticker", type: "TEXT" },
     { table: "watchlist", column: "tags", type: "TEXT" },
     { table: "watchlist", column: "sector", type: "TEXT" },
     { table: "watchlist", column: "screenshot_url", type: "TEXT" },
@@ -278,6 +647,79 @@ export async function runMigrations() {
     { table: "trades", column: "playbook_id", type: "INTEGER" },
     { table: "playbook", column: "parent_id", type: "INTEGER" },
     { table: "users", column: "theme", type: "TEXT DEFAULT 'dark'" },
+    { table: "trades", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "trades", column: "sector", type: "TEXT" },
+    { table: "watchlist", column: "score", type: "INTEGER" },
+    { table: "watchlist", column: "score_breakdown", type: "TEXT" },
+    { table: "watchlist", column: "scored_at", type: "TIMESTAMPTZ" },
+    { table: "trades", column: "context_snapshot", type: "JSONB" },
+    { table: "trades", column: "conviction", type: "INTEGER" },
+    { table: "trades", column: "confidence_grade", type: "TEXT" },
+    { table: "trades", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "trades", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "trades", column: "adv", type: "TEXT" },
+    { table: "trades", column: "long_name", type: "TEXT" },
+    { table: "trade_ideas", column: "market_cap", type: "TEXT" },
+    { table: "trade_ideas", column: "float", type: "TEXT" },
+    { table: "trade_ideas", column: "adv", type: "TEXT" },
+    { table: "trade_ideas", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "trade_ideas", column: "relative_volume", type: "NUMERIC(8,2)" },
+    { table: "trade_ideas", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "trade_ideas", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "trade_ideas", column: "sector", type: "TEXT" },
+    { table: "trade_ideas", column: "long_name", type: "TEXT" },
+    { table: "trade_ideas", column: "notes", type: "TEXT" },
+    { table: "trade_ideas", column: "idea_date", type: "TEXT" },
+    { table: "trade_ideas", column: "risk_amount", type: "NUMERIC(12,2)" },
+    { table: "trade_ideas", column: "setup_quality", type: "TEXT" },
+    { table: "watchlist", column: "market_cap", type: "TEXT" },
+    { table: "watchlist", column: "float", type: "TEXT" },
+    { table: "watchlist", column: "adv", type: "TEXT" },
+    { table: "watchlist", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "watchlist", column: "relative_volume", type: "NUMERIC(8,2)" },
+    { table: "watchlist", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "watchlist", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "watchlist", column: "long_name", type: "TEXT" },
+    // Team-shared «В игре» flag for the watchlist (additive).
+    { table: "watchlist", column: "in_play", type: "BOOLEAN NOT NULL DEFAULT FALSE" },
+    { table: "watchlist", column: "in_play_at", type: "TIMESTAMPTZ" },
+    { table: "market_events", column: "market_cap", type: "TEXT" },
+    { table: "market_events", column: "float", type: "TEXT" },
+    { table: "market_events", column: "adv", type: "TEXT" },
+    { table: "market_events", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "market_events", column: "relative_volume", type: "NUMERIC(8,2)" },
+    { table: "market_events", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "market_events", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "market_events", column: "sector", type: "TEXT" },
+    { table: "market_events", column: "long_name", type: "TEXT" },
+    { table: "research", column: "market_cap", type: "TEXT" },
+    { table: "research", column: "float", type: "TEXT" },
+    { table: "research", column: "adv", type: "TEXT" },
+    { table: "research", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "research", column: "relative_volume", type: "NUMERIC(8,2)" },
+    { table: "research", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "research", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "research", column: "sector", type: "TEXT" },
+    { table: "research", column: "long_name", type: "TEXT" },
+    { table: "playbook", column: "ticker", type: "TEXT" },
+    { table: "playbook", column: "market_cap", type: "TEXT" },
+    { table: "playbook", column: "float", type: "TEXT" },
+    { table: "playbook", column: "adv", type: "TEXT" },
+    { table: "playbook", column: "atr", type: "NUMERIC(12,4)" },
+    { table: "playbook", column: "relative_volume", type: "NUMERIC(8,2)" },
+    { table: "playbook", column: "beta", type: "NUMERIC(8,4)" },
+    { table: "playbook", column: "short_interest", type: "NUMERIC(8,4)" },
+    { table: "playbook", column: "sector", type: "TEXT" },
+    { table: "playbook", column: "long_name", type: "TEXT" },
+    { table: "playbook", column: "checklist_items", type: "JSONB" },
+    { table: "playbook", column: "screenshots", type: "JSONB" },
+    { table: "news_cache", column: "is_ticker_specific", type: "BOOLEAN DEFAULT FALSE" },
+    // Source URL for analyst actions: links back to news article (for source='news')
+    // or Yahoo Finance analysis page (for source='yahoo'). Lets the user click
+    // through to the original article / Yahoo page from the UI.
+    { table: "analyst_actions_cache", column: "source_url", type: "TEXT" },
+    { table: "analyst_actions_cache", column: "price_target", type: "TEXT" },
+    { table: "analyst_actions_cache", column: "price_target_from", type: "TEXT" },
   ];
 
   for (const m of addColumns) {
@@ -290,30 +732,165 @@ export async function runMigrations() {
 
   await pool.query(`UPDATE users SET name = 'Ориф' WHERE name = 'Ариф'`).catch(() => {});
 
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS playbook_checklist_marks (
+      playbook_id INTEGER NOT NULL,
+      item_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      trader TEXT NOT NULL DEFAULT '',
+      done BOOLEAN NOT NULL DEFAULT FALSE,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (playbook_id, item_id, scope, trader)
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "Migration: create playbook_checklist_marks"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_checklist_marks_playbook_idx ON playbook_checklist_marks (playbook_id)`).catch(() => {});
+
+  try {
+    const { rows: legacy } = await pool.query<{ id: number; checklist: string | null; screenshot_url: string | null; screenshot_notes: string | null }>(
+      `SELECT id, checklist, screenshot_url, screenshot_notes
+       FROM playbook
+       WHERE (checklist_items IS NULL AND checklist IS NOT NULL AND checklist != '')
+          OR (screenshots IS NULL AND screenshot_url IS NOT NULL AND screenshot_url != '')`
+    );
+    let migratedChecklists = 0, migratedScreens = 0;
+    for (const row of legacy) {
+      if (row.checklist) {
+        const items = row.checklist.split("\n")
+          .map((l) => l.replace(/^[-•*]\s*/, "").trim())
+          .filter(Boolean)
+          .map((text) => {
+            let h = 0;
+            for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+            return { id: `t${(h >>> 0).toString(36)}`, text };
+          });
+        if (items.length > 0) {
+          await pool.query(`UPDATE playbook SET checklist_items = $1::jsonb WHERE id = $2 AND checklist_items IS NULL`, [JSON.stringify(items), row.id]);
+          migratedChecklists++;
+        }
+      }
+      if (row.screenshot_url) {
+        const urls = row.screenshot_url.split("\n").map((u) => u.trim()).filter(Boolean);
+        let notes: string[] = [];
+        if (row.screenshot_notes) {
+          try {
+            const parsed = JSON.parse(row.screenshot_notes);
+            if (Array.isArray(parsed)) notes = parsed.map((n) => typeof n === "string" ? n : "");
+          } catch {
+            notes = row.screenshot_notes.split("\n");
+          }
+        }
+        const items = urls.map((url, i) => ({ url, notes: notes[i] || "" }));
+        if (items.length > 0) {
+          await pool.query(`UPDATE playbook SET screenshots = $1::jsonb WHERE id = $2 AND screenshots IS NULL`, [JSON.stringify(items), row.id]);
+          migratedScreens++;
+        }
+      }
+    }
+    if (migratedChecklists || migratedScreens) {
+      logger.info(`Backfilled jsonb: ${migratedChecklists} checklists, ${migratedScreens} screenshot sets`);
+    }
+
+    const { rows: legacyIdRows } = await pool.query<{ id: number; checklist_items: any }>(
+      `SELECT id, checklist_items FROM playbook
+       WHERE checklist_items IS NOT NULL
+         AND checklist_items::text LIKE '%"legacy-%'`
+    );
+    let reidCount = 0;
+    for (const row of legacyIdRows) {
+      if (!Array.isArray(row.checklist_items)) continue;
+      const fixed = row.checklist_items.map((it: any) => {
+        const text = String(it?.text ?? "").trim();
+        if (!text) return null;
+        let h = 0;
+        for (let i = 0; i < text.length; i++) h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+        return { id: `t${(h >>> 0).toString(36)}`, text };
+      }).filter(Boolean);
+      await pool.query(`UPDATE playbook SET checklist_items = $1::jsonb WHERE id = $2`, [JSON.stringify(fixed), row.id]);
+      reidCount++;
+    }
+    if (reidCount) logger.info(`Re-IDed ${reidCount} playbook checklists to content-hash IDs`);
+  } catch (e: any) {
+    logger.warn({ error: e.message }, "Migration: backfill checklist_items/screenshots");
+  }
+
+  try {
+    const { rows: tableRows } = await pool.query(
+      `SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'playbook_trade_ideas'`
+    );
+    if (tableRows.length > 0) {
+      const { rowCount: copied } = await pool.query(
+        `INSERT INTO trade_ideas
+          (playbook_id, ticker, side, entry_zone, target, stop, status, notes, idea_date,
+           market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
+           created_at)
+         SELECT
+           playbook_entry_id, ticker, side, entry_zone, target, stop,
+           COALESCE(status, 'watching'), notes, date,
+           market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
+           created_at
+         FROM playbook_trade_ideas`
+      );
+      await pool.query(`DROP TABLE playbook_trade_ideas CASCADE`);
+      logger.info(`Merged ${copied} playbook_trade_ideas rows into trade_ideas, dropped legacy table`);
+    }
+  } catch (e: any) {
+    logger.warn({ error: e.message }, "Migration: merge playbook_trade_ideas → trade_ideas");
+  }
+
   const { rowCount: restored } = await pool.query(
     `UPDATE playbook SET deleted_at = NULL WHERE deleted_at >= '2026-04-22T17:35:00Z' AND deleted_at <= '2026-04-22T17:40:00Z'`
   ).catch(() => ({ rowCount: 0 })) as any;
   if (restored > 0) logger.info(`Restored ${restored} accidentally deleted playbook entries`);
 
+  // Initial accounts come from SEED_USERS (JSON: [{"name","password","role"}]) — no PINs in the code.
+  // Without it, a fresh dev DB gets the desk names with random 6-digit PINs (logged once, development only).
+  const defaultUsers: { name: string; password: string; role: string }[] = (() => {
+    try {
+      const parsed = JSON.parse(process.env.SEED_USERS ?? "null");
+      if (Array.isArray(parsed)) return parsed.filter((u) => u && typeof u.name === "string" && typeof u.password === "string");
+    } catch (e: any) { logger.warn({ error: e.message }, "SEED_USERS is not valid JSON"); }
+    if (process.env.NODE_ENV === "production") return [];
+    const rand = () => String(Math.floor(100000 + Math.random() * 900000));
+    return [
+      { name: "Закир", role: "trader" }, { name: "Антон", role: "curator" }, { name: "Артур", role: "trader" },
+      { name: "Рахматулло", role: "trader" }, { name: "Умид", role: "trader" }, { name: "Максат", role: "trader" },
+      { name: "Тимур", role: "curator" }, { name: "Ориф", role: "curator" },
+    ].map((u) => ({ ...u, password: rand(), generated: true }));
+  })();
   const { rows: existingUsers } = await pool.query(`SELECT COUNT(*) as cnt FROM users`);
   if (Number(existingUsers[0]?.cnt) === 0) {
     logger.info("Seeding default users...");
-    const defaultUsers = [
-      { name: "Закир", password: "0101", role: "trader" },
-      { name: "Антон", password: "61725", role: "curator" },
-      { name: "Артур", password: "93547", role: "trader" },
-      { name: "Рахматулло", password: "5555", role: "trader" },
-      { name: "Умид", password: "15964", role: "trader" },
-      { name: "Максат", password: "82374", role: "trader" },
-      { name: "Тимур", password: "39156", role: "curator" },
-      { name: "Ориф", password: "07770", role: "curator" },
-    ];
+    const bcrypt = (await import("bcryptjs")).default;
     for (const u of defaultUsers) {
       try {
-        await pool.query(`INSERT INTO users (name, password, role) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`, [u.name, u.password, u.role]);
+        const hash = await bcrypt.hash(u.password, 10);
+        await pool.query(`INSERT INTO users (name, password_hash, role) VALUES ($1, $2, $3) ON CONFLICT (name) DO NOTHING`, [u.name, hash, u.role]);
       } catch (e: any) { logger.warn({ error: e.message }, `Seed user ${u.name}`); }
     }
+    if (defaultUsers.some((u: any) => u.generated)) {
+      logger.info({ pins: defaultUsers.map((u) => `${u.name}: ${u.password}`) }, "Dev users seeded with random PINs (set SEED_USERS to choose them)");
+    }
     logger.info("Default users seeded");
+  } else {
+    const { rows: nullHashUsers } = await pool.query(`SELECT name FROM users WHERE password_hash IS NULL`);
+    if (nullHashUsers.length > 0) {
+      logger.info({ count: nullHashUsers.length }, "Fixing users with NULL password_hash...");
+      const bcrypt = (await import("bcryptjs")).default;
+      for (const u of defaultUsers) {
+        try {
+          const hash = await bcrypt.hash(u.password, 10);
+          await pool.query(
+            `UPDATE users SET password_hash = $1 WHERE name = $2 AND password_hash IS NULL`,
+            [hash, u.name]
+          );
+        } catch (e: any) { logger.warn({ error: e.message }, `Fix password for ${u.name}`); }
+      }
+      if (defaultUsers.some((u: any) => u.generated)) {
+        const fixed = new Set(nullHashUsers.map((r: any) => r.name));
+        logger.info({ pins: defaultUsers.filter((u) => fixed.has(u.name)).map((u) => `${u.name}: ${u.password}`) }, "Dev users got random PINs (set SEED_USERS to choose them)");
+      }
+      logger.info("NULL password_hash users fixed");
+    }
   }
 
   const smbStrategies = [
@@ -339,46 +916,9 @@ export async function runMigrations() {
     { name: "Power Hour Momentum — 3:00–4:00 PM", folder: "SMB Capital — Intraday Setups", setupType: "Intraday Momentum", confidenceLevel: 68, conditions: "Last hour of trading (3:00-4:00 PM). Institutions execute large orders, creating momentum. Trade in direction of the day's trend.", checklist: "- Identify day's trend (above/below VWAP)\n- Wait until 3:00 PM\n- Look for volume increase (institutional activity)\n- Long if above VWAP all day, Short if below\n- Entry on pullback within the trend\n- Stop: VWAP cross\n- Target: close of day or trailing stop", notes: "Power hour is when institutions execute their remaining orders for the day. This creates volume and momentum. SMB teaches that the last hour often mirrors the first hour in terms of direction and opportunity." },
   ];
 
-  const additionalStrategies = [
-    { name: "Pre-Market Gap Scan — Watchlist Build", folder: "Pre-Market & After Hours", setupType: "Другой", confidenceLevel: 85, conditions: "Before market open (7:00-9:30 AM ET). Scan for stocks gapping >4% on catalyst. Build watchlist with levels, plan entries.", checklist: "- Scan at 7:00 AM for gaps >4%\n- Check catalyst (earnings, news, upgrade/downgrade)\n- Note pre-market volume (>500K = in play)\n- Mark key levels: PM high, PM low, prior day close\n- Calculate ATR for position sizing\n- Rank top 3-5 stocks by catalyst quality\n- Set alerts at key levels", notes: "The most important 30 minutes of the day happens before the market opens. Every successful prop trader starts with a thorough pre-market scan. This framework ensures you're prepared, not reactive." },
-    { name: "After Hours Earnings React — Next Day Prep", folder: "Pre-Market & After Hours", setupType: "Другой", confidenceLevel: 70, conditions: "Stock reports earnings after hours. Analyze reaction, prepare next-day game plan based on after-hours price action.", checklist: "- Note earnings results vs expectations\n- Watch after-hours price reaction\n- Identify key AH levels (high, low, close)\n- Check options implied move vs actual\n- Prepare bull/bear scenario for next day\n- Set pre-market alerts", notes: "After-hours reaction to earnings often sets the tone for the next trading day. Preparing the night before gives you a significant edge over traders who react in real-time." },
-    { name: "Overnight Hold — Swing Catalyst", folder: "Pre-Market & After Hours", setupType: "Другой", confidenceLevel: 55, conditions: "Hold position overnight when catalyst supports multi-day move. Reduce size for overnight risk. Set hard stop.", checklist: "- Catalyst supports multi-day move (earnings beat, FDA, M&A)\n- Reduce position to 50% of intraday size\n- Set hard stop (worst-case exit level)\n- Calculate overnight gap risk\n- Check after-hours liquidity\n- Set pre-market alert for review\n- Re-evaluate at next open", notes: "Overnight holds add gap risk but capture multi-day moves. Key rule: if you wouldn't enter the position fresh at the close, don't hold it overnight. Always reduce size." },
-    { name: "Tape Reading — Order Flow Entry", folder: "Advanced Tape Reading", setupType: "Другой", confidenceLevel: 78, conditions: "Read Level 2 / Time & Sales to identify institutional activity. Large prints, hidden orders, and bid/ask dynamics reveal intent.", checklist: "- Watch Time & Sales for large prints (>10K shares)\n- Note bid/ask size imbalances on Level 2\n- Look for iceberg orders (repeated same-size prints)\n- Identify institutional accumulation vs distribution\n- Entry when tape confirms your directional bias\n- Stop if tape reading thesis is invalidated", notes: "Tape reading is the original edge. Before charts, traders read the tape. Large prints at the ask = buying pressure. Large prints at the bid = selling pressure. SMB Capital considers tape reading a core skill." },
-    { name: "Dark Pool Print — Hidden Liquidity", folder: "Advanced Tape Reading", setupType: "Другой", confidenceLevel: 65, conditions: "Unusually large dark pool prints signal institutional interest. Trade in direction of the largest prints when they cluster at a price level.", checklist: "- Monitor dark pool print data (Finra ADF, TRF)\n- Look for prints >100K shares\n- Note price level where prints cluster\n- If prints at/above ask = bullish\n- If prints at/below bid = bearish\n- Use as confirmation, not primary signal\n- Combine with chart pattern for entry", notes: "Dark pools account for ~40% of US equity volume. Large institutional orders often execute there to avoid market impact. When you can see these prints, you're seeing what smart money is doing." },
-    { name: "Level 2 Spoofing Detection", folder: "Advanced Tape Reading", setupType: "Другой", confidenceLevel: 60, conditions: "Detect spoofing on Level 2 — large orders that appear and disappear to manipulate price. Trade opposite the spoof direction.", checklist: "- Watch for large bid/ask orders that repeatedly cancel\n- Spoof orders usually >50K shares on illiquid stocks\n- Note if price moves toward the spoof, then spoof is removed\n- Real orders get filled, spoof orders get cancelled\n- If large bid keeps disappearing = fake support = bearish\n- If large ask keeps disappearing = fake resistance = bullish\n- Use tape confirmation before entry", notes: "Spoofing is illegal but still occurs, especially on small/mid cap stocks. Recognizing it gives you an edge because you understand which levels are real and which are fake. Key: real orders absorb volume, spoof orders run." },
-    { name: "Mean Reversion — Oversold Bounce", folder: "Mean Reversion Plays", setupType: "Reversal", confidenceLevel: 72, conditions: "Stock drops >3 standard deviations from its mean (20-day MA). Statistical probability favors a bounce. Long the oversold condition.", checklist: "- Stock >3 StdDev below 20-day MA\n- RSI < 20 on daily chart\n- No fundamental catalyst for further downside\n- Volume exhaustion (decreasing on sell-off)\n- Entry on first green candle after selling exhaustion\n- Stop below recent low\n- Target: 20-day MA (mean)", notes: "Mean reversion works because extreme moves are statistically unsustainable. However, key filter: avoid stocks with ongoing fundamental deterioration (bankruptcy risk, fraud, etc.). Best on large-cap with temporary panic." },
-    { name: "Rubber Band Snap — Extended Stock Reversal", folder: "Mean Reversion Plays", setupType: "Reversal", confidenceLevel: 68, conditions: "Stock stretched far from VWAP or moving average like a rubber band. Trade the snap-back to the mean when momentum exhausts.", checklist: "- Stock >2% from VWAP (intraday) or >5% from 20MA (daily)\n- Momentum indicators showing divergence\n- Volume decreasing on the extension\n- Candle pattern showing reversal (doji, hammer, engulfing)\n- Entry on reversal confirmation\n- Stop beyond the extreme\n- Target: VWAP or moving average", notes: "The rubber band analogy: the further a stock stretches from its mean, the more energy is stored for the snap-back. Works best when the extension is on declining volume — showing exhaustion rather than genuine trend." },
-    { name: "Pairs Trade — Relative Value", folder: "Mean Reversion Plays", setupType: "Другой", confidenceLevel: 75, conditions: "Two correlated stocks diverge. Long the underperformer, short the outperformer. Profit when the spread reverts to mean.", checklist: "- Identify correlated pair (same sector, similar business)\n- Calculate historical spread (ratio or price difference)\n- Wait for spread to reach 2+ StdDev from mean\n- Long the laggard, short the leader (equal dollar amounts)\n- Monitor correlation — if it breaks, exit\n- Target: spread returns to mean\n- Max hold: 5-10 days", notes: "Pairs trading is market-neutral — you profit from the relative move, not the absolute direction. Classic pairs: XOM/CVX, GOOGL/META, JPM/BAC. Risk: the correlation can break permanently (structural change)." },
-    { name: "Gap Fill — Statistical Edge", folder: "Gap Trading", setupType: "Gap", confidenceLevel: 70, conditions: "Most gaps fill within 1-3 days (statistical tendency). Trade the gap fill when conditions support mean reversion back to prior close.", checklist: "- Gap without strong catalyst (earnings, FDA excluded)\n- Gap size < 5% (large gaps less likely to fill same day)\n- Pre-market volume normal (not elevated)\n- If gap up: short toward prior close\n- If gap down: long toward prior close\n- Entry after first 15 min (avoid opening volatility)\n- Stop beyond gap extreme\n- Target: prior day close (full fill)", notes: "Statistical studies show ~70% of gaps eventually fill. However, catalyst-driven gaps (earnings, FDA) fill less often. Best gap fill trades are on 'nothing' gaps — gap on no real news, just overnight drift." },
-    { name: "Gap and Trap — False Breakout", folder: "Gap Trading", setupType: "Gap", confidenceLevel: 72, conditions: "Stock gaps up through resistance but immediately sells off. The gap traps breakout buyers. Short the trapped longs as they panic.", checklist: "- Stock gaps above key resistance level\n- First 15 minutes: selling pressure emerges\n- Stock falls back below resistance (now support becomes resistance)\n- Trapped longs begin to panic sell\n- Entry short on break below gap low or key level\n- Volume increases on the reversal\n- Stop above gap high\n- Target: prior support or gap fill", notes: "Gap and Trap is the opposite of Gap and Go. It works because breakout buyers get trapped when the gap fails. Their stop-loss selling accelerates the move down. Best when the gap is on weak catalyst or into major resistance." },
-    { name: "Exhaustion Gap — Reversal Signal", folder: "Gap Trading", setupType: "Gap", confidenceLevel: 65, conditions: "After an extended multi-day move, a final gap in the trend direction signals exhaustion. Trade the reversal.", checklist: "- Stock has moved >20% in one direction over 3-5 days\n- Final gap in the same direction (up gap after rally, down gap after selloff)\n- Volume highest of the entire move\n- Intraday reversal candle forms (shooting star, doji)\n- Entry on reversal confirmation\n- Stop above/below exhaustion gap extreme\n- Target: 38-50% retrace of entire move", notes: "Exhaustion gaps are one of the most reliable reversal signals in technical analysis. They represent the last burst of momentum before the trend reverses. Key identifier: the gap comes AFTER a multi-day move, not at the beginning." },
-    { name: "Multi-Day Breakout — Weekly Range Expansion", folder: "Swing Trading Setups", setupType: "Breakout", confidenceLevel: 76, conditions: "Stock breaks out of a weekly/monthly range on catalyst. Hold for multi-day measured move. Wider stops, bigger targets.", checklist: "- Tight weekly range (Bollinger Bands squeezing)\n- Breakout on catalyst with volume >2x average\n- Close above range high (weekly candle)\n- Entry on pullback to breakout level\n- Stop below breakout level (former resistance = new support)\n- Target: measured move (range height added to breakout)\n- Hold time: 3-15 days", notes: "Weekly range breakouts capture larger moves than intraday trades. The tight range = low volatility, which precedes high volatility (regime change). Best combined with fundamental catalyst." },
-    { name: "Moving Average Crossover — Trend Change", folder: "Swing Trading Setups", setupType: "Другой", confidenceLevel: 63, conditions: "8/21 EMA crossover on daily chart signals trend change. Enter in direction of the cross with swing time frame.", checklist: "- 8 EMA crosses above 21 EMA = bullish\n- 8 EMA crosses below 21 EMA = bearish\n- Volume confirms crossover\n- Wait for pullback to 8 EMA after cross\n- Entry on bounce off 8 EMA in crossover direction\n- Stop: below 21 EMA\n- Target: prior swing high/low or Fibonacci extension\n- Hold: 5-20 days", notes: "EMA crossovers lag by nature but filter noise. The 8/21 combo captures trend changes faster than 50/200. Best used as a trend filter — take only long setups when 8>21, short setups when 8<21." },
-    { name: "Fibonacci Retracement — Measured Pullback", folder: "Swing Trading Setups", setupType: "Breakout", confidenceLevel: 71, conditions: "Stock in trend pulls back to key Fibonacci level (38.2%, 50%, 61.8%). Enter at Fib level with stop below next Fib.", checklist: "- Identify clear trend (impulse move)\n- Draw Fibonacci from swing low to swing high (uptrend)\n- Wait for pullback to 38.2%, 50%, or 61.8% level\n- Look for reversal candle at Fib level\n- Volume should decrease on pullback\n- Entry on bounce from Fib with volume\n- Stop below next Fib level\n- Target: retest of prior high or 1.618 extension", notes: "Fibonacci levels are self-fulfilling because so many traders use them. The 61.8% level is especially powerful — it's the 'golden ratio' pullback. If price holds 61.8%, the trend is likely intact. Below 78.6% = trend likely failed." },
-    { name: "Earnings Whisper — Pre-Earnings Position", folder: "Earnings Strategies", setupType: "Другой", confidenceLevel: 58, conditions: "Accumulate position before earnings when technical setup + whisper numbers suggest upside surprise. Small size for binary risk.", checklist: "- Earnings within 1-3 days\n- Technical setup bullish (above MAs, tight range)\n- Options IV < historical norm (cheap options)\n- Whisper number higher than consensus\n- Revenue growth trend positive\n- Entry: small position (25-50% normal size)\n- Define max loss BEFORE entry\n- Exit plan for both scenarios", notes: "Pre-earnings positions are high-risk binary trades. SMB teaches: if you trade earnings, use reduced size and define your max loss before entry. The best risk/reward comes when options IV is below average — you're getting paid less for the uncertainty." },
-    { name: "Post-Earnings Drift (PEAD) — Follow Surprise", folder: "Earnings Strategies", setupType: "Другой", confidenceLevel: 74, conditions: "After earnings surprise, stock continues drifting in the direction of the surprise for days/weeks. Trade the drift, not the gap.", checklist: "- Significant earnings surprise (>10% above/below estimates)\n- Initial gap confirmed by volume\n- Wait for first pullback (don't chase the gap)\n- Entry on pullback in direction of surprise\n- Positive surprise: long pullback to VWAP/21EMA\n- Negative surprise: short bounce to VWAP/21EMA\n- Hold: 5-20 days\n- Trail stop using 8 EMA daily", notes: "Post-Earnings Announcement Drift (PEAD) is one of the most well-documented anomalies in finance. Studies show stocks continue moving in the direction of the earnings surprise for 60+ days. The market underreacts to earnings surprises." },
-    { name: "Earnings Range Anticipation — Straddle Alternative", folder: "Earnings Strategies", setupType: "Другой", confidenceLevel: 50, conditions: "Anticipate the earnings range based on implied move. Trade the break of that range rather than guessing direction.", checklist: "- Calculate expected move from options (straddle price)\n- Mark expected range (close +/- expected move)\n- After earnings: if price exceeds expected range = continuation\n- If price within expected range = mean reversion to close\n- Entry on confirmation of scenario\n- Stop based on expected range boundary\n- Target: 1.5x expected move (if exceeded) or prior close (if within)", notes: "Instead of guessing earnings direction, this framework uses the options market's expected move as a roadmap. When the actual move exceeds expectations, momentum is real. When it stays within, the move is priced in." },
-    { name: "Sector Rotation — Follow the Money", folder: "Macro & Sector Plays", setupType: "Другой", confidenceLevel: 72, conditions: "Money rotates between sectors based on economic cycle. Identify which sectors are receiving inflows and trade the leaders.", checklist: "- Monitor sector ETF relative performance (XLF, XLE, XLK, etc.)\n- Identify sector showing 3+ days of outperformance\n- Find leading stocks within that sector\n- Entry on pullback in the leading stock\n- Confirm with sector ETF still trending\n- Stop if sector rotation reverses\n- Target: sector trend continuation", notes: "Sector rotation is driven by institutional portfolio rebalancing. When the economy shifts, trillions of dollars rotate. Early identification = riding the institutional wave. Track XL_ ETFs daily for rotation signals." },
-    { name: "Fed Day / FOMC — 2:00 PM Reversal", folder: "Macro & Sector Plays", setupType: "Другой", confidenceLevel: 62, conditions: "FOMC announcement at 2:00 PM ET. Initial move often reverses. Wait for the 'whipsaw' and trade the real direction.", checklist: "- No new positions before 2:00 PM on FOMC day\n- Note initial reaction direction at 2:00 PM\n- Wait 15-30 minutes for the 'whipsaw'\n- If initial move reverses = trade the reversal\n- If initial move continues with volume = trade continuation\n- Reduce size (FOMC = volatile)\n- Stop tight (FOMC moves are fast)\n- Close all FOMC trades by end of day", notes: "FOMC days have a well-known pattern: initial spike at 2:00 PM, then reversal, then the 'real' move. The initial reaction is often wrong because algorithms react to headlines before the full statement is analyzed. Patience is key." },
-    { name: "CPI / Jobs Report — Morning Gap Framework", folder: "Macro & Sector Plays", setupType: "Другой", confidenceLevel: 67, conditions: "Major economic data (CPI, NFP, PPI) released at 8:30 AM ET. Creates significant gaps. Trade the gap framework after open.", checklist: "- Note data release at 8:30 AM (pre-market)\n- Calculate gap vs expectations\n- If data better than expected = bullish gap (usually)\n- If data worse = bearish gap\n- Wait for market open, don't pre-market trade\n- Apply Gap and Go or Gap Fill framework\n- Sector impact: CPI → tech/growth, Jobs → financials\n- Reduce size on macro days", notes: "Macro data days create the biggest moves because they affect ALL stocks simultaneously. CPI and jobs data move the entire market. Key: don't trade the data, trade the reaction to the data. The same CPI number can be bullish or bearish depending on context." },
-    { name: "Dollar Cost Into Winner — Pyramiding", folder: "Position Management", setupType: "Другой", confidenceLevel: 80, conditions: "When trade is working, add to the position (pyramid) at predetermined levels. Maximize winners, don't just take profit.", checklist: "- Initial entry at planned level (full or partial)\n- First add: after breakout confirms (price + volume)\n- Second add: on first pullback that holds\n- Each add is smaller than the previous\n- Move stop to breakeven after first add\n- Trail stop to lock in profits on adds\n- Never add to losers\n- Max position: 3 tiers", notes: "Pyramiding into winners is how prop traders maximize their best trades. SMB calls this 'pressing your winners.' The key: each add must be smaller, and the stop must move up. Never average down — that's the opposite of this strategy." },
-    { name: "Scaling Out — Tiered Profit Taking", folder: "Position Management", setupType: "Другой", confidenceLevel: 85, conditions: "Instead of all-or-nothing exits, scale out in tiers. Take 1/3 at first target, 1/3 at second, trail the rest.", checklist: "- Before entry: define 3 target levels\n- Target 1 (1R): take 1/3 off, move stop to breakeven\n- Target 2 (2R): take 1/3 off, trail stop\n- Target 3 (3R+): trail remaining 1/3 with tight stop\n- If stop hits before T1: full loss (acceptable)\n- Result: winners are bigger, losers are controlled\n- Track average R-multiple", notes: "Scaling out is a risk management technique that ensures you capture profits while keeping upside potential. The psychology: taking partial profits reduces the urge to close the entire position too early." },
-    { name: "Max Loss Day Rule — Circuit Breaker", folder: "Position Management", setupType: "Другой", confidenceLevel: 95, conditions: "Hard daily loss limit. When reached, STOP TRADING. No exceptions. This is the most important risk management rule.", checklist: "- Set max daily loss (e.g., $500 or 2% of account)\n- Track P&L in real-time\n- At 50% of max loss: reduce size by half\n- At 75% of max loss: only A+ setups\n- At 100% of max loss: STOP. Walk away.\n- Review losing trades end of day\n- NO revenge trading\n- Reset next day fresh", notes: "The max loss day rule is NON-NEGOTIABLE. Every prop firm enforces this. Without it, one bad day can destroy a month of profits. SMB Capital says: 'Live to trade another day.' The market will be there tomorrow." },
-  ];
+  const additionalStrategies: typeof smbStrategies = [];
 
-  const opgImbxMocStrategies = [
-    { name: "OPG — Opening Price Guarantee Order", folder: "OPG / Auction Plays", setupType: "OPG", confidenceLevel: 75, conditions: "Use OPG (Market-On-Open) order to participate in the NYSE/NASDAQ opening auction. Capture the opening print when catalyst is clear overnight.", checklist: "- Strong overnight catalyst (earnings, news, upgrade)\n- Pre-market direction is clear and consistent\n- Submit OPG order before 9:28 AM ET\n- Size: 50% of normal (auction risk)\n- OPG executes only at the opening print\n- If no fill, order cancels automatically\n- Review fill vs pre-market price\n- Manage position from open", notes: "OPG orders guarantee you participate in the opening auction at the official opening price. This is how institutions enter positions. Advantage: no slippage from the open, you get the exact opening print. Best on gap days with clear catalyst." },
-    { name: "OPG Gap Fade — Auction Reversal", folder: "OPG / Auction Plays", setupType: "OPG", confidenceLevel: 68, conditions: "Stock gaps significantly on weak catalyst. OPG order to fade the gap — enter opposite direction at the open, expecting gap fill.", checklist: "- Gap >3% but catalyst is weak or already priced in\n- Pre-market volume is moderate (not extreme)\n- No institutional upgrades/downgrades\n- Submit OPG order to fade gap direction\n- Size: 25-50% of normal\n- Target: gap fill (prior close)\n- Stop: beyond gap extreme +0.5%\n- Time limit: close by lunch if not working", notes: "Fading gaps at the open is risky but statistically favorable when the catalyst is weak. The OPG order ensures you get the exact opening price. Key: only fade gaps with no fundamental reason. Earnings/FDA gaps should NOT be faded." },
-    { name: "OPG Momentum — Opening Auction Breakout", folder: "OPG / Auction Plays", setupType: "OPG", confidenceLevel: 72, conditions: "Use OPG to ride momentum when opening auction price will be significantly different from prior close. Follow the smart money flow.", checklist: "- Pre-market shows strong directional bias\n- Imbalance data (if available) confirms direction\n- Submit OPG in direction of momentum\n- Immediately set stop after fill\n- Target 1: first 5-min range extreme\n- Target 2: VWAP or prior resistance/support\n- Scale out in thirds\n- Best on In Play stocks with catalyst", notes: "OPG momentum captures the institutional order flow at the open. When there's a clear imbalance (more buy than sell orders), the opening price adjusts up and the momentum continues. Getting in at the auction = best possible entry." },
-    { name: "IMBX — Opening Imbalance Long", folder: "Imbalance (IMBX) Strategies", setupType: "Imbalance", confidenceLevel: 74, conditions: "NYSE/NASDAQ publish order imbalance data at 9:20 AM. Significant buy imbalance (IMBX > 500K shares) signals strong opening demand. Long into the imbalance.", checklist: "- Check imbalance data starting at 9:20 AM\n- Buy imbalance > 500K shares = significant\n- Confirm catalyst supports the direction\n- Entry via OPG order or first pullback after open\n- Imbalance should be consistent (not flipping)\n- Watch for paired-off vs total imbalance ratio\n- Stop: if imbalance reverses or VWAP breaks\n- Target: morning high or prior resistance", notes: "Order imbalance data is public and published by exchanges. A large buy imbalance means there are significantly more buy orders than sell orders for the open. This creates upward pressure on the opening price. Prop firms monitor this data religiously." },
-    { name: "IMBX — Opening Imbalance Short", folder: "Imbalance (IMBX) Strategies", setupType: "Imbalance", confidenceLevel: 74, conditions: "Significant sell imbalance (IMBX > 500K shares on sell side) at 9:20 AM. Strong selling pressure expected at open. Short into the imbalance.", checklist: "- Sell imbalance > 500K shares at 9:20+ AM\n- Confirm negative catalyst (earnings miss, downgrade)\n- Entry via OPG short or first bounce after open\n- Imbalance should be consistent and growing\n- Watch 9:28 AM final imbalance (most reliable)\n- Stop: if imbalance reverses significantly\n- Target: morning low or gap fill\n- Close by midday if not working", notes: "Sell imbalances create supply/demand asymmetry at the open. Institutions are net sellers and the opening price adjusts down. Key: the 9:28 AM imbalance is the most reliable — earlier readings can flip." },
-    { name: "IMBX Fade — Imbalance Reversal", folder: "Imbalance (IMBX) Strategies", setupType: "Imbalance", confidenceLevel: 58, conditions: "When opening imbalance is extreme but reverses by 9:28 AM, the initial move often reverses. Fade the expected direction.", checklist: "- Large imbalance at 9:20 (>1M shares one direction)\n- By 9:28 AM imbalance reduces significantly or flips\n- This signals the imbalance was absorbed / crossed\n- Trade opposite the original imbalance direction\n- Wait for open, then entry on reversal candle\n- Small size (counter-trend play)\n- Stop tight — opposite side of opening range\n- Target: VWAP", notes: "Imbalance fades are advanced plays. When a large buy imbalance at 9:20 gets paired off by 9:28, it means the selling interest absorbed the demand. The opening may still pop up, but it quickly reverses. This is a trap for imbalance-only traders." },
-    { name: "IMBX + VWAP Confirmation", folder: "Imbalance (IMBX) Strategies", setupType: "Imbalance", confidenceLevel: 80, conditions: "Combine imbalance data with VWAP direction. When opening imbalance aligns with VWAP trend (stock opens above/below VWAP in same direction as imbalance), the signal is strongest.", checklist: "- Buy imbalance + stock above developing VWAP = strong long\n- Sell imbalance + stock below developing VWAP = strong short\n- Entry on first pullback to VWAP after open\n- Volume must confirm direction\n- Contradictory signals (buy imbalance but below VWAP) = no trade\n- Stop: VWAP cross\n- Target: prior day level or measured move\n- This is a high-probability A+ setup when aligned", notes: "Combining two institutional signals (imbalance + VWAP) creates a high-probability setup. Institutions use both VWAP and auction data. When they agree, you're aligned with smart money. When they contradict, stay flat." },
-    { name: "MOC — Market On Close Order", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 76, conditions: "Use MOC (Market-On-Close) order to participate in the NYSE closing auction. Capture the closing print for next-day gap positioning.", checklist: "- MOC orders must be submitted by 3:45 PM ET (NYSE) or 3:50 PM (NASDAQ)\n- Determine direction based on day's trend (above/below VWAP)\n- Size: 50% of normal for overnight risk\n- MOC guarantees fill at official closing price\n- Cannot cancel after 3:45 PM deadline\n- Best for next-day catalyst plays (earnings AH, overnight events)\n- Review closing imbalance data at 3:45 PM\n- Set overnight stop-loss alert", notes: "MOC orders are used by institutions to execute at the closing price — the most important price of the day. For prop traders, MOC is useful when you want to hold overnight and want the best closing price without chasing." },
-    { name: "MOC Imbalance — Closing Auction Play", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 73, conditions: "NYSE publishes closing imbalance data at 3:45 PM. Large MOC imbalances create predictable price moves into the close. Trade the last 15 minutes.", checklist: "- Check closing imbalance at 3:45 PM ET\n- Buy imbalance > 500K shares = bullish into close\n- Sell imbalance > 500K shares = bearish into close\n- Entry at 3:45-3:50 PM in direction of imbalance\n- Price typically moves toward imbalance direction\n- Quick trade: entry 3:45, exit at close or MOC\n- No overnight hold required\n- Best on index rebalance / options expiration days", notes: "Closing imbalances are the most predictable short-term trades in the market. Index funds, ETFs, and institutional rebalancing create massive order imbalances at the close. On rebalancing days, these can be >$2B. The price MUST adjust to fill these orders." },
-    { name: "MOC Fade — Closing Reversal", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 60, conditions: "After an extreme closing imbalance pushes price, the next morning often sees a reversal. Fade the closing auction move at next open.", checklist: "- Large closing imbalance pushed price >0.5% in last 15 min\n- The move was mechanical (rebalance) not fundamental\n- Next day: fade the closing move direction\n- Entry: at open or first 15 min of next day\n- Target: prior day's 3:45 PM price (pre-imbalance level)\n- Stop: beyond closing price\n- Works best on quarterly rebalance days\n- Avoid if fundamental catalyst exists", notes: "Closing imbalances are mechanical — index funds MUST buy or sell regardless of price. This creates artificial moves that often reverse the next morning when the forced buying/selling is done. Key: only fade mechanical moves, not fundamental ones." },
-    { name: "MOC + Options Expiration — Pin Risk Play", folder: "MOC / Closing Auction", setupType: "Другой", confidenceLevel: 62, conditions: "On options expiration (monthly/weekly), stocks tend to 'pin' to strike prices with maximum open interest. Trade the pin into the close.", checklist: "- Identify max pain / highest OI strike price\n- After 2:00 PM on OPEX day, monitor price vs strike\n- If stock near high-OI strike, expect pinning action\n- Trade toward the pin strike (mean reversion to strike)\n- MOC order at the pin strike if profitable\n- Size small — pinning is not guaranteed\n- Works best on large-cap with high options volume\n- Close all positions at market close", notes: "Options expiration pinning occurs because market makers hedge their delta by buying/selling stock. As options expire, this hedging creates mean-reversion toward the highest open interest strike. This effect is strongest in the last 2 hours of OPEX day." },
-  ];
+  const opgImbxMocStrategies: typeof smbStrategies = [];
 
   const seedTags: Record<string, string> = {
     "ATM Offering Play — Short": "Offering Play,ATM Offering,Fade Trade,VWAP Rejection,Offering,ATM,S-1 Filing,High Relative Volume,Volume Spike",
@@ -401,44 +941,6 @@ export async function runMigrations() {
     "News Fade — Sell/Short the News": "Fade Trade,News Spike Fade,Reversal,Short,Breaking News,Analyst Upgrade,VWAP",
     "In Play Stock Framework — Отбор акций": "Gap Up,Gap Down,High Relative Volume,Volume Spike,Breaking News,Earnings Beat",
     "Power Hour Momentum — 3:00–4:00 PM": "Intraday Momentum,VWAP Trend,Trend Continuation,Power Hour,Last Hour,VWAP",
-    "Pre-Market Gap Scan — Watchlist Build": "Gap Up,Gap Down,Premarket,Premarket High,Premarket Low,High Relative Volume",
-    "After Hours Earnings React — Next Day Prep": "Earnings Gap Up,Earnings Gap Down,Second Day Play,After Hours,Earnings Beat,Earnings Miss",
-    "Overnight Hold — Swing Catalyst": "Swing Hold,Overnight Hold Gap,Multi-Day Momentum,Earnings Beat,FDA Approval",
-    "Tape Reading — Order Flow Entry": "Tape Reading Entry,Level 2 Entry,Dark Pool Print,Block Trade Follow,High Relative Volume",
-    "Dark Pool Print — Hidden Liquidity": "Dark Pool Print,Block Trade Follow,Tape Reading Entry,Dark Pool Level,Dark Pool Volume",
-    "Level 2 / Order Book Reading": "Tape Reading Entry,Level 2 Entry,Full Size,High Relative Volume",
-    "Exhaustion Print — Volume Climax": "Exhaustion Short,Blow-Off Top Short,Reversal,Volume Spike,HOD,High Volatility",
-    "RSI Oversold Bounce — Mean Reversion": "RSI Oversold Bounce,Mean Reversion,Reversal,Bollinger Band Bounce,Daily Support,LOD,Low Volatility",
-    "Bollinger Band Squeeze → Expansion": "Bollinger Band Bounce,Mean Reversion,Breakout,Range Expansion,Low Volatility,Narrow Range Break (NR7)",
-    "Pairs Trade — Long / Short Hedge": "Pairs Trade,Relative Value,ETF Arbitrage,Hedged Swing,Sector Rotation",
-    "Gap Fill Strategy — Intraday Reversion": "Gap Fill,Mean Reversion,Gap Up,Gap Down,VWAP,Gap Fill Level,Open Price",
-    "Gap Up Continuation — Trend Follow": "Gap and Go,Gap and Go Long,Trend Continuation,Breakout,Gap Up,Earnings Beat,VWAP,Opening Range High",
-    "Gap Down Reversal — Catch the Bounce": "Gap Fill,Reversal,Red to Green,Gap Down,LOD,VWAP Reclaim,Volume Spike",
-    "Earnings Gap Down Short — Continuation": "Earnings Gap Down,Gap and Go Short,Trend Continuation,Short,Earnings Miss,Guidance Down,VWAP,Daily Resistance",
-    "Swing Breakout — Weekly Range": "Weekly Breakout,Breakout,Swing Hold,Multi-Day Momentum,52-Week High,Weekly Resistance,High Relative Volume",
-    "Swing Pullback — 20 SMA Bounce": "Pullback Trade,Swing Hold,Trend Continuation,SMA20,Daily Support,Normal Volume",
-    "Swing Reversal — Double Bottom": "Double Bottom,Reversal,Swing Hold,V-Bottom Reversal,Daily Support,52-Week Low,Volume Spike",
-    "Post-Earnings Drift (PEAD)": "Earnings Drift (PEAD),Post-Earnings Continuation,Trend Continuation,Swing Hold,Earnings Beat,Earnings Miss,High Relative Volume",
-    "Pre-Earnings Volatility Play": "Pre-Earnings Run,Catalyst Anticipation,Swing Hold,Earnings Season,Unusual Options Activity",
-    "Earnings Straddle — Volatility Capture": "Catalyst Anticipation,Pre-Earnings Run,Earnings Season,Unusual Options Activity,High Volatility",
-    "Sector Rotation — Follow the Flow": "Sector Rotation Play,Relative Strength Trade,Macro Play,Sector Leading,Sector Lagging,Sector Rotation",
-    "Macro Catalyst Trade — FOMC / CPI / NFP": "Macro Play,Fundamental / Catalyst Trade,FOMC,CPI,NFP,Interest Rate,Fed Day,VIX Spike",
-    "Correlation Trade — Sector ETF + Stock": "Pairs Trade,ETF Arbitrage,Relative Value,Sector Rotation,SPY Above VWAP,QQQ Leading",
-    "Scaling — Pyramid Into Winners": "Pyramid Into Winner,Add to Winner,Scale In,Pyramided In,Added on Confirmation,Trending Day",
-    "Risk Unit Framework — Max Loss / Day": "Cut Loss Fast,Stopped Out,No Stop Set,Over-Sized,Bad Risk/Reward,Discipline Win",
-    "Partial Profit — Trail Stop System": "Scale Out,Partial Profit,Trail Stop,Scaled Out Well,Let Runner Run,Full Target Hit",
-    "OPG — Стандартный Opening Imbalance": "Opening Imbalance (OPG),Imbalance,ORB,Open Drive,First 15min,Volume Spike,High Relative Volume",
-    "OPG — Fade Large Imbalance": "Opening Imbalance (OPG),Imbalance,Fade Trade,Reversal,Open Drive,First 15min,VWAP",
-    "OPG — Index Arbitrage at Open": "Opening Imbalance (OPG),ETF Arbitrage,Pairs Trade,Open Drive,SPY Above VWAP,First 15min",
-    "OPG — Sector ETF Imbalance": "Opening Imbalance (OPG),Sector Rotation Play,ETF Arbitrage,Sector Leading,First 15min",
-    "IMBX — Continuous Book Imbalance": "Imbalance,Tape Reading Entry,Level 2 Entry,Intraday Momentum,Trending Day",
-    "IMBX — Bid Stack Fade (Large Passive Seller)": "Imbalance,Fade Trade,Tape Reading Entry,Level 2 Entry,Dark Pool Print",
-    "IMBX — Ask Stack Break (Hidden Buyer)": "Imbalance,Breakout,Tape Reading Entry,Level 2 Entry,Dark Pool Print,Volume Spike",
-    "IMBX + VWAP Confluence": "Imbalance,VWAP Bounce,VWAP Rejection,Tape Reading Entry,VWAP,Trending Day",
-    "MOC — Standard Closing Imbalance Trade": "MOC Imbalance,Closing Cross Play,Imbalance,Last Hour,Power Hour",
-    "MOC — Large Imbalance Fade (Next Day)": "MOC Imbalance,Closing Cross Play,Fade Trade,Reversal,Last Hour,Gap Down",
-    "MOC Fade — Closing Reversal": "MOC Imbalance,Closing Cross Play,Fade Trade,Reversal,Last Hour,Power Hour",
-    "MOC + Options Expiration — Pin Risk Play": "MOC Imbalance,Closing Cross Play,Imbalance,OPEX Day,Last Hour,Round Number",
   };
 
   const allSeedStrategies = [...smbStrategies, ...additionalStrategies, ...opgImbxMocStrategies];
@@ -477,5 +979,399 @@ export async function runMigrations() {
     logger.info(`All ${allSeedStrategies.length} playbook strategies already exist, skipping seed`);
   }
 
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS watchlist_score_idx ON watchlist(score)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS checklist_template_active_idx ON pre_trade_checklist_template(active)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS checklist_template_sort_idx ON pre_trade_checklist_template(sort_order)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS checklist_responses_ticker_idx ON pre_trade_checklist_responses(ticker)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS checklist_responses_trade_id_idx ON pre_trade_checklist_responses(trade_id)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS trade_ideas_status_idx ON trade_ideas(status)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS trade_ideas_ticker_idx ON trade_ideas(ticker)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS trade_ideas_trader_idx ON trade_ideas(trader)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS trade_idea_reactions_idea_idx ON trade_idea_reactions(trade_idea_id)`
+  ).catch(() => {});
+
+  // Seed default 6-item pre-trade checklist if empty
+  try {
+    const { rows: chkRows } = await pool.query(`SELECT COUNT(*) AS cnt FROM pre_trade_checklist_template`);
+    if (Number(chkRows[0]?.cnt) === 0) {
+      const defaults = [
+        { label: "Catalyst identified", description: "Earnings, news, FDA, sector move, or other measurable catalyst", sort: 1 },
+        { label: "Volume above average", description: "Relative volume > 1.5x or pre-market volume confirms interest", sort: 2 },
+        { label: "Setup is in playbook", description: "This setup matches a documented strategy with edge", sort: 3 },
+        { label: "Risk size calculated", description: "Position sized to predefined R-unit. Stop placement is clear", sort: 4 },
+        { label: "Aligned with market regime", description: "SPY/QQQ direction and sector match the trade thesis", sort: 5 },
+        { label: "Stop level is concrete", description: "Specific price level (not 'feel'), no wider than 1R", sort: 6 },
+      ];
+      for (const d of defaults) {
+        await pool.query(
+          `INSERT INTO pre_trade_checklist_template (label, description, required, sort_order, active) VALUES ($1, $2, TRUE, $3, TRUE)`,
+          [d.label, d.description, d.sort]
+        );
+      }
+      logger.info(`Seeded ${defaults.length} default pre-trade checklist items`);
+    }
+  } catch (e: any) {
+    logger.warn({ error: e.message }, "Seed checklist defaults");
+  }
+
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS candles_cache_ticker_idx ON candles_cache(ticker)`
+  ).catch(() => {});
+  await pool.query(
+    `ALTER TABLE candles_cache ADD COLUMN IF NOT EXISTS extended BOOLEAN NOT NULL DEFAULT FALSE`
+  ).catch(() => {});
+  await pool.query(`DROP INDEX IF EXISTS candles_cache_unique`).catch(() => {});
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS candles_cache_unique ON candles_cache(ticker, date, interval, extended)`
+  ).catch(() => {});
+
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS trade_executions_trade_idx ON trade_executions(trade_id)`
+  ).catch(() => {});
+
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS news_cache_ticker_idx ON news_cache(ticker)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS news_cache_ticker_guid_uniq ON news_cache(ticker, guid)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE INDEX IF NOT EXISTS holiday_calendar_date_idx ON holiday_calendar(date)`
+  ).catch(() => {});
+  await pool.query(
+    `CREATE UNIQUE INDEX IF NOT EXISTS holiday_calendar_unique ON holiday_calendar(date, type, name)`
+  ).catch(() => {});
+
+  await pool.query(`ALTER TABLE "playbook" ADD COLUMN IF NOT EXISTS "trader" TEXT`).catch(() => {});
+  await pool.query(`ALTER TABLE "trades" ADD COLUMN IF NOT EXISTS "setup_score" NUMERIC(5,2)`).catch(() => {});
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "playbook_checklist_runs" (
+      "id" SERIAL PRIMARY KEY,
+      "playbook_id" INTEGER NOT NULL,
+      "trade_id" INTEGER,
+      "trader" TEXT,
+      "checked_items" JSONB NOT NULL,
+      "score" NUMERIC(5,2) NOT NULL,
+      "total" INTEGER NOT NULL,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create playbook_checklist_runs"));
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "playbook_revisions" (
+      "id" SERIAL PRIMARY KEY,
+      "playbook_id" INTEGER NOT NULL,
+      "trader" TEXT,
+      "snapshot" JSONB NOT NULL,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create playbook_revisions"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_checklist_runs_playbook_idx ON playbook_checklist_runs(playbook_id)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_checklist_runs_trade_idx ON playbook_checklist_runs(trade_id)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_revisions_playbook_idx ON playbook_revisions(playbook_id)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_parent_active_idx ON playbook(parent_id) WHERE deleted_at IS NULL`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_setup_type_idx ON playbook(setup_type)`).catch(() => {});
+  await pool.query(`CREATE INDEX IF NOT EXISTS playbook_trader_idx ON playbook(trader)`).catch(() => {});
+
+  // Prop-desk fields: holding horizon, position size, fees, planned $ risk, exit date for multi-day holds.
+  for (const col of [
+    `"horizon" TEXT`,
+    `"exit_date" TEXT`,
+    `"qty" NUMERIC(14,2)`,
+    `"fees" NUMERIC(12,2)`,
+    `"risk_usd" NUMERIC(12,2)`,
+  ]) {
+    await pool.query(`ALTER TABLE "trades" ADD COLUMN IF NOT EXISTS ${col}`).catch((e: any) => logger.warn({ error: e.message }, `trades ${col}`));
+  }
+  // Audit P0-1: PropReports fees go down to $0.0001 — cents per trade drifted Ориф's book by −$0.25 (64.74 vs 64.99).
+  // Money columns keep 4 decimals; idempotent (only widens while the scale is still < 4).
+  for (const col of ["pnl", "fees"]) {
+    await pool.query(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = current_schema() AND table_name = 'trades' AND column_name = '${col}'
+                      AND data_type = 'numeric' AND COALESCE(numeric_scale, 0) < 4) THEN
+          ALTER TABLE "trades" ALTER COLUMN "${col}" TYPE NUMERIC(14,4);
+        END IF;
+      END $$;
+    `).catch((e: any) => logger.warn({ error: e.message }, `trades ${col} precision`));
+  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "trader_risk_limits" (
+      "trader" TEXT PRIMARY KEY,
+      "account_size" NUMERIC(14,2),
+      "daily_loss_limit" NUMERIC(12,2),
+      "weekly_loss_limit" NUMERIC(12,2),
+      "max_drawdown" NUMERIC(12,2),
+      "max_risk_per_trade" NUMERIC(12,2),
+      "max_position_usd" NUMERIC(14,2),
+      "max_overnight_exposure" NUMERIC(14,2),
+      "max_open_positions" INTEGER,
+      "allow_overnight" BOOLEAN NOT NULL DEFAULT TRUE,
+      "allow_swing" BOOLEAN NOT NULL DEFAULT TRUE,
+      "tier" TEXT,
+      "notes" TEXT,
+      "updated_by" TEXT,
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create trader_risk_limits"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS trades_horizon_idx ON trades(horizon)`).catch(() => {});
+
+  // ─── PropReports integration (phase 2) — additive only; owned by lib/propreports ───
+  // trades: broker-sourced round trips are keyed by (source, external_id); trader-owned fields untouched on re-sync.
+  for (const col of [
+    `"source" TEXT`,
+    `"external_id" TEXT`,
+    `"broker_account" TEXT`,
+    `"synced_at" TIMESTAMPTZ`,
+  ]) {
+    await pool.query(`ALTER TABLE "trades" ADD COLUMN IF NOT EXISTS ${col}`).catch((e: any) => logger.warn({ error: e.message }, `trades ${col}`));
+  }
+  await pool.query(`CREATE UNIQUE INDEX IF NOT EXISTS trades_source_external_id_uidx ON trades(source, external_id) WHERE external_id IS NOT NULL`).catch((e: any) => logger.warn({ error: e.message }, "trades_source_external_id_uidx"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS trades_broker_account_idx ON trades(broker_account) WHERE broker_account IS NOT NULL`).catch(() => {});
+  // Account mapping: PropReports account (display name as in Fills CSV "Account") → users.name
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "propreports_accounts" (
+      "id" SERIAL PRIMARY KEY,
+      "account" TEXT NOT NULL UNIQUE,
+      "account_id" TEXT,
+      "account_name" TEXT,
+      "trader" TEXT,
+      "active" BOOLEAN NOT NULL DEFAULT TRUE,
+      "notes" TEXT,
+      "last_synced_at" TIMESTAMPTZ,
+      "last_fill_at" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_accounts"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS propreports_accounts_trader_idx ON propreports_accounts(trader)`).catch(() => {});
+  // Sync history (API pulls and file imports). Dry runs are never recorded.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "propreports_sync_runs" (
+      "id" SERIAL PRIMARY KEY,
+      "started_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "finished_at" TIMESTAMPTZ,
+      "source" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'running',
+      "file_name" TEXT,
+      "date_from" TEXT,
+      "date_to" TEXT,
+      "inserted" INTEGER NOT NULL DEFAULT 0,
+      "updated" INTEGER NOT NULL DEFAULT 0,
+      "unchanged" INTEGER NOT NULL DEFAULT 0,
+      "skipped" INTEGER NOT NULL DEFAULT 0,
+      "conflicts" INTEGER NOT NULL DEFAULT 0,
+      "errors" INTEGER NOT NULL DEFAULT 0,
+      "error_text" TEXT,
+      "actor" TEXT,
+      "details" JSONB
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_sync_runs"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS propreports_sync_runs_started_idx ON propreports_sync_runs(started_at DESC)`).catch(() => {});
+  // Broker round trips that collide with a manual journal trade (same trader+ticker+date+side) wait here
+  // until a curator merges them into the manual trade or keeps them as a separate trade.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "propreports_pending_trades" (
+      "id" SERIAL PRIMARY KEY,
+      "external_id" TEXT NOT NULL UNIQUE,
+      "account" TEXT,
+      "trader" TEXT NOT NULL,
+      "ticker" TEXT NOT NULL,
+      "date" TEXT NOT NULL,
+      "side" TEXT,
+      "payload" JSONB NOT NULL,
+      "candidate_ids" INTEGER[] NOT NULL DEFAULT '{}',
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_pending_trades"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS propreports_pending_trader_idx ON propreports_pending_trades(trader)`).catch(() => {});
+  // Legacy admin XLS import stored pnl = NET and kept gross/fees/qty only inside context_snapshot.
+  // Contract: pnl = gross, fees = total fees, qty filled, source = 'propreports'. Repair once (marker in context_snapshot);
+  // external_id / broker_account are assigned later by the sync engine when the same trade is re-imported (adoption).
+  await pool.query(`
+    UPDATE trades SET
+      pnl = COALESCE((context_snapshot ->> 'gross')::numeric, pnl),
+      fees = COALESCE((context_snapshot ->> 'totalFees')::numeric, fees),
+      qty = COALESCE(qty, (context_snapshot ->> 'qty')::numeric),
+      source = COALESCE(source, 'propreports'),
+      context_snapshot = context_snapshot || '{"legacyPnlRepaired": true}'::jsonb
+    WHERE context_snapshot ->> 'source' = 'propreports'
+      AND external_id IS NULL
+      AND COALESCE(context_snapshot ->> 'legacyPnlRepaired', '') <> 'true'
+      AND (context_snapshot ->> 'gross') ~ '^-?[0-9]+(\\.[0-9]+)?$'
+  `).catch((e: any) => logger.warn({ error: e.message }, "repair legacy propreports pnl"));
+  // Self-configuration: key/value settings (fee columns, groupId, unmatched accounts, connection check) + account aliases.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "propreports_settings" (
+      "key" TEXT PRIMARY KEY,
+      "value" JSONB NOT NULL,
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_settings"));
+  await pool.query(`ALTER TABLE propreports_accounts ADD COLUMN IF NOT EXISTS "aliases" TEXT[] NOT NULL DEFAULT '{}'`).catch(() => {});
+  // Aggregate "Trade Performance" reports (broker statistics; no individual trades). Re-upload of a period replaces the row.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "propreports_performance_reports" (
+      "id" SERIAL PRIMARY KEY,
+      "account" TEXT NOT NULL,
+      "trader_name" TEXT,
+      "period_from" TEXT NOT NULL,
+      "period_to" TEXT NOT NULL,
+      "file_name" TEXT,
+      "data" JSONB NOT NULL,
+      "uploaded_by" TEXT,
+      "uploaded_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE ("account", "period_from", "period_to")
+    )
+  `).catch((e: any) => logger.warn({ error: e.message }, "create propreports_performance_reports"));
+  await pool.query(`CREATE INDEX IF NOT EXISTS propreports_perf_trader_idx ON propreports_performance_reports(trader_name)`).catch(() => {});
+  // ─── end PropReports integration ───
+
+  await seedHolidays2026();
+
   logger.info("Database migrations completed");
+}
+
+async function seedHolidays2026() {
+  const events: { date: string; type: string; name: string; description?: string; importance: "high" | "medium" | "low" }[] = [];
+
+  const nyseHolidays = [
+    { date: "2026-01-01", name: "New Year's Day", desc: "Market closed" },
+    { date: "2026-01-19", name: "MLK Day", desc: "Market closed" },
+    { date: "2026-02-16", name: "Presidents Day", desc: "Market closed" },
+    { date: "2026-04-03", name: "Good Friday", desc: "Market closed" },
+    { date: "2026-05-25", name: "Memorial Day", desc: "Market closed" },
+    { date: "2026-06-19", name: "Juneteenth", desc: "Market closed" },
+    { date: "2026-07-03", name: "Independence Day (observed)", desc: "Early close 1pm ET" },
+    { date: "2026-09-07", name: "Labor Day", desc: "Market closed" },
+    { date: "2026-11-26", name: "Thanksgiving", desc: "Market closed" },
+    { date: "2026-11-27", name: "Day after Thanksgiving", desc: "Early close 1pm ET" },
+    { date: "2026-12-24", name: "Christmas Eve", desc: "Early close 1pm ET" },
+    { date: "2026-12-25", name: "Christmas Day", desc: "Market closed" },
+  ];
+  for (const h of nyseHolidays) {
+    events.push({ date: h.date, type: "holiday", name: h.name, description: h.desc, importance: "high" });
+  }
+
+  const fomc = [
+    { dates: ["2026-01-27", "2026-01-28"], name: "FOMC Meeting" },
+    { dates: ["2026-03-17", "2026-03-18"], name: "FOMC Meeting + SEP" },
+    { dates: ["2026-04-28", "2026-04-29"], name: "FOMC Meeting" },
+    { dates: ["2026-06-16", "2026-06-17"], name: "FOMC Meeting + SEP" },
+    { dates: ["2026-07-28", "2026-07-29"], name: "FOMC Meeting" },
+    { dates: ["2026-09-15", "2026-09-16"], name: "FOMC Meeting + SEP" },
+    { dates: ["2026-11-03", "2026-11-04"], name: "FOMC Meeting" },
+    { dates: ["2026-12-15", "2026-12-16"], name: "FOMC Meeting + SEP" },
+  ];
+  for (const m of fomc) {
+    for (let i = 0; i < m.dates.length; i++) {
+      events.push({
+        date: m.dates[i],
+        type: "fomc",
+        name: i === m.dates.length - 1 ? `${m.name} (Decision Day)` : m.name,
+        description: i === m.dates.length - 1 ? "Statement 2pm ET, Powell presser 2:30pm ET" : "FOMC begins",
+        importance: i === m.dates.length - 1 ? "high" : "medium",
+      });
+    }
+  }
+
+  const cpi = [
+    "2026-01-13", "2026-02-12", "2026-03-11", "2026-04-14",
+    "2026-05-12", "2026-06-10", "2026-07-15", "2026-08-12",
+    "2026-09-10", "2026-10-13", "2026-11-12", "2026-12-10",
+  ];
+  for (const d of cpi) {
+    events.push({ date: d, type: "cpi", name: "CPI Release", description: "8:30am ET — Consumer Price Index", importance: "high" });
+  }
+
+  const ppi = [
+    "2026-01-14", "2026-02-13", "2026-03-12", "2026-04-15",
+    "2026-05-13", "2026-06-11", "2026-07-16", "2026-08-13",
+    "2026-09-11", "2026-10-14", "2026-11-13", "2026-12-11",
+  ];
+  for (const d of ppi) {
+    events.push({ date: d, type: "ppi", name: "PPI Release", description: "8:30am ET — Producer Price Index", importance: "medium" });
+  }
+
+  const nfp = [
+    "2026-01-02", "2026-02-06", "2026-03-06", "2026-04-03",
+    "2026-05-01", "2026-06-05", "2026-07-02", "2026-08-07",
+    "2026-09-04", "2026-10-02", "2026-11-06", "2026-12-04",
+  ];
+  for (const d of nfp) {
+    events.push({ date: d, type: "nfp", name: "NFP Jobs Report", description: "8:30am ET — Non-Farm Payrolls", importance: "high" });
+  }
+
+  const opex = [
+    "2026-01-16", "2026-02-20", "2026-03-20", "2026-04-17",
+    "2026-05-15", "2026-06-19", "2026-07-17", "2026-08-21",
+    "2026-09-18", "2026-10-16", "2026-11-20", "2026-12-18",
+  ];
+  const quad = new Set(["2026-03-20", "2026-06-19", "2026-09-18", "2026-12-18"]);
+  for (const d of opex) {
+    if (quad.has(d)) {
+      events.push({ date: d, type: "quad_witching", name: "Quadruple Witching", description: "Index futures, index options, stock futures, stock options all expire", importance: "high" });
+    } else {
+      events.push({ date: d, type: "opex", name: "Monthly OPEX", description: "Monthly options expiration — elevated volume into close", importance: "medium" });
+    }
+  }
+
+  const monthEnd = ["2026-01-30", "2026-02-27", "2026-03-31", "2026-04-30", "2026-05-29", "2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30", "2026-10-30", "2026-11-30", "2026-12-31"];
+  for (const d of monthEnd) {
+    events.push({ date: d, type: "month_end", name: "Month-End Rebalance", description: "Institutional rebalancing flows", importance: "low" });
+  }
+
+  let inserted = 0;
+  for (const e of events) {
+    try {
+      const { rowCount } = await pool.query(
+        `INSERT INTO holiday_calendar (date, type, name, description, importance)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (date, type, name) DO NOTHING`,
+        [e.date, e.type, e.name, e.description || null, e.importance]
+      );
+      if (rowCount && rowCount > 0) inserted++;
+    } catch (err: any) {
+      logger.warn({ error: err.message, event: e }, "holiday seed insert failed");
+    }
+  }
+  if (inserted > 0) logger.info(`Seeded ${inserted} new holiday/calendar events for 2026`);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS "junior_notes" (
+      "id" SERIAL PRIMARY KEY,
+      "trader" TEXT NOT NULL,
+      "note_date" DATE NOT NULL DEFAULT CURRENT_DATE,
+      "raw_text" TEXT NOT NULL DEFAULT '',
+      "refined_text" TEXT,
+      "mood" TEXT,
+      "created_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      "updated_at" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE("trader", "note_date")
+    )
+  `);
+  await pool.query(`CREATE INDEX IF NOT EXISTS "junior_notes_trader_date_idx" ON "junior_notes"("trader", "note_date")`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS "junior_notes_date_idx" ON "junior_notes"("note_date" DESC)`);
+
+  await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed BOOLEAN NOT NULL DEFAULT FALSE`);
+  await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed_by TEXT`);
+  await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
 }

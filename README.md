@@ -96,17 +96,7 @@ psql "$DATABASE_URL" < db_backup_v5.sql
 
 ## Пользователи
 
-| Трейдер | Пароль | Роль |
-|---|---|---|
-| Закир | `0101` | trader |
-| Артур | `93547` | trader |
-| Рахматулло | `5555` | trader |
-| Умид | `15964` | trader |
-| Максат | `82374` | trader |
-| Антон | `61725` | curator |
-| Тимур | `39156` | curator |
-| Ариф | `07770` | curator |
-| Admin | `0987` | admin |
+Начальные учётки задаются переменной `SEED_USERS` (JSON `[{"name","password","role"}]`) при первом запуске на пустой БД. Без неё dev-сервер создаёт аккаунты деска со случайными 6-значными PIN и один раз пишет их в лог. Пароли в репозитории не хранятся; меняй их в «Админке».
 
 ---
 
@@ -194,9 +184,7 @@ MONOREPO СТРУКТУРА:
 - Token revoke: claim "tv" + users.token_version. POST /api/auth/logout инкрементирует версию → все токены пользователя сразу невалидны
 - Кэш token_version в памяти, TTL 30s
 - Роли: trader / curator / admin (список в auth-context.tsx и в middleware)
-- Пользователи (пароли в bcrypt в users.password_hash):
-  Закир/0101, Антон/61725(curator), Артур/93547, Рахматулло/5555,
-  Умид/15964, Максат/82374, Тимур/39156(curator), Ариф/07770(curator), Admin/0987(admin)
+- Пользователи: пароли только в bcrypt (users.password_hash); начальные — из SEED_USERS
 
 API ПРАВИЛА:
 - Все маршруты: app.use("/api", router) → /api/trades, /api/events и т.д.

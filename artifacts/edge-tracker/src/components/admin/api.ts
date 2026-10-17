@@ -1,0 +1,295 @@
+import { useQuery } from "@tanstack/react-query";
+import { BASE } from "@/lib/api";
+import { nyDate } from "@/lib/trading-date";
+
+/* ── Types ───────────────────────────────────────────────────────────────── */
+
+export interface AuditEntry {
+  id: number;
+  actor: string;
+  action: string;
+  targetType: string | null;
+  targetId: string | null;
+  details: string | null;
+  createdAt: string;
+}
+
+export interface ReportTarget {
+  author: string | null;
+  authorId: number | null;
+  authorRole: string | null;
+  authorBanned: boolean;
+  preview: string | null;
+  title: string | null;
+  discussionId: number | null;
+  deleted: boolean;
+  createdAt: string | null;
+}
+
+export interface ContentReport {
+  id: number;
+  reporter: string;
+  targetType: string;
+  targetId: string;
+  reason: string;
+  status: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  resolution: string | null;
+  createdAt: string;
+  /** Added by the API (may be absent on an older server). */
+  target?: ReportTarget | null;
+  openReportsOnTarget?: number;
+}
+
+export interface Overview {
+  openReports: number;
+  bannedUsers: number;
+  auditLast7d: number;
+  roleCounts: Record<string, number>;
+  recent: AuditEntry[];
+}
+
+export interface PulseUser {
+  id: number;
+  name: string;
+  role: string;
+  active: boolean;
+  banned: boolean;
+  bannedReason: string | null;
+  createdAt: string | null;
+  lastSeen: string | null;
+  activeToday: boolean;
+  tradesToday: number;
+  tradesWeek: number;
+  lastTradeDate: string | null;
+  journalToday: boolean;
+  notesStreak: number;
+  journal30: number;
+  violationsToday: number;
+  violationsWeek: number;
+  violationsHighWeek: number;
+  violationsTotal: number;
+  tradeStrip: number[];
+  journalStrip: boolean[];
+}
+
+export interface DeskPulse {
+  date: string;
+  tz: string;
+  days: string[];
+  journalAvailable: boolean;
+  violationsAvailable: boolean;
+  summary: {
+    deskTraders: number;
+    activeToday: number;
+    activeNames: string[];
+    tradesToday: number;
+    tradesWeek: number;
+    noJournalToday: string[];
+    violationsToday: number;
+    violationsWeek: number;
+    openReports: number;
+    stale: string[];
+    banned: number;
+    deskTradeStrip: number[];
+  };
+  users: PulseUser[];
+}
+
+/** Subset of GET /api/risk/desk (owned by the Risk desk section) that the admin console reads. */
+export interface RiskDeskLite {
+  date: string;
+  summary: { traders: number; breach: number; warn: number; noLimits: number; openPositions: number; carriedPositions: number };
+  traders: { trader: string; status: "breach" | "warn" | "ok" | "no_limits" }[];
+}
+
+/* ── Fetch helpers ───────────────────────────────────────────────────────── */
+
+export async function errorFrom(r: Response, fallback: string): Promise<Error> {
+  const j = (await r.json().catch(() => null)) as { error?: string } | null;
+  return new Error(j?.error || `${fallback} (HTTP ${r.status})`);
+}
+
+export function adminUrl(path: string, actor: string, params?: Record<string, string | number | undefined | null>) {
+  const qs = new URLSearchParams({ actor });
+  for (const [k, v] of Object.entries(params ?? {})) if (v != null && v !== "") qs.set(k, String(v));
+  return `${BASE}/api${path}?${qs.toString()}`;
+}
+
+export async function postJson<T>(url: string, body: unknown, fallback: string): Promise<T> {
+  const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!r.ok) throw await errorFrom(r, fallback);
+  return r.json() as Promise<T>;
+}
+
+/** Desk "today" = the America/New_York trading date, whatever the curator's browser timezone is. */
+export function localYmd(d = new Date()): string {
+  return nyDate(d);
+}
+
+/** The desk trades US equities: day boundaries for desk-pulse are New York, not the browser's zone. */
+const DESK_TZ = "America/New_York";
+
+/* ── Queries ─────────────────────────────────────────────────────────────── */
+
+export function useDeskPulse(actor: string) {
+  return useQuery<DeskPulse>({
+    queryKey: ["admin-desk-pulse", actor],
+    queryFn: async () => {
+      const r = await fetch(adminUrl("/admin/desk-pulse", actor, { date: nyDate(), tz: DESK_TZ }));
+      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить активность деска");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+    staleTime: 20_000,
+  });
+}
+
+export function useAdminOverview(actor: string) {
+  return useQuery<Overview>({
+    queryKey: ["admin-overview", actor],
+    queryFn: async () => {
+      const r = await fetch(adminUrl("/admin/overview", actor));
+      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить обзор");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+}
+
+/**
+ * Risk desk summary. Resolves to null when the endpoint doesn't exist yet (404) or isn't
+ * reachable, so the KPI can simply hide instead of showing an error.
+ */
+export function useRiskDesk() {
+  return useQuery<RiskDeskLite | null>({
+    queryKey: ["admin-risk-desk-lite"],
+    queryFn: async () => {
+      try {
+        const r = await fetch(`${BASE}/api/risk/desk?date=${nyDate()}`);
+        if (!r.ok) return null;
+        const j = await r.json().catch(() => null);
+        return j && typeof j === "object" && j.summary ? (j as RiskDeskLite) : null;
+      } catch {
+        return null;
+      }
+    },
+    retry: false,
+    refetchInterval: 60_000,
+  });
+}
+
+export function useReports(actor: string, status: string) {
+  return useQuery<ContentReport[]>({
+    queryKey: ["admin-reports", actor, status],
+    queryFn: async () => {
+      const r = await fetch(adminUrl("/admin/reports", actor, { status }));
+      if (!r.ok) throw await errorFrom(r, "Не удалось загрузить жалобы");
+      return r.json();
+    },
+    refetchInterval: 60_000,
+  });
+}
+
+/* ── Formatting ──────────────────────────────────────────────────────────── */
+
+export const ROLE_LABEL: Record<string, string> = { admin: "Админ", curator: "Куратор", trader: "Трейдер" };
+
+export const ACTION_LABEL: Record<string, string> = {
+  "user.ban": "Бан",
+  "user.unban": "Разбан",
+  "user.role.change": "Смена роли",
+  "report.resolve": "Жалоба решена",
+  "report.dismiss": "Жалоба отклонена",
+  "report.ban_author": "Бан автора по жалобе",
+  "discussion.delete": "Удалено обсуждение",
+  "comment.delete": "Удалён комментарий",
+  "propreports.import": "Импорт PropReports",
+  "db.export": "Экспорт БД",
+};
+
+export function actionLabel(a: string) {
+  return ACTION_LABEL[a] ?? a;
+}
+
+/** Tone used for an audit action pill. */
+export function actionTone(a: string): "down" | "up" | "accent" | "warn" | "purple" | "neutral" {
+  if (a.includes("ban_author") || a === "user.ban" || a.endsWith(".delete")) return "down";
+  if (a === "user.unban" || a === "report.resolve") return "up";
+  if (a.startsWith("user.role")) return "purple";
+  if (a === "report.dismiss") return "neutral";
+  if (a.includes("import") || a.includes("export")) return "accent";
+  return "neutral";
+}
+
+export function parseDetails(raw: string | null): Record<string, unknown> | null {
+  if (!raw) return null;
+  try {
+    const v = JSON.parse(raw);
+    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function timeAgo(iso: string | null | undefined, now = Date.now()): string {
+  if (!iso) return "никогда";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "—";
+  const s = Math.max(0, Math.round((now - t) / 1000));
+  if (s < 60) return "только что";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h} ч назад`;
+  const d = Math.floor(h / 24);
+  if (d === 1) return "вчера";
+  if (d < 30) return `${d} дн назад`;
+  return new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+}
+
+export function fmtDateTime(iso: string) {
+  try {
+    return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return iso;
+  }
+}
+
+/* ── CSV / download ──────────────────────────────────────────────────────── */
+
+function csvCell(v: unknown): string {
+  if (v == null) return "";
+  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  return /[",;\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+export function toCsv(header: string[], rows: unknown[][]): string {
+  return [header, ...rows].map((r) => r.map(csvCell).join(",")).join("\r\n");
+}
+
+export function downloadBlob(content: BlobPart, filename: string, type: string) {
+  const blob = new Blob([content], { type });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+/** CSV with a UTF-8 BOM so Excel opens Cyrillic correctly. */
+export function downloadCsv(header: string[], rows: unknown[][], filename: string) {
+  downloadBlob("﻿" + toCsv(header, rows), filename, "text/csv;charset=utf-8");
+}
+
+/** True when the keyboard event comes from a text field / editable element. */
+export function isTypingTarget(t: EventTarget | null): boolean {
+  const el = t as HTMLElement | null;
+  if (!el) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+}

@@ -1,246 +1,243 @@
-import React, { useMemo, useEffect, useRef } from "react";
-import { useGetDashboardSummary, useGetRecentTrades, useListTrades } from "@workspace/api-client-react";
-import { formatCurrency, formatPercent } from "@/lib/format";
-import { Activity, Target, BarChart2, Clock, TrendingUp, TrendingDown, Flame, Snowflake } from "lucide-react";
-import { useTheme } from "@/contexts/theme-context";
+// Dashboard = the trader's command screen. Top to bottom: header (NY session, today / week net, risk limit) →
+// «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → optional blocks.
+// Each block answers one question; trades arrive automatically, so there are no entry CTAs here.
+import { useCallback, type ReactNode } from "react";
+import { Page } from "@/components/ds";
+import { useAuth } from "@/contexts/auth-context";
+import { nyDate } from "@/lib/trading-date";
+import { useTodayHolidays } from "@/lib/market-intel";
+import { normalizeResult } from "@/lib/trade-result";
+import { useUnreadCount } from "@/components/notifications/use-notifications";
+import { SectorRadar } from "@/components/sector-radar";
+import { MarketDnaWidget } from "@/components/market-dna-widget";
+import { UpcomingEventsList } from "@/components/holiday-badge";
+import { MarketOpenBrief } from "@/components/market-open-brief";
+import { MorningCheckin } from "@/components/morning-checkin";
+import { WeeklyPsychologyReport } from "@/components/weekly-psychology-report";
+import { DailyQuoteCard } from "@/components/daily-quote-card";
+import { DashboardHeader } from "@/components/dashboard/today-hero";
+import { AttentionPanel } from "@/components/dashboard/attention-panel";
+import { PositionsPanel } from "@/components/dashboard/positions-panel";
+import { EquityPanel } from "@/components/dashboard/equity-panel";
+import { StreaksPanel } from "@/components/dashboard/streaks-panel";
+import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
+import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
+import { CustomizePopover } from "@/components/dashboard/customize-popover";
+import {
+  SECTION_WIDTH,
+  useDashboardEquity,
+  useDashboardPrefs,
+  useDashboardToday,
+  useEodDay,
+  useEodStatus,
+  useEventsToday,
+  useRecentTrades,
+  useRiskDesk,
+  useRiskMe,
+  type SectionId,
+} from "@/components/dashboard/use-dashboard";
 
-function MarketTicker() {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const { theme } = useTheme();
+const RITUAL_ANCHOR = "dash-ritual";
+const CLOSE_MIN = 16 * 60;
 
-  useEffect(() => {
-    if (!containerRef.current) return;
-    containerRef.current.innerHTML = "";
-    const script = document.createElement("script");
-    script.src = "https://s3.tradingview.com/external-embedding/embed-widget-ticker-tape.js";
-    script.async = true;
-    script.textContent = JSON.stringify({
-      symbols: [
-        { proName: "FOREXCOM:SPXUSD", title: "S&P 500" },
-        { proName: "FOREXCOM:NSXUSD", title: "US 100" },
-        { proName: "BITSTAMP:BTCUSD", title: "Bitcoin" },
-        { proName: "NASDAQ:NVDA", title: "NVDA" },
-        { proName: "NASDAQ:TSLA", title: "TSLA" },
-        { proName: "NASDAQ:AAPL", title: "AAPL" },
-        { proName: "NASDAQ:AMD", title: "AMD" },
-        { proName: "NASDAQ:META", title: "META" },
-        { proName: "NASDAQ:MSFT", title: "MSFT" },
-      ],
-      showSymbolLogo: true,
-      isTransparent: true,
-      displayMode: "adaptive",
-      colorTheme: theme,
-      locale: "en",
-    });
-    containerRef.current.appendChild(script);
-  }, [theme]);
+const SPAN: Record<number, string> = {
+  5: "lg:col-span-5",
+  6: "lg:col-span-6",
+  7: "lg:col-span-7",
+  12: "lg:col-span-12",
+};
 
-  return (
-    <div className="tradingview-widget-container overflow-hidden" style={{ height: 46 }}>
-      <div ref={containerRef} />
-    </div>
-  );
-}
+type Block = { id: SectionId; node: ReactNode };
 
-function StatCard({ title, icon: Icon, value, valueClass, subtitle, accentColor }: {
-  title: string;
-  icon: React.ElementType;
-  value: React.ReactNode;
-  valueClass?: string;
-  subtitle?: React.ReactNode;
-  accentColor: string;
-}) {
-  return (
-    <div className={`group relative bg-card border border-border/50 rounded-lg overflow-hidden transition-all duration-300 hover:border-border hover:shadow-lg`}>
-      <div className={`absolute top-0 left-0 w-full h-0.5 ${accentColor.replace("border-l-", "bg-")}`} />
-      <div className="flex flex-row items-center justify-between px-4 pt-4 pb-2">
-        <div className="text-[10px] font-mono uppercase text-muted-foreground tracking-wider font-semibold">{title}</div>
-        <div className="w-8 h-8 rounded-lg bg-muted/30 flex items-center justify-center group-hover:bg-muted/50 transition-colors">
-          <Icon className="h-4 w-4 text-muted-foreground/60" />
-        </div>
-      </div>
-      <div className="px-4 pb-4">
-        <div className={`text-2xl font-bold font-mono ${valueClass || "text-foreground"}`}>{value}</div>
-        {subtitle && <div className="text-xs font-mono text-muted-foreground mt-1.5">{subtitle}</div>}
-      </div>
-    </div>
-  );
+/** Group visible blocks into bento rows: two neighbouring half-blocks share a row (7/5, 5/7 or 6/6), full blocks take one. */
+function toRows(blocks: Block[]): { key: string; cells: { block: Block; span: number }[] }[] {
+  const rows: { key: string; cells: { block: Block; span: number }[] }[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const a = blocks[i];
+    const b = blocks[i + 1];
+    const wa = SECTION_WIDTH[a.id];
+    const wb = b ? SECTION_WIDTH[b.id] : "full";
+    if (wa !== "full" && b && wb !== "full") {
+      const spanA = wa === wb ? 6 : wa === "wide" ? 7 : 5;
+      rows.push({ key: `${a.id}+${b.id}`, cells: [{ block: a, span: spanA }, { block: b, span: 12 - spanA }] });
+      i++;
+    } else {
+      rows.push({ key: a.id, cells: [{ block: a, span: 12 }] });
+    }
+  }
+  return rows;
 }
 
 export default function Dashboard() {
-  const { data: summary } = useGetDashboardSummary();
-  const { data: recentTrades } = useGetRecentTrades();
-  const { data: allTrades = [] } = useListTrades();
+  const { user, isCurator } = useAuth();
+  const isGuest = !user || user.role === "guest";
+  const userName = user?.traderName ?? null;
+  const staff = isCurator;
+  const authed = !isGuest;
 
-  const streak = useMemo(() => {
-    if (!allTrades.length) return { count: 0, type: "none" as "win" | "loss" | "none" };
-    const sorted = [...allTrades].sort((a, b) => b.date.localeCompare(a.date));
-    const first = sorted[0].result;
-    if (first !== "win" && first !== "loss") return { count: 0, type: "none" as "win" | "loss" | "none" };
-    let count = 0;
-    for (const t of sorted) {
-      if (t.result === first) count++;
-      else break;
+  const { prefs, update, reset } = useDashboardPrefs(staff ? "team" : "me", user ? `${user.role}:${userName ?? ""}` : null);
+  // Team scope is for staff only; a trader always sees their own desk.
+  const scope = staff ? prefs.scope : "me";
+  const on = (id: SectionId) => authed && !prefs.hidden.includes(id);
+
+  const todayQ = useDashboardToday(scope, authed);
+  const equityQ = useDashboardEquity(scope, prefs.period, on("equity"));
+  const recentQ = useRecentTrades(scope, authed);
+  const riskQ = useRiskMe(authed && !!userName);
+  const deskQ = useRiskDesk(authed && staff);
+  const eodQ = useEodStatus(authed && scope === "team");
+  const eventsQ = useEventsToday(on("attention"));
+  const holidaysQ = useTodayHolidays();
+  const unreadQ = useUnreadCount();
+
+  const today = todayQ.data;
+  const tradingDate = today?.date ?? nyDate();
+  const afterClose = today ? today.market.nyMinutes >= CLOSE_MIN || today.market.weekend : false;
+
+  // The most recent own trading day that can be closed: before today, or today once the session is over.
+  const lastDay =
+    scope === "me"
+      ? ((recentQ.data ?? [])
+          .filter((t) => normalizeResult(t.result) != null)
+          .map((t) => t.closeDate.slice(0, 10))
+          .find((d) => d < tradingDate || (d === tradingDate && afterClose)) ?? null)
+      : null;
+  const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
+
+  const goToCheckin = useCallback(() => {
+    if (prefs.hidden.includes("ritual")) update({ hidden: prefs.hidden.filter((h) => h !== "ritual") });
+    window.setTimeout(() => {
+      const el = document.getElementById(RITUAL_ANCHOR);
+      if (!el) return;
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      el.scrollIntoView({ behavior: reduce ? "auto" : "smooth", block: "start" });
+      el.focus({ preventScroll: true });
+    }, 50);
+  }, [prefs.hidden, update]);
+
+  const render = (id: SectionId): ReactNode => {
+    switch (id) {
+      case "attention":
+        return (
+          <AttentionPanel
+            fill
+            data={today}
+            risk={riskQ.data}
+            desk={deskQ.data}
+            eod={eodQ.data}
+            lastDay={lastDay}
+            lastDayEod={lastDayEodQ.data}
+            recent={scope === "me" ? recentQ.data : undefined}
+            events={eventsQ.data}
+            marketEvents={holidaysQ.data?.today ?? []}
+            unread={unreadQ.data}
+            isLoading={todayQ.isLoading}
+            updatedAt={todayQ.dataUpdatedAt || undefined}
+            onCheckin={goToCheckin}
+          />
+        );
+      case "equity":
+        return (
+          <EquityPanel
+            fill
+            data={equityQ.data}
+            isLoading={equityQ.isLoading}
+            isError={equityQ.isError}
+            onRetry={() => equityQ.refetch()}
+            period={prefs.period}
+            onPeriodChange={(period) => update({ period })}
+            metric={prefs.metric}
+            onMetricChange={(metric) => update({ metric })}
+          />
+        );
+      case "recent":
+        return (
+          <RecentTradesPanel
+            fill
+            trades={recentQ.data}
+            isLoading={recentQ.isLoading}
+            isError={recentQ.isError}
+            onRetry={() => recentQ.refetch()}
+            showTrader={scope === "team"}
+          />
+        );
+      case "desk":
+        // Staff only; hidden when the risk desk is not deployed (null).
+        return staff && deskQ.data !== null ? <DeskTodayPanel fill data={deskQ.data} isLoading={deskQ.isLoading} /> : null;
+      case "streaks":
+        return <StreaksPanel fill data={today} isLoading={todayQ.isLoading} />;
+      case "positions":
+        return today?.positions && today.positions.length > 0 ? <PositionsPanel data={today} /> : null;
+      case "ritual":
+        return (
+          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label="Утренний ритуал" className="grid scroll-mt-24 grid-cols-1 items-start gap-[var(--grid-gap)] outline-none lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-7">
+              <MorningCheckin />
+            </div>
+            <div className="min-w-0 lg:col-span-5">
+              <DailyQuoteCard />
+            </div>
+            <div className="min-w-0 lg:col-span-12">
+              <MarketOpenBrief />
+            </div>
+          </section>
+        );
+      case "market":
+        return (
+          <section aria-label="Рынок" className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
+            <div className="min-w-0 lg:col-span-8">
+              <SectorRadar />
+            </div>
+            <div className="flex min-w-0 flex-col gap-[var(--grid-gap)] lg:col-span-4">
+              <UpcomingEventsList />
+              <MarketDnaWidget />
+            </div>
+          </section>
+        );
+      case "psychology":
+        return <WeeklyPsychologyReport />;
     }
-    return { count, type: first as "win" | "loss" };
-  }, [allTrades]);
+  };
 
-  const weekStats = useMemo(() => {
-    const now = new Date();
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay() + 1);
-    startOfWeek.setHours(0, 0, 0, 0);
-    const weekTrades = allTrades.filter((t) => new Date(t.date) >= startOfWeek);
-    const pnl = weekTrades.reduce((s, t) => s + (Number(t.pnl) || 0), 0);
-    const wins = weekTrades.filter((t) => t.result === "win").length;
-    return { count: weekTrades.length, pnl, wins };
-  }, [allTrades]);
-
-  const isWinStreak = streak.type === "win";
-  const streakColor = isWinStreak ? "text-emerald-400" : streak.type === "loss" ? "text-red-400" : "text-muted-foreground";
-  const StreakIcon = isWinStreak ? Flame : Snowflake;
+  const blocks: Block[] = prefs.order
+    .filter((id) => on(id) && (id !== "desk" || staff))
+    .map((id) => ({ id, node: render(id) }))
+    .filter((b) => b.node != null);
+  const rows = toRows(blocks);
 
   return (
-    <div className="space-y-6">
-      <MarketTicker />
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight flex items-center gap-2.5">
-            <div className="w-2 h-2 bg-primary rounded-full" />
-            Дашборд
-          </h1>
-          <p className="text-xs text-muted-foreground font-mono mt-1">{allTrades.length} трейдов · {new Date().toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" })}</p>
-        </div>
-        {streak.count > 0 && (
-          <div className={`flex items-center gap-2 px-4 py-2 rounded-lg border backdrop-blur-sm ${isWinStreak ? "border-emerald-500/20 bg-emerald-500/5" : "border-red-500/20 bg-red-500/5"}`}>
-            <StreakIcon className={`h-4 w-4 ${streakColor}`} />
-            <span className={`font-mono text-sm font-bold ${streakColor}`}>{streak.count}</span>
-            <span className={`font-mono text-xs ${streakColor}`}>{isWinStreak ? "win streak" : "loss streak"}</span>
+    <Page>
+      <DashboardHeader
+        data={today}
+        risk={riskQ.data}
+        desk={deskQ.data}
+        isLoading={todayQ.isLoading}
+        isError={todayQ.isError}
+        onRetry={() => todayQ.refetch()}
+        guest={isGuest}
+        scope={scope}
+        onScopeChange={(s) => update({ scope: s })}
+        canChooseScope={staff}
+        userName={userName}
+        customize={
+          authed ? <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} /> : null
+        }
+      />
+      {rows.map((row) =>
+        row.cells.length === 1 ? (
+          <div key={row.key} className="min-w-0">
+            {row.cells[0].block.node}
           </div>
-        )}
-      </div>
-
-      <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard
-          title="Total PnL"
-          icon={Activity}
-          value={formatCurrency(summary?.totalPnl)}
-          valueClass={(summary?.totalPnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}
-          subtitle={`${allTrades.length} всего трейдов`}
-          accentColor={(summary?.totalPnl ?? 0) >= 0 ? "border-l-emerald-500" : "border-l-red-500"}
-        />
-        <StatCard
-          title="Win Rate"
-          icon={Target}
-          value={formatPercent(summary?.winRate)}
-          valueClass="text-foreground"
-          subtitle={streak.count > 0 ? <span className={streakColor}>{streak.count} {streak.type === "win" ? "🔥" : "❄️"} streak</span> : undefined}
-          accentColor="border-l-primary"
-        />
-        <StatCard
-          title="Avg R-Multiple"
-          icon={BarChart2}
-          value={`${summary?.avgRMultiple?.toFixed(2) ?? "0.00"}R`}
-          valueClass="text-primary"
-          accentColor="border-l-amber-500"
-        />
-        <StatCard
-          title="Неделя"
-          icon={Clock}
-          value={formatCurrency(weekStats.pnl)}
-          valueClass={weekStats.pnl >= 0 ? "text-emerald-400" : "text-red-400"}
-          subtitle={`${weekStats.count} трейдов · ${weekStats.wins} win`}
-          accentColor={weekStats.pnl >= 0 ? "border-l-emerald-500" : "border-l-red-500"}
-        />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-4">
-          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-[0.15em] flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-primary rounded-full" />
-            Недавние Трейды
-          </h2>
-          <div className="bg-card border border-border/50 rounded-lg overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm font-mono text-left">
-                <thead className="bg-muted text-muted-foreground">
-                  <tr>
-                    <th className="px-4 py-3 font-normal uppercase text-[10px] tracking-wider">Тикер</th>
-                    <th className="px-4 py-3 font-normal uppercase text-[10px] tracking-wider">Дата</th>
-                    <th className="px-4 py-3 font-normal uppercase text-[10px] tracking-wider">Setup</th>
-                    <th className="px-4 py-3 font-normal uppercase text-[10px] tracking-wider">Результат</th>
-                    <th className="px-4 py-3 font-normal uppercase text-[10px] tracking-wider text-right">PnL</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {recentTrades?.map((trade) => (
-                    <tr key={trade.id} className={`transition-colors border-l-[3px] ${
-                      trade.result === "WIN" || trade.result === "win" ? "border-l-emerald-500/60 hover:bg-emerald-500/5" :
-                      trade.result === "LOSS" || trade.result === "loss" ? "border-l-red-500/60 hover:bg-red-500/5" :
-                      "border-l-muted hover:bg-muted/40"
-                    }`}>
-                      <td className="px-4 py-3 font-bold text-foreground">{trade.ticker}</td>
-                      <td className="px-4 py-3 text-muted-foreground text-xs">{trade.date.substring(0, 10)}</td>
-                      <td className="px-4 py-3 text-xs truncate max-w-[100px] text-foreground/70">{trade.setup}</td>
-                      <td className="px-4 py-3">
-                        <span className={`inline-flex items-center px-2 py-0.5 text-[10px] font-bold ${trade.result === "WIN" || trade.result === "win" ? "bg-emerald-500/15 text-emerald-400" : trade.result === "LOSS" || trade.result === "loss" ? "bg-red-500/15 text-red-400" : "bg-muted text-muted-foreground"}`}>
-                          {trade.result?.toUpperCase()}
-                        </span>
-                      </td>
-                      <td className={`px-4 py-3 text-right font-bold ${(trade.pnl ?? 0) >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                        {formatCurrency(trade.pnl)}
-                      </td>
-                    </tr>
-                  ))}
-                  {(!recentTrades || recentTrades.length === 0) && (
-                    <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground text-xs">Нет недавних трейдов</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
+        ) : (
+          <div key={row.key} className="grid grid-cols-1 items-stretch gap-[var(--grid-gap)] lg:grid-cols-12">
+            {row.cells.map((c) => (
+              <div key={c.block.id} className={`min-w-0 ${SPAN[c.span]}`}>
+                {c.block.node}
+              </div>
+            ))}
           </div>
-        </div>
-
-        <div className="space-y-4">
-          <h2 className="text-xs font-bold text-muted-foreground font-mono uppercase tracking-[0.15em] flex items-center gap-2">
-            <div className="w-1.5 h-1.5 bg-amber-400 rounded-full" />
-            Market Context
-          </h2>
-          <div className="bg-card border border-border/50 rounded-lg">
-            <div className="p-4 space-y-3">
-              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
-                <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Режим рынка</div>
-                <div className="text-sm font-mono font-bold text-foreground">{summary?.marketRegime || "Не определен"}</div>
-              </div>
-              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
-                <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Топ Setup</div>
-                <div className="text-sm font-mono font-bold text-primary">{summary?.topSetup || "-"}</div>
-              </div>
-              <div className="bg-muted/20 border border-border/30 rounded-md p-3">
-                <div className="text-[10px] font-mono text-muted-foreground uppercase mb-1 tracking-wider">Лучшие тикеры</div>
-                <div className="text-sm font-mono text-foreground">{summary?.bestTickers || "-"}</div>
-              </div>
-              <div className="pt-3 border-t border-border/30">
-                <div className="text-[10px] font-mono text-muted-foreground uppercase mb-3 tracking-wider">Быстрые ссылки</div>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    { href: "/trades", label: "Трейды" },
-                    { href: "/analytics", label: "Аналитика" },
-                    { href: "/watchlist", label: "Вотчлист" },
-                    { href: "/playbook", label: "Плейбук" },
-                    { href: "/calculator", label: "Калькулятор" },
-                    { href: "/events", label: "События" },
-                  ].map(({ href, label }) => (
-                    <a key={href} href={href} className="text-xs font-mono text-muted-foreground hover:text-primary hover:bg-primary/5 transition-all duration-200 px-2.5 py-2 rounded-md border border-transparent hover:border-primary/15">
-                      → {label}
-                    </a>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
+        ),
+      )}
+    </Page>
   );
 }

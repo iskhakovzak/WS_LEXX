@@ -5,10 +5,24 @@
   "type": "module",
   "scripts": {
     "hello": "tsx ./src/hello.ts",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "seed-zakir-trades": "tsx ./src/seed-zakir-trades.ts",
+    "import-propreports": "tsx ./src/import-propreports.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "local-db": "tsx ./src/local-db.ts",
+    "restore-dump": "tsx ./src/restore-dump.ts"
+  },
+  "dependencies": {
+    "@workspace/db": "workspace:*",
+    "drizzle-orm": "catalog:",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "catalog:",
+    "@types/pg": "^8.20.0",
+    "@types/pg-copy-streams": "^1.2.5",
+    "embedded-postgres": "16.14.0-beta.17",
+    "pg": "^8.20.0",
+    "pg-copy-streams": "^7.0.0",
     "tsx": "catalog:"
   }
 }

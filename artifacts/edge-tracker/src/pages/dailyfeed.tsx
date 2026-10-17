@@ -1,555 +1,796 @@
-import React, { useState, useMemo } from "react";
-import { WriteOnly } from "@/contexts/auth-context";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   useListDailyFeed, useCreateDailyFeed, useUpdateDailyFeed, useDeleteDailyFeed, getListDailyFeedQueryKey,
 } from "@workspace/api-client-react";
-import type { DailyFeed, CreateDailyFeedBody, UpdateDailyFeedBody } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import type { DailyFeed, UpdateDailyFeedBody } from "@workspace/api-client-react";
+import {
+  Newspaper, Bell, Bot, RefreshCw, Search, X, ChevronLeft, ChevronRight, CalendarDays, PenLine, Megaphone,
+  MoreHorizontal, ClipboardCheck, AlertTriangle, CalendarRange, Sparkles, TrendingUp, Zap, NotebookPen,
+} from "lucide-react";
+import { Link } from "wouter";
+import { useAuth } from "@/contexts/auth-context";
+import {
+  Page, PageHeader, Panel, Segmented, Toolbar, EmptyState, SkeletonBlock, UpdatedAgo, Pill, toneOf, toneText, usePersistentState,
+} from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Pencil, Trash2, Plus, TrendingUp, TrendingDown, Star, Layers, Tag, Search, Calendar, X, LayoutGrid, List, FileText, Hash, Flame } from "lucide-react";
-import { AddToPlaybookButton, type PlaybookPayload } from "@/components/add-to-playbook";
-import { TagSelector } from "@/components/tag-selector";
-import { ScreenshotFields, ScreenshotDisplay, screenshotUrlsToString, stringToScreenshotUrls, screenshotNotesToString, stringToScreenshotNotes } from "@/components/screenshot-fields";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { UndoToast } from "@/components/undo-toast";
+import type { PlaybookPayload } from "@/components/add-to-playbook";
 import { useToast } from "@/hooks/use-toast";
+import { useUndoDelete } from "@/hooks/use-undo-delete";
+import { addDays, nyDate } from "@/lib/trading-date";
+import { links } from "@/lib/links";
+import { BASE, apiUrl } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { FeedEntryCard } from "@/components/feed/FeedEntryCard";
+import { FeedCalendar } from "@/components/feed/FeedCalendar";
+import { DigestSheet } from "@/components/feed/DigestSheet";
+import { FeedEditorDialog, blankForm, feedToForm, formToBody, type FeedForm } from "@/components/feed/FeedEditorDialog";
+import { StreamDayHeader, StreamGroup, StreamRow } from "@/components/feed/StreamCard";
+import {
+  STREAM_KEY, fmtValue, groupDay, isNewItem, useFeedStream, useFeedStreamDay, useSeenBaseline,
+  type FeedCategory, type StreamItem,
+} from "@/components/feed/stream-api";
+import {
+  dayOf, entryIsUnread, entryToText, formatDayLong, formatDayShort, hasServerAcks, pluralRu, splitList,
+  useFeedAck, useFeedViewerState, type AckKind, type FeedEntry,
+} from "@/components/feed/feed-utils";
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+/**
+ * «Лента» — assembles itself from what happens in the system (day results, streaks and records, academy,
+ * curator reviews, ideas, playbook, threads, game plans, market events, weekly summaries; see
+ * api-server lib/feedStream.ts). Manual posts (daily_feed) stay as announcements / short notes.
+ */
 
-function TagChips({ tags, onTagClick }: { tags?: string | null; onTagClick?: (tag: string) => void }) {
-  if (!tags) return null;
-  const chips = tags.split(",").map((t) => t.trim()).filter(Boolean);
-  if (!chips.length) return null;
+type Cat = "all" | FeedCategory;
+const CAT_OPTIONS: { value: Cat; label: string }[] = [
+  { value: "all", label: "Все" },
+  { value: "mine", label: "Мои" },
+  { value: "desk", label: "Деск" },
+  { value: "achievement", label: "Достижения" },
+  { value: "market", label: "Рынок" },
+  { value: "announcement", label: "Объявления" },
+];
+const CAT_VALUES = CAT_OPTIONS.map((o) => o.value);
+
+function isTypingTarget(el: EventTarget | null) {
+  if (!(el instanceof HTMLElement)) return false;
+  return el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT" || el.isContentEditable;
+}
+
+function stepWeekday(d: string, dir: -1 | 1) {
+  let x = addDays(d, dir);
+  for (let i = 0; i < 3; i++) {
+    const wd = new Date(`${x}T12:00:00`).getDay();
+    if (wd !== 0 && wd !== 6) break;
+    x = addDays(x, dir);
+  }
+  return x;
+}
+
+function buildPlaybookPayload(feed: DailyFeed): PlaybookPayload {
+  const conditions: string[] = [];
+  if (feed.whatWorksNow) conditions.push(feed.whatWorksNow);
+  if (feed.marketTheme) conditions.push(`Рыночная тема: ${feed.marketTheme}`);
+  const notes: string[] = [];
+  if (feed.whatDoesntWork) notes.push(`Что не работает: ${feed.whatDoesntWork}`);
+  if (feed.notes) notes.push(feed.notes);
+  if (feed.bestTickers) notes.push(`Тикеры: ${feed.bestTickers}`);
+  return {
+    name: `${feed.marketTheme || "Стратегия"} (${dayOf(feed)})`,
+    conditions: conditions.join("\n") || undefined,
+    notes: notes.join("\n") || undefined,
+    screenshotUrl: feed.screenshotUrl || undefined,
+    screenshotNotes: feed.screenshotNotes || undefined,
+    tags: feed.tags || undefined,
+    sourceType: "dailyfeed",
+    sourceId: feed.id,
+  };
+}
+
+const itemHay = (it: StreamItem) => [it.title, it.subtitle, it.ticker, it.trader, it.actor].map((x) => (x ?? "").toLowerCase()).join("\n");
+const postHay = (f: DailyFeed) =>
+  [f.marketTheme, f.bestTickers, f.whatWorksNow, f.whatDoesntWork, f.notes, f.tags, f.screenshotNotes].map((x) => (x ?? "").toLowerCase()).join("\n");
+
+function FeedSkeleton() {
   return (
-    <div className="flex flex-wrap gap-1 mt-1">
-      {chips.map((tag, i) => (
-        <span
-          key={i}
-          onClick={(e) => { if (onTagClick) { e.stopPropagation(); onTagClick(tag); } }}
-          className={`px-1.5 py-0 text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 leading-4 ${onTagClick ? "cursor-pointer hover:bg-primary/20 transition-colors" : ""}`}
-        >
-          {tag}
-        </span>
+    <div className="flex flex-col gap-6" role="status" aria-label="Загрузка ленты">
+      {[5, 3].map((rows, d) => (
+        <section key={d} className="flex flex-col gap-2">
+          <SkeletonBlock className="mx-1 h-6 w-64 rounded-full" />
+          <div className="glass-panel rounded-2xl p-2">
+            {Array.from({ length: rows }, (_, i) => (
+              <div key={i} className="flex min-h-14 items-center gap-3 px-2 py-2">
+                <SkeletonBlock className="h-9 w-9 shrink-0 rounded-xl" />
+                <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+                  <SkeletonBlock className="h-4" style={{ width: `${62 - ((i * 11) % 24)}%` }} />
+                  <SkeletonBlock className="h-3 w-1/3" />
+                </div>
+                <SkeletonBlock className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+        </section>
       ))}
     </div>
   );
 }
 
-type FormData = { date: string; whatWorksNow: string; whatDoesntWork: string; bestTickers: string; marketTheme: string; notes: string; tags: string; screenshotUrls: string[]; screenshotNotes: string[]; };
-const blank = (): FormData => ({ date: new Date().toISOString().split("T")[0], whatWorksNow: "", whatDoesntWork: "", bestTickers: "", marketTheme: "", notes: "", tags: "", screenshotUrls: [""], screenshotNotes: [""] });
-function toForm(f: DailyFeed): FormData { const urls = stringToScreenshotUrls(f.screenshotUrl); return { date: f.date.substring(0, 10), whatWorksNow: f.whatWorksNow ?? "", whatDoesntWork: f.whatDoesntWork ?? "", bestTickers: f.bestTickers ?? "", marketTheme: f.marketTheme ?? "", notes: f.notes ?? "", tags: f.tags ?? "", screenshotUrls: urls, screenshotNotes: stringToScreenshotNotes(f.screenshotNotes, urls.length) }; }
-function formToBody(f: FormData): CreateDailyFeedBody & { tags?: string | null; screenshotUrl?: string | null; screenshotNotes?: string | null } { return { date: f.date, whatWorksNow: f.whatWorksNow || null, whatDoesntWork: f.whatDoesntWork || null, bestTickers: f.bestTickers || null, marketTheme: f.marketTheme || null, notes: f.notes || null, tags: f.tags || null, screenshotUrl: screenshotUrlsToString(f.screenshotUrls) || null, screenshotNotes: screenshotNotesToString(f.screenshotNotes) || null }; }
-
-const DATE_PRESETS = [
-  { label: "Сегодня", getValue: () => { const d = new Date().toISOString().split("T")[0]; return { from: d, to: d }; } },
-  { label: "Эта неделя", getValue: () => { const now = new Date(); const day = now.getDay(); const diff = day === 0 ? 6 : day - 1; const mon = new Date(now); mon.setDate(now.getDate() - diff); return { from: mon.toISOString().split("T")[0], to: now.toISOString().split("T")[0] }; } },
-  { label: "Этот месяц", getValue: () => { const now = new Date(); const first = new Date(now.getFullYear(), now.getMonth(), 1); return { from: first.toISOString().split("T")[0], to: now.toISOString().split("T")[0] }; } },
-  { label: "30 дней", getValue: () => { const now = new Date(); const past = new Date(now); past.setDate(now.getDate() - 30); return { from: past.toISOString().split("T")[0], to: now.toISOString().split("T")[0] }; } },
-];
-
-function formatDay(dateStr: string) {
-  try {
-    const d = new Date(dateStr + "T12:00:00");
-    return d.toLocaleDateString("ru-RU", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
-  } catch { return dateStr; }
-}
-
 export default function DailyFeedPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [open, setOpen] = useState(false);
+  const { user, canEdit, isCurator, isAdmin } = useAuth();
+  const isStaff = isCurator || isAdmin;
+  const userId = user?.traderName ?? undefined;
+  const me = user?.traderName ?? "";
+
+  /* ── data: auto stream (paged) + manual announcements ── */
+  const stream = useFeedStream();
+  const today = stream.first?.today ?? nyDate();
+  const { data: postsRaw, isLoading: postsLoading } = useListDailyFeed();
+  const posts = useMemo(
+    () => ((postsRaw ?? []) as FeedEntry[]).slice().sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt)),
+    [postsRaw],
+  );
+  const baseline = useSeenBaseline(stream.first, canEdit);
+  const viewer = useFeedViewerState(user?.traderName ?? user?.role ?? "anon");
+  const ack = useFeedAck(me);
+
+  /* ── filters ── */
+  const [catRaw, setCat] = usePersistentState<Cat>("feed.cat", "all");
+  const cat: Cat = CAT_VALUES.includes(catRaw) ? catRaw : "all";
+  const [query, setQuery] = useState("");
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [focusId, setFocusId] = useState<number | null>(null);
+  const dayQ = useFeedStreamDay(selectedDay);
+  const searchRef = useRef<HTMLInputElement | null>(null);
+
+  /* ── editing / actions ── */
+  const [editorOpen, setEditorOpen] = useState(false);
   const [editing, setEditing] = useState<DailyFeed | null>(null);
-  const [deleting, setDeleting] = useState<DailyFeed | null>(null);
-  const [form, setForm] = useState<FormData>(blank());
+  const [form, setForm] = useState<FeedForm>(blankForm());
+  const [digestOpen, setDigestOpen] = useState(false);
+  const [regenLoading, setRegenLoading] = useState(false);
+  const [confirmRegen, setConfirmRegen] = useState(false);
+  const [eodLoading, setEodLoading] = useState(false);
+  const [eodPending, setEodPending] = useState<{ date: string; lastSyncedAt: string | null } | null>(null);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [dateFrom, setDateFrom] = useState("");
-  const [dateTo, setDateTo] = useState("");
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [viewMode, setViewMode] = useState<"grid" | "timeline">("grid");
-  const [showAllTags, setShowAllTags] = useState(false);
+  const invalidate = useCallback(() => {
+    qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() });
+    qc.invalidateQueries({ queryKey: STREAM_KEY });
+  }, [qc]);
+  const undo = useUndoDelete(invalidate);
+  const onMutErr = (e: unknown) => toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? String(e), variant: "destructive" });
+  const createMut = useCreateDailyFeed({ mutation: { onError: onMutErr } });
+  const updateMut = useUpdateDailyFeed({ mutation: { onError: onMutErr } });
+  const deleteMut = useDeleteDailyFeed({ mutation: { onError: onMutErr } });
 
-  const { data: feeds = [], isLoading } = useListDailyFeed();
-  const createMut = useCreateDailyFeed({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() }); setOpen(false); } } });
-  const updateMut = useUpdateDailyFeed({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() }); setOpen(false); setEditing(null); } } });
-  const deleteMut = useDeleteDailyFeed({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() }); setDeleting(null); } } });
-
-  const filtered = useMemo(() => {
-    let result = [...feeds];
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      result = result.filter((f) =>
-        (f.bestTickers ?? "").toLowerCase().includes(q) ||
-        (f.marketTheme ?? "").toLowerCase().includes(q) ||
-        (f.whatWorksNow ?? "").toLowerCase().includes(q) ||
-        (f.whatDoesntWork ?? "").toLowerCase().includes(q) ||
-        (f.notes ?? "").toLowerCase().includes(q) ||
-        (f.tags ?? "").toLowerCase().includes(q)
-      );
-    }
-    if (dateFrom) result = result.filter((f) => f.date.substring(0, 10) >= dateFrom);
-    if (dateTo) result = result.filter((f) => f.date.substring(0, 10) <= dateTo);
-    if (selectedTags.length > 0) {
-      result = result.filter((f) => {
-        const feedTags = (f.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean);
-        return selectedTags.some((st) => feedTags.includes(st));
-      });
-    }
-    return result.sort((a, b) => b.date.localeCompare(a.date));
-  }, [feeds, searchQuery, dateFrom, dateTo, selectedTags]);
-
-  const stats = useMemo(() => {
-    const now = new Date();
-    const d7 = new Date(now); d7.setDate(now.getDate() - 7);
-    const d30 = new Date(now); d30.setDate(now.getDate() - 30);
-    const d7str = d7.toISOString().split("T")[0];
-    const d30str = d30.toISOString().split("T")[0];
-
-    const tickerCount: Record<string, number> = {};
-    const themeCount: Record<string, number> = {};
-    const tickerCount7: Record<string, number> = {};
-    const tickerCount30: Record<string, number> = {};
-
-    for (const f of feeds) {
-      const date = f.date.substring(0, 10);
-      const tickers = (f.bestTickers ?? "").split(",").map((t) => t.trim()).filter(Boolean);
-      const themes = (f.marketTheme ?? "").split(",").map((t) => t.trim()).filter(Boolean);
-
-      tickers.forEach((t) => {
-        tickerCount[t] = (tickerCount[t] || 0) + 1;
-        if (date >= d7str) tickerCount7[t] = (tickerCount7[t] || 0) + 1;
-        if (date >= d30str) tickerCount30[t] = (tickerCount30[t] || 0) + 1;
-      });
-      themes.forEach((t) => { themeCount[t] = (themeCount[t] || 0) + 1; });
-    }
-
-    const topTickers7 = Object.entries(tickerCount7).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const topTickers30 = Object.entries(tickerCount30).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    const topThemes = Object.entries(themeCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
-
-    return { total: feeds.length, topTickers7, topTickers30, topThemes };
-  }, [feeds]);
-
-  const allTags = useMemo(() => {
-    const tagSet = new Set<string>();
-    feeds.forEach((f) => {
-      (f.tags ?? "").split(",").map((t) => t.trim()).filter(Boolean).forEach((t) => tagSet.add(t));
-    });
-    return Array.from(tagSet).sort();
-  }, [feeds]);
-
-  const timelineGroups = useMemo(() => {
-    const map: Record<string, DailyFeed[]> = {};
-    for (const f of filtered) {
-      const day = f.date.substring(0, 10);
-      if (!map[day]) map[day] = [];
-      map[day].push(f);
-    }
-    return Object.entries(map).sort((a, b) => b[0].localeCompare(a[0]));
-  }, [filtered]);
-
-  function set(k: keyof FormData, v: string) { setForm((f) => ({ ...f, [k]: v })); }
-  function openCreate() { setForm(blank()); setEditing(null); setOpen(true); }
-  function openEdit(f: DailyFeed) { setForm(toForm(f)); setEditing(f); setOpen(true); }
-  function handleSave() {
-    const body = formToBody(form);
-    if (!body.date) return;
-    if (editing) updateMut.mutate({ id: editing.id, data: body as UpdateDailyFeedBody });
-    else createMut.mutate({ data: body });
-  }
-
-  function toggleTag(tag: string) {
-    setSelectedTags((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
-  }
-
-  function applyPreset(preset: typeof DATE_PRESETS[0]) {
-    const { from, to } = preset.getValue();
-    setDateFrom(from);
-    setDateTo(to);
-  }
-
-  function clearFilters() {
-    setSearchQuery("");
-    setDateFrom("");
-    setDateTo("");
-    setSelectedTags([]);
-  }
-
-  const hasFilters = searchQuery || dateFrom || dateTo || selectedTags.length > 0;
-
-  function buildPlaybookPayload(feed: DailyFeed): PlaybookPayload {
-    const conditions: string[] = [];
-    if (feed.whatWorksNow) conditions.push(feed.whatWorksNow);
-    if (feed.marketTheme) conditions.push(`Рыночная тема: ${feed.marketTheme}`);
-    const notes: string[] = [];
-    if (feed.whatDoesntWork) notes.push(`Что не работает: ${feed.whatDoesntWork}`);
-    if (feed.notes) notes.push(feed.notes);
-    if (feed.bestTickers) notes.push(`Тикеры: ${feed.bestTickers}`);
-    return {
-      name: `${feed.marketTheme || "Стратегия"} (${feed.date.substring(0, 10)})`,
-      conditions: conditions.join("\n") || undefined,
-      notes: notes.join("\n") || undefined,
-      screenshotUrl: feed.screenshotUrl || undefined,
-      screenshotNotes: feed.screenshotNotes || undefined,
-      tags: feed.tags || undefined,
-      sourceType: "dailyfeed",
-      sourceId: feed.id,
+  /* ── deep links: ?highlight=<announcement id> / ?date=YYYY-MM-DD ── */
+  useEffect(() => {
+    const apply = (id: number | null, date: string | null) => {
+      if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) setSelectedDay(date);
+      if (id) setFocusId(id);
     };
+    try {
+      const p = new URLSearchParams(window.location.search);
+      const hid = Number(p.get("highlight"));
+      apply(Number.isFinite(hid) && hid > 0 ? hid : null, p.get("date"));
+    } catch { /* ignore */ }
+    const onNav = (e: Event) => {
+      const d = (e as CustomEvent<{ path?: string; highlightId?: number }>).detail;
+      if (d?.path === "/dailyfeed" && d.highlightId) apply(d.highlightId, null);
+    };
+    window.addEventListener("ws-search-navigate", onNav);
+    return () => window.removeEventListener("ws-search-navigate", onNav);
+  }, []);
+  useEffect(() => {
+    if (!focusId || !posts.length) return;
+    const f = posts.find((x) => x.id === focusId);
+    if (!f) return;
+    setCat("all");
+    setSelectedDay(dayOf(f));
+    const t = setTimeout(() => setFocusId(null), 4000);
+    return () => clearTimeout(t);
+  }, [focusId, posts, setCat]);
+
+  /* ── scope: one picked day, or the loaded pages ── */
+  const scopeItems: StreamItem[] = selectedDay ? (dayQ.data?.items ?? []) : stream.items;
+  const scopePosts = useMemo(() => {
+    if (selectedDay) return posts.filter((p) => dayOf(p) === selectedDay);
+    if (stream.unavailable || !stream.hasNextPage || !stream.loadedFrom) return posts;
+    return posts.filter((p) => dayOf(p) >= stream.loadedFrom!);
+  }, [posts, selectedDay, stream.unavailable, stream.hasNextPage, stream.loadedFrom]);
+
+  const unreadPostIds = useMemo(
+    () => new Set(posts.filter((f) => entryIsUnread(f, me, viewer)).map((f) => f.id)),
+    [posts, me, viewer],
+  );
+  const serverAcks = posts.some(hasServerAcks);
+
+  const catCounts = useMemo(() => {
+    const c: Record<Cat, number> = { all: 0, mine: 0, desk: 0, achievement: 0, market: 0, announcement: 0 };
+    for (const it of scopeItems) {
+      c.all++;
+      for (const k of it.cats) c[k]++;
+    }
+    c.all += scopePosts.length;
+    c.announcement += scopePosts.length;
+    return c;
+  }, [scopeItems, scopePosts]);
+
+  const q = query.trim().toLowerCase();
+  const days = useMemo(() => {
+    const m = new Map<string, { items: StreamItem[]; posts: FeedEntry[] }>();
+    const slot = (d: string) => {
+      let s = m.get(d);
+      if (!s) { s = { items: [], posts: [] }; m.set(d, s); }
+      return s;
+    };
+    for (const it of scopeItems) {
+      if (cat !== "all" && !it.cats.includes(cat)) continue;
+      if (q && !itemHay(it).includes(q)) continue;
+      slot(it.date).items.push(it);
+    }
+    if (cat === "all" || cat === "announcement") {
+      for (const p of scopePosts) {
+        if (q && !postHay(p).includes(q)) continue;
+        slot(dayOf(p)).posts.push(p);
+      }
+    }
+    return Array.from(m.entries()).sort((a, b) => b[0].localeCompare(a[0]));
+  }, [scopeItems, scopePosts, cat, q]);
+
+  /** My own day result per date (header number) — from the unfiltered stream. */
+  const myNetByDay = useMemo(() => {
+    const out = new Map<string, number>();
+    for (const it of [...stream.items, ...(dayQ.data?.items ?? [])]) {
+      if (it.kind === "day_result" && it.trader === me && it.value != null) out.set(it.date, it.value);
+    }
+    return out;
+  }, [stream.items, dayQ.data, me]);
+
+  const newItems = useMemo(() => stream.items.filter((it) => isNewItem(it, baseline)), [stream.items, baseline]);
+  const newTotal = newItems.length + posts.filter((p) => unreadPostIds.has(p.id)).length;
+
+  /* ── calendar ── */
+  const calCounts = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const it of stream.items) m.set(it.date, (m.get(it.date) ?? 0) + 1);
+    for (const p of posts) m.set(dayOf(p), (m.get(dayOf(p)) ?? 0) + 1);
+    return m;
+  }, [stream.items, posts]);
+  const calNewDays = useMemo(() => {
+    const s = new Set(newItems.map((i) => i.date));
+    for (const p of posts) if (unreadPostIds.has(p.id)) s.add(dayOf(p));
+    return s;
+  }, [newItems, posts, unreadPostIds]);
+  const calTradeDays = useMemo(
+    () => new Set(stream.items.filter((i) => i.kind === "day_result" && (i.trader === me || isStaff)).map((i) => i.date)),
+    [stream.items, me, isStaff],
+  );
+
+  /* ── summary («Сводка») ── */
+  const summary = useMemo(() => {
+    const mine = stream.items.filter((i) => i.trader === me);
+    const lastDay = mine.find((i) => i.kind === "day_result") ?? null;
+    const lastWeek = mine.find((i) => i.kind === "weekly_summary") ?? null;
+    const achievements = stream.items.filter((i) => i.cats.includes("achievement") && i.date >= addDays(today, -13)).length;
+    const myMarket = stream.items.filter((i) => i.kind === "event" && i.cats.includes("mine") && i.date === today).length;
+    return { lastDay, lastWeek, achievements, myMarket };
+  }, [stream.items, me, today]);
+
+  const hasFilters = !!(q || selectedDay || cat !== "all");
+  const clearFilters = useCallback(() => { setQuery(""); setSelectedDay(null); setCat("all"); }, [setCat]);
+
+  const stepDay = useCallback((dir: -1 | 1) => {
+    if (!selectedDay) {
+      if (dir === -1) setSelectedDay(days[0]?.[0] ?? today);
+      return;
+    }
+    const next = stepWeekday(selectedDay, dir);
+    if (next <= today) setSelectedDay(next);
+  }, [selectedDay, days, today]);
+
+  const openNew = useCallback(() => {
+    if (!canEdit) return;
+    setForm(blankForm(selectedDay ?? today));
+    setEditing(null);
+    setEditorOpen(true);
+  }, [canEdit, selectedDay, today]);
+
+  /* ── keyboard: N announcement · / search · J/K day back/forward · Esc reset ── */
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingTarget(e.target) || document.querySelector("[role=dialog]")) return;
+      const k = e.key.toLowerCase();
+      if (k === "n" || k === "т") { if (canEdit) { e.preventDefault(); openNew(); } }
+      else if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
+      else if (k === "j" || k === "о") { e.preventDefault(); stepDay(-1); }
+      else if (k === "k" || k === "л") { e.preventDefault(); stepDay(1); }
+      else if (e.key === "Escape" && hasFilters) { clearFilters(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [canEdit, openNew, stepDay, hasFilters, clearFilters]);
+
+  /* ── actions ── */
+  async function handleRegen(force: boolean) {
+    setRegenLoading(true);
+    try {
+      const resp = await fetch(apiUrl(`/api/market-brief/generate-feed${force ? "?force=1" : ""}`), {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}) },
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(data?.error ?? "Ошибка генерации");
+      toast({
+        title: data.skipped ? "Брифинг за сегодня уже есть" : "AI-брифинг готов",
+        description: data.skipped ? "Чтобы обновить его, выбери «Перегенерировать»." : "Брифинг добавлен в объявления на сегодня.",
+      });
+      invalidate();
+    } catch (e) {
+      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setRegenLoading(false);
+    }
   }
 
-  function renderCard(feed: DailyFeed) {
-    return (
-      <TooltipProvider key={feed.id}>
-        <Tooltip delayDuration={400}>
-          <TooltipTrigger asChild>
-            <div className="group bg-card border border-border font-mono text-xs border-l-[3px] border-l-primary/40 hover:border-l-primary hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 transition-all duration-200 bg-gradient-to-br from-card to-card/80">
-              <div className="flex items-center justify-between px-4 py-3 border-b border-border bg-gradient-to-r from-transparent to-primary/[0.02]">
-                <span className="text-primary font-bold text-sm">{feed.date.substring(0, 10)}</span>
-                <WriteOnly>
-                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <AddToPlaybookButton payload={buildPlaybookPayload(feed)} size="icon" />
-                    <button onClick={() => openEdit(feed)} className="p-1 text-muted-foreground hover:text-primary transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
-                    <button onClick={() => setDeleting(feed)} className="p-1 text-muted-foreground hover:text-red-400 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
-                  </div>
-                </WriteOnly>
-              </div>
-              <div className="p-4 space-y-3">
-                {feed.marketTheme && (
-                  <div>
-                    <div className="flex items-center gap-1.5 text-muted-foreground uppercase mb-1"><Layers className="h-3 w-3 group-hover:text-primary transition-colors" /><span>Рыночная тема</span></div>
-                    <div className="text-foreground">{feed.marketTheme}</div>
-                  </div>
-                )}
-                {feed.bestTickers && (
-                  <div>
-                    <div className="flex items-center gap-1.5 text-yellow-500 uppercase mb-1"><Star className="h-3 w-3 group-hover:animate-pulse" /><span>Лучшие тикеры</span></div>
-                    <div className="text-foreground font-bold">{feed.bestTickers}</div>
-                  </div>
-                )}
-                {feed.whatWorksNow && (
-                  <div>
-                    <div className="flex items-center gap-1.5 text-emerald-400 uppercase mb-1"><TrendingUp className="h-3 w-3 group-hover:translate-y-[-1px] transition-transform" /><span>Что работает</span></div>
-                    <div className="text-foreground">{feed.whatWorksNow}</div>
-                  </div>
-                )}
-                {feed.whatDoesntWork && (
-                  <div>
-                    <div className="flex items-center gap-1.5 text-red-400 uppercase mb-1"><TrendingDown className="h-3 w-3 group-hover:translate-y-[1px] transition-transform" /><span>Что не работает</span></div>
-                    <div className="text-foreground">{feed.whatDoesntWork}</div>
-                  </div>
-                )}
-                {feed.notes && (
-                  <div className="bg-muted/20 border border-border/50 p-2">
-                    <div className="text-muted-foreground uppercase mb-1 text-[10px]">Заметки</div>
-                    <div className="text-foreground/80 leading-relaxed whitespace-pre-wrap line-clamp-3">{feed.notes}</div>
-                  </div>
-                )}
-                <TagChips tags={feed.tags} onTagClick={toggleTag} />
-                {feed.screenshotUrl && (
-                  <ScreenshotDisplay
-                    urls={feed.screenshotUrl}
-                    notes={feed.screenshotNotes}
-                    onNotesChange={async (newNotes) => {
-                      try {
-                        await fetch(`${BASE}/api/dailyfeed/${feed.id}`, {
-                          method: "PATCH",
-                          headers: { "Content-Type": "application/json" },
-                          body: JSON.stringify({ screenshotNotes: newNotes }),
-                        });
-                        qc.invalidateQueries({ queryKey: getListDailyFeedQueryKey() });
-                      } catch {}
-                    }}
-                  />
-                )}
-              </div>
-            </div>
-          </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-xs bg-card border border-border text-foreground p-3 font-mono text-xs space-y-1.5">
-            <div className="font-bold text-primary">{feed.date.substring(0, 10)}</div>
-            {feed.marketTheme && <div><span className="text-muted-foreground">Тема:</span> {feed.marketTheme}</div>}
-            {feed.bestTickers && <div><span className="text-yellow-500">Тикеры:</span> {feed.bestTickers}</div>}
-            {feed.whatWorksNow && <div className="text-emerald-400 truncate">✓ {feed.whatWorksNow}</div>}
-            {feed.whatDoesntWork && <div className="text-red-400 truncate">✗ {feed.whatDoesntWork}</div>}
-          </TooltipContent>
-        </Tooltip>
-      </TooltipProvider>
+  function openEdit(f: DailyFeed) { setForm(feedToForm(f)); setEditing(f); setEditorOpen(true); }
+
+  async function handleSave() {
+    if (!form.date) return;
+    try {
+      if (editing) {
+        await updateMut.mutateAsync({ id: editing.id, data: formToBody(form) as UpdateDailyFeedBody });
+        toast({ title: "Объявление обновлено" });
+      } else {
+        const created = await createMut.mutateAsync({ data: formToBody(form) });
+        if (created && typeof (created as DailyFeed).id === "number") viewer.markRead((created as DailyFeed).id);
+        toast({ title: "Опубликовано в ленте" });
+      }
+      invalidate();
+      setEditorOpen(false);
+      setEditing(null);
+    } catch { /* toast in onError */ }
+  }
+
+  function handleDelete(f: DailyFeed) {
+    deleteMut.mutate({ id: f.id }, {
+      onSuccess: () => {
+        invalidate();
+        undo.scheduleUndo(f.id, "dailyfeed", `Объявление (${formatDayShort(dayOf(f))})`);
+      },
+    });
+  }
+
+  async function saveShotNotes(f: DailyFeed, notes: string[]) {
+    try {
+      const r = await fetch(`${BASE}/api/dailyfeed/${f.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ screenshotNotes: JSON.stringify(notes) }),
+      });
+      if (!r.ok) throw new Error(String(r.status));
+      invalidate();
+    } catch {
+      toast({ title: "Не удалось сохранить подпись", variant: "destructive" });
+    }
+  }
+
+  async function copyEntry(f: DailyFeed) {
+    try {
+      await navigator.clipboard.writeText(entryToText(f));
+      toast({ title: "Скопировано", description: "Текст объявления в буфере обмена." });
+    } catch {
+      toast({ title: "Не удалось скопировать", variant: "destructive" });
+    }
+  }
+
+  const ackErr = (e: unknown) => toast({ title: "Не удалось сохранить отметку", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+  function markRead(f: FeedEntry) {
+    viewer.markRead(f.id);
+    if (canEdit && hasServerAcks(f) && !f.acks.mine.includes("read")) ack(f.id, "read", true).catch(ackErr);
+  }
+  function markUnread(f: FeedEntry) {
+    viewer.markUnread(f.id, f.createdAt);
+    if (canEdit && hasServerAcks(f) && f.acks.mine.includes("read")) ack(f.id, "read", false).catch(ackErr);
+  }
+  function toggleAck(f: FeedEntry, kind: Exclude<AckKind, "read">) {
+    if (!canEdit || !hasServerAcks(f)) return;
+    ack(f.id, kind, !f.acks.mine.includes(kind)).catch(ackErr);
+  }
+
+  /* EOD recap (staff): the API waits for the trade sync of that day unless forced. */
+  async function closeDay(force = false) {
+    const date = selectedDay ?? today;
+    setEodLoading(true);
+    try {
+      const r = await fetch(`${BASE}/api/dailyfeed/eod?date=${date}${force ? "&force=1" : ""}`, { method: "POST" });
+      const j = (await r.json().catch(() => ({}))) as { error?: string; code?: string; lastSyncedAt?: string | null; updated?: boolean };
+      if (r.status === 409 && j.code === "SYNC_PENDING") { setEodPending({ date, lastSyncedAt: j.lastSyncedAt ?? null }); return; }
+      if (r.status === 409 && j.code === "SYNC_RUNNING") { toast({ title: "Сделки ещё загружаются", description: "Подожди пару минут и закрой день ещё раз." }); return; }
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      invalidate();
+      setSelectedDay(date);
+      toast({ title: j.updated ? "Итог дня обновлён" : "Итог дня записан", description: formatDayLong(date) });
+    } catch (e) {
+      toast({ title: "Не удалось закрыть день", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setEodLoading(false);
+    }
+  }
+
+  const todayPost = posts.find((f) => dayOf(f) === today) ?? null;
+  const streamLoading = selectedDay ? dayQ.isLoading : stream.isLoading;
+  const streamError = selectedDay ? dayQ.error : stream.error;
+  const unavailable = stream.unavailable;
+  const softError = !unavailable && !!streamError && !streamLoading;
+  const loading = (streamLoading && !unavailable) || postsLoading;
+  const nothingAtAll = !loading && !stream.items.length && !posts.length && !softError;
+
+  /* ── render pieces ── */
+  const header = (
+    <PageHeader
+      title="Лента"
+      icon={Newspaper}
+      description="Собирается сама: итоги дней, рекорды и серии, разборы, идеи и плейбук деска, события по твоим тикерам"
+      meta={
+        <>
+          {newTotal > 0 ? (
+            <Pill tone="accent" dot>{newTotal} {pluralRu(newTotal, "новое", "новых", "новых")} с последнего визита</Pill>
+          ) : baseline ? (
+            <span>Нового с последнего визита нет</span>
+          ) : null}
+          {stream.dataUpdatedAt > 0 && <UpdatedAgo at={stream.dataUpdatedAt} />}
+        </>
+      }
+      actions={
+        <>
+          {canEdit && (
+            isStaff ? (
+              <Button onClick={openNew} title="Объявление для деска (N)">
+                <Megaphone aria-hidden="true" /> Написать объявление
+              </Button>
+            ) : (
+              <Button variant="outline" onClick={openNew} title="Короткая заметка в ленту деска (N)">
+                <PenLine aria-hidden="true" /> Заметка
+              </Button>
+            )
+          )}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="icon" aria-label="Ещё действия" title="Ещё">
+                {eodLoading || regenLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-64">
+              <DropdownMenuItem onSelect={() => setDigestOpen(true)}>
+                <Bell aria-hidden="true" /> Дайджест
+              </DropdownMenuItem>
+              {isStaff && (
+                <DropdownMenuItem disabled={eodLoading} onSelect={() => closeDay(false)}>
+                  <ClipboardCheck aria-hidden="true" /> Закрыть день · {formatDayShort(selectedDay ?? today)}
+                </DropdownMenuItem>
+              )}
+              {canEdit && (
+                <>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem disabled={regenLoading} onSelect={() => (todayPost ? setConfirmRegen(true) : handleRegen(false))}>
+                    <Bot aria-hidden="true" /> {todayPost ? "Перегенерировать AI-брифинг" : "AI-брифинг дня"}
+                  </DropdownMenuItem>
+                </>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </>
+      }
+    />
+  );
+
+  const toolbar = (
+    <Toolbar className="sticky-top">
+      <Segmented<Cat>
+        ariaLabel="Что показывать"
+        size="sm"
+        value={cat}
+        onChange={setCat}
+        options={CAT_OPTIONS.map((o) => ({ value: o.value, label: o.label, count: loading ? undefined : catCounts[o.value] || undefined }))}
+      />
+      <div className="relative min-w-[200px] flex-1">
+        <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          ref={searchRef}
+          aria-label="Поиск по ленте"
+          title="Поиск ( / )"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
+          placeholder="Тикер, трейдер, событие…"
+          className="pl-10 pr-9"
+        />
+        {query && (
+          <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+    </Toolbar>
+  );
+
+  const dayNav = selectedDay && (
+    <div className="flex flex-wrap items-center gap-2" aria-label="Выбранный день">
+      <div className="glass-field inline-flex items-center gap-1 p-1">
+        <button type="button" aria-label="Предыдущий торговый день" title="День назад (J)" onClick={() => stepDay(-1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <ChevronLeft className="h-4 w-4" />
+        </button>
+        <span className="px-1 text-sm font-medium text-foreground">{formatDayLong(selectedDay)}</span>
+        <button type="button" aria-label="Следующий торговый день" title="День вперёд (K)" disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
+          <ChevronRight className="h-4 w-4" />
+        </button>
+        <button type="button" aria-label="Показать все дни" title="Все дни (Esc)" onClick={() => setSelectedDay(null)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+      <Link href={links.dayReport(selectedDay)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
+        <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> Отчёт за день
+      </Link>
+    </div>
+  );
+
+  const banner = unavailable ? (
+    <div className="glass-panel flex items-start gap-3 rounded-2xl p-[var(--panel-p)] text-sm" role="status">
+      <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <p className="text-muted-foreground">
+        Автоматическая лента появится после обновления сервера. Пока показаны только объявления.
+      </p>
+    </div>
+  ) : softError ? (
+    <div className="glass-panel flex flex-wrap items-center gap-3 rounded-2xl p-[var(--panel-p)] text-sm" role="alert">
+      <AlertTriangle className="h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
+      <p className="min-w-0 flex-1 text-muted-foreground">Не удалось собрать ленту. Объявления показаны, остальное — после повтора.</p>
+      <Button variant="outline" size="sm" onClick={() => (selectedDay ? dayQ.refetch() : stream.refetch())}>
+        <RefreshCw aria-hidden="true" /> Повторить
+      </Button>
+    </div>
+  ) : null;
+
+  let body: ReactNode;
+  if (loading) {
+    body = <FeedSkeleton />;
+  } else if (nothingAtAll) {
+    body = (
+      <Panel>
+        <EmptyState
+          icon={Newspaper}
+          title="Лента пока пустая"
+          description="Как только появятся сделки, разборы, идеи или события рынка, лента соберётся сама."
+          action={canEdit ? <Button variant="outline" onClick={openNew}><PenLine aria-hidden="true" />{isStaff ? "Написать объявление" : "Заметка"}</Button> : undefined}
+        />
+      </Panel>
+    );
+  } else if (!days.length) {
+    body = (
+      <Panel>
+        {selectedDay && !q && cat === "all" ? (
+          <EmptyState
+            compact
+            icon={CalendarDays}
+            title={`За ${formatDayShort(selectedDay)} событий нет`}
+            description="Выходной или день без сделок. Выбери другой день в календаре."
+            action={<Button variant="outline" size="sm" onClick={() => setSelectedDay(null)}>Все дни</Button>}
+          />
+        ) : (
+          <EmptyState
+            compact
+            icon={Search}
+            title="Ничего не найдено"
+            description="Попробуй другой раздел или запрос."
+            action={<Button variant="outline" size="sm" onClick={clearFilters}><X aria-hidden="true" />Сбросить</Button>}
+          />
+        )}
+      </Panel>
+    );
+  } else {
+    body = (
+      <div className="flex flex-col gap-6">
+        {days.map(([day, { items, posts: dayPosts }]) => {
+          const entries = groupDay(items);
+          const newCount = items.filter((i) => isNewItem(i, baseline)).length + dayPosts.filter((p) => unreadPostIds.has(p.id)).length;
+          return (
+            <section key={day} className="flex flex-col gap-2" aria-label={formatDayLong(day)}>
+              <StreamDayHeader
+                day={day}
+                today={today}
+                myNet={items.some((i) => i.kind === "day_result" && i.trader === me) ? null : myNetByDay.get(day) ?? null}
+                newCount={newCount}
+                count={items.length + dayPosts.length}
+              />
+              {dayPosts.map((f) => (
+                <FeedEntryCard
+                  key={f.id}
+                  feed={f}
+                  unread={unreadPostIds.has(f.id)}
+                  autoRead
+                  me={me}
+                  onAck={canEdit && serverAcks ? (k) => toggleAck(f, k) : undefined}
+                  bookmarked={viewer.bookmarkSet.has(f.id)}
+                  query={query.trim()}
+                  activeTickers={[]}
+                  activeTags={[]}
+                  tradedTickers={new Map()}
+                  canEdit={canEdit}
+                  focused={focusId === f.id}
+                  playbookPayload={buildPlaybookPayload(f)}
+                  onToggleTicker={(t) => setQuery(t)}
+                  onToggleTag={(t) => setQuery(splitList(t)[0] ?? t)}
+                  onBookmark={() => viewer.toggleBookmark(f.id)}
+                  onMarkRead={() => markRead(f)}
+                  onMarkUnread={() => markUnread(f)}
+                  onCopy={() => copyEntry(f)}
+                  onEdit={() => openEdit(f)}
+                  onDelete={() => handleDelete(f)}
+                  onNotesChange={(n) => saveShotNotes(f, n)}
+                />
+              ))}
+              {entries.length > 0 && (
+                <div className="glass-panel flex flex-col rounded-2xl p-1.5">
+                  {entries.map((e) =>
+                    e.type === "group"
+                      ? <StreamGroup key={e.key} group={e.group} items={e.items} baseline={baseline} />
+                      : <StreamRow key={e.key} item={e.item} baseline={baseline} />,
+                  )}
+                </div>
+              )}
+            </section>
+          );
+        })}
+        {!selectedDay && stream.hasNextPage && (
+          <Button variant="outline" className="self-center" disabled={stream.isFetchingNextPage} onClick={() => stream.fetchNextPage()}>
+            {stream.isFetchingNextPage ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <CalendarRange aria-hidden="true" />}
+            Показать раньше
+          </Button>
+        )}
+      </div>
     );
   }
 
+  const aside = (
+    <div className="flex flex-col gap-[var(--grid-gap)]">
+      <Panel title="Сводка" icon={TrendingUp}>
+        <dl className="flex flex-col gap-3 text-sm">
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Последний торговый день</dt>
+            <dd className="text-right">
+              {summary.lastDay ? (
+                <Link href={summary.lastDay.href ?? links.dayReport(summary.lastDay.date)} className="inline-flex flex-col items-end hover:underline">
+                  <span className={cn("font-semibold tabular-nums", toneText(toneOf(summary.lastDay.value)))}>{fmtValue(summary.lastDay.value, "usd") ?? "—"}</span>
+                  <span className="text-xs text-muted-foreground">{formatDayShort(summary.lastDay.date)}</span>
+                </Link>
+              ) : <span className="text-muted-foreground">—</span>}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Прошлая неделя</dt>
+            <dd className="text-right">
+              {summary.lastWeek ? (
+                <Link href={summary.lastWeek.href ?? links.weeklyReview()} className="inline-flex flex-col items-end hover:underline">
+                  <span className={cn("font-semibold tabular-nums", toneText(toneOf(summary.lastWeek.value)))}>{fmtValue(summary.lastWeek.value, "usd") ?? "—"}</span>
+                  <span className="text-xs text-muted-foreground">{String(summary.lastWeek.meta?.week ?? "")}</span>
+                </Link>
+              ) : <span className="text-muted-foreground">—</span>}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="text-muted-foreground">Достижения за 2 недели</dt>
+            <dd>
+              <button type="button" className="font-semibold tabular-nums text-foreground hover:underline" onClick={() => { setSelectedDay(null); setCat("achievement"); }}>
+                {summary.achievements}
+              </button>
+            </dd>
+          </div>
+          <div className="flex items-center justify-between gap-3">
+            <dt className="inline-flex items-center gap-1.5 text-muted-foreground"><Zap className="h-3.5 w-3.5" aria-hidden="true" />Мои тикеры сегодня</dt>
+            <dd>
+              <button type="button" className="font-semibold tabular-nums text-foreground hover:underline" onClick={() => { setSelectedDay(null); setCat("market"); }}>
+                {summary.myMarket ? `${summary.myMarket} ${pluralRu(summary.myMarket, "событие", "события", "событий")}` : "тихо"}
+              </button>
+            </dd>
+          </div>
+        </dl>
+      </Panel>
+      <Panel>
+        <FeedCalendar
+          key={today.slice(0, 7)}
+          anchor={today}
+          counts={calCounts}
+          unreadDays={calNewDays}
+          tradeDays={calTradeDays}
+          selected={selectedDay}
+          onSelect={setSelectedDay}
+          today={today}
+        />
+      </Panel>
+    </div>
+  );
+
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight">Дневная Лента</h1>
-        <WriteOnly>
-          <Button onClick={openCreate} className="font-mono uppercase tracking-tight text-xs gap-1">
-            <Plus className="h-3 w-3" /> Новая Запись
-          </Button>
-        </WriteOnly>
+    <Page>
+      {header}
+      <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
+        <main className="flex min-w-0 flex-col gap-4" aria-label="Лента">
+          {toolbar}
+          {dayNav}
+          {banner}
+          {body}
+        </main>
+        <aside className="hidden lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:block" aria-label="Сводка и календарь">
+          {aside}
+        </aside>
       </div>
 
-      {feeds.length > 0 && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-card border border-border p-3 border-l-[3px] border-l-primary/50">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-mono uppercase mb-1"><FileText className="h-3 w-3" />Всего записей</div>
-            <div className="text-2xl font-bold font-mono text-foreground">{stats.total}</div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">{filtered.length !== stats.total && `Показано: ${filtered.length}`}</div>
-          </div>
-          <div className="bg-card border border-border p-3 border-l-[3px] border-l-yellow-500/50">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-mono uppercase mb-1"><Star className="h-3 w-3 text-yellow-500" />Топ тикеры (7д)</div>
-            <div className="text-sm font-bold font-mono text-foreground">
-              {stats.topTickers7.length > 0 ? stats.topTickers7.map(([t, c]) => `${t}`).join(", ") : "—"}
-            </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
-              {stats.topTickers7.length > 0 && stats.topTickers7.map(([t, c]) => `${t}:${c}`).join(" · ")}
-            </div>
-          </div>
-          <div className="bg-card border border-border p-3 border-l-[3px] border-l-cyan-500/50">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-mono uppercase mb-1"><Star className="h-3 w-3 text-cyan-500" />Топ тикеры (30д)</div>
-            <div className="text-sm font-bold font-mono text-foreground">
-              {stats.topTickers30.length > 0 ? stats.topTickers30.map(([t]) => `${t}`).join(", ") : "—"}
-            </div>
-            <div className="text-[10px] text-muted-foreground mt-0.5">
-              {stats.topTickers30.length > 0 && stats.topTickers30.map(([t, c]) => `${t}:${c}`).join(" · ")}
-            </div>
-          </div>
-          <div className="bg-card border border-border p-3 border-l-[3px] border-l-emerald-500/50">
-            <div className="flex items-center gap-1.5 text-muted-foreground text-[10px] font-mono uppercase mb-1"><Flame className="h-3 w-3 text-emerald-500" />Топ темы</div>
-            <div className="text-sm font-mono text-foreground leading-relaxed">
-              {stats.topThemes.length > 0 ? stats.topThemes.map(([t, c]) => (
-                <div key={t} className="flex justify-between text-xs">
-                  <span className="truncate">{t}</span>
-                  <span className="text-muted-foreground ml-2 shrink-0">{c}</span>
-                </div>
-              )) : <span className="text-muted-foreground">—</span>}
-            </div>
-          </div>
-        </div>
-      )}
+      <FeedEditorDialog
+        open={editorOpen}
+        onOpenChange={(v) => { if (!v) { setEditorOpen(false); setEditing(null); } }}
+        form={form}
+        setForm={setForm}
+        editing={editing}
+        saving={createMut.isPending || updateMut.isPending}
+        onSave={handleSave}
+        userId={userId}
+      />
 
-      <div className="space-y-2">
-        <div className="flex flex-wrap gap-2 items-center">
-          <div className="relative flex-1 min-w-[200px]">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-            <Input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Поиск по тикерам, темам, заметкам..."
-              className="pl-8 h-8 font-mono text-xs bg-card"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+      <DigestSheet open={digestOpen} onOpenChange={setDigestOpen} />
 
-          <div className="flex items-center gap-1">
-            <div className="relative flex items-center">
-              <Calendar className="absolute left-2 h-3.5 w-3.5 text-muted-foreground pointer-events-none" />
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="h-8 pl-7 pr-2 w-[130px] bg-card border border-border text-xs font-mono text-foreground focus:outline-none focus:border-primary/50 transition-colors"
-                placeholder="От"
-              />
-            </div>
-            <span className="text-muted-foreground text-xs">—</span>
-            <div className="relative flex items-center">
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="h-8 px-2 w-[130px] bg-card border border-border text-xs font-mono text-foreground focus:outline-none focus:border-primary/50 transition-colors"
-                placeholder="До"
-              />
-            </div>
-            {(dateFrom || dateTo) && (
-              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="text-muted-foreground hover:text-foreground">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
-          </div>
-
-          <div className="flex items-center border border-border bg-card">
-            <button
-              onClick={() => setViewMode("grid")}
-              className={`p-1.5 transition-colors ${viewMode === "grid" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <LayoutGrid className="h-4 w-4" />
-            </button>
-            <button
-              onClick={() => setViewMode("timeline")}
-              className={`p-1.5 transition-colors ${viewMode === "timeline" ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-            >
-              <List className="h-4 w-4" />
-            </button>
-          </div>
-        </div>
-
-        <div className="flex flex-wrap gap-1 items-center">
-          {DATE_PRESETS.map((preset) => (
-            <button
-              key={preset.label}
-              onClick={() => applyPreset(preset)}
-              className="px-2 py-1 text-[10px] font-mono bg-muted/50 text-muted-foreground border border-border hover:bg-muted hover:text-foreground transition-colors"
-            >
-              {preset.label}
-            </button>
-          ))}
-          <span className="text-border mx-1">|</span>
-          {(showAllTags ? allTags : allTags.slice(0, 10)).map((tag) => (
-            <button
-              key={tag}
-              onClick={() => toggleTag(tag)}
-              className={`px-2 py-0.5 text-[10px] font-mono border transition-colors ${
-                selectedTags.includes(tag)
-                  ? "bg-primary/20 text-primary border-primary/40"
-                  : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/60 hover:text-foreground"
-              }`}
-            >
-              <Hash className="inline h-2.5 w-2.5 mr-0.5" />{tag}
-            </button>
-          ))}
-          {allTags.length > 10 && (
-            <button
-              onClick={() => setShowAllTags((v) => !v)}
-              className="px-2 py-0.5 text-[10px] font-mono text-primary/70 hover:text-primary transition-colors"
-            >
-              {showAllTags ? "Свернуть" : `+${allTags.length - 10} ещё`}
-            </button>
-          )}
-          {hasFilters && (
-            <button onClick={clearFilters} className="px-2 py-0.5 text-[10px] font-mono text-red-400 hover:text-red-300 transition-colors">
-              Сбросить всё
-            </button>
-          )}
-        </div>
-      </div>
-
-      {viewMode === "grid" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-          {filtered.map((feed) => renderCard(feed))}
-        </div>
-      ) : (
-        <div className="space-y-0">
-          {timelineGroups.map(([day, dayFeeds]) => (
-            <div key={day} className="relative">
-              <div className="flex items-center gap-3 py-2">
-                <div className="flex items-center gap-2 bg-card border border-border px-3 py-1.5 shrink-0">
-                  <Calendar className="h-3 w-3 text-primary/70" />
-                  <span className="text-[10px] font-mono font-bold uppercase text-primary/80 tracking-widest">{formatDay(day)}</span>
-                  <span className="text-[10px] text-muted-foreground">· {dayFeeds.length} записей</span>
-                </div>
-                <div className="flex-1 h-px bg-border" />
-              </div>
-              <div className="relative pl-6 border-l-2 border-border ml-4 space-y-3 pb-4">
-                {dayFeeds.map((feed) => (
-                  <div key={feed.id} className="relative">
-                    <div className="absolute -left-[calc(1.5rem+1px)] top-4 w-3 h-3 rounded-full bg-primary/30 border-2 border-primary/60" />
-                    <div className="ml-2">
-                      {renderCard(feed)}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {filtered.length === 0 && !isLoading && (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-            <FileText className="h-8 w-8 text-muted-foreground/50" />
-          </div>
-          <div className="text-muted-foreground font-mono text-sm mb-1">
-            {hasFilters ? "Нет записей по заданным фильтрам" : "Нет записей в дневной ленте"}
-          </div>
-          <div className="text-muted-foreground/60 font-mono text-xs mb-4">
-            {hasFilters ? "Попробуйте изменить параметры поиска" : "Создайте первую запись, чтобы начать отслеживать рыночные наблюдения"}
-          </div>
-          {hasFilters ? (
-            <Button variant="outline" onClick={clearFilters} className="font-mono uppercase text-xs gap-1">
-              <X className="h-3 w-3" /> Сбросить фильтры
-            </Button>
-          ) : (
-            <WriteOnly>
-              <Button onClick={openCreate} className="font-mono uppercase text-xs gap-1">
-                <Plus className="h-3 w-3" /> Создать запись
-              </Button>
-            </WriteOnly>
-          )}
-        </div>
-      )}
-
-      <Dialog open={open} onOpenChange={(v) => { if (!v) { setOpen(false); setEditing(null); } }}>
-        <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto bg-card border-border font-mono">
-          <DialogHeader><DialogTitle className="uppercase text-sm tracking-tight">{editing ? "Редактировать запись" : "Новая запись"}</DialogTitle></DialogHeader>
-          <div className="space-y-3 text-xs">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Дата *</Label>
-              <Input type="date" value={form.date} onChange={(e) => set("date", e.target.value)} className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Рыночная тема</Label>
-              <Input value={form.marketTheme} onChange={(e) => set("marketTheme", e.target.value)} placeholder="AI доминирует, tech в силе..." className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Лучшие тикеры</Label>
-              <Input value={form.bestTickers} onChange={(e) => set("bestTickers", e.target.value)} placeholder="NVDA, META, MSFT" className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Что работает сейчас</Label>
-              <Textarea value={form.whatWorksNow} onChange={(e) => set("whatWorksNow", e.target.value)} rows={2} placeholder="Earnings gap plays, моментум на AI..." className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Что не работает</Label>
-              <Textarea value={form.whatDoesntWork} onChange={(e) => set("whatDoesntWork", e.target.value)} rows={2} placeholder="Шорты на сильном рынке..." className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Заметки</Label>
-              <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs flex items-center gap-1.5"><Tag className="h-3 w-3" />Теги</Label>
-              <TagSelector
-                selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}
-                onChange={(tags) => set("tags", tags.join(", "))}
-              />
-            </div>
-            <ScreenshotFields
-              urls={form.screenshotUrls}
-              onChange={(urls) => setForm((f) => ({ ...f, screenshotUrls: urls }))}
-              notes={form.screenshotNotes}
-              onNotesChange={(notes) => setForm((f) => ({ ...f, screenshotNotes: notes }))}
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)} className="font-mono uppercase text-xs">Отмена</Button>
-            <Button onClick={handleSave} disabled={createMut.isPending || updateMut.isPending} className="font-mono uppercase text-xs">
-              {createMut.isPending || updateMut.isPending ? "Сохраняем..." : "Сохранить"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
-        <AlertDialogContent className="bg-card border-border font-mono">
+      <AlertDialog open={!!eodPending} onOpenChange={(v) => { if (!v) setEodPending(null); }}>
+        <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-sm uppercase">Удалить запись?</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs">{deleting?.date?.substring(0, 10)} — {deleting?.marketTheme || "Дневная запись"}. Это нельзя отменить.</AlertDialogDescription>
+            <AlertDialogTitle>Сделки за {eodPending ? formatDayShort(eodPending.date) : ""} ещё загружаются</AlertDialogTitle>
+            <AlertDialogDescription>
+              {eodPending?.lastSyncedAt
+                ? `Последняя загрузка: ${new Date(eodPending.lastSyncedAt).toLocaleString("ru-RU")}. `
+                : "За этот день сделки ещё не загружались. "}
+              Итог дня соберётся по тем сделкам, что уже есть, — цифры могут быть неполными. Закрыть день сейчас?
+            </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono text-xs uppercase">Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && deleteMut.mutate({ id: deleting.id })} className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700">Удалить</AlertDialogAction>
+            <AlertDialogCancel>Подождать</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setEodPending(null); closeDay(true); }}>Всё равно закрыть</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+
+      <AlertDialog open={confirmRegen} onOpenChange={setConfirmRegen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Перегенерировать AI-брифинг?</AlertDialogTitle>
+            <AlertDialogDescription>
+              AI заново соберёт брифинг на сегодня и обновит сегодняшнее AI-объявление. Ручные правки в нём могут потеряться.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Отмена</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmRegen(false); handleRegen(true); }}>Перегенерировать</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {undo.pending && (
+        <UndoToast
+          key={undo.pending.id}
+          label={undo.pending.label}
+          onUndo={undo.restore}
+          onDismiss={undo.dismiss}
+          restoring={undo.restoring}
+        />
+      )}
+    </Page>
   );
 }
