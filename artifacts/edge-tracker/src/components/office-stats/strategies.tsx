@@ -41,7 +41,9 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
   return (
     <Panel title="Итог по стратегиям" description="вклад каждой стратегии в результат года · убыток — в скобках" icon={ListOrdered} fill className="lg:col-span-6">
       {!shown.length ? <EmptyState compact icon={ListOrdered} title="Нет сделок за выбранные годы" /> : (
-        <div className={cn("grid gap-5", shown.length > 1 && "sm:grid-cols-2")}>
+        // Split years side by side only when the panel itself is wide enough — a row needs ~13rem.
+        <div className="@container">
+        <div className={cn("grid gap-5", shown.length > 1 && "@md:grid-cols-2")}>
           {shown.map((y, rank) => {
             const rows = y.strategies.filter((s) => s.trades > 0).sort((a, b) => b.net - a.net);
             return (
@@ -73,6 +75,7 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
               </div>
             );
           })}
+        </div>
         </div>
       )}
     </Panel>
