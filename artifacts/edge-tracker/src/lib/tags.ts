@@ -109,3 +109,64 @@ export function getCategoryForTag(tag: string): TagCategory | null {
   }
   return null;
 }
+
+export function parseShortNumber(s: string | null | undefined): number {
+  if (!s) return 0;
+  const n = s.replace(/[,$\s]/g, "").toLowerCase();
+  const num = parseFloat(n);
+  if (isNaN(num)) return 0;
+  if (n.endsWith("t")) return num * 1e12;
+  if (n.endsWith("b")) return num * 1e9;
+  if (n.endsWith("m")) return num * 1e6;
+  if (n.endsWith("k")) return num * 1e3;
+  return num;
+}
+
+export interface FundamentalsForTags {
+  marketCap?: string | null;
+  sector?: string | null;
+  relativeVolume?: number | null;
+  float?: string | null;
+}
+
+export function suggestTagsFromFundamentals(d: FundamentalsForTags): string[] {
+  const suggestions: string[] = [];
+
+  const capNum = parseShortNumber(d.marketCap ?? null);
+  if (capNum > 0) {
+    if (capNum < 50e6) suggestions.push("Nano Cap");
+    else if (capNum < 300e6) suggestions.push("Micro Cap");
+    else if (capNum < 2e9) suggestions.push("Small Cap");
+    else if (capNum < 10e9) suggestions.push("Mid Cap");
+    else if (capNum < 200e9) suggestions.push("Large Cap");
+    else suggestions.push("Mega Cap");
+  }
+
+  const sector = (d.sector ?? "").toLowerCase();
+  if (sector.includes("biotech") || sector.includes("biological")) suggestions.push("Biotech");
+  else if (sector.includes("pharma") || sector.includes("drug")) suggestions.push("Pharma");
+  else if (sector.includes("health")) suggestions.push("Healthcare");
+  else if (sector.includes("semiconductor") || sector.includes("chip")) suggestions.push("Semiconductor");
+  else if (sector.includes("information technology") || sector.includes("software")) suggestions.push("Tech");
+  else if (sector.includes("tech")) suggestions.push("Tech");
+  else if (sector.includes("energy") || sector.includes("oil") || sector.includes("gas")) suggestions.push("Energy");
+  else if (sector.includes("financ") || sector.includes("bank")) suggestions.push("Finance");
+  else if (sector.includes("cannabis") || sector.includes("marijuana")) suggestions.push("Cannabis");
+  else if (sector.includes("real estate") || sector.includes("reit")) suggestions.push("Real Estate / REIT");
+  else if (sector.includes("aerospace") || sector.includes("defense")) suggestions.push("Aerospace / Defense");
+  else if (sector.includes("consumer") || sector.includes("retail")) suggestions.push("Retail / Consumer");
+
+  const rvol = d.relativeVolume ?? 0;
+  if (rvol >= 3) suggestions.push("High Relative Volume");
+  else if (rvol > 0 && rvol < 0.4) suggestions.push("Low Volume");
+
+  const floatM = parseShortNumber(d.float ?? null) / 1e6;
+  if (floatM > 0) {
+    if (floatM < 2) suggestions.push("Extremely Low Float (<2M)");
+    else if (floatM < 10) suggestions.push("Low Float (<10M)");
+    else if (floatM < 50) suggestions.push("Mid Float (10-50M)");
+    else suggestions.push("High Float (>50M)");
+  }
+
+  return suggestions;
+}

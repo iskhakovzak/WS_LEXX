@@ -24,8 +24,14 @@ tags:
     description: Dashboard analytics
   - name: big7levels
     description: Big 7 key technical levels
+  - name: big7tickers
+    description: Big 7 / Hot Stocks watchlist tickers
   - name: warroom
     description: War Room sessions for high-volatility events
+  - name: psychology
+    description: Trader psychology tracking and analytics
+  - name: dailyquote
+    description: Daily multilingual trading + psychology quotes
 
 paths:
   /healthz:
@@ -772,6 +778,384 @@ paths:
         "204":
           description: Deleted
 
+  # ── BIG 7 TICKERS (Core + Hot Stocks) ────────────────────────────────
+  /big7/tickers:
+    get:
+      operationId: listBig7Tickers
+      tags: [big7tickers]
+      summary: List all Big 7 tickers (core + hot stocks)
+      responses:
+        "200":
+          description: List of tickers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Big7Ticker"
+    post:
+      operationId: createBig7Ticker
+      tags: [big7tickers]
+      summary: Add a single ticker to a group
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateBig7TickerBody"
+      responses:
+        "201":
+          description: Created ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Big7Ticker"
+
+  /big7/tickers/bulk:
+    post:
+      operationId: bulkCreateBig7Tickers
+      tags: [big7tickers]
+      summary: Bulk add tickers to a group (paste-friendly)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BulkBig7TickersBody"
+      responses:
+        "201":
+          description: Result of bulk add
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BulkBig7TickersResult"
+
+  /big7/tickers/{id}:
+    patch:
+      operationId: updateBig7Ticker
+      tags: [big7tickers]
+      summary: Update a Big 7 ticker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateBig7TickerBody"
+      responses:
+        "200":
+          description: Updated ticker
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Big7Ticker"
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteBig7Ticker
+      tags: [big7tickers]
+      summary: Delete a Big 7 ticker
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ── DAILY QUOTES ─────────────────────────────────────────────────────
+  /daily-quote/today:
+    get:
+      operationId: getTodayDailyQuote
+      tags: [dailyquote]
+      summary: Get (or lazily generate) today's trilingual quote bundle
+      responses:
+        "200":
+          description: Today's quote bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyQuote"
+
+  /daily-quote/regenerate:
+    post:
+      operationId: regenerateDailyQuote
+      tags: [dailyquote]
+      summary: Force regenerate today's quote (admin/curator)
+      responses:
+        "200":
+          description: Regenerated quote bundle
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DailyQuote"
+        "503":
+          description: AI generation failed
+
+  /daily-quote/recent:
+    get:
+      operationId: listRecentDailyQuotes
+      tags: [dailyquote]
+      summary: Last 14 days of quote bundles
+      responses:
+        "200":
+          description: Recent quote bundles
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/DailyQuote"
+
+  /trades/{id}/ai-review:
+    post:
+      operationId: generateAiTradeReview
+      tags: [aireview]
+      summary: Generate (or fetch cached) AI review for a trade
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+        - name: force
+          in: query
+          required: false
+          schema: { type: boolean }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userKey: { type: ["string", "null"] }
+                force: { type: ["boolean", "null"] }
+      responses:
+        "201":
+          description: Review generated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTradeReview"
+        "404":
+          description: Trade not found
+        "429":
+          description: Rate limited
+    get:
+      operationId: getAiTradeReview
+      tags: [aireview]
+      summary: Get the latest AI review for a trade (no generation)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: Latest review
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTradeReview"
+        "404":
+          description: No review yet
+
+  /market-conditions/dna:
+    get:
+      operationId: getMarketConditionsDna
+      tags: [insights]
+      summary: Aggregated DNA of trade outcomes by market conditions
+      parameters:
+        - in: query
+          name: userKey
+          required: false
+          schema:
+            type: string
+          description: Trader name to scope the DNA to a single user
+      responses:
+        "200":
+          description: DNA breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MarketDna"
+
+  # ── EMOTIONAL STATE ───────────────────────────────────────────────────────
+  /emotional-state:
+    get:
+      operationId: getEmotionalStateHistory
+      tags: [psychology]
+      summary: Get emotional state history for a user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Emotional state log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/EmotionalStateLog"
+    post:
+      operationId: createEmotionalState
+      tags: [psychology]
+      summary: Submit today's check-in
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateEmotionalStateBody"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmotionalStateLog"
+
+  /emotional-state/today:
+    get:
+      operationId: getTodayEmotionalState
+      tags: [psychology]
+      summary: Get today's emotional check-in for a user
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Today's check-in or null
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/EmotionalStateLog"
+                  - type: "null"
+
+  # ── PSYCHOLOGY ANALYTICS ─────────────────────────────────────────────────
+  /analytics/psychology:
+    get:
+      operationId: getPsychologyAnalytics
+      tags: [psychology]
+      summary: Psychology analytics aggregates scoped to a specific trader
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Psychology analytics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PsychologyAnalytics"
+
+  /voice-notes:
+    get:
+      operationId: listVoiceNotes
+      tags: [psychology]
+      summary: List voice notes for a user (scoped to owner; optionally filtered by trade or daily feed)
+      parameters:
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+        - name: tradeId
+          in: query
+          schema:
+            type: integer
+        - name: dailyFeedId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of voice notes belonging to the specified user
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/VoiceNote"
+        "400":
+          description: userId is required
+    post:
+      operationId: createVoiceNote
+      tags: [psychology]
+      summary: Upload an audio file, transcribe it, and create a voice note
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [audio, userId]
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                userId:
+                  type: string
+                tradeId:
+                  type: integer
+                dailyFeedId:
+                  type: integer
+                durationSec:
+                  type: integer
+      responses:
+        "201":
+          description: Voice note created with transcript
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceNote"
+        "400":
+          description: No audio file provided
+
+  /voice-notes/{id}:
+    delete:
+      operationId: deleteVoiceNote
+      tags: [psychology]
+      summary: Delete a voice note (owner only)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: userId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "400":
+          description: userId is required
+        "403":
+          description: Not authorized
+        "404":
+          description: Not found
+
 components:
   schemas:
     HealthStatus:
@@ -820,6 +1204,10 @@ components:
           type: ["string", "null"]
         relativeVolume:
           type: ["number", "null"]
+        atr:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
         session:
           type: ["string", "null"]
         screenshotUrl:
@@ -842,6 +1230,50 @@ components:
           type: ["integer", "null"]
         patternId:
           type: ["integer", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        adv:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
+        contextSnapshot:
+          type: ["object", "null"]
+          additionalProperties: true
+        conviction:
+          type: ["integer", "null"]
+        confidenceGrade:
+          type: ["string", "null"]
+        horizon:
+          type: ["string", "null"]
+          enum: ["intraday", "overnight", "swing", null]
+          description: Holding horizon — intraday / overnight / swing
+        exitDate:
+          type: ["string", "null"]
+          description: Exit date (YYYY-MM-DD) for multi-day holds
+        qty:
+          type: ["number", "null"]
+          description: Position size (shares)
+        fees:
+          type: ["number", "null"]
+          description: Commissions and fees ($)
+        riskUsd:
+          type: ["number", "null"]
+          description: Planned risk in $ (entry→stop × qty)
+        source:
+          type: ["string", "null"]
+          enum: ["manual", "propreports", null]
+          description: Where the numbers come from — manual journal entry or PropReports back office (null ⇒ manual)
+        externalId:
+          type: ["string", "null"]
+          description: Stable broker round-trip key (account|symbol|openedAt|side) for PropReports-sourced trades
+        brokerAccount:
+          type: ["string", "null"]
+          description: PropReports account display name the trade was synced from
+        syncedAt:
+          type: ["string", "null"]
+          description: Last time broker-owned fields were refreshed from PropReports (ISO datetime)
         createdAt:
           type: string
       required:
@@ -886,6 +1318,10 @@ components:
           type: ["string", "null"]
         relativeVolume:
           type: ["number", "null"]
+        atr:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
         session:
           type: ["string", "null"]
         screenshotUrl:
@@ -908,10 +1344,45 @@ components:
           type: ["integer", "null"]
         patternId:
           type: ["integer", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        adv:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
+        conviction:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Conviction level 1–5 (required)
+        confidenceGrade:
+          type: string
+          enum: ["A+", "A", "B", "C"]
+          description: Confidence grade — A+, A, B, or C (required)
+        horizon:
+          type: ["string", "null"]
+          enum: ["intraday", "overnight", "swing", null]
+          description: Holding horizon — intraday / overnight / swing
+        exitDate:
+          type: ["string", "null"]
+          description: Exit date (YYYY-MM-DD) for multi-day holds
+        qty:
+          type: ["number", "null"]
+          description: Position size (shares)
+        fees:
+          type: ["number", "null"]
+          description: Commissions and fees ($)
+        riskUsd:
+          type: ["number", "null"]
+          description: Planned risk in $ (entry→stop × qty)
       required:
         - ticker
         - date
         - result
+        - conviction
+        - confidenceGrade
 
     UpdateTradeBody:
       type: object
@@ -948,6 +1419,10 @@ components:
           type: ["string", "null"]
         relativeVolume:
           type: ["number", "null"]
+        atr:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
         session:
           type: ["string", "null"]
         screenshotUrl:
@@ -970,6 +1445,39 @@ components:
           type: ["integer", "null"]
         patternId:
           type: ["integer", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        adv:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
+        conviction:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: Conviction level 1–5
+        confidenceGrade:
+          type: string
+          enum: ["A+", "A", "B", "C"]
+          description: Confidence grade — A+, A, B, or C
+        horizon:
+          type: ["string", "null"]
+          enum: ["intraday", "overnight", "swing", null]
+          description: Holding horizon — intraday / overnight / swing
+        exitDate:
+          type: ["string", "null"]
+          description: Exit date (YYYY-MM-DD) for multi-day holds
+        qty:
+          type: ["number", "null"]
+          description: Position size (shares)
+        fees:
+          type: ["number", "null"]
+          description: Commissions and fees ($)
+        riskUsd:
+          type: ["number", "null"]
+          description: Planned risk in $ (entry→stop × qty)
 
     # ── MARKET EVENT ───────────────────────────────────────────────────────
     MarketEvent:
@@ -998,6 +1506,24 @@ components:
         screenshotNotes:
           type: ["string", "null"]
         tags:
+          type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -1034,6 +1560,24 @@ components:
           type: ["string", "null"]
         tags:
           type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
       required:
         - ticker
         - date
@@ -1065,6 +1609,24 @@ components:
           type: ["string", "null"]
         tags:
           type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
 
     # ── RESEARCH ───────────────────────────────────────────────────────────
     Research:
@@ -1093,6 +1655,24 @@ components:
         screenshotNotes:
           type: ["string", "null"]
         tags:
+          type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -1126,6 +1706,24 @@ components:
           type: ["string", "null"]
         tags:
           type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
+          type: ["string", "null"]
       required:
         - patternName
 
@@ -1153,6 +1751,24 @@ components:
         screenshotNotes:
           type: ["string", "null"]
         tags:
+          type: ["string", "null"]
+        marketCap:
+          type: ["string", "null"]
+        float:
+          type: ["string", "null"]
+        adv:
+          type: ["string", "null"]
+        atr:
+          type: ["number", "null"]
+        relativeVolume:
+          type: ["number", "null"]
+        beta:
+          type: ["number", "null"]
+        shortInterest:
+          type: ["number", "null"]
+        sector:
+          type: ["string", "null"]
+        longName:
           type: ["string", "null"]
 
     # ── DAILY FEED ─────────────────────────────────────────────────────────
@@ -1244,6 +1860,8 @@ components:
           type: ["string", "null"]
         trader:
           type: ["string", "null"]
+        ticker:
+          type: ["string", "null"]
         notes:
           type: ["string", "null"]
         tags:
@@ -1267,6 +1885,8 @@ components:
         type:
           type: ["string", "null"]
         trader:
+          type: ["string", "null"]
+        ticker:
           type: ["string", "null"]
         notes:
           type: ["string", "null"]
@@ -1305,6 +1925,32 @@ components:
         - text
 
     # ── DASHBOARD ──────────────────────────────────────────────────────────
+    StreakInfo:
+      type: object
+      properties:
+        count:
+          type: integer
+        type:
+          type: string
+          enum: ["win", "loss", "none"]
+      required:
+        - count
+        - type
+
+    WeekStats:
+      type: object
+      properties:
+        count:
+          type: integer
+        pnl:
+          type: number
+        wins:
+          type: integer
+      required:
+        - count
+        - pnl
+        - wins
+
     DashboardSummary:
       type: object
       properties:
@@ -1328,6 +1974,10 @@ components:
           type: ["string", "null"]
         bestTickers:
           type: ["string", "null"]
+        streak:
+          $ref: "#/components/schemas/StreakInfo"
+        weekStats:
+          $ref: "#/components/schemas/WeekStats"
       required:
         - totalTrades
         - winRate
@@ -1335,6 +1985,8 @@ components:
         - avgRMultiple
         - todayTrades
         - todayPnl
+        - streak
+        - weekStats
 
     PerformanceStats:
       type: object
@@ -1622,3 +2274,241 @@ components:
           type: ["number", "null"]
         notes:
           type: ["string", "null"]
+
+    Big7Ticker:
+      type: object
+      properties:
+        id:
+          type: integer
+        symbol:
+          type: string
+        exchange:
+          type: string
+        name:
+          type: string
+        groupName:
+          type: string
+        position:
+          type: integer
+        createdAt:
+          type: string
+      required:
+        - id
+        - symbol
+        - exchange
+        - name
+        - groupName
+        - position
+        - createdAt
+
+    CreateBig7TickerBody:
+      type: object
+      properties:
+        symbol:
+          type: string
+        exchange:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        groupName:
+          type: ["string", "null"]
+        position:
+          type: ["integer", "null"]
+      required:
+        - symbol
+
+    UpdateBig7TickerBody:
+      type: object
+      properties:
+        symbol:
+          type: ["string", "null"]
+        exchange:
+          type: ["string", "null"]
+        name:
+          type: ["string", "null"]
+        groupName:
+          type: ["string", "null"]
+        position:
+          type: ["integer", "null"]
+
+    BulkBig7TickersBody:
+      type: object
+      properties:
+        symbols:
+          type: array
+          items:
+            type: string
+        groupName:
+          type: ["string", "null"]
+      required:
+        - symbols
+
+    BulkBig7TickersResult:
+      type: object
+      properties:
+        added:
+          type: array
+          items:
+            $ref: "#/components/schemas/Big7Ticker"
+        skipped:
+          type: array
+          items:
+            type: string
+      required:
+        - added
+        - skipped
+
+    DailyQuote:
+      type: object
+      properties:
+        id: { type: integer }
+        date: { type: string }
+        tradingRu: { type: string }
+        tradingUz: { type: string }
+        tradingUk: { type: string }
+        tradingEn: { type: ["string", "null"] }
+        tradingAuthor: { type: ["string", "null"] }
+        psychologyRu: { type: string }
+        psychologyUz: { type: string }
+        psychologyUk: { type: string }
+        psychologyEn: { type: ["string", "null"] }
+        psychologyAuthor: { type: ["string", "null"] }
+        source: { type: string }
+        createdAt: { type: string }
+      required:
+        - id
+        - date
+        - tradingRu
+        - tradingUz
+        - tradingUk
+        - psychologyRu
+        - psychologyUz
+        - psychologyUk
+        - source
+        - createdAt
+
+    AiTradeReview:
+      type: object
+      properties:
+        reviewId: { type: integer }
+        tradeId: { type: integer }
+        model: { type: string }
+        reviewText: { type: string }
+        sections:
+          type: ["object", "null"]
+          additionalProperties: true
+        inputTokens: { type: ["integer", "null"] }
+        outputTokens: { type: ["integer", "null"] }
+        costUsd: { type: ["number", "null"] }
+        generatedAt: { type: string }
+      required:
+        - reviewId
+        - tradeId
+        - model
+        - reviewText
+        - generatedAt
+
+    MarketDnaBucket:
+      type: object
+      additionalProperties: true
+
+    MarketDna:
+      type: object
+      properties:
+        currentContext:
+          type: ["object", "null"]
+          additionalProperties: true
+        byRegime:
+          type: array
+          items: { $ref: "#/components/schemas/MarketDnaBucket" }
+        byVixBucket:
+          type: array
+          items: { $ref: "#/components/schemas/MarketDnaBucket" }
+        byTrendDay:
+          type: array
+          items: { $ref: "#/components/schemas/MarketDnaBucket" }
+        bestSetupRegime:
+          type: array
+          items: { $ref: "#/components/schemas/MarketDnaBucket" }
+        worstSetupRegime:
+          type: array
+          items: { $ref: "#/components/schemas/MarketDnaBucket" }
+      required:
+        - byRegime
+        - byVixBucket
+        - byTrendDay
+        - bestSetupRegime
+        - worstSetupRegime
+
+    # ── PSYCHOLOGY ────────────────────────────────────────────────────────
+    EmotionalStateLog:
+      type: object
+      properties:
+        id: { type: integer }
+        userId: { type: string }
+        date: { type: string }
+        sleepWell: { type: boolean }
+        stressed: { type: boolean }
+        tilted: { type: boolean }
+        focused: { type: boolean }
+        anxious: { type: boolean }
+        revenge: { type: boolean }
+        freeText: { type: ["string", "null"] }
+        createdAt: { type: string }
+      required:
+        - id
+        - userId
+        - date
+        - sleepWell
+        - stressed
+        - tilted
+        - focused
+        - anxious
+        - revenge
+        - createdAt
+
+    CreateEmotionalStateBody:
+      type: object
+      properties:
+        userId: { type: string }
+        date: { type: string }
+        sleepWell: { type: boolean }
+        stressed: { type: boolean }
+        tilted: { type: boolean }
+        focused: { type: boolean }
+        anxious: { type: boolean }
+        revenge: { type: boolean }
+        freeText: { type: ["string", "null"] }
+      required:
+        - userId
+        - date
+
+    PsychologyAnalytics:
+      type: object
+      additionalProperties: true
+      required: []
+
+    VoiceNote:
+      type: object
+      properties:
+        id:
+          type: integer
+        userId:
+          type: string
+        tradeId:
+          type: ["integer", "null"]
+        dailyFeedId:
+          type: ["integer", "null"]
+        audioUrl:
+          type: string
+        transcript:
+          type: ["string", "null"]
+        durationSec:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required:
+        - id
+        - userId
+        - audioUrl
+        - createdAt

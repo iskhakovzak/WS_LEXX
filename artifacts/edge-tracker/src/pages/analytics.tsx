@@ -1,265 +1,248 @@
-import React, { useMemo, useState } from "react";
-import { useGetPerformanceStats, useGetTopPatterns, useListTrades } from "@workspace/api-client-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { formatCurrency } from "@/lib/format";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Link } from "wouter";
+import { motion, useReducedMotion } from "framer-motion";
+import { useGetTopPatterns } from "@workspace/api-client-react";
+import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
+import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, Receipt, RefreshCw, SearchX, Users } from "lucide-react";
+import { useAuth } from "@/contexts/auth-context";
+import { Page, PageHeader, Panel, Segmented, EmptyState, StatGrid } from "@/components/ds";
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import AnalyticsPro from "@/components/analytics/analytics-pro";
+import { BrokerStatsCard } from "@/components/propreports/BrokerStatsCard";
+import { FilterBar, type FilterOptions } from "@/components/analytics-page/FilterBar";
+import { OverviewTab } from "@/components/analytics-page/OverviewTab";
+import { EdgeTab } from "@/components/analytics-page/EdgeTab";
+import { EdgeMatrixTab } from "@/components/analytics-page/EdgeMatrixTab";
+import { CostsTab } from "@/components/analytics-page/CostsTab";
+import { WhatIfTab } from "@/components/analytics-page/WhatIfTab";
+import { MonteCarloTab } from "@/components/analytics-page/MonteCarloTab";
+import { DeskTab } from "@/components/analytics-page/DeskTab";
+import { PsychologyTab } from "@/components/analytics-page/PsychologyTab";
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, AreaChart, Area, ReferenceLine
-} from "recharts";
+  type AnalyticsFilters, type DimensionKey, type Unit,
+  DEFAULT_FILTERS, DIMENSIONS, PERIOD_OPTIONS, HORIZON_LABEL, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount,
+  realizedR, pnlValue, sdeal, accountOf, sourceOf, periodRange,
+} from "@/components/analytics-page/metrics";
 
-const DAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
-const TOOLTIP_STYLE = { backgroundColor: "#0f1117", borderColor: "#1e293b", borderRadius: 0, fontFamily: "monospace", fontSize: 12 };
-const CURSOR = { fill: "#1e293b" };
+type TabKey = "overview" | "edge" | "matrix" | "costs" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
+
+const TABS: { value: TabKey; label: React.ReactNode; key: string; curatorOnly?: boolean }[] = [
+  { value: "overview", key: "1", label: <><LayoutDashboard className="h-3.5 w-3.5" aria-hidden="true" />Обзор</> },
+  { value: "edge", key: "2", label: <><Layers className="h-3.5 w-3.5" aria-hidden="true" />Преимущество</> },
+  { value: "matrix", key: "3", label: <><Grid3x3 className="h-3.5 w-3.5" aria-hidden="true" />Матрица</> },
+  { value: "costs", key: "4", label: <><Receipt className="h-3.5 w-3.5" aria-hidden="true" />Издержки</> },
+  { value: "whatif", key: "5", label: <><FlaskConical className="h-3.5 w-3.5" aria-hidden="true" />Что если</> },
+  { value: "montecarlo", key: "6", label: <><Dices className="h-3.5 w-3.5" aria-hidden="true" />Монте-Карло</> },
+  { value: "desk", key: "7", label: <><Users className="h-3.5 w-3.5" aria-hidden="true" />Деск</>, curatorOnly: true },
+  { value: "psychology", key: "8", label: <><Brain className="h-3.5 w-3.5" aria-hidden="true" />Психология</> },
+  { value: "pro", key: "9", label: <><LineChart className="h-3.5 w-3.5" aria-hidden="true" />Pro</> },
+];
+
+const STORAGE_KEY = "analytics.page.v2";
+
+type Saved = { tab: TabKey; filters: AnalyticsFilters; unit: Unit; dimension: DimensionKey };
+
+function loadSaved(): Saved {
+  const fallback: Saved = { tab: "overview", filters: DEFAULT_FILTERS, unit: "r", dimension: "horizon" };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return fallback;
+    const s = JSON.parse(raw) as Partial<Saved>;
+    return {
+      tab: TABS.some((t) => t.value === s.tab) ? (s.tab as TabKey) : fallback.tab,
+      filters: { ...DEFAULT_FILTERS, ...(s.filters ?? {}) },
+      unit: s.unit === "usd" ? "usd" : "r",
+      dimension: DIMENSIONS.some((d) => d.key === s.dimension) ? (s.dimension as DimensionKey) : fallback.dimension,
+    };
+  } catch {
+    return fallback;
+  }
+}
 
 export default function Analytics() {
-  const { data: stats } = useGetPerformanceStats();
+  const { user } = useAuth();
   const { data: topPatterns } = useGetTopPatterns();
-  const { data: trades = [] } = useListTrades();
+  const reduceMotion = useReducedMotion();
 
-  const equityCurve = useMemo(() => {
-    const sorted = [...trades]
-      .filter((t) => t.pnl != null)
-      .sort((a, b) => a.date.localeCompare(b.date));
-    let cum = 0;
-    return sorted.map((t, i) => {
-      cum += Number(t.pnl) || 0;
-      return { label: `${t.ticker} ${t.date?.substring(5, 10)}`, value: cum, trade: i + 1 };
-    });
-  }, [trades]);
+  const [saved] = useState(loadSaved);
+  const [tab, setTab] = useState<TabKey>(saved.tab);
+  const [filters, setFilters] = useState<AnalyticsFilters>(saved.filters);
 
-  const heatmap = useMemo(() => {
-    const dayData: Record<number, { wins: number; losses: number; pnl: number; count: number }> = {};
-    for (let d = 1; d <= 5; d++) dayData[d] = { wins: 0, losses: 0, pnl: 0, count: 0 };
-    trades.forEach((t) => {
-      const day = new Date(t.date).getDay();
-      if (day >= 1 && day <= 5) {
-        dayData[day].count++;
-        dayData[day].pnl += Number(t.pnl) || 0;
-        if (t.result === "win") dayData[day].wins++;
-        else if (t.result === "loss") dayData[day].losses++;
-      }
-    });
-    return [1, 2, 3, 4, 5].map((d) => ({
-      day: DAYS[d - 1],
-      winRate: dayData[d].count > 0 ? Math.round((dayData[d].wins / dayData[d].count) * 100) : 0,
-      pnl: dayData[d].pnl,
-      count: dayData[d].count,
-    }));
-  }, [trades]);
+  // Server-side window (P1-5): the period + the equally long previous one (comparison), one trader when picked.
+  // "Всё время" still loads the whole scoped book.
+  const periodWin = useMemo(() => periodRange(filters.period), [filters.period]);
+  const { data: trades = [], isLoading, isError, refetch } = useTradesWindow({ from: periodWin?.prevFrom ?? null, trader: filters.trader || null });
+  const facets = useTradesBookFacets();
+  // The book itself is empty (not just the chosen window) — only then show the "no trades yet" state.
+  const bookEmpty = facets.data ? facets.data.total === 0 : trades.length === 0 && filters.period === "all" && !filters.trader;
+  const [unitPref, setUnitPref] = useState<Unit>(saved.unit);
+  const [dimension, setDimension] = useState<DimensionKey>(saved.dimension);
 
-  const sessionPnl = useMemo(() => {
-    const map: Record<string, number> = {};
-    trades.forEach((t) => {
-      const s = t.session || "unknown";
-      map[s] = (map[s] || 0) + (Number(t.pnl) || 0);
-    });
-    return Object.entries(map).map(([session, pnl]) => ({ session, pnl })).sort((a, b) => b.pnl - a.pnl);
-  }, [trades]);
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({ tab, filters, unit: unitPref, dimension }));
+    } catch { /* storage unavailable */ }
+  }, [tab, filters, unitPref, dimension]);
 
-  const traderPnl = useMemo(() => {
-    const map: Record<string, number> = {};
-    trades.forEach((t) => {
-      const tr = t.trader || "Неизвестно";
-      map[tr] = (map[tr] || 0) + (Number(t.pnl) || 0);
-    });
-    return Object.entries(map).map(([trader, pnl]) => ({ trader, pnl })).sort((a, b) => b.pnl - a.pnl);
-  }, [trades]);
+  const isCurator = user?.role === "curator" || user?.role === "admin";
+  const visibleTabs = useMemo(() => TABS.filter((t) => !t.curatorOnly || isCurator), [isCurator]);
 
-  const eventTypePnl = useMemo(() => {
-    const map: Record<string, { pnl: number; wins: number; count: number }> = {};
-    trades.forEach((t) => {
-      const et = t.eventType || "other";
-      if (!map[et]) map[et] = { pnl: 0, wins: 0, count: 0 };
-      map[et].pnl += Number(t.pnl) || 0;
-      map[et].count++;
-      if (t.result === "win") map[et].wins++;
-    });
-    return Object.entries(map).map(([eventType, d]) => ({
-      eventType,
-      pnl: d.pnl,
-      winRate: d.count > 0 ? Math.round((d.wins / d.count) * 100) : 0,
-    })).sort((a, b) => b.pnl - a.pnl);
-  }, [trades]);
+  // 1–9 switch tabs (ignored while typing).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      const t = visibleTabs.find((x) => x.key === e.key);
+      if (t) setTab(t.value);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [visibleTabs]);
 
-  const noData = <div className="w-full h-full flex items-center justify-center text-muted-foreground font-mono text-sm">Недостаточно данных</div>;
+  // A saved curator-only tab must not survive a role change.
+  useEffect(() => {
+    if (!visibleTabs.some((t) => t.value === tab)) setTab("overview");
+  }, [visibleTabs, tab]);
 
-  const pnlColor = (v: number) => v >= 0 ? "#10b981" : "#ef4444";
+  const options: FilterOptions = useMemo(() => {
+    const traders = [...new Set([...(facets.data?.traders ?? []), ...trades.map((t) => t.trader ?? "")].filter((x) => !!x))]
+      .sort((a, b) => a.localeCompare(b, "ru"));
+    const scope = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: filters.trader });
+    const setups = [...new Set(scope.map((t) => t.setup?.trim()).filter((x): x is string => !!x))].sort();
+    const counts = new Map<string, number>();
+    scope.forEach((t) => { const k = (t.ticker ?? "").toUpperCase(); if (k) counts.set(k, (counts.get(k) ?? 0) + 1); });
+    const tickers = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([k]) => k);
+    const accounts = [...new Set(scope.map(accountOf).filter(Boolean))].sort();
+    const sources = new Set(scope.map(sourceOf));
+    return { traders, setups, hasNoSetup: scope.some((t) => !t.setup), tickers, accounts, hasMixedSources: sources.size > 1 };
+  }, [trades, filters.trader, facets.data]);
+
+  const { current, previous } = useMemo(() => applyAnalyticsFilters(trades, filters), [trades, filters]);
+  const hasR = useMemo(() => current.some((t) => realizedR(t) != null), [current]);
+  const hasPnl = useMemo(() => current.some((t) => pnlValue(t) != null), [current]);
+  const unit: Unit | null = unitPref === "usd" && hasPnl ? "usd" : hasR ? "r" : hasPnl ? "usd" : null;
+
+  const openDimension = useCallback((d: DimensionKey) => { setDimension(d); setTab("edge"); }, []);
+
+  const psychUser = isCurator ? (filters.trader || user?.traderName || "") : (user?.traderName ?? "");
+
+  const summary = useMemo(() => {
+    const parts = [sdeal(current.length)];
+    parts.push(filters.trader || "вся команда");
+    parts.push(PERIOD_OPTIONS.find((p) => p.value === filters.period)?.label.toLowerCase() ?? "");
+    if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());
+    if (!hasPnl && hasR) parts.push("P&L не заполнен — считаем в R");
+    return parts.filter(Boolean).join(" · ");
+  }, [current.length, filters, hasPnl, hasR]);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight">Аналитика</h1>
+    <Page>
+      <PageHeader
+        title="Аналитика"
+        icon={BarChart3}
+        description={isLoading ? "Загружаем сделки…" : summary}
+        actions={
+          <span className="hidden text-xs text-muted-foreground lg:inline">
+            Клавиши <kbd className="rounded bg-[var(--glass-bg)] px-1.5 py-0.5 font-sans">1</kbd>–<kbd className="rounded bg-[var(--glass-bg)] px-1.5 py-0.5 font-sans">{visibleTabs[visibleTabs.length - 1]?.key}</kbd> — вкладки
+          </span>
+        }
+      >
+        <Segmented<TabKey> ariaLabel="Разделы аналитики" options={visibleTabs} value={tab} onChange={setTab} className="self-start" />
+      </PageHeader>
 
-      {/* Equity Curve */}
-      <Card className="bg-card border-border rounded-none shadow-none">
-        <CardHeader className="border-b border-border pb-3">
-          <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Кривая капитала (кумулятивный PnL)</CardTitle>
-        </CardHeader>
-        <CardContent className="pt-6 h-[280px]">
-          {equityCurve.length > 1 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={equityCurve} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="pnlGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.3} />
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                <XAxis dataKey="trade" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} label={{ value: "Трейд #", position: "insideBottomRight", offset: -10, fontSize: 10, fill: "#64748b" }} />
-                <YAxis stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v.toLocaleString()}`} />
-                <Tooltip contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`$${Number(v).toFixed(2)}`, "Кум. PnL"]} labelFormatter={(l) => `Трейд #${l}`} />
-                <ReferenceLine y={0} stroke="#64748b" strokeDasharray="3 3" />
-                <Area type="monotone" dataKey="value" stroke="#0ea5e9" strokeWidth={2} fill="url(#pnlGrad)" dot={false} activeDot={{ r: 4, fill: "#0ea5e9" }} />
-              </AreaChart>
-            </ResponsiveContainer>
-          ) : noData}
-        </CardContent>
-      </Card>
+      {!isError && !isLoading && !bookEmpty && (
+        <FilterBar
+          filters={filters}
+          onChange={setFilters}
+          options={options}
+          unit={unit ?? unitPref}
+          onUnitChange={setUnitPref}
+          hasPnl={hasPnl}
+          hasR={hasR}
+          showTrader={isCurator || options.traders.length > 1}
+          className="lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:bg-[var(--sticky-bg)]"
+        />
+      )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Heatmap by day */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Win Rate по дням недели</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-4 h-[240px]">
-            {heatmap.some((d) => d.count > 0) ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={heatmap} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="day" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} domain={[0, 100]} />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} cursor={CURSOR} formatter={(v: any, _n: any, props: any) => [`${v}% (${props.payload.count} трейдов)`, "Win Rate"]} />
-                  <Bar dataKey="winRate" radius={[2, 2, 0, 0]} name="Win Rate (%)">
-                    {heatmap.map((entry, i) => (
-                      <rect key={i} fill={entry.winRate >= 60 ? "#10b981" : entry.winRate >= 40 ? "#0ea5e9" : "#ef4444"} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-          {/* Heatmap cells */}
-          <div className="px-4 pb-4 grid grid-cols-5 gap-2">
-            {heatmap.map((d) => {
-              const bg = d.count === 0 ? "bg-muted/20" : d.winRate >= 60 ? "bg-emerald-500/20 border-emerald-500/30" : d.winRate >= 40 ? "bg-primary/20 border-primary/30" : "bg-red-500/20 border-red-500/30";
-              const text = d.count === 0 ? "text-muted-foreground" : d.winRate >= 60 ? "text-emerald-400" : d.winRate >= 40 ? "text-primary" : "text-red-400";
-              return (
-                <div key={d.day} className={`${bg} border p-2 text-center`}>
-                  <div className="text-[10px] font-mono text-muted-foreground">{d.day}</div>
-                  <div className={`text-sm font-bold font-mono ${text}`}>{d.count > 0 ? `${d.winRate}%` : "-"}</div>
-                  <div className="text-[10px] font-mono text-muted-foreground">{d.count} трейд{d.count === 1 ? "" : "ов"}</div>
-                  <div className={`text-[10px] font-mono ${d.pnl >= 0 ? "text-emerald-400" : "text-red-400"}`}>{d.count > 0 ? `$${d.pnl.toFixed(0)}` : ""}</div>
-                </div>
-              );
-            })}
+      {!isError && (tab === "overview" || bookEmpty) && (
+        <BrokerStatsCard trader={(isCurator && filters.trader) || user?.traderName} />
+      )}
+
+      {isError ? (
+        <Panel>
+          <EmptyState
+            icon={BarChart3}
+            title="Не удалось загрузить сделки"
+            description="Проверьте соединение и попробуйте ещё раз."
+            action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> Повторить</Button>}
+          />
+        </Panel>
+      ) : isLoading ? (
+        <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка аналитики">
+          <Skeleton className="h-12 rounded-2xl" />
+          <StatGrid>{Array.from({ length: 8 }, (_, i) => <Skeleton key={i} className="h-[96px] rounded-2xl" />)}</StatGrid>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+            <Skeleton className="h-[330px] rounded-2xl lg:col-span-2" />
+            <Skeleton className="h-[330px] rounded-2xl" />
           </div>
-        </Card>
-
-        {/* PnL by session */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">PnL по сессии</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 h-[300px]">
-            {sessionPnl.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={sessionPnl} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="session" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                  <ReferenceLine y={0} stroke="#64748b" />
-                  <Tooltip contentStyle={TOOLTIP_STYLE} cursor={CURSOR} formatter={(v: any) => [`$${Number(v).toFixed(2)}`, "PnL"]} />
-                  <Bar dataKey="pnl" radius={[2, 2, 0, 0]} name="PnL" fill="#0ea5e9"
-                    label={undefined} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-        </Card>
-
-        {/* Win Rate by Setup */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Win Rate по Setup</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 h-[300px]">
-            {stats?.bySetup && stats.bySetup.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={stats.bySetup} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="setup" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `${v}%`} />
-                  <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="winRate" fill="#0ea5e9" radius={[2, 2, 0, 0]} name="Win Rate (%)" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-        </Card>
-
-        {/* PnL by Event Type */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">PnL по типу события</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 h-[300px]">
-            {eventTypePnl.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={eventTypePnl} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="eventType" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                  <ReferenceLine y={0} stroke="#64748b" />
-                  <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`$${Number(v).toFixed(2)}`, "PnL"]} />
-                  <Bar dataKey="pnl" fill="#f59e0b" radius={[2, 2, 0, 0]} name="PnL" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-        </Card>
-
-        {/* PnL by Trader */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">PnL по трейдеру</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 h-[280px]">
-            {traderPnl.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={traderPnl} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                  <XAxis dataKey="trader" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} />
-                  <YAxis stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} tickFormatter={(v) => `$${v}`} />
-                  <ReferenceLine y={0} stroke="#64748b" />
-                  <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} formatter={(v: any) => [`$${Number(v).toFixed(2)}`, "PnL"]} />
-                  <Bar dataKey="pnl" fill="#8b5cf6" radius={[2, 2, 0, 0]} name="PnL" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-        </Card>
-
-        {/* Top Patterns */}
-        <Card className="bg-card border-border rounded-none shadow-none">
-          <CardHeader className="border-b border-border pb-3">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Топ паттернов (уверенность)</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-6 h-[280px]">
-            {topPatterns && topPatterns.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={topPatterns} layout="vertical" margin={{ top: 10, right: 10, left: 20, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" horizontal={false} />
-                  <XAxis type="number" stroke="#64748b" fontSize={12} tickLine={false} axisLine={false} domain={[0, 100]} />
-                  <YAxis type="category" dataKey="patternName" stroke="#64748b" fontSize={11} tickLine={false} axisLine={false} />
-                  <Tooltip cursor={CURSOR} contentStyle={TOOLTIP_STYLE} />
-                  <Bar dataKey="confidenceLevel" fill="#10b981" radius={[0, 2, 2, 0]} name="Уверенность (%)" barSize={20} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : noData}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
+        </div>
+      ) : bookEmpty ? (
+        <Panel>
+          <EmptyState
+            icon={BarChart3}
+            title="Пока нет сделок"
+            description="Аналитика строится по журналу сделок. Запишите первые сделки со стопом и выходом — R, win rate и разрезы посчитаются автоматически."
+            action={<Button asChild><Link href="/trades">Перейти к сделкам</Link></Button>}
+          />
+        </Panel>
+      ) : (
+        <motion.div
+          key={tab}
+          initial={reduceMotion ? false : { opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
+        >
+          {tab === "psychology" ? (
+            <PsychologyTab userId={psychUser} isOwn={psychUser === user?.traderName} filters={filters} trades={current} />
+          ) : current.length === 0 ? (
+            <Panel>
+              <EmptyState
+                icon={SearchX}
+                title="Под фильтры не попала ни одна сделка"
+                description="Расширьте период или снимите часть фильтров."
+                action={activeFilterCount(filters) > 0 ? <Button variant="outline" onClick={() => setFilters(DEFAULT_FILTERS)}>Сбросить фильтры</Button> : undefined}
+              />
+            </Panel>
+          ) : tab === "overview" ? (
+            <OverviewTab trades={current} previous={previous} unit={unit} onOpenDimension={openDimension} />
+          ) : tab === "matrix" ? (
+            <EdgeMatrixTab filters={filters} unit={unit} hasR={hasR} hasPnl={hasPnl} isCurator={isCurator} />
+          ) : tab === "costs" ? (
+            <CostsTab filters={filters} isCurator={isCurator} />
+          ) : tab === "whatif" ? (
+            <WhatIfTab trades={current} unit={unit} />
+          ) : tab === "montecarlo" ? (
+            <MonteCarloTab trades={current} unit={unit} filters={filters} />
+          ) : tab === "desk" ? (
+            <DeskTab filters={filters} unit={unit} />
+          ) : tab === "edge" ? (
+            <EdgeTab
+              trades={current}
+              dimension={dimension}
+              onDimensionChange={setDimension}
+              filters={filters}
+              onFiltersChange={setFilters}
+              hasR={hasR}
+              hasPnl={hasPnl}
+              topPatterns={topPatterns}
+            />
+          ) : (
+            <AnalyticsPro trades={current} />
+          )}
+        </motion.div>
+      )}
+    </Page>
   );
 }

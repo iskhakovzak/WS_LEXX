@@ -1,0 +1,192 @@
+import { Router, type IRouter, type Request, type Response } from "express";
+import { pool } from "@workspace/db";
+import { asyncHandler } from "../lib/asyncHandler";
+import { isStaffRole, isGuestUser, viewerRole } from "../lib/auth";
+import { nyDate } from "../lib/tradingDate";
+import {
+  generateWeeklyReport,
+  getLatestWeeklyReport,
+  getPreviousWeeklyReport,
+  getWeeklyReportHistory,
+  getCurrentWeekBounds,
+  weekBoundsFor,
+  buildInsights,
+  isValidYmd,
+  addDaysYmd,
+  getWeeklyReportById,
+} from "../lib/weeklyPsychologyReport";
+
+const router: IRouter = Router();
+
+/**
+ * Personal data: traders may only read/generate their own report; curators/admins any.
+ * Returns the effective userId or null after sending an error response.
+ */
+function resolveUserId(req: Request, res: Response, raw: unknown): string | null {
+  const userId = typeof raw === "string" ? raw.trim() : "";
+  if (!userId) {
+    res.status(400).json({ error: "userId is required" });
+    return null;
+  }
+  const auth = req.authUser;
+  if (auth && auth.role === "trader" && auth.name !== userId) {
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+  return userId;
+}
+
+type ReportRow = NonNullable<Awaited<ReturnType<typeof getLatestWeeklyReport>>>;
+
+/**
+ * Live trade count per stored week (same filter as generateWeeklyReport: trader, not deleted,
+ * date between weekStart and weekEnd 23:59:59). One query for all rows.
+ */
+async function liveTradeCounts(userId: string, rows: ReportRow[]): Promise<Map<number, number>> {
+  const out = new Map<number, number>();
+  if (!rows.length) return out;
+  const { rows: counts } = await pool.query<{ id: number; n: number }>(
+    `SELECT w.id, COUNT(t.id)::int AS n
+       FROM unnest($2::int[], $3::text[], $4::text[]) AS w(id, ws, we)
+       LEFT JOIN trades t
+         ON t.trader = $1 AND t.deleted_at IS NULL AND t.date >= w.ws AND t.date <= w.we || 'T23:59:59'
+      GROUP BY w.id`,
+    [userId, rows.map((r) => r.id), rows.map((r) => r.weekStart), rows.map((r) => r.weekEnd)],
+  );
+  for (const c of counts) out.set(Number(c.id), Number(c.n));
+  return out;
+}
+
+/**
+ * Re-render insights in Russian from stored stats (older rows were saved in English) and flag stale reports (P1-10):
+ * `stale` = the week's trades changed since generation (typically a report saved with totalTrades 0 before a
+ * PropReports import) — the UI offers «Пересчитать». `liveTrades` = trades in the week right now.
+ */
+function present(row: ReportRow, prev: ReportRow | null, live?: Map<number, number>) {
+  const liveTrades = live?.get(row.id);
+  const stale = liveTrades != null && liveTrades !== row.totalTrades;
+  return {
+    ...row,
+    keyInsights: buildInsights(row, prev),
+    liveTrades: liveTrades ?? null,
+    stale,
+    staleReason: !stale ? null : row.totalTrades === 0 ? "trades_appeared" : "trades_changed",
+  };
+}
+
+/** Monday of the current and of the previous trading week (America/New_York calendar). */
+function recalcWeeks(): { current: string; last: string } {
+  const current = weekBoundsFor(nyDate()).weekStart;
+  return { current, last: addDaysYmd(current, -7) };
+}
+
+/** Compact summary of the previous week for trend deltas in the UI. */
+function summary(row: ReportRow | null) {
+  if (!row) return null;
+  const raw = (row.rawStats ?? {}) as { avgR?: number | null; avgReadiness?: number | null };
+  return {
+    weekStart: row.weekStart,
+    weekEnd: row.weekEnd,
+    totalTrades: row.totalTrades,
+    totalCheckins: row.totalCheckins,
+    winRate: Number(row.winRate) || 0,
+    totalPnl: Number(row.totalPnl) || 0,
+    avgR: raw.avgR ?? null,
+    avgReadiness: raw.avgReadiness ?? null,
+  };
+}
+
+router.get("/psychology/weekly-report", asyncHandler(async (req, res): Promise<void> => {
+  const userId = resolveUserId(req, res, req.query.userId);
+  if (!userId) return;
+  const report = await getLatestWeeklyReport(userId);
+  if (!report) {
+    res.json({ report: null, previous: null, currentWeek: getCurrentWeekBounds() });
+    return;
+  }
+  const prev = await getPreviousWeeklyReport(userId, report.weekStart);
+  const live = await liveTradeCounts(userId, [report]);
+  res.json({ report: present(report, prev, live), previous: summary(prev), currentWeek: getCurrentWeekBounds() });
+}));
+
+router.get("/psychology/weekly-report/history", asyncHandler(async (req, res): Promise<void> => {
+  const userId = resolveUserId(req, res, req.query.userId);
+  if (!userId) return;
+  const rawLimit = Number(req.query.limit);
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 52) : 8;
+  const rows = await getWeeklyReportHistory(userId, limit + 1);
+  const shown = rows.slice(0, limit);
+  const live = await liveTradeCounts(userId, shown);
+  const reports = shown.map((r, i) => present(r, rows[i + 1] ?? null, live));
+  const weeks = recalcWeeks();
+  res.json({ reports, recalcWeeks: [weeks.current, weeks.last] });
+}));
+
+router.post("/psychology/weekly-report/generate", asyncHandler(async (req, res): Promise<void> => {
+  const userId = resolveUserId(req, res, req.body?.userId ?? req.query.userId);
+  if (!userId) return;
+  const rawStart = typeof req.body?.weekStart === "string" ? req.body.weekStart.trim() : undefined;
+  const rawEnd = typeof req.body?.weekEnd === "string" ? req.body.weekEnd.trim() : undefined;
+  if ((rawStart && !isValidYmd(rawStart)) || (rawEnd && !isValidYmd(rawEnd))) {
+    res.status(400).json({ error: "weekStart/weekEnd must be YYYY-MM-DD" });
+    return;
+  }
+  // Always normalise to the Monday–Friday of the given week, so a client in any
+  // timezone (or an old client sending a Sunday) lands on the same row.
+  let weekStart: string | undefined;
+  let weekEnd: string | undefined;
+  if (rawStart) {
+    ({ weekStart, weekEnd } = weekBoundsFor(rawStart));
+  }
+  if (weekStart && weekEnd && rawEnd && rawEnd < weekStart) {
+    res.status(400).json({ error: "weekEnd must not be before weekStart" });
+    return;
+  }
+  const id = await generateWeeklyReport(userId, weekStart, weekEnd);
+  const report = await getLatestWeeklyReport(userId);
+  const prev = report ? await getPreviousWeeklyReport(userId, report.weekStart) : null;
+  res.status(201).json({
+    id,
+    report: report ? present(report, prev) : null,
+    previous: summary(prev),
+    currentWeek: getCurrentWeekBounds(),
+  });
+}));
+
+/**
+ * «Пересчитать» (P1-10): rebuild the report of the CURRENT or the LAST trading week from today's data.
+ * Body: { userId, weekStart? }  weekStart = Monday of the current or previous NY week (default: current;
+ * any day of those weeks is accepted and normalised). Only the owner or staff (curator/admin, DB role).
+ * → { id, report (the recalculated week, with stale=false), previous, currentWeek }
+ */
+router.post("/psychology/weekly-report/recalculate", asyncHandler(async (req, res): Promise<void> => {
+  const auth = req.authUser;
+  if (!auth) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (isGuestUser(auth)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  const userId = typeof (req.body?.userId ?? req.query.userId) === "string" ? String(req.body?.userId ?? req.query.userId).trim() : "";
+  if (!userId) { res.status(400).json({ error: "userId is required" }); return; }
+  if (auth.name !== userId && !isStaffRole(await viewerRole(req))) {
+    res.status(403).json({ error: "Пересчитать можно только свой отчёт (или куратору)" });
+    return;
+  }
+  const weeks = recalcWeeks();
+  const raw = typeof req.body?.weekStart === "string" ? req.body.weekStart.trim() : "";
+  if (raw && !isValidYmd(raw)) { res.status(400).json({ error: "weekStart must be YYYY-MM-DD" }); return; }
+  const { weekStart, weekEnd } = weekBoundsFor(raw || weeks.current);
+  if (weekStart !== weeks.current && weekStart !== weeks.last) {
+    res.status(400).json({ error: "Пересчитать можно только текущую или прошлую неделю", allowed: [weeks.current, weeks.last] });
+    return;
+  }
+  const id = await generateWeeklyReport(userId, weekStart, weekEnd);
+  const report = await getWeeklyReportById(userId, id);
+  const prev = report ? await getPreviousWeeklyReport(userId, report.weekStart) : null;
+  const live = report ? await liveTradeCounts(userId, [report]) : undefined;
+  res.status(201).json({
+    id,
+    report: report ? present(report, prev, live) : null,
+    previous: summary(prev),
+    currentWeek: getCurrentWeekBounds(),
+  });
+}));
+
+export default router;

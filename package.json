@@ -8,12 +8,13 @@
     "build:prod": "bash scripts/build-prod.sh",
     "start": "NODE_ENV=production node artifacts/api-server/dist/index.mjs",
     "typecheck:libs": "tsc --build",
-    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck",
+    "test": "pnpm -r --if-present run test"
   },
   "private": true,
   "devDependencies": {
-    "prettier": "^3.8.1",
-    "typescript": "~5.9.2"
+    "prettier": "^3.8.3",
+    "typescript": "~5.9.3"
   },
   "dependencies": {
     "@replit/connectors-sdk": "^0.4.0",

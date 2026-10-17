@@ -4,6 +4,7 @@ import {
   serial,
   timestamp,
   integer,
+  numeric,
   index,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
@@ -22,6 +23,15 @@ export const researchTable = pgTable("research", {
   screenshotUrl: text("screenshot_url"),
   screenshotNotes: text("screenshot_notes"),
   tags: text("tags"),
+  marketCap: text("market_cap"),
+  float: text("float"),
+  adv: text("adv"),
+  atr: numeric("atr", { precision: 12, scale: 4 }),
+  relativeVolume: numeric("relative_volume", { precision: 8, scale: 2 }),
+  beta: numeric("beta", { precision: 8, scale: 4 }),
+  shortInterest: numeric("short_interest", { precision: 8, scale: 4 }),
+  sector: text("sector"),
+  longName: text("long_name"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   deletedAt: timestamp("deleted_at", { withTimezone: true }),
 }, (table) => [

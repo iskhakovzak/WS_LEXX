@@ -1,0 +1,179 @@
+import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Panel, Pill, toneOf } from "@/components/ds";
+import { cn } from "@/lib/utils";
+import { fmtCompact, fmtValue, heatBg, parseKey, pluralTrades, toKey, type DayStat, type Metric } from "./metrics";
+import { TradeLinkRow } from "./trade-link-row";
+
+const MONTHS_FULL = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
+const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const HEAD = ["Пн", "Вт", "Ср", "Чт", "Пт"];
+
+type Month = { y: number; m: number };
+const monthOf = (k: string): Month => ({ y: Number(k.substring(0, 4)), m: Number(k.substring(5, 7)) - 1 });
+const addMonth = (a: Month, n: number): Month => {
+  const d = new Date(a.y, a.m + n, 1);
+  return { y: d.getFullYear(), m: d.getMonth() };
+};
+const cmp = (a: Month, b: Month) => a.y * 12 + a.m - (b.y * 12 + b.m);
+
+/**
+ * Month P&L calendar (TradeZella-style): Mon–Fri cells tinted by the day's result + weekly totals column.
+ * Weekend trades are folded into the week total. Click a day to list its trades.
+ */
+export function CalendarPanel({ days, metric }: { days: DayStat[]; metric: Metric }) {
+  const byKey = useMemo(() => new Map(days.map((d) => [d.key, d])), [days]);
+  const latest = days.at(-1)?.key;
+  const first = days[0]?.key;
+  const [month, setMonth] = useState<Month>(() => (latest ? monthOf(latest) : monthOf(toKey(new Date()))));
+  const [selected, setSelected] = useState<string | null>(null);
+
+  // Jump to the latest month with trades whenever the dataset changes (period/trader switch).
+  useEffect(() => {
+    setMonth(latest ? monthOf(latest) : monthOf(toKey(new Date())));
+    setSelected(null);
+  }, [latest, first]);
+
+  const weeks = useMemo(() => {
+    const start = new Date(month.y, month.m, 1);
+    const offset = (start.getDay() + 6) % 7; // Monday-based
+    const gridStart = new Date(month.y, month.m, 1 - offset);
+    const rows: { days: Date[] }[] = [];
+    for (let w = 0; w < 6; w++) {
+      const row: Date[] = [];
+      for (let i = 0; i < 7; i++) row.push(new Date(gridStart.getFullYear(), gridStart.getMonth(), gridStart.getDate() + w * 7 + i));
+      if (w > 0 && row[0].getMonth() !== month.m) break;
+      rows.push({ days: row });
+    }
+    return rows;
+  }, [month]);
+
+  const monthDays = days.filter((d) => d.key.startsWith(`${month.y}-${String(month.m + 1).padStart(2, "0")}`));
+  const monthValue = monthDays.reduce<number | null>((s, d) => (d.value == null ? s : (s ?? 0) + d.value), null);
+  const monthCount = monthDays.reduce((s, d) => s + d.count, 0);
+  const max = Math.max(0, ...monthDays.map((d) => Math.abs(d.value ?? 0)));
+  const sel = selected ? byKey.get(selected) : undefined;
+
+  const minMonth = first ? monthOf(first) : month;
+  const maxMonth = latest && cmp(monthOf(latest), monthOf(toKey(new Date()))) > 0 ? monthOf(latest) : monthOf(toKey(new Date()));
+
+  return (
+    <Panel
+      title="Календарь"
+      icon={CalendarDays}
+      description={monthCount ? `${monthCount} ${pluralTrades(monthCount)} · ${monthDays.length} торг. дн.` : "Нет сделок в этом месяце"}
+      actions={
+        <div className="flex items-center gap-1">
+          <Button
+            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Предыдущий месяц"
+            disabled={cmp(month, minMonth) <= 0} onClick={() => { setMonth((m) => addMonth(m, -1)); setSelected(null); }}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <span className="min-w-[7.5rem] text-center text-sm font-medium tabular-nums">{MONTHS_FULL[month.m]} {month.y}</span>
+          <Button
+            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Следующий месяц"
+            disabled={cmp(month, maxMonth) >= 0} onClick={() => { setMonth((m) => addMonth(m, 1)); setSelected(null); }}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
+      }
+    >
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,0.9fr)] gap-1 sm:gap-1.5" role="grid" aria-label={`Календарь: ${MONTHS_FULL[month.m]} ${month.y}`}>
+        {HEAD.map((h) => <div key={h} className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">{h}</div>)}
+        <div className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">Неделя</div>
+        {weeks.map((w, wi) => {
+          const all = w.days.map((d) => byKey.get(toKey(d))).filter((x): x is DayStat => !!x);
+          const wVal = all.reduce<number | null>((s, d) => (d.value == null ? s : (s ?? 0) + d.value), null);
+          const wCnt = all.reduce((s, d) => s + d.count, 0);
+          return (
+            <div key={wi} className="contents" role="row">
+              {w.days.slice(0, 5).map((d) => {
+                const k = toKey(d);
+                const inMonth = d.getMonth() === month.m;
+                const stat = inMonth ? byKey.get(k) : undefined;
+                const active = selected === k;
+                const bg = !stat ? undefined : stat.value != null ? heatBg(stat.value, max) : heatBg(stat.wins - stat.losses, Math.max(4, Math.abs(stat.wins - stat.losses)));
+                if (!inMonth) return <div key={k} className="aspect-square rounded-lg sm:aspect-[4/3]" role="gridcell" aria-hidden="true" />;
+                const label = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}: ${stat ? `${stat.count} ${pluralTrades(stat.count)}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : "нет сделок"}`;
+                return (
+                  <button
+                    key={k}
+                    type="button"
+                    role="gridcell"
+                    disabled={!stat}
+                    aria-pressed={active}
+                    aria-label={label}
+                    title={label}
+                    onClick={() => setSelected(active ? null : k)}
+                    style={bg ? { backgroundColor: bg } : undefined}
+                    className={cn(
+                      "relative flex aspect-square flex-col justify-between rounded-lg border p-1 text-left transition-colors sm:aspect-[4/3] sm:p-1.5",
+                      stat ? "border-transparent hover:ring-1 hover:ring-[hsl(var(--border))]" : "border-[hsl(var(--border)/0.5)]",
+                      stat && !bg && "bg-[var(--glass-hover-bg)]",
+                      active && "ring-2 ring-primary",
+                      "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+                    )}
+                  >
+                    <span className={cn("text-2xs tabular-nums", stat ? "text-foreground" : "text-muted-foreground/80")}>{d.getDate()}</span>
+                    {stat && (
+                      <span className="flex flex-col leading-tight">
+                        <span className="truncate text-2xs font-semibold tabular-nums text-foreground sm:text-xs">
+                          {stat.value != null ? fmtCompact(stat.value, metric) : `${stat.wins}/${stat.losses}`}
+                        </span>
+                        <span className="hidden truncate text-2xs text-muted-foreground sm:block">{stat.count} сд.</span>
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+              <div
+                role="gridcell"
+                className="flex aspect-square flex-col justify-center rounded-lg bg-[var(--glass-bg)] p-1 text-center sm:aspect-[4/3]"
+                aria-label={`Неделя: ${wCnt} ${pluralTrades(wCnt)}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`}
+              >
+                <span className={cn("truncate text-2xs font-semibold tabular-nums sm:text-xs", wVal == null ? "text-muted-foreground" : wVal > 0 ? "text-up" : wVal < 0 ? "text-down" : "text-foreground")}>
+                  {wCnt ? (wVal != null ? fmtCompact(wVal, metric) : "—") : ""}
+                </span>
+                {wCnt > 0 && <span className="text-2xs text-muted-foreground">{wCnt} сд.</span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
+        <span>
+          Итог месяца:{" "}
+          <span className={cn("font-semibold tabular-nums", toneOf(monthValue) === "up" ? "text-up" : toneOf(monthValue) === "down" ? "text-down" : "text-foreground")}>
+            {fmtValue(monthValue, metric)}
+          </span>
+        </span>
+        <span className="inline-flex items-center gap-2">
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-up/50" aria-hidden="true" />плюс</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-down/50" aria-hidden="true" />минус</span>
+          <span>· нажмите на день</span>
+        </span>
+      </div>
+
+      {sel && (
+        <div className="mt-3 rounded-xl border border-[hsl(var(--border))] p-2">
+          <div className="flex items-center justify-between gap-2 px-2 pb-1">
+            <div className="text-sm font-medium">
+              {parseKey(sel.key).getDate()} {MONTHS_GEN[parseKey(sel.key).getMonth()]}
+              <Pill tone={toneOf(sel.value)} className="ml-2">{sel.value != null ? fmtValue(sel.value, metric) : `${sel.count} сд.`}</Pill>
+            </div>
+            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Закрыть список дня" onClick={() => setSelected(null)}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <ul className="flex flex-col">
+            {sel.trades.map((t) => <TradeLinkRow key={t.id} trade={t} metric={metric} showDate={false} />)}
+          </ul>
+        </div>
+      )}
+    </Panel>
+  );
+}

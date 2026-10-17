@@ -1,0 +1,156 @@
+/**
+ * Ticker detail sheet: metric strip, 5-minute chart of the session (chart-engine WsChart, with its own
+ * PDH/PDL/premarket/VWAP overlays), the automatic day-level ladder, saved levels, own stats and catalysts.
+ */
+import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Button } from "@/components/ui/button";
+import { Pill, toneOf, TermTooltip } from "@/components/ds";
+import { WsChart } from "@/components/chart-engine";
+import { cn } from "@/lib/utils";
+import { fmtSigned, type GapStats, type MergedCatalyst, type StockQuote } from "./lib";
+import type { Big7Row, LevelPoint, Phase } from "./context";
+import { LevelsLadder } from "./LevelsLadder";
+import { CatalystTimeline } from "./catalysts";
+import { MyTickerStats } from "./MyStatsPanel";
+import type { MyTicker } from "./use-big7";
+import { Signed, earningsLabel, fmtPx, fmtRvol } from "./ui";
+
+function Metric({ label, children, title }: { label: React.ReactNode; children: React.ReactNode; title?: string }) {
+  return (
+    <div className="tile min-w-0 px-3 py-2" title={title}>
+      <div className="truncate text-xs text-muted-foreground">{label}</div>
+      <div className="truncate text-sm font-semibold tabular-nums">{children}</div>
+    </div>
+  );
+}
+
+/** Day levels around the price, highest first, with a «now» marker between them. */
+function DayLadder({ row }: { row: Big7Row }) {
+  const items: Array<LevelPoint | "price"> = [];
+  let placed = false;
+  for (const l of row.levels) {
+    if (!placed && row.price != null && l.price < row.price) { items.push("price"); placed = true; }
+    items.push(l);
+  }
+  if (!placed && row.price != null) items.push("price");
+  return (
+    <section aria-label="Уровни дня" className="tile flex min-w-0 flex-col gap-1 p-3">
+      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+        <span className="font-medium text-foreground">Уровни дня</span>
+        <span>% / <TermTooltip term="atr" /></span>
+      </div>
+      {items.length === 0 && <p className="text-xs text-muted-foreground">Нет внутридневных данных</p>}
+      <ol className="flex flex-col">
+        {items.map((it) =>
+          it === "price" ? (
+            <li key="price" className="my-0.5 flex items-center justify-between rounded-md bg-primary/12 px-2 py-1 text-sm font-semibold tabular-nums text-accent-soft">
+              <span>Цена</span><span>{fmtPx(row.price)}</span>
+            </li>
+          ) : (
+            <li key={it.key} className="flex items-center justify-between gap-2 px-2 py-1 text-sm tabular-nums">
+              <span className={cn("min-w-0 truncate", it.key === "vwap" ? "text-primary" : "text-foreground")}>{it.label}</span>
+              <span className="flex items-baseline gap-2">
+                <span>{fmtPx(it.price)}</span>
+                <span className="w-14 text-right text-xs text-muted-foreground">{fmtSigned(it.distPct, 2)}</span>
+                <span className="w-10 text-right text-xs text-muted-foreground">{it.distAtr != null ? it.distAtr.toFixed(1) : "—"}</span>
+              </span>
+            </li>
+          ),
+        )}
+      </ol>
+    </section>
+  );
+}
+
+export function DetailSheet({
+  row, name, session, phase, quote, stats, merged, mine, earnings, open, onOpenChange, onStep, onAddCatalyst, onEditCatalyst,
+}: {
+  row: Big7Row | null;
+  name?: string;
+  session: string;
+  phase: Phase;
+  quote?: StockQuote;
+  stats?: GapStats;
+  merged: MergedCatalyst[];
+  mine?: MyTicker;
+  earnings: { days: number; when: string | null } | null;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onStep: (dir: 1 | -1) => void;
+  onAddCatalyst: (symbol: string) => void;
+  onEditCatalyst: (c: MergedCatalyst) => void;
+}) {
+  return (
+    <Sheet open={open} onOpenChange={onOpenChange}>
+      <SheetContent
+        side="right"
+        className="flex w-full flex-col gap-4 p-5 sm:max-w-[min(1180px,94vw)]"
+        onKeyDown={(e) => {
+          const el = e.target as HTMLElement;
+          if (el.closest("input,textarea,select,[contenteditable=true]")) return;
+          if (e.key === "ArrowRight") { e.preventDefault(); onStep(1); }
+          else if (e.key === "ArrowLeft") { e.preventDefault(); onStep(-1); }
+        }}
+      >
+        {row && (
+          <>
+            <SheetHeader className="space-y-0 pr-8 text-left">
+              <div className="flex flex-wrap items-center gap-3">
+                <SheetTitle className="text-xl font-semibold tracking-tight">{row.symbol}</SheetTitle>
+                <span className="text-xl font-semibold tabular-nums">{fmtPx(row.price)}</span>
+                <Pill tone={toneOf(row.chg)}>{fmtSigned(row.chg)}</Pill>
+                {earnings && <Pill tone="warn">{earningsLabel(earnings)}</Pill>}
+                <div className="ml-auto flex items-center gap-1">
+                  <Button variant="ghost" size="icon" aria-label="Предыдущий тикер" title="←" onClick={() => onStep(-1)}><ChevronLeft /></Button>
+                  <Button variant="ghost" size="icon" aria-label="Следующий тикер" title="→" onClick={() => onStep(1)}><ChevronRight /></Button>
+                </div>
+              </div>
+              <SheetDescription className="text-xs">
+                {name && name !== row.symbol ? `${name} · ` : ""}сессия {session}
+              </SheetDescription>
+            </SheetHeader>
+
+            <div className="grid grid-cols-4 gap-2 lg:grid-cols-8">
+              <Metric label={phase === "pre" ? "Премаркет" : "Гэп"}><Signed value={phase === "pre" ? row.pmChg : row.gap} /></Metric>
+              <Metric label="RS к QQQ" title="Изменение минус изменение QQQ, п.п."><Signed value={row.rsQqq} suffix="" /></Metric>
+              <Metric label="RS 30 мин" title="Сдвиг RS за последние 30 минут"><Signed value={row.rs30} suffix="" /></Metric>
+              <Metric label="RS 5 дней" title="5-дневная доходность минус QQQ"><Signed value={row.rs5} digits={1} /></Metric>
+              <Metric label={<TermTooltip term="rvol" />}>{fmtRvol(row.rvol)}</Metric>
+              <Metric label={<><TermTooltip term="atr" /> · пройдено</>} title="ATR(14) и диапазон дня в % от ATR">
+                {row.atr != null ? fmtPx(row.atr) : "—"}
+                {row.atrUsed != null && <span className="ml-1 text-xs font-normal text-muted-foreground">{Math.round(row.atrUsed)}%</span>}
+              </Metric>
+              <Metric label="от VWAP"><Signed value={row.vwapDist} /></Metric>
+              <Metric label="Корр. / β к QQQ" title="5-минутные доходности за сессию">
+                {row.corr != null ? `${row.corr.toFixed(2)} / ${row.beta?.toFixed(2) ?? "—"}` : "—"}
+              </Metric>
+            </div>
+
+            <div className="grid min-h-[480px] grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+              <div className="min-w-0">
+                <WsChart
+                  key={`${row.symbol}-${session}`}
+                  trade={{ id: 0, ticker: row.symbol, date: session }}
+                  executions={[]}
+                  initialTimeframe="5m"
+                  contextDays={1}
+                  height={480}
+                />
+              </div>
+              <DayLadder row={row} />
+            </div>
+
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+              <LevelsLadder ticker={row.symbol} quote={quote} stats={stats} atr={row.atr} />
+              <div className="flex min-w-0 flex-col gap-3">
+                <MyTickerStats row={mine} />
+                <CatalystTimeline ticker={row.symbol} merged={merged} onAdd={() => onAddCatalyst(row.symbol)} onEdit={onEditCatalyst} />
+              </div>
+            </div>
+          </>
+        )}
+      </SheetContent>
+    </Sheet>
+  );
+}

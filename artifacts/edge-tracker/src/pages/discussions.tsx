@@ -1,365 +1,601 @@
-import React, { useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
-  useListDiscussions, useCreateDiscussion, useDeleteDiscussion, useAddComment,
-  getListDiscussionsQueryKey,
+  useListDiscussions, useDeleteDiscussion, getListDiscussionsQueryKey,
 } from "@workspace/api-client-react";
-import type { Discussion } from "@workspace/api-client-react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
+import {
+  MessagesSquare, Plus, Search, X, Bell, AtSign, Activity, Briefcase, ArrowDownUp, SearchX, Keyboard,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Trash2, Plus, MessageSquare, Send, Tag, Pencil, X, Check } from "lucide-react";
-import { TagSelector } from "@/components/tag-selector";
-import { useAuth, WriteOnly } from "@/contexts/auth-context";
-import { ScreenshotFields, ScreenshotDisplay, screenshotUrlsToString, stringToScreenshotUrls } from "@/components/screenshot-fields";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Page, PageHeader, StatCard, StatGrid, Segmented, FilterChip, EmptyState, Pill } from "@/components/ds";
+import { QueryError } from "@/components/query-error";
+import { UndoToast } from "@/components/undo-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { useToast } from "@/hooks/use-toast";
+import { BASE } from "@/lib/api";
+import { cn } from "@/lib/utils";
+import { ThreadListItem } from "@/components/discussions/ThreadList";
+import { ThreadView } from "@/components/discussions/ThreadView";
+import { ThreadFormDialog } from "@/components/discussions/ThreadFormDialog";
+import { ReportDialog, type ReportTarget } from "@/components/discussions/ReportDialog";
+import {
+  type Thread, type VoteMap, type VoteAgg, type TickerStat, type SortKey, type ViewKey,
+  type ThreadContext,
+  SORT_LABELS, TYPES, TYPE_LABELS, sortThreads, threadMatches, threadMentions, isResolved, isUnread,
+  loadSeen, saveSeen, seenAt, lastActivity, loadPrefs, savePrefs, participants, teamPositions, isTypingTarget,
+} from "@/components/discussions/lib";
 
-const TYPES = ["strategy", "analysis", "risk", "setup", "general"];
-const COMMENT_STATUSES = [
-  { value: "observing", label: "Observing" },
-  { value: "in_position", label: "In Position" },
-  { value: "exited", label: "Exited" },
-];
-
-function TagChips({ tags }: { tags?: string | null }) {
-  if (!tags) return null;
-  const chips = tags.split(",").map((t) => t.trim()).filter(Boolean);
-  if (!chips.length) return null;
-  return (
-    <div className="flex flex-wrap gap-1 mt-0.5">
-      {chips.map((tag, i) => (
-        <span key={i} className="px-1.5 py-0 text-[9px] font-mono bg-primary/10 text-primary border border-primary/20 leading-4">{tag}</span>
-      ))}
-    </div>
-  );
+function readIntParam(name: string): number | null {
+  const n = Number(readParam(name));
+  return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-function StatusBadge({ status }: { status?: string | null }) {
-  if (!status) return null;
-  const map: Record<string, string> = {
-    observing: "bg-blue-500/15 text-blue-400",
-    in_position: "bg-emerald-500/15 text-emerald-400",
-    exited: "bg-muted text-muted-foreground",
-  };
-  const labels: Record<string, string> = { observing: "Observing", in_position: "In Position", exited: "Exited" };
-  return (
-    <span className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-mono ${map[status] ?? "bg-muted text-muted-foreground"}`}>
-      {labels[status] ?? status}
-    </span>
-  );
+async function fetchJson<T>(url: string): Promise<T> {
+  const r = await fetch(url);
+  const body = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(body?.error ?? `Ошибка загрузки (${r.status})`);
+  return body as T;
 }
 
-const BASE = import.meta.env.BASE_URL?.replace(/\/$/, "");
+function readParam(name: string): string | null {
+  try { return new URLSearchParams(window.location.search).get(name); } catch { return null; }
+}
 
-type DiscFormData = { topic: string; type: string; trader: string; notes: string; tags: string; screenshotUrls: string[]; };
-const blankDisc = (): DiscFormData => ({ topic: "", type: "general", trader: "", notes: "", tags: "", screenshotUrls: [""] });
+function writeParams(patch: Record<string, string | null>) {
+  try {
+    const url = new URL(window.location.href);
+    for (const [k, v] of Object.entries(patch)) {
+      if (v == null || v === "") url.searchParams.delete(k);
+      else url.searchParams.set(k, v);
+    }
+    window.history.replaceState(window.history.state, "", url.pathname + url.search + url.hash);
+  } catch { /* ignore */ }
+}
+
+const VIEW_LABELS: Record<ViewKey, string> = {
+  all: "Все", unread: "Новое", mine: "Мои", open: "Открытые", mentions: "Упоминания", positions: "Мои позиции",
+};
 
 export default function Discussions() {
   const qc = useQueryClient();
-  const { user, dbUsers } = useAuth();
-  const traderNames = dbUsers.filter((u) => u.active).map((u) => u.name);
-  const [open, setOpen] = useState(false);
-  const [deleting, setDeleting] = useState<Discussion | null>(null);
-  const [form, setForm] = useState<DiscFormData>(blankDisc());
-  const [commentText, setCommentText] = useState<Record<number, string>>({});
-  const [commentStatus, setCommentStatus] = useState<string>("observing");
-  const [expanded, setExpanded] = useState<number | null>(null);
-  const [editingComment, setEditingComment] = useState<{ id: number; discussionId: number; text: string } | null>(null);
-  const [deletingComment, setDeletingComment] = useState<{ id: number; discussionId: number } | null>(null);
+  const { toast } = useToast();
+  const { user, dbUsers, canEdit, isCurator } = useAuth();
+  const me = user?.traderName ?? "Гость";
+  const traderNames = useMemo(() => dbUsers.filter((u) => u.active).map((u) => u.name), [dbUsers]);
 
-  const traderName = user?.role === "trader" ? user.traderName : "Guest";
+  // ── State ──────────────────────────────────────────────────────────────
+  const [prefs, setPrefs] = useState(loadPrefs);
+  useEffect(() => savePrefs(prefs), [prefs]);
+  const [q, setQ] = useState("");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [tickerFilter, setTickerFilter] = useState<string | null>(() => readParam("ticker")?.toUpperCase() || null);
+  const [selectedId, setSelectedId] = useState<number | null>(() => {
+    const t = Number(readParam("thread"));
+    return Number.isInteger(t) && t > 0 ? t : null;
+  });
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<Thread | null>(null);
+  // Cross-links: /discussions?new=1&tradeId=…&ticker=…&eventId=…&ideaId=…&playbookId=…&journalDate=…&type=…
+  const [formContext, setFormContext] = useState<ThreadContext | undefined>(() => {
+    const c: ThreadContext = {
+      tradeId: readIntParam("tradeId"), eventId: readIntParam("eventId"), ideaId: readIntParam("ideaId"), playbookId: readIntParam("playbookId"),
+      journalDate: /^\d{4}-\d{2}-\d{2}$/.test(readParam("journalDate") ?? "") ? readParam("journalDate") : null,
+    };
+    return Object.values(c).some((v) => v != null) ? c : undefined;
+  });
+  const [formType] = useState<string | undefined>(() => readParam("type") ?? undefined);
+  const [reportTarget, setReportTarget] = useState<ReportTarget | null>(null);
+  const [seen, setSeen] = useState(loadSeen);
+  const [openedSeenAt, setOpenedSeenAt] = useState<string>(seen.init);
+  const [undo, setUndo] = useState<{ id: number; label: string } | null>(null);
+  const [restoring, setRestoring] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const listRef = useRef<HTMLUListElement>(null);
 
-  const { data: discussions = [], isLoading } = useListDiscussions();
-  const createMut = useCreateDiscussion({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() }); setOpen(false); setForm(blankDisc()); } } });
-  const deleteMut = useDeleteDiscussion({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() }); setDeleting(null); } } });
-  const commentMut = useAddComment({ mutation: { onSuccess: () => { qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() }); } } });
+  // ── Data ───────────────────────────────────────────────────────────────
+  const { data: rawThreads, isLoading, isError, error, refetch } = useListDiscussions();
+  const threads = (rawThreads ?? []) as Thread[];
 
-  function set(k: keyof DiscFormData, v: any) { setForm((f) => ({ ...f, [k]: v })); }
+  const { data: tickerStats = [] } = useQuery<TickerStat[]>({
+    queryKey: ["discussions-tickers"],
+    queryFn: () => fetchJson<TickerStat[]>(`${BASE}/api/discussions/tickers`).then((d) => (Array.isArray(d) ? d : [])),
+    staleTime: 30_000,
+  });
 
-  function handleCreate() {
-    if (!form.topic) return;
-    const screenshotUrl = screenshotUrlsToString(form.screenshotUrls) || null;
-    createMut.mutate({ data: { topic: form.topic, type: form.type || null, trader: form.trader || null, notes: form.notes || null, tags: form.tags || null, screenshotUrl } });
-  }
+  // Viewer identity comes from the auth token — no `?trader=` / body identity.
+  const votesKey = ["discussions-votes", me] as const;
+  const { data: votes = {} } = useQuery<VoteMap>({
+    queryKey: votesKey,
+    queryFn: () => fetchJson<VoteMap>(`${BASE}/api/discussions/votes/all`),
+    staleTime: 5_000,
+  });
 
-  function handleComment(discussionId: number) {
-    const text = commentText[discussionId]?.trim();
-    if (!text) return;
-    const fullText = `[${COMMENT_STATUSES.find((s) => s.value === commentStatus)?.label ?? commentStatus}] ${text}`;
-    commentMut.mutate({ id: discussionId, data: { text: fullText, trader: traderName || null } });
-    setCommentText((prev) => ({ ...prev, [discussionId]: "" }));
-  }
+  // Server-side read tracking (discussion_reads).
+  const serverUnread = threads.length > 0 && threads[0].unread !== undefined;
+  const readMut = useMutation({
+    mutationFn: async (id: number) => {
+      const r = await fetch(`${BASE}/api/discussions/${id}/read`, { method: "POST" });
+      if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+    },
+    onMutate: (id) => {
+      const now = new Date().toISOString();
+      qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => d.id === id && d.unread !== undefined ? { ...d, unread: false, mentionsMe: false, readAt: now } : d));
+    },
+  });
 
-  async function handleEditComment() {
-    if (!editingComment) return;
-    try {
-      await fetch(`${BASE}/api/discussions/${editingComment.discussionId}/comments/${editingComment.id}`, {
-        method: "PATCH",
+  // Optimistic votes: update the map instantly, roll back on error.
+  const voteMut = useMutation({
+    mutationFn: async (v: { id: number; value: number }) => {
+      const r = await fetch(`${BASE}/api/discussions/${v.id}/vote`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: editingComment.text, trader: traderName }),
+        body: JSON.stringify({ value: v.value }),
       });
-      qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
-    } catch (e) {}
-    setEditingComment(null);
+      const body = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(body?.error ?? "Не удалось проголосовать");
+      return body as VoteAgg & { discussionId: number };
+    },
+    onMutate: async ({ id, value }) => {
+      await qc.cancelQueries({ queryKey: votesKey });
+      const prev = qc.getQueryData<VoteMap>(votesKey);
+      qc.setQueryData<VoteMap>(votesKey, (old = {}) => {
+        const cur = old[id] ?? { upvotes: 0, downvotes: 0, score: 0, myVote: null };
+        let { upvotes, downvotes } = cur;
+        if (cur.myVote === 1) upvotes--;
+        if (cur.myVote === -1) downvotes--;
+        if (value === 1) upvotes++;
+        if (value === -1) downvotes++;
+        return { ...old, [id]: { upvotes, downvotes, score: upvotes - downvotes, myVote: value === 0 ? null : value } };
+      });
+      return { prev };
+    },
+    onError: (e: Error, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(votesKey, ctx.prev);
+      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+    },
+    onSuccess: (res) => {
+      qc.setQueryData<VoteMap>(votesKey, (old = {}) => ({ ...old, [res.discussionId]: { upvotes: res.upvotes, downvotes: res.downvotes, score: res.score, myVote: res.myVote } }));
+    },
+  });
+
+  function handleVote(id: number, value: 1 | -1) {
+    if (!canEdit) return;
+    const cur = votes[id]?.myVote;
+    voteMut.mutate({ id, value: cur === value ? 0 : value });
   }
 
-  async function handleDeleteComment() {
-    if (!deletingComment) return;
+  const deleteMut = useDeleteDiscussion({
+    mutation: {
+      onSuccess: (_d, vars) => {
+        const t = threads.find((x) => x.id === vars.id);
+        qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
+        qc.invalidateQueries({ queryKey: ["discussions-tickers"] });
+        setUndo({ id: vars.id, label: `Тема «${(t?.topic ?? "").slice(0, 40)}»` });
+        if (selectedId === vars.id) selectThread(null);
+      },
+      onError: (e: unknown) => toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? String(e), variant: "destructive" }),
+    },
+  });
+
+  async function restoreDeleted() {
+    if (!undo) return;
+    setRestoring(true);
     try {
-      await fetch(`${BASE}/api/discussions/${deletingComment.discussionId}/comments/${deletingComment.id}?trader=${encodeURIComponent(traderName)}`, {
-        method: "DELETE",
-      });
+      const r = await fetch(`${BASE}/api/discussions/${undo.id}/restore`, { method: "POST" });
+      if (!r.ok) {
+        const body = await r.json().catch(() => null);
+        throw new Error(body?.error ?? "Не удалось восстановить");
+      }
       qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
-    } catch (e) {}
-    setDeletingComment(null);
-  }
-
-  function openCreate() {
-    const f = blankDisc();
-    if (user?.traderName) f.trader = user.traderName;
-    setForm(f);
-    setOpen(true);
-  }
-
-  function parseCommentStatus(text: string): { status: string | null; body: string } {
-    const match = text.match(/^\[(Observing|In Position|Exited)\]\s*(.*)/s);
-    if (match) {
-      const statusMap: Record<string, string> = { "Observing": "observing", "In Position": "in_position", "Exited": "exited" };
-      return { status: statusMap[match[1]] ?? null, body: match[2] };
+      qc.invalidateQueries({ queryKey: ["discussions-tickers"] });
+      selectThread(undo.id);
+      toast({ title: "Тема восстановлена" });
+    } catch (e) {
+      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+    } finally {
+      setRestoring(false);
+      setUndo(null);
     }
-    return { status: null, body: text };
   }
 
+  // ── Derived ────────────────────────────────────────────────────────────
+  const knownTickers = useMemo(() => {
+    const s = new Set<string>();
+    for (const t of tickerStats) if (t.ticker) s.add(t.ticker.toUpperCase());
+    for (const t of threads) if (t.ticker) s.add(t.ticker.toUpperCase());
+    return s;
+  }, [tickerStats, threads]);
+
+  const unreadIds = useMemo(() => new Set(threads.filter((t) => isUnread(t, seen, me)).map((t) => t.id)), [threads, seen, me]);
+  const mentionIds = useMemo(() => new Set(threads.filter((t) => threadMentions(t, me)).map((t) => t.id)), [threads, me]);
+  const myPositionIds = useMemo(
+    () => new Set(threads.filter((t) => teamPositions(t.comments ?? []).in_position.includes(me)).map((t) => t.id)),
+    [threads, me],
+  );
+  const active24 = useMemo(
+    () => threads.filter((t) => Date.now() - new Date(lastActivity(t)).getTime() < 86_400_000).length,
+    [threads],
+  );
+  const unreadMentions = useMemo(() => Array.from(mentionIds).filter((id) => unreadIds.has(id)).length, [mentionIds, unreadIds]);
+
+  const filtered = useMemo(() => {
+    const view = prefs.view;
+    const list = threads.filter((t) => {
+      if (tickerFilter && (t.ticker ?? "").toUpperCase() !== tickerFilter) return false;
+      if (typeFilter !== "all" && (t.type || "general") !== typeFilter) return false;
+      if (view === "unread" && !unreadIds.has(t.id)) return false;
+      if (view === "mine" && t.trader !== me && !participants(t).includes(me)) return false;
+      if (view === "open" && isResolved(t)) return false;
+      if (view === "mentions" && !mentionIds.has(t.id)) return false;
+      if (view === "positions" && !myPositionIds.has(t.id)) return false;
+      return threadMatches(t, q.trim());
+    });
+    return sortThreads(list, prefs.sort, votes);
+  }, [threads, tickerFilter, typeFilter, prefs, unreadIds, mentionIds, myPositionIds, q, votes, me]);
+
+  const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
+
+  // ── Selection / unread bookkeeping ─────────────────────────────────────
+  function selectThread(id: number | null) {
+    setSelectedId(id);
+    writeParams({ thread: id ? String(id) : null });
+    if (id) {
+      const t = threads.find((x) => x.id === id) ?? null;
+      setOpenedSeenAt(seenAt(seen, id, t));
+      if (serverUnread && canEdit) readMut.mutate(id);
+    }
+  }
+
+  // Mark the open thread as read (also when new replies arrive while it is open).
+  const selectedLast = selected ? lastActivity(selected) : null;
+  useEffect(() => {
+    if (!selected || !selectedLast) return;
+    if (serverUnread) {
+      if (selected.unread && canEdit) readMut.mutate(selected.id);
+      return;
+    }
+    setSeen((prev) => {
+      const cur = prev.seen[String(selected.id)];
+      const nowIso = new Date().toISOString();
+      const target = new Date(selectedLast).getTime() > Date.now() ? selectedLast : nowIso;
+      if (cur && new Date(cur).getTime() >= new Date(selectedLast).getTime()) return prev;
+      const next = { ...prev, seen: { ...prev.seen, [String(selected.id)]: target } };
+      saveSeen(next);
+      return next;
+    });
+  }, [selected?.id, selectedLast, selected?.unread]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Deep-link: thread id from URL that doesn't exist any more.
+  useEffect(() => {
+    if (!isLoading && selectedId && rawThreads && !threads.some((t) => t.id === selectedId)) {
+      selectThread(null);
+    }
+  }, [isLoading, rawThreads]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Capture "seen before opening" for a deep-linked thread on first load.
+  const didInitSeen = useRef(false);
+  useEffect(() => {
+    if (didInitSeen.current || !selectedId || !selected) return;
+    didInitSeen.current = true;
+    setOpenedSeenAt(seenAt(seen, selectedId, selected));
+  }, [selectedId, selected]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ?new=1 (optionally with ?ticker=&tradeId=…) opens the composer — for cross-links from other sections.
+  useEffect(() => {
+    if (readParam("new") === "1" && canEdit) {
+      openCreate(true);
+      writeParams({ new: null, tradeId: null, eventId: null, ideaId: null, playbookId: null, journalDate: null, type: null });
+    }
+  }, [canEdit]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function setTicker(t: string | null) {
+    setTickerFilter(t);
+    writeParams({ ticker: t });
+  }
+
+  function openCreate(keepContext = false) {
+    setEditing(null);
+    if (!keepContext) setFormContext(undefined);
+    setFormOpen(true);
+  }
+
+  async function markAllRead() {
+    if (serverUnread) {
+      try {
+        const r = await fetch(`${BASE}/api/discussions/read-all`, { method: "POST" });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => ({ ...d, unread: false, mentionsMe: false, readAt: new Date().toISOString() })));
+        qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
+      } catch (e) {
+        toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+        return;
+      }
+    } else {
+      const now = new Date().toISOString();
+      const next = { init: now, seen: {} };
+      saveSeen(next);
+      setSeen(next);
+    }
+    toast({ title: "Все темы отмечены прочитанными" });
+  }
+
+  function resetFilters() {
+    setQ("");
+    setTypeFilter("all");
+    setTicker(null);
+    setPrefs((p) => ({ ...p, view: "all" }));
+  }
+
+  // ── Keyboard ───────────────────────────────────────────────────────────
+  const filteredRef = useRef(filtered);
+  filteredRef.current = filtered;
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isTypingTarget(e.target)) return;
+      if (document.querySelector("[role=dialog],[role=alertdialog],[role=menu]")) return;
+      const list = filteredRef.current;
+      if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); return; }
+      if ((e.key === "n" || e.key === "т") && canEdit) { e.preventDefault(); openCreate(false); return; }
+      if (e.key === "j" || e.key === "k" || e.key === "о" || e.key === "л") {
+        if (!list.length) return;
+        e.preventDefault();
+        const idx = list.findIndex((t) => t.id === selectedId);
+        const down = e.key === "j" || e.key === "о";
+        const next = idx === -1 ? 0 : Math.max(0, Math.min(list.length - 1, idx + (down ? 1 : -1)));
+        selectThread(list[next].id);
+        requestAnimationFrame(() => listRef.current?.querySelector(`[data-thread-id="${list[next].id}"]`)?.scrollIntoView({ block: "nearest" }));
+        return;
+      }
+      if ((e.key === "r" || e.key === "к") && selectedId && canEdit) { e.preventDefault(); composerRef.current?.focus(); return; }
+      if (e.key === "Escape") {
+        if (selectedId) selectThread(null);
+        else if (q) setQ("");
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }); // re-bind every render: cheap, always sees fresh state
+
+  const extraView = prefs.view === "mentions" || prefs.view === "positions";
+  const hasFilters = !!q.trim() || typeFilter !== "all" || !!tickerFilter || prefs.view !== "all";
+
+  // ── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-foreground font-mono uppercase tracking-tight">Discussions</h1>
-        <WriteOnly>
-          <Button onClick={openCreate} className="font-mono uppercase tracking-tight text-xs gap-1">
-            <Plus className="h-3 w-3" /> New Discussion
-          </Button>
-        </WriteOnly>
-      </div>
+    <Page>
+      <PageHeader
+        title="Обсуждения"
+        icon={MessagesSquare}
+        description="Темы команды по тикерам и сетапам: голоса, позиции, ответы"
+        actions={
+          canEdit ? (
+            <Button onClick={() => openCreate(false)} className="gap-1.5">
+              <Plus className="h-4 w-4" />Новая тема
+              <kbd className="ml-1 hidden rounded-md bg-white/20 px-1.5 text-2xs font-medium sm:inline">N</kbd>
+            </Button>
+          ) : undefined
+        }
+      />
 
-      <div className="flex items-center gap-4 text-xs font-mono flex-wrap">
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground uppercase">Commenting as:</span>
-          <span className="text-primary font-bold">{traderName}</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-muted-foreground uppercase">Status:</span>
-          <Select value={commentStatus} onValueChange={setCommentStatus}>
-            <SelectTrigger className="w-36 h-7 bg-card border-border text-xs font-mono"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {COMMENT_STATUSES.map((s) => (
-                <SelectItem key={s.value} value={s.value} className="text-xs font-mono">{s.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+      <StatGrid className={cn(selected && "hidden lg:grid")}>
+        <StatCard label="Новое для вас" value={unreadIds.size} tone={unreadIds.size ? "accent" : "neutral"} icon={Bell}
+          hint={unreadIds.size ? "Нажмите, чтобы показать" : "Всё прочитано"} onClick={() => setPrefs((p) => ({ ...p, view: "unread" }))} />
+        <StatCard label="Упоминания" value={mentionIds.size} tone={unreadMentions ? "accent" : "neutral"} icon={AtSign}
+          hint={unreadMentions ? `${unreadMentions} непрочитанных` : `@${me}`} onClick={() => setPrefs((p) => ({ ...p, view: "mentions" }))} />
+        <StatCard label="Активны за 24 ч" value={active24} icon={Activity}
+          hint={`из ${threads.length} тем`} onClick={() => setPrefs((p) => ({ ...p, view: "all", sort: "active" }))} />
+        <StatCard label="Вы в позиции" value={myPositionIds.size} tone={myPositionIds.size ? "up" : "neutral"} icon={Briefcase}
+          hint="по вашим комментариям" onClick={() => setPrefs((p) => ({ ...p, view: "positions" }))} />
+      </StatGrid>
 
-      <div className="space-y-3">
-        {discussions.map((d) => (
-          <div key={d.id} className={`bg-card border border-border font-mono text-xs border-l-[3px] ${
-            d.type === "strategy" ? "border-l-emerald-500/40" :
-            d.type === "risk" ? "border-l-red-500/40" :
-            d.type === "analysis" ? "border-l-cyan-500/40" :
-            d.type === "setup" ? "border-l-amber-500/40" :
-            "border-l-primary/30"
-          }`}>
-            <div className="flex items-start justify-between px-4 py-3 border-b border-border cursor-pointer hover:bg-muted/30 transition-colors"
-              onClick={() => setExpanded(expanded === d.id ? null : d.id)}>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  {d.type && <span className={`text-[10px] px-1.5 py-0.5 uppercase font-bold border ${
-                    d.type === "strategy" ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/30" :
-                    d.type === "risk" ? "bg-red-500/15 text-red-400 border-red-500/30" :
-                    d.type === "analysis" ? "bg-cyan-500/15 text-cyan-400 border-cyan-500/30" :
-                    d.type === "setup" ? "bg-amber-500/15 text-amber-400 border-amber-500/30" :
-                    "bg-primary/10 text-primary border-primary/20"
-                  }`}>{d.type}</span>}
-                  {d.trader && <span className="text-muted-foreground">{d.trader}</span>}
-                  <span className="text-muted-foreground">{d.createdAt.substring(0, 10)}</span>
-                </div>
-                <div className="font-bold text-foreground text-sm truncate">{d.topic}</div>
-                {d.notes && <div className="text-muted-foreground mt-1 truncate">{d.notes}</div>}
-                <TagChips tags={(d as any).tags} />
-              </div>
-              <div className="flex items-center gap-3 ml-3 shrink-0">
-                <div className="flex items-center gap-1 text-muted-foreground">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  <span>{d.comments?.length ?? 0}</span>
-                </div>
-                <WriteOnly>
-                  <button onClick={(e) => { e.stopPropagation(); setDeleting(d); }} className="p-1 text-muted-foreground hover:text-red-400 transition-colors">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </WriteOnly>
-              </div>
+      {isError && <QueryError error={error} onRetry={() => refetch()} />}
+
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(320px,400px)_minmax(0,1fr)]">
+        {/* ── Thread list ── */}
+        <section
+          aria-label="Список тем"
+          className={cn(
+            "glass-panel flex min-w-0 flex-col rounded-2xl lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))]",
+            selected && "hidden lg:flex",
+          )}
+        >
+          <div className="space-y-2 border-b border-[var(--field-border)] p-3">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                ref={searchRef}
+                type="search"
+                aria-label="Поиск по темам и комментариям"
+                placeholder="Поиск: тема, тикер, автор, текст…"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); setQ(""); (e.target as HTMLInputElement).blur(); } }}
+                className="pl-10 pr-10"
+              />
+              {q ? (
+                <button type="button" aria-label="Очистить поиск" onClick={() => setQ("")} className="absolute right-1.5 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]">
+                  <X className="h-4 w-4" />
+                </button>
+              ) : (
+                <kbd className="pointer-events-none absolute right-3 top-1/2 hidden -translate-y-1/2 rounded-md border border-[var(--field-border)] px-1.5 text-2xs text-muted-foreground sm:block">/</kbd>
+              )}
             </div>
-
-            {expanded === d.id && (
-              <div className="p-4 space-y-3">
-                {(d as any).screenshotUrl && (
-                  <ScreenshotDisplay urls={(d as any).screenshotUrl} />
-                )}
-
-                {(d.comments ?? []).length > 0 && (
-                  <div className="space-y-2">
-                    {(d.comments ?? []).map((c) => {
-                      const parsed = parseCommentStatus(c.text);
-                      const isOwn = c.trader === traderName;
-                      const isEditing = editingComment?.id === c.id;
-                      return (
-                        <div key={c.id} className="flex gap-3 py-2 border-b border-border/50 last:border-0">
-                          <div className="w-1 bg-primary/30 shrink-0 self-stretch" />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex gap-2 items-center mb-0.5">
-                              {c.trader && <span className="text-primary font-bold">{c.trader}</span>}
-                              <StatusBadge status={parsed.status} />
-                              <span className="text-muted-foreground">{c.createdAt.substring(0, 10)}</span>
-                              {isOwn && !isEditing && (
-                                <div className="flex gap-1 ml-auto">
-                                  <button onClick={() => setEditingComment({ id: c.id, discussionId: d.id, text: c.text })} className="p-0.5 text-muted-foreground hover:text-primary transition-colors" title="Edit">
-                                    <Pencil className="h-3 w-3" />
-                                  </button>
-                                  <button onClick={() => setDeletingComment({ id: c.id, discussionId: d.id })} className="p-0.5 text-muted-foreground hover:text-red-400 transition-colors" title="Delete">
-                                    <Trash2 className="h-3 w-3" />
-                                  </button>
-                                </div>
-                              )}
-                            </div>
-                            {isEditing ? (
-                              <div className="flex gap-2 mt-1">
-                                <Textarea
-                                  value={editingComment.text}
-                                  onChange={(e) => setEditingComment({ ...editingComment, text: e.target.value })}
-                                  rows={2}
-                                  className="font-mono bg-background text-xs resize-none flex-1"
-                                  onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleEditComment(); } }}
-                                />
-                                <div className="flex flex-col gap-1">
-                                  <button onClick={handleEditComment} className="p-1 text-emerald-400 hover:text-emerald-300 transition-colors" title="Save">
-                                    <Check className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button onClick={() => setEditingComment(null)} className="p-1 text-muted-foreground hover:text-foreground transition-colors" title="Cancel">
-                                    <X className="h-3.5 w-3.5" />
-                                  </button>
-                                </div>
-                              </div>
-                            ) : (
-                              <div className="text-foreground">{parsed.body}</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-
-                <WriteOnly>
-                  <div className="flex gap-2 pt-1">
-                    <Textarea
-                      value={commentText[d.id] ?? ""}
-                      onChange={(e) => setCommentText((prev) => ({ ...prev, [d.id]: e.target.value }))}
-                      placeholder="Add a comment..."
-                      rows={2}
-                      className="font-mono bg-background text-xs resize-none flex-1"
-                      onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); handleComment(d.id); } }}
-                    />
-                    <Button size="sm" onClick={() => handleComment(d.id)} disabled={commentMut.isPending} className="self-end font-mono text-xs gap-1 shrink-0">
-                      <Send className="h-3 w-3" /> Send
-                    </Button>
-                  </div>
-                  <div className="text-muted-foreground text-xs">Ctrl+Enter to send</div>
-                </WriteOnly>
+            <div className="flex items-center gap-2">
+              <Segmented<ViewKey>
+                ariaLabel="Показать темы"
+                size="sm"
+                className="min-w-0 flex-1"
+                value={extraView ? "all" : prefs.view}
+                onChange={(v) => setPrefs((p) => ({ ...p, view: v }))}
+                options={[
+                  { value: "all", label: "Все" },
+                  { value: "unread", label: "Новое", count: unreadIds.size || undefined },
+                  { value: "mine", label: "Мои" },
+                  { value: "open", label: "Открытые" },
+                ]}
+              />
+              <Select value={prefs.sort} onValueChange={(v) => setPrefs((p) => ({ ...p, sort: v as SortKey }))}>
+                <SelectTrigger aria-label="Сортировка" className="h-9 w-[124px] shrink-0 gap-1 text-xs">
+                  <ArrowDownUp className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(SORT_LABELS) as SortKey[]).map((k) => <SelectItem key={k} value={k}>{SORT_LABELS[k]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Фильтр по типу и тикеру">
+              <Select value={typeFilter} onValueChange={setTypeFilter}>
+                <SelectTrigger aria-label="Тип темы" className={cn("h-8 w-auto shrink-0 gap-1 px-3 text-xs", typeFilter !== "all" && "text-primary")}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Все типы</SelectItem>
+                  {TYPES.map((t) => <SelectItem key={t} value={t}>{TYPE_LABELS[t]}</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {tickerStats.slice(0, 12).map((t) => (
+                <FilterChip key={t.ticker} active={tickerFilter === t.ticker} onClick={() => setTicker(tickerFilter === t.ticker ? null : t.ticker)} count={t.count} className="min-h-8 shrink-0 px-2.5 text-xs tabular-nums">
+                  ${t.ticker}
+                </FilterChip>
+              ))}
+              {tickerFilter && !tickerStats.some((t) => t.ticker === tickerFilter) && (
+                <FilterChip active onClick={() => setTicker(null)} className="min-h-8 shrink-0 px-2.5 text-xs">${tickerFilter}</FilterChip>
+              )}
+            </div>
+            {hasFilters && (
+              <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                <span className="tabular-nums">Найдено: {filtered.length}</span>
+                {extraView && <Pill tone="accent">{VIEW_LABELS[prefs.view]}</Pill>}
+                <button type="button" onClick={resetFilters} className="ml-auto rounded-full px-2 py-1 text-primary hover:bg-primary/10">Сбросить фильтры</button>
               </div>
             )}
           </div>
-        ))}
-        {discussions.length === 0 && !isLoading && (
-          <div className="py-12 text-center text-muted-foreground text-xs font-mono">No discussions yet. Create one!</div>
-        )}
+
+          <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
+            {isLoading ? (
+              <ul className="space-y-1" aria-busy="true" aria-label="Загрузка тем">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <li key={i} className="space-y-2 rounded-xl px-3 py-3">
+                    <div className="flex gap-1.5"><Skeleton className="h-4 w-14 rounded-full" /><Skeleton className="h-4 w-12 rounded-full" /><Skeleton className="ml-auto h-3 w-16 rounded-full" /></div>
+                    <Skeleton className="h-4 w-4/5 rounded-full" />
+                    <Skeleton className="h-3 w-3/5 rounded-full" />
+                  </li>
+                ))}
+              </ul>
+            ) : threads.length === 0 && !isError ? (
+              <EmptyState
+                icon={MessagesSquare}
+                title="Обсуждений пока нет"
+                description="Создайте тему по тикеру или сетапу — команда проголосует, отметит свои позиции и ответит в треде."
+                action={canEdit ? <Button onClick={() => openCreate(false)} className="gap-1.5"><Plus className="h-4 w-4" />Начать обсуждение</Button> : undefined}
+              />
+            ) : filtered.length === 0 ? (
+              <EmptyState
+                icon={SearchX}
+                title="Ничего не найдено"
+                description={q.trim() ? `По запросу «${q.trim()}» тем нет.` : "Под выбранные фильтры тем нет."}
+                action={<Button variant="outline" size="sm" onClick={resetFilters}>Сбросить фильтры</Button>}
+              />
+            ) : (
+              <ul ref={listRef} className="space-y-0.5">
+                {filtered.map((t, i) => (
+                  <ThreadListItem
+                    key={t.id}
+                    t={t}
+                    index={i}
+                    selected={t.id === selectedId}
+                    unread={unreadIds.has(t.id)}
+                    mentionsMe={mentionIds.has(t.id) && unreadIds.has(t.id)}
+                    votes={votes}
+                    q={q.trim()}
+                    onSelect={selectThread}
+                  />
+                ))}
+              </ul>
+            )}
+          </div>
+          {unreadIds.size > 0 && (
+            <div className="border-t border-[var(--field-border)] px-3 py-2 text-right">
+              <button type="button" onClick={markAllRead} className="rounded-full px-2 py-1 text-xs text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+                Отметить всё прочитанным
+              </button>
+            </div>
+          )}
+        </section>
+
+        {/* ── Thread view ── */}
+        <section
+          aria-label={selected ? `Тема: ${selected.topic}` : "Тема не выбрана"}
+          className={cn("glass-panel min-w-0 rounded-2xl", !selected && "hidden lg:block")}
+        >
+          {selected ? (
+            <ThreadView
+              thread={selected}
+              me={me}
+              canEdit={canEdit}
+              isMod={isCurator}
+              votes={votes}
+              onVote={handleVote}
+              knownTickers={knownTickers}
+              traderNames={traderNames}
+              q={q.trim()}
+              seenAt={openedSeenAt}
+              onBack={() => selectThread(null)}
+              onEdit={(t) => { setEditing(t); setFormOpen(true); }}
+              onDelete={(t) => deleteMut.mutate({ id: t.id })}
+              onReport={setReportTarget}
+              onTickerFilter={(t) => { setTicker(t); selectThread(null); }}
+              composerRef={composerRef}
+            />
+          ) : (
+            <EmptyState
+              icon={MessagesSquare}
+              title="Выберите тему слева"
+              description="Откройте тред, чтобы прочитать ответы, проголосовать и отметить свою позицию."
+              className="min-h-[420px]"
+              action={
+                <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                  <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />
+                  <span><kbd className="rounded border border-[var(--field-border)] px-1">J</kbd>/<kbd className="rounded border border-[var(--field-border)] px-1">K</kbd> — навигация</span>
+                  <span><kbd className="rounded border border-[var(--field-border)] px-1">/</kbd> — поиск</span>
+                  {canEdit && <span><kbd className="rounded border border-[var(--field-border)] px-1">N</kbd> — новая тема</span>}
+                  {canEdit && <span><kbd className="rounded border border-[var(--field-border)] px-1">R</kbd> — ответить</span>}
+                </div>
+              }
+            />
+          )}
+        </section>
       </div>
 
-      <Dialog open={open} onOpenChange={(v) => { if (!v) setOpen(false); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto bg-card border-border font-mono">
-          <DialogHeader><DialogTitle className="uppercase text-sm tracking-tight">New Discussion</DialogTitle></DialogHeader>
-          <div className="space-y-3 text-xs">
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Topic *</Label>
-              <Input value={form.topic} onChange={(e) => set("topic", e.target.value)} placeholder="NVDA: when to take profits?" className="font-mono bg-background h-8 text-xs" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-muted-foreground uppercase text-xs">Type</Label>
-                <Select value={form.type} onValueChange={(v) => set("type", v)}>
-                  <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>{TYPES.map((s) => <SelectItem key={s} value={s} className="text-xs font-mono">{s}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-muted-foreground uppercase text-xs">Trader</Label>
-                <Select value={form.trader} onValueChange={(v) => set("trader", v)}>
-                  <SelectTrigger className="font-mono bg-background h-8 text-xs"><SelectValue placeholder="-" /></SelectTrigger>
-                  <SelectContent>{traderNames.map((t) => <SelectItem key={t} value={t} className="text-xs font-mono">{t}</SelectItem>)}</SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs">Description</Label>
-              <Textarea value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={3} className="font-mono bg-background text-xs resize-none" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-muted-foreground uppercase text-xs flex items-center gap-1.5"><Tag className="h-3 w-3" />Tags</Label>
-              <TagSelector
-                selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}
-                onChange={(tags) => set("tags", tags.join(", "))}
-              />
-            </div>
-            <ScreenshotFields
-              urls={form.screenshotUrls}
-              onChange={(urls) => set("screenshotUrls", urls)}
-            />
-          </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setOpen(false)} className="font-mono uppercase text-xs">Cancel</Button>
-            <Button onClick={handleCreate} disabled={createMut.isPending || !form.topic} className="font-mono uppercase text-xs">
-              {createMut.isPending ? "Creating..." : "Create"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ThreadFormDialog
+        open={formOpen}
+        editing={editing}
+        author={me}
+        defaultTicker={tickerFilter ?? ""}
+        defaultType={formType}
+        context={formContext}
+        knownTickers={knownTickers}
+        onClose={() => { setFormOpen(false); setEditing(null); setFormContext(undefined); }}
+        onSaved={(id) => selectThread(id)}
+      />
 
-      <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
-        <AlertDialogContent className="bg-card border-border font-mono">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-sm uppercase">Delete discussion?</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs">{deleting?.topic}. All comments will be deleted too.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono text-xs uppercase">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && deleteMut.mutate({ id: deleting.id })} className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ReportDialog target={reportTarget} reporter={me} onClose={() => setReportTarget(null)} />
 
-      <AlertDialog open={!!deletingComment} onOpenChange={(v) => { if (!v) setDeletingComment(null); }}>
-        <AlertDialogContent className="bg-card border-border font-mono">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-sm uppercase">Delete comment?</AlertDialogTitle>
-            <AlertDialogDescription className="text-xs">This comment will be permanently removed.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="font-mono text-xs uppercase">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteComment} className="font-mono text-xs uppercase bg-red-600 hover:bg-red-700">Delete</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </div>
+      {undo && (
+        <UndoToast
+          key={undo.id}
+          label={undo.label}
+          actionText="удалена"
+          onUndo={restoreDeleted}
+          onDismiss={() => setUndo(null)}
+          restoring={restoring}
+        />
+      )}
+    </Page>
   );
 }

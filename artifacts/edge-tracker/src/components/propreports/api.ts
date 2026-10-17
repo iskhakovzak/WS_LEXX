@@ -1,0 +1,348 @@
+/**
+ * Client for /api/propreports/* (types mirror artifacts/api-server/src/routes/propreports.ts).
+ */
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiUrl } from "@/lib/api";
+
+export type Horizon = "intraday" | "overnight" | "swing";
+export type Session = "premarket" | "regular" | "postmarket";
+export type TripResult = "win" | "loss" | "breakeven" | "open";
+export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
+
+export const FEE_KEYS = ["comm", "ecn", "sec", "orf", "taf", "nfa", "cat", "nscc", "acc", "clr", "misc"] as const;
+export type FeeKey = (typeof FEE_KEYS)[number];
+export const FEE_LABEL: Record<string, string> = {
+  comm: "Комиссия", ecn: "ECN", sec: "SEC", orf: "ORF", taf: "TAF", nfa: "NFA", cat: "CAT", nscc: "NSCC", acc: "Access", clr: "Клиринг", misc: "Прочее",
+  exfee: "ExFee", finra: "FINRA", route: "Route", locate: "Locate", borrow: "Borrow", nasdaq: "Nasdaq", pass: "Pass-thru",
+};
+/** Label for any fee key (unknown columns keep their broker name). */
+export function feeLabel(key: string): string {
+  return FEE_LABEL[key] ?? key.replace(/_/g, " ").replace(/^w/, (c) => c.toUpperCase());
+}
+/** Known keys first (in FEE_KEYS order), then the rest alphabetically. */
+export function orderedFeeKeys(fees: Record<string, number>): string[] {
+  const known = FEE_KEYS.filter((k) => k in fees) as string[];
+  const rest = Object.keys(fees).filter((k) => !(FEE_KEYS as readonly string[]).includes(k)).sort();
+  return [...known, ...rest];
+}
+
+export type Execution = { kind: "entry" | "add" | "trim" | "exit"; side: "B" | "S" | "T" | "C"; qty: number; price: number; at: string; fees: number; fillId: string | null };
+
+export type TripView = {
+  symbol: string; side: "Long" | "Short"; date: string; exitDate: string | null; openedAt: string; closedAt: string | null;
+  horizon: Horizon; session: Session; qty: number; openQty: number; avgEntry: number; avgExit: number | null;
+  grossPnl: number; fees: Record<string, number>; totalFees: number; netPnl: number; result: TripResult; holdTime: string | null;
+  fillCount: number; open: boolean; fromReport: boolean; executions: Execution[];
+};
+
+export type ManualCandidate = {
+  id: number; trader: string; ticker: string; date: string; side: string | null; setup: string | null;
+  entry: number | null; exit: number | null; qty: number | null; pnl: number | null; fees: number | null;
+  result: string; notes: string | null; tags: string | null; playbookId: number | null; createdAt: string;
+};
+
+export type FieldChange = { field: string; from: unknown; to: unknown };
+
+export type PlanItemView = {
+  externalId: string; action: PlanAction; reason: string | null; trader: string | null; account: string;
+  tradeId: number | null; pendingId: number | null; changes: FieldChange[]; candidates: ManualCandidate[]; trip: TripView;
+};
+
+export type Summary = {
+  trips: number; closed: number; open: number; wins: number; losses: number; breakeven: number;
+  gross: number; fees: number; net: number; byHorizon: Record<Horizon, number>; accounts: string[]; symbols: number;
+  minDate: string | null; maxDate: string | null; tradingDays: number;
+};
+
+export type Preview = {
+  dryRun: true; kind: "fills" | "trades"; fileName?: string; source?: "api"; from?: string; to?: string;
+  counts: Record<PlanAction, number>; unmappedAccounts: string[]; inactiveAccounts: string[];
+  dateFrom: string | null; dateTo: string | null; summary: Summary; items: PlanItemView[]; truncated: boolean;
+  feeColumns?: string[]; resolvedAccounts?: Record<string, { account: string; how: "alias" | "ci" | "fuzzy" }>;
+  fills?: number; skippedRows?: number; issues?: Array<{ line: number; message: string }>; issueCount?: number; columns?: string[];
+  orphanFills?: Array<{ account: string; symbol: string; side: string; qty: number; price: number; dateTime: string; line: number }>; orphanCount?: number;
+  reportRows?: number;
+};
+
+export type ApplyResult = {
+  runId: number; inserted: number; updated: number; unchanged: number; skipped: number; conflicts: number; errors: number; errorText: string | null;
+  counts: Record<PlanAction, number>; unmappedAccounts: string[];
+};
+
+export type AccountMapping = {
+  id: number; account: string; accountId: string | null; accountName: string | null; trader: string | null;
+  active: boolean; notes: string | null; aliases: string[]; lastSyncedAt: string | null; lastFillAt: string | null;
+};
+
+export type SyncRun = {
+  id: number; startedAt: string; finishedAt: string | null; source: "api" | "file"; status: "running" | "ok" | "partial" | "error";
+  fileName: string | null; dateFrom: string | null; dateTo: string | null; inserted: number; updated: number; unchanged: number;
+  skipped: number; conflicts: number; errors: number; errorText: string | null; actor: string | null; details: Record<string, unknown> | null;
+};
+
+export type PendingTrade = {
+  id: number; externalId: string; account: string | null; trader: string; ticker: string; date: string; side: string | null;
+  trip: TripView; candidates: ManualCandidate[]; createdAt: string; updatedAt: string;
+};
+
+export type ConnectionState = { checkedAt: string | null; ok: boolean | null; mode: "v2" | "v1" | null; version: string | null; error: string | null };
+export type CheckResult = ConnectionState & { apiVersionHeader: string | null; host: string };
+export type FeeColumnView = { key: string; header: string | null; label: string; known: boolean; heuristic: boolean; include: boolean; lastSeenAt: string | null; customLabel: string | null };
+export type GroupEffective = { groupId: string; source: "env" | "settings" | "default" };
+export type SettingsView = { groupId: string | null; effective: GroupEffective; feeColumns: FeeColumnView[]; feesConfirmedAt: string | null; unmatched: string[]; connection: ConnectionState };
+export type GroupsResponse = { groups: Array<{ groupId: string | null; name: string }>; source: "api" | "accounts"; effective: GroupEffective; warning?: string };
+export type WizardStep = { ok: boolean; detail: string };
+export type Wizard = { env: WizardStep; connection: WizardStep; accounts: WizardStep; fees: WizardStep; firstSync: WizardStep };
+
+export type Status = {
+  viewer: { name: string; staff: boolean };
+  connection: ConnectionState;
+  settings: { groupId: string | null; effectiveGroupId: string; groupSource: "env" | "settings" | "default"; feesConfirmedAt: string | null; feeColumns: FeeColumnView[]; unmatched: string[] };
+  wizard: Wizard;
+  config: { configured: boolean; domain: string | null; authMode: "token" | "login" | null; groupId: string | null; accountIds: string[]; syncMinutes: number | null; envVars: string[]; missing: string[] };
+  scheduler: { enabled: boolean; minutes: number | null; nextRunAt: string | null; running: boolean; lastError: string | null };
+  accounts: { total: number; mapped: number; unmapped: string[]; lastSyncedAt: string | null };
+  trades: { imported: number; lastSyncedAt: string | null; legacyWithoutId: number };
+  pendingCount: number;
+  lastRun: SyncRun | null;
+};
+
+export type UserRow = { id: number; name: string; role: string; active: boolean };
+
+// ─── Trade Performance (aggregate broker statistics) ───
+export type PerfSideStats = { count: number; gross: number; avgGross: number; fees: number; net: number; avgNet: number; avgHoldSeconds: number | null; avgHold: string | null };
+export type PerfTotals = { gross: number; fees: number; net: number; winRate: number | null; wlRatio: number | null; avgHoldSeconds: number | null; avgHold: string | null };
+export type PerfRow = { label: string; wins: PerfSideStats; losses: PerfSideStats; totals: PerfTotals; trades: number };
+export type PerfSummary = {
+  trades: number; wins: number; losses: number; winRate: number | null; gross: number; fees: number; net: number; feesPctOfGross: number | null;
+  wlRatio: number | null; avgHoldSeconds: number | null; avgHold: string | null; symbols: number; avgWin: number; avgLoss: number;
+};
+export type PerTradeAverage = { group: string; qty: number | null; fees: Record<string, number>; feeHeaders: Record<string, string>; heldSeconds: number | null; held: string | null };
+export type PerformanceReport = {
+  format: "trade-performance"; perTradeAverages: PerTradeAverage[]; totals: PerfRow | null; bySide: { long: PerfRow | null; short: PerfRow | null };
+  byTime: PerfRow[]; byWeekday: PerfRow[]; bySymbol: PerfRow[]; other: PerfRow[]; summary: PerfSummary; issues: string[];
+};
+export type PerformanceReportRow = {
+  id: number; account: string; traderName: string | null; periodFrom: string; periodTo: string; fileName: string | null;
+  uploadedBy: string | null; uploadedAt: string; summary: PerfSummary; data?: PerformanceReport;
+};
+export type PerformanceResponse = { trader: string | null; reports: PerformanceReportRow[]; latest: (PerformanceReportRow & { data: PerformanceReport }) | null };
+/** POST /import response for a Trade Performance file (dry run and apply share the shape). */
+export type PerformancePreview = {
+  dryRun: boolean; kind: "performance"; fileName: string; account: string; trader: string | null; traderSource: string | null;
+  periodFrom: string; periodTo: string; summary: PerfSummary; issues: string[]; bySide: PerformanceReport["bySide"]; byTime: PerfRow[]; byWeekday: PerfRow[];
+  perTradeAverages: PerTradeAverage[]; symbols: number; note: string; reportId?: number; replaced?: boolean; uploadedAt?: string;
+};
+export type ImportKind = "auto" | "fills" | "trades" | "performance";
+export type ImportResponse = Preview | ApplyResult | PerformancePreview;
+export function isPerformanceResponse(r: ImportResponse): r is PerformancePreview {
+  return (r as PerformancePreview).kind === "performance";
+}
+
+export class HttpError extends Error {
+  constructor(public status: number, message: string) { super(message); }
+}
+
+async function readError(r: Response): Promise<HttpError> {
+  let msg = `HTTP ${r.status}`;
+  try {
+    const j = (await r.json()) as { error?: string; issues?: Array<{ path: string; message: string }> };
+    if (j?.error) msg = j.error;
+    if (j?.issues?.length) msg += `: ${j.issues.map((i) => `${i.path} ${i.message}`).join("; ")}`;
+  } catch { /* not json */ }
+  return new HttpError(r.status, msg);
+}
+
+export async function getJson<T>(path: string): Promise<T> {
+  const r = await fetch(apiUrl(path));
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as T;
+}
+
+export async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
+  const r = await fetch(apiUrl(path), { method, headers: body !== undefined ? { "Content-Type": "application/json" } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as T;
+}
+
+export async function sendFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+  const fd = new FormData();
+  fd.append("file", file);
+  for (const [k, v] of Object.entries(fields)) if (v) fd.append(k, v);
+  const r = await fetch(apiUrl(path), { method: "POST", body: fd });
+  if (!r.ok) throw await readError(r);
+  return (await r.json()) as T;
+}
+
+export const prKeys = {
+  all: ["propreports"] as const,
+  status: ["propreports", "status"] as const,
+  accounts: ["propreports", "accounts"] as const,
+  runs: ["propreports", "runs"] as const,
+  reconcile: ["propreports", "reconcile"] as const,
+  users: ["propreports", "users"] as const,
+  performance: ["propreports", "performance"] as const,
+  settings: ["propreports", "settings"] as const,
+  groups: ["propreports", "groups"] as const,
+};
+
+const retry = (count: number, err: unknown) => !(err instanceof HttpError && [401, 403, 404, 503].includes(err.status)) && count < 2;
+
+export function useStatus() {
+  return useQuery({ queryKey: prKeys.status, queryFn: () => getJson<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
+}
+export function useAccounts() {
+  return useQuery({ queryKey: prKeys.accounts, queryFn: () => getJson<AccountMapping[]>("/api/propreports/accounts"), retry });
+}
+export function useRuns(limit = 50) {
+  return useQuery({ queryKey: [...prKeys.runs, limit], queryFn: () => getJson<SyncRun[]>(`/api/propreports/runs?limit=${limit}`), retry });
+}
+export function usePending() {
+  return useQuery({ queryKey: prKeys.reconcile, queryFn: () => getJson<PendingTrade[]>("/api/propreports/reconcile"), retry });
+}
+export function useSettings(enabled = true) {
+  return useQuery({ queryKey: prKeys.settings, queryFn: () => getJson<SettingsView>("/api/propreports/settings"), enabled, retry });
+}
+export function useSaveSettings() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (body: { groupId?: string | null; fees?: { columns?: Record<string, { include: boolean; label?: string | null }>; confirm?: boolean }; unmatched?: string[] }) =>
+      sendJson<SettingsView>("/api/propreports/settings", "PUT", body),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: prKeys.settings }); qc.invalidateQueries({ queryKey: prKeys.status }); },
+  });
+}
+/** Read-only probe (action=version) — never writes to the broker; records the detected auth mode. */
+export function useCheckConnection() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: () => getJson<CheckResult>("/api/propreports/check"),
+    onSettled: () => { qc.invalidateQueries({ queryKey: prKeys.status }); qc.invalidateQueries({ queryKey: prKeys.settings }); },
+  });
+}
+export function useGroups(enabled: boolean) {
+  return useQuery({ queryKey: prKeys.groups, queryFn: () => getJson<GroupsResponse>("/api/propreports/groups"), enabled, staleTime: 5 * 60_000, retry });
+}
+export function usePerformance(trader?: string | null, id?: number | null) {
+  const qs = new URLSearchParams();
+  if (trader) qs.set("trader", trader);
+  if (id) qs.set("id", String(id));
+  const q = qs.toString();
+  return useQuery({ queryKey: [...prKeys.performance, trader ?? "", id ?? 0], queryFn: () => getJson<PerformanceResponse>(`/api/propreports/performance${q ? `?${q}` : ""}`), retry });
+}
+export function useDeletePerformance() {
+  const qc = useQueryClient();
+  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/performance/${id}`, "DELETE"), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.performance }) });
+}
+export function useUsers(enabled: boolean) {
+  return useQuery({ queryKey: prKeys.users, queryFn: () => getJson<UserRow[]>("/api/users"), enabled, staleTime: 5 * 60_000, retry });
+}
+
+/** Invalidate everything that a write to the journal can change. */
+export function useInvalidateAll() {
+  const qc = useQueryClient();
+  return () => {
+    qc.invalidateQueries({ queryKey: prKeys.all });
+    qc.invalidateQueries({ queryKey: ["/api/trades"] });
+    qc.invalidateQueries({ queryKey: ["risk"] });
+    qc.invalidateQueries({ queryKey: ["dashboard"] });
+  };
+}
+
+export function useSaveAccounts() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (accounts: Array<Partial<AccountMapping> & { account: string }>) =>
+      sendJson<AccountMapping[]>("/api/propreports/accounts", "PUT", { accounts: accounts.map((a) => ({ account: a.account, trader: a.trader ?? null, active: a.active, notes: a.notes ?? null, aliases: a.aliases })) }),
+    onSuccess: invalidate,
+  });
+}
+
+export function useRefreshAccounts() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: () => sendJson<{ fetched: number; accounts: AccountMapping[] }>("/api/propreports/accounts/refresh", "POST", {}), onSuccess: invalidate });
+}
+
+export function useDeleteAccount() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/accounts/${id}`, "DELETE"), onSuccess: invalidate });
+}
+
+export function useImportFile() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: ({ file, dryRun, kind, account, trader }: { file: File; dryRun: boolean; kind: ImportKind; account?: string; trader?: string }) =>
+      sendFile<ImportResponse>(`/api/propreports/import${dryRun ? "?dryRun=1" : ""}`, file, { kind, account: account ?? "", trader: trader ?? "" }),
+    onSuccess: (_d, v) => { if (!v.dryRun) invalidate(); },
+  });
+}
+
+export function useApiSync() {
+  const invalidate = useInvalidateAll();
+  return useMutation({
+    mutationFn: (body: { from: string; to: string; dryRun: boolean }) => sendJson<Preview | ApplyResult>("/api/propreports/sync", "POST", body),
+    onSuccess: (_d, v) => { if (!v.dryRun) invalidate(); },
+  });
+}
+
+export function useMerge() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: ({ pendingId, tradeId }: { pendingId: number; tradeId: number }) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/${tradeId}/merge`, "POST", { pendingId }), onSuccess: invalidate });
+}
+export function useKeepSeparate() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/pending/${pendingId}/keep`, "POST", {}), onSuccess: invalidate });
+}
+export function useDismissPending() {
+  const invalidate = useInvalidateAll();
+  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`, "DELETE"), onSuccess: invalidate });
+}
+
+// ─── formatting helpers ───
+const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
+export function fmtUsd(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  const s = usd2.format(Math.abs(v));
+  return v < 0 ? `−${s}` : s;
+}
+export function fmtSigned(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  if (v === 0) return "$0.00";
+  return `${v > 0 ? "+" : ""}${fmtUsd(v)}`;
+}
+export function fmtPrice(v: number | null | undefined): string {
+  if (v == null || !Number.isFinite(v)) return "—";
+  return v.toFixed(v >= 100 ? 2 : 4).replace(/\.?0+$/, "");
+}
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (!Number.isFinite(d.getTime())) return iso;
+  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+}
+export function agoText(iso: string | null | undefined): string {
+  if (!iso) return "ещё не было";
+  const ms = Date.now() - Date.parse(iso);
+  if (!Number.isFinite(ms)) return iso;
+  const m = Math.round(ms / 60_000);
+  if (m < 1) return "только что";
+  if (m < 60) return `${m} мин назад`;
+  const h = Math.round(m / 60);
+  if (h < 48) return `${h} ч назад`;
+  return `${Math.round(h / 24)} дн назад`;
+}
+export function untilText(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const ms = Date.parse(iso) - Date.now();
+  if (!Number.isFinite(ms) || ms <= 0) return "сейчас";
+  const m = Math.round(ms / 60_000);
+  return m < 60 ? `через ${m} мин` : `через ${Math.round(m / 60)} ч`;
+}
+
+export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+export const SESSION_LABEL: Record<Session, string> = { premarket: "Премаркет", regular: "Сессия", postmarket: "Постмаркет" };
+export const ACTION_LABEL: Record<PlanAction, string> = { insert: "Новая", update: "Обновится", unchanged: "Без изменений", adopt: "Привяжется", conflict: "На сверку", skip: "Пропуск" };
+export const REASON_LABEL: Record<string, string> = { unmapped: "счёт не привязан", inactive: "счёт выключен", forbidden: "чужой счёт", deleted: "сделка удалена в журнале" };
+export const FIELD_LABEL: Record<string, string> = {
+  ticker: "Тикер", date: "Дата", side: "Сторона", entry: "Вход", exit: "Выход", qty: "Объём", fees: "Комиссии", pnl: "Gross P&L", result: "Результат",
+  session: "Сессия", horizon: "Горизонт", exitDate: "Дата выхода", holdTime: "Удержание", brokerAccount: "Счёт",
+};

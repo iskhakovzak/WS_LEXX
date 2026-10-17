@@ -1,13 +1,25 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
+import { createPortal } from "react-dom";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Camera, Plus, X, ExternalLink, StickyNote, Pencil, Check, ChevronLeft, ChevronRight, ZoomIn, Maximize2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { safeHttpUrl } from "@/lib/url";
+import { cn } from "@/lib/utils";
+import {
+  Camera, Plus, X, ExternalLink, StickyNote, Pencil, Check, ChevronLeft, ChevronRight,
+  ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Trash2, ImageOff, Link2, MoveLeft, MoveRight, ImagePlus,
+} from "lucide-react";
 
 interface ScreenshotFieldsProps {
   urls: string[];
   onChange: (urls: string[]) => void;
   notes?: string[];
   onNotesChange?: (notes: string[]) => void;
+  /** Optional: custom section label (default «Скриншоты»). */
+  label?: string;
+  /** Optional: hide the section label (when the parent renders its own). */
+  hideLabel?: boolean;
+  /** Optional: maximum number of screenshots (default unlimited). */
+  max?: number;
 }
 
 export function screenshotUrlsToString(urls: string[]): string {
@@ -38,177 +50,641 @@ export function stringToScreenshotNotes(s: string | null | undefined, count: num
   return legacy.slice(0, count);
 }
 
-export function ScreenshotFields({ urls, onChange, notes, onNotesChange }: ScreenshotFieldsProps) {
-  const notesList = notes || urls.map(() => "");
-
-  function setUrl(idx: number, val: string) {
-    const next = [...urls];
-    next[idx] = val;
-    onChange(next);
+/** Pull every http(s) link out of free text (paste of several links, uri-list from a drag, HTML <img src>). */
+function extractUrls(text: string): string[] {
+  const found = text.match(/https?:\/\/[^\s"'<>]+/gi) ?? [];
+  const out: string[] = [];
+  for (const raw of found) {
+    const safe = safeHttpUrl(raw.replace(/[),.;]+$/, ""));
+    if (safe && !out.includes(safe)) out.push(safe);
   }
+  return out;
+}
 
-  function setNote(idx: number, val: string) {
-    if (!onNotesChange) return;
-    const next = [...notesList];
-    while (next.length <= idx) next.push("");
-    next[idx] = val;
-    onNotesChange(next);
-  }
+function hostOf(url: string) {
+  try { return new URL(url).hostname.replace(/^www\./, ""); } catch { return url; }
+}
 
-  function addField() {
-    onChange([...urls, ""]);
-    if (onNotesChange) onNotesChange([...notesList, ""]);
-  }
+/* ───────────────────────── Editor (forms) ───────────────────────── */
 
-  function removeField(idx: number) {
-    const nextUrls = urls.filter((_, i) => i !== idx);
+function ShotTile({
+  url, index, total, note, onRemove, onMove, onOpen, onNote,
+}: {
+  url: string;
+  index: number;
+  total: number;
+  note: string;
+  onRemove: () => void;
+  onMove: (dir: -1 | 1) => void;
+  onOpen: () => void;
+  onNote?: (v: string) => void;
+}) {
+  const [failed, setFailed] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  useEffect(() => { setFailed(false); }, [url]);
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(false), 4000);
+    return () => clearTimeout(t);
+  }, [confirming]);
+
+  return (
+    <li className="flex min-w-0 flex-col gap-1.5">
+      <div className="group relative aspect-video overflow-hidden rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)]">
+        {failed ? (
+          <button
+            type="button"
+            onClick={onOpen}
+            className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground"
+            aria-label={`Открыть скриншот ${index + 1}`}
+          >
+            <ImageOff className="h-5 w-5" aria-hidden="true" />
+            <span className="text-2xs">Превью недоступно</span>
+            <span className="max-w-full truncate text-2xs opacity-80">{hostOf(url)}</span>
+          </button>
+        ) : (
+          <button type="button" onClick={onOpen} className="block h-full w-full" aria-label={`Открыть скриншот ${index + 1}`}>
+            <img
+              src={url}
+              alt={note ? `Скриншот ${index + 1}: ${note}` : `Скриншот ${index + 1}`}
+              loading="lazy"
+              className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
+              onError={() => setFailed(true)}
+            />
+          </button>
+        )}
+
+        <span className="pointer-events-none absolute left-1.5 top-1.5 rounded-full bg-background/80 px-1.5 text-2xs font-medium tabular-nums text-foreground backdrop-blur">
+          {index + 1}
+        </span>
+
+        {/* Actions: hover-reveal on desktop, always visible on touch */}
+        {confirming ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/85 p-2 backdrop-blur-sm" role="alertdialog" aria-label="Подтвердите удаление">
+            <span className="text-xs font-medium text-foreground">Удалить скриншот?</span>
+            <div className="flex gap-1.5">
+              <Button type="button" size="sm" variant="destructive" onClick={onRemove} autoFocus>
+                Удалить
+              </Button>
+              <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
+                Отмена
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+            {total > 1 && index > 0 && (
+              <TileBtn label={`Сдвинуть скриншот ${index + 1} влево`} onClick={() => onMove(-1)}><MoveLeft /></TileBtn>
+            )}
+            {total > 1 && index < total - 1 && (
+              <TileBtn label={`Сдвинуть скриншот ${index + 1} вправо`} onClick={() => onMove(1)}><MoveRight /></TileBtn>
+            )}
+            <a
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label={`Открыть скриншот ${index + 1} в новой вкладке`}
+              className="grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground backdrop-blur hover:bg-background [&_svg]:h-3.5 [&_svg]:w-3.5"
+            >
+              <ExternalLink aria-hidden="true" />
+            </a>
+            <TileBtn label={`Удалить скриншот ${index + 1}`} onClick={() => setConfirming(true)} danger><Trash2 /></TileBtn>
+          </div>
+        )}
+      </div>
+      {onNote && (
+        <Input
+          value={note}
+          onChange={(e) => onNote(e.target.value)}
+          placeholder="Заметка: вход, уровень, ошибка…"
+          aria-label={`Заметка к скриншоту ${index + 1}`}
+          className="h-8 px-3 text-xs"
+        />
+      )}
+    </li>
+  );
+}
+
+function TileBtn({ label, onClick, children, danger }: { label: string; onClick: () => void; children: React.ReactNode; danger?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={cn(
+        "grid h-7 w-7 place-items-center rounded-full bg-background/80 backdrop-blur transition-colors hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [&_svg]:h-3.5 [&_svg]:w-3.5",
+        danger ? "text-down" : "text-foreground",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
+export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label = "Скриншоты", hideLabel, max }: ScreenshotFieldsProps) {
+  // Work on the non-empty links only; notes stay aligned by index (same as persistence, which drops blanks).
+  const pairs = urls
+    .map((u, i) => ({ url: (u ?? "").trim(), note: notes?.[i] ?? "" }))
+    .filter((p) => p.url);
+  const shots = pairs.map((p) => p.url);
+  const shotNotes = pairs.map((p) => p.note);
+
+  const [draft, setDraft] = useState("");
+  const [hint, setHint] = useState<string | null>(null);
+  const [dragOver, setDragOver] = useState(false);
+  const [lightbox, setLightbox] = useState<number | null>(null);
+  const inputId = React.useId();
+  const full = max != null && shots.length >= max;
+
+  function commit(nextUrls: string[], nextNotes: string[]) {
     onChange(nextUrls.length > 0 ? nextUrls : [""]);
-    if (onNotesChange) {
-      const nextNotes = notesList.filter((_, i) => i !== idx);
-      onNotesChange(nextNotes.length > 0 ? nextNotes : [""]);
+    if (onNotesChange) onNotesChange(nextNotes.length > 0 ? nextNotes : [""]);
+  }
+
+  function addMany(list: string[]): number {
+    const fresh = list.filter((u) => !shots.includes(u));
+    const room = max != null ? Math.max(0, max - shots.length) : fresh.length;
+    const take = fresh.slice(0, room);
+    if (take.length === 0) {
+      setHint(list.length > 0 ? (full ? `Не больше ${max} скриншотов` : "Этот скриншот уже добавлен") : null);
+      return 0;
     }
+    commit([...shots, ...take], [...shotNotes, ...take.map(() => "")]);
+    setHint(null);
+    return take.length;
+  }
+
+  function submitDraft() {
+    const text = draft.trim();
+    if (!text) return;
+    const found = extractUrls(text);
+    if (found.length === 0) {
+      setHint("Нужна ссылка, начинающаяся с http:// или https://");
+      return;
+    }
+    if (addMany(found) > 0) setDraft("");
+  }
+
+  function handleTransfer(dt: DataTransfer | null, e: React.SyntheticEvent): boolean {
+    if (!dt) return false;
+    const text = [dt.getData("text/uri-list"), dt.getData("text/html"), dt.getData("text/plain"), dt.getData("text")]
+      .filter(Boolean).join("\n");
+    const found = extractUrls(text);
+    if (found.length > 0) {
+      e.preventDefault();
+      addMany(found);
+      setDraft("");
+      return true;
+    }
+    const hasFile = Array.from(dt.items ?? []).some((it) => it.kind === "file") || (dt.files?.length ?? 0) > 0;
+    if (hasFile) {
+      e.preventDefault();
+      setHint("Файлы не загружаются напрямую — загрузите картинку (imgur, TradingView «Сохранить снимок») и вставьте ссылку");
+      return true;
+    }
+    return false;
+  }
+
+  function remove(i: number) {
+    commit(shots.filter((_, k) => k !== i), shotNotes.filter((_, k) => k !== i));
+  }
+
+  function move(i: number, dir: -1 | 1) {
+    const j = i + dir;
+    if (j < 0 || j >= shots.length) return;
+    const u = [...shots]; const n = [...shotNotes];
+    [u[i], u[j]] = [u[j], u[i]];
+    [n[i], n[j]] = [n[j], n[i]];
+    commit(u, n);
+  }
+
+  function setNote(i: number, v: string) {
+    if (!onNotesChange) return;
+    const n = [...shotNotes];
+    n[i] = v;
+    // Parent receives the compacted url list on every change, so keep notes aligned with it.
+    onNotesChange(n);
+    if (shots.length !== urls.length) onChange(shots);
   }
 
   return (
-    <div className="space-y-2">
-      <Label className="text-muted-foreground uppercase text-xs flex items-center gap-1.5">
-        <Camera className="h-3 w-3" />Screenshots
-      </Label>
-      {urls.map((url, idx) => (
-        <div key={idx} className="space-y-1">
-          <div className="flex gap-1">
-            <Input
-              value={url}
-              onChange={(e) => setUrl(idx, e.target.value)}
-              placeholder="https://i.imgur.com/... or any URL"
-              className="font-mono bg-background h-8 text-xs flex-1"
+    <div className="flex flex-col gap-2">
+      {!hideLabel && (
+        <label htmlFor={inputId} className="flex items-center gap-1.5 text-xs text-muted-foreground">
+          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+          {label}
+          {shots.length > 0 && <span className="tabular-nums">· {shots.length}{max != null ? `/${max}` : ""}</span>}
+        </label>
+      )}
+
+      {shots.length > 0 && (
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+          {shots.map((u, i) => (
+            <ShotTile
+              key={`${u}-${i}`}
+              url={u}
+              index={i}
+              total={shots.length}
+              note={shotNotes[i] ?? ""}
+              onRemove={() => remove(i)}
+              onMove={(d) => move(i, d)}
+              onOpen={() => setLightbox(i)}
+              onNote={onNotesChange ? (v) => setNote(i, v) : undefined}
             />
-            {urls.length > 1 && (
-              <button
-                type="button"
-                onClick={() => removeField(idx)}
-                className="p-1.5 text-muted-foreground hover:text-red-400 transition-colors shrink-0"
-              >
-                <X className="h-3.5 w-3.5" />
-              </button>
-            )}
+          ))}
+        </ul>
+      )}
+
+      {!full && (
+        <div
+          onDragOver={(e) => { e.preventDefault(); if (!dragOver) setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { setDragOver(false); if (!handleTransfer(e.dataTransfer, e)) e.preventDefault(); }}
+          className={cn(
+            "flex flex-col gap-2 rounded-2xl border border-dashed p-2.5 transition-colors",
+            dragOver ? "border-primary bg-primary/10" : "border-[var(--field-border)] bg-[var(--glass-bg)]",
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Link2 className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+              <Input
+                id={inputId}
+                value={draft}
+                onChange={(e) => { setDraft(e.target.value); if (hint) setHint(null); }}
+                onPaste={(e) => { handleTransfer(e.clipboardData, e); }}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitDraft(); } }}
+                placeholder="Вставьте ссылку на скриншот"
+                aria-label={hideLabel ? label : undefined}
+                aria-describedby={hint ? `${inputId}-hint` : undefined}
+                inputMode="url"
+                className="h-9 pl-10 text-sm"
+              />
+            </div>
+            <Button type="button" variant="outline" size="sm" onClick={submitDraft} disabled={!draft.trim()} className="h-9 shrink-0">
+              <Plus aria-hidden="true" />
+              <span className="hidden sm:inline">Добавить</span>
+              <span className="sr-only sm:hidden">Добавить скриншот</span>
+            </Button>
           </div>
-          {url && (
-            <div className="flex items-start gap-2 ml-1">
-              <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline text-[10px] shrink-0 mt-1">
-                <ExternalLink className="h-2.5 w-2.5" /> Open
-              </a>
-              <img
-                src={url}
-                alt=""
-                className="max-h-24 max-w-[200px] object-contain border border-border"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-              />
-            </div>
-          )}
-          {onNotesChange && url && (
-            <div className="ml-1">
-              <textarea
-                value={notesList[idx] || ""}
-                onChange={(e) => setNote(idx, e.target.value)}
-                rows={1}
-                placeholder="Заметка к скриншоту..."
-                className="w-full bg-background border border-border text-xs font-mono px-2 py-1 resize-none text-foreground"
-              />
-            </div>
-          )}
+          <p className="flex items-center gap-1.5 px-1 text-2xs text-muted-foreground">
+            <ImagePlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+            {dragOver ? "Отпустите, чтобы добавить" : "Ctrl+V или перетащите картинку из браузера · можно сразу несколько ссылок"}
+          </p>
         </div>
-      ))}
-      <button
-        type="button"
-        onClick={addField}
-        className="flex items-center gap-1 text-xs text-primary hover:text-primary/80 font-mono transition-colors"
-      >
-        <Plus className="h-3 w-3" /> Add screenshot
-      </button>
+      )}
+
+      {hint && (
+        <p id={`${inputId}-hint`} role="status" className="px-1 text-xs text-[hsl(var(--chart-3))]">{hint}</p>
+      )}
+
+      {lightbox !== null && shots[lightbox] && (
+        <Lightbox urls={shots} notes={shotNotes} initialIndex={lightbox} onClose={() => setLightbox(null)} />
+      )}
     </div>
   );
 }
 
-function Lightbox({ urls, notes, initialIndex, onClose }: {
+/* ───────────────────────── Lightbox ───────────────────────── */
+
+const ZOOM_MIN = 1;
+const ZOOM_MAX = 8;
+const ZOOM_STEP = 0.5;
+
+function LbBtn({ label, onClick, disabled, children, btnRef }: {
+  label: string; onClick: () => void; disabled?: boolean; children: React.ReactNode; btnRef?: React.Ref<HTMLButtonElement>;
+}) {
+  return (
+    <button
+      ref={btnRef}
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      disabled={disabled}
+      className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40 [&_svg]:h-[18px] [&_svg]:w-[18px]"
+    >
+      {children}
+    </button>
+  );
+}
+
+export function Lightbox({ urls, notes, initialIndex, onClose }: {
   urls: string[];
   notes: string[];
   initialIndex: number;
   onClose: () => void;
 }) {
   const [idx, setIdx] = useState(initialIndex);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const dragRef = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
+  const touchRef = useRef<{ x: number; y: number } | null>(null);
 
-  const goNext = useCallback(() => setIdx((i) => (i + 1) % urls.length), [urls.length]);
-  const goPrev = useCallback(() => setIdx((i) => (i - 1 + urls.length) % urls.length), [urls.length]);
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const goNext = useCallback(() => {
+    setIdx((i) => (i + 1) % urls.length);
+    resetView();
+  }, [urls.length, resetView]);
+  const goPrev = useCallback(() => {
+    setIdx((i) => (i - 1 + urls.length) % urls.length);
+    resetView();
+  }, [urls.length, resetView]);
+
+  const zoomIn = useCallback(() => setZoom((z) => Math.min(ZOOM_MAX, z + ZOOM_STEP)), []);
+  const zoomOut = useCallback(() => {
+    setZoom((z) => {
+      const next = Math.max(ZOOM_MIN, z - ZOOM_STEP);
+      if (next === 1) setPan({ x: 0, y: 0 });
+      return next;
+    });
+  }, []);
+
+  const toggleFullscreen = useCallback(async () => {
+    const el = containerRef.current;
+    if (!el) return;
+    try {
+      if (!document.fullscreenElement) await el.requestFullscreen();
+      else await document.exitFullscreen();
+    } catch {
+      // browser may block
+    }
+  }, []);
+
+  useEffect(() => {
+    function onFsChange() { setIsFullscreen(!!document.fullscreenElement); }
+    document.addEventListener("fullscreenchange", onFsChange);
+    return () => document.removeEventListener("fullscreenchange", onFsChange);
+  }, []);
+
+  useEffect(() => {
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, []);
+
+  const closeBtnRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    closeBtnRef.current?.focus();
+    return () => { prevFocus?.focus?.(); };
+  }, []);
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") onClose();
+      if (e.key === "Escape") {
+        if (document.fullscreenElement) return;
+        // Capture-phase on window runs before Radix's document listener, so Esc closes only the
+        // viewer and not the dialog it was opened from.
+        e.stopPropagation();
+        onClose();
+        return;
+      }
       if (e.key === "ArrowRight") goNext();
       if (e.key === "ArrowLeft") goPrev();
+      if (e.key === "+" || e.key === "=") zoomIn();
+      if (e.key === "-" || e.key === "_") zoomOut();
+      if (e.key === "0") resetView();
+      if (e.key === "f" || e.key === "F") toggleFullscreen();
     }
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, goNext, goPrev]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [onClose, goNext, goPrev, zoomIn, zoomOut, resetView, toggleFullscreen]);
 
-  return (
-    <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center" onClick={onClose}>
-      <button onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white z-10 p-2">
-        <X className="h-6 w-6" />
-      </button>
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    function handleWheel(e: WheelEvent) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.deltaY < 0) zoomIn();
+      else zoomOut();
+    }
+    el.addEventListener("wheel", handleWheel, { passive: false });
+    return () => el.removeEventListener("wheel", handleWheel);
+  }, [zoomIn, zoomOut]);
 
-      <div className="absolute top-4 left-4 text-white/50 text-xs font-mono z-10">
-        {idx + 1} / {urls.length}
+  function onMouseDown(e: React.MouseEvent<HTMLDivElement>) {
+    if (zoom <= 1) return;
+    e.preventDefault();
+    dragRef.current = { x: e.clientX, y: e.clientY, px: pan.x, py: pan.y };
+  }
+  function onMouseMove(e: React.MouseEvent) {
+    if (!dragRef.current) return;
+    setPan({
+      x: dragRef.current.px + (e.clientX - dragRef.current.x),
+      y: dragRef.current.py + (e.clientY - dragRef.current.y),
+    });
+  }
+  function onMouseUp() { dragRef.current = null; }
+
+  // Swipe between screenshots on touch screens (only when not zoomed).
+  function onTouchStart(e: React.TouchEvent) {
+    if (zoom > 1 || e.touches.length !== 1) return;
+    touchRef.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }
+  function onTouchEnd(e: React.TouchEvent) {
+    const start = touchRef.current;
+    touchRef.current = null;
+    if (!start || urls.length < 2) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) (dx < 0 ? goNext : goPrev)();
+  }
+
+  const hasThumbBar = urls.length > 1;
+  const hasNote = !!notes[idx];
+  const topOffset = 60;
+  const bottomOffset = (hasThumbBar ? 72 : 12) + (hasNote ? 52 : 0);
+
+  return createPortal(
+    <div
+      ref={containerRef}
+      role="dialog"
+      aria-modal="true"
+      aria-label={`Просмотр скриншота ${idx + 1} из ${urls.length}`}
+      className="pointer-events-auto fixed inset-0 z-modal select-none overflow-hidden bg-background/95 backdrop-blur-xl"
+      onClick={onClose}
+      onMouseMove={onMouseMove}
+      onMouseUp={onMouseUp}
+      onMouseLeave={onMouseUp}
+      onTouchStart={onTouchStart}
+      onTouchEnd={onTouchEnd}
+    >
+      {/* Top toolbar */}
+      <div className="absolute inset-x-0 top-0 z-raised flex h-[60px] items-center justify-between gap-2 px-3" onClick={(e) => e.stopPropagation()}>
+        <span className="glass-field px-3 py-1 text-xs font-medium tabular-nums text-foreground" aria-live="polite">
+          {idx + 1} / {urls.length}
+        </span>
+        <div className="glass-field flex items-center gap-0.5 p-1">
+          <LbBtn label="Уменьшить (−)" onClick={zoomOut} disabled={zoom <= ZOOM_MIN}><ZoomOut aria-hidden="true" /></LbBtn>
+          <span className="hidden w-11 text-center text-xs tabular-nums text-muted-foreground sm:inline">{Math.round(zoom * 100)}%</span>
+          <LbBtn label="Увеличить (+)" onClick={zoomIn} disabled={zoom >= ZOOM_MAX}><ZoomIn aria-hidden="true" /></LbBtn>
+          <LbBtn label="Сбросить масштаб (0)" onClick={resetView} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}><RotateCcw aria-hidden="true" /></LbBtn>
+          <span className="hidden sm:contents">
+            <LbBtn label="На весь экран (F)" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</LbBtn>
+          </span>
+          <a
+            href={urls[idx]}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            title="Открыть в новой вкладке"
+            aria-label="Открыть в новой вкладке"
+            className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ExternalLink className="h-[18px] w-[18px]" aria-hidden="true" />
+          </a>
+          <LbBtn label="Закрыть (Esc)" onClick={onClose} btnRef={closeBtnRef}><X aria-hidden="true" /></LbBtn>
+        </div>
       </div>
 
+      {/* Prev / Next */}
       {urls.length > 1 && (
         <>
           <button
+            type="button"
+            aria-label="Предыдущий скриншот"
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-3 bg-white/5 hover:bg-white/10 transition-colors z-10"
+            className="glass-field absolute left-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
           >
-            <ChevronLeft className="h-8 w-8" />
+            <ChevronLeft className="h-5 w-5" aria-hidden="true" />
           </button>
           <button
+            type="button"
+            aria-label="Следующий скриншот"
             onClick={(e) => { e.stopPropagation(); goNext(); }}
-            className="absolute right-4 top-1/2 -translate-y-1/2 text-white/50 hover:text-white p-3 bg-white/5 hover:bg-white/10 transition-colors z-10"
+            className="glass-field absolute right-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
           >
-            <ChevronRight className="h-8 w-8" />
+            <ChevronRight className="h-5 w-5" aria-hidden="true" />
           </button>
         </>
       )}
 
-      <div className="flex flex-col items-center gap-4 max-w-[90vw] max-h-[90vh]" onClick={(e) => e.stopPropagation()}>
+      {/* Image */}
+      <div
+        className="absolute inset-x-0 flex items-center justify-center overflow-hidden px-2 sm:px-16"
+        style={{ top: topOffset, bottom: bottomOffset, cursor: zoom > 1 ? (dragRef.current ? "grabbing" : "grab") : "default" }}
+        onMouseDown={onMouseDown}
+        onClick={(e) => e.stopPropagation()}
+      >
         <img
+          key={urls[idx]}
           src={urls[idx]}
-          alt={`Screenshot ${idx + 1}`}
-          className="max-w-[90vw] max-h-[80vh] object-contain select-none"
+          alt={notes[idx] ? `Скриншот ${idx + 1}: ${notes[idx]}` : `Скриншот ${idx + 1}`}
+          className="rounded-xl shadow-2xl motion-reduce:!transition-none"
+          style={{
+            maxWidth: "100%",
+            maxHeight: "100%",
+            objectFit: "contain",
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transition: dragRef.current ? "none" : "transform 0.15s cubic-bezier(.2,.8,.2,1)",
+            transformOrigin: "center center",
+            display: "block",
+          }}
           draggable={false}
+          onDoubleClick={(e) => { e.stopPropagation(); if (zoom > 1) resetView(); else setZoom(2); }}
         />
-        {notes[idx] && (
-          <div className="text-white/70 text-xs font-mono bg-white/5 border border-white/10 px-4 py-2 max-w-xl text-center">
-            <StickyNote className="h-3 w-3 text-yellow-400 inline mr-1.5" />
-            {notes[idx]}
-          </div>
-        )}
       </div>
 
-      {urls.length > 1 && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-2 z-10">
-          {urls.map((url, i) => (
-            <button
-              key={i}
-              onClick={(e) => { e.stopPropagation(); setIdx(i); }}
-              className={`w-12 h-8 border-2 overflow-hidden transition-all ${i === idx ? "border-primary opacity-100 scale-110" : "border-white/20 opacity-50 hover:opacity-80"}`}
-            >
-              <img src={url} alt="" className="w-full h-full object-cover" />
-            </button>
-          ))}
+      {/* Note */}
+      {hasNote && (
+        <div className="absolute inset-x-0 z-raised flex justify-center px-3" style={{ bottom: hasThumbBar ? 72 : 12 }} onClick={(e) => e.stopPropagation()}>
+          <div className="glass-field flex max-w-xl items-start gap-2 !rounded-2xl px-4 py-2 text-sm text-foreground">
+            <StickyNote className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
+            <span className="whitespace-pre-wrap">{notes[idx]}</span>
+          </div>
         </div>
       )}
-    </div>
+
+      {/* Thumbnails */}
+      {hasThumbBar && (
+        <div className="absolute inset-x-0 bottom-0 z-raised flex h-[72px] items-center justify-center px-3" onClick={(e) => e.stopPropagation()}>
+          <div className="glass-field flex max-w-full items-center gap-1.5 overflow-x-auto !rounded-2xl p-1.5">
+            {urls.map((url, i) => (
+              <button
+                key={i}
+                type="button"
+                aria-label={`Скриншот ${i + 1}`}
+                aria-current={i === idx ? "true" : undefined}
+                onClick={(e) => { e.stopPropagation(); setIdx(i); resetView(); }}
+                className={cn(
+                  "h-10 w-16 shrink-0 overflow-hidden rounded-lg transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  i === idx ? "opacity-100 ring-2 ring-primary" : "opacity-60 hover:opacity-90",
+                )}
+              >
+                <img src={url} alt="" className="h-full w-full object-cover" />
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>,
+    document.body,
   );
 }
+
+/* ───────────────────────── Thumbs (lists) ───────────────────────── */
+
+export function ScreenshotThumbs({ urls, notes, max = 3, thumbClass }: {
+  urls?: string | null;
+  notes?: string | null;
+  max?: number;
+  thumbClass?: string;
+}) {
+  const list = (urls || "").split("\n").map((u) => safeHttpUrl(u)).filter((u): u is string => !!u);
+  const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
+  if (!list.length) return null;
+  const notesList = stringToScreenshotNotes(notes, list.length);
+  const visible = list.slice(0, max);
+  const extra = list.length - visible.length;
+  return (
+    <>
+      <div className="mt-1 flex items-end gap-1">
+        {visible.map((url, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setLightboxIdx(i); }}
+            className={cn(
+              "group relative block overflow-hidden rounded-lg border border-[var(--field-border)] transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              thumbClass || "h-10 w-14",
+            )}
+            title="Открыть превью"
+            aria-label={`Открыть скриншот ${i + 1}`}
+          >
+            <img src={url} alt="" className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
+            <span className="absolute inset-0 grid place-items-center bg-background/0 transition-colors group-hover:bg-background/30">
+              <ZoomIn className="h-4 w-4 text-foreground opacity-0 transition-opacity group-hover:opacity-90" aria-hidden="true" />
+            </span>
+          </button>
+        ))}
+        {extra > 0 && (
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setLightboxIdx(visible.length); }}
+            className="grid h-6 min-w-6 place-items-center self-end rounded-full bg-[var(--glass-bg)] px-1.5 text-2xs font-medium tabular-nums text-muted-foreground hover:text-primary"
+            aria-label={`Ещё ${extra} скриншотов`}
+          >
+            +{extra}
+          </button>
+        )}
+      </div>
+      {lightboxIdx !== null && (
+        <Lightbox urls={list} notes={notesList} initialIndex={lightboxIdx} onClose={() => setLightboxIdx(null)} />
+      )}
+    </>
+  );
+}
+
+/* ───────────────────────── Display (detail views) ───────────────────────── */
 
 interface ScreenshotDisplayProps {
   urls: string;
@@ -217,7 +693,7 @@ interface ScreenshotDisplayProps {
 }
 
 export function ScreenshotDisplay({ urls, notes, onNotesChange }: ScreenshotDisplayProps) {
-  const list = urls.split("\n").map((u) => u.trim()).filter(Boolean);
+  const list = urls.split("\n").map((u) => safeHttpUrl(u)).filter((u): u is string => !!u);
   const [lightboxIdx, setLightboxIdx] = useState<number | null>(null);
   if (!list.length) return null;
 
@@ -225,16 +701,18 @@ export function ScreenshotDisplay({ urls, notes, onNotesChange }: ScreenshotDisp
 
   return (
     <>
-      <div className="space-y-3">
-        <div className="text-muted-foreground uppercase text-[10px] flex items-center gap-1 font-mono">
-          <Camera className="h-3 w-3" />Screenshots ({list.length})
+      <div className="flex flex-col gap-2.5">
+        <div className="micro-label flex items-center gap-1.5">
+          <Camera className="h-3.5 w-3.5" aria-hidden="true" />
+          Скриншоты · {list.length}
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className={cn("grid gap-3", list.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
           {list.map((url, i) => (
             <ScreenshotItem
               key={i}
               url={url}
               index={i}
+              single={list.length === 1}
               note={notesList[i] || ""}
               onNoteChange={onNotesChange ? (newNote) => {
                 const updated = [...notesList];
@@ -247,95 +725,118 @@ export function ScreenshotDisplay({ urls, notes, onNotesChange }: ScreenshotDisp
         </div>
       </div>
       {lightboxIdx !== null && (
-        <Lightbox
-          urls={list}
-          notes={notesList}
-          initialIndex={lightboxIdx}
-          onClose={() => setLightboxIdx(null)}
-        />
+        <Lightbox urls={list} notes={notesList} initialIndex={lightboxIdx} onClose={() => setLightboxIdx(null)} />
       )}
     </>
   );
 }
 
-function ScreenshotItem({ url, index, note, onNoteChange, onZoom }: {
+function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
   url: string;
   index: number;
   note: string;
   onNoteChange?: (note: string) => void;
   onZoom: () => void;
+  single?: boolean;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note);
+  const [failed, setFailed] = useState(false);
 
   function save() {
     onNoteChange?.(draft);
     setEditing(false);
   }
-
   function startEdit() {
     setDraft(note);
     setEditing(true);
   }
 
+  const safeUrl = safeHttpUrl(url);
+  if (!safeUrl) return null;
   return (
-    <div className="flex flex-col gap-1.5">
-      <div className="flex items-center gap-2">
-        <a href={url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-primary hover:underline text-[10px]">
-          <ExternalLink className="h-2.5 w-2.5" /> #{index + 1}
+    <figure className="flex min-w-0 flex-col gap-1.5">
+      <div className="group relative overflow-hidden rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)]">
+        {failed ? (
+          <a
+            href={safeUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex aspect-video flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
+          >
+            <ImageOff className="h-5 w-5" aria-hidden="true" />
+            <span className="text-xs">Превью недоступно — открыть ссылку</span>
+            <span className="max-w-[90%] truncate text-2xs">{hostOf(safeUrl)}</span>
+          </a>
+        ) : (
+          <button type="button" onClick={onZoom} className="block w-full" aria-label={`Увеличить скриншот ${index + 1}`}>
+            <img
+              src={safeUrl}
+              alt={note ? `Скриншот ${index + 1}: ${note}` : `Скриншот ${index + 1}`}
+              loading="lazy"
+              className={cn("w-full object-contain", single ? "max-h-[28rem]" : "max-h-64")}
+              onError={() => setFailed(true)}
+            />
+            <span className="absolute inset-0 grid place-items-center bg-background/0 transition-colors group-hover:bg-background/20">
+              <ZoomIn className="h-7 w-7 text-foreground opacity-0 drop-shadow transition-opacity group-hover:opacity-80" aria-hidden="true" />
+            </span>
+          </button>
+        )}
+        <span className="pointer-events-none absolute left-2 top-2 rounded-full bg-background/80 px-1.5 text-2xs font-medium tabular-nums text-foreground backdrop-blur">
+          {index + 1}
+        </span>
+        <a
+          href={safeUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          aria-label={`Открыть скриншот ${index + 1} в новой вкладке`}
+          className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground opacity-100 backdrop-blur transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
+        >
+          <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
         </a>
-        <button onClick={onZoom} className="text-muted-foreground hover:text-primary transition-colors" title="Увеличить">
-          <Maximize2 className="h-3 w-3" />
-        </button>
-      </div>
-      <div className="relative group cursor-pointer" onClick={onZoom}>
-        <img
-          src={url}
-          alt={`Screenshot ${index + 1}`}
-          className="max-h-64 w-full object-contain border border-border transition-all group-hover:border-primary/50"
-          onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
-        />
-        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-          <ZoomIn className="h-8 w-8 text-white opacity-0 group-hover:opacity-70 transition-opacity drop-shadow-lg" />
-        </div>
       </div>
       {editing ? (
-        <div className="flex gap-1 items-start mt-1">
+        <div className="flex items-start gap-1">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             autoFocus
-            className="flex-1 bg-background border border-border text-xs font-mono px-2 py-1 resize-none text-foreground"
-            placeholder="Заметка к скриншоту..."
-            onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); } }}
+            aria-label={`Заметка к скриншоту ${index + 1}`}
+            className="glass-field min-h-[60px] flex-1 resize-none !rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+            placeholder="Заметка к скриншоту…"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
+              if (e.key === "Escape") { e.stopPropagation(); setEditing(false); }
+            }}
           />
-          <button onClick={save} className="p-1 text-emerald-400 hover:text-emerald-300 shrink-0" title="Сохранить">
-            <Check className="h-3.5 w-3.5" />
+          <button type="button" aria-label="Сохранить заметку (Ctrl+Enter)" title="Сохранить (Ctrl+Enter)" onClick={save} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-up hover:bg-up/15">
+            <Check className="h-4 w-4" aria-hidden="true" />
           </button>
-          <button onClick={() => setEditing(false)} className="p-1 text-muted-foreground hover:text-foreground shrink-0" title="Отмена">
-            <X className="h-3.5 w-3.5" />
+          <button type="button" aria-label="Отменить редактирование" title="Отмена" onClick={() => setEditing(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+            <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
-      ) : (
-        <div className="flex items-start gap-1 mt-0.5 group/note">
-          {note ? (
-            <div className="flex-1 text-xs font-mono text-muted-foreground bg-muted/30 border border-border/50 px-2 py-1 flex items-start gap-1.5">
-              <StickyNote className="h-3 w-3 text-yellow-400 shrink-0 mt-0.5" />
-              <span className="whitespace-pre-wrap flex-1">{note}</span>
-              {onNoteChange && (
-                <button onClick={startEdit} className="opacity-0 group-hover/note:opacity-100 p-0.5 text-muted-foreground hover:text-primary transition-opacity shrink-0">
-                  <Pencil className="h-3 w-3" />
-                </button>
-              )}
-            </div>
-          ) : onNoteChange ? (
-            <button onClick={startEdit} className="text-[10px] font-mono text-muted-foreground hover:text-primary flex items-center gap-1 transition-colors">
-              <StickyNote className="h-3 w-3" /> Добавить заметку
+      ) : note ? (
+        <figcaption className="group/note flex items-start gap-1.5 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-sm text-muted-foreground">
+          <StickyNote className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
+          <span className="flex-1 whitespace-pre-wrap text-foreground/90">{note}</span>
+          {onNoteChange && (
+            <button
+              type="button"
+              aria-label="Редактировать заметку"
+              onClick={startEdit}
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground opacity-100 transition-opacity hover:text-primary focus-visible:opacity-100 md:opacity-0 md:group-hover/note:opacity-100"
+            >
+              <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
             </button>
-          ) : null}
-        </div>
-      )}
-    </div>
+          )}
+        </figcaption>
+      ) : onNoteChange ? (
+        <button type="button" onClick={startEdit} className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-primary">
+          <StickyNote className="h-3.5 w-3.5" aria-hidden="true" /> Добавить заметку
+        </button>
+      ) : null}
+    </figure>
   );
 }

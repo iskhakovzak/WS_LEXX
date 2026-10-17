@@ -136,17 +136,7 @@ Frontend: открой превью в Replit — должна открытьс�
 
 ## ЧАСТЬ 6 — Пользователи
 
-| Имя | Пароль | Роль |
-|---|---|---|
-| Закир | `0101` | trader |
-| Антон | `61725` | curator |
-| Артур | `93547` | trader |
-| Рахматулло | `5555` | trader |
-| Умид | `15964` | trader |
-| Максат | `82374` | trader |
-| Тимур | `39156` | curator |
-| Ариф | `07770` | curator |
-| Admin | `0987` | admin |
+Начальные учётки задаются переменной `SEED_USERS` (JSON `[{"name","password","role"}]`) при первом запуске на пустой БД. Без неё dev-сервер создаёт аккаунты деска со случайными 6-значными PIN и один раз пишет их в лог. Пароли в репозитории не хранятся; меняй их в «Админке».
 
 Пароли хранятся в bcrypt (таблица `users.password_hash`).
 
@@ -229,7 +219,7 @@ psql "$DATABASE_URL" < backup.sql
 7. Дождись "Server listening port: 8080" и "Database migrations completed" в логах API
 8. Проверь: curl localhost:80/api/healthz → {"status":"ok"}
 
-Пользователи: Admin/0987 (admin), Антон/61725 (curator), Закир/0101 (trader)
+Пользователи: см. SEED_USERS в DEPLOY.md (пароли в репозитории не хранятся)
 Подробности в файле DEPLOY.md и README.md
 ```
 

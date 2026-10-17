@@ -1,0 +1,104 @@
+import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { ru } from "date-fns/locale";
+import { History, Search } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Panel, Pill } from "@/components/ds";
+import { cn } from "@/lib/utils";
+import { MARKET_BIAS, dateObj, gpApi, gpKeys, type GamePlanSummary } from "./types";
+
+function matches(p: GamePlanSummary, q: string) {
+  if (!q) return true;
+  const hay = `${p.date} ${p.author} ${p.marketView} ${p.tickers.join(" ")} ${format(dateObj(p.date), "d MMMM", { locale: ru })}`.toLowerCase();
+  return q
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((t) => hay.includes(t));
+}
+
+export function HistoryPanel({
+  current,
+  onPick,
+  searchRef,
+}: {
+  current: string;
+  onPick: (date: string) => void;
+  searchRef?: React.Ref<HTMLInputElement>;
+}) {
+  const [q, setQ] = useState("");
+  const hq = useQuery({ queryKey: gpKeys.history, queryFn: () => gpApi.history(120), staleTime: 60_000 });
+  const list = useMemo(() => (hq.data ?? []).filter((p) => matches(p, q.trim())), [hq.data, q]);
+
+  return (
+    <Panel title="История планов" icon={History} description={hq.data ? `${hq.data.length} опубликовано` : undefined}>
+      <label className="relative block">
+        <span className="sr-only">Поиск по планам</span>
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+        <Input
+          ref={searchRef}
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Тикер, дата, текст…  /"
+          className="pl-9"
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setQ("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+        />
+      </label>
+      <div className="mt-3 max-h-[480px] overflow-y-auto pr-1">
+        {hq.isLoading ? (
+          <div className="flex flex-col gap-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : hq.isError ? (
+          <p className="py-4 text-sm text-muted-foreground">История недоступна.</p>
+        ) : list.length === 0 ? (
+          <p className="py-4 text-sm text-muted-foreground">{q ? "Ничего не найдено" : "Планов пока нет"}</p>
+        ) : (
+          <ul className="flex flex-col gap-1">
+            {list.map((p) => {
+              const b = MARKET_BIAS[p.bias] ?? MARKET_BIAS.neutral;
+              const active = p.date === current;
+              return (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    onClick={() => onPick(p.date)}
+                    aria-current={active ? "date" : undefined}
+                    className={cn(
+                      "flex w-full flex-col gap-1 rounded-xl px-3 py-2 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                      active ? "bg-primary/12 ring-1 ring-primary/30" : "hover:bg-[var(--glass-hover-bg)]",
+                    )}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-sm font-medium capitalize">
+                        {format(dateObj(p.date), "EEEEEE, d MMM", { locale: ru })}
+                      </span>
+                      <Pill tone={b.tone} dot>
+                        {b.label}
+                      </Pill>
+                    </div>
+                    <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                      <span className="truncate">{p.tickers.length ? p.tickers.slice(0, 6).join(" · ") : "Без тикеров"}</span>
+                      <span className="shrink-0 tabular-nums" title="Прочитали">
+                        {p.readCount} прочит.
+                      </span>
+                    </div>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
+    </Panel>
+  );
+}

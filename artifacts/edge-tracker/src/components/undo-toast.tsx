@@ -1,49 +1,152 @@
-import React, { useEffect, useState } from "react";
-import { Undo2, X } from "lucide-react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2, Trash2, Undo2, X } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 type Props = {
   label: string;
   onUndo: () => void;
   onDismiss: () => void;
   durationMs?: number;
+  /** Optional: verb after the label ("удалено" by default). */
+  actionText?: string;
+  /** Optional: show a spinner on the undo button (e.g. useUndoDelete().restoring). */
+  restoring?: boolean;
+  /** Optional: enable Ctrl/⌘+Z shortcut (default true). */
+  shortcut?: boolean;
 };
 
-export function UndoToast({ label, onUndo, onDismiss, durationMs = 8000 }: Props) {
-  const [progress, setProgress] = useState(100);
+const RING_R = 9;
+const RING_C = 2 * Math.PI * RING_R;
+
+function isTypingTarget(el: EventTarget | null): boolean {
+  if (!(el instanceof HTMLElement)) return false;
+  const tag = el.tagName;
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el.isContentEditable;
+}
+
+/**
+ * Glass undo toast with a countdown ring. The countdown pauses while the toast
+ * is hovered or focused and calls onDismiss when it runs out. Ctrl/⌘+Z undoes.
+ */
+export function UndoToast({
+  label,
+  onUndo,
+  onDismiss,
+  durationMs = 8000,
+  actionText = "удалено",
+  restoring,
+  shortcut = true,
+}: Props) {
+  const [remaining, setRemaining] = useState(durationMs);
+  const [paused, setPaused] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const remainingRef = useRef(durationMs);
+  const dismissedRef = useRef(false);
+  const onDismissRef = useRef(onDismiss);
+  onDismissRef.current = onDismiss;
+
+  const isBusy = busy || !!restoring;
 
   useEffect(() => {
-    const start = Date.now();
-    const interval = setInterval(() => {
-      const elapsed = Date.now() - start;
-      const pct = Math.max(0, 100 - (elapsed / durationMs) * 100);
-      setProgress(pct);
-      if (pct <= 0) clearInterval(interval);
-    }, 50);
-    return () => clearInterval(interval);
-  }, [durationMs]);
+    if (paused || isBusy) return;
+    let last = performance.now();
+    const id = window.setInterval(() => {
+      const now = performance.now();
+      remainingRef.current = Math.max(0, remainingRef.current - (now - last));
+      last = now;
+      setRemaining(remainingRef.current);
+      if (remainingRef.current <= 0 && !dismissedRef.current) {
+        dismissedRef.current = true;
+        window.clearInterval(id);
+        onDismissRef.current();
+      }
+    }, 100);
+    return () => window.clearInterval(id);
+  }, [paused, isBusy]);
+
+  const handleUndo = useCallback(() => {
+    if (isBusy || dismissedRef.current) return;
+    setBusy(true);
+    onUndo();
+  }, [isBusy, onUndo]);
+
+  useEffect(() => {
+    if (!shortcut) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return;
+      if (e.key.toLowerCase() !== "z" && e.code !== "KeyZ") return;
+      if (isTypingTarget(e.target)) return;
+      e.preventDefault();
+      handleUndo();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shortcut, handleUndo]);
+
+  const frac = durationMs > 0 ? remaining / durationMs : 0;
+  const seconds = Math.ceil(remaining / 1000);
+  const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-300">
-      <div className="bg-card border border-border shadow-2xl flex items-center gap-3 px-4 py-3 min-w-[300px] max-w-[400px] relative overflow-hidden">
-        <div
-          className="absolute bottom-0 left-0 h-[2px] bg-primary/60 transition-all"
-          style={{ width: `${progress}%` }}
-        />
-        <span className="text-sm font-mono text-foreground flex-1 truncate">
-          {label} <span className="text-muted-foreground">удалено</span>
+    <div
+      role="status"
+      aria-live="polite"
+      className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-toast flex justify-center px-4 sm:bottom-6"
+    >
+      <div
+        onMouseEnter={() => setPaused(true)}
+        onMouseLeave={() => setPaused(false)}
+        onFocus={() => setPaused(true)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setPaused(false); }}
+        className={cn(
+          "glass-thick pointer-events-auto flex w-full max-w-[440px] items-center gap-3 rounded-2xl py-2 pl-2 pr-2 sm:w-auto sm:min-w-[340px]",
+          "animate-in fade-in slide-in-from-bottom-4 duration-200 motion-reduce:animate-none",
+        )}
+      >
+        <span className="relative grid h-10 w-10 shrink-0 place-items-center" aria-hidden="true">
+          <svg viewBox="0 0 24 24" className="absolute inset-0 h-10 w-10 -rotate-90">
+            <circle cx="12" cy="12" r={RING_R} fill="none" stroke="hsl(var(--border))" strokeWidth="2" />
+            <circle
+              cx="12" cy="12" r={RING_R} fill="none"
+              stroke="hsl(var(--primary))" strokeWidth="2" strokeLinecap="round"
+              strokeDasharray={RING_C}
+              strokeDashoffset={RING_C * (1 - frac)}
+              className="transition-[stroke-dashoffset] duration-100 ease-linear motion-reduce:transition-none"
+            />
+          </svg>
+          <span className="text-2xs font-semibold tabular-nums text-foreground">
+            {paused ? <Trash2 className="h-3.5 w-3.5 text-muted-foreground" /> : seconds}
+          </span>
         </span>
+
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm text-foreground">
+            <span className="font-semibold">{label}</span>{" "}
+            <span className="text-muted-foreground">{actionText}</span>
+          </p>
+          <p className="truncate text-2xs text-muted-foreground">
+            {paused ? "Таймер на паузе" : `Можно вернуть ещё ${seconds} с`}
+            {shortcut && <span className="hidden sm:inline"> · {isMac ? "⌘" : "Ctrl"}+Z</span>}
+          </p>
+        </div>
+
         <button
-          onClick={onUndo}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-wider text-primary hover:bg-primary/10 border border-primary/30 transition-colors"
+          type="button"
+          onClick={handleUndo}
+          disabled={isBusy}
+          className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3.5 text-sm font-medium text-primary transition-colors hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
-          <Undo2 className="h-3.5 w-3.5" />
-          Отменить
+          {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Undo2 className="h-4 w-4" aria-hidden="true" />}
+          {isBusy ? "Возвращаем…" : "Отменить"}
         </button>
         <button
-          onClick={onDismiss}
-          className="p-1 text-muted-foreground hover:text-foreground transition-colors"
+          type="button"
+          aria-label="Закрыть уведомление"
+          onClick={() => { dismissedRef.current = true; onDismiss(); }}
+          disabled={isBusy}
+          className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
         >
-          <X className="h-3.5 w-3.5" />
+          <X className="h-4 w-4" aria-hidden="true" />
         </button>
       </div>
     </div>

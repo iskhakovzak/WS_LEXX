@@ -1,5 +1,0 @@
-id,pattern_name,ticker,context,market_condition,what_worked,what_failed,repeat_count,confidence_level,screenshot_url,screenshot_notes,tags,created_at,deleted_at
-1,Earnings Gap and Go - NVDA,NVDA,Post earnings gap continuation with strong volume,Bullish trend,"Large gap above open, sustained momentum",Took profits too early,5,8,,,,2026-04-09 10:30:06.665+00,
-2,VWAP Reclaim - TSLA,TSLA,Stock bounces from VWAP support,Consolidation,"Patient entry at VWAP, good risk reward",False bounces,3,7,,,,2026-04-09 10:30:06.665+00,
-3,Fade into Resistance - AMD,AMD,Shorting into overbought conditions,Bearish trend,Recognized resistance rejection,Lack of follow-through,2,6,,,,2026-04-09 10:30:06.665+00,
-4,Scalping Low Float - SOFI,SOFI,Quick micro moves on sub-5M float stocks,Volatile,"Fast entries and exits, tight stops",Spread risk on scalps,8,6,,,,2026-04-09 10:30:06.665+00,

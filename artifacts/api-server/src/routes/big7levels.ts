@@ -1,12 +1,29 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, ne } from "drizzle-orm";
 import { db, big7LevelsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 
 const router: IRouter = Router();
 
+function parseId(raw: unknown): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+/** Price must be a finite number; otherwise numeric column would 500 or store NaN. */
+function parsePrice(raw: unknown): string | null {
+  if (raw === null || raw === undefined || raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) ? String(n) : null;
+}
+
+/** Seed/demo ticker that must never reach the desk (row kept in the DB, only hidden from reads). */
+const SEED_TICKER = "TEST";
+
 router.get("/big7levels", asyncHandler(async (_req, res): Promise<void> => {
-  const rows = await db.select().from(big7LevelsTable).orderBy(desc(big7LevelsTable.createdAt));
+  const rows = await db.select().from(big7LevelsTable)
+    .where(ne(big7LevelsTable.ticker, SEED_TICKER))
+    .orderBy(desc(big7LevelsTable.createdAt));
   res.json(rows);
 }));
 
@@ -16,22 +33,30 @@ router.post("/big7levels", asyncHandler(async (req, res): Promise<void> => {
     res.status(400).json({ error: "ticker, label, and price are required" });
     return;
   }
+  const priceStr = parsePrice(price);
+  if (priceStr === null) {
+    res.status(400).json({ error: "price must be a number" });
+    return;
+  }
   const [row] = await db.insert(big7LevelsTable).values({
-    ticker: String(ticker).toUpperCase(),
+    ticker: String(ticker).trim().toUpperCase(),
     label: String(label),
-    price: String(price),
+    price: priceStr,
     notes: notes != null ? String(notes) : null,
   }).returning();
   res.status(201).json(row);
 }));
 
 router.patch("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
+  const id = parseId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
   const { ticker, label, price, notes } = req.body as Record<string, unknown>;
+  const priceStr = price !== undefined ? parsePrice(price) : undefined;
+  if (priceStr === null) { res.status(400).json({ error: "price must be a number" }); return; }
   const [row] = await db.update(big7LevelsTable).set({
     ticker: ticker !== undefined ? String(ticker).toUpperCase() : undefined,
     label: label !== undefined ? String(label) : undefined,
-    price: price !== undefined ? String(price) : undefined,
+    price: priceStr,
     notes: notes !== undefined ? (notes != null ? String(notes) : null) : undefined,
   }).where(eq(big7LevelsTable.id, id)).returning();
   if (!row) { res.status(404).json({ error: "Not found" }); return; }
@@ -39,7 +64,8 @@ router.patch("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => 
 }));
 
 router.delete("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => {
-  const id = Number(req.params.id);
+  const id = parseId(req.params.id);
+  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
   await db.delete(big7LevelsTable).where(eq(big7LevelsTable.id, id));
   res.status(204).send();
 }));
