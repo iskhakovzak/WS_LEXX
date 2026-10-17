@@ -1,9 +1,22 @@
-import { Router, type IRouter } from "express";
+import { Router, type IRouter, type Request, type Response } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { generateReview, getLatestReview, RateLimitedError } from "../lib/aiReview";
 import { handleAiNotConfigured } from "../lib/aiErrors";
+import { canAccessTrade } from "../lib/auth";
 import { db, aiReviewRateLimitTable, aiTradeReviewsTable } from "@workspace/db";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
+
+/**
+ * AI reviews are personal feedback (like curator reviews): the trade's owner and whoever may read it through the
+ * permission matrix (trades.read.team). A playbook example opened by another trader is NOT enough — the review
+ * quotes the trade's $. Sends 404/403 and returns false when denied.
+ */
+async function requireReviewAccess(req: Request, res: Response, id: number): Promise<boolean> {
+  const ok = await canAccessTrade(req, id, "read");
+  if (ok === null) { res.status(404).json({ error: "Trade not found" }); return false; }
+  if (!ok) { res.status(403).json({ error: "Нет доступа к AI-разбору этой сделки" }); return false; }
+  return true;
+}
 
 const router: IRouter = Router();
 
@@ -75,6 +88,7 @@ router.get("/ai-review/usage", asyncHandler(async (req, res): Promise<void> => {
 router.post("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid trade id" }); return; }
+  if (!(await requireReviewAccess(req, res, id))) return;
   const userKey = userKeyFor(req);
   const force = req.query.force === "true" || req.body?.force === true;
   try {
@@ -99,6 +113,7 @@ router.post("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void
 router.get("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid trade id" }); return; }
+  if (!(await requireReviewAccess(req, res, id))) return;
   const review = await getLatestReview(id);
   if (!review) { res.status(404).json({ error: "No review yet" }); return; }
   res.json(review);

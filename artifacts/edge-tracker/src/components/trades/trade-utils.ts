@@ -207,6 +207,14 @@ export function fmtHold(sec: number | null | undefined): string {
   return `${Math.floor(s / 86400)}д`;
 }
 
+/**
+ * Another trader's trade opened by a non-staff viewer (e.g. a playbook example): the API nulls its $ fields
+ * (pnl / fees / qty / riskUsd / slippage) and sets `redacted: true` — server lib/playbookPrivacy.ts.
+ */
+export function isRedactedTrade(t: Trade): boolean {
+  return (t as Trade & { redacted?: boolean }).redacted === true;
+}
+
 /** Broker-sourced trade (PropReports): broker numbers are read-only in the UI. */
 export function isBrokerTrade(t: Pick<Trade, "source">): boolean {
   return t.source === "propreports";

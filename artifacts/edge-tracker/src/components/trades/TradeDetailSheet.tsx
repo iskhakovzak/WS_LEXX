@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { REDACTED_HINT, RedactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { DateHolidayBadge } from "@/components/holiday-badge";
 import type { HolidayEvent } from "@/lib/market-intel";
@@ -27,6 +28,7 @@ import {
   fmtR,
   horizonOf,
   isBrokerTrade,
+  isRedactedTrade,
   netPnl,
   resultKey,
 } from "./trade-utils";
@@ -213,6 +215,10 @@ export function TradeDetailSheet(p: Props) {
   const canEditForm = p.canEditForm ?? p.canEdit;
   const canEditResult = p.canEditResult ?? p.canEdit;
   const canDelete = p.canDelete ?? p.canEdit;
+  // Another trader's trade opened from the playbook: $ come back null, and the owner-only blocks (quality, AI
+  // review, checklist, voice notes, curator reviews) would only answer 403 — they are not shown at all.
+  const redacted = t ? isRedactedTrade(t) : false;
+  React.useEffect(() => { if (redacted && tab === "ai") setTab("overview"); }, [redacted, tab]);
 
   return (
     <Sheet open={!!t} onOpenChange={(v) => { if (!v) p.onClose(); }}>
@@ -259,6 +265,7 @@ export function TradeDetailSheet(p: Props) {
                 )}
               </div>
               <KpiRow trade={t} holdSeconds={timing?.holdSeconds ?? null} />
+              {redacted && <RedactedHint />}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
                   {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> Редактировать</Button>}
@@ -291,7 +298,7 @@ export function TradeDetailSheet(p: Props) {
                   <TabsTrigger value="chart">График</TabsTrigger>
                   <TabsTrigger value="replay">Реплей</TabsTrigger>
                   <TabsTrigger value="executions">Исполнения</TabsTrigger>
-                  <TabsTrigger value="ai">AI-разбор</TabsTrigger>
+                  {!redacted && <TabsTrigger value="ai">AI-разбор</TabsTrigger>}
                   <TabsTrigger value="social">Обсуждение{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
@@ -311,8 +318,8 @@ export function TradeDetailSheet(p: Props) {
                       />
                     </div>
                   </section>
-                  {!isBrokerTrade(t) && <ChecklistStatus tradeId={t.id} />}
-                  {(t.entry != null || t.exit != null) && (
+                  {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
+                  {(t.entry != null || t.exit != null) && !redacted && (
                     <section className="space-y-2">
                       <p className="micro-label">Качество исполнения</p>
                       <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
@@ -333,7 +340,7 @@ export function TradeDetailSheet(p: Props) {
                       />
                     </section>
                   )}
-                  {t.trader && (
+                  {t.trader && !redacted && (
                     <React.Suspense fallback={null}>
                       <LazyVoiceNotePlayer tradeId={t.id} userId={t.trader} refreshKey={p.voiceNoteKey} />
                     </React.Suspense>
@@ -356,28 +363,32 @@ export function TradeDetailSheet(p: Props) {
                       <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} />
                     </React.Suspense>
                   )}
-                  <section className="space-y-2">
-                    <p className="micro-label">Качество исполнения</p>
-                    <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                  </section>
-                </TabsContent>
-                <TabsContent value="executions">
-                  <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} />
-                </TabsContent>
-                <TabsContent value="ai">
-                  <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
-                    <LazyAiReviewPanel
-                      tradeId={t.id}
-                      userKey={p.userKey}
-                      conviction={t.conviction}
-                      confidenceGrade={t.confidenceGrade}
-                      tradeDate={t.date}
-                      trader={t.trader}
-                    />
-                  </React.Suspense>
-                </TabsContent>
+                  {!redacted && (
+                      <section className="space-y-2">
+                        <p className="micro-label">Качество исполнения</p>
+                        <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
+                      </section>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="executions">
+                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} />
+                  </TabsContent>
+                  {!redacted && (
+                  <TabsContent value="ai">
+                    <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
+                      <LazyAiReviewPanel
+                        tradeId={t.id}
+                        userKey={p.userKey}
+                        conviction={t.conviction}
+                        confidenceGrade={t.confidenceGrade}
+                        tradeDate={t.date}
+                        trader={t.trader}
+                      />
+                    </React.Suspense>
+                  </TabsContent>
+                )}
                 <TabsContent value="social" forceMount className="data-[state=inactive]:hidden">
-                  <TradeSocial key={t.id} tradeId={t.id} traderName={p.traderName} isCurator={p.isCurator} onCount={setReviewCount} />
+                  <TradeSocial key={t.id} tradeId={t.id} showReviews={!redacted} traderName={p.traderName} isCurator={p.isCurator} onCount={setReviewCount} />
                 </TabsContent>
               </div>
             </Tabs>
@@ -398,13 +409,14 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
   const held = daysHeld(t);
   const perShare = t.pnl != null && t.qty ? t.pnl / t.qty : null;
   const useR = r.value != null;
+  const redacted = isRedactedTrade(t);
   return (
     <div className="grid grid-cols-5 gap-2">
       <Kpi
         label={t.fees ? "Нетто" : "P&L"}
         value={fmtMoney(net)}
         className={net == null ? "text-muted-foreground" : toneText(toneOf(net))}
-        hint={t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
+        hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
       />
       <Kpi label="Вход → выход" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
       {open && t.exit == null
@@ -412,8 +424,8 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
         : <Kpi label="Удержание" value={holdSeconds != null ? fmtDuration(holdSeconds) : t.holdTime || "—"} className={holdSeconds == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
         ? <Kpi label={r.derived ? "R (по ценам)" : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
-        : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint="Брутто на акцию: стоп не задан, R не считается" />}
-      <Kpi label="Объём" value={t.qty != null ? `${t.qty.toLocaleString("en-US")} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} />
+        : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}
+      <Kpi label="Объём" value={t.qty != null ? `${t.qty.toLocaleString("en-US")} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? REDACTED_HINT : undefined} />
     </div>
   );
 }

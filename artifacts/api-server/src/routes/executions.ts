@@ -1,6 +1,8 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { pool } from "@workspace/db";
+import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
+import { redactExecutions } from "../lib/playbookPrivacy";
 
 const router: IRouter = Router();
 
@@ -72,11 +74,12 @@ function parseCreateBody(body: unknown): { ok: true; value: CreateExecutionInput
 }
 
 /**
- * Resolves the parent trade and enforces ownership: traders may only read/modify
- * executions of their own (non-deleted) trades; curators/admins may access all.
- * Sends the error response itself and returns false when access is denied.
+ * Resolves the parent trade and enforces ownership: traders may only modify executions of their own
+ * (non-deleted) trades; curators/admins may access all. A trader may also READ the fills of another trader's
+ * trade that is an example of a setup they can read (the chart of «Открыть сделку»; qty is redacted).
+ * Sends the error response itself and returns false when access is denied; otherwise the trade's owner.
  */
-async function assertTradeAccess(req: Request, res: Response, tradeId: number): Promise<boolean> {
+async function assertTradeAccess(req: Request, res: Response, tradeId: number, mode: "read" | "write" = "write"): Promise<{ trader: string | null } | false> {
   const { rows } = await pool.query<{ trader: string | null }>(
     `SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`,
     [tradeId]
@@ -86,11 +89,11 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number): 
     return false;
   }
   const auth = req.authUser;
-  if (auth && auth.role === "trader" && rows[0].trader !== auth.name) {
+  if (auth && auth.role === "trader" && rows[0].trader !== auth.name && !(mode === "read" && (await isReadableExampleTrade(req, tradeId)))) {
     res.status(403).json({ error: "Можно изменять исполнения только своих трейдов" });
     return false;
   }
-  return true;
+  return { trader: rows[0].trader };
 }
 
 // GET /api/trades/:tradeId/executions
@@ -102,7 +105,8 @@ router.get(
       res.status(400).json({ error: "invalid trade id" });
       return;
     }
-    if (!(await assertTradeAccess(req, res, tradeId))) return;
+    const access = await assertTradeAccess(req, res, tradeId, "read");
+    if (!access) return;
     const { rows } = await pool.query(
       `SELECT id, trade_id, kind, price, qty, executed_at, note, sort_order
          FROM trade_executions
@@ -120,7 +124,8 @@ router.get(
       note: r.note,
       sortOrder: r.sort_order,
     }));
-    res.json({ tradeId, executions: data });
+    // $ privacy (lib/playbookPrivacy): someone else's fills come without qty unless the viewer is staff.
+    res.json({ tradeId, executions: redactExecutions(data, await loadMoneyViewer(req), access.trader) });
   })
 );
 
