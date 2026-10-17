@@ -24,13 +24,17 @@ export function mergeEquity(base: EquityPoint[], scenario: EquityPoint[], hasSce
 }
 
 /** One large chart: «как было» (muted) vs «как стало» (accent). Fixed height so nothing jumps while recomputing. */
-export function EquityChart({ base, scenario, hasScenario, height = 340 }: { base: EquityPoint[]; scenario: EquityPoint[]; hasScenario: boolean; height?: number }) {
+export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }: { base: EquityPoint[]; scenario: EquityPoint[]; hasScenario: boolean; height?: number; /** Click on a day → e.g. open its report. */ onDay?: (day: string) => void }) {
   const data = useMemo(() => mergeEquity(base, scenario, hasScenario), [base, scenario, hasScenario]);
   return (
-    <div style={{ height }} role="img" aria-label={hasScenario ? "Кривая капитала: как было и как стало" : "Кривая капитала по факту"}>
+    <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? "Клик — отчёт за день" : undefined} role="img" aria-label={hasScenario ? "Кривая капитала: как было и как стало" : "Кривая капитала по факту"}>
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+          <ComposedChart
+            data={data}
+            margin={{ top: 8, right: 8, left: 0, bottom: 0 }}
+            onClick={onDay ? (st: { activePayload?: { payload?: { day?: unknown } }[] } | null) => { const day = st?.activePayload?.[0]?.payload?.day; if (typeof day === "string") onDay(day); } : undefined}
+          >
             <defs>
               <linearGradient id="sim-scenario-fill" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="hsl(var(--primary))" stopOpacity={0.22} />

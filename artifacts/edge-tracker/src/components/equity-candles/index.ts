@@ -1,10 +1,9 @@
 /**
- * Equity curve from daily / weekly candles (lightweight-charts 5).
+ * Equity curve as candles — the data layer (pure functions). The chart itself is <EquityChart> in
+ * @/components/equity-chart (own canvas engine), which builds on these candles.
  *
- *   import { EquityCandles } from "@/components/equity-candles";
- *   <Panel title="Кривая капитала"><EquityCandles trades={trades} trader="Ориф" /></Panel>
+ *   import { buildDayCandles } from "@/components/equity-candles";
  */
-export { EquityCandles, type EquityCandlesProps } from "./EquityCandles";
 export {
   buildCandles, buildDayCandles, toWeekCandles, summarize, filterPeriod, periodStart, soleTrader, dayReportHref, tradeValue, closeTimeKey,
   weekStart, fmtValue as fmtEquityValue,

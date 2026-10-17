@@ -13,26 +13,40 @@ function toneFor(d: number | null, invert = false): Tone {
   return toneOf(invert ? -d : d);
 }
 
-/** Headline of the result: «было → стало» and the $ difference, plus a plain-language reliability verdict. */
+const fmtRsum = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(1)}R`;
+
+/**
+ * Result first: «было → стало» in $ and in R (when the trades have R), the difference big, and a plain-language
+ * reliability verdict. Without a scenario it shows the period as it was and a prompt to ask a question.
+ */
 export function DeltaHeadline({ baseline, scenario, hasScenario, bootstrap }: { baseline: Metrics; scenario: Metrics; hasScenario: boolean; bootstrap: BootstrapSummary | null }) {
   const d = scenario.net - baseline.net;
+  const rA = baseline.totalR ?? null, rB = scenario.totalR ?? null;
+  const showR = rA != null && (baseline.rCount ?? 0) >= 3;
+  const dR = showR && rB != null ? rB - rA : null;
   return (
-    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-2">
-      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+    <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
+      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
         <div>
           <p className="text-xs text-muted-foreground">Как было</p>
-          <p className={cn("text-xl font-semibold tabular-nums", TONE_CLASS[toneOf(baseline.net)])}>{fmtUsd(baseline.net)}</p>
+          <p className={cn("text-2xl font-semibold tabular-nums tracking-tight", TONE_CLASS[toneOf(baseline.net)])}>{fmtUsd(baseline.net)}</p>
+          {showR && <p className={cn("text-sm tabular-nums", TONE_CLASS[toneOf(rA)])}>{fmtRsum(rA)}</p>}
         </div>
-        <ArrowRight className="h-4 w-4 self-center text-muted-foreground" aria-hidden="true" />
+        <ArrowRight className="mb-3 h-5 w-5 text-muted-foreground" aria-hidden="true" />
         <div>
-          <p className="text-xs text-muted-foreground">Как стало</p>
-          <p className={cn("text-xl font-semibold tabular-nums", hasScenario ? TONE_CLASS[toneOf(scenario.net)] : "text-muted-foreground")}>{hasScenario ? fmtUsd(scenario.net) : "—"}</p>
+          <p className="text-xs text-muted-foreground">Как стало бы</p>
+          <p className={cn("text-2xl font-semibold tabular-nums tracking-tight", hasScenario ? TONE_CLASS[toneOf(scenario.net)] : "text-muted-foreground")}>{hasScenario ? fmtUsd(scenario.net) : "—"}</p>
+          {showR && <p className={cn("text-sm tabular-nums", hasScenario && rB != null ? TONE_CLASS[toneOf(rB)] : "text-muted-foreground")}>{hasScenario && rB != null ? fmtRsum(rB) : "—"}</p>}
         </div>
-        {hasScenario && (
-          <div className="ml-2">
+        {hasScenario ? (
+          <div className="rounded-2xl bg-[hsl(var(--muted-foreground)/0.08)] px-4 py-2">
             <p className="text-xs text-muted-foreground">Разница за период</p>
-            <p className={cn("text-3xl font-semibold tabular-nums tracking-tight", TONE_CLASS[toneOf(d)])}>{fmtUsd(d)}</p>
+            <p className={cn("text-4xl font-semibold leading-tight tabular-nums tracking-tight", TONE_CLASS[toneOf(d)])}>{fmtUsd(d)}</p>
+            {dR != null && <p className={cn("text-sm font-medium tabular-nums", TONE_CLASS[toneOf(dR)])}>{fmtRsum(dR)} · {sdeal(scenario.trades)} из {baseline.trades}</p>}
+            {dR == null && <p className="text-sm tabular-nums text-muted-foreground">{sdeal(scenario.trades)} из {baseline.trades}</p>}
           </div>
+        ) : (
+          <p className="max-w-xs pb-1 text-sm text-muted-foreground">Выбери вопрос выше или подсказку ниже — здесь появится, сколько бы это дало.</p>
         )}
       </div>
       {hasScenario && <Reliability b={bootstrap} />}

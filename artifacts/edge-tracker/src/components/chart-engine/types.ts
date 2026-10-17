@@ -8,11 +8,11 @@ export type Candle = { t: number; o: number; h: number; l: number; c: number; v:
 /** Aggregated bar: same shape + number of base bars folded in. */
 export type Bar = Candle & { n: number };
 
-export type Timeframe = "1m" | "5m" | "15m" | "1h" | "D";
+export type Timeframe = "1m" | "2m" | "3m" | "5m" | "15m" | "1h" | "D";
 
-export const TIMEFRAMES: readonly Timeframe[] = ["1m", "5m", "15m", "1h", "D"];
-export const TF_SECONDS: Record<Timeframe, number> = { "1m": 60, "5m": 300, "15m": 900, "1h": 3600, D: 86400 };
-export const TF_LABEL: Record<Timeframe, string> = { "1m": "1м", "5m": "5м", "15m": "15м", "1h": "1ч", D: "Д" };
+export const TIMEFRAMES: readonly Timeframe[] = ["1m", "2m", "3m", "5m", "15m", "1h", "D"];
+export const TF_SECONDS: Record<Timeframe, number> = { "1m": 60, "2m": 120, "3m": 180, "5m": 300, "15m": 900, "1h": 3600, D: 86400 };
+export const TF_LABEL: Record<Timeframe, string> = { "1m": "1м", "2m": "2м", "3m": "3м", "5m": "5м", "15m": "15м", "1h": "1ч", D: "Д" };
 
 /** Interval names the candles API speaks. */
 export type ApiInterval = "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
@@ -24,6 +24,86 @@ export type Side = "long" | "short";
 
 export type ExecutionKind = "entry" | "add" | "trim" | "exit" | "stop";
 
+/**
+ * What a fill did in the trade, as recognised by the API (api-server lib/tradeStructure):
+ * Вход · Перезаход · Переворот · Добор · Частичный фикс · Выход · Стоп.
+ */
+export type TradeRole = "entry" | "reentry" | "flip" | "add" | "partial_exit" | "exit" | "stop";
+
+/** One leg of the structure (fills of one order filled in pieces form one leg). Sizes / $ are null for others' trades. */
+export type StructureLeg = {
+  index: number;
+  role: TradeRole;
+  label: string;
+  opening: boolean;
+  executionIds: number[];
+  pieces: number;
+  price: number;
+  qty: number | null;
+  at: string | null;
+  atEnd: string | null;
+  positionBefore: number | null;
+  positionAfter: number | null;
+  avgAfter: number | null;
+  fraction: number | null;
+  perShare: number | null;
+  realized: number | null;
+  r: number | null;
+  inferred: boolean;
+  reason: string | null;
+};
+
+export type StructureStats = {
+  source: "fills" | "report" | "manual";
+  fidelity: "fills" | "averages";
+  side: Side;
+  legs: number;
+  entries: number;
+  adds: number;
+  partials: number;
+  exits: number;
+  splitFills: number;
+  avgEntry: number | null;
+  avgExit: number | null;
+  maxPosition: number | null;
+  openQty: number | null;
+  realized: number | null;
+  rTotal: number | null;
+  riskPerShare: number | null;
+  stopPrice: number | null;
+  stopHit: boolean;
+  stopInferred: boolean;
+  stopReason: string | null;
+  reentryIndex: number;
+  prevId: number | null;
+  nextId: number | null;
+  flipIn: boolean;
+  flipOut: boolean;
+  carriedIn: boolean;
+  scaledEntryLikely: boolean;
+  scaledExitLikely: boolean;
+  firstAt: string | null;
+  lastAt: string | null;
+  notes: string[];
+  /** One Russian line: «вход частями · перезаход №1» (absent on older servers). */
+  summary?: string;
+};
+
+/** Another trade of the same ticker and session (re-entries / flips), with its legs for the chart. */
+export type SiblingTrade = {
+  id: number;
+  side: Side;
+  reentryIndex: number;
+  isCurrent: boolean;
+  summary: string;
+  legs: { role: TradeRole; label: string; price: number; at: string | null; opening: boolean }[];
+};
+
+export type TradeStructureDto = { legs: StructureLeg[]; stats: StructureStats; siblings: SiblingTrade[] };
+
+/** GET /api/trades/:id/executions. `structure` is null when the API could not compute it (older servers: absent). */
+export type ExecutionsResponse = { tradeId: number; executions: Execution[]; structure?: TradeStructureDto | null };
+
 /** Execution as served by GET /api/trades/:id/executions (numbers arrive as strings). */
 export type Execution = {
   id: number;
@@ -34,6 +114,11 @@ export type Execution = {
   executedAt: string | null;
   note?: string | null;
   sortOrder?: number;
+  /** Recognised role (absent on older servers — then derived from `kind`). */
+  role?: TradeRole | null;
+  roleLabel?: string | null;
+  roleInferred?: boolean;
+  legIndex?: number | null;
 };
 
 /** A fill resolved onto a bar series. */
@@ -50,6 +135,14 @@ export type Fill = {
   /** True when the fill was placed by price match (no timestamp). */
   byPrice: boolean;
   label: string;
+  /** What the fill did (Вход / Добор / Частичный фикс / …). */
+  role: TradeRole;
+  /** The role is a heuristic guess (a stop without a known stop level). */
+  inferred: boolean;
+  /** Fills of one order folded into this marker (> 1 = filled in pieces). */
+  pieces: number;
+  /** The structure leg behind this marker, when the API sent one. */
+  leg: StructureLeg | null;
 };
 
 /** The subset of the journal trade the engine needs. Matches `Trade` from @workspace/api-client-react structurally. */
@@ -72,6 +165,13 @@ export type TradeLike = {
   /** First entry / last exit fill time (ISO) when the caller already knows them (used when executions are unavailable). */
   entryTime?: string | null;
   exitTime?: string | null;
+  /** Owner of the trade (shown in pickers). */
+  trader?: string | null;
+  /**
+   * Set by the API when the viewer may not see this trade's money (another trader's trade): $ fields arrive as null
+   * and the chart shows per-share moves and R only — it never re-derives $.
+   */
+  redacted?: boolean | null;
 };
 
 export type PositionPoint = {
@@ -166,30 +266,23 @@ export type Drawing = {
 
 export type ChartMode = "analysis" | "replay" | "training";
 
+/**
+ * One finished training attempt (paper trading over a past session with the future hidden). Money is the trainee's
+ * own paper size — never another trader's $. Stored per browser (see lib/training-sim TRAINING_HISTORY_KEY).
+ */
 export type TrainingResult = {
+  at: number;
   tradeId: number;
-  side: Side;
-  qty: number | null;
-  /** Where the trader said «я бы вышел здесь». */
-  userExitPrice: number;
-  userExitTime: number;
-  /** The real (average) exit of the trade. */
-  actualExitPrice: number | null;
-  actualExitTime: number | null;
-  avgEntry: number | null;
-  /** P&L in $ had the trader exited where they said (null when qty unknown). */
-  userPnlUsd: number | null;
-  /** The real P&L in $ (gross, from fills). */
-  actualPnlUsd: number | null;
-  /** userPnlUsd − actualPnlUsd. */
-  diffUsd: number | null;
-  /** Seconds between the user's exit and the actual one (negative = earlier). */
-  diffSeconds: number | null;
-  /**
-   * 0–100: where the chosen exit sits between the worst and the best close available from the entry up to
-   * max(chosen exit, real exit). 100 = the best possible exit in that window. Optional, older results lack it.
-   */
-  score?: number | null;
+  ticker: string;
+  day: string;
+  /** 0–100: share of the best possible move in the watched bars that the trainee captured. */
+  score: number | null;
+  pnlUsd: number;
+  r: number | null;
+  perShare: number | null;
+  /** Trainee per share − the real trade per share (null when either is unknown). */
+  vsRealPerShare: number | null;
+  trades: number;
 };
 
 export type SparkPoint = { x: number; y: number };

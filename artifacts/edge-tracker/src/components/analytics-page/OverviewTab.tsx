@@ -4,7 +4,7 @@ import {
   BarChart, Bar, Cell, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
-import { EquityCandles } from "@/components/equity-candles";
+import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
 import {
   type Unit, type DimensionKey, computeStats, equitySeries, maxDrawdown, rHistogram, streaks, realizedR, median,
@@ -26,6 +26,7 @@ export function OverviewTab({
   const s = useMemo(() => computeStats(trades), [trades]);
   const p = useMemo(() => (previous && previous.length ? computeStats(previous) : null), [previous]);
   const series = useMemo(() => (unit ? equitySeries(trades, unit) : []), [trades, unit]);
+  const equityDays = useMemo(() => (unit ? buildDayCandles(trades, unit === "r" ? "r" : "net") : []), [trades, unit]);
   const dd = useMemo(() => maxDrawdown(series), [series]);
   const st = useMemo(() => streaks(trades), [trades]);
   const hist = useMemo(() => rHistogram(trades), [trades]);
@@ -127,11 +128,11 @@ export function OverviewTab({
       <Panel
         icon={CandlestickChart}
         title="Кривая капитала"
-        description={unit ? `Накопленный результат ${isR ? "в R" : "нетто, $"}: свеча — день или неделя, фитили — лучшая и худшая точка внутри` : undefined}
+        description={unit ? `Накопленный результат ${isR ? "в R" : "нетто, $"} по дням, неделям или месяцам · клик по дню — разбор дня` : undefined}
       >
         {unit ? (
           <div className="flex flex-col gap-2">
-            <EquityCandles trades={trades} unit={isR ? "r" : "net"} storageKey="analytics.equity" showPeriod={false} height={380} />
+            <EquityChart days={equityDays} unit={isR ? "r" : "net"} trader={soleTrader(trades)} storageKey="analytics.equity" height={440} />
             {showGross && (
               <p className="px-1 text-xs text-muted-foreground tabular-nums">
                 до комиссий {fmtUsd(s.grossPnl)} · комиссии <span className="text-down">−${s.totalFees.toFixed(s.totalFees >= 100 ? 0 : 2)}</span>

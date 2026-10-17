@@ -35,8 +35,8 @@ function TradeLine({ t, showSince }: { t: DayTrade; showSince?: boolean }) {
           <>
             {money != null ? (
               <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(money)))}>{fmtUsd(money)}</span>
-            ) : t.rMultiple != null ? (
-              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(t.rMultiple)))}>{fmtR(t.rMultiple)}</span>
+            ) : (t.rSigned ?? t.rMultiple) != null ? (
+              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(t.rSigned ?? t.rMultiple)))}>{fmtR(t.rSigned ?? t.rMultiple)}</span>
             ) : (
               <Pill tone={res.tone}>{res.label}</Pill>
             )}
@@ -115,7 +115,7 @@ export function AuthorDayContext({
               <div className="flex items-center justify-between gap-2">
                 <span className="micro-label">Сделки дня · {s?.wins ?? 0}W / {s?.losses ?? 0}L</span>
                 {canInsert && (
-                  <Button variant="ghost" size="sm" className="gap-1" onClick={() => onInsertTrades(data.trades)}>
+                  <Button variant="ghost" size="sm" className="gap-1" title="Вставит тикеры и R — без сумм в $, сводку читает вся команда" onClick={() => onInsertTrades(data.trades)}>
                     <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
                     В запись
                   </Button>
@@ -157,10 +157,14 @@ export function AuthorDayContext({
   );
 }
 
-/** Lines inserted into the note from the day's trades. */
+/**
+ * Lines inserted into the note from the day's trades. R only, never $: the note is read by the whole team and
+ * traders must not see each other's money (same rule as lib/playbookPrivacy on the server).
+ */
 export function tradeLine(t: DayTrade): string {
   const parts = [t.ticker, t.side ?? undefined];
-  const res = t.pnlNet != null ? fmtUsd(t.pnlNet) : t.rMultiple != null ? fmtR(t.rMultiple) : RESULT[t.result]?.label.toLowerCase();
+  const r = t.rSigned ?? (t.result === "open" ? null : t.rMultiple);
+  const res = r != null ? fmtR(r) : RESULT[t.result]?.label.toLowerCase();
   return `• ${parts.filter(Boolean).join(" ")}${t.setup ? ` (${t.setup})` : ""} — ${res ?? t.result}: `;
 }
 

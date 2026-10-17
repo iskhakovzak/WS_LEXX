@@ -4,7 +4,7 @@ import {
 } from "@workspace/api-client-react";
 import { useQueryClient, useQuery, useMutation } from "@tanstack/react-query";
 import {
-  MessagesSquare, Plus, Search, X, Bell, AtSign, Activity, Briefcase, ArrowDownUp, SearchX, Keyboard,
+  MessagesSquare, Plus, Search, X, Bell, AtSign, Activity, Briefcase, ArrowDownUp, SearchX, Keyboard, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,11 +21,13 @@ import { ThreadListItem } from "@/components/discussions/ThreadList";
 import { ThreadView } from "@/components/discussions/ThreadView";
 import { ThreadFormDialog } from "@/components/discussions/ThreadFormDialog";
 import { ReportDialog, type ReportTarget } from "@/components/discussions/ReportDialog";
+import { addressedToMe, audienceText, isRestricted, sortTokens, tokenLabel, useAudienceOptions } from "@/components/discussions/audience";
 import {
   type Thread, type VoteMap, type VoteAgg, type TickerStat, type SortKey, type ViewKey,
   type ThreadContext,
   SORT_LABELS, TYPES, TYPE_LABELS, sortThreads, threadMatches, threadMentions, isResolved, isUnread,
   loadSeen, saveSeen, seenAt, lastActivity, loadPrefs, savePrefs, participants, teamPositions, isTypingTarget,
+  isFreshThread, isActiveToday,
 } from "@/components/discussions/lib";
 
 function readIntParam(name: string): number | null {
@@ -56,8 +58,12 @@ function writeParams(patch: Record<string, string | null>) {
 }
 
 const VIEW_LABELS: Record<ViewKey, string> = {
-  all: "Все", unread: "Новое", mine: "Мои", open: "Открытые", mentions: "Упоминания", positions: "Мои позиции",
+  all: "Все", unread: "Новое", live: "Активно сейчас", mine: "Мои", open: "Открытые", mentions: "Упоминания", positions: "Мои позиции",
 };
+
+/** Audience tab: "all" | "me" (addressed to my stage / curators / my cohort) | "public" | a single token. */
+type AudienceFilter = string;
+const UNREAD_BADGE_KEY = ["shell", "discussions-unread"] as const;
 
 export default function Discussions() {
   const qc = useQueryClient();
@@ -71,6 +77,7 @@ export default function Discussions() {
   useEffect(() => savePrefs(prefs), [prefs]);
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [audienceFilter, setAudienceFilter] = useState<AudienceFilter>(() => readParam("for") || "all");
   const [tickerFilter, setTickerFilter] = useState<string | null>(() => readParam("ticker")?.toUpperCase() || null);
   const [selectedId, setSelectedId] = useState<number | null>(() => {
     const t = Number(readParam("thread"));
@@ -99,6 +106,8 @@ export default function Discussions() {
   // ── Data ───────────────────────────────────────────────────────────────
   const { data: rawThreads, isLoading, isError, error, refetch } = useListDiscussions();
   const threads = (rawThreads ?? []) as Thread[];
+  // Who-can-see options (groups, cohort names, the viewer's own tokens). The list itself is already audience-filtered server-side.
+  const { data: audienceOpts } = useAudienceOptions(!!user);
 
   const { data: tickerStats = [] } = useQuery<TickerStat[]>({
     queryKey: ["discussions-tickers"],
@@ -125,6 +134,7 @@ export default function Discussions() {
       const now = new Date().toISOString();
       qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => d.id === id && d.unread !== undefined ? { ...d, unread: false, mentionsMe: false, readAt: now } : d));
     },
+    onSettled: () => qc.invalidateQueries({ queryKey: UNREAD_BADGE_KEY }),
   });
 
   // Optimistic votes: update the map instantly, roll back on error.
@@ -221,13 +231,38 @@ export default function Discussions() {
     [threads],
   );
   const unreadMentions = useMemo(() => Array.from(mentionIds).filter((id) => unreadIds.has(id)).length, [mentionIds, unreadIds]);
+  const freshIds = useMemo(() => new Set(threads.filter((t) => unreadIds.has(t.id) && isFreshThread(t, me)).map((t) => t.id)), [threads, unreadIds, me]);
+
+  // Audience tabs: only groups that actually occur in the threads this viewer can read.
+  const audienceTabs = useMemo(() => {
+    const counts = new Map<string, number>();
+    let restricted = 0, forMe = 0;
+    for (const t of threads) {
+      if (!isRestricted(t.audience)) continue;
+      restricted++;
+      if (addressedToMe(t.audience, audienceOpts)) forMe++;
+      for (const tok of t.audience ?? []) counts.set(tok, (counts.get(tok) ?? 0) + 1);
+    }
+    const tokens = sortTokens(counts.keys()).map((token) => ({ token, count: counts.get(token) ?? 0 }));
+    return { restricted, forMe, publicCount: threads.length - restricted, tokens };
+  }, [threads, audienceOpts]);
+  const showAudienceTabs = audienceTabs.restricted > 0 || audienceFilter !== "all";
+
+  function setAudience(v: AudienceFilter) {
+    setAudienceFilter(v);
+    writeParams({ for: v === "all" ? null : v });
+  }
 
   const filtered = useMemo(() => {
     const view = prefs.view;
     const list = threads.filter((t) => {
       if (tickerFilter && (t.ticker ?? "").toUpperCase() !== tickerFilter) return false;
       if (typeFilter !== "all" && (t.type || "general") !== typeFilter) return false;
+      if (audienceFilter === "me" && !addressedToMe(t.audience, audienceOpts)) return false;
+      if (audienceFilter === "public" && isRestricted(t.audience)) return false;
+      if (audienceFilter !== "all" && audienceFilter !== "me" && audienceFilter !== "public" && !(t.audience ?? []).includes(audienceFilter)) return false;
       if (view === "unread" && !unreadIds.has(t.id)) return false;
+      if (view === "live" && !isActiveToday(t)) return false;
       if (view === "mine" && t.trader !== me && !participants(t).includes(me)) return false;
       if (view === "open" && isResolved(t)) return false;
       if (view === "mentions" && !mentionIds.has(t.id)) return false;
@@ -235,7 +270,7 @@ export default function Discussions() {
       return threadMatches(t, q.trim());
     });
     return sortThreads(list, prefs.sort, votes);
-  }, [threads, tickerFilter, typeFilter, prefs, unreadIds, mentionIds, myPositionIds, q, votes, me]);
+  }, [threads, tickerFilter, typeFilter, audienceFilter, audienceOpts, prefs, unreadIds, mentionIds, myPositionIds, q, votes, me]);
 
   const selected = useMemo(() => threads.find((t) => t.id === selectedId) ?? null, [threads, selectedId]);
 
@@ -310,6 +345,7 @@ export default function Discussions() {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => ({ ...d, unread: false, mentionsMe: false, readAt: new Date().toISOString() })));
         qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
+        qc.invalidateQueries({ queryKey: UNREAD_BADGE_KEY });
       } catch (e) {
         toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
         return;
@@ -326,6 +362,7 @@ export default function Discussions() {
   function resetFilters() {
     setQ("");
     setTypeFilter("all");
+    setAudience("all");
     setTicker(null);
     setPrefs((p) => ({ ...p, view: "all" }));
   }
@@ -361,8 +398,8 @@ export default function Discussions() {
     return () => window.removeEventListener("keydown", onKey);
   }); // re-bind every render: cheap, always sees fresh state
 
-  const extraView = prefs.view === "mentions" || prefs.view === "positions";
-  const hasFilters = !!q.trim() || typeFilter !== "all" || !!tickerFilter || prefs.view !== "all";
+  const extraView = prefs.view === "mentions" || prefs.view === "positions" || prefs.view === "live";
+  const hasFilters = !!q.trim() || typeFilter !== "all" || !!tickerFilter || prefs.view !== "all" || audienceFilter !== "all";
 
   // ── Render ─────────────────────────────────────────────────────────────
   return (
@@ -383,11 +420,11 @@ export default function Discussions() {
 
       <StatGrid className={cn(selected && "hidden lg:grid")}>
         <StatCard label="Новое для вас" value={unreadIds.size} tone={unreadIds.size ? "accent" : "neutral"} icon={Bell}
-          hint={unreadIds.size ? "Нажмите, чтобы показать" : "Всё прочитано"} onClick={() => setPrefs((p) => ({ ...p, view: "unread" }))} />
+          hint={freshIds.size ? `из них новых тем: ${freshIds.size}` : unreadIds.size ? "Нажмите, чтобы показать" : "Всё прочитано"} onClick={() => setPrefs((p) => ({ ...p, view: "unread" }))} />
         <StatCard label="Упоминания" value={mentionIds.size} tone={unreadMentions ? "accent" : "neutral"} icon={AtSign}
           hint={unreadMentions ? `${unreadMentions} непрочитанных` : `@${me}`} onClick={() => setPrefs((p) => ({ ...p, view: "mentions" }))} />
-        <StatCard label="Активны за 24 ч" value={active24} icon={Activity}
-          hint={`из ${threads.length} тем`} onClick={() => setPrefs((p) => ({ ...p, view: "all", sort: "active" }))} />
+        <StatCard label="Активно сейчас" value={active24} tone={active24 ? "warn" : "neutral"} icon={Activity}
+          hint={`за 24 ч, из ${threads.length} тем`} onClick={() => setPrefs((p) => ({ ...p, view: "live", sort: "hot" }))} />
         <StatCard label="Вы в позиции" value={myPositionIds.size} tone={myPositionIds.size ? "up" : "neutral"} icon={Briefcase}
           hint="по вашим комментариям" onClick={() => setPrefs((p) => ({ ...p, view: "positions" }))} />
       </StatGrid>
@@ -448,6 +485,23 @@ export default function Discussions() {
                 </SelectContent>
               </Select>
             </div>
+            {showAudienceTabs && (
+              <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Для кого тема">
+                <FilterChip active={audienceFilter === "all"} onClick={() => setAudience("all")} count={threads.length} className="min-h-8 shrink-0 px-2.5 text-xs">Все темы</FilterChip>
+                {(audienceOpts?.viewer.tokens.length ?? 0) > 0 && (
+                  <FilterChip active={audienceFilter === "me"} onClick={() => setAudience(audienceFilter === "me" ? "all" : "me")} count={audienceTabs.forMe} className="min-h-8 shrink-0 px-2.5 text-xs">Для меня</FilterChip>
+                )}
+                <FilterChip active={audienceFilter === "public"} onClick={() => setAudience(audienceFilter === "public" ? "all" : "public")} count={audienceTabs.publicCount} className="min-h-8 shrink-0 px-2.5 text-xs">Всем</FilterChip>
+                {audienceTabs.tokens.map(({ token, count }) => (
+                  <FilterChip key={token} active={audienceFilter === token} onClick={() => setAudience(audienceFilter === token ? "all" : token)} count={count} className="min-h-8 shrink-0 px-2.5 text-xs">
+                    <Lock className="h-3 w-3 shrink-0 opacity-70" aria-hidden="true" />{tokenLabel(token, audienceOpts)}
+                  </FilterChip>
+                ))}
+                {!["all", "me", "public"].includes(audienceFilter) && !audienceTabs.tokens.some((x) => x.token === audienceFilter) && (
+                  <FilterChip active onClick={() => setAudience("all")} className="min-h-8 shrink-0 px-2.5 text-xs">{tokenLabel(audienceFilter, audienceOpts)}</FilterChip>
+                )}
+              </div>
+            )}
             <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 pb-0.5" role="group" aria-label="Фильтр по типу и тикеру">
               <Select value={typeFilter} onValueChange={setTypeFilter}>
                 <SelectTrigger aria-label="Тип темы" className={cn("h-8 w-auto shrink-0 gap-1 px-3 text-xs", typeFilter !== "all" && "text-primary")}>
@@ -511,6 +565,8 @@ export default function Discussions() {
                     selected={t.id === selectedId}
                     unread={unreadIds.has(t.id)}
                     mentionsMe={mentionIds.has(t.id) && unreadIds.has(t.id)}
+                    fresh={freshIds.has(t.id)}
+                    audienceLabel={isRestricted(t.audience) ? audienceText(t.audience, audienceOpts) : null}
                     votes={votes}
                     q={q.trim()}
                     onSelect={selectThread}

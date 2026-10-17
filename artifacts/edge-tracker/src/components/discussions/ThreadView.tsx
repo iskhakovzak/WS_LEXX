@@ -4,7 +4,7 @@ import { useAddComment, getListDiscussionsQueryKey } from "@workspace/api-client
 import type { Comment } from "@workspace/api-client-react";
 import {
   ArrowLeft, ArrowBigUp, ArrowBigDown, MoreHorizontal, Pencil, Trash2, Flag, Pin, PinOff, CheckCircle2,
-  RotateCcw, Link2, Reply, Send, X, Check, Users, CornerDownRight, Award,
+  RotateCcw, Link2, Reply, Send, X, Check, Users, CornerDownRight, Award, Lock,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { RichText, plainPreview } from "./RichText";
 import { TickerLink } from "./TickerContext";
 import { EntityCard } from "./EntityCard";
+import { audienceText, isRestricted, useAudienceOptions } from "./audience";
 import { Avatar } from "./ThreadList";
 import type { ReportTarget } from "./ReportDialog";
 import {
@@ -147,6 +148,8 @@ export function ThreadView({
   const [replyTo, setReplyTo] = React.useState<Comment | null>(null);
   const [editing, setEditing] = React.useState<{ id: number; text: string } | null>(null);
   const [savingEdit, setSavingEdit] = React.useState(false);
+  const restricted = isRestricted(thread.audience);
+  const audienceOpts = useAudienceOptions(restricted);
   const [deletingComment, setDeletingComment] = React.useState<Comment | null>(null);
   const [deletingBusy, setDeletingBusy] = React.useState(false);
   const [flagBusy, setFlagBusy] = React.useState(false);
@@ -354,6 +357,12 @@ export function ThreadView({
               {thread.type && <Pill tone={TYPE_TONE[thread.type] ?? "neutral"} className="py-0 text-2xs">{TYPE_LABELS[thread.type] ?? thread.type}</Pill>}
               {thread.ticker && <TickerLink ticker={thread.ticker} variant="chip" onFilter={onTickerFilter} />}
               {resolved && <Pill tone="up" className="py-0 text-2xs"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Решено</Pill>}
+              {restricted && (
+                <Pill tone="purple" className="max-w-full py-0 text-2xs" title="Тему видят только эти группы, автор и кураторы">
+                  <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
+                  <span className="truncate">Видна: {audienceText(thread.audience, audienceOpts.data)}</span>
+                </Pill>
+              )}
             </div>
             <h2 className="mt-1.5 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">{thread.topic}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">

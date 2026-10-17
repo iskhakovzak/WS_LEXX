@@ -22,7 +22,17 @@ export type Rule =
   | CommissionPlan
   | { type: "capLoss"; usd: number }
   | { type: "sizeRange"; min?: number | null; max?: number | null }
-  | { type: "afterLoss"; minutes: number };
+  | { type: "afterLoss"; minutes: number }
+  | { type: "excludeSetups"; setups: string[] }
+  | { type: "minGrade"; grade: Grade };
+
+export const GRADES = ["A+", "A", "B", "C"] as const;
+export type Grade = (typeof GRADES)[number];
+/** 0 = best (A+); null when not a known grade. Mirror of whatIf.gradeRank. */
+export function gradeRank(g: string | null | undefined): number | null {
+  const i = GRADES.indexOf(String(g ?? "").trim().toUpperCase() as Grade);
+  return i < 0 ? null : i;
+}
 
 export type RuleType = Rule["type"];
 
@@ -46,6 +56,8 @@ export type PreviewTrade = {
   seq: number;
   fills?: number | null;
   feeBreakdown?: Record<string, number> | null;
+  setup?: string | null;
+  grade?: string | null;
 };
 
 /* ─── Formatting helpers ─────────────────────────────────────────────────── */
@@ -150,6 +162,8 @@ export function chipLabel(r: Rule): string {
     case "capLoss": return `Убыток сделки не больше −${money(r.usd)} (оценка)`;
     case "sizeRange": return r.min != null && r.max != null ? `Размер ${r.min}–${r.max} акц.` : r.min != null ? `Без позиций меньше ${r.min} акц.` : r.max != null ? `Без позиций больше ${r.max} акц.` : "Размер";
     case "afterLoss": return `Пауза ${r.minutes} мин после убытка`;
+    case "excludeSetups": return `Без сетапов: ${r.setups.join(", ")}`;
+    case "minGrade": return r.grade === "A+" ? "Только A+" : `Только ${r.grade} и лучше`;
   }
 }
 
@@ -179,6 +193,8 @@ export function ifNotPhrase(r: Rule): string {
       if (r.min != null && r.max == null) return `Если бы ты не брал позиции меньше ${r.min} акций`;
       return `Если бы ты держал размер ${r.min ?? 0}–${r.max ?? "∞"} акций`;
     case "afterLoss": return `Если бы ты не входил ${r.minutes} мин после убыточной сделки`;
+    case "excludeSetups": return `Если бы ты не торговал ${r.setups.length > 1 ? "сетапы" : "сетап"} ${r.setups.join(", ")}`;
+    case "minGrade": return r.grade === "A+" ? "Если бы ты брал только сделки A+" : `Если бы ты брал только сделки ${r.grade} и лучше`;
   }
 }
 
@@ -195,6 +211,8 @@ export const REASON_LABEL: Record<string, string> = {
   capLoss: "Кап убытка",
   sizeRange: "Размер",
   afterLoss: "После убытка",
+  excludeSetups: "Сетап",
+  minGrade: "Оценка",
 };
 
 /* ─── URL state ──────────────────────────────────────────────────────────── */
@@ -202,7 +220,7 @@ export const REASON_LABEL: Record<string, string> = {
 const RULE_KEYS: Record<RuleType, string[]> = {
   dailyLossLimit: ["usd"], maxTradesPerDay: ["n"], stopAfterLosses: ["n"], timeWindow: ["from", "to"], priceRange: ["min", "max"],
   minHold: ["seconds"], excludeTickers: ["tickers"], excludeSide: ["side"], commissionPlan: ["perShare", "minPerOrder", "ecnPerShare", "keepRegulatory"],
-  capLoss: ["usd"], sizeRange: ["min", "max"], afterLoss: ["minutes"],
+  capLoss: ["usd"], sizeRange: ["min", "max"], afterLoss: ["minutes"], excludeSetups: ["setups"], minGrade: ["grade"],
 };
 
 /** Rules → compact URL-safe string (base64url of JSON). Empty list → "". */
@@ -260,6 +278,11 @@ function sanitize(x: unknown): Rule | null {
       return tickers.length ? { type, tickers: [...new Set(tickers)] } : null;
     }
     case "excludeSide": return o.side === "long" || o.side === "short" ? { type, side: o.side } : null;
+    case "excludeSetups": {
+      const setups = Array.isArray(o.setups) ? o.setups.filter((v): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= 80).map((v) => v.trim()) : [];
+      return setups.length ? { type, setups: [...new Set(setups)].slice(0, 50) } : null;
+    }
+    case "minGrade": return typeof o.grade === "string" && gradeRank(o.grade) != null ? { type, grade: GRADES[gradeRank(o.grade) as number] } : null;
     case "commissionPlan": {
       const perShare = nonNeg(o.perShare), minPerOrder = nonNeg(o.minPerOrder), ecnPerShare = nonNeg(o.ecnPerShare);
       if (perShare == null || minPerOrder == null || ecnPerShare == null) return null;
@@ -298,6 +321,8 @@ export function staticExcludes(r: Rule, t: PreviewTrade): boolean | null {
     case "excludeTickers": return r.tickers.some((x) => x.toUpperCase() === t.ticker.toUpperCase());
     case "excludeSide": return t.side === r.side;
     case "sizeRange": return t.qty != null && ((r.min != null && t.qty < r.min) || (r.max != null && t.qty > r.max));
+    case "excludeSetups": return !!t.setup && r.setups.some((x) => x.trim().toLowerCase() === t.setup!.trim().toLowerCase());
+    case "minGrade": { const g = gradeRank(t.grade); return g == null || g > (gradeRank(r.grade) ?? 0); }
     default: return null;
   }
 }
@@ -317,6 +342,8 @@ export function previewRule(trades: PreviewTrade[], r: Rule): Preview {
   const list = sortTrades(trades.filter((t) => t.gross != null));
   const total = list.length;
   let affected = 0, net = 0;
+  // Like the engine: «only graded …» does nothing when no trade is graded.
+  if (r.type === "minGrade" && !list.some((t) => gradeRank(t.grade) != null)) return { affected: 0, net: 0, effect: 0, total };
   const stat = list.length ? staticExcludes(r, list[0]) : null;
   if (stat !== null) {
     for (const t of list) if (staticExcludes(r, t)) { affected++; net += netOf(t)!; }

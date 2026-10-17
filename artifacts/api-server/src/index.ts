@@ -1,6 +1,7 @@
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./lib/migrate";
+import { backfillTradeStructures, ensureTradeStructureSchema } from "./lib/tradeStructureStore";
 import { startSectorPoller, startAnalystActionsPoller } from "./lib/marketDataService";
 import { startDigestCron } from "./lib/digest";
 import { startWeeklyReportCron } from "./lib/weeklyPsychologyReport";
@@ -84,6 +85,14 @@ async function startServer(attempt = 1): Promise<void> {
     await runMigrations();
   } catch (error) {
     logger.error({ error }, "Failed to run migrations, continuing anyway");
+  }
+  try {
+    await ensureTradeStructureSchema();
+    void backfillTradeStructures()
+      .then((r) => { if (r.trades) logger.info(r, "trade structure back-fill done"); })
+      .catch((error) => logger.warn({ error }, "trade structure back-fill failed"));
+  } catch (error) {
+    logger.error({ error }, "Failed to ensure trade-structure columns, continuing anyway");
   }
 
   return new Promise((resolve, reject) => {

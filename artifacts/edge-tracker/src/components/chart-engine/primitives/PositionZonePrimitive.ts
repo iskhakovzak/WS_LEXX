@@ -25,13 +25,16 @@ export class PositionZonePrimitive extends SeriesPrimitiveBase {
 
   set(data: PositionZoneData | null): void {
     this.data = data;
-    if (data) this.setAxisLabels([{ price: data.avgEntry, text: fmtPrice(data.avgEntry), color: this.theme.primary(1) }]);
-    else this.setAxisLabels([]);
+    this.syncAxis();
     this.requestUpdate();
+  }
+  private syncAxis(): void {
+    const d = this.visible ? this.data : null;
+    this.setAxisLabels(d ? [{ price: d.avgEntry, text: fmtPrice(d.avgEntry), color: this.theme.primary(1) }] : []);
   }
   /** Replay cursor (bar index) and the close at that bar. */
   setCursor(idx: number | null, mark: number | null): void { this.limit = idx; this.mark = mark; this.requestUpdate(); }
-  setVisible(on: boolean): void { this.visible = on; this.requestUpdate(); }
+  setVisible(on: boolean): void { this.visible = on; this.syncAxis(); this.requestUpdate(); }
 
   render(rc: RenderCtx): void {
     const d = this.data;

@@ -181,7 +181,7 @@ export async function createNotification(
 // (preferences honoured) and optionally mirrors the text to Telegram (unchanged behaviour).
 
 export type NotifyType =
-  | "mention" | "reply" | "review_request"
+  | "mention" | "reply" | "review_request" | "thread_new"
   | "idea_submitted" | "idea_review" | "idea_comment"
   | "eod_review_request" | "eod_overdue" | "eod_reviewed" | "weekly_review" | "rating" | "rating_ack"
   | "risk_warn" | "risk_breach" | "limit_change" | "rule_violation"
@@ -278,8 +278,11 @@ export async function notifyMentions(opts: {
   link?: string;
   ideaId?: number | null;
   telegram?: boolean;
+  /** Keeps only recipients allowed to read the source (e.g. a discussion with a restricted audience). */
+  filter?: (names: string[]) => Promise<string[]> | string[];
 }): Promise<string[]> {
-  const names = (await extractMentions(opts.text)).filter((n) => n !== opts.authorName);
+  let names = (await extractMentions(opts.text)).filter((n) => n !== opts.authorName);
+  if (names.length && opts.filter) names = await opts.filter(names);
   if (names.length === 0) return [];
   const preview = (opts.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
   const message = `${opts.authorName} упомянул вас ${opts.context}: «${preview}»`;

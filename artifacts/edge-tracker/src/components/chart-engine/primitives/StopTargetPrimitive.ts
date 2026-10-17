@@ -17,13 +17,18 @@ export class StopTargetPrimitive extends SeriesPrimitiveBase {
 
   set(data: StopTargetData | null): void {
     this.data = data;
+    this.syncAxis();
+    this.requestUpdate();
+  }
+  setVisible(on: boolean): void { this.visible = on; this.syncAxis(); this.requestUpdate(); }
+
+  private syncAxis(): void {
+    const data = this.visible ? this.data : null;
     const labels: { price: number; text: string; color: string }[] = [];
     if (data?.stop != null) labels.push({ price: data.stop, text: fmtPrice(data.stop), color: this.theme.down(1) });
     if (data?.target != null) labels.push({ price: data.target, text: fmtPrice(data.target), color: this.theme.up(1) });
     this.setAxisLabels(labels);
-    this.requestUpdate();
   }
-  setVisible(on: boolean): void { this.visible = on; this.requestUpdate(); }
 
   render(rc: RenderCtx): void {
     const d = this.data;

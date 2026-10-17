@@ -5,11 +5,11 @@
  * method, partial exits realise against the running average). When some executions have no qty,
  * each fill counts as one unit and the whole position is scaled by the trade's qty (`qtyAssumed`).
  */
-import type { Candle, ExcursionResult, Execution, ExecutionKind, Fill, PositionPoint, PositionState, Side, TradeLike } from "../types";
+import type { Candle, ExcursionResult, Execution, ExecutionKind, Fill, PositionPoint, PositionState, Side, StructureLeg, TradeLike } from "../types";
 import { barIndexForTime, etParts, isoToEpoch } from "./time";
-import { fmtPrice } from "./format";
+import { fillLabelOf, roleFromKind, roleOf } from "./structure";
 
-export const KIND_LABEL: Record<ExecutionKind, string> = { entry: "Вход", add: "Добор", trim: "Частичный выход", exit: "Выход", stop: "Стоп" };
+export const KIND_LABEL: Record<ExecutionKind, string> = { entry: "Вход", add: "Добор", trim: "Частичный фикс", exit: "Выход", stop: "Стоп" };
 
 export function sideOf(trade: Pick<TradeLike, "side">): Side {
   return (trade.side || "").toLowerCase().includes("short") ? "short" : "long";
@@ -25,49 +25,84 @@ export function isOpening(kind: ExecutionKind): boolean {
   return kind === "entry" || kind === "add";
 }
 
-function fillLabel(kind: ExecutionKind, price: number, qty: number | null): string {
-  return `${KIND_LABEL[kind]} ${fmtPrice(price)}${qty != null ? ` × ${qty}` : ""}`;
+type MergedExec = { ex: Execution; price: number; qty: number | null; pieces: number };
+
+/**
+ * Consecutive executions of one structure leg (one order filled in pieces — same `legIndex` from the API) become
+ * one marker at their VWAP; executions without a leg stay as they are.
+ */
+function mergeLegs(sorted: readonly Execution[]): MergedExec[] {
+  const out: MergedExec[] = [];
+  let group: Execution[] = [];
+  const flush = () => {
+    if (!group.length) return;
+    const known = group.every((e) => toNum(e.qty) != null);
+    const priced = group.filter((e) => toNum(e.price) != null);
+    if (priced.length) {
+      const w = (e: Execution) => (known ? (toNum(e.qty) as number) : 1);
+      const tw = priced.reduce((s, e) => s + w(e), 0);
+      const price = tw > 0 ? priced.reduce((s, e) => s + (toNum(e.price) as number) * w(e), 0) / tw : (toNum(priced[0].price) as number);
+      out.push({ ex: priced[0], price, qty: known ? group.reduce((s, e) => s + (toNum(e.qty) as number), 0) : null, pieces: group.length });
+    }
+    group = [];
+  };
+  for (const e of sorted) {
+    const prev = group[group.length - 1];
+    if (prev && (e.legIndex == null || prev.legIndex !== e.legIndex)) flush();
+    group.push(e);
+  }
+  flush();
+  return out;
 }
 
 /**
  * Place executions on `bars` (bar length `barSec`). Timestamped fills land in the bar containing
  * the instant; untimed fills are matched by price in chronological order after the previous fill.
+ * Pieces of one order (same structure leg) are one marker; `legs` (GET …/executions → structure.legs) adds the
+ * leg's numbers (position after, share of the size, R, reason) to each marker.
  * With no executions at all, a synthetic entry/exit pair is built from the trade's prices (`dayKey`
  * restricts the price search to the trade day).
  */
 export function resolveFills(
   bars: readonly Candle[], barSec: number, executions: readonly Execution[],
   fallback: { entry: number | null; exit: number | null; qty: number | null; dayKey: string; exitDayKey?: string | null },
+  legs: readonly StructureLeg[] = [],
 ): Fill[] {
   if (!bars.length) return [];
   const out: Fill[] = [];
   const sorted = [...executions].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || a.id - b.id);
+  const legByIndex = new Map(legs.map((l) => [l.index, l]));
   let cursor = 0;
-  for (const ex of sorted) {
-    const price = toNum(ex.price);
-    if (price == null) continue;
-    const qty = toNum(ex.qty);
+  for (const { ex, price, qty, pieces } of mergeLegs(sorted)) {
+    const role = roleOf(ex);
+    const inferred = !!ex.roleInferred;
+    const leg = ex.legIndex != null ? legByIndex.get(ex.legIndex) ?? null : null;
+    const base = { id: ex.id, kind: ex.kind, price, qty, role, inferred, pieces, leg, label: fillLabelOf(role, inferred, price, qty) };
     const t = isoToEpoch(ex.executedAt);
     if (Number.isFinite(t)) {
       const idx = barIndexForTime(bars, t, barSec);
-      out.push({ id: ex.id, kind: ex.kind, price, qty, time: t, idx, byPrice: false, label: fillLabel(ex.kind, price, qty) });
+      out.push({ ...base, time: t, idx, byPrice: false });
       cursor = Math.max(cursor, idx);
       continue;
     }
     const idx = matchByPrice(bars, price, cursor);
-    out.push({ id: ex.id, kind: ex.kind, price, qty, time: null, idx, byPrice: true, label: fillLabel(ex.kind, price, qty) });
+    out.push({ ...base, time: null, idx, byPrice: true });
     cursor = Math.min(bars.length - 1, idx + 1);
   }
   if (!out.length) {
     const { entry, exit, qty, dayKey } = fallback;
     let first = bars.findIndex((c) => etParts(c.t).dayKey === dayKey);
     if (first < 0) first = 0;
+    const synthetic = (id: number, kind: ExecutionKind, price: number, idx: number): Fill => {
+      const role = roleFromKind(kind);
+      return { id, kind, price, qty, time: null, idx, byPrice: true, role, inferred: false, pieces: 1, leg: null, label: fillLabelOf(role, false, price, qty) };
+    };
     if (entry != null) {
       const idx = matchByPrice(bars, entry, first);
-      out.push({ id: -1, kind: "entry", price: entry, qty, time: null, idx, byPrice: true, label: fillLabel("entry", entry, qty) });
+      out.push(synthetic(-1, "entry", entry, idx));
       if (exit != null) {
         const idx2 = matchByPrice(bars, exit, Math.min(bars.length - 1, idx + 1));
-        out.push({ id: -2, kind: "exit", price: exit, qty, time: null, idx: idx2, byPrice: true, label: fillLabel("exit", exit, qty) });
+        out.push(synthetic(-2, "exit", exit, idx2));
       }
     }
   }

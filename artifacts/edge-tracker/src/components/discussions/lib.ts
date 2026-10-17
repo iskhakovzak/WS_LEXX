@@ -26,6 +26,8 @@ export type Thread = Discussion & {
   readAt?: string | null;
   unread?: boolean;
   mentionsMe?: boolean;
+  /** Who can read the thread: [] = everyone, else stage / "staff" / "cohort:<id>" tokens (server-enforced). */
+  audience?: string[];
 };
 
 export type ThreadContext = { tradeId?: number | null; ideaId?: number | null; playbookId?: number | null; eventId?: number | null; journalDate?: string | null };
@@ -270,9 +272,31 @@ export function isUnread(t: Thread, store: SeenStore, me: string | null | undefi
   return new Date(last).getTime() > new Date(seenAt(store, t.id)).getTime();
 }
 
+// ── Freshness ────────────────────────────────────────────────────────────
+const HOUR = 3_600_000;
+/** A thread by someone else, created in the last 48 h, that the viewer has never opened. */
+export function isFreshThread(t: Thread, me: string | null | undefined, now = Date.now()): boolean {
+  if (me && t.trader === me) return false;
+  if (t.readAt !== undefined && t.readAt !== null) return false;
+  if (t.readAt === undefined && t.unread === false) return false;
+  const created = new Date(t.createdAt).getTime();
+  return Number.isFinite(created) && now - created < 48 * HOUR;
+}
+/** Activity in the last 24 h — the «Активно сейчас» view. */
+export function isActiveToday(t: Thread, now = Date.now()): boolean {
+  const last = new Date(lastActivity(t)).getTime();
+  return Number.isFinite(last) && now - last < 24 * HOUR;
+}
+/** A conversation happening right now: a reply within 3 h and at least two replies overall. */
+export function isLiveNow(t: Thread, now = Date.now()): boolean {
+  const last = new Date(lastActivity(t)).getTime();
+  const replies = t.commentCount ?? t.comments?.length ?? 0;
+  return Number.isFinite(last) && now - last < 3 * HOUR && replies >= 2;
+}
+
 // ── Prefs ────────────────────────────────────────────────────────────────
 const PREFS_KEY = "ws_lexx_disc_prefs_v1";
-export type ViewKey = "all" | "unread" | "mine" | "mentions" | "open" | "positions";
+export type ViewKey = "all" | "unread" | "live" | "mine" | "mentions" | "open" | "positions";
 export type Prefs = { sort: SortKey; view: ViewKey };
 export function loadPrefs(): Prefs {
   try {

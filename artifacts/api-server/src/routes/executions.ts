@@ -2,7 +2,11 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { pool } from "@workspace/db";
 import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
-import { redactExecutions } from "../lib/playbookPrivacy";
+import { redactExecutions, redactStructure } from "../lib/playbookPrivacy";
+import { ROLE_LABEL_RU } from "../lib/tradeStructure";
+import { refreshTradeStructures, structureForTrade } from "../lib/tradeStructureStore";
+import { structureSummary } from "../lib/tradeStructure";
+import { logger } from "../lib/logger";
 
 const router: IRouter = Router();
 
@@ -18,7 +22,19 @@ export type ExecutionRow = {
   executedAt: string | null;
   note: string | null;
   sortOrder: number;
+  /** lib/tradeStructure: what this fill did — entry / reentry / flip / add / partial_exit / exit / stop. */
+  role: string | null;
+  roleLabel: string | null;
+  /** The role is a heuristic guess (stop without a known stop level). */
+  roleInferred: boolean;
+  /** Fills of one order filled in pieces share a leg. */
+  legIndex: number | null;
 };
+
+/** Recompute the stored roles after an edit; never fails the request. */
+async function refreshAfterEdit(tradeId: number): Promise<void> {
+  await refreshTradeStructures([tradeId]).catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId }, "trade structure refresh failed"));
+}
 
 type CreateExecutionInput = {
   kind: ExecutionKind;
@@ -114,18 +130,36 @@ router.get(
         ORDER BY sort_order ASC, id ASC`,
       [tradeId]
     );
-    const data: ExecutionRow[] = rows.map((r) => ({
-      id: r.id,
-      tradeId: r.trade_id,
-      kind: r.kind,
-      price: String(r.price),
-      qty: r.qty != null ? String(r.qty) : null,
-      executedAt: r.executed_at ? new Date(r.executed_at).toISOString() : null,
-      note: r.note,
-      sortOrder: r.sort_order,
-    }));
-    // $ privacy (lib/playbookPrivacy): someone else's fills come without qty unless the viewer is staff.
-    res.json({ tradeId, executions: redactExecutions(data, await loadMoneyViewer(req), access.trader) });
+    // Structure is computed on read (always matches the fills); the stored copy only feeds lists and back-fills.
+    const computed = await structureForTrade(tradeId).catch((e) => {
+      logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId }, "trade structure failed");
+      return null;
+    });
+    const byExec = computed?.structure.byExecution ?? {};
+    const data: ExecutionRow[] = rows.map((r) => {
+      const s = byExec[r.id];
+      return {
+        id: r.id,
+        tradeId: r.trade_id,
+        kind: r.kind,
+        price: String(r.price),
+        qty: r.qty != null ? String(r.qty) : null,
+        executedAt: r.executed_at ? new Date(r.executed_at).toISOString() : null,
+        note: r.note,
+        sortOrder: r.sort_order,
+        role: s?.role ?? null,
+        roleLabel: s ? ROLE_LABEL_RU[s.role] : null,
+        roleInferred: s?.inferred ?? false,
+        legIndex: s?.legIndex ?? null,
+      };
+    });
+    // $ privacy (lib/playbookPrivacy): someone else's fills come without qty (and the legs without size / $)
+    // unless the viewer is staff.
+    const viewer = await loadMoneyViewer(req);
+    const structure = computed
+      ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats) } }, viewer, access.trader), siblings: computed.siblings }
+      : null;
+    res.json({ tradeId, executions: redactExecutions(data, viewer, access.trader), structure });
   })
 );
 
@@ -151,6 +185,7 @@ router.post(
        RETURNING id`,
       [tradeId, v.kind, v.price, v.qty, v.executedAt, v.note, v.sortOrder]
     );
+    await refreshAfterEdit(tradeId);
     res.status(201).json({ id: rows[0].id });
   })
 );
@@ -175,6 +210,7 @@ router.delete(
       res.status(404).json({ error: "not found" });
       return;
     }
+    await refreshAfterEdit(tradeId);
     res.status(204).end();
   })
 );

@@ -6,7 +6,7 @@ import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds"
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import {
-  api, isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder,
+  api, isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
 } from "@/components/notes/junior-lib";
 import { JuniorEditor } from "@/components/notes/junior-editor";
 import { JuniorHistory } from "@/components/notes/junior-history";
@@ -50,6 +50,30 @@ export default function JuniorNotesPage() {
     setTabState(t);
     try { localStorage.setItem(TAB_KEY, t); } catch { /* ignore */ }
   }, []);
+
+  // Who the caller reviews: curators/admins — everyone; an academy mentor (even a trader) — their mentees.
+  const reviewerQ = useQuery({
+    queryKey: qk.reviewer,
+    queryFn: () => api<ReviewerInfo>("/junior-notes/reviewer"),
+    enabled: !!trader,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const reviewer = reviewerQ.data ?? null;
+  const isReviewer = !!reviewer && reviewer.kind !== "none";
+
+  // A mentor who has never picked a tab lands on «Команда» once the reviewer scope is known.
+  const autoTabbed = React.useRef(false);
+  React.useEffect(() => {
+    if (autoTabbed.current || !reviewer) return;
+    autoTabbed.current = true;
+    if (reviewer.kind === "scoped" && !isPrivileged) {
+      let stored: string | null = null;
+      try { stored = localStorage.getItem(TAB_KEY); } catch { /* ignore */ }
+      const p = new URLSearchParams(window.location.search);
+      if (!stored && !p.get("tab") && !p.get("date")) setTabState("team");
+    }
+  }, [reviewer, isPrivileged]);
 
   const historyQ = useQuery({
     queryKey: qk.history(trader),
@@ -113,7 +137,11 @@ export default function JuniorNotesPage() {
       <PageHeader
         title="Сводка джунов"
         icon={NotebookPen}
-        description="Итоги дня по структуре: план → сделки → ошибки → уроки. Куратор отвечает и ставит оценку."
+        description={
+          isReviewer
+            ? "Итоги дня джунов: план → сделки → ошибки → уроки. Отвечай по очереди, сверяй со вчерашним фокусом и сделками."
+            : "Итоги дня по структуре: план → сделки → ошибки → уроки. Куратор или наставник отвечает и ставит оценку."
+        }
         actions={
           <span className="hidden items-center gap-1.5 text-xs text-muted-foreground md:flex">
             <Kbd>N</Kbd> сегодня <Kbd>H</Kbd> история <Kbd>T</Kbd> команда
@@ -160,7 +188,7 @@ export default function JuniorNotesPage() {
           onOpenInEditor={openDay}
         />
       )}
-      {tab === "team" && <JuniorTeam isPrivileged={isPrivileged} me={trader} />}
+      {tab === "team" && <JuniorTeam reviewer={reviewer} me={trader} />}
     </Page>
   );
 }

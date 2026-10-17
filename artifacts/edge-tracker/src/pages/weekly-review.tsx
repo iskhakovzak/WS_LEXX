@@ -82,7 +82,8 @@ export default function WeeklyReviewPage() {
   const [week, setWeek] = React.useState<string>(initial.week ?? currentWeekKey());
   const [trader, setTrader] = React.useState<string | null>(initial.trader && staff ? initial.trader : me);
   const [view, setView] = React.useState<View>(
-    !staff ? "trader" : initial.view ?? (initial.trader && initial.trader !== me ? "curator" : "partners"),
+    // A link that names a trader (chart click-through, day report) opens that trader's week, not the desk.
+    !staff ? "trader" : initial.view ?? (initial.trader ? (initial.trader !== me ? "curator" : "trader") : "partners"),
   );
   const effectiveView: View = staff ? view : "trader";
 

@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { Segmented, FilterChip, Pill, toneOf, toneText, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatR } from "@/lib/trade-result";
+import { roleLabel } from "@/components/chart-engine/lib/structure";
 import {
   type Candle, type CandlesResponse, type Execution, type ExecutionKind, type ExecutionsResponse, type Resolved, type ChartPrefs,
   ET_TIME_FMT, ET_DAY_FMT, timeToDate, fmtEtDateTime, fmtEtDateTimeSec, fmtEtTimeSec, fmtDuration, sessionOfEt, ET_SESSION_LABEL, etInfo, isPreMarket, isAfterHours, toNum, ageDaysOf,
@@ -47,10 +48,28 @@ type TradeChartProps = {
   className?: string;
 };
 
-type Interval = "1m" | "5m" | "15m" | "30m" | "60m" | "1d";
+type Interval = "1m" | "2m" | "3m" | "5m" | "15m" | "30m" | "60m" | "1d";
+type ApiInterval = Exclude<Interval, "2m" | "3m">;
+/** 2м / 3м are folded from 1-minute bars on the client (the candles API serves 1m / 5m / 15m / 30m / 60m / 1d). */
+const GROUPED: Partial<Record<Interval, number>> = { "2m": 120, "3m": 180 };
+const apiIntervalOf = (i: Interval): ApiInterval => (GROUPED[i] ? "1m" : (i as ApiInterval));
+
+/** Fold sorted 1-minute candles into `sec`-long bars aligned to the clock (9:30 starts a 2m / 3m bar). */
+function groupCandles(candles: readonly Candle[], sec: number): Candle[] {
+  const out: Candle[] = [];
+  for (const c of candles) {
+    const t = Math.floor(c.t / sec) * sec;
+    const last = out[out.length - 1];
+    if (last && last.t === t) { last.h = Math.max(last.h, c.h); last.l = Math.min(last.l, c.l); last.c = c.c; last.v += c.v; }
+    else out.push({ t, o: c.o, h: c.h, l: c.l, c: c.c, v: c.v });
+  }
+  return out;
+}
 
 const TIMEFRAMES: { key: Interval; label: string; maxAgeDays: number }[] = [
   { key: "1m", label: "1м", maxAgeDays: 7 },
+  { key: "2m", label: "2м", maxAgeDays: 7 },
+  { key: "3m", label: "3м", maxAgeDays: 7 },
   { key: "5m", label: "5м", maxAgeDays: 60 },
   { key: "15m", label: "15м", maxAgeDays: 60 },
   { key: "30m", label: "30м", maxAgeDays: 60 },
@@ -62,10 +81,13 @@ const INTERVAL_LABEL: Record<string, string> = { "1m": "1м", "5m": "5м", "15m"
 const KIND_LABEL: Record<ExecutionKind, string> = {
   entry: "Вход",
   add: "Добор",
-  trim: "Часть",
+  trim: "Частичный фикс",
   exit: "Выход",
   stop: "Стоп",
 };
+
+/** The recognised role («Перезаход», «Частичный фикс», «Стоп?») when known, else the stored kind. */
+const execLabel = (e: Execution): string => (e.role ? roleLabel(e.role, !!e.roleInferred) : KIND_LABEL[e.kind]);
 
 type Shape = "arrowUp" | "arrowDown" | "square" | "circle";
 type BarPos = "aboveBar" | "belowBar" | "inBar";
@@ -153,11 +175,12 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
     });
   }, []);
 
+  const apiInterval = apiIntervalOf(interval);
   // Yahoo age limits per interval also cap how many context days we can request.
   const maxDaysBack = useMemo(() => {
-    const cap = interval === "1m" ? 7 : interval === "5m" || interval === "15m" || interval === "30m" ? 60 : interval === "60m" ? 730 : 3650;
+    const cap = apiInterval === "1m" ? 7 : interval === "5m" || interval === "15m" || interval === "30m" ? 60 : interval === "60m" ? 730 : 3650;
     return Math.max(0, Math.floor(cap - trAge - 1));
-  }, [interval, trAge]);
+  }, [apiInterval, trAge]);
   const effectiveDaysBack = Math.min(prefs.daysBack, maxDaysBack);
 
   const executionsQuery = useQuery<ExecutionsResponse>({
@@ -177,9 +200,9 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
   const extended = prefs.extended || needExtended;
 
   const candlesQuery = useQuery<CandlesResponse>({
-    queryKey: ["trade-candles", ticker, dateKey, extended, interval, effectiveDaysBack],
+    queryKey: ["trade-candles", ticker, dateKey, extended, apiInterval, effectiveDaysBack],
     queryFn: async () => {
-      const url = `${BASE}/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(dateKey)}&interval=${interval}${extended ? "&extended=1" : ""}${effectiveDaysBack > 0 ? `&daysBack=${effectiveDaysBack}` : ""}&levels=1`;
+      const url = `${BASE}/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(dateKey)}&interval=${apiInterval}${extended ? "&extended=1" : ""}${effectiveDaysBack > 0 ? `&daysBack=${effectiveDaysBack}` : ""}&levels=1`;
       const resp = await fetch(url);
       if (!resp.ok) {
         const body: { error?: string; reason?: string } = await resp.json().catch(() => ({}));
@@ -202,7 +225,11 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
 
   const data = candlesQuery.data;
   // Defensive: Yahoo may append the live bar of *today* to historical data — keep trade-day and earlier bars only.
-  const candles = useMemo(() => (data?.candles ?? []).filter((c) => etInfo(c.t).dayKey <= dateKey), [data, dateKey]);
+  const candles = useMemo(() => {
+    const day = (data?.candles ?? []).filter((c) => etInfo(c.t).dayKey <= dateKey);
+    const sec = GROUPED[interval];
+    return sec && data?.interval === "1m" ? groupCandles(day, sec) : day;
+  }, [data, dateKey, interval]);
   const isLoading = candlesQuery.isLoading;
   const isFetching = candlesQuery.isFetching;
   const error = candlesQuery.error;
@@ -423,7 +450,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
         counters[r.exec.kind]++;
         const n = totals[r.exec.kind] > 1 ? ` ${counters[r.exec.kind]}` : "";
         const q = r.exec.qty ? ` ×${Number(r.exec.qty)}` : "";
-        markers.push({ time: r.candle.t as UTCTimestamp, position: st.position, color: st.color, shape: st.shape, text: `${KIND_LABEL[r.exec.kind]}${n} ${fmtPrice(r.price)}${q}` });
+        markers.push({ time: r.candle.t as UTCTimestamp, position: st.position, color: st.color, shape: st.shape, text: `${execLabel(r.exec)}${n} ${fmtPrice(r.price)}${q}` });
         const list = byTime.get(r.candle.t) ?? [];
         list.push(r);
         byTime.set(r.candle.t, list);
@@ -535,7 +562,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
             <h3 className="text-sm font-semibold text-foreground">{ticker}</h3>
             <span className="text-xs tabular-nums text-muted-foreground">{dateKey}</span>
             <Pill tone={isShort ? "down" : "up"}>{isShort ? "Шорт" : "Лонг"}</Pill>
-            {data?.interval && data.interval !== interval && (
+            {data?.interval && data.interval !== apiInterval && (
               <Pill tone="warn">ТФ {INTERVAL_LABEL[data.interval] ?? data.interval}</Pill>
             )}
             {allExecutions.length > 0 && <Pill tone="accent">{allExecutions.length} исполн.</Pill>}
@@ -659,7 +686,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
                     <div key={row.exec.id} className={cn("px-3 py-2 text-xs", i > 0 && "border-t border-[var(--glass-border)]")}>
                       <div className="flex items-center gap-1.5">
                         <span className={cn("h-2 w-2 rounded-full", KIND_DOT[row.exec.kind])} aria-hidden="true" />
-                        <span className="font-semibold text-foreground">{KIND_LABEL[row.exec.kind]}</span>
+                        <span className="font-semibold text-foreground">{execLabel(row.exec)}</span>
                         <span className="tabular-nums text-foreground">${fmtPrice(row.price)}</span>
                         {row.exec.qty && <span className="tabular-nums text-muted-foreground">× {Number(row.exec.qty).toLocaleString("ru-RU")}</span>}
                       </div>
@@ -702,7 +729,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
             {allExecutions.length === 0 && (trade.entryNum != null || trade.exitNum != null) && (
               <span>Маркеры поставлены по совпадению цены — время исполнения не указано</span>
             )}
-            {exc && <span>MFE/MAE оценены по свечам {INTERVAL_LABEL[data?.interval ?? interval] ?? interval}{trade.timed ? " (бары входа/выхода — только известный путь: открытие → цена исполнения → закрытие)" : ""}</span>}
+            {exc && <span>MFE/MAE оценены по свечам {GROUPED[interval] && data?.interval === "1m" ? TIMEFRAMES.find((x) => x.key === interval)?.label : INTERVAL_LABEL[data?.interval ?? interval] ?? interval}{trade.timed ? " (бары входа/выхода — только известный путь: открытие → цена исполнения → закрытие)" : ""}</span>}
             {extended && <span>Фон: синий — премаркет, жёлтый — афтермаркет · VWAP только по основной сессии{needExtended && !prefs.extended ? " · пре/пост включены автоматически: исполнение вне основной сессии" : ""}</span>}
           </div>
         </div>

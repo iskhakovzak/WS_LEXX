@@ -14,12 +14,14 @@ import { ScreenshotFields } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { BASE } from "@/lib/api";
 import { RichText } from "./RichText";
+import { AudiencePicker } from "./AudiencePicker";
+import { sortTokens, useAudienceOptions } from "./audience";
 import { Pill } from "@/components/ds";
 import { TYPES, TYPE_LABELS, TEMPLATES, type Thread, type ThreadContext, splitNotes, joinNotes, userTags, hasTag, TAG_PINNED, TAG_RESOLVED } from "./lib";
 
-type FormState = { topic: string; type: string; ticker: string; notes: string; tags: string[]; screenshotUrls: string[] };
+type FormState = { topic: string; type: string; ticker: string; notes: string; tags: string[]; screenshotUrls: string[]; audience: string[] };
 
-const blank = (ticker = "", type = "general"): FormState => ({ topic: "", type, ticker, notes: "", tags: [], screenshotUrls: [""] });
+const blank = (ticker = "", type = "general"): FormState => ({ topic: "", type, ticker, notes: "", tags: [], screenshotUrls: [""], audience: [] });
 
 function contextLabel(c: ThreadContext | undefined): string | null {
   if (!c) return null;
@@ -49,6 +51,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
   const [form, setForm] = React.useState<FormState>(blank());
   const [preview, setPreview] = React.useState<"write" | "preview">("write");
   const [patching, setPatching] = React.useState(false);
+  const audienceQ = useAudienceOptions(open);
 
   React.useEffect(() => {
     if (!open) return;
@@ -62,6 +65,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
         notes: text,
         tags: userTags(editing.tags),
         screenshotUrls: images.length ? images : [""],
+        audience: sortTokens(editing.audience ?? []),
       });
     } else {
       setForm(blank(defaultTicker ?? "", defaultType && (TYPES as readonly string[]).includes(defaultType) ? defaultType : context?.tradeId ? "review_request" : "general"));
@@ -73,6 +77,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
     qc.invalidateQueries({ queryKey: ["discussions-tickers"] });
+    qc.invalidateQueries({ queryKey: ["shell", "discussions-unread"] });
   };
 
   const createMut = useCreateDiscussion({
@@ -93,7 +98,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
     if (!editing) {
       // Author is always the signed-in user (server ignores any claimed `trader`); context ids are extra fields.
       const ctx = context ? Object.fromEntries(Object.entries(context).filter(([, v]) => v != null && v !== "")) : {};
-      createMut.mutate({ data: { topic, type: form.type, ticker, notes, tags: form.tags.join(", ") || null, ...ctx } as Parameters<typeof createMut.mutate>[0]["data"] });
+      createMut.mutate({ data: { topic, type: form.type, ticker, notes, tags: form.tags.join(", ") || null, audience: form.audience, ...ctx } as Parameters<typeof createMut.mutate>[0]["data"] });
       return;
     }
     // Keep reserved flags (pinned/resolved) when editing user tags.
@@ -103,7 +108,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
       const r = await fetch(`${BASE}/api/discussions/${editing.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, type: form.type, ticker, notes, tags: [...form.tags, ...flags].join(", ") }),
+        body: JSON.stringify({ topic, type: form.type, ticker, notes, tags: [...form.tags, ...flags].join(", "), audience: form.audience }),
       });
       const body = await r.json().catch(() => null);
       if (!r.ok) throw new Error(body?.error ?? "Не удалось сохранить");
@@ -154,6 +159,13 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
               <datalist id="disc-known-tickers">{Array.from(knownTickers).map((t) => <option key={t} value={t} />)}</datalist>
             </div>
           </div>
+          <AudiencePicker
+            value={form.audience}
+            onChange={(v) => set("audience", v)}
+            options={audienceQ.data}
+            me={editing?.trader ?? author}
+            loading={audienceQ.isLoading}
+          />
           <div className="space-y-1.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Label htmlFor="disc-notes" className="text-xs text-muted-foreground">Описание</Label>

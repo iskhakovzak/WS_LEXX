@@ -61,6 +61,8 @@ export interface RoundTripExecution {
   /** Per-column share of this execution's fees (same keys as RoundTrip.fees). */
   feesByType?: FeeBreakdown;
   fillId: string | null;
+  /** Broker order id — fills of one order filled in pieces share it (lib/tradeStructure folds them into one leg). */
+  orderId?: string | null;
 }
 
 export type Horizon = "intraday" | "overnight" | "swing";

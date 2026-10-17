@@ -12,7 +12,7 @@
  */
 import { closeDate, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type TradeLike } from "@/lib/trade-math";
 import { addDays, nyDate } from "@/lib/trading-date";
-import { links } from "@/lib/links";
+import { dayHref } from "@/lib/period-links";
 
 export type EquityUnit = "net" | "gross" | "r";
 export type EquityAgg = "day" | "week";
@@ -251,9 +251,9 @@ export function soleTrader(trades: EquityTradeInput[]): string | null {
   return name;
 }
 
-/** «Разбор дня» deep link — kept as a thin alias of `links.dayReport` for existing callers. */
+/** «Разбор дня» deep link — alias of the shared `dayHref` (lib/period-links). */
 export function dayReportHref(date: string, trader?: string | null): string {
-  return links.dayReport(date, trader ?? undefined);
+  return dayHref(date, trader);
 }
 
 // ─── Formatting (Russian) ───

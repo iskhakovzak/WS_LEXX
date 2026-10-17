@@ -141,7 +141,7 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
     >
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <MessageSquareQuote className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="text-sm font-semibold">Ответ куратора</span>
+        <span className="text-sm font-semibold">Разбор сводки</span>
         {fresh && <Pill tone="accent" dot>Новое</Pill>}
         <ScoreStars score={note.curator_score} className="ml-auto" />
       </div>
@@ -151,7 +151,7 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
         <p className="text-sm text-muted-foreground">Куратор поставил оценку без комментария.</p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        {note.reviewed_by ?? "Куратор"} · {relTime(note.reviewed_at)}
+        {note.reviewed_by ?? "Наставник"} · {relTime(note.reviewed_at)}
       </p>
     </div>
   );

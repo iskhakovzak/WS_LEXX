@@ -24,8 +24,26 @@ export type JuniorNote = {
   updated_at: string;
 };
 
+export type ScoreTrend = {
+  scores: { date: string; score: number }[];
+  avg: number | null;
+  recent: number | null;
+  delta: number | null;
+  direction: "up" | "down" | "flat" | null;
+};
+
+export type RepeatedMistake = { key: string; label: string; count: number; last: string };
+
+export type AttentionFlag = {
+  kind: "unanswered" | "missed" | "low_score" | "falling" | "repeat";
+  label: string;
+  tone: "down" | "warn" | "accent";
+};
+
 export type OverviewRow = {
   trader: string;
+  /** The reviewer's own junior (assigned curator / mentor). */
+  mine?: boolean;
   note: {
     id: number;
     mood: string | null;
@@ -42,6 +60,68 @@ export type OverviewRow = {
   unreviewed_14d: number;
   avg_score: number | null;
   reminder: { id: number; curator: string; created_at: string } | null;
+  missed_run?: number;
+  trend?: ScoreTrend;
+  repeated?: RepeatedMistake[];
+  attention?: AttentionFlag[];
+  priority?: number;
+};
+
+/** GET /junior-notes/reviewer — who the caller may review. */
+export type ReviewerInfo = {
+  kind: "desk" | "scoped" | "none";
+  via: "desk" | "assigned" | "mentor" | null;
+  /** Scoped reviewers: the only juniors they review. */
+  traders: string[] | null;
+  /** «Мои джуны»: assigned curator / mentor of these. */
+  mine: string[];
+  /** Sees juniors' $ (staff). Mentors who are traders see R only. */
+  money: boolean;
+};
+
+export function canReviewTrader(r: ReviewerInfo | null | undefined, trader: string, me: string): boolean {
+  if (!r || r.kind === "none" || !trader || trader === me) return false;
+  return r.kind === "desk" || (r.traders ?? []).includes(trader);
+}
+
+export type ContextTrade = {
+  id: number;
+  ticker: string;
+  side: string | null;
+  setup: string | null;
+  horizon: string;
+  result: string | null;
+  date: string;
+  exit_date: string | null;
+  r: number | null;
+  pnl_net: number | null;
+};
+
+/** GET /junior-notes/:id/context — what the reviewer sees next to the note. */
+export type ReviewContext = {
+  note_id: number;
+  trader: string;
+  date: string;
+  trades: {
+    opened: ContextTrade[];
+    carried: ContextTrade[];
+    totals: { count: number; wins: number; losses: number; r: number | null; pnl_net: number | null };
+    money_visible: boolean;
+  };
+  prev: {
+    id: number;
+    note_date: string;
+    focus: string | null;
+    mistakes: string | null;
+    lessons: string | null;
+    curator_feedback: string | null;
+    curator_score: number | null;
+    reviewed_by: string | null;
+  } | null;
+  recent_feedback: { note_date: string; score: number | null; feedback: string | null; reviewed_by: string | null }[];
+  trend: ScoreTrend;
+  repeated: RepeatedMistake[];
+  streak: number;
 };
 
 export type Reminder = { id: number; trader: string; note_date: string; curator: string; message: string | null; created_at: string };
@@ -346,10 +426,145 @@ export const qk = {
   day: (trader: string, date: string) => ["junior-notes", "day", trader, date] as const,
   history: (trader: string) => ["junior-notes", "history", trader] as const,
   team: (date: string) => ["junior-notes", "team", date] as const,
-  overview: (date: string) => ["junior-notes", "overview", date] as const,
+  overview: (date: string, scope: ReviewScopeFilter = "all") => ["junior-notes", "overview", date, scope] as const,
   reminders: ["junior-notes", "reminders", "me"] as const,
+  /** Prefix — touch every scope with setQueriesData / invalidateQueries. */
   queue: ["junior-notes", "queue"] as const,
+  queueOf: (scope: ReviewScopeFilter) => ["junior-notes", "queue", scope] as const,
+  reviewer: ["junior-notes", "reviewer"] as const,
+  context: (id: number) => ["junior-notes", "context", id] as const,
 };
+
+export type ReviewScopeFilter = "all" | "mine";
+
+/* ───────────────────────── Review flow (senior) ───────────────────────── */
+
+/** Built-in quick replies — short, concrete, in the desk's voice. */
+export const BUILTIN_SNIPPETS: readonly string[] = [
+  "Хороший разбор — так держать.",
+  "Опиши конкретнее: вход, стоп, выход и почему именно там.",
+  "Где был стоп? Укажи уровень и риск в R до входа.",
+  "Ошибку видишь — теперь сформулируй правило, которое её предотвратит.",
+  "Фокус на завтра слишком общий — одно измеримое правило.",
+  "Сверь сделки с планом: какие были вне плана и почему?",
+  "Вчерашний фокус не выполнен — разберём на 1:1.",
+];
+
+const SNIPPETS_KEY = "ws_lexx_junior_snippets";
+const MAX_SNIPPETS = 10;
+
+export function loadMySnippets(): string[] {
+  try {
+    const raw = JSON.parse(localStorage.getItem(SNIPPETS_KEY) ?? "[]") as unknown;
+    return Array.isArray(raw) ? raw.filter((x): x is string => typeof x === "string" && !!x.trim()).slice(0, MAX_SNIPPETS) : [];
+  } catch {
+    return [];
+  }
+}
+
+export function saveMySnippets(list: string[]): boolean {
+  try {
+    localStorage.setItem(SNIPPETS_KEY, JSON.stringify(list.slice(0, MAX_SNIPPETS)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Adds a personal snippet on top (deduplicated, trimmed, capped). */
+export function addSnippet(list: readonly string[], text: string): string[] {
+  const t = text.trim().slice(0, 300);
+  if (!t) return [...list];
+  return [t, ...list.filter((x) => x !== t)].slice(0, MAX_SNIPPETS);
+}
+
+/** Appends a quick reply on its own line; a snippet already in the text is not added twice. */
+export function appendSnippet(text: string, snippet: string): string {
+  const s = snippet.trim();
+  if (!s || text.includes(s)) return text;
+  if (!text.trim()) return s;
+  return /\n\s*$/.test(text) ? `${text}${s}` : `${text.replace(/\s+$/, "")}\n${s}`;
+}
+
+/* Feedback drafts survive closing the sheet / switching notes (per note, this browser only). */
+const DRAFT_PREFIX = "ws_lexx_junior_draft:";
+export type ReviewDraft = { feedback: string; score: number | null };
+
+export function loadDraft(id: number): ReviewDraft | null {
+  try {
+    const raw = localStorage.getItem(DRAFT_PREFIX + id);
+    if (!raw) return null;
+    const d = JSON.parse(raw) as Partial<ReviewDraft>;
+    return { feedback: typeof d.feedback === "string" ? d.feedback : "", score: typeof d.score === "number" ? d.score : null };
+  } catch {
+    return null;
+  }
+}
+
+export function saveDraft(id: number, d: ReviewDraft): void {
+  try { localStorage.setItem(DRAFT_PREFIX + id, JSON.stringify(d)); } catch { /* ignore */ }
+}
+
+export function clearDraft(id: number): void {
+  try { localStorage.removeItem(DRAFT_PREFIX + id); } catch { /* ignore */ }
+}
+
+export function hasDraft(id: number): boolean {
+  try { return localStorage.getItem(DRAFT_PREFIX + id) != null; } catch { return false; }
+}
+
+/** A draft is worth keeping only when it differs from what is already saved on the note. */
+export function draftDiffers(d: ReviewDraft, saved: { curator_feedback?: string | null; curator_score?: number | null }): boolean {
+  return d.feedback.trim() !== (saved.curator_feedback ?? "").trim() || (d.score ?? null) !== (saved.curator_score ?? null);
+}
+
+export type ReviewKeyAction =
+  | { type: "next" } | { type: "prev" } | { type: "send" } | { type: "focus" } | { type: "score"; value: number | null };
+
+/**
+ * Keyboard map of the review sheet. Outside text fields: J/→ next, K/← prev, 1–5 score, 0 clear, R focus the answer.
+ * Anywhere: Ctrl/⌘+Enter send, Alt+1–5 score. Russian-layout letters (О, Л, К) work too.
+ */
+export function reviewKeyAction(
+  e: { key: string; code?: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean; shiftKey?: boolean },
+  inField: boolean,
+): ReviewKeyAction | null {
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") return { type: "send" };
+  const digit = /^Digit([0-5])$/.exec(e.code ?? "")?.[1] ?? (/^[0-5]$/.test(e.key) ? e.key : null);
+  if (e.altKey && !e.ctrlKey && !e.metaKey && digit != null) return { type: "score", value: digit === "0" ? null : Number(digit) };
+  if (inField || e.ctrlKey || e.metaKey || e.altKey) return null;
+  if (digit != null && !e.shiftKey) return { type: "score", value: digit === "0" ? null : Number(digit) };
+  const k = e.key.toLowerCase();
+  if (k === "j" || k === "о" || e.key === "ArrowRight") return { type: "next" };
+  if (k === "k" || k === "л" || e.key === "ArrowLeft") return { type: "prev" };
+  if (k === "r" || k === "к") return { type: "focus" };
+  return null;
+}
+
+/**
+ * Where «send and next» goes: the next item after `currentId` that still needs an answer (wrapping around),
+ * or null when everything else in the list is answered.
+ */
+export function nextUnanswered<T extends { id: number; reviewed_at?: string | null }>(list: readonly T[], currentId: number): T | null {
+  const i = Math.max(0, list.findIndex((n) => n.id === currentId));
+  for (let k = 1; k <= list.length; k++) {
+    const n = list[(i + k) % list.length]!;
+    if (n.id !== currentId && !n.reviewed_at) return n;
+  }
+  return null;
+}
+
+/** Roster order for the senior: attention priority first, then name. */
+export function byAttention<T extends { trader: string; priority?: number }>(rows: readonly T[]): T[] {
+  return [...rows].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.trader.localeCompare(b.trader, "ru"));
+}
+
+/** Whole calendar days between a note date and today (for «ждёт 3 дн.»). */
+export function daysSince(iso: string, today = localToday()): number {
+  const a = Date.parse(iso + "T12:00:00");
+  const b = Date.parse(today + "T12:00:00");
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, Math.round((b - a) / 86_400_000)) : 0;
+}
 
 /* ───────────────────────── Chart styling ───────────────────────── */
 

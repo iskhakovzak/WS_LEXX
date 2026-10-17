@@ -644,6 +644,8 @@ export async function runMigrations() {
     { table: "research", column: "deleted_at", type: "TIMESTAMPTZ" },
     { table: "daily_feed", column: "deleted_at", type: "TIMESTAMPTZ" },
     { table: "discussions", column: "deleted_at", type: "TIMESTAMPTZ" },
+    // «Кому видна тема»: NULL = everyone (lib/discussionAudience).
+    { table: "discussions", column: "audience", type: "TEXT[]" },
     { table: "trades", column: "playbook_id", type: "INTEGER" },
     { table: "playbook", column: "parent_id", type: "INTEGER" },
     { table: "users", column: "theme", type: "TEXT DEFAULT 'dark'" },

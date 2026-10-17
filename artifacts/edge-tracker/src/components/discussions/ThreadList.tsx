@@ -1,12 +1,12 @@
 import * as React from "react";
 import { motion, useReducedMotion } from "framer-motion";
-import { ArrowBigUp, CheckCircle2, MessageSquare, Pin, AtSign } from "lucide-react";
+import { ArrowBigUp, CheckCircle2, MessageSquare, Pin, AtSign, Lock, Flame } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { Highlight, plainPreview } from "./RichText";
 import {
   type Thread, type VoteMap, TYPE_LABELS, TYPE_TONE, lastActivity, lastActivityBy, participants,
-  isPinned, isResolved, relTime, absTime, initials, avatarTone, parseComment, splitNotes,
+  isPinned, isResolved, relTime, absTime, initials, avatarTone, parseComment, splitNotes, isLiveNow,
 } from "./lib";
 
 export function Avatar({ name, size = "sm", className }: { name?: string | null; size?: "xs" | "sm" | "md"; className?: string }) {
@@ -27,11 +27,15 @@ function previewOf(t: Thread): { who: string | null; text: string } {
   return { who: null, text: plainPreview(splitNotes(t.notes).text, 120) };
 }
 
-export function ThreadListItem({ t, selected, unread, mentionsMe, votes, q, onSelect, index }: {
+export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false, audienceLabel, votes, q, onSelect, index }: {
   t: Thread;
   selected: boolean;
   unread: boolean;
   mentionsMe: boolean;
+  /** New topic the viewer has not opened yet («Новая»). */
+  fresh?: boolean;
+  /** Restricted thread: who can read it («Джунам, Кураторам»); omitted for public threads. */
+  audienceLabel?: string | null;
   votes: VoteMap;
   q: string;
   onSelect: (id: number) => void;
@@ -43,6 +47,7 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, votes, q, onSe
   const people = participants(t);
   const pv = previewOf(t);
   const resolved = isResolved(t);
+  const live = isLiveNow(t);
   return (
     <motion.li
       initial={reduce ? false : { opacity: 0, y: 4 }}
@@ -63,10 +68,19 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, votes, q, onSe
         {unread && <span className="absolute left-1 top-1/2 h-2 w-2 -translate-y-1/2 rounded-full bg-primary" aria-label="Есть новое" />}
         <div className="flex min-w-0 items-center gap-1.5 pl-2">
           {isPinned(t) && <Pin className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Закреплено" />}
+          {fresh && <Pill tone="accent" className="py-0 text-2xs font-semibold">Новая</Pill>}
           {t.type && <Pill tone={TYPE_TONE[t.type] ?? "neutral"} className="py-0 text-2xs">{TYPE_LABELS[t.type] ?? t.type}</Pill>}
           {t.ticker && <span className="rounded-full bg-primary/15 px-1.5 text-2xs font-semibold tabular-nums leading-5 text-primary">${t.ticker}</span>}
           {resolved && <span className="inline-flex items-center gap-0.5 text-2xs text-up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Решено</span>}
           {mentionsMe && <AtSign className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Вас упомянули" />}
+          {live && <Flame className="h-3.5 w-3.5 shrink-0 text-warn" aria-label="Активно сейчас" />}
+          {audienceLabel && (
+            <span className="inline-flex min-w-0 items-center gap-0.5 text-2xs text-muted-foreground" title={`Видна только: ${audienceLabel}`}>
+              <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
+              <span className="sr-only">Видна только: </span>
+              <span className="truncate">{audienceLabel}</span>
+            </span>
+          )}
           <span className="ml-auto shrink-0 text-2xs text-muted-foreground tabular-nums" title={absTime(lastActivity(t))}>{relTime(lastActivity(t))}</span>
         </div>
         <div className={cn("mt-1 line-clamp-2 pl-2 text-sm", unread ? "font-semibold text-foreground" : "font-medium text-foreground")}>

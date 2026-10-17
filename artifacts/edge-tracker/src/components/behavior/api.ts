@@ -6,7 +6,7 @@ import * as React from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiUrl } from "@/lib/api";
 import { invalidateTradeDependents } from "@/lib/query-keys";
-import { links } from "@/lib/links";
+import { dayHref } from "@/lib/period-links";
 
 /* ─── Типы: поведение ─────────────────────────────────────────────────────── */
 
@@ -543,9 +543,9 @@ export function useCreateDeskRule() {
 
 /* ─── Ссылки ──────────────────────────────────────────────────────────────── */
 
-/** Разбор дня — через общий links.dayReport. */
+/** Разбор дня — через общий dayHref (lib/period-links). */
 export function dayReportHref(date: string, trader?: string | null): string {
-  return links.dayReport(date, trader ?? undefined);
+  return dayHref(date, trader);
 }
 
 /* ─── Форматирование ──────────────────────────────────────────────────────── */

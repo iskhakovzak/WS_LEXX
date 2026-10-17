@@ -11,6 +11,10 @@ import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { preview as textPreview, uniqueRecipients } from "../lib/notifyEventsCore";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import {
+  AUDIENCE_LABELS, AUDIENCE_STAGES, STAFF_TOKEN, audienceLabel, audienceOf, audienceRecipients, audienceSql, cohortOf, cohortToken,
+  filterVisibleNames, isPublicAudience, loadAudienceViewer, loadProfiles, parseAudience, viewerTokens, type AudienceViewer,
+} from "../lib/discussionAudience";
+import {
   CreateDiscussionBody,
   GetDiscussionParams,
   DeleteDiscussionParams,
@@ -37,6 +41,12 @@ import {
  *   PATCH/DELETE /discussions/:id/comments/:commentId   own comments (staff moderation)
  *   GET    /discussions/votes/all         viewer = authUser (query ignored)
  *   POST   /discussions/:id/vote
+ *   GET    /discussions/audience          options for «Кому видна тема»: groups (stages, curators, cohorts) with members
+ *
+ * Audience (lib/discussionAudience): `audience` TEXT[] on the thread, NULL = everyone. Every path above — list, search,
+ * counts, tickers, votes, single thread, comments, votes, read marks — filters through audienceSql / the same loader, so
+ * a thread outside the viewer's audience answers 404 exactly like a missing one. Notifications (new thread, mentions,
+ * replies, accepted answer) only reach people who may read the thread.
  */
 const router: IRouter = Router();
 
@@ -51,6 +61,7 @@ function ensureTables(): Promise<void> {
          ALTER TABLE discussions ADD COLUMN IF NOT EXISTS event_id INTEGER;
          ALTER TABLE discussions ADD COLUMN IF NOT EXISTS journal_date TEXT;
          ALTER TABLE discussions ADD COLUMN IF NOT EXISTS accepted_comment_id INTEGER;
+         ALTER TABLE discussions ADD COLUMN IF NOT EXISTS audience TEXT[];
          CREATE INDEX IF NOT EXISTS discussions_ticker_upper_idx ON discussions (UPPER(ticker));
          CREATE INDEX IF NOT EXISTS discussions_trade_id_idx ON discussions (trade_id);
          CREATE INDEX IF NOT EXISTS comments_discussion_id_idx ON comments (discussion_id);
@@ -125,11 +136,11 @@ function parseId(req: Request, res: Response): number | null {
 type ThreadRow = {
   id: number; topic: string; type: string | null; trader: string | null; ticker: string | null; notes: string | null; tags: string | null;
   created_at: Date; deleted_at: Date | null; trade_id: number | null; idea_id: number | null; playbook_id: number | null;
-  event_id: number | null; journal_date: string | null; accepted_comment_id: number | null; read_at?: Date | null;
+  event_id: number | null; journal_date: string | null; accepted_comment_id: number | null; audience: string[] | null; read_at?: Date | null;
 };
 type CommentRow = { id: number; discussion_id: number; trader: string | null; text: string; created_at: Date };
 
-const T_COLS = `d.id, d.topic, d.type, d.trader, d.ticker, d.notes, d.tags, d.created_at, d.deleted_at, d.trade_id, d.idea_id, d.playbook_id, d.event_id, d.journal_date, d.accepted_comment_id`;
+const T_COLS = `d.id, d.topic, d.type, d.trader, d.ticker, d.notes, d.tags, d.created_at, d.deleted_at, d.trade_id, d.idea_id, d.playbook_id, d.event_id, d.journal_date, d.accepted_comment_id, d.audience`;
 
 async function commentsFor(ids: number[]): Promise<Map<number, CommentRow[]>> {
   const map = new Map<number, CommentRow[]>();
@@ -181,22 +192,31 @@ function serializeThread(d: ThreadRow, comments: CommentRow[], viewer: string | 
     resolved: tags.includes(TAG_RESOLVED) || d.accepted_comment_id != null,
     tradeId: d.trade_id, ideaId: d.idea_id, playbookId: d.playbook_id, eventId: d.event_id, journalDate: d.journal_date,
     acceptedCommentId: d.accepted_comment_id,
+    /** [] = everyone; otherwise stage / "staff" / "cohort:<id>" tokens. */
+    audience: audienceOf(d.audience),
     readAt, unread, mentionsMe,
   };
 }
 
-async function loadThread(id: number, viewer: string | null, includeDeleted = false): Promise<ThreadRow | null> {
+/**
+ * One thread; `av` restricts it to the viewer's audience (null when outside → callers answer 404).
+ * Every request path passes `av`; only background jobs that already checked access may omit it.
+ */
+async function loadThread(id: number, viewer: string | null, av: AudienceViewer | null, includeDeleted = false): Promise<ThreadRow | null> {
+  const params: unknown[] = [id, viewer];
+  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  const vis = av ? `AND ${audienceSql(av, p)}` : "";
   const { rows } = await pool.query<ThreadRow>(
     `SELECT ${T_COLS}, r.read_at FROM discussions d
        LEFT JOIN discussion_reads r ON r.thread_id = d.id AND r.user_name = $2
-      WHERE d.id = $1 ${includeDeleted ? "" : "AND d.deleted_at IS NULL"} LIMIT 1`,
-    [id, viewer],
+      WHERE d.id = $1 ${includeDeleted ? "" : "AND d.deleted_at IS NULL"} ${vis} LIMIT 1`,
+    params,
   );
   return rows[0] ?? null;
 }
 
-async function fullThread(id: number, viewer: string | null) {
-  const row = await loadThread(id, viewer);
+async function fullThread(id: number, viewer: string | null, av: AudienceViewer) {
+  const row = await loadThread(id, viewer, av);
   if (!row) return null;
   const cm = await commentsFor([id]);
   return serializeThread(row, cm.get(id) ?? [], viewer);
@@ -228,6 +248,8 @@ const ListQuery = z.object({
   ideaId: z.coerce.number().int().positive().optional(),
   journalDate: z.string().regex(ISO_DATE).optional(),
   sort: z.enum(["activity", "created", "votes"]).optional(),
+  /** "me" = restricted threads addressed to the viewer; "public" = for everyone; otherwise one audience token. */
+  audience: z.string().trim().max(40).optional(),
 });
 
 router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
@@ -237,10 +259,21 @@ router.get("/discussions", asyncHandler(async (req, res): Promise<void> => {
   const q = ListQuery.safeParse(Object.fromEntries(Object.entries(req.query).filter(([, v]) => v !== "" && v !== undefined)));
   if (!q.success) { res.status(400).json({ error: q.error.message }); return; }
   const f = q.data;
+  const av = await loadAudienceViewer(req);
   const limit = f.limit ?? 200, cursor = f.cursor ?? 0;
   const where: string[] = ["d.deleted_at IS NULL"];
   const params: unknown[] = [viewer];
   const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  where.push(audienceSql(av, p));
+  if (f.audience === "public") where.push(`(d.audience IS NULL OR cardinality(d.audience) = 0)`);
+  else if (f.audience === "me") {
+    const mine = viewerTokens(av);
+    where.push(mine.length ? `(cardinality(d.audience) > 0 AND d.audience && ${p(mine)}::text[])` : "FALSE");
+  } else if (f.audience) {
+    const parsedAud = parseAudience(f.audience);
+    if (!parsedAud.ok || parsedAud.audience.length !== 1) { res.status(400).json({ error: "Некорректный фильтр аудитории" }); return; }
+    where.push(`${p(parsedAud.audience[0])} = ANY(d.audience)`);
+  }
   if (f.ticker) where.push(`UPPER(d.ticker) = ${p(f.ticker.toUpperCase())}`);
   if (f.type) where.push(`LOWER(COALESCE(d.type, '')) = ${p(f.type.toLowerCase())}`);
   if (f.tradeId) where.push(`d.trade_id = ${p(f.tradeId)}`);
@@ -313,6 +346,55 @@ async function notifyReviewRequest(author: string, threadId: number, topic: stri
   }
 }
 
+/**
+ * Cohort tokens must name live cohorts; a member who is not staff may address only cohorts they study in.
+ * `keep` = cohorts already on the thread (an edit may leave them as they are). Returns an error text or null.
+ */
+async function checkCohorts(audience: string[], av: AudienceViewer, keep: readonly string[] = []): Promise<string | null> {
+  const ids = audience.filter((t) => !keep.includes(t)).map(cohortOf).filter((x): x is number => x != null);
+  if (!ids.length) return null;
+  let live: number[] = [];
+  try {
+    const { rows } = await pool.query<{ id: number }>(`SELECT id FROM academy_cohorts WHERE id = ANY($1::int[]) AND archived_at IS NULL`, [ids]);
+    live = rows.map((r) => Number(r.id));
+  } catch { /* academy tables not created yet */ }
+  if (ids.some((id) => !live.includes(id))) return "Когорта не найдена";
+  if (!av.moderator && !av.staff && ids.some((id) => !av.cohorts.includes(id))) return "Можно выбрать только свою когорту";
+  return null;
+}
+
+async function cohortNames(): Promise<Map<number, string>> {
+  try {
+    const { rows } = await pool.query<{ id: number; name: string }>(`SELECT id, name FROM academy_cohorts WHERE archived_at IS NULL ORDER BY id`);
+    return new Map(rows.map((r) => [Number(r.id), String(r.name)]));
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * New thread → in-app «Новая тема» to its audience (everyone for a public thread), never the author and never
+ * people already notified (mentions). Review requests go to the curator only — no desk broadcast.
+ */
+async function notifyNewThread(o: { author: string; id: number; topic: string; ticker: string | null; type: string | null; audience: string[]; skip: Set<string> }): Promise<void> {
+  if (o.type === "review_request") return;
+  try {
+    const targets = (await audienceRecipients(o.audience)).filter((n) => n !== o.author && !o.skip.has(n));
+    if (!targets.length) return;
+    const label = isPublicAudience(o.audience) ? null : audienceLabel(o.audience, await cohortNames());
+    for (const name of targets) {
+      await notifyUser({
+        userName: name, type: "thread_new", actor: o.author,
+        title: `${o.author}: новая тема${o.ticker ? ` ${o.ticker}` : ""}${label ? ` · ${label}` : ""}`.slice(0, 200),
+        message: `«${textPreview(o.topic, 140)}»`,
+        link: threadLink(o.id), entityType: "thread", entityId: o.id,
+      });
+    }
+  } catch (e) {
+    logger.warn({ err: e }, "discussions: new thread notification failed");
+  }
+}
+
 router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
@@ -330,6 +412,13 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
   const type = parsed.data.type?.trim().slice(0, 40) || null;
   let ticker = parsed.data.ticker?.trim().toUpperCase() || null;
   const ctx = extra.data;
+  // Audience: absent / "all" → everyone (the historic behaviour).
+  const aud = parseAudience((req.body as { audience?: unknown } | undefined)?.audience);
+  if (!aud.ok) { res.status(400).json({ error: aud.error }); return; }
+  const av = await loadAudienceViewer(req);
+  const cohortErr = await checkCohorts(aud.audience, av);
+  if (cohortErr) { res.status(400).json({ error: cohortErr }); return; }
+  const audience = aud.audience;
   // Linked trade: must be readable by the author; its ticker fills the thread ticker when absent.
   if (ctx.tradeId) {
     const access = await canAccessTrade(req, ctx.tradeId);
@@ -341,20 +430,25 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
     }
   }
   const { rows } = await pool.query<{ id: number }>(
-    `INSERT INTO discussions (topic, type, trader, ticker, notes, tags, trade_id, idea_id, playbook_id, event_id, journal_date)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
-    [topic, type, author, ticker, parsed.data.notes ?? null, parsed.data.tags ?? null, ctx.tradeId ?? null, ctx.ideaId ?? null, ctx.playbookId ?? null, ctx.eventId ?? null, ctx.journalDate ?? null],
+    `INSERT INTO discussions (topic, type, trader, ticker, notes, tags, trade_id, idea_id, playbook_id, event_id, journal_date, audience)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING id`,
+    [topic, type, author, ticker, parsed.data.notes ?? null, parsed.data.tags ?? null, ctx.tradeId ?? null, ctx.ideaId ?? null, ctx.playbookId ?? null, ctx.eventId ?? null, ctx.journalDate ?? null, audience.length ? audience : null],
   );
   const id = rows[0].id;
   await markRead(author, id);
   logActivity({ action: "created", section: "discussions", entityId: String(id), entityTitle: topic, trader: author, details: ctx.tradeId ? `trade #${ctx.tradeId}` : undefined });
-  // In-app only (telegram: false) — mentions in the opening post.
+  // In-app only (telegram: false) — mentions in the opening post, then «Новая тема» to the audience.
   // Off the critical path: the thread is already saved, notifications must not delay or fail the response.
+  const row = { trader: author, audience };
   inBackground("discussions.create", async () => {
-    await notifyMentions({ text: `${topic}\n${parsed.data.notes ?? ""}`, authorName: author, context: `в обсуждении${ticker ? ` ${ticker}` : ""}`, link: threadLink(id), telegram: false });
+    const mentioned = await notifyMentions({
+      text: `${topic}\n${parsed.data.notes ?? ""}`, authorName: author, context: `в обсуждении${ticker ? ` ${ticker}` : ""}`, link: threadLink(id), telegram: false,
+      filter: (names) => filterVisibleNames(names, row),
+    });
     if (type === "review_request") await notifyReviewRequest(author, id, topic, ticker);
+    await notifyNewThread({ author, id, topic, ticker, type, audience, skip: new Set(mentioned) });
   });
-  const full = await fullThread(id, author);
+  const full = await fullThread(id, author, av);
   res.status(201).json(full);
 }));
 
@@ -363,41 +457,96 @@ router.post("/discussions", asyncHandler(async (req, res): Promise<void> => {
 router.get("/discussions/tickers", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  const av = await loadAudienceViewer(req);
+  const params: unknown[] = [];
+  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   const { rows } = await pool.query(
-    `SELECT UPPER(ticker) AS ticker, COUNT(*)::int AS count FROM discussions
-     WHERE deleted_at IS NULL AND ticker IS NOT NULL AND ticker <> ''
+    `SELECT UPPER(d.ticker) AS ticker, COUNT(*)::int AS count FROM discussions d
+     WHERE d.deleted_at IS NULL AND d.ticker IS NOT NULL AND d.ticker <> '' AND ${audienceSql(av, p)}
      GROUP BY 1 ORDER BY count DESC, ticker ASC`,
+    params,
   );
   res.json(rows);
 }));
 
+/**
+ * unread   threads with activity the viewer has not read; mentions — of those, ones that @mention them;
+ * fresh    threads by others, created in the last 7 days, never opened; attention = fresh ∪ unread mentions
+ *          (the nav badge). All within the viewer's audience.
+ */
 router.get("/discussions/unread-count", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
   const viewer = req.authUser.name;
-  const { rows } = await pool.query<{ unread: string; mentions: string }>(
-    `SELECT COUNT(*) FILTER (WHERE r.read_at IS NULL OR r.read_at < la.last_at)::text AS unread,
-            COUNT(*) FILTER (WHERE (r.read_at IS NULL OR r.read_at < la.last_at) AND (d.notes ILIKE $2 OR EXISTS (SELECT 1 FROM comments c WHERE c.discussion_id = d.id AND c.trader IS DISTINCT FROM $1 AND c.text ILIKE $2)))::text AS mentions
-       FROM discussions d
-       LEFT JOIN discussion_reads r ON r.thread_id = d.id AND r.user_name = $1
-       LEFT JOIN LATERAL (SELECT GREATEST(d.created_at, MAX(c.created_at)) AS last_at FROM comments c WHERE c.discussion_id = d.id) la ON TRUE
-      WHERE d.deleted_at IS NULL`,
-    [viewer, `%@${viewer}%`],
+  const av = await loadAudienceViewer(req);
+  const params: unknown[] = [viewer, `%@${viewer}%`];
+  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
+  const vis = audienceSql(av, p);
+  const { rows } = await pool.query<{ unread: string; mentions: string; fresh: string; attention: string }>(
+    `WITH x AS (
+       SELECT (r.read_at IS NULL OR r.read_at < la.last_at) AS is_unread,
+              (d.notes ILIKE $2 OR EXISTS (SELECT 1 FROM comments c WHERE c.discussion_id = d.id AND c.trader IS DISTINCT FROM $1 AND c.text ILIKE $2)) AS is_mention,
+              (r.read_at IS NULL AND d.trader IS DISTINCT FROM $1 AND d.created_at > NOW() - INTERVAL '7 days') AS is_fresh
+         FROM discussions d
+         LEFT JOIN discussion_reads r ON r.thread_id = d.id AND r.user_name = $1
+         LEFT JOIN LATERAL (SELECT GREATEST(d.created_at, MAX(c.created_at)) AS last_at FROM comments c WHERE c.discussion_id = d.id) la ON TRUE
+        WHERE d.deleted_at IS NULL AND ${vis}
+     )
+     SELECT COUNT(*) FILTER (WHERE is_unread)::text AS unread,
+            COUNT(*) FILTER (WHERE is_unread AND is_mention)::text AS mentions,
+            COUNT(*) FILTER (WHERE is_fresh)::text AS fresh,
+            COUNT(*) FILTER (WHERE is_fresh OR (is_unread AND is_mention))::text AS attention
+       FROM x`,
+    params,
   );
-  res.json({ unread: Number(rows[0]?.unread ?? 0), mentions: Number(rows[0]?.mentions ?? 0) });
+  const r = rows[0];
+  res.json({ unread: Number(r?.unread ?? 0), mentions: Number(r?.mentions ?? 0), fresh: Number(r?.fresh ?? 0), attention: Number(r?.attention ?? 0) });
 }));
 
 router.post("/discussions/read-all", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const viewer = req.authUser!.name;
+  const av = await loadAudienceViewer(req);
+  const params: unknown[] = [viewer];
+  const p = (v: unknown) => { params.push(v); return `$${params.length}`; };
   const { rowCount } = await pool.query(
     `INSERT INTO discussion_reads (user_name, thread_id, read_at)
-     SELECT $1, d.id, NOW() FROM discussions d WHERE d.deleted_at IS NULL
+     SELECT $1, d.id, NOW() FROM discussions d WHERE d.deleted_at IS NULL AND ${audienceSql(av, p)}
      ON CONFLICT (user_name, thread_id) DO UPDATE SET read_at = NOW()`,
-    [viewer],
+    params,
   );
   res.json({ success: true, marked: rowCount ?? 0 });
+}));
+
+/**
+ * «Кому видна тема» — groups the author may address, with their members (active, not banned), so the dialog can
+ * say «увидят N человек» for any combination without another request. Cohorts: all live ones for staff, own otherwise.
+ * `moderators` always see every thread (moderation); `viewer` drives the list tabs («Для меня»).
+ */
+router.get("/discussions/audience", asyncHandler(async (req, res): Promise<void> => {
+  await ensureTables();
+  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  const av = await loadAudienceViewer(req);
+  const [people, names] = await Promise.all([loadProfiles(null), cohortNames()]);
+  const sortRu = (a: string, b: string) => a.localeCompare(b, "ru");
+  const members = (pred: (p: (typeof people)[number]) => boolean) => people.filter(pred).map((p) => p.name).sort(sortRu);
+  const groups: { token: string; label: string; kind: "stage" | "staff" | "cohort"; members: string[] }[] = [
+    ...AUDIENCE_STAGES.map((s) => ({ token: s as string, label: AUDIENCE_LABELS[s], kind: "stage" as const, members: members((p) => p.stage === s) })),
+    { token: STAFF_TOKEN, label: AUDIENCE_LABELS[STAFF_TOKEN], kind: "staff", members: members((p) => p.staff) },
+  ];
+  for (const [id, name] of names) {
+    if (!av.moderator && !av.staff && !av.cohorts.includes(id)) continue;
+    groups.push({ token: cohortToken(id), label: name, kind: "cohort", members: members((p) => p.cohorts.includes(id)) });
+  }
+  res.json({
+    everyone: people.map((p) => p.name).sort(sortRu),
+    moderators: members((p) => p.moderator),
+    groups,
+    /** Labels for every live cohort (a thread may name one the viewer cannot address). */
+    cohortLabels: Object.fromEntries(names),
+    viewer: { name: av.name, stage: av.stage, staff: av.staff, moderator: av.moderator, cohorts: av.cohorts, tokens: viewerTokens(av) },
+  });
 }));
 
 /** Questions / review requests nobody answered (for the curator digest and the "needs answer" filter). */
@@ -406,6 +555,9 @@ router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<voi
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
   const hoursRaw = Number(req.query.hours);
   const hours = Number.isFinite(hoursRaw) && hoursRaw >= 0 ? Math.min(24 * 30, hoursRaw) : 2;
+  const av = await loadAudienceViewer(req);
+  const params: unknown[] = [hours];
+  const vis = audienceSql(av, (v) => { params.push(v); return `$${params.length}`; });
   const { rows } = await pool.query<ThreadRow & { age_hours: string }>(
     `SELECT ${T_COLS}, EXTRACT(EPOCH FROM (NOW() - d.created_at))::text AS age_hours
        FROM discussions d
@@ -414,8 +566,9 @@ router.get("/discussions/unanswered", asyncHandler(async (req, res): Promise<voi
         AND NOT ((',' || LOWER(regexp_replace(COALESCE(d.tags, ''), '\\s*,\\s*', ',', 'g')) || ',') LIKE '%,решено,%')
         AND NOT EXISTS (SELECT 1 FROM comments c WHERE c.discussion_id = d.id AND c.trader IS DISTINCT FROM d.trader)
         AND d.created_at < NOW() - ($1::int * INTERVAL '1 hour')
+        AND ${vis}
       ORDER BY d.created_at ASC LIMIT 100`,
-    [hours],
+    params,
   );
   res.json({
     hours,
@@ -457,7 +610,11 @@ router.get("/discussions/ticker-context/:ticker", asyncHandler(async (req, res):
               SUM(${signedRSql("t")})::float AS "sumR",
               SUM(${netPnlSql("t")})::float AS "netPnl"
          FROM trades t WHERE t.deleted_at IS NULL AND UPPER(t.ticker) = $1`, [ticker]),
-    pool.query<any>(`SELECT COUNT(*)::int AS count FROM discussions WHERE deleted_at IS NULL AND UPPER(ticker) = $1`, [ticker]),
+    loadAudienceViewer(req).then((av) => {
+      const qp: unknown[] = [ticker];
+      const vis = audienceSql(av, (v) => { qp.push(v); return `$${qp.length}`; });
+      return pool.query<any>(`SELECT COUNT(*)::int AS count FROM discussions d WHERE d.deleted_at IS NULL AND UPPER(d.ticker) = $1 AND ${vis}`, qp);
+    }),
     pool.query<any>(
       `SELECT id, substring(date, 1, 10) AS date, event_type AS "eventType", headline, percent_move::float AS "percentMove", session
          FROM market_events WHERE deleted_at IS NULL AND (',' || regexp_replace(UPPER(ticker), '[[:space:],;/]+', ',', 'g') || ',') LIKE ('%,' || $1 || ',%')
@@ -479,12 +636,17 @@ router.get("/discussions/votes/all", asyncHandler(async (req, res): Promise<void
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
   // The viewer is the signed-in user; `?trader=` is ignored.
   const trader = req.authUser.name;
+  // Only threads in the viewer's audience.
+  const av = await loadAudienceViewer(req);
+  const qp: unknown[] = [];
+  const vis = audienceSql(av, (v) => { qp.push(v); return `$${qp.length}`; });
   const { rows: agg } = await pool.query<any>(
     `SELECT discussion_id AS "discussionId",
             COALESCE(SUM(CASE WHEN value = 1 THEN 1 ELSE 0 END), 0)::int AS upvotes,
             COALESCE(SUM(CASE WHEN value = -1 THEN 1 ELSE 0 END), 0)::int AS downvotes,
             COALESCE(SUM(value), 0)::int AS score
-       FROM discussion_votes GROUP BY discussion_id`,
+       FROM discussion_votes WHERE discussion_id IN (SELECT d.id FROM discussions d WHERE ${vis}) GROUP BY discussion_id`,
+    qp,
   );
   const map: Record<number, { upvotes: number; downvotes: number; score: number; myVote: number | null }> = {};
   for (const r of agg) map[r.discussionId] = { upvotes: r.upvotes, downvotes: r.downvotes, score: r.score, myVote: null };
@@ -503,7 +665,7 @@ router.get("/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
   const params = GetDiscussionParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const full = await fullThread(params.data.id, req.authUser.name);
+  const full = await fullThread(params.data.id, req.authUser.name, await loadAudienceViewer(req));
   if (!full) { res.status(404).json({ error: "Discussion not found" }); return; }
   res.json(full);
 }));
@@ -513,7 +675,7 @@ router.get("/discussions/:id/entity", asyncHandler(async (req, res): Promise<voi
   await ensureTables();
   if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
   const id = parseId(req, res); if (id == null) return;
-  const d = await loadThread(id, req.authUser.name);
+  const d = await loadThread(id, req.authUser.name, await loadAudienceViewer(req));
   if (!d) { res.status(404).json({ error: "Discussion not found" }); return; }
   const out: Record<string, unknown> = { id, tradeId: d.trade_id, eventId: d.event_id, ideaId: d.idea_id, playbookId: d.playbook_id, journalDate: d.journal_date, ticker: d.ticker };
   if (d.trade_id) {
@@ -563,7 +725,7 @@ router.post("/discussions/:id/read", asyncHandler(async (req, res): Promise<void
   await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
-  const d = await loadThread(id, req.authUser!.name);
+  const d = await loadThread(id, req.authUser!.name, await loadAudienceViewer(req));
   if (!d) { res.status(404).json({ error: "Discussion not found" }); return; }
   await markRead(req.authUser!.name, id);
   res.json({ id, readAt: new Date().toISOString() });
@@ -574,7 +736,7 @@ router.delete("/discussions/:id", asyncHandler(async (req, res): Promise<void> =
   if (!requireMember(req, res)) return;
   const params = DeleteDiscussionParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  const existing = await loadThread(params.data.id, null);
+  const existing = await loadThread(params.data.id, null, await loadAudienceViewer(req));
   if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
   if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Удалить обсуждение может только автор или куратор" }); return; }
   await pool.query(`UPDATE discussions SET deleted_at = NOW() WHERE id = $1`, [existing.id]);
@@ -594,6 +756,8 @@ const PatchDiscussionBody = z.object({
   eventId: z.coerce.number().int().positive().nullish(),
   journalDate: z.string().regex(ISO_DATE).nullish(),
   acceptedCommentId: z.coerce.number().int().positive().nullish(),
+  /** Tokens array / comma string; null, [] or "all" = everyone. */
+  audience: z.union([z.array(z.string().max(40)).max(20), z.string().max(400)]).nullish(),
 }).strict();
 
 /** Edit a thread (author or curator/admin). Pin flag is curator/admin-only. */
@@ -604,7 +768,8 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
   const body = PatchDiscussionBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   const viewer = req.authUser!.name;
-  const existing = await loadThread(id, viewer);
+  const av = await loadAudienceViewer(req);
+  const existing = await loadThread(id, viewer, av);
   if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
   if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Редактировать обсуждение может только автор или куратор" }); return; }
   if (await isBanned(viewer)) { res.status(403).json({ error: "Вы забанены" }); return; }
@@ -635,6 +800,13 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
   if (b.playbookId !== undefined) set("playbook_id", b.playbookId ?? null);
   if (b.eventId !== undefined) set("event_id", b.eventId ?? null);
   if (b.journalDate !== undefined) set("journal_date", b.journalDate ?? null);
+  if (b.audience !== undefined) {
+    const aud = parseAudience(b.audience);
+    if (!aud.ok) { res.status(400).json({ error: aud.error }); return; }
+    const cohortErr = await checkCohorts(aud.audience, av, audienceOf(existing.audience));
+    if (cohortErr) { res.status(400).json({ error: cohortErr }); return; }
+    set("audience", aud.audience.length ? aud.audience : null);
+  }
   if (b.acceptedCommentId !== undefined) {
     if (b.acceptedCommentId) {
       const { rows } = await pool.query(`SELECT 1 FROM comments WHERE id = $1 AND discussion_id = $2`, [b.acceptedCommentId, id]);
@@ -649,10 +821,14 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
     const { rows } = await pool.query<{ trader: string | null }>(`SELECT trader FROM comments WHERE id = $1`, [b.acceptedCommentId]);
     const who = rows[0]?.trader;
     if (who && who !== viewer) {
-      inBackground("discussions.accept", () => notifyUser({
-        userName: who, type: "reply", actor: viewer, title: `${viewer} отметил ваш ответ как решение`,
-        message: `«${textPreview(existing.topic, 100)}»`, link: threadLink(id), entityType: "thread", entityId: id,
-      }));
+      const row = { trader: existing.trader, audience: b.audience !== undefined ? (parseAudience(b.audience) as { audience?: string[] }).audience ?? [] : audienceOf(existing.audience) };
+      inBackground("discussions.accept", async () => {
+        if (!(await filterVisibleNames([who], row)).length) return;
+        await notifyUser({
+          userName: who, type: "reply", actor: viewer, title: `${viewer} отметил ваш ответ как решение`,
+          message: `«${textPreview(existing.topic, 100)}»`, link: threadLink(id), entityType: "thread", entityId: id,
+        });
+      });
     }
   }
   // The thread was turned into a review request → ask the author's curator (once, on the type change).
@@ -663,14 +839,14 @@ router.patch("/discussions/:id", asyncHandler(async (req, res): Promise<void> =>
     inBackground("discussions.review_request", () => notifyReviewRequest(author, id, topic, ticker));
   }
   logActivity({ action: b.acceptedCommentId ? "resolved" : "updated", section: "discussions", entityId: String(id), entityTitle: b.topic ?? existing.topic, trader: viewer });
-  res.json(await fullThread(id, viewer));
+  res.json(await fullThread(id, viewer, av));
 }));
 
 router.post("/discussions/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
-  const existing = await loadThread(id, null, true);
+  const existing = await loadThread(id, null, await loadAudienceViewer(req), true);
   if (!existing) { res.status(404).json({ error: "Discussion not found" }); return; }
   if (!(await canModifyDiscussion(req, existing.trader))) { res.status(403).json({ error: "Восстановить обсуждение может только автор или куратор" }); return; }
   await pool.query(`UPDATE discussions SET deleted_at = NULL WHERE id = $1`, [id]);
@@ -692,7 +868,7 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
   const text = parsed.data.text.trim();
   if (!text) { res.status(400).json({ error: "Комментарий не может быть пустым" }); return; }
   if (text.length > COMMENT_MAX) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
-  const thread = await loadThread(params.data.id, null);
+  const thread = await loadThread(params.data.id, null, await loadAudienceViewer(req));
   if (!thread) { res.status(404).json({ error: "Обсуждение не найдено" }); return; }
   const me = req.authUser!.name;
   if (await isBanned(me)) { res.status(403).json({ error: "Вы забанены и не можете комментировать" }); return; }
@@ -706,18 +882,23 @@ router.post("/discussions/:id/comments", asyncHandler(async (req, res): Promise<
 
   // Notifications (in-app only, off the critical path): mentions, the author of the comment being replied to,
   // and the thread author. Each person gets at most one notification; the commenter never gets one.
+  // Recipients outside the thread's audience are dropped (the thread author always reads it).
   const threadId = params.data.id;
   const topicShort = textPreview(thread.topic, 60);
+  const row = { trader: thread.trader, audience: audienceOf(thread.audience) };
   inBackground("discussions.comment", async () => {
     const link = threadLink(threadId);
-    const mentioned = new Set(await notifyMentions({ text, authorName: me, context: `в обсуждении «${topicShort}»`, link, telegram: false }));
+    const mentioned = new Set(await notifyMentions({
+      text, authorName: me, context: `в обсуждении «${topicShort}»`, link, telegram: false,
+      filter: (names) => filterVisibleNames(names, row),
+    }));
     const body = `«${textPreview(text, 120)}»`;
     const notified = new Set<string>([me, ...mentioned]);
     const reTo = RE_REPLY.exec(text)?.[1];
     if (reTo) {
       const { rows: parent } = await pool.query<{ trader: string | null }>(`SELECT trader FROM comments WHERE id = $1 AND discussion_id = $2`, [Number(reTo), threadId]);
       const who = parent[0]?.trader;
-      if (who && !notified.has(who)) {
+      if (who && !notified.has(who) && (await filterVisibleNames([who], row)).length) {
         notified.add(who);
         await notifyUser({ userName: who, type: "reply", actor: me, title: `${me} ответил вам в «${topicShort}»`, message: body, link, entityType: "thread", entityId: threadId });
       }
@@ -741,6 +922,7 @@ router.patch("/discussions/:id/comments/:commentId", asyncHandler(async (req, re
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   const text = body.data.text.trim();
   if (!text || text.length > COMMENT_MAX) { res.status(400).json({ error: "Некорректный текст комментария" }); return; }
+  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) { res.status(404).json({ error: "Comment not found" }); return; }
   const { rows } = await pool.query<CommentRow>(`SELECT id, discussion_id, trader, text, created_at FROM comments WHERE id = $1 AND discussion_id = $2`, [params.data.commentId, params.data.id]);
   const existing = rows[0];
   if (!existing) { res.status(404).json({ error: "Comment not found" }); return; }
@@ -755,6 +937,7 @@ router.delete("/discussions/:id/comments/:commentId", asyncHandler(async (req, r
   if (!requireMember(req, res)) return;
   const params = CommentParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!(await loadThread(params.data.id, null, await loadAudienceViewer(req)))) { res.status(404).json({ error: "Comment not found" }); return; }
   const { rows } = await pool.query<CommentRow>(`SELECT id, discussion_id, trader, text, created_at FROM comments WHERE id = $1 AND discussion_id = $2`, [params.data.commentId, params.data.id]);
   const existing = rows[0];
   if (!existing) { res.status(404).json({ error: "Comment not found" }); return; }
@@ -770,7 +953,7 @@ router.post("/discussions/:id/vote", asyncHandler(async (req, res): Promise<void
   await ensureTables();
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
-  const thread = await loadThread(id, null);
+  const thread = await loadThread(id, null, await loadAudienceViewer(req));
   if (!thread) { res.status(404).json({ error: "Обсуждение не найдено" }); return; }
   const { value } = req.body as { value?: number };
   // One vote per authenticated user — the client never picks the voter.

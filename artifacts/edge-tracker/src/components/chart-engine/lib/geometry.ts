@@ -2,9 +2,10 @@
  * Everything derived from bars + executions for one timeframe, in one pure call (memoised by the
  * component). Keeps WsChart.tsx free of maths.
  */
-import type { Bar, Candle, DayLevels, ExcursionResult, Execution, Fill, MarketEventLite, PositionPoint, Side, TradeLike, VolumeProfile } from "../types";
-import { barIndexForTime, etParts, etWallToEpoch, findBarIndex, sessionOfMinutes } from "./time";
-import { avgEntryPrice, avgExitPrice, excursion, firstEntryIdx, grossFromFills, lastExitIdx, positionSeries, positionSize, resolveFills, riskPerShare, sideOf, toNum } from "./position";
+import type { Bar, Candle, DayLevels, ExcursionResult, Execution, Fill, MarketEventLite, PositionPoint, Side, TradeLike, TradeRole, TradeStructureDto, VolumeProfile } from "../types";
+import { barIndexForTime, etParts, etWallToEpoch, findBarIndex, isoToEpoch, sessionOfMinutes } from "./time";
+import { avgEntryPrice, avgExitPrice, excursion, firstEntryIdx, grossFromFills, isOpening, lastExitIdx, positionSeries, positionSize, resolveFills, riskPerShare, sideOf, toNum } from "./position";
+import { positionSteps, siblingTitle, type PositionStep } from "./structure";
 import { anchoredVwap, sessionVwap } from "./vwap";
 import { dayLevels } from "./levels";
 import { volumeProfile } from "./profile";
@@ -12,6 +13,11 @@ import { rvolSeries } from "./rvol";
 
 export type VwapIdxPoint = { idx: number; vwap: number; sd: number };
 export type EventIdx = { id: number; idx: number; text: string };
+
+/** A leg of another trade of the same ticker/session (re-entry chain), placed on the bars. */
+export type ChainMark = { tradeId: number; idx: number; price: number; role: TradeRole; opening: boolean; label: string };
+/** Connector from one trade's last leg to the next trade's first leg. */
+export type ChainLink = { fromIdx: number; fromPrice: number; toIdx: number; toPrice: number; title: string; flip: boolean; toCurrent: boolean; fromCurrent: boolean };
 
 export type Geometry = {
   side: Side;
@@ -41,6 +47,11 @@ export type Geometry = {
   events: EventIdx[];
   /** Index range of the trade day (ET) inside `bars`. */
   dayRange: { from: number; to: number } | null;
+  /** Running average price / open size after every fill. */
+  steps: PositionStep[];
+  /** Other trades of the session's re-entry chain (ghost markers) and the connectors between trades. */
+  chain: { marks: ChainMark[]; links: ChainLink[] };
+  structure: TradeStructureDto | null;
 };
 
 export type GeometryInput = {
@@ -55,14 +66,18 @@ export type GeometryInput = {
   target?: number | null;
   events?: readonly MarketEventLite[];
   intraday: boolean;
+  /** GET …/executions → structure (roles per leg, re-entry chain). */
+  structure?: TradeStructureDto | null;
 };
 
 export function buildGeometry(input: GeometryInput): Geometry {
   const { bars, barSec, baseBars, baseSec, trade, executions, prevClose, dateKey, intraday } = input;
   const side = sideOf(trade);
   const fallback = { entry: toNum(trade.entry), exit: toNum(trade.exit), qty: trade.qty ?? null, dayKey: dateKey };
-  const fills = resolveFills(bars, barSec, executions, fallback);
-  const baseFills = baseBars === bars ? fills : resolveFills(baseBars, baseSec, executions, fallback);
+  const structure = input.structure ?? null;
+  const legs = structure?.legs ?? [];
+  const fills = resolveFills(bars, barSec, executions, fallback, legs);
+  const baseFills = baseBars === bars ? fills : resolveFills(baseBars, baseSec, executions, fallback, legs);
   const entryIdx = firstEntryIdx(fills);
   const exitIdx = lastExitIdx(fills);
   const avgEntry = avgEntryPrice(fills) ?? toNum(trade.entry);
@@ -118,5 +133,40 @@ export function buildGeometry(input: GeometryInput): Geometry {
     target: input.target ?? null,
     grossUsd: grossFromFills(fills, side, trade.qty ?? null),
     position, excursion: exc, mfeIdx, maeIdx, levels, vwap, avwap, rvol, profile, events, dayRange,
+    steps: positionSteps(fills, (f) => isOpening(f.kind)),
+    chain: buildChain(bars, barSec, structure),
+    structure,
   };
+}
+
+/** Ghost legs of the other trades in the chain + connectors between consecutive trades (only legs inside `bars`). */
+export function buildChain(bars: readonly Bar[], barSec: number, structure: TradeStructureDto | null): { marks: ChainMark[]; links: ChainLink[] } {
+  const marks: ChainMark[] = [];
+  const links: ChainLink[] = [];
+  const sibs = structure?.siblings ?? [];
+  if (sibs.length < 2 || !bars.length) return { marks, links };
+  const first = bars[0].t - barSec, lastT = bars[bars.length - 1].t + barSec;
+  const place = (at: string | null): number | null => {
+    const t = isoToEpoch(at);
+    return Number.isFinite(t) && t >= first && t <= lastT ? barIndexForTime(bars, t, barSec) : null;
+  };
+  type Placed = { idx: number; price: number };
+  const ends: { first: Placed | null; last: Placed | null; current: boolean; title: string; flip: boolean }[] = [];
+  for (const s of sibs) {
+    let firstLeg: Placed | null = null, lastLeg: Placed | null = null;
+    for (const l of s.legs) {
+      const idx = place(l.at);
+      if (idx == null) continue;
+      if (!firstLeg) firstLeg = { idx, price: l.price };
+      lastLeg = { idx, price: l.price };
+      if (!s.isCurrent) marks.push({ tradeId: s.id, idx, price: l.price, role: l.role, opening: l.opening, label: `${l.label} · сделка #${s.id}` });
+    }
+    ends.push({ first: firstLeg, last: lastLeg, current: s.isCurrent, title: siblingTitle(s), flip: s.legs[0]?.role === "flip" });
+  }
+  for (let i = 1; i < ends.length; i++) {
+    const a = ends[i - 1], b = ends[i];
+    if (!a.last || !b.first) continue;
+    links.push({ fromIdx: a.last.idx, fromPrice: a.last.price, toIdx: b.first.idx, toPrice: b.first.price, title: b.title, flip: b.flip, toCurrent: b.current, fromCurrent: a.current });
+  }
+  return { marks, links };
 }

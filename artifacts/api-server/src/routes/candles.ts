@@ -365,8 +365,26 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   const requested = ALLOWED_INTERVALS.has(requestedRaw as Interval) ? (requestedRaw as Interval) : null;
   const allowed = (iv: Interval, age: number) => iv === "1m" ? age <= 7 : (iv === "5m" || iv === "15m" || iv === "30m") ? age <= 60 : iv === "60m" ? age <= 730 : true;
   let interval: Interval = requested && allowed(requested, oldestAge) ? requested : pickIntervalForAge(oldestAge);
+  let rangeDays = days;
+  if (requested && requested !== "1d" && interval !== requested) {
+    // Only the context days are too old for the finer bars: keep the requested interval (1m → the 1/2/3-minute
+    // charts) for the trailing run of days that allow it — by age, or already in the cache — and drop the older
+    // context days instead of coarsening the whole series to 5m.
+    const { rows } = await pool.query(
+      `SELECT DISTINCT date::text AS d FROM candles_cache WHERE ticker = $1 AND interval = $2 AND extended = $3 AND date = ANY($4::date[])`,
+      [ticker, requested, extended, days.map((d) => d.str)],
+    ).catch(() => ({ rows: [] as { d: string }[] }));
+    const inCache = new Set(rows.map((r) => String(r.d).slice(0, 10)));
+    const ok = (d: (typeof days)[number]) => allowed(requested, ageDaysOf(d)) || inCache.has(d.str);
+    let i = days.length;
+    while (i > 0 && ok(days[i - 1])) i--;
+    if (i < days.length) { rangeDays = days.slice(i); interval = requested; }
+  }
   const spanDays = (Date.UTC(to.y, to.m - 1, to.d) - Date.UTC(from.y, from.m - 1, from.d)) / 86400000;
-  if (spanDays > 45 && interval !== "1d") interval = "1d";
+  if (spanDays > 45 && interval !== "1d") { interval = "1d"; rangeDays = days; }
+
+  // `trim=1` (trade replay) is accepted for compatibility: the block above already keeps the finest bars and drops
+  // older leading context days whenever the requested interval cannot be served for every day.
 
   let candles: Candle[] = [];
   let cached = true;
@@ -375,7 +393,7 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
     candles = daily ?? [];
     cached = false;
   } else {
-    for (const day of days) {
+    for (const day of rangeDays) {
       const r = await fetchSingleDayWithCache(ticker, day, day.str, interval, extended, false, req.log);
       if (r) { candles.push(...r.candles); if (!r.cached) cached = false; }
     }
@@ -386,8 +404,11 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   for (const c of candles) if (c.t !== lastT) { dedup.push(c); lastT = c.t; }
   if (!dedup.length) { res.status(404).json({ error: "no candles available", ticker, from: fromStr, to: toStr, interval }); return; }
 
-  const prevClose = await getPrevDailyCloseCached(ticker, from, fromStr);
-  res.json({ ticker, from: fromStr, to: toStr, interval, extended, days: days.length, candles: dedup, prevClose, cached, fetchedAt: new Date().toISOString() });
+  // The response `from` / `days` say which days were actually served (older context days may have been dropped).
+  const servedDays = interval === "1d" ? days : rangeDays;
+  const servedFrom = servedDays[0]?.str ?? fromStr;
+  const prevClose = await getPrevDailyCloseCached(ticker, servedDays[0] ?? from, servedFrom);
+  res.json({ ticker, from: servedFrom, to: toStr, interval, extended, days: servedDays.length, candles: dedup, prevClose, cached, fetchedAt: new Date().toISOString() });
 }));
 
 router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response): Promise<void> => {

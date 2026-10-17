@@ -5,9 +5,12 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
-import { addDays, nyDate, prevWeekday } from "@/lib/trading-date";
-import type { ApiInterval, Candle, Execution, MarketEventLite, TradeLike } from "../types";
+import { addDays } from "@/lib/trading-date";
+import { tradeWindow } from "../lib/window";
+import type { ApiInterval, Candle, Execution, ExecutionsResponse, MarketEventLite, TradeLike, TradeStructureDto } from "../types";
 import { API_INTERVAL_SECONDS } from "../types";
+
+export { tradeWindow };
 
 export type RangeResponse = { ticker: string; from: string; to: string; interval: string; candles: Candle[]; prevClose: number | null };
 
@@ -29,24 +32,6 @@ const noRetry = (count: number, err: unknown) => {
   return s !== 422 && s !== 400 && s !== 404 && s !== 401 && count < 1;
 };
 
-/** Trade-day window: from `contextDays` trading days before the entry day to the exit day (or today for open multi-day). */
-export function tradeWindow(trade: TradeLike, contextDays: number): { dateKey: string; toKey: string; fromKey: string; multiDay: boolean } {
-  const dateKey = (trade.date || "").slice(0, 10);
-  const multiDay = trade.horizon === "overnight" || trade.horizon === "swing";
-  const exitKey = trade.exitDate ? trade.exitDate.slice(0, 10) : null;
-  let toKey = dateKey;
-  if (multiDay) {
-    if (exitKey && exitKey > dateKey) toKey = exitKey;
-    else if (trade.result === "open") toKey = nyDate();
-    else toKey = addDays(dateKey, trade.horizon === "swing" ? 5 : 1);
-  }
-  const today = nyDate();
-  if (toKey > today) toKey = today;
-  let fromKey = dateKey;
-  for (let i = 0; i < Math.max(0, contextDays); i++) fromKey = prevWeekday(fromKey);
-  return { dateKey, toKey, fromKey, multiDay };
-}
-
 export type ChartData = {
   dateKey: string;
   toKey: string;
@@ -57,6 +42,8 @@ export type ChartData = {
   baseSec: number;
   prevClose: number | null;
   executions: Execution[];
+  /** Recognised structure of the trade (null when executions were passed in or the API sent none). */
+  structure: TradeStructureDto | null;
   events: MarketEventLite[];
   daily: { bars: Candle[]; loading: boolean; requested: boolean; request: () => void };
   loading: boolean;
@@ -73,7 +60,7 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
 
   const bars = useQuery<RangeResponse, ChartError>({
     queryKey: ["ws-chart", "range", ticker, fromKey, toKey],
-    queryFn: () => getJson<RangeResponse>(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${fromKey}&to=${toKey}&interval=1m&extended=1`),
+    queryFn: () => getJson<RangeResponse>(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${fromKey}&to=${toKey}&interval=1m&extended=1&trim=1`),
     enabled, staleTime: 5 * 60 * 1000, retry: noRetry,
   });
 
@@ -85,9 +72,9 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
     enabled: enabled && dailyRequested, staleTime: 10 * 60 * 1000, retry: noRetry,
   });
 
-  const execs = useQuery<{ tradeId: number; executions: Execution[] }, ChartError>({
+  const execs = useQuery<ExecutionsResponse, ChartError>({
     queryKey: ["trade-executions", trade.id],
-    queryFn: () => getJson<{ tradeId: number; executions: Execution[] }>(`${BASE}/api/trades/${trade.id}/executions`),
+    queryFn: () => getJson<ExecutionsResponse>(`${BASE}/api/trades/${trade.id}/executions`),
     enabled: enabled && opts.executions === undefined && trade.id > 0, staleTime: 30 * 1000, retry: noRetry,
   });
 
@@ -113,11 +100,12 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
   const requestDaily = React.useCallback(() => setDailyRequested(true), []);
 
   return {
-    dateKey, toKey, fromKey,
+    dateKey, toKey, fromKey: bars.data?.from && bars.data.from > fromKey ? bars.data.from : fromKey,
     bars: barList,
     baseInterval, baseSec,
     prevClose: bars.data?.prevClose ?? null,
     executions,
+    structure: opts.executions === undefined ? execs.data?.structure ?? null : null,
     events: events.data ?? [],
     daily: { bars: daily.data?.candles ?? [], loading: daily.isLoading, requested: dailyRequested, request: requestDaily },
     loading: bars.isLoading || (opts.executions === undefined && execs.isLoading),

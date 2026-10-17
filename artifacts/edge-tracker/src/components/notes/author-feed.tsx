@@ -1,14 +1,16 @@
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCheck, ChevronDown, ListChecks, RefreshCw, Sparkles, Users, X } from "lucide-react";
-import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
+import { CandlestickChart, Check, CheckCheck, ChevronDown, ListChecks, RefreshCw, Search, Sparkles, Users, X } from "lucide-react";
+import { EmptyState, FilterChip, Panel, Pill, Segmented, Toolbar, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AuthorMarkdown, NoteReader } from "./author-reader";
-import { AN_KEYS, addDays, api, fetchFeed, fmtDayLong, fmtDayShort, moodOf, type FeedNote } from "./author-model";
+import { AN_KEYS, addDays, api, fetchFeed, fmtDayLong, fmtDayShort, fmtR, fmtUsd, moodOf, type DaySnapshot, type FeedNote } from "./author-model";
+import { matchesSearch } from "./author-plan";
 
 export type FeedRange = "day" | "week" | "month";
 const RANGE_DAYS: Record<FeedRange, number> = { day: 0, week: 6, month: 29 };
@@ -60,6 +62,41 @@ function ReadReceipts({ note }: { note: FeedNote }) {
   );
 }
 
+const plural = (n: number, one: string, few: string, many: string) => {
+  const m10 = n % 10, m100 = n % 100;
+  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+};
+
+/** The author's trading day under the card header. $ only arrives for the owner / staff (server redacts it). */
+function DayStrip({ day, onTicker }: { day: DaySnapshot; onTicker: (t: string) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
+      <span className="inline-flex items-center gap-1.5 text-muted-foreground">
+        <CandlestickChart className="h-3.5 w-3.5" aria-hidden="true" />
+        <span className="tabular-nums text-foreground">{day.count}</span> {plural(day.count, "сделка", "сделки", "сделок")}
+        {day.wins + day.losses > 0 && <span className="tabular-nums">· {day.wins}W / {day.losses}L</span>}
+      </span>
+      {day.rSum != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.rSum)))}>{fmtR(day.rSum)}</span>}
+      {day.pnlNet != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.pnlNet)))}>{fmtUsd(day.pnlNet)}</span>}
+      {day.tickers.length > 0 && (
+        <span className="flex flex-wrap gap-1" role="group" aria-label="Тикеры дня: найти в ленте">
+          {day.tickers.map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => onTicker(t)}
+              title={`Найти ${t} в сводках`}
+              className="rounded-md bg-primary/12 px-1.5 py-0.5 font-mono text-2xs font-semibold text-accent-soft hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            >
+              {t}
+            </button>
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
 function FeedCard({
   note,
   me,
@@ -69,6 +106,8 @@ function FeedCard({
   onToggleSelect,
   onToggleRead,
   busy,
+  query,
+  onTicker,
 }: {
   note: FeedNote;
   me: string;
@@ -78,8 +117,12 @@ function FeedCard({
   onToggleSelect: () => void;
   onToggleRead: () => void;
   busy: boolean;
+  /** Active feed search (leading $ stripped): highlighted, and long notes open so the match is visible. */
+  query: string;
+  onTicker: (t: string) => void;
 }) {
-  const [expanded, setExpanded] = React.useState(false);
+  const [open, setExpanded] = React.useState(false);
+  const expanded = open || !!query;
   const [ai, setAi] = React.useState(false);
   const mine = note.trader === me;
   const mood = moodOf(note.mood);
@@ -128,6 +171,8 @@ function FeedCard({
         )}
       </header>
 
+      {note.day && <DayStrip day={note.day} onTicker={onTicker} />}
+
       {note.refined_text && (
         <div className="glass-field inline-flex self-start p-0.5" role="group" aria-label="Версия">
           <button type="button" aria-pressed={!ai} onClick={() => setAi(false)} className={cn("min-h-7 rounded-full px-2.5 text-xs font-medium", !ai ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>Оригинал</button>
@@ -138,12 +183,12 @@ function FeedCard({
       )}
 
       <div className={cn("relative", long && !expanded && "max-h-72 overflow-hidden")}>
-        {ai && note.refined_text ? <AuthorMarkdown text={note.refined_text} /> : <NoteReader raw={note.raw_text} compact />}
+        {ai && note.refined_text ? <AuthorMarkdown text={note.refined_text} query={query} /> : <NoteReader raw={note.raw_text} query={query} compact />}
         {long && !expanded && (
           <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[hsl(var(--card))] to-transparent" aria-hidden="true" />
         )}
       </div>
-      {long && (
+      {long && !query && (
         <button type="button" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded} className="inline-flex items-center gap-1 self-start text-xs font-medium text-primary hover:underline">
           <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
           {expanded ? "Свернуть" : "Читать полностью"}
@@ -196,12 +241,16 @@ export function AuthorFeed({
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [summary, setSummary] = React.useState<string | null>(null);
   const [busyId, setBusyId] = React.useState<number | null>(null);
+  const [search, setSearch] = React.useState("");
+  const query = search.trim().replace(/^\$/, "");
 
   React.useEffect(() => { setSelected(new Set()); setSummary(null); }, [from, to]);
 
   const notes = q.data ?? [];
   const authors = React.useMemo(() => Array.from(new Set(notes.map((n) => n.trader))).sort((a, b) => a.localeCompare(b, "ru")), [notes]);
-  const visible = notes.filter((n) => (!author || n.trader === author) && (!unreadOnly || (!n.read_by_me && n.trader !== me)));
+  const visible = notes.filter((n) =>
+    (!author || n.trader === author) && (!unreadOnly || (!n.read_by_me && n.trader !== me)) && matchesSearch(n, search),
+  );
   const unread = notes.filter((n) => !n.read_by_me && n.trader !== me && !n.legacy);
   const legacy = notes.some((n) => n.legacy);
 
@@ -262,6 +311,18 @@ export function AuthorFeed({
               { value: "month", label: "30 дней" },
             ]}
           />
+          <div className="relative w-full sm:w-56">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Escape" && search) { e.stopPropagation(); setSearch(""); } }}
+              placeholder="Тикер или текст…"
+              aria-label="Поиск по сводкам: тикер, текст или автор"
+              className="h-9 pl-8"
+            />
+          </div>
           <FilterChip active={unreadOnly} onClick={() => setUnreadOnly((v) => !v)} count={unread.length}>Непрочитанные</FilterChip>
           {authors.length > 1 && authors.map((a) => (
             <FilterChip key={a} active={author === a} onClick={() => setAuthor(author === a ? null : a)}>{a}</FilterChip>
@@ -318,12 +379,26 @@ export function AuthorFeed({
         </Panel>
       ) : visible.length === 0 ? (
         <Panel>
+          {query ? (
+            <EmptyState
+              icon={Search}
+              title={`Ничего не нашлось по «${search.trim()}»`}
+              description={`Период ${fmtDayShort(from)} — ${fmtDayShort(to)}`}
+              action={
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Button variant="outline" onClick={() => setSearch("")}>Сбросить поиск</Button>
+                  {range !== "month" && <Button variant="ghost" onClick={() => onRangeChange("month")}>Искать за 30 дней</Button>}
+                </div>
+              }
+            />
+          ) : (
           <EmptyState
             icon={Users}
             title={unreadOnly ? "Всё прочитано" : "Сводок за этот период нет"}
             description={unreadOnly ? "Новых сводок от команды нет." : `Период ${fmtDayShort(from)} — ${fmtDayShort(to)} · попробуй расширить диапазон`}
             action={!unreadOnly && range !== "month" ? <Button variant="outline" onClick={() => onRangeChange(range === "day" ? "week" : "month")}>Показать {range === "day" ? "7 дней" : "30 дней"}</Button> : undefined}
           />
+          )}
         </Panel>
       ) : (
         <div className="flex flex-col gap-3">
@@ -338,6 +413,8 @@ export function AuthorFeed({
               onToggleSelect={() => setSelected((prev) => { const next = new Set(prev); if (next.has(n.id)) next.delete(n.id); else next.add(n.id); return next; })}
               onToggleRead={() => toggleRead.mutate({ id: n.id, read: !n.read_by_me })}
               busy={busyId === n.id}
+              query={query}
+              onTicker={(t) => setSearch(t)}
             />
           ))}
         </div>

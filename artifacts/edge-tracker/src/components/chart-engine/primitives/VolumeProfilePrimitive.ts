@@ -17,12 +17,16 @@ export class VolumeProfilePrimitive extends SeriesPrimitiveBase {
 
   set(profile: VolumeProfile | null): void {
     this.profile = profile;
-    const labels: { price: number; text: string; color: string }[] = [];
-    if (profile?.poc != null) labels.push({ price: profile.poc, text: `POC ${fmtPrice(profile.poc)}`, color: this.theme.c3(1) });
-    this.setAxisLabels(labels);
+    this.syncAxis();
     this.requestUpdate();
   }
-  setVisible(on: boolean): void { this.visible = on; this.requestUpdate(); }
+  setVisible(on: boolean): void { this.visible = on; this.syncAxis(); this.requestUpdate(); }
+
+  /** The POC price-axis label exists only while the profile is shown (otherwise it is a stray label on the axis). */
+  private syncAxis(): void {
+    const p = this.profile;
+    this.setAxisLabels(this.visible && p?.poc != null ? [{ price: p.poc, text: `POC ${fmtPrice(p.poc)}`, color: this.theme.c3(1) }] : []);
+  }
 
   render(rc: RenderCtx): void {
     const p = this.profile;
