@@ -11,6 +11,8 @@
  *
  * Aggregates over several traders' trades keep counts, win rate and R; their $ fields are null unless every
  * included trade is the viewer's own (or the viewer is staff).
+ *
+ * The trades API (routes/trades.ts, routes/executions.ts) applies the same rule — see the section near the end.
  */
 
 export interface MoneyViewer {
@@ -99,6 +101,57 @@ export function redactSummaryRow<T extends { byHorizon?: Record<string, object> 
     ) as T["byHorizon"];
   }
   return { ...out, redacted: true };
+}
+
+// ─── Trades API (/trades, /trades/:id, /trades/page, /trades/days, executions) ──────────────────────────────
+// Same rule outside the playbook: a non-staff viewer never gets the $ of another trader's trade, whatever the
+// permission matrix lets them read (a "team.read" / "trades.read.team" grant widens WHICH trades, not WHAT).
+
+/** $ fields of a GET /trades/page summary. Counts, win rate, R and dates stay. */
+export const BOOK_SUMMARY_MONEY_FIELDS = [
+  "gross", "fees", "net", "avgWinNet", "avgLossNet", "posNet", "negNet", "profitFactorNet", "maxNet", "minNet",
+] as const;
+
+/** $ fields of a GET /trades/days row (`seq` = per-trade net, emptied separately). */
+export const BOOK_DAY_MONEY_FIELDS = ["gross", "fees", "net", "maxNet", "minNet"] as const;
+
+/** $ fields of an execution (fill) row. Price and time stay — the chart draws the fills. */
+export const EXECUTION_MONEY_FIELDS = ["qty"] as const;
+
+/**
+ * May the viewer see the $ of a book scoped to `scope` (lib/auth scopeTrader: a trader name, or null = whole desk)?
+ * Only staff see a multi-trader book; everyone else only their own.
+ */
+export function canSeeBookMoney(v: MoneyViewer, scope: string | null): boolean {
+  return v.staff || (scope != null && isOwnTrade(v, scope));
+}
+
+/** A /trades/page summary block with its $ nulled and `redacted: true`. */
+export function redactBookSummary<T extends object>(s: T): Redacted<T> {
+  return { ...nullFields(s, BOOK_SUMMARY_MONEY_FIELDS), redacted: true };
+}
+
+/** A /trades/days row with its $ nulled, the $ sequence emptied and `redacted: true`. */
+export function redactBookDay<T extends { seq?: unknown[] }>(d: T): Redacted<T> {
+  const out = nullFields(d, BOOK_DAY_MONEY_FIELDS);
+  if ("seq" in out) out.seq = [] as unknown[] as T["seq"];
+  return { ...out, redacted: true };
+}
+
+/**
+ * «fees 1.23» inside an execution note — PropReports sync writes «PropReports B #123 · fees 0.42», and the client
+ * (ExecutionsPanel feesFromNote) reads the same pattern back.
+ */
+const NOTE_FEES_RE = /\s*·?\s*\bfees?\s*[:=]?\s*\$?-?\d+(?:[.,]\d+)?/gi;
+
+/** Executions of a trade owned by `trader`: qty nulled and fee amounts cut from notes for viewers who may not see its $. */
+export function redactExecutions<T extends { note?: string | null }>(rows: T[], v: MoneyViewer, trader: string | null | undefined): T[] {
+  if (canSeeTradeMoney(v, trader)) return rows;
+  return rows.map((r) => {
+    const out = nullFields(r, EXECUTION_MONEY_FIELDS);
+    if (typeof out.note === "string") out.note = out.note.replace(NOTE_FEES_RE, "").trim() || null;
+    return out;
+  });
 }
 
 /** Cumulative signed R by close day — the $-free equity curve shown when the $ curve is hidden. */

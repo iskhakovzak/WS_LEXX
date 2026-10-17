@@ -42,6 +42,8 @@ import { maybeAutoGenerateReview } from "../lib/aiReview";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { invalidateDashboardCache } from "../lib/hotCache";
 import { scanRulesForTrader } from "../lib/rulesEngine";
+import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
+import { canSeeBookMoney, redactBookDay, redactBookSummary, redactTradeRow, redactTradeRows, type Redacted } from "../lib/playbookPrivacy";
 import {
   ListTradesQueryParams,
   CreateTradeBody,
@@ -185,7 +187,8 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
     ? await base.orderBy(desc(tradesTable.date), desc(tradesTable.id)).limit(limit)
     : await base.orderBy(desc(tradesTable.createdAt));
 
-  res.json(ListTradesResponse.parse(rows.map(toTradeResponseShape)));
+  // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; guests get every $ nulled.
+  res.json(redactTradeRows(ListTradesResponse.parse(rows.map(toTradeResponseShape)), await loadMoneyViewer(req)));
 }));
 
 // ── Paginated book: GET /trades/page ─────────────────────────────────────────
@@ -359,11 +362,12 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const nextCursor = hasMore && last ? encodeCursor({ s: sort.col, d: sort.dir, v: sortValueOf(last.sv, sort.col), id: last.id }) : null;
 
   // Rows by PK in page order (reuses the canonical response shape; the heavy work was the id query).
-  const items: ReturnType<typeof toTradeResponseShape>[] = [];
+  const mv = await loadMoneyViewer(req);
+  const items: Redacted<ReturnType<typeof toTradeResponseShape>>[] = [];
   if (pageIds.length) {
     const rows = await db.select().from(tradesTable).where(inArray(tradesTable.id, pageIds));
     const byId = new Map(rows.map((r) => [r.id, r]));
-    for (const id of pageIds) { const r = byId.get(id); if (r) items.push(toTradeResponseShape(r)); }
+    for (const id of pageIds) { const r = byId.get(id); if (r) items.push(redactTradeRow(toTradeResponseShape(r), mv)); }
   }
 
   const s = summaryRes.rows[0] ?? {};
@@ -399,39 +403,42 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const winNetN = Number(s.win_net_n ?? 0), lossNetN = Number(s.loss_net_n ?? 0);
   const posNet = num(s.pos_net) ?? 0, negNet = num(s.neg_net) ?? 0;
 
+  const summary = {
+    total, wins, losses, be, open, decided,
+    winRate: decided ? wins / decided : null,
+    gross: pnlCount ? num(s.gross) : null,
+    fees: pnlCount ? (num(s.fees) ?? 0) : null,
+    net: pnlCount ? num(s.net) : null,
+    pnlCount,
+    totalR: sumR, rCount,
+    avgR: rCount ? sumR / rCount : null,
+    avgWinR, avgLossR, expectancyR,
+    posR, negR,
+    // PF = ΣR⁺ / |ΣR⁻|; null (never ∞) without losing R.
+    profitFactor: negR > 0 ? posR / negR : null,
+    firstDate: (s.first_date as string | null) ?? null,
+    lastDate: (s.last_date as string | null) ?? null,
+    feeRows: Number(s.fee_rows ?? 0),
+    streak: foldStreak(streakRes.rows.map((r) => r.res)),
+    curve: curveRes.rows.map((r) => ({ i: Number(r.i), r: Math.round((num(r.cum) ?? 0) * 100) / 100, label: r.label })),
+    // $-based review metrics (additive; R is optional on this desk — most trades carry no stop).
+    avgWinNet: winNetN ? (num(s.win_net_sum) ?? 0) / winNetN : null,
+    avgLossNet: lossNetN ? (num(s.loss_net_sum) ?? 0) / lossNetN : null,
+    posNet, negNet,
+    // PF in $ = Σnet⁺ / |Σnet⁻|; null (never ∞) without a losing trade.
+    profitFactorNet: negNet > 0 ? posNet / negNet : null,
+    maxNet: num(s.max_net),
+    minNet: num(s.min_net),
+    untagged: Number(s.untagged ?? 0),
+    avgHoldSec: num(s.avg_hold_sec),
+    days: Number(s.days ?? 0),
+  };
+
   res.json({
     items,
     page: { limit: q.limit, offset: cursor ? null : q.offset, returned: items.length, hasMore, nextCursor, sort: sort.col, dir: sort.dir },
-    summary: {
-      total, wins, losses, be, open, decided,
-      winRate: decided ? wins / decided : null,
-      gross: pnlCount ? num(s.gross) : null,
-      fees: pnlCount ? (num(s.fees) ?? 0) : null,
-      net: pnlCount ? num(s.net) : null,
-      pnlCount,
-      totalR: sumR, rCount,
-      avgR: rCount ? sumR / rCount : null,
-      avgWinR, avgLossR, expectancyR,
-      posR, negR,
-      // PF = ΣR⁺ / |ΣR⁻|; null (never ∞) without losing R.
-      profitFactor: negR > 0 ? posR / negR : null,
-      firstDate: (s.first_date as string | null) ?? null,
-      lastDate: (s.last_date as string | null) ?? null,
-      feeRows: Number(s.fee_rows ?? 0),
-      streak: foldStreak(streakRes.rows.map((r) => r.res)),
-      curve: curveRes.rows.map((r) => ({ i: Number(r.i), r: Math.round((num(r.cum) ?? 0) * 100) / 100, label: r.label })),
-      // $-based review metrics (additive; R is optional on this desk — most trades carry no stop).
-      avgWinNet: winNetN ? (num(s.win_net_sum) ?? 0) / winNetN : null,
-      avgLossNet: lossNetN ? (num(s.loss_net_sum) ?? 0) / lossNetN : null,
-      posNet, negNet,
-      // PF in $ = Σnet⁺ / |Σnet⁻|; null (never ∞) without a losing trade.
-      profitFactorNet: negNet > 0 ? posNet / negNet : null,
-      maxNet: num(s.max_net),
-      minNet: num(s.min_net),
-      untagged: Number(s.untagged ?? 0),
-      avgHoldSec: num(s.avg_hold_sec),
-      days: Number(s.days ?? 0),
-    },
+    // A matrix grant (team.read) may scope a non-staff viewer to someone else's book: counts and R stay, $ do not.
+    summary: canSeeBookMoney(mv, scope) ? { ...summary, redacted: false } : redactBookSummary(summary),
     facets: { outcomes, horizons, setups, traders, sectors, presets },
     quality: { available: quality, applied: hasQualityFilters(filters) },
     // Echo so the client can tell this API applied the preset (an older build silently ignores the param).
@@ -489,8 +496,9 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
     };
   });
   const lastDay = days[days.length - 1];
+  const showMoney = canSeeBookMoney(await loadMoneyViewer(req), scope);
   res.json({
-    days,
+    days: showMoney ? days.map((d) => ({ ...d, redacted: false })) : days.map(redactBookDay),
     hasMore,
     nextBefore: hasMore && lastDay ? lastDay.date : null,
     totalDays: rows.length ? Number(rows[0].days_total ?? days.length) : 0,
@@ -609,11 +617,13 @@ router.get("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     res.status(404).json({ error: "Trade not found" });
     return;
   }
-  if (await forbiddenFor(req, "trades.read.team", trade.trader ?? null)) {
+  // Another trader's trade: via the matrix (trades.read.team), or because it is an example of a setup the viewer
+  // reads (the playbook's «Открыть сделку»). Either way a non-staff viewer gets its $ redacted.
+  if (await forbiddenFor(req, "trades.read.team", trade.trader ?? null) && !(await isReadableExampleTrade(req, trade.id))) {
     res.status(403).json({ error: "Можно просматривать только свои трейды" });
     return;
   }
-  res.json(GetTradeResponse.parse(toTradeResponseShape(trade)));
+  res.json(redactTradeRow(GetTradeResponse.parse(toTradeResponseShape(trade)), await loadMoneyViewer(req)));
 }));
 
 router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {

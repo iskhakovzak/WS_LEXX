@@ -211,6 +211,28 @@ export async function loadMoneyViewer(req: Request): Promise<MoneyViewer> {
   return { name: actor.name, staff: actor.role === "curator" || actor.role === "admin" };
 }
 
+/**
+ * Is trade `tradeId` an example (playbook_examples) of a live setup the viewer may read? Such a trade is already
+ * on screen in the playbook, so «Открыть сделку» may load it — with its $ redacted (lib/playbookPrivacy).
+ * Guests / anonymous: never.
+ */
+export async function isReadableExampleTrade(req: Request, tradeId: number): Promise<boolean> {
+  if (!Number.isInteger(tradeId) || tradeId <= 0) return false;
+  const v = await loadViewer(req);
+  if (!v.name || v.guest) return false;
+  await ensurePlaybookSpaces();
+  const params: unknown[] = [tradeId];
+  const vis = visibleSql(v, params, "p");
+  const { rows } = await pool.query(
+    `SELECT 1 FROM playbook_examples e
+       JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
+      WHERE e.trade_id = $1 AND e.deleted_at IS NULL AND ${vis}
+      LIMIT 1`,
+    params,
+  );
+  return rows.length > 0;
+}
+
 export async function canReadSetup(req: Request, row: SetupAccessRow): Promise<boolean> {
   return canReadPure(await loadViewer(req), row);
 }

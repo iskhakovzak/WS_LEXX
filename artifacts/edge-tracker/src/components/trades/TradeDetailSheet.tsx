@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { REDACTED_HINT, RedactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { DateHolidayBadge } from "@/components/holiday-badge";
 import type { HolidayEvent } from "@/lib/market-intel";
@@ -27,6 +28,7 @@ import {
   fmtR,
   horizonOf,
   isBrokerTrade,
+  isRedactedTrade,
   netPnl,
   resultKey,
 } from "./trade-utils";
@@ -259,6 +261,7 @@ export function TradeDetailSheet(p: Props) {
                 )}
               </div>
               <KpiRow trade={t} holdSeconds={timing?.holdSeconds ?? null} />
+              {isRedactedTrade(t) && <RedactedHint />}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
                   {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> Редактировать</Button>}
@@ -398,13 +401,14 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
   const held = daysHeld(t);
   const perShare = t.pnl != null && t.qty ? t.pnl / t.qty : null;
   const useR = r.value != null;
+  const redacted = isRedactedTrade(t);
   return (
     <div className="grid grid-cols-5 gap-2">
       <Kpi
         label={t.fees ? "Нетто" : "P&L"}
         value={fmtMoney(net)}
         className={net == null ? "text-muted-foreground" : toneText(toneOf(net))}
-        hint={t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
+        hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
       />
       <Kpi label="Вход → выход" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
       {open && t.exit == null
@@ -412,8 +416,8 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
         : <Kpi label="Удержание" value={holdSeconds != null ? fmtDuration(holdSeconds) : t.holdTime || "—"} className={holdSeconds == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
         ? <Kpi label={r.derived ? "R (по ценам)" : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
-        : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint="Брутто на акцию: стоп не задан, R не считается" />}
-      <Kpi label="Объём" value={t.qty != null ? `${t.qty.toLocaleString("en-US")} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} />
+        : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}
+      <Kpi label="Объём" value={t.qty != null ? `${t.qty.toLocaleString("en-US")} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? REDACTED_HINT : undefined} />
     </div>
   );
 }
