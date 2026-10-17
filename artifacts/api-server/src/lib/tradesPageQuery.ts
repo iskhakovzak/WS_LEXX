@@ -8,6 +8,10 @@ import { signedRSql, netPnlSql, resultSql, horizonSql } from "./tradeMath";
 
 export const PAGE_SORT_COLS = ["date", "ticker", "side", "setup", "trader", "entry", "exit", "r", "result", "pnl", "gross", "fees", "exitEff", "mfeR", "left", "impact", "hold"] as const;
 export type PageSortCol = (typeof PAGE_SORT_COLS)[number];
+/** Sorts that order by $ (left falls back to $ left on the table) — not offered on a book whose $ the viewer may not see. */
+export const MONEY_SORT_COLS: ReadonlySet<PageSortCol> = new Set<PageSortCol>(["pnl", "gross", "fees", "impact", "left"]);
+/** Presets that select by $ ratios (fees vs pnl) — dropped on a book whose $ the viewer may not see. */
+export const MONEY_PRESETS: ReadonlySet<string> = new Set(["fees"]);
 export type PageDir = "asc" | "desc";
 export const PAGE_OUTCOMES = ["win", "loss", "breakeven", "open"] as const;
 export type PageOutcome = (typeof PAGE_OUTCOMES)[number];
@@ -62,6 +66,8 @@ export interface TradesPageFilters {
   leftMin?: number | null;
   /** Review preset (see PAGE_PRESETS). */
   preset?: PagePreset | "";
+  /** The viewer may not see this book's $ (lib/playbookPrivacy canSeeBookMoney): `q` does not match pnl. */
+  moneyBlind?: boolean;
 }
 
 export interface TradesPageSort { col: PageSortCol; dir: PageDir }
@@ -210,7 +216,7 @@ export function buildWhere(f: TradesPageFilters, p: Params, opts: WhereOptions):
   if (f.horizon && opts.skip !== "horizon") w.push(`${horizonSql(T)} = ${p.add(f.horizon)}`);
   if (f.tag) w.push(`${T}.tags ILIKE ${p.add(`%${likeEscape(f.tag)}%`)} ESCAPE '\\'`);
   if (f.q) {
-    const hay = `CONCAT_WS(' ', ${T}.ticker, ${T}.date, ${T}.setup, ${T}.side, ${T}.event_type, ${T}.session, ${T}.trader, ${T}.tags, ${T}.notes, ${T}.what_worked, ${T}.what_failed, ${T}.conclusion, ${T}.sector, ${T}.float, ${T}.market_cap, ${T}.pnl::text, ${T}.r_multiple::text)`;
+    const hay = `CONCAT_WS(' ', ${T}.ticker, ${T}.date, ${T}.setup, ${T}.side, ${T}.event_type, ${T}.session, ${T}.trader, ${T}.tags, ${T}.notes, ${T}.what_worked, ${T}.what_failed, ${T}.conclusion, ${T}.sector, ${T}.float, ${T}.market_cap, ${f.moneyBlind ? "" : `${T}.pnl::text, `}${T}.r_multiple::text)`;
     w.push(`${hay} ILIKE ${p.add(`%${likeEscape(f.q)}%`)} ESCAPE '\\'`);
   }
   if (f.outcome && opts.skip !== "outcome") {

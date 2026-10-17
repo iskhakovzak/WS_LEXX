@@ -16,6 +16,8 @@ import {
   PAGE_PRESETS,
   DAYS_LIMIT_DEFAULT,
   DAYS_LIMIT_MAX,
+  MONEY_PRESETS,
+  MONEY_SORT_COLS,
   PAGE_LIMIT_DEFAULT,
   PAGE_LIMIT_MAX,
   PAGE_OFFSET_MAX,
@@ -299,6 +301,12 @@ function pageFiltersOf(q: TradesPageQueryT, scope: string | null): TradesPageFil
   };
 }
 
+/** Filters of a book whose $ the viewer may not see: no $ preset, no free-text match on pnl. */
+function moneyBlindFilters(f: TradesPageFilters, showMoney: boolean): TradesPageFilters {
+  if (showMoney) return f;
+  return { ...f, moneyBlind: true, preset: f.preset && MONEY_PRESETS.has(f.preset) ? "" : f.preset };
+}
+
 router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   /*
    * Query:  trader? ticker? date? from? to? setup? playbookId? horizon? source? side? outcome|result? ids? sector? session?
@@ -319,14 +327,18 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
 
-  const sort = { col: q.sort, dir: q.dir };
+  // $ privacy: on a book whose $ the viewer may not see, $ sorts fall back to date and $ filters are off — the
+  // order / matches would reveal amounts the rows no longer carry.
+  const mv = await loadMoneyViewer(req);
+  const showMoney = canSeeBookMoney(mv, scope);
+  const sort = { col: !showMoney && MONEY_SORT_COLS.has(q.sort) ? "date" as const : q.sort, dir: q.dir };
   let cursor = null;
   if (q.cursor) {
     cursor = decodeCursor(q.cursor);
     if (!cursor) { res.status(400).json({ error: "Некорректный cursor" }); return; }
     if (cursor.s !== sort.col || cursor.d !== sort.dir) { res.status(400).json({ error: "cursor не соответствует сортировке (sort/dir)" }); return; }
   }
-  const filters = pageFiltersOf(q, scope);
+  const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
 
   await ensurePageIndexes().catch((err) => req.log.warn({ err: err instanceof Error ? err.message : String(err) }, "trades/page: ensure indexes failed"));
   const quality = await qualityTableExists();
@@ -362,7 +374,6 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   const nextCursor = hasMore && last ? encodeCursor({ s: sort.col, d: sort.dir, v: sortValueOf(last.sv, sort.col), id: last.id }) : null;
 
   // Rows by PK in page order (reuses the canonical response shape; the heavy work was the id query).
-  const mv = await loadMoneyViewer(req);
   const items: Redacted<ReturnType<typeof toTradeResponseShape>>[] = [];
   if (pageIds.length) {
     const rows = await db.select().from(tradesTable).where(inArray(tradesTable.id, pageIds));
@@ -438,7 +449,7 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
     items,
     page: { limit: q.limit, offset: cursor ? null : q.offset, returned: items.length, hasMore, nextCursor, sort: sort.col, dir: sort.dir },
     // A matrix grant (team.read) may scope a non-staff viewer to someone else's book: counts and R stay, $ do not.
-    summary: canSeeBookMoney(mv, scope) ? { ...summary, redacted: false } : redactBookSummary(summary),
+    summary: showMoney ? { ...summary, redacted: false } : redactBookSummary(summary),
     facets: { outcomes, horizons, setups, traders, sectors, presets },
     quality: { available: quality, applied: hasQualityFilters(filters) },
     // Echo so the client can tell this API applied the preset (an older build silently ignores the param).
@@ -466,7 +477,8 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, q.trader);
   if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
   const quality = await qualityTableExists();
-  const filters = pageFiltersOf(q, scope);
+  const showMoney = canSeeBookMoney(await loadMoneyViewer(req), scope);
+  const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
   const daysQ = buildDaysQuery(filters, quality, { limit: q.limit, before: q.before });
   const { rows } = await pool.query<Record<string, unknown>>(daysQ.sql, daysQ.params);
   const hasMore = rows.length > q.limit;
@@ -496,7 +508,6 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
     };
   });
   const lastDay = days[days.length - 1];
-  const showMoney = canSeeBookMoney(await loadMoneyViewer(req), scope);
   res.json({
     days: showMoney ? days.map((d) => ({ ...d, redacted: false })) : days.map(redactBookDay),
     hasMore,

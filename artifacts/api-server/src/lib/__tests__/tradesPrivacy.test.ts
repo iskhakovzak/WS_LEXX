@@ -3,6 +3,7 @@ import {
   BOOK_DAY_MONEY_FIELDS, BOOK_SUMMARY_MONEY_FIELDS, TRADE_MONEY_FIELDS, canSeeBookMoney, redactBookDay,
   redactBookSummary, redactExecutions, redactTradeRow, redactTradeRows, type MoneyViewer,
 } from "../playbookPrivacy";
+import { MONEY_PRESETS, MONEY_SORT_COLS, PAGE_SORT_COLS, buildPageQuery } from "../tradesPageQuery";
 
 // $ privacy on the trades API (routes/trades.ts, routes/executions.ts) — same rule as the playbook.
 const alex: MoneyViewer = { name: "Алекс", staff: false };
@@ -112,5 +113,25 @@ describe("redactExecutions (GET /trades/:id/executions)", () => {
     expect(redactExecutions(fills, { name: "Сеня", staff: false }, "Сеня")).toBe(fills);
     expect(redactExecutions(fills, curator, "Сеня")).toBe(fills);
     expect(redactExecutions(fills, guest, "Сеня")[0].qty).toBeNull();
+  });
+});
+
+describe("/trades/page on a book whose $ the viewer may not see", () => {
+  const sort = { col: "date" as const, dir: "desc" as const };
+
+  it("free text does not match pnl when moneyBlind (an amount search would be an oracle)", () => {
+    const seen = buildPageQuery({ filters: { scope: "Сеня", q: "275" }, sort, limit: 10, quality: false });
+    const blind = buildPageQuery({ filters: { scope: "Сеня", q: "275", moneyBlind: true }, sort, limit: 10, quality: false });
+    expect(seen.sql).toContain("t.pnl::text");
+    expect(blind.sql).not.toContain("pnl::text");
+    expect(blind.sql).toContain("r_multiple::text");
+  });
+
+  it("$ sorts and $ presets are known to the route", () => {
+    for (const c of ["pnl", "gross", "fees", "impact", "left"] as const) expect(MONEY_SORT_COLS.has(c)).toBe(true);
+    for (const c of ["date", "r", "result", "ticker", "hold", "mfeR", "exitEff"] as const) expect(MONEY_SORT_COLS.has(c)).toBe(false);
+    for (const c of MONEY_SORT_COLS) expect(PAGE_SORT_COLS).toContain(c);
+    expect(MONEY_PRESETS.has("fees")).toBe(true);
+    expect(MONEY_PRESETS.has("review")).toBe(false);
   });
 });

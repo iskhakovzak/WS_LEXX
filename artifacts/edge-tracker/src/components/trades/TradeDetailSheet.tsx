@@ -215,6 +215,10 @@ export function TradeDetailSheet(p: Props) {
   const canEditForm = p.canEditForm ?? p.canEdit;
   const canEditResult = p.canEditResult ?? p.canEdit;
   const canDelete = p.canDelete ?? p.canEdit;
+  // Another trader's trade opened from the playbook: $ come back null, and the owner-only blocks (quality, AI
+  // review, checklist, voice notes, curator reviews) would only answer 403 — they are not shown at all.
+  const redacted = t ? isRedactedTrade(t) : false;
+  React.useEffect(() => { if (redacted && tab === "ai") setTab("overview"); }, [redacted, tab]);
 
   return (
     <Sheet open={!!t} onOpenChange={(v) => { if (!v) p.onClose(); }}>
@@ -261,7 +265,7 @@ export function TradeDetailSheet(p: Props) {
                 )}
               </div>
               <KpiRow trade={t} holdSeconds={timing?.holdSeconds ?? null} />
-              {isRedactedTrade(t) && <RedactedHint />}
+              {redacted && <RedactedHint />}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
                   {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> Редактировать</Button>}
@@ -294,7 +298,7 @@ export function TradeDetailSheet(p: Props) {
                   <TabsTrigger value="chart">График</TabsTrigger>
                   <TabsTrigger value="replay">Реплей</TabsTrigger>
                   <TabsTrigger value="executions">Исполнения</TabsTrigger>
-                  <TabsTrigger value="ai">AI-разбор</TabsTrigger>
+                  {!redacted && <TabsTrigger value="ai">AI-разбор</TabsTrigger>}
                   <TabsTrigger value="social">Обсуждение{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
@@ -314,8 +318,8 @@ export function TradeDetailSheet(p: Props) {
                       />
                     </div>
                   </section>
-                  {!isBrokerTrade(t) && <ChecklistStatus tradeId={t.id} />}
-                  {(t.entry != null || t.exit != null) && (
+                  {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
+                  {(t.entry != null || t.exit != null) && !redacted && (
                     <section className="space-y-2">
                       <p className="micro-label">Качество исполнения</p>
                       <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
@@ -336,7 +340,7 @@ export function TradeDetailSheet(p: Props) {
                       />
                     </section>
                   )}
-                  {t.trader && (
+                  {t.trader && !redacted && (
                     <React.Suspense fallback={null}>
                       <LazyVoiceNotePlayer tradeId={t.id} userId={t.trader} refreshKey={p.voiceNoteKey} />
                     </React.Suspense>
@@ -359,28 +363,32 @@ export function TradeDetailSheet(p: Props) {
                       <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} />
                     </React.Suspense>
                   )}
-                  <section className="space-y-2">
-                    <p className="micro-label">Качество исполнения</p>
-                    <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
-                  </section>
-                </TabsContent>
-                <TabsContent value="executions">
-                  <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} />
-                </TabsContent>
-                <TabsContent value="ai">
-                  <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
-                    <LazyAiReviewPanel
-                      tradeId={t.id}
-                      userKey={p.userKey}
-                      conviction={t.conviction}
-                      confidenceGrade={t.confidenceGrade}
-                      tradeDate={t.date}
-                      trader={t.trader}
-                    />
-                  </React.Suspense>
-                </TabsContent>
+                  {!redacted && (
+                      <section className="space-y-2">
+                        <p className="micro-label">Качество исполнения</p>
+                        <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
+                      </section>
+                    )}
+                  </TabsContent>
+                  <TabsContent value="executions">
+                    <ExecutionsPanel tradeId={t.id} tradeDate={t.date} side={t.side} canEdit={p.canEdit} fees={t.fees} qty={t.qty} pnl={t.pnl} />
+                  </TabsContent>
+                  {!redacted && (
+                  <TabsContent value="ai">
+                    <React.Suspense fallback={<Skeleton className="h-48 rounded-2xl" />}>
+                      <LazyAiReviewPanel
+                        tradeId={t.id}
+                        userKey={p.userKey}
+                        conviction={t.conviction}
+                        confidenceGrade={t.confidenceGrade}
+                        tradeDate={t.date}
+                        trader={t.trader}
+                      />
+                    </React.Suspense>
+                  </TabsContent>
+                )}
                 <TabsContent value="social" forceMount className="data-[state=inactive]:hidden">
-                  <TradeSocial key={t.id} tradeId={t.id} traderName={p.traderName} isCurator={p.isCurator} onCount={setReviewCount} />
+                  <TradeSocial key={t.id} tradeId={t.id} showReviews={!redacted} traderName={p.traderName} isCurator={p.isCurator} onCount={setReviewCount} />
                 </TabsContent>
               </div>
             </Tabs>
