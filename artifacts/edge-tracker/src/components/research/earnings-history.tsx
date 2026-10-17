@@ -204,7 +204,7 @@ export function EarningsHistorySheet({
 }) {
   return (
     <Sheet open={!!target} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-lg">
+      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         {target && (
           <>
             <SheetHeader className="pr-10 text-left">

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { parseAsk, type ParseContext } from "@/lib/ask/parse";
-import { makeBook, runAsk, tradesHref } from "@/lib/ask/run";
+import { askBookScope, makeBook, runAsk, tradesFromTuples, tradesHref } from "@/lib/ask/run";
 import { canonicalText, type AskTrade } from "@/lib/ask/aggregate";
 
 // Book: Ориф trades Mon 2026-10-12 … Fri 2026-10-16, plus one Тимур trade.
@@ -113,5 +113,36 @@ describe("runAsk", () => {
   it("tradesHref maps side/outcome/trader", () => {
     expect(tradesHref({ side: "Short", outcome: "loss", trader: "Ориф", from: "2026-10-01", to: "2026-10-16" }))
       .toBe("/trades?from=2026-10-01&to=2026-10-16&side=Short&outcome=loss&trader=%D0%9E%D1%80%D0%B8%D1%84");
+  });
+});
+
+describe("askBookScope", () => {
+  const q = (s: string) => parseAsk(s, ctx);
+  it("traders always read their own book", () => {
+    expect(askBookScope(q("сколько сделок весь деск"), { me: "Ориф", isStaff: false })).toBe("mine");
+  });
+  it("staff: own book unless the question needs the desk", () => {
+    const o = { me: "Ориф", isStaff: true };
+    expect(askBookScope(null, o)).toBe("mine");
+    expect(askBookScope(q("сколько сделок"), o)).toBe("mine");
+    expect(askBookScope(q("сколько сделок Ориф"), o)).toBe("mine");
+    expect(askBookScope(q("сколько сделок Тимур"), o)).toBe("desk");
+    expect(askBookScope(q("сколько сделок весь деск"), o)).toBe("desk");
+    expect(askBookScope(q("нетто по трейдерам"), o)).toBe("desk");
+  });
+  it("staff with no trader name or no own trades get the desk", () => {
+    expect(askBookScope(q("сколько сделок"), { me: null, isStaff: true })).toBe("desk");
+    expect(askBookScope(q("сколько сделок"), { me: "Ориф", isStaff: true, ownEmpty: true })).toBe("desk");
+  });
+});
+
+describe("tradesFromTuples", () => {
+  it("maps columns by name and restores the snapshot clock fields", () => {
+    const cols = ["id", "ticker", "date", "trader", "pnl", "fees", "qty", "openedAt", "closedAt", "result"];
+    const [t] = tradesFromTuples(cols, [[7, "AAPL", "2026-10-16", "Ориф", 50, -1, 100, "2026-10-16T09:45:00", "2026-10-16T09:48:00", "win"]]);
+    expect(t).toMatchObject({ id: 7, ticker: "AAPL", date: "2026-10-16", trader: "Ориф", pnl: 50, fees: -1, qty: 100, result: "win", exit: null });
+    expect(t.contextSnapshot).toEqual({ openedAt: "2026-10-16T09:45:00", closedAt: "2026-10-16T09:48:00" });
+    const b = makeBook(tradesFromTuples(cols, [[1, "AAPL", "2026-10-16", "Ориф", 50, 1, 100, "2026-10-16T09:45:00", "2026-10-16T09:48:00", "win"]]));
+    expect(runAsk(parseAsk("сколько сделок", ctx), b, { me: "Ориф" }).answer.matched).toBe(1);
   });
 });

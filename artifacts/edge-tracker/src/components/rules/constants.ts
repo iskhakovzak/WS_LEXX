@@ -106,3 +106,13 @@ export function fmtDay(d: string | null | undefined): string {
   if (Number.isNaN(dt.getTime())) return d;
   return dt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
+
+/** Russian plural form: 1 нарушение, 2 нарушения, 5 нарушений (11–14 → many). */
+export function pluralRu(n: number, one: string, few: string, many: string): string {
+  const a = Math.abs(n) % 100, b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b === 1) return one;
+  if (b >= 2 && b <= 4) return few;
+  return many;
+}
+export const violationsWord = (n: number) => pluralRu(n, "нарушение", "нарушения", "нарушений");

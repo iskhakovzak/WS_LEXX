@@ -125,7 +125,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
         )}
         {blocking.length > 0 && (
           <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs">
-            Чтобы закрыть день, у {blocking.length} {plural(blocking.length, "ручной сделки", "ручных сделок", "ручных сделок")} нужны сетап и грейд: {blocking.map((m) => m.ticker).join(", ")}.
+            Чтобы закрыть день, у {blocking.length} {plural(blocking.length, "сделки", "сделок", "сделок")} нужны сетап и грейд: {blocking.map((m) => m.ticker).join(", ")}.
           </p>
         )}
         {step === "trades" ? (

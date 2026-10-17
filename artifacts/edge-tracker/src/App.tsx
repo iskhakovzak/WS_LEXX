@@ -1,6 +1,6 @@
 import { lazy, Suspense, useEffect, useRef } from "react";
 import { RouteErrorBoundary } from "@/components/shell/route-error-boundary";
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Redirect, Router as WouterRouter, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/hooks/use-toast";
@@ -52,6 +52,7 @@ const Simulator = lazy(() => import("@/pages/simulator"));
 const Behavior = lazy(() => import("@/pages/behavior"));
 const DayReport = lazy(() => import("@/pages/day-report"));
 const Benchmark = lazy(() => import("@/pages/benchmark"));
+const OfficeStats = lazy(() => import("@/pages/office-stats"));
 const Ask = lazy(() => import("@/pages/ask"));
 const ChartLab = lazy(() => import("@/pages/chart-lab"));
 const AcademyPath = lazy(() => import("@/pages/academy/path"));
@@ -128,6 +129,8 @@ function Router() {
       <Suspense fallback={PageFallback}>
         <Switch>
           <Route path="/" component={Dashboard} />
+          {/* Signed in already (the login screen renders outside the router): a typed / bookmarked /login goes home. */}
+          <Route path="/login"><Redirect to="/" replace /></Route>
           <Route path="/trades" component={Trades} />
           <Route path="/journal" component={Journal} />
           <Route path="/top-results" component={TopResults} />
@@ -165,6 +168,7 @@ function Router() {
           <Route path="/behavior" component={Behavior} />
           <Route path="/day-report" component={DayReport} />
           <Route path="/benchmark" component={Benchmark} />
+          <Route path="/office" component={OfficeStats} />
           <Route path="/ask" component={Ask} />
           <Route path="/chart-lab" component={ChartLab} />
           <Route path="/academy/path" component={AcademyPath} />

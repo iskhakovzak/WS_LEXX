@@ -34,7 +34,7 @@ function Candidate({ c, selected, onSelect }: { c: ManualCandidate; selected: bo
       <div className="mt-1 grid grid-cols-4 gap-x-2 text-muted-foreground">
         <span>вход {fmtPrice(c.entry)}</span><span>выход {fmtPrice(c.exit)}</span><span>объём {c.qty ?? "—"}</span><span>net {fmtSigned(net)}</span>
       </div>
-      {c.notes && <div className="mt-1 line-clamp-2 text-muted-foreground">{c.notes}</div>}
+      {c.notes && <div className="mt-1 line-clamp-2 text-muted-foreground" title={c.notes}>{c.notes}</div>}
     </button>
   );
 }

@@ -25,10 +25,14 @@ function names(list: string[], max = 4) {
 type Go = (tab: AdminTab, filter?: TraderFilter) => void;
 type QueueCount = { count: number; overdue: number; slaHours: number } | null | undefined;
 
-/** Traders who traded on the EOD date but have not closed the day yet. */
-export function eodNotClosed(eod: EodStatus | null | undefined): string[] {
+/**
+ * Traders who traded on the EOD date (last finished trading day) but have not closed it — same rule as the curator
+ * cabinet. With `pulse`, only desk traders count (staff who trade don't close an EOD).
+ */
+export function eodNotClosed(eod: EodStatus | null | undefined, pulse?: DeskPulse): string[] {
   if (!eod) return [];
-  return eod.traders.filter((t) => t.status === "open" && t.trades > 0).map((t) => t.trader);
+  const staff = new Set((pulse?.users ?? []).filter((u) => u.role !== "trader").map((u) => u.name));
+  return eod.traders.filter((t) => t.status === "open" && t.trades > 0 && !staff.has(t.trader)).map((t) => t.trader);
 }
 
 /** Four desk KPIs — short labels so nothing truncates at 1280–1440 px. */
@@ -43,7 +47,7 @@ export function KpiRow({
   onGo: Go;
 }) {
   const s = pulse?.summary;
-  const notClosed = eodNotClosed(eod);
+  const notClosed = eodNotClosed(eod, pulse);
   return (
     <StatGrid cols={4}>
       <StatCard
@@ -60,7 +64,7 @@ export function KpiRow({
         icon={BookX}
         value={eod ? notClosed.length : "—"}
         tone={!eod ? "neutral" : notClosed.length ? "warn" : "up"}
-        hint={!eod ? "статус дня недоступен" : notClosed.length ? names(notClosed, 2) : `все закрыли ${eod.date}`}
+        hint={!eod ? "статус дня недоступен" : notClosed.length ? `${eod.date}: ${names(notClosed, 2)}` : `все закрыли ${eod.date}`}
       />
       <StatCard
         label="Ревью куратора"
@@ -110,7 +114,7 @@ function buildItems({
   if (queue?.overdue) items.push({ key: "sla", tone: "down", icon: ClipboardCheck, title: `Просрочено ревью куратора: ${queue.overdue}`, detail: `SLA ${queue.slaHours} ч · всего в очереди ${queue.count}`, action: { label: "Очередь", href: "/journal?view=queue" } });
   else if (queue?.count) items.push({ key: "queue", tone: "warn", icon: ClipboardCheck, title: `Ждут ревью куратора: ${queue.count}`, detail: `SLA ${queue.slaHours} ч`, action: { label: "Очередь", href: "/journal?view=queue" } });
 
-  const notClosed = eodNotClosed(eod);
+  const notClosed = eodNotClosed(eod, pulse);
   if (notClosed.length) items.push({ key: "eod", tone: "warn", icon: BookX, title: `Не закрыли день ${eod!.date}: ${notClosed.length}`, detail: names(notClosed), action: { label: "Дневник", href: "/journal" } });
 
   if (health) {

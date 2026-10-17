@@ -53,7 +53,7 @@ interface AuthContextType {
   refreshPermissions: () => void;
 }
 
-export type LoginError = "invalid" | "rate_limited" | "network" | "banned";
+export type LoginError = "invalid" | "rate_limited" | "network" | "banned" | "guest_disabled";
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
@@ -207,6 +207,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const r = await fetch(`${BASE}/api/auth/guest`, { method: "POST", headers: { "Content-Type": "application/json" } });
       if (r.status === 429) return "rate_limited";
+      if (r.status === 403) {
+        // GUEST_MODE off on this server (code GUEST_DISABLED).
+        const body = await r.json().catch(() => null) as { code?: string } | null;
+        return body?.code === "GUEST_DISABLED" ? "guest_disabled" : "invalid";
+      }
       if (!r.ok) return "invalid";
       const data = await r.json() as { token: string };
       if (!data?.token) return "invalid";

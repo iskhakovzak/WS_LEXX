@@ -175,22 +175,18 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
       OR NULLIF(TRIM(COALESCE(${tradesTable.tags}, '')), '') IS NOT NULL)` as unknown as ReturnType<typeof eq>);
   }
 
-  const auth = req.authUser;
-  const isPrivileged = auth && (auth.role === "curator" || auth.role === "admin");
-  if (auth && auth.role === "trader") {
-    conditions.push(eq(tradesTable.trader, auth.name));
-  } else if (isPrivileged && trader) {
-    conditions.push(eq(tradesTable.trader, trader));
-  } else if (!auth && trader) {
-    conditions.push(eq(tradesTable.trader, trader));
-  }
+  // Scope via lib/auth scopeTrader (same rule as /trades/page): staff may pass ?trader= (none = whole desk),
+  // every other member lists only their own book, a guest gets the no-match sentinel (empty list).
+  const scope = await scopeTrader(req, trader ?? null);
+  if (scope === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (scope !== null) conditions.push(eq(tradesTable.trader, scope));
 
   const base = db.select().from(tradesTable).where(and(...conditions));
   const rows = limit != null
     ? await base.orderBy(desc(tradesTable.date), desc(tradesTable.id)).limit(limit)
     : await base.orderBy(desc(tradesTable.createdAt));
 
-  // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; guests get every $ nulled.
+  // $ privacy (lib/playbookPrivacy): a trader only ever lists their own book; anyone else's $ is nulled for non-staff.
   res.json(redactTradeRows(ListTradesResponse.parse(rows.map(toTradeResponseShape)), await loadMoneyViewer(req)));
 }));
 

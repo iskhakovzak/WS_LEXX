@@ -22,6 +22,7 @@ import {
 } from "@workspace/api-zod";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, normResult } from "../lib/tradeMath";
 import { nyDate, nyMinutes, nySession, addDays, isWeekend } from "../lib/tradingDate";
+import { recentViolationWindow, violationDaySql } from "../lib/violationWindow";
 import { scopeTrader, viewerRole, isStaffRole } from "../lib/auth";
 
 const router: IRouter = Router();
@@ -414,9 +415,11 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       `SELECT v.id, v.trader, v.severity, v.message, v.trade_id AS "tradeId", r.name AS "ruleName", v.occurred_at AS "occurredAt",
               COUNT(*) OVER()::int AS total
        FROM rule_violations v LEFT JOIN trading_rules r ON r.id = v.rule_id
-       WHERE ($1::text IS NULL OR v.trader = $1) AND v.archived_at IS NULL AND v.occurred_at >= NOW() - INTERVAL '24 hours'
-       ORDER BY v.occurred_at DESC LIMIT 5`,
-      [traderParam],
+       WHERE ($1::text IS NULL OR v.trader = $1) AND v.archived_at IS NULL
+         AND ${violationDaySql("v")} BETWEEN $2 AND $3
+       ORDER BY ${violationDaySql("v")} DESC, v.occurred_at DESC LIMIT 5`,
+      // «За сутки» — по торговому дню нарушения (v.day), а не по occurred_at: бэкфилл вставляет старые нарушения «сейчас».
+      [traderParam, recentViolationWindow(today).from, recentViolationWindow(today).to],
     ).catch(quiet),
     pool.query(`SELECT DISTINCT date FROM emotional_state_log WHERE user_id = $1 AND date >= $2 AND date <= $3 ORDER BY date DESC`, [me, addDays(today, -60), today]).catch(quiet),
     pool.query(`SELECT COUNT(*)::int AS c FROM trade_ideas WHERE deleted_at IS NULL AND trader = $1 AND status = 'draft'`, [me]).catch(quiet),

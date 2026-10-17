@@ -269,7 +269,7 @@ export function FirmStatsSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-4 sm:max-w-3xl">
+      <SheetContent side="right" className="flex w-full flex-col gap-4 overflow-y-auto sm:max-w-3xl xl:max-w-4xl">
         <SheetHeader>
           <SheetTitle>Надёжность аналитических фирм</SheetTitle>
           <SheetDescription>
@@ -295,7 +295,7 @@ export function FirmStatsSheet({
         ) : sorted.length === 0 ? (
           <EmptyState icon={Building2} title="Фирмы не найдены" />
         ) : (
-          <DataTable maxHeight="calc(100vh - 300px)" ariaLabel="Таблица фирм" stickyFirstCol>
+          <DataTable className="min-h-[280px] flex-1" ariaLabel="Таблица фирм" stickyFirstCol>
             <table>
               <thead>
                 <tr>

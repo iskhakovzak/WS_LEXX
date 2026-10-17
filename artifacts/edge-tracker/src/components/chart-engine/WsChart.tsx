@@ -22,16 +22,19 @@ import {
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { Bar, ChartMode, Drawing, DrawingPoint, DrawingType, Execution, Timeframe, TradeLike, TrainingResult } from "./types";
+import type { Bar, ChartMode, Drawing, DrawingPoint, DrawingType, Execution, Timeframe, TradeLike, TradeStructureDto, TrainingResult } from "./types";
 import { TIMEFRAMES, TF_LABEL, TF_SECONDS } from "./types";
-import { aggregate, availableTimeframes, barSeconds } from "./lib/aggregate";
+import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/aggregate";
 import { barIndexForTime, fmtEtDateTime, fmtEtDay, fmtEtTime, logicalToTime, tickMarkLabel } from "./lib/time";
 import { fmtPrice } from "./lib/format";
 import { buildGeometry, type Geometry } from "./lib/geometry";
 import { isOpening, positionAt } from "./lib/position";
 import { DRAWING_POINTS, loadDrawings, makeDrawing, saveDrawings } from "./lib/drawings";
 import { clockTick, isReplaySpeed, isReplayStart, planAdvance, replayStartIndex, sessionEndIndex, stepSpeed, type ReplaySpeed, type ReplayStart } from "./lib/replay-clock";
-import { EMPTY_SIM, idealMove, scoreTraining, simApplyBar, simOrder, simSetStop, suggestStop, type SimAction, type SimState, type TrainingOutcome } from "./lib/training-sim";
+import {
+  EMPTY_SIM, canBreakeven, idealMove, scoreTraining, simApplyBar, simBreakeven, simOrder, simSetStop, simSetTarget, suggestStop, targetAtRR,
+  type SimAction, type SimState, type TrainingOutcome,
+} from "./lib/training-sim";
 import { buildTradeSummary } from "./lib/trade-summary";
 import { capVolumes, defaultViewRange, followCursor } from "./lib/view";
 import { readChartTheme, type ChartTheme } from "./theme";
@@ -54,13 +57,19 @@ import { ChartLegend, type LegendInfo } from "./ui/ChartLegend";
 import { ReplayDock, type ReplayMark } from "./ui/ReplayControls";
 import { ChartToolbar, DEFAULT_OVERLAYS, DEFAULT_PANES, TRADE_OVERLAYS, type HotkeyRow, type Overlays, type PaneToggles } from "./ui/ChartToolbar";
 import { FillLog, PositionCard, SummaryCard } from "./ui/TradePanels";
-import { TrainingHistoryCard, TrainingOutcomeCard, TrainingTicket, type TicketState } from "./ui/TrainingPanel";
+import { TrainingHistoryCard, TrainingOutcomeCard, TrainingTicket, type DecisionRow, type TicketState } from "./ui/TrainingPanel";
 import { FillsKey } from "./ui/FillsKey";
 
 export type WsChartProps = {
   trade: TradeLike;
   /** Fills; when omitted they are fetched from GET /api/trades/:id/executions. */
   executions?: Execution[];
+  /** Recognised structure that came with `executions` (e.g. from GET /api/training/trades/:id). */
+  structure?: TradeStructureDto | null;
+  /** Training: where the task came from (stored with the attempt). A trade with id <= 0 is a ticker-day task. */
+  trainingSource?: "mine" | "desk" | "day";
+  /** Training: reports when the real trade is revealed / hidden again («Ещё раз»), so the page can show its trader. */
+  onTrainingRevealChange?: (revealed: boolean) => void;
   /** Target price (e.g. from the linked trade idea). */
   target?: number | null;
   initialTimeframe?: Timeframe;
@@ -141,7 +150,14 @@ function loadBools<T extends object>(key: string, defaults: T): T {
 function loadTicket(): TicketState {
   const p = loadJson(TICKET_KEY);
   const qty = Number(p?.qty);
-  return { qty: Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 100, autoStop: typeof p?.autoStop === "boolean" ? p.autoStop : true, stopText: "" };
+  const rr = Number(p?.targetRR);
+  return {
+    qty: Number.isFinite(qty) && qty > 0 ? Math.floor(qty) : 100,
+    autoStop: typeof p?.autoStop === "boolean" ? p.autoStop : true,
+    stopText: "",
+    targetRR: rr === 1 || rr === 2 || rr === 3 ? rr : 0,
+    targetText: "",
+  };
 }
 function save(key: string, value: object): void {
   try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
@@ -157,14 +173,14 @@ const isTyping = (el: EventTarget | null) => {
 };
 
 export function WsChart({
-  trade, executions, target, initialTimeframe = "1m", mode: modeProp = "analysis", onModeChange, onTimeframeChange, onTrainingResult, onNextTask,
+  trade, executions, structure, trainingSource, onTrainingRevealChange, target, initialTimeframe = "1m", mode: modeProp = "analysis", onModeChange, onTimeframeChange, onTrainingResult, onNextTask,
   height = 520, className, contextDays = 2, startBarsBefore, layout = "inline", globalHotkeys, showModes = true, asideExtra,
 }: WsChartProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const refs = React.useRef<ChartRefs | null>(null);
   const themeVersion = useThemeVersion();
-  const data = useChartData(trade, { executions, contextDays });
+  const data = useChartData(trade, { executions, structure, contextDays });
   const redacted = !!trade.redacted;
   const history = useTrainingHistory();
 
@@ -220,6 +236,9 @@ export function WsChart({
   /** Training before the reveal: everything about the real trade is hidden. */
   const hideReal = training && !revealed;
   const revealAll = !replayActive || revealed;
+  const revealRef = React.useRef(onTrainingRevealChange);
+  revealRef.current = onTrainingRevealChange;
+  React.useEffect(() => { revealRef.current?.(revealed); }, [revealed]);
 
   const [cursorTime, setCursorTime] = React.useState<number | null>(null);
   const [playing, setPlaying] = React.useState(false);
@@ -315,7 +334,7 @@ export function WsChart({
 
   // ── Training ─────────────────────────────────────────────────────────────
   const [ticket, setTicket] = React.useState<TicketState>(loadTicket);
-  const updateTicket = React.useCallback((patch: Partial<TicketState>) => setTicket((t) => { const n = { ...t, ...patch }; save(TICKET_KEY, { qty: n.qty, autoStop: n.autoStop }); return n; }), []);
+  const updateTicket = React.useCallback((patch: Partial<TicketState>) => setTicket((t) => { const n = { ...t, ...patch }; save(TICKET_KEY, { qty: n.qty, autoStop: n.autoStop, targetRR: n.targetRR }); return n; }), []);
   // Stops are checked on every bar revealed after the order bar.
   React.useEffect(() => {
     if (!training || revealed || cursorIdx == null) return;
@@ -334,18 +353,24 @@ export function WsChart({
     const bar = bars[cursorIdx];
     setSim((s) => {
       let stop: number | null = null;
-      if (action !== "flat") {
+      let tgt: number | null = null;
+      if (action === "buy" || action === "sell") {
         const signed = action === "buy" ? ticket.qty : -ticket.qty;
         const dir = Math.sign(s.pos + signed);
+        // A new position (or a reversal) gets the ticket's stop; adding keeps the open one unless a stop is typed.
+        const opensNew = dir !== 0 && (s.pos === 0 || Math.sign(s.pos) !== dir);
         if (dir !== 0) {
           const manual = Number(ticket.stopText.replace(",", "."));
-          stop = ticket.autoStop || !ticket.stopText.trim() || !Number.isFinite(manual) ? (ticket.autoStop ? suggestStop(bars, cursorIdx, dir as 1 | -1) : null) : manual;
+          const manualOk = ticket.stopText.trim() !== "" && Number.isFinite(manual) && manual > 0;
+          stop = !ticket.autoStop && manualOk ? manual : ticket.autoStop && opensNew ? suggestStop(bars, cursorIdx, dir as 1 | -1) : null;
+          if (opensNew && ticket.targetRR > 0) tgt = targetAtRR(bar.c, stop, ticket.targetRR);
         }
       }
-      return simOrder(s, { action, idx: cursorIdx, t: bar.t, price: bar.c, qty: ticket.qty, stop });
+      return simOrder(s, { action, idx: cursorIdx, t: bar.t, price: bar.c, qty: ticket.qty, stop, target: tgt });
     });
+    if (ticket.stopText && (action === "buy" || action === "sell")) updateTicket({ stopText: "" });
     simAppliedRef.current = cursorIdx;
-  }, [training, revealed, cursorIdx, bars, limitIdx, ticket]);
+  }, [training, revealed, cursorIdx, bars, limitIdx, ticket, updateTicket]);
   const applyStop = React.useCallback(() => {
     if (cursorIdx == null || !bars[cursorIdx]) return;
     const v = Number(ticket.stopText.replace(",", "."));
@@ -353,6 +378,25 @@ export function WsChart({
     setSim((s) => simSetStop(s, v, bars[cursorIdx].c));
     updateTicket({ stopText: "" });
   }, [cursorIdx, bars, ticket.stopText, updateTicket]);
+  const applyTarget = React.useCallback(() => {
+    if (cursorIdx == null || !bars[cursorIdx]) return;
+    const v = Number(ticket.targetText.replace(",", "."));
+    if (!Number.isFinite(v) || v <= 0) return;
+    setSim((s) => simSetTarget(s, v, bars[cursorIdx].c));
+    updateTicket({ targetText: "" });
+  }, [cursorIdx, bars, ticket.targetText, updateTicket]);
+  const targetByRR = React.useCallback((rr: number) => {
+    if (cursorIdx == null || !bars[cursorIdx]) return;
+    setSim((s) => simSetTarget(s, targetAtRR(s.avg, s.stop, rr), bars[cursorIdx].c));
+  }, [cursorIdx, bars]);
+  const clearTarget = React.useCallback(() => {
+    if (cursorIdx == null || !bars[cursorIdx]) return;
+    setSim((s) => simSetTarget(s, null, bars[cursorIdx].c));
+  }, [cursorIdx, bars]);
+  const breakeven = React.useCallback(() => {
+    if (!training || revealed || cursorIdx == null || !bars[cursorIdx]) return;
+    setSim((s) => simBreakeven(s, bars[cursorIdx].c));
+  }, [training, revealed, cursorIdx, bars]);
   const reveal = React.useCallback(() => {
     if (!training || revealed || cursorIdx == null || !bars[cursorIdx]) return;
     setPlaying(false);
@@ -361,14 +405,17 @@ export function WsChart({
     const o = scoreTraining(sim, {
       lastClose: bars[cursorIdx].c,
       ideal,
-      real: { side: geo.side, avgEntry: hasTrade ? geo.avgEntry : null, avgExit: geo.exitIdx != null ? geo.avgExit : null, risk: geo.risk },
+      real: hasTrade ? { side: geo.side, avgEntry: geo.avgEntry, avgExit: geo.exitIdx != null ? geo.avgExit : null, risk: geo.risk } : null,
     });
     setOutcome(o);
     setIdealT(ideal ? { from: bars[ideal.fromIdx].t, to: bars[ideal.toIdx].t, side: ideal.side } : null);
-    const rec: TrainingResult = { at: Date.now(), tradeId: trade.id, ticker: trade.ticker, day: dayKey, score: o.score, pnlUsd: o.pnlUsd, r: o.r, perShare: o.perShare, vsRealPerShare: o.vsRealPerShare, trades: o.trades };
+    const rec: TrainingResult = {
+      at: Date.now(), tradeId: Math.max(0, trade.id), ticker: trade.ticker, day: dayKey, score: o.score, pnlUsd: o.pnlUsd, r: o.r, perShare: o.perShare,
+      vsRealPerShare: o.vsRealPerShare, trades: o.trades, source: trainingSource ?? (trade.id > 0 ? undefined : "day"), realPerShare: o.realPerShare, realR: o.realR,
+    };
     history.add(rec);
     onTrainingResult?.(rec);
-  }, [training, revealed, cursorIdx, bars, startIdx, sim, geo, hasTrade, trade.id, trade.ticker, dayKey, history, onTrainingResult]);
+  }, [training, revealed, cursorIdx, bars, startIdx, sim, geo, hasTrade, trade.id, trade.ticker, dayKey, history, onTrainingResult, trainingSource]);
 
   // ── Overlays / drawings ──────────────────────────────────────────────────
   const [overlays, setOverlays] = React.useState<Overlays>(() => loadBools(OVERLAYS_KEY, DEFAULT_OVERLAYS));
@@ -669,7 +716,7 @@ export function WsChart({
     const ideal = idealT && bars.length ? { fromIdx: toIdx(idealT.from), toIdx: toIdx(idealT.to), fromPrice: bars[toIdx(idealT.from)].c, toPrice: bars[toIdx(idealT.to)].c, side: idealT.side } : null;
     r.prims.sim.set({
       fills: sim.fills.map((f) => ({ idx: toIdx(f.t), price: f.price, qty: f.qty, reason: f.reason })),
-      pos: sim.pos, avg: sim.avg, stop: sim.stop,
+      pos: sim.pos, avg: sim.avg, stop: sim.stop, target: sim.target,
       openIdx: openFill ? toIdx(openFill.t) : null,
       cursor: cursorIdx,
       ideal,
@@ -722,6 +769,8 @@ export function WsChart({
       if (code === "KeyB") { e.preventDefault(); placeOrder("buy"); }
       else if (code === "KeyS") { e.preventDefault(); placeOrder("sell"); }
       else if (code === "KeyC") { e.preventDefault(); placeOrder("flat"); }
+      else if (code === "KeyH") { e.preventDefault(); placeOrder("half"); }
+      else if (code === "KeyE") { e.preventDefault(); breakeven(); }
       else if (k === "Enter" && !btn) { e.preventDefault(); reveal(); }
       return;
     }
@@ -801,7 +850,7 @@ export function WsChart({
       rows.push([["Space"], "играть / пауза"], [["→"], "бар вперёд (Shift — 10)"]);
       if (!training) rows.push([["←"], "бар назад (Shift — 10)"]);
       rows.push([["+", "−"], "быстрее / медленнее"]);
-      if (training) rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
+      if (training) rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["H"], "закрыть половину"], [["E"], "стоп в безубыток"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
       else rows.push([["E"], "к входу"], [["X"], "к выходу"], [["N"], "к следующему исполнению"], [["P"], "пауза на исполнениях"]);
       rows.push([["Home"], "в начало"]);
     }
@@ -854,14 +903,22 @@ export function WsChart({
     if (hasTrade) aside.push(<FillLog key="log" fills={geo.fills} cursor={cursorIdx} redacted={redacted} onJump={(i) => { setPlaying(false); setCursor(i); }} />);
   } else if (training && cursorIdx != null) {
     if (outcome) {
-      aside.push(<TrainingOutcomeCard key="out" o={outcome} onRestart={resetSession} onNext={onNextTask} />);
+      const decisions: DecisionRow[] = sim.fills.map((f) => ({ idx: barIndexForTime(bars, f.t, barSec), time: fmtEtTime(f.t), price: f.price, qty: f.qty, reason: f.reason }));
+      aside.push(
+        <TrainingOutcomeCard
+          key="out" o={outcome} decisions={decisions} traderName={hasTrade ? (trade.trader ?? undefined) : null}
+          onJump={(i) => refs.current?.chart.timeScale().setVisibleLogicalRange({ from: i - 50, to: i + 30 })}
+          onRestart={resetSession} onNext={onNextTask}
+        />,
+      );
       if (summary) aside.push(<SummaryCard key="sum" s={summary} redacted={redacted} />);
     } else {
       aside.push(
         <TrainingTicket
           key="ticket" price={bars[cursorIdx]?.c ?? null} sim={sim} ticket={ticket} onTicket={updateTicket}
-          suggestLong={suggestLong} suggestShort={suggestShort} onOrder={placeOrder} onApplyStop={applyStop} onReveal={reveal}
-          atLimit={atLimit} started={cursorIdx > startIdx || sim.fills.length > 0}
+          suggestLong={suggestLong} suggestShort={suggestShort} onOrder={placeOrder} onApplyStop={applyStop}
+          onBreakeven={breakeven} canBE={canBreakeven(sim, bars[cursorIdx]?.c ?? null)} onApplyTarget={applyTarget} onTargetRR={targetByRR} onClearTarget={clearTarget}
+          onReveal={reveal} atLimit={atLimit} started={cursorIdx > startIdx || sim.fills.length > 0}
         />,
       );
     }
@@ -879,7 +936,7 @@ export function WsChart({
       aria-label="График: пробел — играть/пауза, стрелки — шаг, T — таймфрейм, F — показать сделку, Shift+F — весь экран"
     >
       <ChartToolbar
-        timeframe={tf} timeframes={timeframes} onTimeframe={setTf}
+        timeframe={tf} timeframes={timeframes} allTimeframes={TIMEFRAMES} baseSec={data.baseSec} onTimeframe={setTf}
         mode={mode} onMode={setMode} showModes={showModes}
         overlays={overlays} onOverlay={setOverlay} panes={panes} onPane={setPane} hasPosition={geo.position.length > 0}
         hasEvents={geo.events.length > 0} hasStopOrTarget={geo.stop != null || geo.target != null} lockTrade={hideReal}
@@ -894,7 +951,16 @@ export function WsChart({
             <ChartLegend info={legend} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
             <FillsKey fills={visibleFills} structure={hideReal ? null : geo.structure} layer={structureLayer} />
             {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/80 px-2.5 py-1 text-xs text-muted-foreground backdrop-blur">{hint}</div>}
-            {hideReal && <div className="pointer-events-none absolute right-16 top-2 z-raised rounded-full bg-background/75 px-2 py-0.5 text-xs text-muted-foreground backdrop-blur">будущее скрыто</div>}
+            {training && (
+              <div className="pointer-events-none absolute bottom-8 right-[4.5rem] z-raised flex max-w-[calc(100%-6rem)] flex-wrap justify-end gap-1">
+                {hideReal && <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-muted-foreground backdrop-blur">будущее скрыто</span>}
+                {data.baseSec > 60 && intraday && (
+                  <span className="rounded-full bg-background/80 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))] backdrop-blur" title="Мельче баров за этот день нет: 1-минутки Yahoo хранит 7 дней, 5-минутки — 60 дней (если день не попал в кэш)">
+                    бары {baseBarLabel(data.baseSec)}: мельче за этот день нет
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           {replayActive && cursorIdx != null && (
             <ReplayDock

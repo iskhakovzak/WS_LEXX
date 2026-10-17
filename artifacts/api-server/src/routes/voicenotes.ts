@@ -2,12 +2,13 @@ import { Router, type IRouter } from "express";
 import { eq, and, desc } from "drizzle-orm";
 import { db, voiceNotesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { transcribeAudio } from "../lib/transcribe";
+import { audioExtension, transcribeAudio } from "../lib/transcribe";
 import { objectStorageClient, ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import multer from "multer";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { isGuest } from "../lib/auth";
+import { transcribeLimiter, voiceNoteLimiter } from "../lib/rateLimits";
 
 function isStaff(req: Request): boolean {
   const role = req.authUser?.role;
@@ -85,7 +86,7 @@ const BUCKET_ID = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID ?? "";
 const PRIVATE_DIR = process.env.PRIVATE_OBJECT_DIR ?? "objects";
 
 async function uploadAudioToStorage(buffer: Buffer, mimeType: string): Promise<string> {
-  const ext = mimeType.includes("webm") ? "webm" : mimeType.includes("mp4") ? "mp4" : mimeType.includes("ogg") ? "ogg" : "wav";
+  const ext = audioExtension(mimeType);
   const objectName = `${PRIVATE_DIR}/voice-notes/${randomUUID()}.${ext}`;
   const bucket = objectStorageClient.bucket(BUCKET_ID);
   const file = bucket.file(objectName);
@@ -93,7 +94,7 @@ async function uploadAudioToStorage(buffer: Buffer, mimeType: string): Promise<s
   return `/objects/${objectName.replace(PRIVATE_DIR + "/", "")}`;
 }
 
-router.post("/voice-notes/transcribe", upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
+router.post("/voice-notes/transcribe", transcribeLimiter, upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
   if (!req.file) {
     res.status(400).json({ error: "No audio file provided" });
     return;
@@ -108,7 +109,7 @@ router.post("/voice-notes/transcribe", upload.single("audio"), asyncHandler(asyn
   res.json({ transcript });
 }));
 
-router.post("/voice-notes", upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
+router.post("/voice-notes", voiceNoteLimiter, upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
   if (!req.file) {
     res.status(400).json({ error: "No audio file provided" });
     return;

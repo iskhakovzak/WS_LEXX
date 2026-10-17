@@ -98,10 +98,9 @@ function LimitsHistory({ trader }: { trader: string }) {
             {e.reason && <div className="mt-0.5 font-medium text-foreground">{e.reason}</div>}
             {d.length > 0 && (
               <ul className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5 tabular-nums">
-                {d.slice(0, 8).map((x) => (
+                {d.map((x) => (
                   <li key={x.key}><span className="text-muted-foreground">{x.key}:</span> {x.from} → <span className="font-medium text-foreground">{x.to}</span></li>
                 ))}
-                {d.length > 8 && <li className="text-muted-foreground">и ещё {d.length - 8}</li>}
               </ul>
             )}
           </li>

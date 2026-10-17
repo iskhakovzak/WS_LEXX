@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { BarChart3, ServerCog } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState, useTableSort } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { MiniBar } from "./bits";
@@ -18,6 +18,41 @@ function BucketRow({ label, b, onClick }: { label: React.ReactNode; b: DayBucket
       <td className="text-right">{wr(b)}</td>
       <td className="text-right text-muted-foreground">{fmtSignedUsd(b.avgNet)}</td>
     </tr>
+  );
+}
+
+type TickerBucket = DayBucket & { ticker: string; days: string[] };
+type TickerKey = "ticker" | "trades" | "net" | "wr" | "avg";
+const TICKER_ACCESSORS: Record<TickerKey, (b: TickerBucket) => number | string | null> = {
+  ticker: (b) => b.ticker,
+  trades: (b) => b.trades,
+  net: (b) => b.net,
+  wr: (b) => b.winRate,
+  avg: (b) => b.avgNet,
+};
+
+function ByTickerTable({ rows, onOpenTicker }: { rows: TickerBucket[]; onOpenTicker: (t: string) => void }) {
+  const { rows: sorted, thProps } = useTableSort(rows, TICKER_ACCESSORS, "net");
+  return (
+    <DataTable maxHeight="70dvh" ariaLabel="Мои сделки по тикерам в дни размещений">
+      <table>
+        <thead>
+          <tr>
+            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+            <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
+            <SortableTh {...thProps("net")} align="right">Net</SortableTh>
+            <SortableTh {...thProps("wr")} align="right">WR</SortableTh>
+            <SortableTh {...thProps("avg")} align="right">Ср.</SortableTh>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((t) => (
+            <BucketRow key={t.ticker} b={t} onClick={() => onOpenTicker(t.ticker)}
+              label={<span className="inline-flex items-center gap-2">{t.ticker}<span className="text-2xs font-normal text-muted-foreground" title={t.days.map((d) => fmtDay(d)).join(", ")}>{t.days.slice(0, 2).map((d) => fmtDay(d)).join(", ")}{t.days.length > 2 ? ` +${t.days.length - 2}` : ""}</span></span>} />
+          ))}
+        </tbody>
+      </table>
+    </DataTable>
   );
 }
 
@@ -93,17 +128,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
               {!s ? <div className="skeleton m-2 h-48 rounded-xl" /> : s.byTicker.length === 0 ? (
                 <EmptyState compact icon={BarChart3} title={pending > 0 ? "Ещё проверяем SEC…" : "Сделок в дни размещений нет"} />
               ) : (
-                <DataTable maxHeight={420}>
-                  <table>
-                    <thead><tr><th>Тикер</th><th className="text-right">Сделок</th><th className="text-right">Net</th><th className="text-right">WR</th><th className="text-right">Ср.</th></tr></thead>
-                    <tbody>
-                      {s.byTicker.map((t) => (
-                        <BucketRow key={t.ticker} b={t} onClick={() => onOpenTicker(t.ticker)}
-                          label={<span className="inline-flex items-center gap-2">{t.ticker}<span className="text-2xs font-normal text-muted-foreground">{t.days.slice(0, 2).map((d) => fmtDay(d)).join(", ")}{t.days.length > 2 ? ` +${t.days.length - 2}` : ""}</span></span>} />
-                      ))}
-                    </tbody>
-                  </table>
-                </DataTable>
+                <ByTickerTable rows={s.byTicker} onOpenTicker={onOpenTicker} />
               )}
             </Panel>
 
@@ -129,7 +154,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
                 {!s ? <div className="skeleton m-2 h-40 rounded-xl" /> : s.recent.length === 0 ? (
                   <EmptyState compact icon={BarChart3} title="Пока нет" />
                 ) : (
-                  <ul className="max-h-[300px] divide-y divide-border/50 overflow-y-auto text-sm">
+                  <ul className="max-h-[60dvh] divide-y divide-border/50 overflow-y-auto text-sm">
                     {s.recent.map((t) => (
                       <li key={t.id}>
                         <Link href={links.trade(t.id)} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--glass-hover-bg)]">

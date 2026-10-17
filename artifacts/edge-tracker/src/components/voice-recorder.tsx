@@ -3,6 +3,7 @@ import { Mic, Square, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import { BASE } from "@/lib/api";
+import { recordingToWav } from "@/lib/audio-wav";
 
 
 const BAR_COUNT = 12;
@@ -161,8 +162,15 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
         }
         setUploading(true);
         try {
+          // 16 kHz WAV works with the free local Whisper (no ffmpeg) and OpenAI alike; keep the original if decoding fails.
+          let upload: Blob = blob;
+          let uploadName = `recording.${extFor(mimeType)}`;
+          try {
+            upload = await recordingToWav(blob);
+            uploadName = "recording.wav";
+          } catch { /* browser can't decode its own recording — send as recorded */ }
           const formData = new FormData();
-          formData.append("audio", blob, `recording.${extFor(mimeType)}`);
+          formData.append("audio", upload, uploadName);
           const transcribeOnly = !userId || (!tradeId && !dailyFeedId);
           if (transcribeOnly) {
             const res = await fetch(`${BASE}/api/voice-notes/transcribe`, {

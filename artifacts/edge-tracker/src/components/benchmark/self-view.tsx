@@ -30,6 +30,7 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
       </StatGrid>
       <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
         <Panel title="Я и медиана деска" description={`Медиана — по трейдерам с ≥ ${data.minTrades} сделок; метрика скрыта, если таких меньше ${data.rules.medianMinTraders}`} padded={false} bodyClassName="p-2">
+          <div className="overflow-x-auto">
           <table className="w-full text-sm tabular-nums">
             <thead>
               <tr className="text-xs text-muted-foreground">
@@ -56,6 +57,7 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
               })}
             </tbody>
           </table>
+          </div>
         </Panel>
         <div className="flex flex-col gap-4">
           <Panel title="Сильные и слабые стороны">

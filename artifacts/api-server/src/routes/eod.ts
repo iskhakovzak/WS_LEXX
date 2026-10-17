@@ -9,6 +9,8 @@ import {
 } from "../lib/eodLogic";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "../lib/tradeMath";
 import { ensureJournalTable } from "./journal";
+import { ensureCuratorTables } from "../lib/curatorStore";
+import { QUEUE_DEFAULT_DAYS } from "../lib/curatorLogic";
 import { can, requireCap } from "../lib/permissions";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
@@ -615,6 +617,15 @@ const QUEUE_SQL = `
     FROM eod_days d
    WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL`;
 
+/**
+ * Same window as the /curator queue: days archived via «архивировать старые» (curator_queue_acks) never show, and
+ * days closed more than QUEUE_DEFAULT_DAYS ago are hidden unless `?old=1` — otherwise a year of backfill buries the queue.
+ */
+function pendingWindowSql(includeOld: boolean): string {
+  const acked = `AND NOT EXISTS (SELECT 1 FROM curator_queue_acks a WHERE a.revoked_at IS NULL AND a.item_id = 'eod:' || d.id)`;
+  return includeOld ? acked : `${acked} AND d.closed_at > NOW() - INTERVAL '${QUEUE_DEFAULT_DAYS} days'`;
+}
+
 type QueueRow = DayRow & { hoursWaiting: number; trades: number; net: number | null };
 const SLA_HOURS = 24;
 function serializeQueue(r: QueueRow) {
@@ -683,19 +694,21 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
     res.json({ slaHours: SLA_HOURS, mode: "reviewed", items: rows.map(serializeQueue) });
     return;
   }
-  const { rows } = await pool.query<QueueRow>(`${QUEUE_SQL} ORDER BY d.closed_at ASC LIMIT $1`, [limit]);
-  res.json({ slaHours: SLA_HOURS, mode: "pending", items: rows.map(serializeQueue) });
+  await ensureCuratorTables();
+  const { rows } = await pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(req.query.old === "1")} ORDER BY d.closed_at DESC LIMIT $1`, [limit]);
+  res.json({ slaHours: SLA_HOURS, mode: "pending", windowDays: QUEUE_DEFAULT_DAYS, items: rows.map(serializeQueue) });
 }));
 
 router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   await ensureTables();
+  await ensureCuratorTables();
   sweepOverdue();
   const { rows } = await pool.query<{ count: number; overdue: number }>(
     `SELECT COUNT(*)::int AS count,
             COUNT(*) FILTER (WHERE d.closed_at < NOW() - INTERVAL '${SLA_HOURS} hours')::int AS overdue
-       FROM eod_days d WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL`,
+       FROM eod_days d WHERE d.closed_at IS NOT NULL AND d.reviewed_at IS NULL ${pendingWindowSql(req.query.old === "1")}`,
   );
   res.json({ count: rows[0]?.count ?? 0, overdue: rows[0]?.overdue ?? 0, slaHours: SLA_HOURS });
 }));
@@ -717,7 +730,7 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
       WHERE d.id = $1 RETURNING ${DAY_COLS}`,
     [id, me.name, parsed.data.comment, parsed.data.score],
   );
-  const { rows: next } = await pool.query<QueueRow>(`${QUEUE_SQL} ORDER BY d.closed_at ASC LIMIT 1`);
+  const { rows: next } = await pool.query<QueueRow>(`${QUEUE_SQL} ${pendingWindowSql(false)} ORDER BY d.closed_at DESC LIMIT 1`);
   // Review done → tell the trader (never the reviewer about their own review).
   const reviewed = rows[0];
   if (reviewed && reviewed.trader !== me.name) {

@@ -77,8 +77,18 @@ export function objectLabel(targetType: string | null, targetId: string | null, 
     case "comment": return `Комментарий #${id}`;
     case "report": return `Жалоба #${id}`;
     case "db": return "База данных";
+    case "backup": return id ? `Бэкап ${id}` : "Бэкап";
     case "permissions": return "Матрица прав";
-    default: return id ? `${targetType} #${id}` : targetType;
+    case "risk_alert_log": return `Нарушение #${id}`;
+    case "risk_breach_reviews": return `Разбор нарушения #${id}`;
+    case "curator_notes": return `Заметка #${id}`;
+    case "curator_queue_acks": return "Очередь разборов";
+    case "office_capital": return `Капитал офиса ${id}`;
+    case "scaling_proposal": return `Предложение по тиру #${id}`;
+    case "academy_trader_stage": return `Ступень: ${id}`;
+    case "academy_challenge":
+    case "academy_challenges": return id ? `Челлендж #${id}` : "Челленджи";
+    default: return id ? `${OBJECT_TYPE_LABEL[targetType] ?? targetType} #${id}` : OBJECT_TYPE_LABEL[targetType] ?? targetType;
   }
 }
 
@@ -95,6 +105,30 @@ export const OBJECT_TYPE_LABEL: Record<string, string> = {
   permissions: "Права доступа",
   scaling_proposal: "Предложения по тирам",
   academy_challenges: "Академия",
+  academy_challenge: "Академия",
+  academy_trader_stage: "Ступени Академии",
+  risk_alert_log: "Нарушения лимитов",
+  risk_breach_reviews: "Разборы нарушений",
+  curator_notes: "Заметки куратора",
+  curator_queue_acks: "Очередь разборов",
+  office_capital: "Капитал офиса",
+  backup: "Бэкапы",
+};
+
+/** Russian names for detail keys in the generic fallback; technical ids are hidden. */
+const DETAIL_KEY: Record<string, string> = {
+  trader: "трейдер", user: "трейдер", name: "имя", tier: "тир", tierKey: "тир", fromTier: "был тир", toTier: "тир",
+  from: "было", to: "стало", status: "статус", kind: "тип", count: "кол-во", archived: "в архив", created: "создано",
+  account: "счёт", template: "шаблон", startsOn: "старт", capital: "капитал", goalPct: "цель, %", sizeKb: "размер, КБ",
+  comment: "комментарий", consequence: "последствие", actions: "договорённостей", olderThanDays: "старше, дн.", scope: "охват",
+};
+const HIDDEN_KEYS = new Set(["historyId", "runId", "id", "reportId", "objectName", "closedReports", "changes", "summary", "byKind", "reason", "resync"]);
+
+const QUEUE_KIND: Record<string, string> = { eod: "дни", weekly: "недели", academy: "задания", breach: "нарушения" };
+const CONSEQUENCE: Record<string, string> = { none: "без последствий", warning: "предупреждение", reduced: "лимиты урезаны", pause: "пауза в торговле", demote: "понижение тира" };
+const VERB: Record<string, string> = {
+  create: "создал", add: "добавил", update: "изменил", set: "задал", delete: "удалил", remove: "удалил", archive: "архивировал",
+  restore: "восстановил", approve: "одобрил", reject: "отклонил", assign: "назначил", import: "импортировал", export: "выгрузил", reset: "сбросил",
 };
 
 export function describeAudit(e: AuditLike, tierNames?: Record<string, string>): AuditText {
@@ -143,6 +177,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "propreports.keep_separate": return { label: "Сверка", tone: "neutral", text: "оставил сделку брокера отдельной" };
     case "propreports.dismiss": return { label: "Сверка", tone: "neutral", text: "отклонил сделку из сверки" };
     case "propreports.performance.replace":
+    case "propreports.performance.import":
     case "propreports.performance.upload": {
       const sum = d.summary ?? {};
       return {
@@ -157,7 +192,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       const t = Array.isArray(d.tables) ? d.tables.length : 0;
       return { label: "Экспорт", tone: "accent", text: `выгрузил базу${t ? ` (${t} ${plural(t, "таблица", "таблицы", "таблиц")})` : ""}`, detail: d.partial ? "частичный экспорт" : undefined };
     }
-    case "db.backup": return { label: "Бэкап", tone: "accent", text: "запустил резервную копию базы" };
+    case "db.backup": return { label: "Бэкап", tone: "accent", text: e.actor === "system" ? "создана резервная копия базы" : "запустил резервную копию базы", detail: d.sizeKb ? `${n(d.sizeKb).toLocaleString("ru-RU")} КБ` : undefined };
 
     case "scaling.assign": return { label: "Тир", tone: "purple", text: `назначил тир ${tier(d.toTier)} трейдеру ${s(e.targetId)}`, detail: [d.fromTier ? `был: ${tier(d.fromTier)}` : "", reason ?? ""].filter(Boolean).join(" · ") || undefined };
     case "scaling.proposal.create": return { label: "Тир", tone: "neutral", text: `предложил смену тира${d.trader ? ` для ${d.trader}` : ""}`, detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
@@ -169,8 +204,11 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
 
     case "permissions.matrix.update": return { label: "Права", tone: "purple", text: "изменил матрицу прав доступа", detail: reason };
 
-    case "academy.path.seed_demo": return { label: "Академия", tone: "neutral", text: "создал демо-челленджи академии" };
-    case "academy.challenge.create": return { label: "Академия", tone: "neutral", text: "создал челлендж академии" };
+    case "academy.path.seed_demo": {
+      const c = Array.isArray(d.created) ? d.created.length : 0;
+      return { label: "Академия", tone: "neutral", text: `создал демо-челленджи академии${c ? ` (${c})` : ""}` };
+    }
+    case "academy.challenge.create": return { label: "Академия", tone: "neutral", text: `создал челлендж академии${d.user ? ` для ${d.user}` : ""}`, detail: d.startsOn ? `старт ${d.startsOn}` : undefined };
     case "academy.challenge.archive": return { label: "Академия", tone: "neutral", text: "архивировал челлендж академии" };
     case "academy.promotion.request": return { label: "Академия", tone: "neutral", text: "запросил повышение уровня" };
     case "academy.promotion.approve": return { label: "Академия", tone: "up", text: "одобрил повышение уровня", detail: reason };
@@ -178,20 +216,68 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "academy.stages.update": return { label: "Академия", tone: "neutral", text: "изменил ступени академии" };
     case "academy.criteria.update": return { label: "Академия", tone: "neutral", text: "изменил критерии академии" };
 
+    case "risk.limits.template": {
+      const changes: string[] = Array.isArray(d.changes) ? d.changes.map(String) : [];
+      const target = s(e.targetId) || s(d.trader);
+      return {
+        label: "Лимиты", tone: "purple",
+        text: d.resync
+          ? `сверил лимиты ${target} с шаблоном тира ${tier(d.tierKey)}`
+          : `применил шаблон лимитов тира ${tier(d.tierKey)} к ${target}`,
+        detail: [
+          d.fromTier && d.fromTier !== d.tierKey ? `был тир: ${tier(d.fromTier)}` : "",
+          changes.length ? changes.join(", ") : d.resync ? "лимиты уже совпадали" : "",
+          reason ?? "",
+        ].filter(Boolean).join(" · ") || undefined,
+      };
+    }
+    case "risk.breach.review":
+    case "risk.breach.review.update":
+      return {
+        label: "Разбор нарушения", tone: "accent",
+        text: `${e.action === "risk.breach.review" ? "разобрал" : "обновил разбор"} нарушения${d.trader ? ` ${d.trader}` : ""}`,
+        detail: [d.consequence ? CONSEQUENCE[s(d.consequence)] ?? s(d.consequence) : "", n(d.actions) ? `договорённостей: ${n(d.actions)}` : ""].filter(Boolean).join(" · ") || undefined,
+      };
+    case "risk.breach.review.archive": return { label: "Разбор нарушения", tone: "neutral", text: `архивировал разбор нарушения${d.trader ? ` ${d.trader}` : ""}` };
+    case "curator.note.archive": return { label: "Заметка", tone: "neutral", text: `архивировал заметку${d.trader ? ` о ${d.trader}` : ""}`, detail: d.author ? `автор ${d.author}` : undefined };
+    case "curator.queue.archive_old": {
+      const by = d.byKind && typeof d.byKind === "object" ? Object.entries(d.byKind as Record<string, unknown>).map(([k, v]) => `${QUEUE_KIND[k] ?? k} ${n(v)}`) : [];
+      return {
+        label: "Очередь", tone: "neutral",
+        text: `убрал из очереди разборов ${n(d.archived)} ${plural(n(d.archived), "старый элемент", "старых элемента", "старых элементов")}`,
+        detail: [d.olderThanDays ? `старше ${n(d.olderThanDays)} дн.` : "", by.join(", ")].filter(Boolean).join(" · ") || undefined,
+      };
+    }
+    case "office_capital.set": return { label: "Капитал", tone: "neutral", text: `задал капитал офиса на ${s(e.targetId)}`, detail: [d.capital != null ? `капитал ${n(d.capital).toLocaleString("ru-RU")} $` : "", d.goalPct != null ? `цель ${n(d.goalPct)}%` : ""].filter(Boolean).join(" · ") || undefined };
+    case "academy.stage.assign":
+    case "academy.stage.promote":
+    case "academy.stage.demote": {
+      const verb = e.action.endsWith("promote") ? "повысил" : e.action.endsWith("demote") ? "понизил" : "назначил ступень";
+      return {
+        label: "Ступень", tone: e.action.endsWith("demote") ? "warn" : e.action.endsWith("promote") ? "up" : "accent",
+        text: `${verb} ${s(e.targetId)}${e.action.endsWith("assign") ? "" : " до ступени"} ${tier(d.to)}`.replace(/\s+/g, " "),
+        detail: d.from ? `была: ${tier(d.from)}` : undefined,
+      };
+    }
+
     case "daily_quote.regenerate": return { label: "Цитата дня", tone: "neutral", text: "обновил цитату дня" };
     case "daily_quote.cron": return { label: "Цитата дня", tone: "neutral", text: "цитата дня обновлена по расписанию" };
   }
 
-  // Unknown action: readable fallback from the code + up to three details.
-  const label = e.action.split(".")[0] || e.action;
+  // Unknown action: readable fallback — object in Russian + up to three details with Russian keys, technical ids hidden.
+  const label = (e.targetType && OBJECT_TYPE_LABEL[e.targetType]) || e.action.split(".")[0] || e.action;
   const extras = Object.entries(d)
-    .filter(([k, v]) => v != null && v !== "" && typeof v !== "object" && k !== "reason")
+    .filter(([k, v]) => v != null && v !== "" && typeof v !== "object" && !HIDDEN_KEYS.has(k))
     .slice(0, 3)
-    .map(([k, v]) => `${k}: ${v}`);
+    .map(([k, v]) => `${DETAIL_KEY[k] ?? k}: ${typeof v === "boolean" ? (v ? "да" : "нет") : /tier/i.test(k) ? tier(v) : v}`);
+  const obj = e.targetType ? objectLabel(e.targetType, e.targetId, d) : "";
+  const parts = e.action.split(".");
+  const verb = VERB[parts[parts.length - 1]];
+  const subject = obj || parts.slice(0, -1).join(" ").replace(/_/g, " ");
   return {
     label,
     tone: /delete|ban|fail|error/.test(e.action) ? "down" : "neutral",
-    text: `${e.action.replace(/[._]/g, " ")}${e.targetId ? ` · ${objectLabel(e.targetType, e.targetId, d)}` : ""}`,
+    text: verb ? `${verb}: ${subject}` : `${parts.join(" ").replace(/_/g, " ")}${obj ? ` · ${obj}` : ""}`,
     detail: [reason ?? "", ...extras].filter(Boolean).join(" · ") || undefined,
   };
 }

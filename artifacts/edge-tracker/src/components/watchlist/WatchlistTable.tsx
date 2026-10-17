@@ -1,6 +1,8 @@
 import * as React from "react";
 import { GripVertical } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
+import { canModifyOwned } from "@/lib/ownership";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -185,6 +187,8 @@ const Row = React.memo(function Row({
   quotesLoading, levelsLoading, today, onDragState,
 }: RowProps) {
   const { item, quote: q, plan } = r;
+  const { isCurator } = useAuth();
+  const mayModify = canEdit && canModifyOwned(item.createdBy, me, isCurator);
   const ref = React.useRef<HTMLTableRowElement>(null);
   React.useEffect(() => {
     if (focused && ref.current && document.activeElement !== ref.current && !ref.current.contains(document.activeElement)) {
@@ -288,14 +292,14 @@ const Row = React.memo(function Row({
       <td className={cn("!px-1", cellY)}>
         <InlineNote
           value={item.notes}
-          canEdit={canEdit && !r.pending}
+          canEdit={mayModify && !r.pending}
           editing={noteEditing}
           onEditingChange={(v) => onNoteEdit(v ? item.id : null)}
           onSave={(v) => actions.saveNote(item, v)}
         />
       </td>
       <td className={cn("!pl-0 !pr-2 text-right", cellY)}>
-        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} actions={actions} scoring={scoring} />}
+        {!r.pending && <RowMenu item={item} list={r.list} canEdit={canEdit} canModify={mayModify} actions={actions} scoring={scoring} />}
       </td>
     </tr>
   );

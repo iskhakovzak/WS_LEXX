@@ -480,7 +480,7 @@ export default function DailyFeedPage() {
                   <ClipboardCheck aria-hidden="true" /> Закрыть день · {formatDayShort(selectedDay ?? today)}
                 </DropdownMenuItem>
               )}
-              {canEdit && (
+              {isStaff && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem disabled={regenLoading} onSelect={() => (todayPost ? setConfirmRegen(true) : handleRegen(false))}>

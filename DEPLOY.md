@@ -84,9 +84,27 @@ psql "$DATABASE_URL" < db_backup_v5.sql
 | `PLAYBOOK_PASSWORD` | пароль для плейбука | **ДА** |
 | `DEFAULT_OBJECT_STORAGE_BUCKET_ID` | ID бакета Replit Object Storage | для автобекапов |
 | `GITHUB_PERSONAL_ACCESS_TOKEN` | токен GitHub | для push из Replit |
+| `GUEST_MODE` | `1` — включить гостевой вход, `0` — выключить | нет (по умолчанию: включён при `NODE_ENV≠production`, выключен в production) |
+| `TRANSCRIBE_PROVIDER` | `openai` или `local` (бесплатный Whisper, см. ниже) | нет (по умолчанию `openai`) |
+| `WHISPER_URL` | адрес whisper-server, напр. `http://127.0.0.1:8178` | только при `TRANSCRIBE_PROVIDER=local` |
+| `TRANSCRIBE_FALLBACK` | `off` — никогда не отправлять голос в OpenAI | нет (по умолчанию при сбое Whisper — OpenAI) |
 
 Переменные которые Replit выставляет автоматически после создания БД:
 `DATABASE_URL` · `PGHOST` · `PGPORT` · `PGUSER` · `PGPASSWORD` · `PGDATABASE`
+
+**`GUEST_MODE`** — гостевой вход («Войти как гость», `POST /api/auth/guest`, режим только для чтения). Когда выключен, кнопка отвечает `403 GUEST_DISABLED`, а уже выданные гостевые токены перестают приниматься (запросы с ними получают 401). Значения: `1`/`true`/`on`/`yes` — включить, `0`/`false`/`off`/`no` — выключить; не задано — включён в разработке и выключен в production. Чтобы оставить гостевой доступ на проде, поставь `GUEST_MODE=1` явно.
+
+### Локальный Whisper (бесплатная расшифровка голоса)
+
+По умолчанию голосовые заметки расшифровывает OpenAI (`gpt-4o-mini-transcribe`, ≈ $0.003 за минуту). Вместо него можно поднять бесплатный [whisper.cpp](https://github.com/ggml-org/whisper.cpp): браузер сам переводит запись в WAV 16 кГц, поэтому ffmpeg не нужен. При `TRANSCRIBE_PROVIDER=local` API идёт в `WHISPER_URL` (`POST /inference`), а если сервер не отвечает — в OpenAI (выключается `TRANSCRIBE_FALLBACK=off`). Необязательно: `WHISPER_LANGUAGE` (по умолчанию `ru`), `WHISPER_PROMPT` (подсказка со сленгом деска и тикерами; пустая строка — без подсказки).
+
+**На ноутбуке с NVIDIA (разработка).** Положи в `%LOCALAPPDATA%\whisper`:
+- `bin-cuda\` — распакованный `whisper-bin-win-cuda-11.8.0-x64.zip` из [релизов whisper.cpp](https://github.com/ggml-org/whisper.cpp/releases) (без видеокарты — `whisper-bin-x64.zip` в `bin-cpu\`). В архиве нет cuBLAS: возьми `cublas64_11.dll` и `cublasLt64_11.dll` из `bin\` официального [libcublas 11.11 для Windows](https://developer.download.nvidia.com/compute/cuda/redist/libcublas/windows-x86_64/) (≈ 420 МБ) и положи рядом с `whisper-server.exe`, иначе сервер молча работает на CPU (в логе «no GPU found»). На RTX 4060 14 секунд речи — меньше 1 секунды;
+- `models\ggml-large-v3-turbo-q5_0.bin` — [модель](https://huggingface.co/ggerganov/whisper.cpp/tree/main) (≈ 550 МБ, хорошо понимает русский).
+
+Запуск: `pnpm --filter @workspace/scripts run local-whisper` (порт 8178), затем API с `TRANSCRIBE_PROVIDER=local`.
+
+**На сервере без видеокарты (позже).** Собери или скачай `whisper-server` под Linux (`whisper-bin-ubuntu-x64.tar.gz`) и возьми модель поменьше — `ggml-small.bin` (≈ 470 МБ) или `ggml-large-v3-turbo-q5_0.bin`, если хватает памяти (нужно ~1,5–2 ГБ RAM). Запусти его отдельным процессом рядом с API (`whisper-server -m <модель> --host 127.0.0.1 --port 8178 -l ru -t <ядра>`) и выстави `TRANSCRIBE_PROVIDER=local`. На CPU минута речи расшифровывается примерно за минуту (small — быстрее), поэтому сравни цену тарифа сервера с текущими расходами на OpenAI, прежде чем переключать прод.
 
 ---
 

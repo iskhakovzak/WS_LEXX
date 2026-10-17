@@ -1,6 +1,14 @@
 // «Спроси журнал» — loading and execution.
-// The whole accessible trade book is loaded once (GET /api/trades/page, cursor paging, limit 500, ≤ 10 pages) and
-// cached by react-query under ASK_BOOK_KEY; every question then runs synchronously on the client. GET only.
+// The book is loaded once per scope and cached by react-query under ASK_BOOK_KEY; every question then runs
+// synchronously on the client. GET only, no AI.
+//
+// Scope: the signed-in trader's own book by default (small — loads in well under a second). Staff get the whole desk
+// only when the question needs it (names another trader, «весь деск», «по трейдерам», compare traders) or when they
+// have no trades of their own — see askBookScope.
+//
+// Source: GET /api/ask/book — one SQL query, only the fields the engine reads, rows as tuples (api-server
+// routes/ask.ts). Fallback while an older API is running (404): cursor paging over /api/trades/page, scoped the same
+// way, ≤ ASK_MAX_PAGES × ASK_PAGE_LIMIT trades.
 
 import { apiUrl } from "@/lib/api";
 import { links } from "@/lib/links";
@@ -15,7 +23,20 @@ export const ASK_MAX_PAGES = 10;
 /** Starts with "/api/trades" ⇒ invalidated together with every trade-dependent query. */
 export const ASK_BOOK_KEY = ["/api/trades/ask-book"] as const;
 
+/** "mine" = the viewer's own trades; "desk" = everything the session may read (staff: the whole desk). */
+export type AskBookScope = "mine" | "desk";
+
+export const askBookKey = (scope: AskBookScope) => [...ASK_BOOK_KEY, scope] as const;
+
+export interface AskLoadProgress {
+  /** Bytes (or trades, in the fallback) received so far. */
+  loaded: number;
+  /** Total when known. */
+  total: number | null;
+}
+
 type PageResponse = { items?: AskTrade[]; page?: { hasMore?: boolean; nextCursor?: string | null } };
+type CompactResponse = { cols?: string[]; rows?: Array<Array<string | number | null>>; truncated?: boolean };
 
 export interface AskBook {
   trades: AskTrade[];
@@ -56,25 +77,108 @@ export function makeBook(trades: AskTrade[], truncated = false): AskBook {
   };
 }
 
-/** Every trade the session can read (a curator sees the desk; a trader — own trades). */
-export async function fetchAskBook(signal?: AbortSignal): Promise<AskBook> {
+/** Which book a question needs. Traders always read their own; staff widen to the desk only when asked to. */
+export function askBookScope(q: AskQuery | null, opts: { me: string | null; isStaff: boolean; ownEmpty?: boolean }): AskBookScope {
+  if (!opts.isStaff) return "mine";
+  if (!opts.me || opts.ownEmpty) return "desk";
+  if (!q || !q.ok) return "mine";
+  const other = (q.trader != null && q.trader !== opts.me)
+    || (q.compare?.dim === "trader");
+  const wide = q.allTraders || q.groupBy === "trader" || q.target === "trader";
+  return other || wide ? "desk" : "mine";
+}
+
+/** Tuples from /api/ask/book → AskTrade (openedAt / closedAt go back into contextSnapshot, where the engine reads them). */
+export function tradesFromTuples(cols: readonly string[], rows: ReadonlyArray<ReadonlyArray<string | number | null>>): AskTrade[] {
+  const at = (k: string) => cols.indexOf(k);
+  const i = {
+    id: at("id"), ticker: at("ticker"), date: at("date"), exitDate: at("exitDate"), side: at("side"), trader: at("trader"),
+    setup: at("setup"), holdTime: at("holdTime"), qty: at("qty"), result: at("result"), entry: at("entry"), exit: at("exit"),
+    stop: at("stop"), rMultiple: at("rMultiple"), pnl: at("pnl"), fees: at("fees"), riskUsd: at("riskUsd"),
+    horizon: at("horizon"), openedAt: at("openedAt"), closedAt: at("closedAt"),
+  };
+  const v = <T,>(r: ReadonlyArray<string | number | null>, k: number) => (k < 0 ? null : (r[k] ?? null)) as T | null;
+  return rows.map((r) => ({
+    id: Number(r[i.id]),
+    ticker: String(v<string>(r, i.ticker) ?? ""),
+    date: String(v<string>(r, i.date) ?? ""),
+    exitDate: v<string>(r, i.exitDate),
+    side: v<string>(r, i.side),
+    trader: v<string>(r, i.trader),
+    setup: v<string>(r, i.setup),
+    holdTime: v<string>(r, i.holdTime),
+    qty: v<number>(r, i.qty),
+    result: v<string>(r, i.result),
+    entry: v<number>(r, i.entry),
+    exit: v<number>(r, i.exit),
+    stop: v<number>(r, i.stop),
+    rMultiple: v<number>(r, i.rMultiple),
+    pnl: v<number>(r, i.pnl),
+    fees: v<number>(r, i.fees),
+    riskUsd: v<number>(r, i.riskUsd),
+    horizon: v<string>(r, i.horizon),
+    contextSnapshot: { openedAt: v<string>(r, i.openedAt), closedAt: v<string>(r, i.closedAt) },
+  }));
+}
+
+async function httpError(r: Response): Promise<Error> {
+  let msg = `HTTP ${r.status}`;
+  try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* not JSON */ }
+  return new Error(msg);
+}
+
+/** Reads a JSON body while reporting bytes received (Content-Length is set: res.json, no compression). */
+async function readJson<T>(r: Response, onProgress?: (p: AskLoadProgress) => void): Promise<T> {
+  const lenHeader = Number(r.headers.get("content-length"));
+  const total = Number.isFinite(lenHeader) && lenHeader > 0 ? lenHeader : null;
+  if (!onProgress || !r.body) return (await r.json()) as T;
+  const reader = r.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let loaded = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    loaded += value.byteLength;
+    onProgress({ loaded, total });
+  }
+  const all = new Uint8Array(loaded);
+  let off = 0;
+  for (const c of chunks) { all.set(c, off); off += c.byteLength; }
+  return JSON.parse(new TextDecoder().decode(all)) as T;
+}
+
+async function fetchPagedBook(scope: AskBookScope, me: string | null, signal?: AbortSignal, onProgress?: (p: AskLoadProgress) => void): Promise<AskBook> {
   const out: AskTrade[] = [];
   let cursor: string | null = null;
   for (let page = 0; page < ASK_MAX_PAGES; page++) {
     const p = new URLSearchParams({ sort: "date", dir: "desc", limit: String(ASK_PAGE_LIMIT) });
+    if (scope === "mine" && me) p.set("trader", me);
     if (cursor) p.set("cursor", cursor);
     const r = await fetch(apiUrl(`/api/trades/page?${p.toString()}`), { signal });
-    if (!r.ok) {
-      let msg = `HTTP ${r.status}`;
-      try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* not JSON */ }
-      throw new Error(msg);
-    }
+    if (!r.ok) throw await httpError(r);
     const j = (await r.json()) as PageResponse;
     out.push(...(j.items ?? []));
+    onProgress?.({ loaded: out.length, total: null });
     if (!j.page?.hasMore || !j.page.nextCursor) return makeBook(out, false);
     cursor = j.page.nextCursor;
   }
   return makeBook(out, true);
+}
+
+/** The book for `scope` («mine» — the viewer's own trades; «desk» — every trade the session may read). */
+export async function fetchAskBook(
+  scope: AskBookScope = "desk",
+  opts: { me?: string | null; signal?: AbortSignal; onProgress?: (p: AskLoadProgress) => void } = {},
+): Promise<AskBook> {
+  const { me = null, signal, onProgress } = opts;
+  const r = await fetch(apiUrl(`/api/ask/book${scope === "mine" ? "?mine=1" : ""}`), { signal });
+  // Older API without the route: 404 in dev, the SPA's index.html (200, text/html) in production.
+  const isJson = (r.headers.get("content-type") ?? "").includes("json");
+  if (r.status === 404 || (r.ok && !isJson)) return fetchPagedBook(scope, me, signal, onProgress);
+  if (!r.ok) throw await httpError(r);
+  const j = await readJson<CompactResponse>(r, onProgress);
+  return makeBook(tradesFromTuples(j.cols ?? [], j.rows ?? []), Boolean(j.truncated));
 }
 
 /** href into /trades with the parameters the trades page reads. */

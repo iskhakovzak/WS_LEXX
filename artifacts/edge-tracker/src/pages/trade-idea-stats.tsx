@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertTriangle, ArrowLeft, ArrowUpDown, Award, BarChart3, Download, Lightbulb, MinusCircle, ThumbsDown, ThumbsUp, Users, X,
+  AlertTriangle, ArrowLeft, Award, BarChart3, Download, Lightbulb, MinusCircle, ThumbsDown, ThumbsUp, Users, X,
 } from "lucide-react";
 import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
-import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid, toneOf, toneText, type Tone } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { OutcomeBar, Sparkline, downloadCsv, fetchJson, fmtR, pluralRu, useStoredState } from "@/components/ratings/shared";
 import { IdeaCalibration } from "@/components/ratings/idea-calibration";
 import {
@@ -40,17 +40,18 @@ const SORTS: { key: SortKey; label: string; title?: string }[] = [
   { key: "calib", label: "Калибровка", title: "Корреляция скора идеи с итоговым R (нужно ≥ 5 сделок)" },
 ];
 
-function sortVal(a: AuthorStats, k: SortKey): number {
-  switch (k) {
-    case "ideas": return a.ideas;
-    case "conversion": return a.conversion ?? -1;
-    case "hitRate": return a.hitRate ?? -1;
-    case "avgR": return a.avgR ?? -99;
-    case "sumR": return a.sumR;
-    case "avgScore": return a.avgScore ?? -1;
-    case "calib": return a.calib.r ?? -2;
-  }
-}
+/** Column accessors for the authors table; empty values sink to the bottom (useTableSort). */
+const AUTHOR_ACCESSORS: Record<SortKey | "trader" | "best", (a: AuthorStats) => number | string | null> = {
+  trader: (a) => a.trader,
+  ideas: (a) => a.ideas,
+  conversion: (a) => a.conversion,
+  hitRate: (a) => a.hitRate,
+  avgR: (a) => a.avgR,
+  sumR: (a) => (a.rCount ? a.sumR : null),
+  avgScore: (a) => a.avgScore,
+  calib: (a) => a.calib.r,
+  best: (a) => a.best?.r ?? null,
+};
 
 const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
 
@@ -82,7 +83,6 @@ export default function TradeIdeaStats() {
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const [period, setPeriod] = useStoredState<Period>("ideaStats.period", "90", PERIODS.map((p) => p.value));
   const [author, setAuthor] = useState<string>("all");
-  const [sort, setSort] = useState<SortKey>("ideas");
   const [bestMode, setBestMode] = useState<"best" | "worst">("best");
 
   const { data, isLoading, error, refetch } = useQuery<TradeIdea[]>({
@@ -101,10 +101,8 @@ export default function TradeIdeaStats() {
   const overall = useMemo(() => bucketOf(scoped), [scoped]);
   const calib = useMemo(() => calibrationOf(scoped), [scoped]);
   const verdict = calibVerdict(calib);
-  const authors = useMemo(() => {
-    const list = authorStats(inPeriod);
-    return list.sort((a, b) => sortVal(b, sort) - sortVal(a, sort) || b.ideas - a.ideas);
-  }, [inPeriod, sort]);
+  const authorList = useMemo(() => authorStats(inPeriod).sort((a, b) => b.ideas - a.ideas), [inPeriod]);
+  const { rows: authors, thProps } = useTableSort(authorList, AUTHOR_ACCESSORS, "ideas");
   const authorNames = useMemo(() => [...new Set(all.map((i) => i.trader ?? "(не указан)"))].sort(), [all]);
 
   const ranked = useMemo(() => {
@@ -280,16 +278,13 @@ export default function TradeIdeaStats() {
                   <table className="w-full text-sm">
                     <thead className="text-xs text-muted-foreground">
                       <tr className="border-b border-border">
-                        <th scope="col" className="px-5 py-2.5 text-left font-medium">Автор</th>
+                        <SortableTh {...thProps("trader")} className="px-5 py-2.5 font-medium">Автор</SortableTh>
                         {SORTS.map((s) => (
-                          <th key={s.key} scope="col" className="px-2 py-2.5 text-right font-medium" aria-sort={sort === s.key ? "descending" : "none"}>
-                            <button type="button" title={s.title} onClick={() => setSort(s.key)}
-                              className={cn("inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 hover:text-foreground", sort === s.key && "text-primary")}>
-                              {s.label}{sort === s.key && <ArrowUpDown className="h-3 w-3" aria-hidden="true" />}
-                            </button>
-                          </th>
+                          <SortableTh key={s.key} {...thProps(s.key)} align="right" className="px-2 py-2.5 font-medium">
+                            <span title={s.title}>{s.label}</span>
+                          </SortableTh>
                         ))}
-                        <th scope="col" className="px-2 py-2.5 text-left font-medium">Лучшая идея</th>
+                        <SortableTh {...thProps("best")} className="px-2 py-2.5 font-medium">Лучшая идея</SortableTh>
                         <th scope="col" className="px-5 py-2.5 text-right font-medium">Тренд R</th>
                       </tr>
                     </thead>

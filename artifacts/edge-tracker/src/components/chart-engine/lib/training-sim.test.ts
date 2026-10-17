@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
-  EMPTY_SIM, historyStats, idealMove, parseHistory, scoreTraining, simApplyBar, simMark, simOrder, simSetStop, stopInvalid, suggestStop, trainingVerdict, winStreak,
+  EMPTY_SIM, canBreakeven, historyStats, idealMove, parseHistory, plannedRR, scoreTraining, sessionSlice, simApplyBar, simBreakeven, simFillLabel, simLiveR, simMark,
+  simOrder, simSetStop, simSetTarget, stopInvalid, suggestStop, targetAtRR, targetInvalid, trainingVerdict, winStreak,
   type TrainingRecord,
 } from "./training-sim";
 import { buildTradeSummary, fmtPerShare } from "./trade-summary";
@@ -60,6 +61,71 @@ describe("training simulator — orders", () => {
   });
 });
 
+describe("training simulator — scale out, target, breakeven", () => {
+  it("«½» closes half (rounded down), a 1-share position fully", () => {
+    let s = simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 301, stop: 9.5 });
+    s = simOrder(s, { action: "half", idx: 2, t: 2, price: 11 });
+    expect(s.pos).toBe(151);
+    expect(s.realized).toBeCloseTo(150);
+    expect(s.stop).toBe(9.5); // a partial keeps the stop
+    expect(s.fills.at(-1)?.reason).toBe("half");
+    expect(simFillLabel(s.fills.at(-1)!)).toBe("Половина");
+    const one = simOrder(simOrder(EMPTY_SIM, { action: "sell", idx: 1, t: 1, price: 10, qty: 1 }), { action: "half", idx: 2, t: 2, price: 9 });
+    expect(one.pos).toBe(0);
+    expect(simOrder(EMPTY_SIM, { action: "half", idx: 1, t: 1, price: 10 })).toBe(EMPTY_SIM);
+  });
+
+  it("a target on the right side fills on a later bar at the target or a gap open; the stop wins on a bar that hits both", () => {
+    const s = simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 100, stop: 9.8, target: 10.5 });
+    expect(s.target).toBe(10.5);
+    const tp = simApplyBar(s, { t: 2, o: 10.2, h: 10.6, l: 10.1 }, 2);
+    expect(tp.pos).toBe(0);
+    expect(tp.realized).toBeCloseTo(50);
+    expect(tp.fills.at(-1)?.reason).toBe("target");
+    expect(tp.target).toBeNull();
+    expect(simApplyBar(s, { t: 2, o: 10.7, h: 10.9, l: 10.6 }, 2).realized).toBeCloseTo(70); // gap above the target
+    expect(simApplyBar(s, { t: 2, o: 10, h: 10.6, l: 9.7 }, 2).fills.at(-1)?.reason).toBe("stop");
+    const short = simOrder(EMPTY_SIM, { action: "sell", idx: 1, t: 1, price: 10, qty: 10, target: 9.5 });
+    expect(simApplyBar(short, { t: 2, o: 9.8, h: 9.9, l: 9.4 }, 2).realized).toBeCloseTo(5);
+  });
+
+  it("rejects a target on the wrong side; moves it on the open position", () => {
+    expect(targetInvalid(1, 10, 9.9)).toBe(true);
+    expect(targetInvalid(-1, 10, 9.9)).toBe(false);
+    const s = simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 10, target: 9.9 });
+    expect(s.target).toBeNull();
+    expect(simSetTarget(s, 9.9, 10)).toBe(s);
+    expect(simSetTarget(s, 11, 10).target).toBe(11);
+    expect(simSetTarget(EMPTY_SIM, 11, 10)).toBe(EMPTY_SIM);
+  });
+
+  it("breakeven only once the price is beyond the average in profit", () => {
+    const s = simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 10, stop: 9.5 });
+    expect(canBreakeven(s, 9.9)).toBe(false);
+    expect(simBreakeven(s, 9.9)).toBe(s);
+    expect(canBreakeven(s, 10.3)).toBe(true);
+    const be = simBreakeven(s, 10.3);
+    expect(be.stop).toBe(10);
+    expect(canBreakeven(be, 10.3)).toBe(false);
+    const short = simOrder(EMPTY_SIM, { action: "sell", idx: 1, t: 1, price: 20, qty: 10 });
+    expect(simBreakeven(short, 19.5).stop).toBe(20);
+  });
+
+  it("planned R:R, target at R and live R", () => {
+    expect(plannedRR(10, 9.8, 10.6)).toBeCloseTo(3);
+    expect(plannedRR(10, 10.2, 9.5)).toBeCloseTo(2.5);
+    expect(plannedRR(10, 9.8, 9.7)).toBeNull(); // both below
+    expect(plannedRR(10, null, 11)).toBeNull();
+    expect(targetAtRR(10, 9.8, 2)).toBeCloseTo(10.4);
+    expect(targetAtRR(10, 10.25, 2)).toBeCloseTo(9.5);
+    expect(targetAtRR(10, null, 2)).toBeNull();
+    const s = simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 100, stop: 9.8 });
+    expect(simLiveR(s, 10.4)).toBeCloseTo(2);
+    expect(simLiveR(s, 9.9)).toBeCloseTo(-0.5);
+    expect(simLiveR(simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 1 }), 11)).toBeNull();
+  });
+});
+
 describe("training simulator — ideal and score", () => {
   const closes = [10, 9.5, 10.5, 11, 10.2, 9, 9.4];
 
@@ -100,6 +166,13 @@ describe("training simulator — ideal and score", () => {
     expect(trainingVerdict(none).tone).toBe("neutral");
   });
 
+  it("a ticker-day task (no real trade) has nothing to compare with", () => {
+    const s = simOrder(simOrder(EMPTY_SIM, { action: "buy", idx: 1, t: 1, price: 10, qty: 10 }), { action: "flat", idx: 2, t: 2, price: 10.5 });
+    const o = scoreTraining(s, { lastClose: 10.5, ideal: null, real: null });
+    expect([o.realPerShare, o.realR, o.vsRealPerShare]).toEqual([null, null, null]);
+    expect(o.pnlUsd).toBeCloseTo(5);
+  });
+
   it("suggests a stop beyond the recent extreme", () => {
     const bars = [{ h: 10.2, l: 9.9 }, { h: 10.3, l: 9.95 }, { h: 10.4, l: 10.1 }];
     expect(suggestStop(bars, 2, 1, 3)).toBeCloseTo(9.89);
@@ -126,6 +199,21 @@ describe("training history", () => {
     expect(st.plusShare).toBe(0.75);
     expect(st.beatReal).toBe(1);
     expect(winStreak([rec(0, null, 0), rec(5, 50)])).toBe(0);
+  });
+
+  it("R averages, «vs trader» and the session slice", () => {
+    const list: TrainingRecord[] = [
+      { ...rec(10, 80, 1, 0.2), at: 300, r: 2, realR: 1 },
+      { ...rec(-5, 0, 1, -0.1), at: 200, r: -1, realR: 0.5 },
+      { ...rec(0, null, 0), at: 100 },
+    ];
+    const st = historyStats(list);
+    expect(st.avgR).toBeCloseTo(0.5);
+    expect(st.sumR).toBeCloseTo(1);
+    expect(st.avgRealR).toBeCloseTo(0.75);
+    expect([st.beatReal, st.comparable]).toEqual([1, 2]);
+    expect(sessionSlice(list, 200)).toHaveLength(2);
+    expect(historyStats([]).avgR).toBeNull();
   });
 });
 

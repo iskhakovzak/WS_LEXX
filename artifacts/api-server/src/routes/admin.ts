@@ -10,6 +10,7 @@ import { parseTradesReportBuffer, reportTradesToRoundTrips, planSync, applySync,
 import { getActor, bumpTokenVersion } from "../lib/auth";
 import { can, forbiddenBody, resolveActor, type Capability } from "../lib/permissions";
 import { runDbBackup, listBackups, getBackupDownloadUrl } from "../lib/dbBackupCron";
+import { violationDaySql } from "../lib/violationWindow";
 
 const router: IRouter = Router();
 
@@ -20,18 +21,17 @@ const USER_COLUMNS = `id, name, role, active,
   banned_reason AS "bannedReason",
   created_at AS "createdAt"`;
 
-const actorSchema = z.string().trim().min(1).max(100).optional();
 const reasonSchema = z.string().trim().max(2000).optional();
 const resolutionSchema = z.string().trim().max(2000).optional();
 const roleSchema = z.enum(["admin", "curator", "trader"]);
 const targetTypeSchema = z.enum(["discussion", "comment"]);
 
-const roleBodySchema = z.object({ actor: actorSchema, role: roleSchema });
-const banBodySchema = z.object({ actor: actorSchema, reason: reasonSchema });
-const unbanBodySchema = z.object({ actor: actorSchema });
-const resolveBodySchema = z.object({ actor: actorSchema, resolution: resolutionSchema });
+const roleBodySchema = z.object({ role: roleSchema });
+const banBodySchema = z.object({ reason: reasonSchema });
+const unbanBodySchema = z.object({});
+const resolveBodySchema = z.object({ resolution: resolutionSchema });
+// The reporter is always the signed-in member (token) — a `reporter` field in the body is ignored.
 const reportBodySchema = z.object({
-  reporter: z.string().trim().min(1).max(100),
   targetType: targetTypeSchema,
   targetId: z.union([z.string().trim().min(1), z.number().int()]).transform((v) => String(v)),
   reason: z.string().trim().min(1).max(2000),
@@ -74,7 +74,7 @@ router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void
   const parsed = roleBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { role } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "users.manage.admins");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   if (req.authUser?.id === id) { res.status(400).json({ error: "Cannot change your own role" }); return; }
@@ -95,7 +95,7 @@ router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void>
   const parsed = banBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { reason } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "users.manage");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const { rows: target } = await pool.query<any>(`SELECT name, role FROM users WHERE id = $1`, [id]);
@@ -117,7 +117,7 @@ router.post("/admin/users/:id/unban", asyncHandler(async (req, res): Promise<voi
   if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
   const parsed = unbanBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "users.manage");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const { rows } = await pool.query<any>(
@@ -189,7 +189,9 @@ router.get("/admin/audit", asyncHandler(async (req, res): Promise<void> => {
 router.post("/reports", asyncHandler(async (req, res): Promise<void> => {
   const parsed = reportBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
-  const { reporter, targetType, targetId, reason } = parsed.data;
+  const { targetType, targetId, reason } = parsed.data;
+  const reporter = getActor(req);
+  if (!reporter) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
   const { rows: bannedCheck } = await pool.query<any>(`SELECT COALESCE(banned, false) AS banned FROM users WHERE name = $1`, [reporter]);
   if (bannedCheck[0]?.banned) { res.status(403).json({ error: "Banned users cannot file reports" }); return; }
   const [row] = await db.insert(contentReportsTable).values({
@@ -305,7 +307,6 @@ async function loadReportTargets(rows: { targetType: string; targetId: string }[
 }
 
 const banAuthorBodySchema = z.object({
-  actor: actorSchema,
   reason: z.string().trim().min(1).max(2000),
   /** Also close every other open report against the same target. Default true. */
   resolveSiblings: z.boolean().optional(),
@@ -318,7 +319,7 @@ router.post("/admin/reports/:id/ban-author", asyncHandler(async (req, res): Prom
   const parsed = banAuthorBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { reason, resolveSiblings = true } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "admin.reports");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
 
@@ -359,7 +360,7 @@ router.post("/admin/reports/:id/resolve", asyncHandler(async (req, res): Promise
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { resolution } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "admin.reports");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const [row] = await db.update(contentReportsTable).set({
@@ -379,7 +380,7 @@ router.post("/admin/reports/:id/dismiss", asyncHandler(async (req, res): Promise
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { resolution } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "admin.reports");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const [row] = await db.update(contentReportsTable).set({
@@ -394,7 +395,6 @@ router.post("/admin/reports/:id/dismiss", asyncHandler(async (req, res): Promise
 }));
 
 const bulkReportsBodySchema = z.object({
-  actor: actorSchema,
   ids: z.array(z.number().int().positive()).min(1).max(200),
   kind: z.enum(["resolve", "dismiss"]),
   resolution: z.string().trim().min(1).max(2000),
@@ -405,7 +405,7 @@ router.post("/admin/reports/bulk", asyncHandler(async (req, res): Promise<void> 
   const parsed = bulkReportsBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { ids, kind, resolution } = parsed.data;
-  const actor = getActor(req) ?? parsed.data.actor;
+  const actor = getActor(req);
   const guard = await requireCapGuard(req, "admin.reports");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const status = kind === "resolve" ? "resolved" : "dismissed";
@@ -596,6 +596,17 @@ router.get("/admin/desk-pulse", asyncHandler(async (req, res): Promise<void> => 
       : Promise.resolve(empty),
     hasViolations
       ? pool.query<any>(
+          // По торговому дню нарушения (day), а не по occurred_at — иначе бэкфилл истории попадает в «сегодня».
+          `SELECT trader,
+                  COUNT(*) FILTER (WHERE vd = $1)::int AS today,
+                  COUNT(*) FILTER (WHERE vd > $2 AND vd <= $1)::int AS week,
+                  COUNT(*) FILTER (WHERE severity = 'high' AND vd > $2 AND vd <= $1)::int AS high_week,
+                  COUNT(*)::int AS total
+             FROM (SELECT trader, severity, ${violationDaySql("")} AS vd FROM rule_violations WHERE archived_at IS NULL) v
+            GROUP BY trader`,
+          [today, ymdShift(today, -7)],
+        ).catch(() => pool.query<any>(
+          // Колонки day ещё нет (схема правил не создана) — старый расчёт по occurred_at.
           `SELECT trader,
                   COUNT(*) FILTER (WHERE (occurred_at AT TIME ZONE $2)::date = $1::date)::int AS today,
                   COUNT(*) FILTER (WHERE (occurred_at AT TIME ZONE $2)::date > ($1::date - 7))::int AS week,
@@ -603,7 +614,7 @@ router.get("/admin/desk-pulse", asyncHandler(async (req, res): Promise<void> => 
                   COUNT(*)::int AS total
              FROM rule_violations WHERE archived_at IS NULL GROUP BY trader`,
           [today, tz],
-        )
+        ))
       : Promise.resolve(empty),
     hasActivity
       ? pool.query<any>(`SELECT trader, MAX(created_at) AS last FROM activity_log WHERE trader IS NOT NULL GROUP BY trader`)

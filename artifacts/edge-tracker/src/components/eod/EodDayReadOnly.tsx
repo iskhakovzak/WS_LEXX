@@ -150,7 +150,7 @@ export function ReconcileBlock({
       {!matches && <span>Расхождение с выпиской брокера: <span className="font-semibold tabular-nums">{fmtMoney(diff)}</span> (у брокера {fmtMoney(bNet)}{bTrades != null ? `, ${bTrades} сд.` : ""})</span>}
       {manualUnmatched > 0 && (
         <span className="text-muted-foreground">
-          {manualUnmatched} {plural(manualUnmatched, "ручная сделка", "ручные сделки", "ручных сделок")} без пары у брокера — возможен дубль.
+          {manualUnmatched} {plural(manualUnmatched, "сделка", "сделки", "сделок")} без пары в выписке брокера — возможен дубль.
         </span>
       )}
     </p>

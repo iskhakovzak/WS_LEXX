@@ -242,7 +242,7 @@ export function RatingDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className="max-h-[90vh] max-w-lg overflow-y-auto"
+        className="max-h-[90dvh] overflow-y-auto sm:max-w-2xl"
         onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && canSave) { e.preventDefault(); save.mutate(); } }}
       >
         <DialogHeader>

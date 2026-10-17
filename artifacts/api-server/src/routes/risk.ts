@@ -416,7 +416,7 @@ export function computeStop(args: { todayLoss: number; weekLoss: number; current
       message: `Недельный лимит исчерпан: −${usd0(weekLoss)} из ${usd0(L.weeklyLossLimit!)} — до понедельника только наблюдение.` };
   }
   if (dailyPct != null && dailyPct >= 100) {
-    return { ...base, state: "stop", label: "Red day stop", halted: true,
+    return { ...base, state: "stop", label: "Дневной стоп", halted: true,
       message: `Дневной стоп: −${usd0(todayLoss)} при лимите ${usd0(L.dailyLossLimit!)} — на сегодня всё.` };
   }
   const worst = Math.max(dailyPct ?? -1, weeklyPct ?? -1, drawdownPct ?? -1);

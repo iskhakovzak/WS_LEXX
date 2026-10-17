@@ -12,6 +12,7 @@ import {
   accessHints, canEditSetupRow, canReadPure, canSharePure, ensurePlaybookSpaces, loadSetupAccess, loadViewer,
   loadMoneyViewer, mayShareAny, normSharedWith, spaceOf, spaceSql, visibleSql, type PlaybookViewer,
 } from "../lib/playbookAccess";
+import { inboxDays, labelScore, rankInbox, suggestSetup, suggestTier, type InboxSetup } from "../lib/playbookInbox";
 import {
   canSeeAggregateMoney, canSeeTradeMoney, equityByR, redactEdgeStats, redactSlot, redactTradeRow, redactUsdStats,
   type MoneyViewer,
@@ -39,6 +40,7 @@ import {
  *   GET    /playbook-tools/gallery                      ?tier=1&setupId=&trader=&space=office|personal|shared
  *   GET    /playbook-tools/trade-picker                 ?setupId=&trader=&q=&from=&to=&result=win|loss&match=1&limit=
  *   GET    /playbook-tools/for-trade/:tradeId           setups for the 1-click popover (recent, suggested, already in)
+ *   GET    /playbook-tools/inbox                        ?days=14&limit= — own recent trades not in any setup yet (+ suggestion)
  *   GET    /playbook-tools/share-targets                people + cohorts for the share dialog
  *   POST   /playbook/:id/share                          { visibility: private|all|custom, users?, cohorts? }
  *   POST   /playbook/:id/copy                           copy into «Мой» with attribution
@@ -197,16 +199,21 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
   const marks = marksOf(body.checklistMarks);
   const link = body.link !== false;
   const added: number[] = [];
+  // For the «Отменить» toast: ids created by this call, the previous tier / note of re-added ones, trades linked here.
+  const created: number[] = [];
+  const previous: { id: number; tier: number; note: string | null }[] = [];
+  const linkedTradeIds: number[] = [];
   const skipped: { tradeId: number; reason: string }[] = [];
   let linked = 0;
   for (const tradeId of uniq) {
     const access = await canAccessTrade(req, tradeId, "read");
     if (access !== true) { skipped.push({ tradeId, reason: access === null ? "not_found" : "forbidden" }); continue; }
-    const { rows: live } = await pool.query<{ id: number }>(
-      `SELECT id FROM playbook_examples WHERE playbook_id = $1 AND trade_id = $2 AND deleted_at IS NULL`,
+    const { rows: live } = await pool.query<{ id: number; tier: number; note: string | null }>(
+      `SELECT id, tier, note FROM playbook_examples WHERE playbook_id = $1 AND trade_id = $2 AND deleted_at IS NULL`,
       [row.id, tradeId],
     );
     if (live[0]) {
+      previous.push({ id: live[0].id, tier: Number(live[0].tier), note: live[0].note });
       // Re-adding the same trade updates its tier / note instead of duplicating it.
       await pool.query(
         `UPDATE playbook_examples SET tier = $2, note = COALESCE($3, note), checklist_marks = COALESCE($4::jsonb, checklist_marks), updated_at = NOW() WHERE id = $1`,
@@ -222,11 +229,13 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
         [row.id, tradeId, tier, note, marks ? JSON.stringify(marks) : null, v.name],
       );
       added.push(ins[0]!.id);
+      created.push(ins[0]!.id);
     }
     // Link the trade to the setup for stats when it is unlinked and the caller may write it.
     if (link && (await canAccessTrade(req, tradeId, "write")) === true) {
       const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2 AND playbook_id IS NULL AND deleted_at IS NULL`, [row.id, tradeId]);
       linked += rowCount ?? 0;
+      if (rowCount) linkedTradeIds.push(tradeId);
     }
   }
   if (added.length) {
@@ -242,7 +251,7 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
       )
     : { rows: [] as any[] };
   const mv = await loadMoneyViewer(req);
-  res.status(201).json({ examples: rows.map((r) => shapeExample(r, mv)), skipped, linked });
+  res.status(201).json({ examples: rows.map((r) => shapeExample(r, mv)), skipped, linked, created, previous, linkedTradeIds });
 }));
 
 router.post("/playbook/:id/examples/reorder", asyncHandler(async (req, res): Promise<void> => {
@@ -335,8 +344,15 @@ router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res)
   if (!ex || ex.playbookId !== row.id) { res.status(404).json({ error: "Эталон не найден" }); return; }
   if (!(await canChangeExample(req, v, ex, row))) { res.status(403).json({ error: "Убрать эталон может тот, кто его добавил, или редактор сетапа" }); return; }
   await pool.query(`UPDATE playbook_examples SET deleted_at = NOW() WHERE id = $1`, [ex.id]);
+  // ?unlink=1 (undo of a fresh add): also drop the trade → setup link, only when it points at this setup and
+  // the caller may write the trade.
+  let unlinked = false;
+  if (req.query.unlink === "1" && (await canAccessTrade(req, ex.tradeId, "write")) === true) {
+    const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND playbook_id = $2`, [ex.tradeId, row.id]);
+    unlinked = !!rowCount;
+  }
   await logActivity({ action: "deleted", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: `Эталон убран (сделка #${ex.tradeId})` });
-  res.json({ success: true });
+  res.json({ success: true, unlinked });
 }));
 
 // ─── Gallery of Tier-1 examples ─────────────────────────────────────────────
@@ -353,6 +369,9 @@ router.get("/playbook-tools/gallery", asyncHandler(async (req, res): Promise<voi
   if (setupId) { params.push(setupId); where.push(`e.playbook_id = $${params.length}`); }
   const trader = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim().slice(0, 120) : null;
   if (trader) { params.push(trader); where.push(`t.trader = $${params.length}`); }
+  const galleryDate = /^\d{4}-\d{2}-\d{2}$/;
+  if (typeof req.query.from === "string" && galleryDate.test(req.query.from)) { params.push(req.query.from); where.push(`${closeDateSql("t")} >= $${params.length}`); }
+  if (typeof req.query.to === "string" && galleryDate.test(req.query.to)) { params.push(req.query.to); where.push(`${closeDateSql("t")} <= $${params.length}`); }
   const space = req.query.space;
   if (space === "office") where.push(`${spaceSql("p")} = 'office'`);
   else if (space === "personal") { params.push(v.name ?? ""); where.push(`${spaceSql("p")} = 'personal' AND p.trader = $${params.length}`); }
@@ -452,7 +471,8 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const v = await loadViewer(req);
   const sg = await suggestionJoin("t");
   const { rows: tr } = await pool.query<any>(
-    `SELECT t.id, t.ticker, t.date, t.trader, t.setup, t.playbook_id AS "playbookId", ${netPnlSql("t")} AS "netPnl", ${sg.cols}
+    `SELECT t.id, t.ticker, t.date, t.side, t.trader, t.setup, t.playbook_id AS "playbookId", ${netPnlSql("t")} AS "netPnl",
+            ${resultSql("t")} AS result, ${signedRSql("t")} AS "signedR", ${sg.cols}
        FROM trades t ${sg.join} WHERE t.id = $1`,
     [tradeId],
   );
@@ -492,25 +512,84 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   const suggested: { id: number; reason: string }[] = [];
   const addSug = (id: number, reason: string) => { if (byId.has(id) && !suggested.some((s) => s.id === id)) suggested.push({ id, reason }); };
   if (trade?.playbookId) addSug(trade.playbookId, "Сделка привязана к этому сетапу");
-  for (const s of light) {
-    if (trade?.autoSetup && autoMatchesSetup(trade.autoSetup, s)) addSug(s.id, `Автоклассификация: ${trade.autoSetup}`);
-  }
-  for (const s of light) {
-    if (trade?.setup && autoMatchesSetup(trade.setup, s)) addSug(s.id, `Сетап в сделке: ${trade.setup}`);
-  }
+  // Closest name first (exact > partial name > type/tag), writable setups before read-only ones.
+  const byLabel = (label: string) => light
+    .map((s) => ({ s, sc: labelScore(label, s) }))
+    .filter((x) => x.sc > 0)
+    .sort((a, b) => b.sc - a.sc || Number(b.s.canAddExamples) - Number(a.s.canAddExamples) || Number(b.s.mine) - Number(a.s.mine));
+  if (trade?.autoSetup) for (const { s } of byLabel(trade.autoSetup)) addSug(s.id, `Автоклассификация: ${trade.autoSetup}`);
+  if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, `Сетап в сделке: ${trade.setup}`);
   const { rows: ex } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", tier, note FROM playbook_examples WHERE trade_id = $1 AND deleted_at IS NULL`,
     [tradeId],
   );
   const mv = await loadMoneyViewer(req);
   res.json({
-    trade: trade ? redactTradeRow({ ...trade, netPnl: numOrNull(trade.netPnl), autoConfidence: numOrNull(trade.autoConfidence) }, mv) : null,
+    trade: trade ? redactTradeRow({ ...trade, netPnl: numOrNull(trade.netPnl), signedR: numOrNull(trade.signedR), autoConfidence: numOrNull(trade.autoConfidence) }, mv) : null,
     setups: light,
     recent,
     suggested: suggested.slice(0, 5),
     examples: ex.filter((e) => byId.has(e.playbookId)),
     viewer: { name: v.name, editOwn: v.editOwn, editAny: v.editAny },
   });
+}));
+
+// ─── Inbox: own recent trades without an example ────────────────────────────
+
+/**
+ * GET /playbook-tools/inbox?days=14&limit=40[&trader=] — the viewer's recent trades (staff: ?trader=) that are not an
+ * example of any live setup yet, newest first, each with a best-guess setup and tier (lib/playbookInbox.ts).
+ * Feeds «Разобрать сделки» on the playbook home. Trade $ go through redactTradeRow like everywhere else.
+ */
+router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void> => {
+  await ensurePlaybookSpaces();
+  const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim() : null;
+  const scope = await scopeTrader(req, requested, "trades.read.team");
+  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  const v = await loadViewer(req);
+  const who = scope ?? v.name;
+  if (!who || v.guest) { res.json({ trader: null, days: 0, total: 0, trades: [] }); return; }
+  const days = inboxDays(req.query.days);
+  const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
+  const sg = await suggestionJoin("t");
+  const base = `FROM trades t
+       LEFT JOIN playbook pb ON pb.id = t.playbook_id AND pb.deleted_at IS NULL
+       ${sg.join}
+      WHERE t.deleted_at IS NULL AND t.trader = $1
+        AND ${closeDateSql("t")} >= to_char((NOW() AT TIME ZONE 'America/New_York')::date - $2::int, 'YYYY-MM-DD')
+        AND NOT EXISTS (
+          SELECT 1 FROM playbook_examples e JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
+           WHERE e.trade_id = t.id AND e.deleted_at IS NULL)`;
+  const [{ rows }, { rows: cnt }] = await Promise.all([
+    pool.query<any>(
+      `SELECT t.id, t.ticker, t.date, ${closeDateSql("t")} AS "closeDate", t.side, ${resultSql("t")} AS result,
+              ${netPnlSql("t")} AS "netPnl", ${signedRSql("t")} AS "signedR", ${horizonSql("t")} AS horizon, t.trader, t.setup,
+              t.playbook_id AS "playbookId", pb.name AS "playbookName", ${sg.cols}
+         ${base}
+        ORDER BY ${closeDateSql("t")} DESC, t.id DESC
+        LIMIT $3`,
+      [who, days, limit],
+    ),
+    pool.query<{ n: string }>(`SELECT COUNT(*)::text AS n ${base}`, [who, days]),
+  ]);
+  const params: unknown[] = [];
+  const vis = visibleSql(v, params, "p");
+  const { rows: setupRows } = await pool.query<any>(
+    `SELECT p.id, p.name, p.trader, p.setup_type AS "setupType", p.tags, ${spaceSql("p")} AS space,
+            COALESCE(p.visibility, 'private') AS visibility, p.shared_with AS "sharedWith"
+       FROM playbook p WHERE p.deleted_at IS NULL AND ${vis}`,
+    params,
+  );
+  const setups: InboxSetup[] = setupRows.map((s) => {
+    const a = accessHints(v, s);
+    return { id: s.id, name: s.name, setupType: s.setupType, tags: s.tags, canAddExamples: a.canAddExamples, mine: a.mine, space: a.space };
+  });
+  const mv = await loadMoneyViewer(req);
+  const shaped = rows.map((r) => {
+    const t = { ...r, netPnl: numOrNull(r.netPnl), signedR: numOrNull(r.signedR), autoConfidence: numOrNull(r.autoConfidence), closeDate: iso(r.closeDate)?.slice(0, 10) ?? null };
+    return redactTradeRow({ ...t, suggestion: suggestSetup(t, setups), suggestedTier: suggestTier(t) }, mv);
+  });
+  res.json({ trader: who, days, total: Number(cnt[0]?.n ?? shaped.length), trades: rankInbox(shaped) });
 }));
 
 // ─── Sharing ─────────────────────────────────────────────────────────────────

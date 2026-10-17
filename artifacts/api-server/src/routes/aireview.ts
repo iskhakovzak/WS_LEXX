@@ -23,28 +23,16 @@ const router: IRouter = Router();
 const RATE_LIMIT_PER_USER = 30;
 const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 
-function userKeyFor(req: any): string {
-  // Authenticated users are always rate-limited under their own name.
-  const actor = req.authUser?.name;
-  if (typeof actor === "string" && actor.trim()) return actor.trim();
-  const fromHeader = req.headers["x-user"];
-  if (typeof fromHeader === "string" && fromHeader.trim()) return fromHeader.trim();
-  const fromBody = req.body?.userKey;
-  if (typeof fromBody === "string" && fromBody.trim()) return fromBody.trim();
-  const fromQuery = req.query?.user;
-  if (typeof fromQuery === "string" && fromQuery.trim()) return fromQuery.trim();
-  return "anonymous";
+/**
+ * Rate-limit / usage key = the signed-in member's name from the token. Every /api route except the public list in
+ * lib/auth requires a token, so there is no anonymous caller here (the old x-user / body / query fallbacks are gone).
+ */
+function userKeyFor(req: Request): string {
+  return req.authUser?.name?.trim() || "anonymous";
 }
 
 router.get("/ai-review/usage", asyncHandler(async (req, res): Promise<void> => {
-  const fromHeader = req.headers["x-user"];
-  const fromQuery = req.query.userKey;
-  const actor = req.authUser?.name;
-  const userKey =
-    (typeof actor === "string" && actor.trim() ? actor.trim() : null) ??
-    (typeof fromHeader === "string" && fromHeader.trim() ? fromHeader.trim() : null) ??
-    (typeof fromQuery === "string" && fromQuery.trim() ? fromQuery.trim() : null) ??
-    "anonymous";
+  const userKey = userKeyFor(req);
 
   const now = Date.now();
   const hourlyCutoff = new Date(now - RATE_LIMIT_WINDOW_MS);

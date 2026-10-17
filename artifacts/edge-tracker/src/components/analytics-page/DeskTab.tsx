@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { Users, RefreshCw } from "lucide-react";
-import { Panel, EmptyState, Pill, TableScroll, toneOf } from "@/components/ds";
+import { Panel, EmptyState, Pill, SortableTh, TableScroll, toneOf, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -31,6 +31,22 @@ function rowOf(c: EdgeCell, u: Unit): TraderRow {
   };
 }
 
+/** Below this many closed trades a row is a small sample: listed after the rest by default and greyed out. */
+const MIN_N = 5;
+
+const DESK_ACCESSORS = {
+  // Hidden default: reliable samples first; ties keep the expectancy-desc pre-sort.
+  rank: (r: TraderRow) => (r.closed >= MIN_N ? 0 : 1),
+  trader: (r: TraderRow) => r.trader,
+  closed: (r: TraderRow) => r.closed,
+  winRate: (r: TraderRow) => r.winRate,
+  expectancy: (r: TraderRow) => r.expectancy,
+  pf: (r: TraderRow) => r.pf,
+  total: (r: TraderRow) => r.total,
+  maxDd: (r: TraderRow) => r.maxDd,
+} as const;
+const TH = "px-2 py-1.5 font-medium";
+
 type MetricDef = { key: keyof Omit<TraderRow, "trader">; label: string; fmt: (v: number | null, u: Unit) => string; higherIsBetter: boolean };
 const METRICS: MetricDef[] = [
   { key: "expectancy", label: "Ожидание на сделку", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v)), higherIsBetter: true },
@@ -49,13 +65,14 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
   const { data, isLoading, isError, refetch } = useEdgeMatrix(deskFilters, "trader", "trader", 30);
   const rows = useMemo(() => (data ? data.cells.map((c) => rowOf(c, u)).sort((a, b) => (b.expectancy ?? -1e9) - (a.expectancy ?? -1e9)) : []), [data, u]);
   const [picked, setPicked] = useState<string>("");
+  const { rows: sorted, thProps } = useTableSort(rows, DESK_ACCESSORS, "rank", "asc");
   const focus = rows.find((r) => r.trader === (picked || filters.trader)) ?? rows[0];
 
   if (isError) return <Panel><EmptyState icon={Users} title="Не удалось загрузить деск" action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> Повторить</Button>} /></Panel>;
   if (isLoading || !data) return <Skeleton className="h-[360px] rounded-2xl" />;
   if (rows.length < 2 || !focus) return <Panel><EmptyState icon={Users} title="Сравнивать не с кем" description="Под фильтры попали сделки меньше чем двух трейдеров. Расширьте период." /></Panel>;
 
-  const minN = 5;
+  const minN = MIN_N;
   const population = (key: MetricDef["key"]) => rows.filter((r) => r.closed >= minN).map((r) => r[key]).filter((v): v is number => v != null);
 
   return (
@@ -94,22 +111,22 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
         {focus.closed < minN && <p className="mt-2 text-2xs text-muted-foreground">У трейдера меньше {minN} закрытых сделок — процентили ориентировочные.</p>}
       </Panel>
 
-      <Panel title="Весь деск" description={`В ${u === "r" ? "R" : "$ нетто"} · отсортировано по ожиданию`} className="lg:col-span-2">
+      <Panel title="Весь деск" description={`В ${u === "r" ? "R" : "$ нетто"} · нажмите на заголовок для сортировки`} className="lg:col-span-2">
         <TableScroll>
           <table className="w-full text-xs">
             <thead>
               <tr className="text-muted-foreground">
-                <th className="px-2 py-1.5 text-left font-medium">Трейдер</th>
-                <th className="px-2 py-1.5 text-right font-medium">Сделок</th>
-                <th className="px-2 py-1.5 text-right font-medium">Win rate</th>
-                <th className="px-2 py-1.5 text-right font-medium">Ожидание</th>
-                <th className="px-2 py-1.5 text-right font-medium">PF</th>
-                <th className="px-2 py-1.5 text-right font-medium">Итог</th>
-                <th className="px-2 py-1.5 text-right font-medium">Просадка</th>
+                <SortableTh {...thProps("trader")} className={cn(TH, "text-left")}>Трейдер</SortableTh>
+                <SortableTh {...thProps("closed")} align="right" className={TH}>Сделок</SortableTh>
+                <SortableTh {...thProps("winRate")} align="right" className={TH}>Win rate</SortableTh>
+                <SortableTh {...thProps("expectancy")} align="right" className={TH}>Ожидание</SortableTh>
+                <SortableTh {...thProps("pf")} align="right" className={TH}>PF</SortableTh>
+                <SortableTh {...thProps("total")} align="right" className={TH}>Итог</SortableTh>
+                <SortableTh {...thProps("maxDd")} align="right" className={TH}>Просадка</SortableTh>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {sorted.map((r) => {
                 const isFocus = r.trader === focus.trader;
                 const tc = (v: number | null) => (toneOf(v) === "up" ? "text-up" : toneOf(v) === "down" ? "text-down" : "text-muted-foreground");
                 return (

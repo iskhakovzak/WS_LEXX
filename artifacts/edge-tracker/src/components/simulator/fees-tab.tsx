@@ -1,7 +1,7 @@
 import { type ReactNode, useMemo, useState } from "react";
 import { Link } from "wouter";
 import { Check, ChevronDown, Plus, Receipt, Scissors, Target } from "lucide-react";
-import { DataTable, Panel, Pill, TermTooltip, toneOf } from "@/components/ds";
+import { DataTable, Panel, Pill, SortableTh, TermTooltip, toneOf, useTableSort } from "@/components/ds";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -9,6 +9,8 @@ import { fmtUsd, pluralRu, sdeal } from "@/components/analytics-page/metrics";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { FeeGroupRow, FeesResponse, Preset } from "./api";
+
+type EatenRow = FeesResponse["eaten"][number];
 import { TARIFF_EXAMPLES } from "./presets";
 import { type CommissionPlan, type PreviewTrade, type Rule, isApplied, planSummary } from "./rules";
 
@@ -216,27 +218,44 @@ function PlanTr({
   );
 }
 
-function GroupTable({ title, rows, description, keyLabel }: { title: string; rows: FeeGroupRow[]; description?: string; keyLabel: string }) {
-  const data = rows.filter((r) => r.trades > 0);
+type GroupRow = FeeGroupRow & { order: number };
+const GROUP_ACCESSORS = {
+  // Hidden key: server order (price / size / hold / hour buckets go in their natural order).
+  order: (r: GroupRow) => r.order,
+  key: (r: GroupRow) => r.key,
+  trades: (r: GroupRow) => r.trades,
+  gross: (r: GroupRow) => r.gross,
+  fees: (r: GroupRow) => r.fees,
+  net: (r: GroupRow) => r.net,
+  feePct: (r: GroupRow) => r.feePctOfGross,
+  breakEven: (r: GroupRow) => r.breakEvenCents,
+  eaten: (r: GroupRow) => r.eatenWinners,
+} as const;
+
+function GroupTable({ title, rows, description, keyLabel, defaultSort = "order", maxHeight = 440 }: {
+  title: string; rows: FeeGroupRow[]; description?: string; keyLabel: string; defaultSort?: "order" | "fees"; maxHeight?: number | string;
+}) {
+  const data = useMemo(() => rows.filter((r) => r.trades > 0).map((r, order) => ({ ...r, order })), [rows]);
+  const { rows: sorted, thProps } = useTableSort(data, GROUP_ACCESSORS, defaultSort, defaultSort === "order" ? "asc" : "desc");
   return (
     <Panel title={title} description={description} padded={false} bodyClassName="p-2 sm:p-3">
       {data.length ? (
-        <DataTable maxHeight={320} ariaLabel={title}>
+        <DataTable maxHeight={maxHeight} ariaLabel={title}>
           <table>
             <thead>
               <tr>
-                <th scope="col">{keyLabel}</th>
-                <th scope="col" className="text-right">Сделок</th>
-                <th scope="col" className="text-right">Брутто</th>
-                <th scope="col" className="text-right">Комиссии</th>
-                <th scope="col" className="text-right">Нетто</th>
-                <th scope="col" className="text-right" title="Комиссии / |брутто|">от брутто</th>
-                <th scope="col" className="text-right" title="Ход цены на акцию, который покрывает комиссию">Безубыток</th>
-                <th scope="col" className="text-right" title="Были в плюсе до комиссии, после — в минусе">Съедено</th>
+                <SortableTh {...thProps("key")}>{keyLabel}</SortableTh>
+                <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
+                <SortableTh {...thProps("gross")} align="right">Брутто</SortableTh>
+                <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
+                <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+                <SortableTh {...thProps("feePct")} align="right"><span title="Комиссии / |брутто|">от брутто</span></SortableTh>
+                <SortableTh {...thProps("breakEven")} align="right"><span title="Ход цены на акцию, который покрывает комиссию">Безубыток</span></SortableTh>
+                <SortableTh {...thProps("eaten")} align="right"><span title="Были в плюсе до комиссии, после — в минусе">Съедено</span></SortableTh>
               </tr>
             </thead>
             <tbody>
-              {data.map((r) => (
+              {sorted.map((r) => (
                 <tr key={r.key}>
                   <td className="whitespace-nowrap font-medium">{r.key}</td>
                   <td className="text-right">{r.trades}</td>
@@ -277,7 +296,7 @@ function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoa
               <GroupTable title="По времени удержания" keyLabel="Удержание" rows={data.byHold} description="Короткие сделки: ход маленький, комиссия та же" />
               <GroupTable title="По часу входа (ET)" keyLabel="Час" rows={data.byHour} />
             </div>
-            <GroupTable title="По тикеру (топ-25 по комиссиям)" keyLabel="Тикер" rows={data.byTicker} />
+            <GroupTable title="По тикеру (топ-25 по комиссиям)" keyLabel="Тикер" rows={data.byTicker} defaultSort="fees" maxHeight="60vh" />
             <Panel
               title="Сделки, которые съела комиссия"
               icon={Scissors}
@@ -286,27 +305,7 @@ function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoa
               bodyClassName="p-2 sm:p-3"
             >
               {data.eaten.length ? (
-                <DataTable maxHeight={320} ariaLabel="Сделки, съеденные комиссией">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th scope="col">Дата</th><th scope="col">Тикер</th><th scope="col" className="text-right">Акций</th><th scope="col" className="text-right">Брутто</th><th scope="col" className="text-right">Комиссии</th><th scope="col" className="text-right">Нетто</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {data.eaten.map((e) => (
-                        <tr key={e.id}>
-                          <td className="whitespace-nowrap">{e.day}</td>
-                          <td><Link href={links.trade(e.id)} className="font-medium text-primary underline-offset-4 hover:underline">{e.ticker}</Link></td>
-                          <td className="text-right">{e.qty ?? "—"}</td>
-                          <td className="text-right text-up">{fmtUsd(e.gross)}</td>
-                          <td className="text-right">${e.fees.toFixed(2)}</td>
-                          <td className="text-right font-medium text-down">{fmtUsd(e.net)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </DataTable>
+                <EatenTable rows={data.eaten} />
               ) : (
                 <p className="px-3 py-6 text-center text-sm text-muted-foreground">Таких сделок нет</p>
               )}
@@ -320,5 +319,46 @@ function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoa
         )}
       </CollapsibleContent>
     </Collapsible>
+  );
+}
+
+const EATEN_ACCESSORS = {
+  day: (e: EatenRow) => e.day,
+  ticker: (e: EatenRow) => e.ticker,
+  qty: (e: EatenRow) => e.qty,
+  gross: (e: EatenRow) => e.gross,
+  fees: (e: EatenRow) => e.fees,
+  net: (e: EatenRow) => e.net,
+} as const;
+
+function EatenTable({ rows }: { rows: EatenRow[] }) {
+  const { rows: sorted, thProps } = useTableSort(rows, EATEN_ACCESSORS, "day");
+  return (
+    <DataTable maxHeight="60vh" ariaLabel="Сделки, съеденные комиссией">
+      <table>
+        <thead>
+          <tr>
+            <SortableTh {...thProps("day")}>Дата</SortableTh>
+            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+            <SortableTh {...thProps("qty")} align="right">Акций</SortableTh>
+            <SortableTh {...thProps("gross")} align="right">Брутто</SortableTh>
+            <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
+            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.map((e) => (
+            <tr key={e.id}>
+              <td className="whitespace-nowrap">{e.day}</td>
+              <td><Link href={links.trade(e.id)} className="font-medium text-primary underline-offset-4 hover:underline">{e.ticker}</Link></td>
+              <td className="text-right">{e.qty ?? "—"}</td>
+              <td className="text-right text-up">{fmtUsd(e.gross)}</td>
+              <td className="text-right">${e.fees.toFixed(2)}</td>
+              <td className="text-right font-medium text-down">{fmtUsd(e.net)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </DataTable>
   );
 }

@@ -9,7 +9,7 @@ import { Area, AreaChart, CartesianGrid, ReferenceDot, ReferenceLine, Responsive
 import {
   AlertTriangle, BarChart3, CalendarDays, CheckCircle2, Clock, ExternalLink, LineChart, ListChecks, ListOrdered, NotebookPen, Sparkles, Target,
 } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, StatCard, StatGrid, StatRow, toneOf, toneText, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, StatRow, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { weekKeyOf } from "@/components/weekly-review/api";
@@ -108,7 +108,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
     return p?.time?.slice(0, 5) ?? "";
   };
   const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
-  const srcLabel = e.timeSource === "executions" ? "по времени исполнений (выход)" : e.timeSource === "snapshot" ? "по времени PropReports (выход)" : "порядок сделок, без времени";
+  const srcLabel = e.timeSource === "executions" ? "по времени исполнений (выход)" : e.timeSource === "snapshot" ? "по времени брокера (выход)" : "порядок сделок, без времени";
   return (
     <Panel
       title="Кривая дня"
@@ -173,6 +173,21 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
 }
 
 // ── 3. Timeline ──────────────────────────────────────────────────────────────
+const TIMELINE_ACCESSORS = {
+  index: (t: TimelineRow) => t.index,
+  entry: (t: TimelineRow) => t.entryTime,
+  exit: (t: TimelineRow) => t.exitTime,
+  ticker: (t: TimelineRow) => t.ticker,
+  side: (t: TimelineRow) => t.side,
+  qty: (t: TimelineRow) => t.qty,
+  hold: (t: TimelineRow) => t.holdMin,
+  gross: (t: TimelineRow) => t.gross,
+  fees: (t: TimelineRow) => t.fees,
+  net: (t: TimelineRow) => t.net,
+  cum: (t: TimelineRow) => t.cumAfter,
+  gap: (t: TimelineRow) => t.gapMin,
+} as const;
+
 export function TimelinePanel({ doc }: { doc: DayReport }) {
   const flags = React.useMemo(() => {
     const m = new Map<number, LeakKind[]>();
@@ -180,6 +195,8 @@ export function TimelinePanel({ doc }: { doc: DayReport }) {
     return m;
   }, [doc.leaks]);
   const rows = doc.timeline;
+  // Default: chronological (# = order of entry). Any header re-sorts, e.g. by net to find the day's worst trades.
+  const { rows: sorted, thProps } = useTableSort(rows, TIMELINE_ACCESSORS, "index", "asc");
   return (
     <Panel
       title="Хронология сделок"
@@ -193,23 +210,23 @@ export function TimelinePanel({ doc }: { doc: DayReport }) {
         <table>
           <thead>
             <tr>
-              <th scope="col">#</th>
-              <th scope="col">Вход</th>
-              <th scope="col">Выход</th>
-              <th scope="col">Тикер</th>
-              <th scope="col">Сторона</th>
-              <th scope="col" className="!text-right">Кол-во</th>
-              <th scope="col" className="!text-right">Удержание</th>
-              <th scope="col" className="!text-right">Брутто</th>
-              <th scope="col" className="!text-right">Комиссия</th>
-              <th scope="col" className="!text-right">Нетто</th>
-              <th scope="col" className="!text-right">Итог дня</th>
-              <th scope="col">Пауза</th>
+              <SortableTh {...thProps("index")}>#</SortableTh>
+              <SortableTh {...thProps("entry")}>Вход</SortableTh>
+              <SortableTh {...thProps("exit")}>Выход</SortableTh>
+              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+              <SortableTh {...thProps("side")}>Сторона</SortableTh>
+              <SortableTh {...thProps("qty")} align="right" className="!text-right">Кол-во</SortableTh>
+              <SortableTh {...thProps("hold")} align="right" className="!text-right">Удержание</SortableTh>
+              <SortableTh {...thProps("gross")} align="right" className="!text-right">Брутто</SortableTh>
+              <SortableTh {...thProps("fees")} align="right" className="!text-right">Комиссия</SortableTh>
+              <SortableTh {...thProps("net")} align="right" className="!text-right">Нетто</SortableTh>
+              <SortableTh {...thProps("cum")} align="right" className="!text-right">Итог дня</SortableTh>
+              <SortableTh {...thProps("gap")}>Пауза</SortableTh>
               <th scope="col">Флаги</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((t) => <TimelineTr key={t.id} t={t} flags={flags.get(t.id) ?? []} />)}
+            {sorted.map((t) => <TimelineTr key={t.id} t={t} flags={flags.get(t.id) ?? []} />)}
           </tbody>
         </table>
       </DataTable>
@@ -245,7 +262,18 @@ function TimelineTr({ t, flags }: { t: TimelineRow; flags: LeakKind[] }) {
 }
 
 // ── 4. Breakdowns ────────────────────────────────────────────────────────────
-function BucketTable({ title, rows, ariaLabel }: { title: string; rows: Bucket[]; ariaLabel: string }) {
+const BUCKET_ACCESSORS = {
+  // Hidden key: the server order (hour/side buckets are naturally ordered).
+  order: (r: Bucket & { order: number }) => r.order,
+  label: (r: Bucket & { order: number }) => r.label,
+  trades: (r: Bucket & { order: number }) => r.trades,
+  wins: (r: Bucket & { order: number }) => r.winRate,
+  net: (r: Bucket & { order: number }) => r.net,
+} as const;
+
+function BucketTable({ title, rows: input, ariaLabel, defaultSort = "order" }: { title: string; rows: Bucket[]; ariaLabel: string; defaultSort?: "order" | "net" }) {
+  const indexed = React.useMemo(() => input.map((r, order) => ({ ...r, order })), [input]);
+  const { rows, thProps } = useTableSort(indexed, BUCKET_ACCESSORS, defaultSort, defaultSort === "order" ? "asc" : "desc");
   const max = Math.max(0, ...rows.map((r) => Math.abs(r.net)));
   return (
     <div className="min-w-0">
@@ -257,10 +285,10 @@ function BucketTable({ title, rows, ariaLabel }: { title: string; rows: Bucket[]
           <table>
             <thead>
               <tr>
-                <th scope="col">{title}</th>
-                <th scope="col" className="!text-right">Сд.</th>
-                <th scope="col" className="!text-right">W/L</th>
-                <th scope="col" className="!text-right">Нетто</th>
+                <SortableTh {...thProps("label")}>{title}</SortableTh>
+                <SortableTh {...thProps("trades")} align="right" className="!text-right">Сд.</SortableTh>
+                <SortableTh {...thProps("wins")} align="right" className="!text-right">W/L</SortableTh>
+                <SortableTh {...thProps("net")} align="right" className="!text-right">Нетто</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -291,7 +319,7 @@ export function BreakdownPanel({ doc }: { doc: DayReport }) {
   return (
     <Panel title="Разрезы" description="Нетто по тикеру, часу входа (ET) и стороне" icon={BarChart3} className="min-w-0">
       <div className="grid gap-4 lg:grid-cols-3">
-        <BucketTable title="Тикер" rows={doc.breakdown.byTicker} ariaLabel="Нетто по тикерам" />
+        <BucketTable title="Тикер" rows={doc.breakdown.byTicker} ariaLabel="Нетто по тикерам" defaultSort="net" />
         <BucketTable title="Час (ET)" rows={doc.breakdown.byHour} ariaLabel="Нетто по часу входа" />
         <BucketTable title="Сторона" rows={doc.breakdown.bySide} ariaLabel="Нетто по стороне" />
       </div>

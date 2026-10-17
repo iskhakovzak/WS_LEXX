@@ -449,8 +449,8 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
           <fieldset className="flex flex-col gap-2">
             <legend className="mb-1 text-sm font-medium">Договорённости</legend>
             {items.map((it, i) => (
-              <div key={i} className="grid grid-cols-[1fr_9.5rem_8.5rem_auto] items-center gap-2">
-                <Input aria-label={`Договорённость ${i + 1}`} value={it.title} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} placeholder="Что сделать" maxLength={300} />
+              <div key={i} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2 sm:grid-cols-[1fr_9.5rem_8.5rem_auto]">
+                <Input className="col-span-3 sm:col-span-1" aria-label={`Договорённость ${i + 1}`} value={it.title} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, title: e.target.value } : x)))} placeholder="Что сделать" maxLength={300} />
                 <Input aria-label="Срок" type="date" value={it.dueOn} onChange={(e) => setItems(items.map((x, j) => (j === i ? { ...x, dueOn: e.target.value } : x)))} />
                 <Select value={it.owner} onValueChange={(v) => setItems(items.map((x, j) => (j === i ? { ...x, owner: v as "student" | "mentor" } : x)))}>
                   <SelectTrigger aria-label="Кто делает"><SelectValue /></SelectTrigger>

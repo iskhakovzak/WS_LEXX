@@ -348,7 +348,7 @@ function SetupPicker({ selected, onChange }: { selected: number[]; onChange: (v:
         <Input value={filter} onChange={(e) => setFilter(e.target.value)} placeholder="Найти сетап" className="pl-8" aria-label="Поиск сетапа" />
       </div>
       {q.isLoading ? <p className="text-xs text-muted-foreground">Загрузка…</p> : !all.length ? <p className="text-xs text-muted-foreground">В плейбуке пока нет карточек.</p> : (
-        <ul className="grid max-h-48 gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
+        <ul className="grid max-h-[40vh] gap-1 overflow-y-auto pr-1 sm:grid-cols-2">
           {shown.map((s) => (
             <li key={s.id}>
               <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-[var(--glass-bg)]">

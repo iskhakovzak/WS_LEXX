@@ -46,8 +46,31 @@ describe("describeAudit", () => {
 
   it("has a readable fallback for unknown actions and never throws on bad JSON", () => {
     const t = describeAudit(entry("widget.delete", "{not json", { targetType: null, targetId: null }));
-    expect(t.text).toBe("widget delete");
+    expect(t.text).toBe("удалил: widget");
     expect(t.tone).toBe("down");
+    const u = describeAudit(entry("widget.sync", { historyId: 5, resync: false, tierKey: "trainee" }, { targetType: "curator_notes", targetId: "7" }));
+    expect(u.text).toBe("widget sync · Заметка #7");
+    expect(u.detail).toBe("тир: Стажёр");
+  });
+
+  it("describes risk-limit templates in Russian without technical ids", () => {
+    const e = entry("risk.limits.template", { tierKey: "trainee", fromTier: null, resync: false, historyId: 5, changes: ["дневной нет → $150", "недельный нет → $400"] }, { targetType: "trader_risk_limits", targetId: "Умид" });
+    const t = describeAudit(e);
+    expect(t.text).toBe("применил шаблон лимитов тира Стажёр к Умид");
+    expect(t.detail).toBe("дневной нет → $150, недельный нет → $400");
+    expect(`${t.text} ${t.detail}`).not.toMatch(/tierKey|resync|historyId/);
+    const r = describeAudit(entry("risk.limits.template", { tierKey: "junior", fromTier: "junior", resync: true, changes: [] }, { targetType: "trader_risk_limits", targetId: "Умид" }));
+    expect(r.text).toBe("сверил лимиты Умид с шаблоном тира Джун");
+    expect(r.detail).toBe("лимиты уже совпадали");
+  });
+
+  it("describes the soft queue archive and stage changes", () => {
+    const q = describeAudit(entry("curator.queue.archive_old", { olderThanDays: 14, archived: 249, byKind: { eod: 240, weekly: 9 } }, { targetType: "curator_queue_acks", targetId: null }));
+    expect(q.text).toBe("убрал из очереди разборов 249 старых элементов");
+    expect(q.detail).toBe("старше 14 дн. · дни 240, недели 9");
+    const st = describeAudit(entry("academy.stage.promote", { from: "trainee", to: "junior" }, { targetType: "academy_trader_stage", targetId: "Умид" }));
+    expect(st.text).toBe("повысил Умид до ступени Джун");
+    expect(st.detail).toBe("была: Стажёр");
   });
 });
 

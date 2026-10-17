@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import type { Trade } from "@workspace/api-client-react";
 import { BarChart3 } from "lucide-react";
 import { Panel, Segmented, EmptyState, toneOf, toneText } from "@/components/ds";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   type Metric, type ValueFn, type GroupBreakdown,
@@ -13,6 +14,7 @@ type Dim = "setup" | "time" | "weekday" | "ticker" | "side";
 type Mode = "net" | "profit" | "loss";
 const DIMS = ["setup", "time", "weekday", "ticker", "side"] as const;
 const DIM_KEY = "analyticsPro.breakdownDim";
+const LIMIT = 14;
 
 const DIM_LABEL: Record<Dim, string> = {
   setup: "Сетап", time: "Время", weekday: "День", ticker: "Тикер", side: "Сторона",
@@ -45,6 +47,7 @@ function bucketFor(dim: Dim) {
 export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metric: Metric; val: ValueFn }) {
   const [dim, setDim] = useState<Dim>(() => loadPref(DIM_KEY, DIMS) ?? "setup");
   const [mode, setMode] = useState<Mode>("net");
+  const [showAll, setShowAll] = useState(false);
 
   const rows: Row[] = useMemo(() => {
     const bucket = bucketFor(dim);
@@ -70,14 +73,14 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
     });
   }, [trades, dim, val]);
 
-  const shown = useMemo(() => {
+  const all = useMemo(() => {
     const natural = dim === "time" || dim === "weekday";
-    let list = rows;
-    if (mode === "profit") list = rows.filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
-    else if (mode === "loss") list = rows.filter((r) => r.loss < 0).sort((a, b) => a.loss - b.loss);
-    else list = natural ? [...rows].sort((a, b) => a.order - b.order) : [...rows].sort((a, b) => b.net - a.net);
-    return list.slice(0, 14);
+    if (mode === "profit") return rows.filter((r) => r.profit > 0).sort((a, b) => b.profit - a.profit);
+    if (mode === "loss") return rows.filter((r) => r.loss < 0).sort((a, b) => a.loss - b.loss);
+    return natural ? [...rows].sort((a, b) => a.order - b.order) : [...rows].sort((a, b) => b.net - a.net);
   }, [rows, mode, dim]);
+  // Top 14 by default; tickers / setups often have more groups — «Показать все» reveals the rest.
+  const shown = showAll ? all : all.slice(0, LIMIT);
 
   const valueOf = (r: Row) => (mode === "profit" ? r.profit : mode === "loss" ? r.loss : r.net);
   const max = Math.max(0, ...shown.map((r) => Math.abs(valueOf(r))));
@@ -103,7 +106,7 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
         className="mb-3"
         ariaLabel="Группировать по"
         value={dim}
-        onChange={(d) => { setDim(d); savePref(DIM_KEY, d); }}
+        onChange={(d) => { setDim(d); savePref(DIM_KEY, d); setShowAll(false); }}
         options={DIMS.map((d) => ({ value: d, label: DIM_LABEL[d] }))}
       />
       {shown.length === 0 ? (
@@ -147,6 +150,11 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
             );
           })}
         </ul>
+      )}
+      {all.length > LIMIT && (
+        <Button variant="ghost" size="sm" className="mt-2 rounded-full" onClick={() => setShowAll((v) => !v)}>
+          {showAll ? "Свернуть" : `Показать все (${all.length})`}
+        </Button>
       )}
       {shown.length > 0 && (
         <p className="mt-3 hidden text-2xs text-muted-foreground sm:block">Справа: число сделок · доля прибыльных</p>

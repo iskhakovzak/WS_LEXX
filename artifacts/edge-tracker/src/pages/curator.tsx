@@ -73,10 +73,10 @@ function CuratorCabinet() {
       <PageHeader
         title="Кабинет куратора"
         icon={ClipboardList}
-        description={d ? PHASE_HINT[d.phase] : "Кто торгует, кто у стопа, что ждёт разбора и какой следующий шаг по каждому трейдеру"}
+        description="Кто торгует, кто у стопа, что ждёт разбора и какой следующий шаг по каждому трейдеру"
         meta={d ? (
           <>
-            <Pill tone={d.phase === "session" ? "up" : d.phase === "weekend" ? "neutral" : "accent"} dot>{PHASE_LABEL[d.phase]}</Pill>
+            <span title={PHASE_HINT[d.phase]}><Pill tone={d.phase === "session" ? "up" : d.phase === "weekend" ? "neutral" : "accent"} dot>{PHASE_LABEL[d.phase]}</Pill></span>
             <span className="tabular-nums">торговый день {d.date} (NY)</span>
             <UpdatedAgo at={today.dataUpdatedAt} />
           </>
@@ -125,7 +125,7 @@ function CuratorCabinet() {
         />
       ) : view === "today" ? (
         <QueryState query={today} skeleton={<StatGridSkeleton count={6} />} errorTitle="Сводка дня не загрузилась">
-          {(data) => <TodayView data={data} onOpenTrader={openTrader} />}
+          {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} />}
         </QueryState>
       ) : view === "traders" ? (
         trader ? (

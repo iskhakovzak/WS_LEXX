@@ -486,7 +486,7 @@ export const DIMENSIONS: Dimension[] = [
   { key: "side", label: "Направление", keys: (t) => [sideOf(t) === "long" ? "Лонг" : sideOf(t) === "short" ? "Шорт" : "Не указано"],
     order: ["Лонг", "Шорт", "Не указано"], drill: "side" },
   { key: "grade", label: "Оценка сетапа", keys: (t) => [t.confidenceGrade?.trim() || "Без оценки"], order: GRADE_ORDER,
-    emptyHint: "Ставьте оценку A+/A/B/C при добавлении сделки — появится разрез по качеству сетапа." },
+    emptyHint: "Ставьте оценку A+/A/B/C в карточке сделки — появится разрез по качеству сетапа." },
   { key: "conviction", label: "Уверенность", order: CONVICTION_ORDER,
     keys: (t) => [t.conviction == null ? "Не указана" : t.conviction >= 5 ? "5 — максимум" : t.conviction <= 1 ? "1 — минимум" : String(t.conviction)] },
   { key: "cap", label: "Капитализация", keys: (t) => [capBucket(t)], order: CAP_ORDER },
@@ -494,7 +494,7 @@ export const DIMENSIONS: Dimension[] = [
   { key: "ticker", label: "Тикер", keys: (t) => [(t.ticker ?? "—").toUpperCase()], drill: "ticker" },
   { key: "trader", label: "Трейдер", keys: (t) => [t.trader || "Не указан"], drill: "trader" },
   { key: "account", label: "Счёт", keys: (t) => [accountOf(t) || "Без счёта"], drill: "account",
-    emptyHint: "Счёт появляется у сделок, синхронизированных из PropReports." },
+    emptyHint: "Счёт появляется у сделок, загруженных от брокера." },
   { key: "source", label: "Источник", keys: (t) => [sourceOf(t) === "propreports" ? "PropReports" : "Вручную"], order: ["PropReports", "Вручную"], drill: "source" },
 ];
 

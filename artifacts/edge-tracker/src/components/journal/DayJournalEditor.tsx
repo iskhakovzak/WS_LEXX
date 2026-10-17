@@ -619,7 +619,7 @@ function CloseBar({
       {blocking.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs">
           <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden="true" />
-          У {blocking.length} {plural(blocking.length, "ручной сделки", "ручных сделок", "ручных сделок")} нет сетапа или грейда:
+          У {blocking.length} {plural(blocking.length, "сделки", "сделок", "сделок")} нет сетапа или грейда:
           {blocking.map((m) => <span key={m.tradeId} className="font-medium">{m.ticker}</span>)}
         </p>
       )}

@@ -80,7 +80,7 @@ function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
         <div className="border-b border-border/60 px-4 py-2.5 text-sm font-semibold">
           Архив · {cat === "trading" ? "Трейдинг" : "Психология"}
         </div>
-        <div className="max-h-80 overflow-y-auto px-4 py-2">
+        <div className="max-h-[min(30rem,65dvh)] overflow-y-auto overscroll-contain px-4 py-2">
           {recent.isLoading ? (
             <div className="space-y-2 py-1" aria-busy="true">
               {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}

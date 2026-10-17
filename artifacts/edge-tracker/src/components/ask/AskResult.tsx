@@ -5,7 +5,7 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowRight, ChevronDown, HelpCircle, Pin, PinOff, X } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, VirtualRows, toneOf, toneText } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, VirtualRows, toneOf, toneText, useTableSort } from "@/components/ds";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { netPnl } from "@/lib/trade-math";
@@ -150,25 +150,41 @@ function WhyAnswer({ query, answer, defaultTrader, isStaff, tickers, setups, onR
 
 // ── Groups ────────────────────────────────────────────────────────────────────
 
+type GroupKey = "order" | "label" | "n" | "wr" | "net" | "avg" | "fees";
+
 function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]>; onAsk: (text: string) => void }) {
   const hl = new Set(groups.highlight ?? []);
+  // Default keeps the answer's own order (hours / weekdays read top-down); headers re-sort.
+  const accessors = React.useMemo<Record<GroupKey, (r: Agg) => number | string | null>>(() => {
+    const order = new Map(groups.rows.map((r, i) => [r.key, i]));
+    return {
+      order: (r) => order.get(r.key) ?? null,
+      label: (r) => r.label,
+      n: (r) => r.n,
+      wr: (r) => r.winRate,
+      net: (r) => r.net,
+      avg: (r) => r.avgNet,
+      fees: (r) => r.fees,
+    };
+  }, [groups.rows]);
+  const { rows, thProps } = useTableSort(groups.rows, accessors, "order", "asc");
   return (
     <div className="min-w-0">
       <h3 className="mb-2 text-xs font-medium text-muted-foreground">{groups.title}</h3>
-      <DataTable maxHeight={360} ariaLabel={groups.title}>
+      <DataTable maxHeight="60dvh" ariaLabel={groups.title}>
         <table>
           <thead>
             <tr>
-              <th scope="col">{groups.dim === "insight" ? "Срез" : "Группа"}</th>
-              <th scope="col" className="text-right">Сделок</th>
-              <th scope="col" className="text-right">Винрейт</th>
-              <th scope="col" className="text-right">Нетто</th>
-              <th scope="col" className="text-right">Среднее</th>
-              <th scope="col" className="text-right">Комиссии</th>
+              <SortableTh {...thProps("label")}>{groups.dim === "insight" ? "Срез" : "Группа"}</SortableTh>
+              <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
+              <SortableTh {...thProps("wr")} align="right">Винрейт</SortableTh>
+              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+              <SortableTh {...thProps("avg")} align="right">Среднее</SortableTh>
+              <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
             </tr>
           </thead>
           <tbody>
-            {groups.rows.map((r: Agg) => (
+            {rows.map((r: Agg) => (
               <tr
                 key={r.key}
                 className={cn(r.ask && "cursor-pointer", hl.has(r.key) && "bg-primary/10")}
@@ -193,30 +209,49 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
 
 // ── Trades ────────────────────────────────────────────────────────────────────
 
+type TradeKey = "order" | "date" | "time" | "ticker" | "trader" | "side" | "qty" | "entry" | "hold" | "net";
+
 function TradeTable({ title, trades, index, showTrader }: { title: string; trades: AskTrade[]; index: BookIndex; showTrader: boolean }) {
   const [, navigate] = useLocation();
   const cols = showTrader ? 9 : 8;
+  // Default keeps the answer's order (e.g. «худшие сделки» come worst-first); headers re-sort.
+  const accessors = React.useMemo<Record<TradeKey, (t: AskTrade) => number | string | null>>(() => {
+    const order = new Map(trades.map((t, i) => [t.id, i]));
+    return {
+      order: (t) => order.get(t.id) ?? null,
+      date: (t) => { const m = index.get(t.id); return `${m?.day ?? t.date ?? ""} ${String(m?.min ?? 0).padStart(4, "0")}`; },
+      time: (t) => index.get(t.id)?.min ?? null,
+      ticker: (t) => t.ticker,
+      trader: (t) => t.trader ?? null,
+      side: (t) => t.side ?? null,
+      qty: (t) => index.get(t.id)?.qty ?? null,
+      entry: (t) => (t.entry == null ? null : Number(t.entry)),
+      hold: (t) => index.get(t.id)?.hold ?? null,
+      net: (t) => netPnl(t),
+    };
+  }, [index, trades]);
+  const { rows, thProps } = useTableSort(trades, accessors, "order", "asc");
   if (!trades.length) return null;
   return (
     <div className="min-w-0">
       <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title} · {tradesWord(trades.length)}</h3>
-      <DataTable maxHeight={420} ariaLabel={title}>
+      <DataTable maxHeight="70dvh" ariaLabel={title}>
         <table>
           <thead>
             <tr>
-              <th scope="col">Дата</th>
-              <th scope="col">Вход ET</th>
-              <th scope="col">Тикер</th>
-              {showTrader && <th scope="col">Трейдер</th>}
-              <th scope="col">Сторона</th>
-              <th scope="col" className="text-right">Акций</th>
-              <th scope="col" className="text-right">Вход</th>
-              <th scope="col" className="text-right">Удержание</th>
-              <th scope="col" className="text-right">Нетто</th>
+              <SortableTh {...thProps("date")}>Дата</SortableTh>
+              <SortableTh {...thProps("time")}>Вход ET</SortableTh>
+              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
+              {showTrader && <SortableTh {...thProps("trader")}>Трейдер</SortableTh>}
+              <SortableTh {...thProps("side")}>Сторона</SortableTh>
+              <SortableTh {...thProps("qty")} align="right">Акций</SortableTh>
+              <SortableTh {...thProps("entry")} align="right">Вход</SortableTh>
+              <SortableTh {...thProps("hold")} align="right">Удержание</SortableTh>
+              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
             </tr>
           </thead>
           <VirtualRows
-            rows={trades}
+            rows={rows}
             colSpan={cols}
             getKey={(t) => t.id}
             renderRow={(t) => {

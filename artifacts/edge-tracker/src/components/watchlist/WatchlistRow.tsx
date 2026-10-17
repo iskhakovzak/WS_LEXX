@@ -23,8 +23,13 @@ export type RowActions = {
 
 /** Row «…» menu: move between lists (1/2/3), plan, idea, archive, edit, delete. */
 export function RowMenu({
-  item, list, canEdit, actions, scoring,
-}: { item: WatchlistItem; list: ListName | null; canEdit: boolean; actions: RowActions; scoring: boolean }) {
+  item, list, canEdit, canModify = canEdit, actions, scoring,
+}: {
+  item: WatchlistItem; list: ListName | null; canEdit: boolean;
+  /** Content edit / delete: the row's author or staff (lib/ownership). Defaults to canEdit. */
+  canModify?: boolean;
+  actions: RowActions; scoring: boolean;
+}) {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -64,14 +69,18 @@ export function RowMenu({
             <DropdownMenuItem onSelect={() => actions.createIdea(item)}><Lightbulb className="mr-2 h-4 w-4" />Создать идею</DropdownMenuItem>
             <DropdownMenuItem onSelect={() => actions.createIdea(item, true)}><ArrowRightLeft className="mr-2 h-4 w-4" />Идея → сделка</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => actions.edit(item)}><Pencil className="mr-2 h-4 w-4" />Катализатор, стоп, цель…</DropdownMenuItem>
+            {canModify && (
+              <DropdownMenuItem onSelect={() => actions.edit(item)}><Pencil className="mr-2 h-4 w-4" />Катализатор, стоп, цель…</DropdownMenuItem>
+            )}
             <DropdownMenuItem disabled={scoring} onSelect={() => actions.rescore(item)}><RefreshCw className="mr-2 h-4 w-4" />Пересчитать score</DropdownMenuItem>
             {list && (
               <DropdownMenuItem onSelect={() => actions.archive([item])}>
                 <Archive className="mr-2 h-4 w-4" />В архив<DropdownMenuShortcut>Del</DropdownMenuShortcut>
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onSelect={() => actions.remove([item])} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить</DropdownMenuItem>
+            {canModify && (
+              <DropdownMenuItem onSelect={() => actions.remove([item])} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить</DropdownMenuItem>
+            )}
           </>
         )}
       </DropdownMenuContent>

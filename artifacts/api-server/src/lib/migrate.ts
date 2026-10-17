@@ -1376,4 +1376,10 @@ async function seedHolidays2026() {
   await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed BOOLEAN NOT NULL DEFAULT FALSE`);
   await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed_by TEXT`);
   await pool.query(`ALTER TABLE playbook ADD COLUMN IF NOT EXISTS reviewed_at TIMESTAMPTZ`);
+
+  // Author of shared desk rows (owner-or-staff edit/delete rule, lib/ownedRows). Existing rows stay NULL = staff-only.
+  await pool.query(`ALTER TABLE big7_levels ADD COLUMN IF NOT EXISTS created_by TEXT`);
+  await pool.query(`ALTER TABLE big7_catalysts ADD COLUMN IF NOT EXISTS created_by TEXT`);
+  await pool.query(`ALTER TABLE big7_tickers ADD COLUMN IF NOT EXISTS created_by TEXT`);
+  await pool.query(`ALTER TABLE watchlist ADD COLUMN IF NOT EXISTS created_by TEXT`);
 }

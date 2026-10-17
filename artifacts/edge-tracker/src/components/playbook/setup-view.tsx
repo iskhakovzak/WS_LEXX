@@ -1,6 +1,7 @@
 /**
  * Setup card (right column of the playbook): header with space / author / sharing state and actions,
  * one status line of $ stats, and tabs «Описание · Эталоны · Статистика · История».
+ * «Описание» opens with the living part (highlights.tsx): Tier 1 showcase, Tier 3 «Типичные ошибки», related setups.
  */
 import * as React from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -28,6 +29,7 @@ import { ExamplesBoard } from "./examples-board";
 import { ExamplesSection } from "./examples-section";
 import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
+import { SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
 import { SetupStatsPanel } from "./setup-stats";
 import { StructuredDescription } from "./structured-editor";
@@ -233,6 +235,19 @@ export function SetupView({
       <div className="min-h-[420px]">
         {tab === "about" && (
           <div className="flex flex-col gap-[var(--grid-gap)]">
+            {live && (
+              <SetupHighlights
+                entry={entry}
+                allEntries={allEntries}
+                summary={summary}
+                viewer={viewer}
+                examples={examplesQ.data}
+                canAdd={access.canAddExamples}
+                onAdd={() => onAddExamples(entry)}
+                onExamples={() => onTab("examples")}
+                onOpen={onOpen}
+              />
+            )}
             <StructuredDescription entry={entry} canEdit={access.canEdit} live={live} aside={<AboutAside entry={entry} parent={parent} access={access} onEdit={onEdit} />} />
             <SubSetupsSection entry={entry} allEntries={allEntries} summary={summary} onOpen={onOpen} onCreateChild={() => onCreateChild(entry)} />
           </div>
@@ -282,7 +297,7 @@ function StatusLine({
   if (!s || s.tradeCount === 0) {
     return (
       <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 text-sm text-muted-foreground">
-        <span>Сделок по сетапу пока нет — edge неизвестен</span>
+        <span>{exampleCount ? "Статистики пока нет: сделки этого сетапа ещё не закрыты или не привязаны" : "Сделок по сетапу пока нет — edge неизвестен"}</span>
         <span aria-hidden="true">·</span>
         {ex}
       </p>

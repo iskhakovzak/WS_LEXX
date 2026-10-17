@@ -284,9 +284,12 @@ export function ExamplesBoard({
  * Headline figure of an example: net $ when the viewer may see it, otherwise R (the server nulls the $ of other
  * traders' trades for non-staff — see lib/playbookPrivacy.ts on the API).
  */
-function exampleFigure(ex: SetupExample): { text: string; tone: ReturnType<typeof moneyTone> } {
+export function exampleFigure(ex: SetupExample): { text: string; tone: ReturnType<typeof moneyTone> } {
   if (!ex.redacted) return { text: fmtUsd(ex.netPnl), tone: moneyTone(ex.netPnl) };
-  return { text: fmtR(ex.signedR), tone: moneyTone(ex.signedR) };
+  if (ex.signedR != null) return { text: fmtR(ex.signedR), tone: moneyTone(ex.signedR) };
+  // Someone else's trade without a stop: no $ and no R — show the outcome word instead of «—».
+  const r = (ex.result ?? "").toLowerCase();
+  return r === "win" ? { text: "Плюс", tone: "up" } : r === "loss" ? { text: "Минус", tone: "down" } : r === "be" ? { text: "В ноль", tone: "neutral" } : { text: "—", tone: "neutral" };
 }
 
 /** Price path for the card. Another trader's trade: pass the known prices / fill times instead of loading it by id. */
@@ -424,8 +427,8 @@ export function ExampleCard({
               {editable && onMoveTo && targets && targets.length > 0 && (
                 <DropdownMenuSub>
                   <DropdownMenuSubTrigger><ArrowRightLeft className="h-4 w-4" aria-hidden="true" /> В другой сетап</DropdownMenuSubTrigger>
-                  <DropdownMenuSubContent className="max-h-72 w-64 overflow-y-auto">
-                    {targets.slice(0, 80).map((t) => (
+                  <DropdownMenuSubContent className="max-h-[min(60dvh,440px)] w-72 overflow-y-auto">
+                    {targets.slice(0, 200).map((t) => (
                       <DropdownMenuItem key={t.id} onSelect={() => onMoveTo(t)}>
                         <span className="truncate">{t.name}</span>
                       </DropdownMenuItem>

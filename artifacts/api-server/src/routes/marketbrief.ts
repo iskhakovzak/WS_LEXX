@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { requireAiConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
+import { requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { getSectorStrength, SECTOR_ETFS } from "../lib/marketDataService";
 import { nyDate } from "../lib/tradingDate";
@@ -535,7 +536,10 @@ async function generateAutoFeed(date: string, brief: any): Promise<AutoFeedResul
 }
 
 // POST /api/market-brief/generate-feed — manually trigger feed generation for today (or ?date=YYYY-MM-DD)
+// Staff only (dailyfeed.manage — curators/admins by default), ?force=1 included: it spends an AI call and
+// soft-deletes the day's feed entry. Checked before anything touches the AI or the DB.
 router.post("/market-brief/generate-feed", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "dailyfeed.manage", null, "Генерировать ленту может только куратор"))) return;
   // generateAutoFeed swallows AI errors (created:false); say why up front instead (audit P2-3)
   if (!requireAiConfigured(res)) return;
   const date = typeof req.query.date === "string" && req.query.date.match(/^\d{4}-\d{2}-\d{2}$/)

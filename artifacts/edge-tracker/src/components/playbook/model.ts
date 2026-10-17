@@ -89,9 +89,9 @@ export function spaceTabOf(e: PlaybookEntry, v: ViewerLike): SpaceTab {
 
 export type Tier = 1 | 2 | 3;
 export const TIERS: { tier: Tier; label: string; short: string; hint: string; tone: Tone }[] = [
-  { tier: 1, label: "Tier 1 · Эталон", short: "T1", hint: "Учебный пример: всё по плану — так и надо", tone: "up" },
+  { tier: 1, label: "Tier 1 · Эталон", short: "T1", hint: "Показательная: всё по плану — так и надо", tone: "up" },
   { tier: 2, label: "Tier 2 · Хорошая", short: "T2", hint: "По сетапу, но с отклонениями", tone: "accent" },
-  { tier: 3, label: "Tier 3 · Ошибка", short: "T3", hint: "Анти-пример: чего не делать", tone: "down" },
+  { tier: 3, label: "Tier 3 · На разбор", short: "T3", hint: "Учебная ошибка: что пошло не так, чего не повторять", tone: "down" },
 ];
 export const tierMeta = (t: number) => TIERS.find((x) => x.tier === t) ?? TIERS[1];
 

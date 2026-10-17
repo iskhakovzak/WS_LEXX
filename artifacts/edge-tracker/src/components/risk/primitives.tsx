@@ -6,7 +6,8 @@ import * as React from "react";
 import type { CSSProperties } from "react";
 import { cn } from "@/lib/utils";
 import { Pill, type Tone } from "@/components/ds";
-import { AlertTriangle, CheckCircle2, CircleDashed, OctagonX, type LucideIcon } from "lucide-react";
+import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronsUpDown, CircleDashed, OctagonX, type LucideIcon } from "lucide-react";
+import { TableHead } from "@/components/ui/table";
 import type { Horizon, RiskStatus, StopState } from "./use-risk";
 import type { RankLevel } from "./risk-math";
 
@@ -393,4 +394,28 @@ export function useAgo(ts: number | undefined): string {
   if (s < 10) return "обновлено только что";
   if (s < 60) return `обновлено ${s} сек назад`;
   return `обновлено ${Math.round(s / 60)} мин назад`;
+}
+
+// ─── sortable header for components/ui Table (pair with useTableSort from ds) ──
+
+export function SortableTableHead({
+  children, active, dir, onSort, align = "left", className,
+}: { children: React.ReactNode; active: boolean; dir: "asc" | "desc"; onSort: () => void; align?: "left" | "right"; className?: string }) {
+  const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
+  return (
+    <TableHead className={cn(align === "right" && "text-right", className)} aria-sort={active ? (dir === "asc" ? "ascending" : "descending") : "none"}>
+      <button
+        type="button"
+        onClick={onSort}
+        className={cn(
+          "inline-flex items-center gap-1 rounded-full hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          active && "text-foreground",
+          align === "right" && "flex-row-reverse",
+        )}
+      >
+        {children}
+        <Icon className={cn("h-3 w-3", !active && "opacity-50")} aria-hidden="true" />
+      </button>
+    </TableHead>
+  );
 }

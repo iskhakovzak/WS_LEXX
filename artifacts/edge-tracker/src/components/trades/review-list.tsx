@@ -2,7 +2,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import type { Trade } from "@workspace/api-client-react";
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, ChevronDown, ChevronRight, FileText, X } from "lucide-react";
+import { ArrowDownWideNarrow, ArrowUpNarrowWide, BookOpen, ChevronDown, ChevronRight, FileText, X } from "lucide-react";
 import { FilterChip, Pill, Segmented, Sparkline, StatCard, StatGrid, toneOf, toneText, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -17,6 +17,7 @@ import { fmtHold, fmtMoney, fmtPct, fmtR, holdSeconds, netPnl, plural, tradeWall
 import { PRESETS, PRESET_META, type Preset, type TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
 import { SidePill } from "./trade-bits";
+import { SortHead } from "./sort-head";
 import type { TradesView } from "./use-trade-filters";
 
 const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
@@ -137,6 +138,10 @@ const SORT_OPTIONS: { col: SortConfig["col"]; label: string }[] = [
   { col: "pnl", label: "По нетто" },
   { col: "fees", label: "По комиссиям" },
   { col: "hold", label: "По удержанию" },
+  { col: "ticker", label: "По тикеру" },
+  { col: "entry", label: "По цене входа" },
+  { col: "exitEff", label: "По захвату" },
+  { col: "setup", label: "По сетапу" },
 ];
 
 export function PresetBar({
@@ -254,6 +259,7 @@ export function ReviewTradeRow({
   onOpen,
   onToggle,
   onFocusRow,
+  onAddToPlaybook,
 }: {
   trade: Trade;
   showDate: boolean;
@@ -271,6 +277,8 @@ export function ReviewTradeRow({
   onOpen: (t: Trade) => void;
   onToggle: (id: number, range: boolean) => void;
   onFocusRow: (id: number) => void;
+  /** Optional row action «В плейбук» (icon in the last column, shown on hover / focus / active row). */
+  onAddToPlaybook?: (t: Trade) => void;
 }) {
   const w = tradeWall(t);
   const hold = holdSeconds(t);
@@ -328,21 +336,53 @@ export function ReviewTradeRow({
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
       </span>
       <ReviewChips trade={t} canTag={canTag} picker={picker} setPicker={setPicker} onPick={onPick} setupOptions={setupOptions} />
-      <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+      {onAddToPlaybook ? (
+        <button
+          type="button"
+          aria-label={`${t.ticker}: добавить в плейбук`}
+          title="В плейбук — эталон сетапа"
+          onClick={(e) => { e.stopPropagation(); onFocusRow(t.id); onAddToPlaybook(t); }}
+          className={cn(
+            "-mx-1.5 grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring md:opacity-0 md:group-hover:opacity-100",
+            active && "md:opacity-100",
+          )}
+        >
+          <BookOpen className="h-4 w-4" aria-hidden="true" />
+        </button>
+      ) : (
+        <ChevronRight className="h-4 w-4 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
+      )}
     </div>
   );
 }
 
-export function RowsHeader({ showDate }: { showDate: boolean }) {
+/**
+ * Column headers. With `sort`/`onSort` (list mode, server-side sort) the headers are clickable and stay in sync with
+ * the sort select in the preset bar; the day view keeps plain headers (trades go in time order within a day).
+ */
+export function RowsHeader({ showDate, sort, onSort }: { showDate: boolean; sort?: SortConfig; onSort?: (col: SortConfig["col"]) => void }) {
+  const head = (col: SortConfig["col"], label: React.ReactNode, opts: { align?: "left" | "right"; title?: string } = {}) =>
+    sort && onSort ? (
+      <SortHead active={sort.col === col} dir={sort.dir} onSort={() => onSort(col)} align={opts.align} title={opts.title}>{label}</SortHead>
+    ) : (
+      <span role="columnheader" className={cn(opts.align === "right" && "text-right")} title={opts.title}>{label}</span>
+    );
   return (
     <div role="row" className={cn(ROW_GRID, "border-b border-[var(--glass-border)] px-3 py-1.5 text-xs text-muted-foreground")}>
       <span />
-      <span>{showDate ? "Дата" : "Вход · удержание"}</span>
-      <span>Тикер</span>
-      <span>Цена</span>
-      <span className="text-right">Нетто</span>
-      <span className="text-right" title="Эффективность выхода: захвачено / MFE">Захват</span>
-      <span>Сетап · ошибки · эмоции</span>
+      {sort && onSort && showDate ? (
+        <span className="flex min-w-0 items-center gap-1">
+          {head("date", "Дата")}
+          {head("hold", "удерж.", { title: "Время удержания" })}
+        </span>
+      ) : (
+        head("date", showDate ? "Дата" : "Вход · удержание")
+      )}
+      {head("ticker", "Тикер")}
+      {head("entry", "Цена", { title: "Цена входа" })}
+      {head("pnl", "Нетто", { align: "right" })}
+      {head("exitEff", "Захват", { align: "right", title: "Эффективность выхода: захвачено / MFE" })}
+      {head("setup", "Сетап · ошибки · эмоции")}
       <span />
     </div>
   );

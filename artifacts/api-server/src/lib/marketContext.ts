@@ -3,6 +3,8 @@ import { logger } from "./logger";
 import { getSectorStrength } from "./marketDataService";
 
 const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0 Safari/537.36";
+/** Outbound request budget (a hung upstream must not hold the caller forever). */
+const FETCH_TIMEOUT_MS = 12_000;
 
 export type ContextSnapshot = {
   capturedAt: string;
@@ -44,7 +46,7 @@ async function fetchDailyClose(symbol: string, date: string) {
     const period1 = targetMid - 14 * ONE_DAY;
     const period2 = targetMid + 1 * ONE_DAY;
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`;
-    const resp = await fetch(url, { headers: { "User-Agent": UA } });
+    const resp = await fetch(url, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) });
     if (!resp.ok) return null;
     const data: any = await resp.json();
     const r = data?.chart?.result?.[0];

@@ -12,6 +12,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/contexts/auth-context";
+import { canModifyOwned, createdByOf } from "@/lib/ownership";
 import { DEFAULT_BIG7, TODAY, parseTickerSymbols } from "./lib";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -58,6 +60,9 @@ export function TickerManagerSheet({
   const { toast } = useToast();
   const createM = useCreateBig7Ticker();
   const deleteM = useDeleteBig7Ticker();
+  const { user, isCurator } = useAuth();
+  const me = user && user.role !== "guest" ? user.traderName : null;
+  // Reordering patches every row's position (other authors' rows too) → staff only; delete → author or staff.
   const bulkM = useBulkCreateBig7Tickers();
   const updateM = useUpdateBig7Ticker();
   const { seed, seeding } = useSeedBig7();
@@ -180,9 +185,9 @@ export function TickerManagerSheet({
             <li key={t.id} className="group flex items-center gap-2 rounded-xl px-2 py-1.5 hover:bg-[var(--glass-hover-bg)]">
               <span className="w-14 text-sm font-semibold">{t.symbol}</span>
               <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.name !== t.symbol ? t.name : ""} <span className="opacity-80">{t.exchange}</span></span>
-              <button type="button" aria-label={`Выше: ${t.symbol}`} disabled={i === 0 || reordering} onClick={() => move(i, -1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /></button>
-              <button type="button" aria-label={`Ниже: ${t.symbol}`} disabled={i === core.length - 1 || reordering} onClick={() => move(i, 1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /></button>
-              <button type="button" aria-label={`Удалить ${t.symbol}`} disabled={deleteM.isPending} onClick={() => removeCore(t)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-down/15 hover:text-down disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button>
+              {isCurator && <button type="button" aria-label={`Выше: ${t.symbol}`} disabled={i === 0 || reordering} onClick={() => move(i, -1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-30"><ArrowUp className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+              {isCurator && <button type="button" aria-label={`Ниже: ${t.symbol}`} disabled={i === core.length - 1 || reordering} onClick={() => move(i, 1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-30"><ArrowDown className="h-3.5 w-3.5" aria-hidden="true" /></button>}
+              {canModifyOwned(createdByOf(t), me, isCurator) && <button type="button" aria-label={`Удалить ${t.symbol}`} disabled={deleteM.isPending} onClick={() => removeCore(t)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-down/15 hover:text-down disabled:opacity-40"><Trash2 className="h-3.5 w-3.5" aria-hidden="true" /></button>}
             </li>
           ))}
           {group === "hot" && hotSymbols.map((s) => (

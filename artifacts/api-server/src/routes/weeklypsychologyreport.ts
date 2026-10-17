@@ -1,7 +1,7 @@
 import { Router, type IRouter, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
-import { isStaffRole, isGuestUser, viewerRole } from "../lib/auth";
+import { isStaffRole, isGuestUser, viewerRole, requirePersonalAccess } from "../lib/auth";
 import { nyDate } from "../lib/tradingDate";
 import {
   generateWeeklyReport,
@@ -19,21 +19,12 @@ import {
 const router: IRouter = Router();
 
 /**
- * Personal data: traders may only read/generate their own report; curators/admins any.
+ * Personal data: the owner, or a member whose journal.read.team grant covers that trader (curators/admins by
+ * default) — lib/auth requirePersonalAccess. Guests never. Generating someone else's report needs journal.review.
  * Returns the effective userId or null after sending an error response.
  */
-function resolveUserId(req: Request, res: Response, raw: unknown): string | null {
-  const userId = typeof raw === "string" ? raw.trim() : "";
-  if (!userId) {
-    res.status(400).json({ error: "userId is required" });
-    return null;
-  }
-  const auth = req.authUser;
-  if (auth && auth.role === "trader" && auth.name !== userId) {
-    res.status(403).json({ error: "Forbidden" });
-    return null;
-  }
-  return userId;
+function resolveUserId(req: Request, res: Response, raw: unknown, mode: "read" | "write" = "read"): Promise<string | null> {
+  return requirePersonalAccess(req, res, raw, mode === "write" ? "journal.review" : "journal.read.team");
 }
 
 type ReportRow = NonNullable<Awaited<ReturnType<typeof getLatestWeeklyReport>>>;
@@ -97,7 +88,7 @@ function summary(row: ReportRow | null) {
 }
 
 router.get("/psychology/weekly-report", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const report = await getLatestWeeklyReport(userId);
   if (!report) {
@@ -110,7 +101,7 @@ router.get("/psychology/weekly-report", asyncHandler(async (req, res): Promise<v
 }));
 
 router.get("/psychology/weekly-report/history", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.query.userId);
+  const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const rawLimit = Number(req.query.limit);
   const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 52) : 8;
@@ -123,7 +114,7 @@ router.get("/psychology/weekly-report/history", asyncHandler(async (req, res): P
 }));
 
 router.post("/psychology/weekly-report/generate", asyncHandler(async (req, res): Promise<void> => {
-  const userId = resolveUserId(req, res, req.body?.userId ?? req.query.userId);
+  const userId = await resolveUserId(req, res, req.body?.userId ?? req.query.userId, "write");
   if (!userId) return;
   const rawStart = typeof req.body?.weekStart === "string" ? req.body.weekStart.trim() : undefined;
   const rawEnd = typeof req.body?.weekEnd === "string" ? req.body.weekEnd.trim() : undefined;

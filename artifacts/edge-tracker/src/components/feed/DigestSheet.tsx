@@ -153,7 +153,7 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-md">
+      <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto p-0 sm:max-w-lg">
         <SheetHeader className="space-y-1 p-5 pb-3 text-left">
           <SheetTitle className="flex items-center gap-2"><Bell className="h-4 w-4 text-primary" aria-hidden="true" />Дайджест</SheetTitle>
           <SheetDescription>
@@ -263,7 +263,7 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
                   <span className="micro-label">Предпросмотр</span>
                   <button type="button" onClick={() => setPreview(null)} className="text-xs text-muted-foreground hover:text-foreground">Скрыть</button>
                 </div>
-                <pre className="glass-panel max-h-80 overflow-y-auto whitespace-pre-wrap rounded-xl p-3 font-sans text-xs leading-relaxed text-foreground">{preview}</pre>
+                <pre className="glass-panel whitespace-pre-wrap break-words rounded-xl p-3 font-sans text-xs leading-relaxed text-foreground">{preview}</pre>
               </div>
             )}
           </div>

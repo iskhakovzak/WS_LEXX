@@ -138,7 +138,7 @@ export default function BenchmarkPage() {
         <SelfView data={data} />
       ) : data.rows.length === 0 && data.trend.length === 0 ? (
         <Panel>
-          <EmptyState icon={BarChart3} title="Нет закрытых сделок за период" description="Выберите период длиннее или дождитесь синхронизации PropReports." />
+          <EmptyState icon={BarChart3} title="Нет закрытых сделок за период" description="Выберите период длиннее — сделки появятся здесь автоматически после закрытия." />
         </Panel>
       ) : (
         <>

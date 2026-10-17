@@ -328,6 +328,9 @@ function ViolationRow({ v }: { v: Violation }) {
 export function MistakesPanel({ doc }: { doc: WeeklyReview }) {
   const { mistakes, violations } = doc;
   const empty = mistakes.items.length === 0 && violations.items.length === 0;
+  const [all, setAll] = React.useState(false);
+  const hidden = Math.max(0, mistakes.items.length - 8) + Math.max(0, violations.items.length - 8);
+  const cap = all ? Infinity : 8;
   return (
     <Panel
       title="Ошибки и нарушения правил"
@@ -346,12 +349,17 @@ export function MistakesPanel({ doc }: { doc: WeeklyReview }) {
             <span className="text-sm"><span className="font-semibold tabular-nums">{violations.items.length}</span> <span className="text-muted-foreground">нарушений</span></span>
             <CostLine label="цена" cost={violations.cost} />
           </div>
-          {mistakes.items.length > 0 && <ul className="divide-y divide-border/50">{mistakes.items.slice(0, 8).map((m) => <MistakeRow key={m.id} m={m} />)}</ul>}
+          {mistakes.items.length > 0 && <ul className="divide-y divide-border/50">{mistakes.items.slice(0, cap).map((m) => <MistakeRow key={m.id} m={m} />)}</ul>}
           {violations.items.length > 0 && (
             <>
               {mistakes.items.length > 0 && <p className="micro-label">Нарушения правил</p>}
-              <ul className="divide-y divide-border/50">{violations.items.slice(0, 8).map((v) => <ViolationRow key={v.id} v={v} />)}</ul>
+              <ul className="divide-y divide-border/50">{violations.items.slice(0, cap).map((v) => <ViolationRow key={v.id} v={v} />)}</ul>
             </>
+          )}
+          {hidden > 0 && (
+            <button type="button" onClick={() => setAll((v) => !v)} className="self-start text-xs text-primary hover:underline">
+              {all ? "Свернуть" : `Показать ещё ${hidden}`}
+            </button>
           )}
         </div>
       )}

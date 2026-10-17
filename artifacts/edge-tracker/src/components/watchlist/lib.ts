@@ -16,6 +16,8 @@ export type WatchlistItem = {
   id: number; ticker: string; catalyst: string | null; targetPrice: string | null;
   stopPrice: string | null; status: string; notes: string | null; sector: string | null;
   tags: string | null; createdAt: string;
+  /** Author (server created_by). null = legacy row → only staff may edit content / delete. */
+  createdBy?: string | null;
   score: number | null; scoreBreakdown: string | null; scoredAt: string | null;
   screenshotUrl?: string | null;
   longName?: string | null; marketCap?: string | null; float?: string | null; atr?: string | null;
@@ -70,17 +72,6 @@ export type Quote = {
   /** NY trading date of the last regular-session print (stale when ≠ today's NY date). */
   marketDate?: string | null;
 };
-
-/** Sizing link into the calculator with the card's levels (calculator reads ?ticker&entry&stop&atr). */
-export function calculatorHref(item: Pick<WatchlistItem, "ticker" | "stopPrice" | "atr">, price: number | null | undefined, atr?: number | null): string {
-  const q = new URLSearchParams({ ticker: item.ticker });
-  if (price != null && price > 0) q.set("entry", String(price));
-  const stop = num(item.stopPrice);
-  if (stop != null && stop > 0) q.set("stop", String(stop));
-  const a = atr ?? num(item.atr);
-  if (a != null && a > 0) q.set("atr", String(a));
-  return `/calculator?${q.toString()}`;
-}
 
 export type NewsDigest = {
   count24h: number; count7d: number; categories24h: string[];

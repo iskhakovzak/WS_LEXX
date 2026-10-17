@@ -1,13 +1,23 @@
 import { CalendarDays, LockOpen, Rocket } from "lucide-react";
-import { EmptyState, Panel, Pill, UpdatedAgo } from "@/components/ds";
+import { EmptyState, Panel, Pill, SortableTh, UpdatedAgo, useTableSort } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { SignedPct } from "./bits";
 import { isMissingEndpoint, useIpoCalendar } from "./use-offerings-data";
 import {
   fmtDay, fmtM, fmtPrice, fmtShares, todayNY,
-  type IpoCalendarItem, type IpoQuoted, type IpoRow, type Offering,
+  type IpoCalendarItem, type IpoCalendarResponse, type IpoQuoted, type IpoRow, type Offering,
 } from "./types";
+
+type Lockup = IpoCalendarResponse["lockups"][number];
+type LockupKey = "date" | "ticker" | "pct" | "unlock" | "mcap";
+const LOCKUP_ACCESSORS: Record<LockupKey, (c: Lockup) => number | string | null> = {
+  date: (c) => c.daysLeft,
+  ticker: (c) => c.ticker,
+  pct: (c) => c.pctFromIpo,
+  unlock: (c) => c.unlockMultiple,
+  mcap: (c) => c.marketCapM,
+};
 
 /** Turn a calendar row into an Offering so the same detail sheet can open it. */
 export function calendarToOffering(c: IpoCalendarItem | IpoRow | IpoQuoted): Offering {
@@ -45,6 +55,8 @@ function ListSkeleton({ rows = 5 }: { rows?: number }) {
   );
 }
 
+const NO_LOCKUPS: Lockup[] = [];
+
 /**
  * IPO calendar and lock-up expirations side by side (one row at xl, stacked below).
  * Falls back to the IPO list from the day payload while the dedicated endpoint is not deployed.
@@ -56,7 +68,7 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
   const upcoming: IpoRow[] = q.data?.upcoming
     ?? fallback.filter((c) => c.status === "upcoming" && c.date >= today).map((c) => ({ ...c, underwriter: null }));
   const recent = q.data?.recent ?? [];
-  const lockups = q.data?.lockups ?? [];
+  const { rows: lockups, thProps } = useTableSort(q.data?.lockups ?? NO_LOCKUPS, LOCKUP_ACCESSORS, "date", "asc");
   const loading = q.isLoading;
 
   return (
@@ -116,11 +128,13 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
             <table className="w-full min-w-[480px] text-sm tabular-nums">
               <thead>
                 <tr className="text-left text-xs text-muted-foreground">
-                  <th className="py-1.5 pr-2 font-medium">Дата</th>
-                  <th className="px-2 py-1.5 font-medium">Тикер</th>
-                  <th className="px-2 py-1.5 text-right font-medium">IPO → сейчас</th>
-                  <th className="px-2 py-1.5 text-right font-medium" title="Залоченные акции к размеру IPO (грубо: (в обращении − размещено) / размещено)">Разлок</th>
-                  <th className="py-1.5 pl-2 text-right font-medium">Мкап</th>
+                  <SortableTh {...thProps("date")} className="py-1.5 pr-2 font-medium">Дата</SortableTh>
+                  <SortableTh {...thProps("ticker")} className="px-2 py-1.5 font-medium">Тикер</SortableTh>
+                  <SortableTh {...thProps("pct")} align="right" className="px-2 py-1.5 font-medium">IPO → сейчас</SortableTh>
+                  <SortableTh {...thProps("unlock")} align="right" className="px-2 py-1.5 font-medium">
+                    <span title="Залоченные акции к размеру IPO (грубо: (в обращении − размещено) / размещено)">Разлок</span>
+                  </SortableTh>
+                  <SortableTh {...thProps("mcap")} align="right" className="py-1.5 pl-2 font-medium">Мкап</SortableTh>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border/50">

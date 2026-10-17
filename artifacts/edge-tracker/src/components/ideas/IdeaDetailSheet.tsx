@@ -242,7 +242,7 @@ export function IdeaDetailSheet({
   if (!idea || !stage) {
     return (
       <Sheet open={open} onOpenChange={onOpenChange}>
-        <SheetContent className="w-full sm:max-w-xl"><SheetTitle className="sr-only">Идея</SheetTitle></SheetContent>
+        <SheetContent className="w-full sm:max-w-xl lg:max-w-2xl"><SheetTitle className="sr-only">Идея</SheetTitle></SheetContent>
       </Sheet>
     );
   }
@@ -297,7 +297,7 @@ export function IdeaDetailSheet({
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl">
+      <SheetContent className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-xl lg:max-w-2xl">
         {/* Header */}
         <div className="flex flex-col gap-2 border-b border-[var(--field-border)] px-5 pb-4 pt-5 pr-14">
           <div className="flex flex-wrap items-center gap-2">

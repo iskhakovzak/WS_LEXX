@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Crown, Download, Flame, Medal, Trophy, Users } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, Crown, Download, Flame, Medal, Trophy, Users } from "lucide-react";
 import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -256,7 +256,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
 
           {/* Desktop table */}
           <Panel padded={false} className="hidden md:block" title="Таблица лидеров" description={`Стрелки — изменение места относительно ${prevLabel}`}>
-            <TableScroll className="max-h-[560px] overflow-y-auto">
+            <TableScroll className="max-h-[70vh] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-sticky bg-[var(--sticky-bg)] text-xs text-muted-foreground">
                   <tr className="border-b border-border">
@@ -268,9 +268,13 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                           type="button"
                           onClick={() => setMetricPref(m.value)}
                           disabled={m.value === "pnl" && !hasPnl}
-                          className={cn("rounded-full px-1.5 py-0.5 hover:text-foreground disabled:opacity-50", metric === m.value && "text-primary")}
+                          className={cn("inline-flex flex-row-reverse items-center gap-1 rounded-full px-1.5 py-0.5 hover:text-foreground disabled:opacity-50", metric === m.value && "text-primary")}
+                          title="Рейтинг по этой метрике"
                         >
                           {m.label}
+                          {metric === m.value
+                            ? <ChevronDown className="h-3 w-3" aria-hidden="true" />
+                            : <ChevronsUpDown className="h-3 w-3 opacity-50" aria-hidden="true" />}
                         </button>
                       </th>
                     ))}

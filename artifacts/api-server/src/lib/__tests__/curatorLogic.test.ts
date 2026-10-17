@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  breachStats, mondayOf, nextActionFor, normalizeBreachActions, prevTradingDay, templateDiff, tradingPhase,
+  arrangeQueue, breachStats, mondayOf, staleQueueIds, nextActionFor, normalizeBreachActions, prevTradingDay, templateDiff, tradingPhase,
   trendDirection, weeklyTrend, type LimitFields, type NextActionInput,
 } from "../curatorLogic";
 
@@ -110,5 +110,58 @@ describe("normalizeBreachActions", () => {
       { id: "a2", title: "Стоп на каждой сделке", dueOn: "2026-10-20", status: "open" },
       { id: "a3", title: "x", dueOn: null, status: "done" },
     ]);
+  });
+});
+
+describe("curatorLogic review queue", () => {
+  const item = (kind: "eod" | "weekly" | "academy" | "breach", id: string, hoursWaiting: number | null) => ({ kind, id, since: null, hoursWaiting });
+  const items = [
+    item("eod", "eod:1", 287 * 24), // 287 дн. — старое
+    item("eod", "eod:2", 30),
+    item("eod", "eod:3", 2),
+    item("weekly", "weekly:1", 60),
+    item("academy", "academy:1", 5),
+    item("breach", "breach:1", 40),
+    item("breach", "breach:2", 20 * 24), // старше 14 дн.
+  ];
+
+  it("hides items older than the default 14-day window and reports them", () => {
+    const r = arrangeQueue(items);
+    expect(r.items.map((q) => q.id)).not.toContain("eod:1");
+    expect(r.items.map((q) => q.id)).not.toContain("breach:2");
+    expect(r.old).toEqual({ count: 2, overdue: 2 });
+  });
+
+  it("sorts important kinds first, freshest first inside a kind", () => {
+    const r = arrangeQueue(items);
+    expect(r.items.map((q) => q.id)).toEqual(["breach:1", "eod:3", "eod:2", "weekly:1", "academy:1"]);
+  });
+
+  it("marks SLA overdue per kind", () => {
+    const r = arrangeQueue(items);
+    const byId = Object.fromEntries(r.items.map((q) => [q.id, q]));
+    expect(byId["eod:2"].overdue).toBe(true); // 30ч > 24ч
+    expect(byId["eod:3"].overdue).toBe(false);
+    expect(byId["weekly:1"].overdue).toBe(true); // 60ч > 48ч
+    expect(byId["academy:1"].slaHours).toBe(72);
+  });
+
+  it("includeOld shows everything, old items after fresh ones of the same kind", () => {
+    const r = arrangeQueue(items, { includeOld: true });
+    expect(r.items).toHaveLength(items.length);
+    expect(r.items.map((q) => q.id).slice(0, 4)).toEqual(["breach:1", "breach:2", "eod:3", "eod:2"]);
+    expect(r.items.find((q) => q.id === "eod:1")?.old).toBe(true);
+  });
+
+  it("drops acked (archived) items and respects a custom cutoff", () => {
+    const r = arrangeQueue(items, { acked: new Set(["eod:1", "eod:3"]), cutoffDays: 1 });
+    expect(r.items.map((q) => q.id)).toEqual(["academy:1"]);
+    expect(r.old.count).toBe(4); // eod:2, weekly:1, breach:1, breach:2
+  });
+
+  it("staleQueueIds picks only not-yet-archived items beyond the cutoff", () => {
+    expect(staleQueueIds(items)).toEqual(["eod:1", "breach:2"]);
+    expect(staleQueueIds(items, 14, new Set(["eod:1"]))).toEqual(["breach:2"]);
+    expect(staleQueueIds(items, 1).sort()).toEqual(["breach:1", "breach:2", "eod:1", "eod:2", "weekly:1"]);
   });
 });

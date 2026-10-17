@@ -7,7 +7,7 @@ import {
   LayoutDashboard, Crosshair, ShieldAlert, CandlestickChart, NotebookPen, Calculator,
   LineChart, BarChart3, ListChecks, BookMarked, Eye, Radar, CalendarClock, BookOpen, Newspaper,
   Award, Layers, Gauge, Lightbulb, MessageSquare, Mic, NotebookText, Trophy, Crown, Activity,
-  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, MessageSquareText, GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList,
+  Settings, ShieldCheck, PieChart, Plug, TrendingUp, ClipboardCheck, Bell, FlaskConical, Brain, FileText, MessageSquareText, GraduationCap, Target, School, UserCheck, UsersRound, PencilRuler, ClipboardList, Building2,
 } from "lucide-react";
 
 export type NavItem = {
@@ -86,6 +86,7 @@ export const NAV_GROUPS: NavGroup[] = [
       { name: "Кабинет куратора", short: "Кабинет", href: "/curator", icon: ClipboardList, keywords: "curator куратор кабинет подопечные разбор нарушения риск заметки трейдеры", staff: true },
       { name: "Идеи", href: "/trade-ideas", icon: Lightbulb, keywords: "ideas trade ideas идеи", also: ["/trade-idea-stats"], goKey: "i" },
       { name: "Бенчмарк деска", short: "Бенчмарк", href: "/benchmark", icon: Gauge, keywords: "benchmark бенчмарк сравнение команда деск перцентили sharpe" },
+      { name: "Статистика офиса", short: "Офис", href: "/office", icon: Building2, keywords: "office офис партнёры статистика стратегии цель капитал" },
       { name: "Обсуждения", href: "/discussions", icon: MessageSquare, keywords: "discussions чат треды" },
       { name: "Сводка автора", href: "/author-notes", icon: Mic, keywords: "author notes авторская сводка" },
       { name: "Сводка джунов", href: "/junior-notes", icon: NotebookText, keywords: "junior notes джуны" },

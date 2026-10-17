@@ -31,6 +31,7 @@ export function FilterBar({
   hasPnl,
   hasR,
   showTrader,
+  showSource = false,
   className,
 }: {
   filters: AnalyticsFilters;
@@ -41,6 +42,8 @@ export function FilterBar({
   hasPnl: boolean;
   hasR: boolean;
   showTrader: boolean;
+  /** Staff only: trades come from PropReports automatically, the manual/broker split is a staff concern. */
+  showSource?: boolean;
   className?: string;
 }) {
   const set = <K extends keyof AnalyticsFilters>(k: K, v: AnalyticsFilters[K]) => onChange({ ...filters, [k]: v });
@@ -128,7 +131,7 @@ export function FilterBar({
         </Select>
       )}
 
-      {(options.hasMixedSources || filters.source) && (
+      {showSource && (options.hasMixedSources || filters.source) && (
         <Segmented<"all" | "manual" | "propreports">
           ariaLabel="Источник сделок"
           size="sm"

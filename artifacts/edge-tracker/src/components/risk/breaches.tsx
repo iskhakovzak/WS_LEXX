@@ -90,7 +90,8 @@ export function BreachSummary({ rows }: { rows: BreachRow[] }) {
 }
 
 export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]; trader: string; max?: number; className?: string }) {
-  const shown = max != null ? rows.slice(0, max) : rows;
+  const [all, setAll] = React.useState(false);
+  const shown = max != null && !all ? rows.slice(0, max) : rows;
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
       <ul className="flex flex-col gap-1.5">
@@ -116,7 +117,11 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
           );
         })}
       </ul>
-      {max != null && rows.length > max && <p className="text-xs text-muted-foreground">и ещё {rows.length - max}</p>}
+      {max != null && rows.length > max && (
+        <button type="button" onClick={() => setAll((v) => !v)} className="self-start text-xs text-primary hover:underline">
+          {all ? "Свернуть" : `Показать ещё ${rows.length - max}`}
+        </button>
+      )}
     </div>
   );
 }

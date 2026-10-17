@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, desc } from "drizzle-orm";
 import { db, big7CatalystsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 
 const router: IRouter = Router();
 
@@ -37,6 +38,7 @@ router.post("/big7/catalysts", asyncHandler(async (req, res): Promise<void> => {
     type: String(type).slice(0, 40),
     description: description != null && String(description).trim() !== "" ? String(description).slice(0, 500) : null,
     impact: VALID_IMPACT.has(String(impact)) ? String(impact) : "medium",
+    createdBy: await creatorName(req),
   }).returning();
   res.status(201).json(row);
 }));
@@ -45,6 +47,9 @@ router.post("/big7/catalysts", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existing] = await db.select({ createdBy: big7CatalystsTable.createdBy }).from(big7CatalystsTable).where(eq(big7CatalystsTable.id, id));
+  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;
   const { ticker, date, type, description, impact } = req.body as Record<string, unknown>;
   const patch: Partial<typeof big7CatalystsTable.$inferInsert> = {};
   if (ticker !== undefined) {
@@ -80,6 +85,9 @@ router.patch("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void>
 router.delete("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  const [existing] = await db.select({ createdBy: big7CatalystsTable.createdBy }).from(big7CatalystsTable).where(eq(big7CatalystsTable.id, id));
+  if (!existing) { res.status(204).send(); return; }
+  if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;
   await db.delete(big7CatalystsTable).where(eq(big7CatalystsTable.id, id));
   res.status(204).send();
 }));

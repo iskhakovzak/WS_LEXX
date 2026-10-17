@@ -466,20 +466,29 @@ export type SectionId =
   | "desk"
   | "streaks"
   | "positions"
-  | "ritual"
-  | "market"
+  | "checkin"
+  | "brief"
+  | "quote"
+  | "sectors"
+  | "macro"
+  | "dna"
   | "psychology";
 
-export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean }> = {
+export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = {
   attention: { label: "Что важно сейчас", hint: "Следующий шаг, риск, разбор дня, события по моим тикерам" },
   equity: { label: "Кривая капитала", hint: "От недели до всего времени, нетто или R" },
   recent: { label: "Последние сделки", hint: "Короткая лента → карточка сделки" },
   desk: { label: "Деск сегодня", hint: "Каждый трейдер: день, неделя, лимит", staffOnly: true },
   streaks: { label: "Серии", hint: "Текущая серия и последние 20 сделок" },
   positions: { label: "Открытые позиции", hint: "Показывается, только когда есть позиции" },
-  ritual: { label: "Утренний ритуал", hint: "Чек-ин, цитата дня, бриф к открытию" },
-  market: { label: "Рынок", hint: "Секторы, макро-календарь, DNA рынка" },
-  psychology: { label: "Психология недели", hint: "Еженедельный отчёт" },
+  // Optional extras below the cockpit — off by default, switch on in «Настроить».
+  checkin: { label: "Утренний чек-ин", hint: "Сон, фокус, стресс перед сессией", extra: true },
+  brief: { label: "Бриф к открытию", hint: "Премаркет, гэпы, события дня", extra: true },
+  quote: { label: "Цитата дня", hint: "Короткая мысль на день", extra: true },
+  sectors: { label: "Радар секторов", hint: "Сила секторов к рынку", extra: true },
+  macro: { label: "Макро-календарь", hint: "Ближайшие события и праздники", extra: true },
+  dna: { label: "DNA рынка", hint: "Режим рынка сегодня", extra: true },
+  psychology: { label: "Психология недели", hint: "Еженедельный отчёт", extra: true },
 };
 
 export const DEFAULT_ORDER: SectionId[] = [
@@ -489,8 +498,12 @@ export const DEFAULT_ORDER: SectionId[] = [
   "desk",
   "streaks",
   "positions",
-  "ritual",
-  "market",
+  "checkin",
+  "brief",
+  "sectors",
+  "macro",
+  "dna",
+  "quote",
   "psychology",
 ];
 
@@ -502,8 +515,12 @@ export const SECTION_WIDTH: Record<SectionId, "wide" | "narrow" | "full"> = {
   desk: "narrow",
   streaks: "narrow",
   positions: "full",
-  ritual: "full",
-  market: "full",
+  checkin: "wide",
+  brief: "full",
+  quote: "narrow",
+  sectors: "wide",
+  macro: "narrow",
+  dna: "narrow",
   psychology: "full",
 };
 
@@ -515,13 +532,17 @@ export type DashboardPrefs = {
   metric: EquityMetric;
 };
 
-const PREFS_KEY = "ws_lexx_dashboard_prefs_v4";
+const PREFS_KEY = "ws_lexx_dashboard_prefs_v5";
+/** Previous layout (bundled «ritual» / «market» blocks): migrated once — scope/period/metric/order kept, new defaults hidden. */
+const LEGACY_PREFS_KEY = "ws_lexx_dashboard_prefs_v4";
+const LEGACY_SPLIT: Record<string, SectionId[]> = { ritual: ["checkin", "brief", "quote"], market: ["sectors", "macro", "dna"] };
 
-/** Sensible defaults: the cockpit on top; the weekly psychology report is opt-in; staff see the desk instead of streaks. */
+/** Sensible defaults: the cockpit on top, extras off (traders keep the morning check-in); staff see the desk instead of streaks. */
 function defaultPrefs(scope: Scope): DashboardPrefs {
+  const extras = DEFAULT_ORDER.filter((id) => SECTION_META[id].extra && (scope === "team" || id !== "checkin"));
   return {
     order: DEFAULT_ORDER,
-    hidden: scope === "team" ? ["streaks", "psychology"] : ["psychology"],
+    hidden: scope === "team" ? ["streaks", ...extras] : extras,
     scope,
     period: "week",
     metric: "pnl",
@@ -530,14 +551,22 @@ function defaultPrefs(scope: Scope): DashboardPrefs {
 
 const PERIODS: EquityPeriod[] = ["week", "30d", "90d", "ytd", "all"];
 
-function sanitize(raw: unknown, fallbackScope: Scope): DashboardPrefs {
+function expandLegacy(ids: unknown[]): string[] {
+  return ids.flatMap((x) => (typeof x === "string" && LEGACY_SPLIT[x] ? LEGACY_SPLIT[x] : [x as string]));
+}
+
+function sanitize(raw: unknown, fallbackScope: Scope, legacy = false): DashboardPrefs {
   const base = defaultPrefs(fallbackScope);
   if (!raw || typeof raw !== "object") return base;
   const r = raw as Partial<DashboardPrefs>;
   const known = new Set<SectionId>(DEFAULT_ORDER);
-  const order = Array.isArray(r.order) ? r.order.filter((x): x is SectionId => known.has(x as SectionId)) : [];
+  const rawOrder = Array.isArray(r.order) ? (legacy ? expandLegacy(r.order) : r.order) : [];
+  const order = rawOrder.filter((x): x is SectionId => known.has(x as SectionId));
   for (const id of DEFAULT_ORDER) if (!order.includes(id)) order.push(id);
-  const hidden = Array.isArray(r.hidden) ? r.hidden.filter((x): x is SectionId => known.has(x as SectionId)) : base.hidden;
+  const rawHidden = Array.isArray(r.hidden) ? (legacy ? expandLegacy(r.hidden) : r.hidden) : null;
+  const userHidden = rawHidden ? rawHidden.filter((x): x is SectionId => known.has(x as SectionId)) : base.hidden;
+  // Legacy layouts were saved with everything on; apply the decluttered defaults on top of what the user hid.
+  const hidden = legacy ? Array.from(new Set([...base.hidden, ...userHidden])) : userHidden;
   return {
     order: Array.from(new Set(order)),
     hidden,
@@ -547,26 +576,26 @@ function sanitize(raw: unknown, fallbackScope: Scope): DashboardPrefs {
   };
 }
 
+function loadPrefs(key: string, legacyKey: string, fallbackScope: Scope): DashboardPrefs {
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw) return sanitize(JSON.parse(raw), fallbackScope);
+    const old = localStorage.getItem(legacyKey);
+    return sanitize(old ? JSON.parse(old) : null, fallbackScope, true);
+  } catch {
+    return sanitize(null, fallbackScope);
+  }
+}
+
 /** Prefs are keyed by the signed-in identity, so two people on one browser do not share a layout. */
 export function useDashboardPrefs(fallbackScope: Scope, viewerKey: string | null) {
   const key = `${PREFS_KEY}:${viewerKey ?? "guest"}`;
-  const [prefs, setPrefs] = useState<DashboardPrefs>(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      return sanitize(raw ? JSON.parse(raw) : null, fallbackScope);
-    } catch {
-      return sanitize(null, fallbackScope);
-    }
-  });
+  const legacyKey = `${LEGACY_PREFS_KEY}:${viewerKey ?? "guest"}`;
+  const [prefs, setPrefs] = useState<DashboardPrefs>(() => loadPrefs(key, legacyKey, fallbackScope));
 
   // Identity changed (login/logout) → reload that viewer's prefs.
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(key);
-      setPrefs(sanitize(raw ? JSON.parse(raw) : null, fallbackScope));
-    } catch {
-      setPrefs(sanitize(null, fallbackScope));
-    }
+    setPrefs(loadPrefs(key, legacyKey, fallbackScope));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 

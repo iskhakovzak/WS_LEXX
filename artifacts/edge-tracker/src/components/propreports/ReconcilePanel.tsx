@@ -7,7 +7,7 @@
 import * as React from "react";
 import { Link } from "wouter";
 import { ChevronDown, ChevronRight, Download, RefreshCw, Scale } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, StatCard, StatGrid, type Tone } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, useTableSort, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -144,6 +144,21 @@ function ReportBlock({ rep }: { rep: ReportCheck }) {
   );
 }
 
+const SEVERITY_RANK: Record<Severity, number> = { ok: 0, warn: 1, error: 2 };
+const dayDiff = (d: DayRow) => (d.broker ? d.journal.net - d.broker.net : null);
+const DAY_ACCESSORS = {
+  date: (d: DayRow) => d.date,
+  status: (d: DayRow) => SEVERITY_RANK[d.status] * 10_000 + d.issueIds.length,
+  trades: (d: DayRow) => d.journal.trades,
+  gross: (d: DayRow) => d.journal.gross,
+  fees: (d: DayRow) => d.journal.fees,
+  net: (d: DayRow) => d.journal.net,
+  brokerNet: (d: DayRow) => d.broker?.net ?? null,
+  // biggest discrepancy first regardless of sign
+  diff: (d: DayRow) => { const v = dayDiff(d); return v == null ? null : Math.abs(v); },
+  manual: (d: DayRow) => d.manual.trades || null,
+};
+
 function DayDetails({ day, issues, trader }: { day: DayRow; issues: Issue[]; trader: string | null }) {
   return (
     <div className="grid gap-3 py-2">
@@ -217,7 +232,8 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
     </>
   );
 
-  const days = (data?.days ?? []).filter((d) => !onlyBad || d.status !== "ok");
+  const days = React.useMemo(() => (data?.days ?? []).filter((d) => !onlyBad || d.status !== "ok"), [data, onlyBad]);
+  const daySort = useTableSort(days, DAY_ACCESSORS, "date", "desc");
   const issues = (data?.issues ?? []).filter((i) => i.severity !== "ok" && (issueFilter === "all" || i.severity === issueFilter));
 
   return (
@@ -313,26 +329,26 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
             {days.length === 0 ? (
               <p className="text-xs text-muted-foreground">{onlyBad ? "Все дни сходятся ✓" : "Нет дней в периоде."}</p>
             ) : (
-              <DataTable maxHeight="60vh" ariaLabel="Сверка по дням">
+              <DataTable maxHeight="75vh" ariaLabel="Сверка по дням">
                 <table>
                   <thead>
                     <tr>
                       <th scope="col" className="w-8"><span className="sr-only">Раскрыть</span></th>
-                      <th scope="col">Дата</th>
-                      <th scope="col">Статус</th>
-                      <th scope="col" className="text-right">Сделок</th>
-                      <th scope="col" className="text-right">Брутто</th>
-                      <th scope="col" className="text-right">Комиссии</th>
-                      <th scope="col" className="text-right">Нетто журнала</th>
-                      <th scope="col" className="text-right">Нетто брокера</th>
-                      <th scope="col" className="text-right">Разница</th>
-                      <th scope="col" className="text-right">Ручные</th>
+                      <SortableTh {...daySort.thProps("date")}>Дата</SortableTh>
+                      <SortableTh {...daySort.thProps("status")}>Статус</SortableTh>
+                      <SortableTh {...daySort.thProps("trades")} align="right">Сделок</SortableTh>
+                      <SortableTh {...daySort.thProps("gross")} align="right">Брутто</SortableTh>
+                      <SortableTh {...daySort.thProps("fees")} align="right">Комиссии</SortableTh>
+                      <SortableTh {...daySort.thProps("net")} align="right">Нетто журнала</SortableTh>
+                      <SortableTh {...daySort.thProps("brokerNet")} align="right">Нетто брокера</SortableTh>
+                      <SortableTh {...daySort.thProps("diff")} align="right">Разница</SortableTh>
+                      <SortableTh {...daySort.thProps("manual")} align="right">Ручные</SortableTh>
                     </tr>
                   </thead>
                   <tbody>
-                    {days.map((d) => {
+                    {daySort.rows.map((d) => {
                       const isOpen = open.has(d.date);
-                      const diff = d.broker ? d.journal.net - d.broker.net : null;
+                      const diff = dayDiff(d);
                       const dayIssues = d.issueIds.map((id) => issueById.get(id)).filter((x): x is Issue => !!x);
                       return (
                         <React.Fragment key={d.date}>
@@ -380,7 +396,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
             {issues.length === 0 ? (
               <p className="text-xs text-muted-foreground">Нет расхождений ✓</p>
             ) : (
-              <ul className="grid max-h-[50vh] gap-2 overflow-auto pr-1">{issues.slice(0, 300).map((i) => <IssueItem key={i.id} issue={i} trader={scopeName} />)}</ul>
+              <ul className="grid max-h-[75vh] gap-2 overflow-auto pr-1">{issues.slice(0, 300).map((i) => <IssueItem key={i.id} issue={i} trader={scopeName} />)}</ul>
             )}
             {(issues.length > 300 || data.issuesTruncated) && <p className="text-xs text-muted-foreground">Показаны первые 300 — полный список в CSV.</p>}
           </section>

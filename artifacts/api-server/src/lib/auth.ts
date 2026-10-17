@@ -3,6 +3,7 @@ import bcrypt from "bcryptjs";
 import type { Request, Response, NextFunction } from "express";
 import { pool } from "@workspace/db";
 import { can, readScope, resolveActor, type Capability } from "./permissions";
+import { canReadPersonal, guestModeEnabled } from "./accessRules";
 
 const SECRET = process.env.JWT_SECRET;
 if (!SECRET) {
@@ -30,6 +31,14 @@ export const GUEST_NAME = "Гость";
  * (The "∅" character cannot be typed into the user picker, and names are trimmed on creation.)
  */
 export const GUEST_SCOPE = "∅guest";
+
+/**
+ * GUEST_MODE switch (lib/accessRules guestModeEnabled): unset → on in development, off in production.
+ * When off, POST /auth/guest answers 403 GUEST_DISABLED and already-issued guest tokens stop working.
+ */
+export function isGuestModeEnabled(): boolean {
+  return guestModeEnabled(process.env);
+}
 
 export function isGuestUser(u: AuthUser | null | undefined): boolean {
   return !!u && u.role === GUEST_ROLE && u.id === GUEST_USER_ID;
@@ -137,7 +146,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     const decoded = decodeToken(token);
     if (decoded) {
       if (decoded.guest) {
-        req.authUser = { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE };
+        if (isGuestModeEnabled()) req.authUser = { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE };
       } else {
         const currentTv = await getTokenVersion(decoded.id);
         if (currentTv !== null && currentTv === decoded.tv) {
@@ -284,6 +293,26 @@ export async function scopeTrader(req: Request, requested?: string | null, cap: 
   const want = requested?.trim() || "";
   if (want && allowed.includes(want)) return want;
   return actor.name;
+}
+
+/**
+ * Personal data addressed by a trader name (`?userId=` on emotional check-ins, the weekly psychology report …).
+ * Validates the name and decides via lib/accessRules canReadPersonal: the owner, or a member whose team capability
+ * `cap` covers that trader (curators/admins by default; "assigned" scope → only their wards). Guests never.
+ * Sends 400/401/403 itself and returns the trader name, or null when the request was answered.
+ */
+export async function requirePersonalAccess(
+  req: Request, res: Response, raw: unknown, cap: Capability = "journal.read.team",
+): Promise<string | null> {
+  const owner = typeof raw === "string" ? raw.trim() : "";
+  if (!owner || owner.length > 120) { res.status(400).json({ error: "userId is required" }); return null; }
+  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
+  const actor = await resolveActor(req);
+  if (!actor) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
+  if (actor.guest) { res.status(403).json({ error: "Гостевой режим: личные данные трейдеров недоступны", code: "FORBIDDEN" }); return null; }
+  const teamAllowed = owner !== actor.name && (await can(req, cap, { trader: owner }));
+  if (!canReadPersonal(actor, owner, teamAllowed)) { res.status(403).json({ error: "Эти данные видит только сам трейдер или его куратор", code: "FORBIDDEN" }); return null; }
+  return owner;
 }
 
 /**

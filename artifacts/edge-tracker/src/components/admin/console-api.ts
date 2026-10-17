@@ -5,7 +5,7 @@
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
-import { addDays, nyDate } from "@/lib/trading-date";
+import { addDays, nyDate, prevWeekday } from "@/lib/trading-date";
 import { errorFrom, type AuditEntry } from "./api";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
@@ -235,11 +235,15 @@ export interface EodStatus {
   traders: { trader: string; status: string; trades: number; reviewedTrades: number; closedAt: string | null; reviewedAt: string | null }[];
 }
 
-/** Today's EOD (day close) status per trader. null when unavailable. */
+/**
+ * Day-close status per trader for the last finished trading day (previous NY weekday) — the same day the curator
+ * cabinet uses for «Не закрыт день». Today's day is still open by definition, so «today» always showed 0.
+ */
 export function useEodStatus() {
+  const date = prevWeekday(nyDate());
   return useQuery<EodStatus | null>({
-    queryKey: consoleKeys.eod,
-    queryFn: () => getJson<EodStatus>("/eod/status").catch(() => null),
+    queryKey: [...consoleKeys.eod, date],
+    queryFn: () => getJson<EodStatus>(`/eod/status?date=${date}`).catch(() => null),
     refetchInterval: 60_000,
     retry: false,
   });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearch } from "wouter";
 import { Archive, CalendarDays, History as HistoryIcon, Pencil, Plus, RotateCcw, Sparkles, UserCheck, UserPlus, Users } from "lucide-react";
 import {
-  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, StatCard, StatGrid,
+  DataTable, EmptyState, ErrorState, ListSkeleton, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SortableTh, StatCard, StatGrid, useTableSort,
 } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
@@ -168,11 +168,35 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
   );
 }
 
+type MemberRow = CohortDetail["enrollments"][number];
+const STAGE_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
+const MEMBER_ACCESSORS = {
+  name: (e: MemberRow) => e.userName,
+  stage: (e: MemberRow) => STAGE_ORDER[e.stage] ?? 9,
+  status: (e: MemberRow) => e.statusLabel,
+  joined: (e: MemberRow) => e.joinedOn,
+  att: (e: MemberRow) => e.attendance?.rate ?? null,
+  att30: (e: MemberRow) => e.attendance30?.rate ?? null,
+};
+const ATT_ACCESSORS = {
+  name: (e: MemberRow) => e.userName,
+  total: (e: MemberRow) => e.attendance?.total ?? null,
+  present: (e: MemberRow) => e.attendance?.present ?? null,
+  late: (e: MemberRow) => e.attendance?.late ?? null,
+  absent: (e: MemberRow) => e.attendance?.absent ?? null,
+  excused: (e: MemberRow) => e.attendance?.excused ?? null,
+  unmarked: (e: MemberRow) => e.attendance?.unmarked ?? null,
+  rate: (e: MemberRow) => e.attendance?.rate ?? null,
+  rate30: (e: MemberRow) => e.attendance30?.rate ?? null,
+  streak: (e: MemberRow) => e.attendance?.absentStreak ?? null,
+};
+
 function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const [enrollOpen, setEnrollOpen] = useState(false);
   const [edit, setEdit] = useState<Enrollment | null>(null);
   const archive = useArchiveEnrollment();
   const { toast } = useToast();
+  const { rows: members, thProps } = useTableSort(d.enrollments, MEMBER_ACCESSORS, "name", "asc");
   const remove = (e: Enrollment) => {
     if (!window.confirm(`Убрать ${e.userName} из когорты? Запись уйдёт в архив (история и посещаемость сохранятся). Для выпуска/отчисления лучше сменить статус.`)) return;
     archive.mutate(e.id, { onError: (err) => toast({ title: "Не получилось", description: err.message, variant: "destructive" }) });
@@ -184,11 +208,16 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
         <DataTable ariaLabel="Состав когорты">
           <table>
             <thead><tr>
-              <th scope="col">Студент</th><th scope="col">Ступень</th><th scope="col">Статус</th><th scope="col">С</th>
-              <th scope="col">Посещ. всего</th><th scope="col">30 дн.</th>{staff && <th scope="col"><span className="sr-only">Действия</span></th>}
+              <SortableTh {...thProps("name")}>Студент</SortableTh>
+              <SortableTh {...thProps("stage")}>Ступень</SortableTh>
+              <SortableTh {...thProps("status")}>Статус</SortableTh>
+              <SortableTh {...thProps("joined")}>С</SortableTh>
+              <SortableTh {...thProps("att")} align="right">Посещ. всего</SortableTh>
+              <SortableTh {...thProps("att30")} align="right">30 дн.</SortableTh>
+              {staff && <th scope="col"><span className="sr-only">Действия</span></th>}
             </tr></thead>
             <tbody>
-              {d.enrollments.map((e) => (
+              {members.map((e) => (
                 <tr key={e.id}>
                   <td>
                     {staff ? <Link href={`/academy/mentor?student=${encodeURIComponent(e.userName)}`} className="font-medium text-foreground hover:underline">{e.userName}</Link>
@@ -198,8 +227,8 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   <td><StagePill stage={e.stage} /></td>
                   <td><StatusPill status={e.status} /></td>
                   <td className="whitespace-nowrap">{fmtYmd(e.joinedOn)}</td>
-                  <td>{e.attendance ? pct(e.attendance.rate) : "—"}</td>
-                  <td>{e.attendance30 ? pct(e.attendance30.rate) : "—"}</td>
+                  <td className="text-right">{e.attendance ? pct(e.attendance.rate) : "—"}</td>
+                  <td className="text-right">{e.attendance30 ? pct(e.attendance30.rate) : "—"}</td>
                   {staff && (
                     <td className="whitespace-nowrap text-right">
                       <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>Ступень / статус</Button>
@@ -308,7 +337,8 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
 }
 
 function AttendanceTab({ d }: { d: CohortDetail }) {
-  const withStats = d.enrollments.filter((e) => e.attendance);
+  const withStats = useMemo(() => d.enrollments.filter((e) => e.attendance), [d.enrollments]);
+  const { rows: sorted, thProps } = useTableSort(withStats, ATT_ACCESSORS, "rate", "asc");
   return (
     <Panel title="Посещаемость" icon={UserCheck} description="Считаются прошедшие занятия с даты зачисления. Процент = (был + опоздал) / (был + опоздал + пропуск).">
       <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
@@ -317,11 +347,19 @@ function AttendanceTab({ d }: { d: CohortDetail }) {
           <DataTable ariaLabel="Посещаемость по студентам">
             <table>
               <thead><tr>
-                <th scope="col">Студент</th><th scope="col">Занятий</th><th scope="col">Был</th><th scope="col">Опоздал</th><th scope="col">Пропуск</th>
-                <th scope="col">Уважит.</th><th scope="col">Не отмечено</th><th scope="col">Всего</th><th scope="col">30 дн.</th><th scope="col">Подряд пропусков</th>
+                <SortableTh {...thProps("name")}>Студент</SortableTh>
+                <SortableTh {...thProps("total")}>Занятий</SortableTh>
+                <SortableTh {...thProps("present")}>Был</SortableTh>
+                <SortableTh {...thProps("late")}>Опоздал</SortableTh>
+                <SortableTh {...thProps("absent")}>Пропуск</SortableTh>
+                <SortableTh {...thProps("excused")}>Уважит.</SortableTh>
+                <SortableTh {...thProps("unmarked")}>Не отмечено</SortableTh>
+                <SortableTh {...thProps("rate")}>Всего</SortableTh>
+                <SortableTh {...thProps("rate30")}>30 дн.</SortableTh>
+                <SortableTh {...thProps("streak")}>Подряд пропусков</SortableTh>
               </tr></thead>
               <tbody>
-                {withStats.map((e) => {
+                {sorted.map((e) => {
                   const a = e.attendance!;
                   return (
                     <tr key={e.id}>

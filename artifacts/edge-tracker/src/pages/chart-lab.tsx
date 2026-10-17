@@ -1,11 +1,13 @@
 /**
- * Chart workspace for one trade: /chart-lab?trade=<id>&mode=analysis|replay|training&tf=1m
+ * Chart workspace for one trade: /chart-lab?trade=<id>&mode=analysis|replay|training&tf=1m[&src=mine|desk]
  * or any ticker and day without a trade: /chart-lab?ticker=AAPL&date=2026-10-14
  *
  * Full-height on desktop (the chart takes the space, the page does not scroll, so the wheel always zooms the chart).
- * The header has the trade picker (search by ticker / day, recent trades) and «Случайная задача» — a random trade
- * opened in training. Mode and timeframe live in the chart toolbar and are mirrored to the URL.
- * Reads only: GET /api/trades/:id, GET /api/trades/page.
+ * The header has the trade picker (search by ticker / day, recent trades), the task settings (source: own trades /
+ * the desk's / any ticker-day, bar size, filters) and «Случайная задача» — a random task opened in training, picked
+ * by the server only from days that have minute bars (unless «любые» is chosen). In training the header hides the
+ * side, result and trader until the reveal. Mode and timeframe live in the chart toolbar and are mirrored to the URL.
+ * Reads only: GET /api/trades/:id, GET /api/trades/page, GET /api/training/pool|task|trades/:id.
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -18,18 +20,44 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Skeleton } from "@/components/ui/skeleton";
 import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { WsChart, TIMEFRAMES, fmtMoney, fmtR, type ChartMode, type Timeframe, type TradeLike } from "@/components/chart-engine";
+import { toast } from "@/hooks/use-toast";
+import { TaskSettingsButton } from "@/components/training/TaskSettings";
+import {
+  TASK_RECENT_KEY, countFor, noTasksMessage, parseRecent, parseTaskSettings, pushRecent, settingsForRole, taskQuery, taskSettingsKey, taskUrl,
+  type PickedTask, type PoolCounts, type TaskSettings, type TaskSource,
+} from "@/lib/training-tasks";
+import { WsChart, TIMEFRAMES, fmtMoney, fmtR, type ChartMode, type Execution, type Timeframe, type TradeLike, type TradeStructureDto } from "@/components/chart-engine";
+import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { useAuth } from "@/contexts/auth-context";
 
-type TradeRow = TradeLike & { rMultiple?: number | string | null };
+/** `movePct`: side-aware entry → exit move, % (training payload) — the result when neither $ nor R is available. */
+type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
 type PageResp = { items?: TradeRow[] };
+type TrainingTradeResp = { trade: TradeRow; executions: Execution[]; structure: TradeStructureDto | null };
+type PoolResp = { source: TaskSource; counts: PoolCounts; member: boolean };
+type TaskResp = { task: PickedTask; counts: PoolCounts };
 
 const MODES: ChartMode[] = ["analysis", "replay", "training"];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
+class HttpError extends Error {
+  constructor(message: string, readonly status: number, readonly body: Record<string, unknown>) { super(message); }
+}
+
 async function getJson<T>(url: string): Promise<T> {
   const r = await fetch(url);
-  if (!r.ok) throw new Error((await r.json().catch(() => ({})))?.error || `HTTP ${r.status}`);
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+    throw new HttpError(typeof body.error === "string" ? body.error : `HTTP ${r.status}`, r.status, body);
+  }
   return r.json() as Promise<T>;
+}
+
+function readStored<T>(key: string, parse: (raw: string | null) => T): T {
+  try { return parse(localStorage.getItem(key)); } catch { return parse(null); }
+}
+function store(key: string, value: unknown): void {
+  try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage unavailable */ }
 }
 
 /** Stable negative id for a ticker + day chart without a trade (keeps its drawings apart, never fetches fills). */
@@ -55,11 +83,19 @@ const rOf = (t: TradeRow) => {
   return t.rMultiple != null && Number.isFinite(n) ? n : null;
 };
 
-/** Result as the viewer may see it: $ for own trades, R for others' (the API nulls their $). */
+/**
+ * Result as the viewer may see it: $ for own trades; for others' (the API nulls their $) R, else the % move, else
+ * just win / loss.
+ */
 function ResultText({ t }: { t: TradeRow }) {
   const r = rOf(t);
   if (!t.redacted && t.pnl != null) return <span className={t.pnl >= 0 ? "text-up" : "text-down"}>{fmtMoney(t.pnl)}</span>;
   if (r != null) return <span className={r >= 0 ? "text-up" : "text-down"}>{fmtR(r)}</span>;
+  const pct = t.movePct != null && Number.isFinite(t.movePct) ? t.movePct : null;
+  if (pct != null) return <span className={pct >= 0 ? "text-up" : "text-down"} title="Ход цены от входа до выхода">{pct > 0 ? "+" : pct < 0 ? "−" : ""}{Math.abs(pct).toFixed(2)}%</span>;
+  const res = String(t.result ?? "").toLowerCase();
+  if (res === "win") return <span className="text-up">плюс</span>;
+  if (res === "loss") return <span className="text-down">минус</span>;
   return <span className="text-muted-foreground">—</span>;
 }
 
@@ -151,36 +187,91 @@ export default function ChartLabPage() {
     navigate(`/chart-lab${p.toString() ? `?${p}` : ""}`, { replace });
   }, [search, navigate]);
 
-  const trade = useQuery<TradeRow, Error>({
-    queryKey: ["chart-lab", "trade", tradeId],
-    queryFn: () => getJson<TradeRow>(`${BASE}/api/trades/${tradeId}`),
+  const srcParam = params.get("src");
+  const taskSource: TaskSource | undefined = srcParam === "mine" || srcParam === "desk" ? srcParam : undefined;
+  const training = mode === "training";
+  // Training (or a task opened from the desk): the trade, its fills and structure come from the training endpoint,
+  // which also serves someone else's trade with $ / size nulled for non-staff.
+  const viaTraining = tradeId != null && (training || taskSource != null);
+
+  const trade = useQuery<TrainingTradeResp, Error>({
+    queryKey: ["chart-lab", "trade", tradeId, viaTraining],
+    queryFn: async () => viaTraining
+      ? getJson<TrainingTradeResp>(`${BASE}/api/training/trades/${tradeId}`)
+      : { trade: await getJson<TradeRow>(`${BASE}/api/trades/${tradeId}`), executions: [], structure: null },
     enabled: tradeId != null,
     retry: false,
+    placeholderData: (prev) => (prev && prev.trade.id === tradeId ? prev : undefined),
   });
-  const pool = useQuery<TradeRow[], Error>({
-    queryKey: ["chart-lab", "pool"],
-    queryFn: async () => (await getJson<PageResp>(`${BASE}/api/trades/page?limit=300&sort=date&dir=desc`)).items ?? [],
-    staleTime: 5 * 60_000,
+
+  // ── Task settings & random task ──────────────────────────────────────────
+  // Stored per viewer (role + name): a guest's «тикер-день» must not stick after signing in as a member.
+  const { user } = useAuth();
+  const isGuest = !user || user.role === "guest";
+  const settingsKey = taskSettingsKey(user?.role, user?.traderName);
+  const loadSettings = React.useCallback(() => settingsForRole(readStored(settingsKey, parseTaskSettings), !isGuest), [settingsKey, isGuest]);
+  const [settings, setSettings] = React.useState<TaskSettings>(loadSettings);
+  const settingsKeyRef = React.useRef(settingsKey);
+  React.useEffect(() => {
+    if (settingsKeyRef.current === settingsKey) return;
+    settingsKeyRef.current = settingsKey;
+    setSettings(loadSettings());
+  }, [settingsKey, loadSettings]);
+  const updateSettings = React.useCallback((patch: Partial<TaskSettings>) => setSettings((s) => { const n = { ...s, ...patch }; store(settingsKeyRef.current, n); return n; }), []);
+  const poolQs = taskQuery(settings);
+  const pool = useQuery<PoolResp, Error>({
+    queryKey: ["chart-lab", "training-pool", settingsKey, poolQs],
+    queryFn: () => getJson<PoolResp>(`${BASE}/api/training/pool?${poolQs}`),
+    staleTime: 60_000,
+    placeholderData: (prev) => prev,
   });
+  const member = pool.data?.member ?? true;
+  // A guest cannot use trade sources: fall back to ticker-days once the server says so (never on placeholder data —
+  // that may still be the previous viewer's answer).
+  React.useEffect(() => {
+    if (pool.data && !pool.isPlaceholderData && !pool.data.member && settings.source !== "day") updateSettings({ source: "day" });
+  }, [pool.data, pool.isPlaceholderData, settings.source, updateSettings]);
+  const available = countFor(pool.data?.counts, settings.res);
+  // A server without /api/training (not restarted after the update) answers 404 — say so instead of «нет задач».
+  const poolError = pool.isError && !pool.data
+    ? ((pool.error as HttpError).status === 404 ? "Сервер не отдаёт задачи — его нужно перезапустить после обновления." : "Не удалось посчитать задачи — попробуй ещё раз.")
+    : null;
+  const [picking, setPicking] = React.useState(false);
+  const currentKey = tradeId != null ? `t${tradeId}` : adTicker && adDate ? `d:${adTicker}:${adDate}` : null;
+
+  const pickRandom = React.useCallback(async () => {
+    if (picking) return;
+    setPicking(true);
+    try {
+      const recent = readStored(TASK_RECENT_KEY, parseRecent);
+      const exclude = currentKey ? pushRecent(recent, currentKey) : recent;
+      const { task } = await getJson<TaskResp>(`${BASE}/api/training/task?${taskQuery(settings, { forTask: true, exclude })}`);
+      store(TASK_RECENT_KEY, pushRecent(exclude, task.key));
+      navigate(taskUrl(task, tf));
+    } catch (e) {
+      const err = e as HttpError;
+      const description = err.status === 404 ? noTasksMessage(settings, (err.body?.counts as PoolCounts | undefined) ?? pool.data?.counts) : err.message;
+      toast({ title: "Задачу не нашли", description, variant: err.status === 404 ? "default" : "destructive" });
+    } finally {
+      setPicking(false);
+    }
+  }, [picking, currentKey, settings, tf, navigate, pool.data]);
 
   const adHoc: TradeLike | null = React.useMemo(() => (tradeId == null && adTicker && adDate ? { id: adHocId(adTicker, adDate), ticker: adTicker, date: adDate } : null), [tradeId, adTicker, adDate]);
-  const current: TradeRow | null = tradeId != null ? trade.data ?? null : adHoc;
+  const current: TradeRow | null = tradeId != null ? trade.data?.trade ?? null : adHoc;
 
-  const pickRandom = React.useCallback(() => {
-    const list = (pool.data ?? []).filter((t) => t.id !== tradeId && t.entry != null && t.exit != null);
-    if (!list.length) return;
-    const t = list[Math.floor(Math.random() * list.length)];
-    navigate(`/chart-lab?trade=${t.id}&mode=training${tf !== "1m" ? `&tf=${tf}` : ""}`);
-  }, [pool.data, tradeId, tf, navigate]);
-
-  const training = mode === "training";
+  // Trader / side / result stay hidden in training until the reveal.
+  // Keyed by task: a new task must never inherit the previous one's reveal (the chart reports false only after mount).
+  const [revealedKey, setRevealedKey] = React.useState<string | null>(null);
+  const onRevealChange = React.useCallback((r: boolean) => setRevealedKey(r ? currentKey : null), [currentKey]);
+  const hideHints = training && (revealedKey == null || revealedKey !== currentKey);
   const label = current ? (
     <span className="inline-flex items-center gap-2 tabular-nums">
       <span className="font-semibold">{current.ticker}</span>
       <span className="text-muted-foreground">{current.date.slice(0, 10)}</span>
-      {/* No side / result in training: that is what the trader has to find out. */}
-      {tradeId != null && !training && <><span className="text-muted-foreground">{String(current.side ?? "").toLowerCase() === "short" ? "шорт" : "лонг"}</span><ResultText t={current} /></>}
-      {current.trader && current.redacted && <span className="hidden text-muted-foreground sm:inline">· {current.trader}</span>}
+      {tradeId != null && !hideHints && <><span className="text-muted-foreground">{String(current.side ?? "").toLowerCase() === "short" ? "шорт" : "лонг"}</span><ResultText t={current} /></>}
+      {tradeId != null && !hideHints && current.trader && current.redacted && <span className="hidden text-muted-foreground sm:inline">· {current.trader}</span>}
+      {training && tradeId == null && <span className="hidden text-muted-foreground sm:inline">· без сделки</span>}
     </span>
   ) : <span className="text-muted-foreground">Выбрать сделку</span>;
 
@@ -193,8 +284,18 @@ export default function ChartLabPage() {
           onPick={(t) => navigate(`/chart-lab?trade=${t.id}${mode !== "analysis" ? `&mode=${mode}` : ""}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
           onTickerDay={(tk, d) => navigate(`/chart-lab?ticker=${encodeURIComponent(tk)}&date=${d}${tf !== "1m" ? `&tf=${tf}` : ""}`)}
         />
-        <Button variant={training ? "default" : "outline"} className="h-9 gap-2" onClick={pickRandom} disabled={!pool.data?.length} title="Случайная сделка в режиме тренировки: будущее скрыто, решаешь сам">
-          <Dices className="h-4 w-4" aria-hidden="true" /> <span className="hidden sm:inline">Случайная задача</span><span className="sm:hidden">Задача</span>
+        {tradeId != null && current && !hideHints && !viaTraining && (
+          <AddToPlaybookButton payload={{ name: `${current.ticker} ${current.date.slice(0, 10)}`, ticker: current.ticker, sourceType: "trade", sourceId: tradeId }} className="h-9 shrink-0" />
+        )}
+        <TaskSettingsButton
+          settings={settings} onChange={updateSettings} counts={pool.data?.counts ?? null} member={member} loading={pool.isFetching && !pool.data} error={poolError}
+          onPick={() => void pickRandom()} picking={picking}
+        />
+        <Button
+          variant={training ? "default" : "outline"} className="h-9 shrink-0 gap-2 px-3" onClick={() => void pickRandom()} disabled={picking || (pool.data != null && !available)}
+          title={pool.data && !available ? noTasksMessage(settings, pool.data.counts) : "Случайная задача в режиме тренировки: будущее скрыто, решаешь сам"}
+        >
+          <Dices className={cn("h-4 w-4", picking && "animate-spin")} aria-hidden="true" /> <span className="hidden sm:inline">Случайная задача</span><span className="sm:hidden">Задача</span>
         </Button>
       </header>
 
@@ -202,8 +303,8 @@ export default function ChartLabPage() {
         <EmptyState
           icon={CandlestickChart}
           title="Выбери сделку"
-          description="Найди сделку по тикеру или дню, открой график любого тикера за день или возьми случайную задачу — потренируйся принимать решения бар за баром."
-          action={<Button onClick={pickRandom} disabled={!pool.data?.length}><Dices className="mr-2 h-4 w-4" /> Случайная задача</Button>}
+          description="Найди сделку по тикеру или дню, открой график любого тикера за день или возьми случайную задачу — свою сделку, сделку деска или просто день рынка — и потренируйся принимать решения бар за баром."
+          action={<Button onClick={() => void pickRandom()} disabled={picking || (pool.data != null && !available)}><Dices className="mr-2 h-4 w-4" /> Случайная задача</Button>}
         />
       ) : tradeId != null && trade.isLoading ? (
         <Skeleton className="min-h-[420px] flex-1 rounded-2xl" />
@@ -215,12 +316,15 @@ export default function ChartLabPage() {
           className={cn("md:min-h-0 md:flex-1")}
           layout="workspace"
           trade={current}
-          executions={adHoc ? [] : undefined}
-          mode={adHoc && mode === "training" ? "replay" : mode}
+          executions={adHoc ? [] : viaTraining ? trade.data?.executions : undefined}
+          structure={viaTraining ? trade.data?.structure ?? null : undefined}
+          mode={mode}
           onModeChange={(m) => setParams({ mode: m })}
           initialTimeframe={tf}
           onTimeframeChange={(t) => setParams({ tf: t })}
-          onNextTask={pool.data?.length ? pickRandom : undefined}
+          onNextTask={available ? () => void pickRandom() : undefined}
+          trainingSource={adHoc ? "day" : taskSource}
+          onTrainingRevealChange={onRevealChange}
           showModes
         />
       ) : null}

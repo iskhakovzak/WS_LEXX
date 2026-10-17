@@ -1,5 +1,8 @@
 import { logger } from "./logger";
 
+/** Outbound request budget (a hung Telegram API call must not hold the caller forever). */
+const FETCH_TIMEOUT_MS = 15_000;
+
 function getBotToken(): string {
   return (process.env["TELEGRAM_BOT_TOKEN"] ?? "").trim();
 }
@@ -24,6 +27,7 @@ async function tgPost(method: string, body: object): Promise<{ ok: boolean; desc
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     const data = await res.json() as { ok: boolean; description?: string; result?: unknown };
     if (!data.ok) {

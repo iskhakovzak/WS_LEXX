@@ -8,7 +8,7 @@ import {
 } from "lucide-react";
 import { useListDailyFeed, useListDiscussions, useListEvents, useListResearch, useListTrades } from "@workspace/api-client-react";
 import { useTradesBookFacets } from "@/hooks/use-trades-window";
-import { Panel, Pill, Segmented, StatCard } from "@/components/ds";
+import { Panel, Pill, Segmented, SortableTh, StatCard, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
@@ -167,11 +167,21 @@ function inspect(fileName: string, size: number, data: unknown): Inspection {
   };
 }
 
+const NO_TABLES: TableCheck[] = [];
+
 function BackupInspector({ current }: { current: Record<string, number | undefined> }) {
   const [result, setResult] = useState<Inspection | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
+  const accessors = React.useMemo(() => ({
+    name: (t: TableCheck) => TABLE_LABELS[t.key] ?? t.key,
+    rows: (t: TableCheck) => t.rows,
+    now: (t: TableCheck) => current[t.key] ?? null,
+    // problems first when sorted desc
+    check: (t: TableCheck) => t.duplicateIds * 2 + t.missingIds,
+  }), [current]);
+  const sort = useTableSort(result?.tables ?? NO_TABLES, accessors, "rows", "desc", { name: "asc" });
 
   function readFile(file: File) {
     setError(null);
@@ -229,15 +239,15 @@ function BackupInspector({ current }: { current: Record<string, number | undefin
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted-foreground">
-                  <th scope="col" className="py-2 pr-3 font-normal">Таблица</th>
-                  <th scope="col" className="py-2 pr-3 text-right font-normal">В файле</th>
-                  <th scope="col" className="py-2 pr-3 text-right font-normal">Сейчас</th>
+                  <SortableTh {...sort.thProps("name")} className="py-2 pr-3 font-normal">Таблица</SortableTh>
+                  <SortableTh {...sort.thProps("rows")} align="right" className="py-2 pr-3 font-normal">В файле</SortableTh>
+                  <SortableTh {...sort.thProps("now")} align="right" className="py-2 pr-3 font-normal">Сейчас</SortableTh>
                   <th scope="col" className="py-2 pr-3 font-normal">id</th>
-                  <th scope="col" className="py-2 font-normal">Проверка</th>
+                  <SortableTh {...sort.thProps("check")} className="py-2 font-normal">Проверка</SortableTh>
                 </tr>
               </thead>
               <tbody>
-                {result.tables.map((t) => {
+                {sort.rows.map((t) => {
                   const now = current[t.key];
                   const ok = !t.duplicateIds && !t.missingIds;
                   return (

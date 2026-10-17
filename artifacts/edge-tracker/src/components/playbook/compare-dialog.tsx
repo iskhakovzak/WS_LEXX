@@ -32,7 +32,7 @@ function SetupPicker({
       <PopoverContent className="w-[min(360px,calc(100vw-2rem))] p-0" align="start">
         <Command className="bg-transparent">
           <CommandInput placeholder="Найти сетап" aria-label="Найти сетап" />
-          <CommandList className="max-h-72">
+          <CommandList className="max-h-[min(55dvh,440px)]">
             <CommandEmpty className="py-3 text-center text-xs text-muted-foreground">Не найдено</CommandEmpty>
             <CommandGroup>
               {entries.filter((e) => e.id !== exclude).map((e) => (
@@ -105,7 +105,7 @@ export function CompareDialog({
 
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) setLastInitial(null); }}>
-      <DialogContent className="max-h-[92vh] w-full max-w-4xl overflow-y-auto">
+      <DialogContent className="max-h-[85dvh] w-full max-w-5xl overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Сравнение сетапов</DialogTitle>
           <DialogDescription>Лучшее значение подсвечено. Edge score штрафует маленькую выборку.</DialogDescription>

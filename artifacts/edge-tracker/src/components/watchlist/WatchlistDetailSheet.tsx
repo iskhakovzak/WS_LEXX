@@ -18,8 +18,10 @@ import { links } from "@/lib/links";
 import { netPnl, signedR } from "@/lib/trade-math";
 import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
+import { canModifyOwned } from "@/lib/ownership";
 import {
-  LISTS, LIST_LABELS, SCORE_LABELS, apiJson, calculatorHref, fmtMoney, fmtPct, fmtPrice, fmtVol, inPlayReasons, keyLevels,
+  LISTS, LIST_LABELS, SCORE_LABELS, apiJson, fmtMoney, fmtPct, fmtPrice, fmtVol, inPlayReasons, keyLevels,
   parseBreakdown, splitTags, timeAgoRu, type ListName, type WatchlistItem,
 } from "./lib";
 import { ScoreRing } from "./visuals";
@@ -119,6 +121,9 @@ export function WatchlistDetailSheet({
 }) {
   const item = row?.item ?? null;
   const ticker = item?.ticker ?? "";
+  const { isCurator } = useAuth();
+  // Content (catalyst / levels / notes) and delete: the author or staff. List moves / archive stay with canEdit.
+  const mayModify = canEdit && canModifyOwned(item?.createdBy, me, isCurator);
   const today = nyDate();
   const ideas = useQuery<IdeaLite[]>({
     queryKey: ["trade-ideas", "by-ticker", ticker],
@@ -233,17 +238,21 @@ export function WatchlistDetailSheet({
                   <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Пересчитать score" title="Пересчитать score" disabled={scoring} onClick={() => actions.rescore(item)}>
                     <RefreshCw className={cn("h-4 w-4", scoring && "animate-spin motion-reduce:animate-none")} />
                   </Button>
-                  <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Катализатор, стоп, цель" title="Катализатор, стоп, цель, теги, скриншоты" onClick={() => actions.edit(item)}>
-                    <Pencil className="h-4 w-4" />
-                  </Button>
+                  {mayModify && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Катализатор, стоп, цель" title="Катализатор, стоп, цель, теги, скриншоты" onClick={() => actions.edit(item)}>
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                  )}
                   {row.list && (
                     <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="В архив" title="В архив (Del)" onClick={() => actions.archive([item])}>
                       <Archive className="h-4 w-4" />
                     </Button>
                   )}
-                  <Button variant="ghost" size="icon" className="h-9 w-9 hover:text-down" aria-label="Удалить" title="Удалить" onClick={() => actions.remove([item])}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                  {mayModify && (
+                    <Button variant="ghost" size="icon" className="h-9 w-9 hover:text-down" aria-label="Удалить" title="Удалить" onClick={() => actions.remove([item])}>
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
               </div>
             )}
@@ -255,7 +264,7 @@ export function WatchlistDetailSheet({
             <Section
               title="Уровни"
               icon={Target}
-              actions={canEdit ? <button type="button" className="text-xs text-primary hover:underline" onClick={() => actions.edit(item)}>{plan.stop == null && plan.target == null ? "Задать стоп и цель" : "Изменить стоп и цель"}</button> : undefined}
+              actions={mayModify ? <button type="button" className="text-xs text-primary hover:underline" onClick={() => actions.edit(item)}>{plan.stop == null && plan.target == null ? "Задать стоп и цель" : "Изменить стоп и цель"}</button> : undefined}
             >
               {allLevels.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{row.levels === undefined ? "Загружаем PDH / PDL / VWAP…" : "Нет данных по уровням."}</p>
@@ -281,7 +290,6 @@ export function WatchlistDetailSheet({
                 <p className="mt-2 text-xs text-muted-foreground">
                   R:R от текущей <span className="font-medium text-foreground">{plan.rr.toFixed(2)}</span>
                   {plan.stopAtr != null && <> · стоп {plan.stopAtr.toFixed(2)} ATR</>}
-                  {" · "}<Link href={calculatorHref(item, plan.price, q?.atr)} className="text-primary hover:underline">размер позиции</Link>
                 </p>
               )}
             </Section>
@@ -303,7 +311,7 @@ export function WatchlistDetailSheet({
                   {tags.length > 0 && <div className="flex flex-wrap gap-1">{tags.map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}</div>}
                 </div>
               )}
-              <NotesEditor item={item} canEdit={canEdit} onSave={(n) => actions.saveNote(item, n)} />
+              <NotesEditor item={item} canEdit={mayModify} onSave={(n) => actions.saveNote(item, n)} />
             </Section>
 
             <Section

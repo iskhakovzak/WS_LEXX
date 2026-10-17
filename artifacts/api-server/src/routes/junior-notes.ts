@@ -2,7 +2,8 @@ import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { asyncHandler } from "../lib/asyncHandler";
-import { getEffectiveMatrix, resolveActor } from "../lib/permissions";
+import { aiTextLimiter } from "../lib/rateLimits";
+import { getEffectiveMatrix, readableTraders, resolveActor } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { requireAuth } from "../lib/auth";
 import { nyDate } from "../lib/tradingDate";
@@ -10,8 +11,8 @@ import { horizonSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { canSeeTradeMoney } from "../lib/playbookPrivacy";
 import {
-  attentionOf, buildDayTrades, buildReviewScope, canReviewTrader, missedRun, repeatedMistakes, reviewTraderFilter, scoreTrend,
-  type ContextTradeRow, type ReviewScope,
+  attentionOf, buildDayTrades, buildReviewScope, canReadJuniorNotes, canReviewTrader, juniorTeamFilter, missedRun, repeatedMistakes,
+  reviewTraderFilter, scoreTrend, type ContextTradeRow, type JuniorNotesViewer, type ReviewScope,
 } from "../lib/juniorReview";
 
 const router: IRouter = Router();
@@ -115,7 +116,14 @@ function cleanMood(v: unknown): string | null {
 /* journal.review (desk) → every junior; journal.review (assigned) or  */
 /* an academy mentor (trader included) → only their juniors.           */
 /* ------------------------------------------------------------------ */
-type ReviewCtx = { me: string; scope: ReviewScope; staff: boolean };
+type ReviewCtx = {
+  me: string;
+  scope: ReviewScope;
+  staff: boolean;
+  guest: boolean;
+  /** journal.read.team readable traders: null = whole desk, string[] = only these (lib/juniorReview canReadJuniorNotes). */
+  teamScope: string[] | null;
+};
 
 declare global {
   namespace Express {
@@ -155,8 +163,9 @@ async function reviewCtx(req: import("express").Request): Promise<ReviewCtx | nu
   if (req.juniorReview !== undefined) return req.juniorReview;
   const actor = await resolveActor(req);
   if (!actor) return (req.juniorReview = null);
-  if (actor.guest) return (req.juniorReview = { me: actor.name, scope: { kind: "none" }, staff: false });
-  const cell = (await getEffectiveMatrix())[actor.role]?.["journal.review"];
+  if (actor.guest) return (req.juniorReview = { me: actor.name, scope: { kind: "none" }, staff: false, guest: true, teamScope: [] });
+  const matrix = await getEffectiveMatrix();
+  const cell = matrix[actor.role]?.["journal.review"];
   const [mentees, curated] = await Promise.all([
     menteesOf(actor.name),
     pool.query<{ name: string }>(
@@ -173,7 +182,31 @@ async function reviewCtx(req: import("express").Request): Promise<ReviewCtx | nu
     mentees,
     curated,
   });
-  return (req.juniorReview = { me: actor.name, scope, staff: actor.role === "curator" || actor.role === "admin" });
+  return (req.juniorReview = {
+    me: actor.name,
+    scope,
+    staff: actor.role === "curator" || actor.role === "admin",
+    guest: false,
+    teamScope: readableTraders(matrix, actor, "journal.read.team"),
+  });
+}
+
+const viewerOf = (ctx: ReviewCtx): JuniorNotesViewer => ({ me: ctx.me, guest: ctx.guest, teamScope: ctx.teamScope });
+
+/**
+ * Sends 401/403 and returns false unless the caller may read `trader`'s summaries (incl. curator feedback and
+ * score): the junior themself, their reviewer (curator / mentor), or journal.read.team covering them.
+ */
+async function requireNotesReader(
+  req: import("express").Request, res: import("express").Response, trader: string,
+): Promise<boolean> {
+  const ctx = await reviewCtx(req);
+  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return false; }
+  if (!canReadJuniorNotes(viewerOf(ctx), ctx.scope, trader)) {
+    res.status(403).json({ error: "Сводки трейдера видят он сам, его куратор или наставник", code: "FORBIDDEN" });
+    return false;
+  }
+  return true;
 }
 
 /** Sends 401/403 and returns null unless the caller reviews someone. */
@@ -217,10 +250,16 @@ router.get("/junior-notes/team", requireAuth, asyncHandler(async (req, res): Pro
   await ensureSchema();
   const date = (req.query["date"] as string | undefined) || todayNy();
   if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  const ctx = await reviewCtx(req);
+  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  // Desk reviewers / desk-wide journal.read.team: every junior; mentors & assigned curators: their juniors + own;
+  // everyone else: only their own summary. Guests: nothing.
+  const filter = juniorTeamFilter(viewerOf(ctx), ctx.scope);
+  if (filter && filter.length === 0) { res.json([]); return; }
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
-     FROM junior_notes WHERE note_date = $1 ORDER BY trader ASC`,
-    [date],
+     FROM junior_notes WHERE note_date = $1 AND ($2::text[] IS NULL OR trader = ANY($2::text[])) ORDER BY trader ASC`,
+    [date, filter],
   );
   res.json(rows);
 }));
@@ -378,7 +417,7 @@ router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, re
   );
   const note = noteRows[0];
   if (!note) { res.status(404).json({ error: "Not found" }); return; }
-  if (note.trader !== ctx.me && !canReviewTrader(ctx.scope, note.trader, ctx.me)) {
+  if (ctx.guest || (note.trader !== ctx.me && !canReviewTrader(ctx.scope, note.trader, ctx.me))) {
     res.status(403).json({ error: "Контекст сводки доступен куратору или наставнику этого трейдера", code: "FORBIDDEN" });
     return;
   }
@@ -453,6 +492,7 @@ router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): 
   const limit = parseLimit(req.query["limit"], 30, 400);
   const q = typeof req.query["q"] === "string" ? req.query["q"].trim().slice(0, 100) : "";
   if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!(await requireNotesReader(req, res, trader))) return;
   const params: unknown[] = [trader, limit];
   let where = `trader = $1`;
   if (q) {
@@ -491,6 +531,7 @@ router.get("/junior-notes", requireAuth, asyncHandler(async (req, res): Promise<
   const date = (req.query["date"] as string | undefined) || todayNy();
   if (!trader) { res.status(400).json({ error: "trader required" }); return; }
   if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!(await requireNotesReader(req, res, trader))) return;
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM junior_notes WHERE trader = $1 AND note_date = $2 LIMIT 1`,
@@ -655,7 +696,7 @@ router.delete("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> 
   res.json({ ok: true });
 }));
 
-router.post("/junior-notes/improve", asyncHandler(async (req, res): Promise<void> => {
+router.post("/junior-notes/improve", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { text, note_id, note_date } = req.body as { text: string; note_id?: number; note_date?: string };
   if (!text?.trim()) { res.status(400).json({ error: "text required" }); return; }

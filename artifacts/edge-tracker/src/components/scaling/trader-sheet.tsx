@@ -50,7 +50,7 @@ export function TraderSheet({
                 <div className="flex flex-col gap-2">
                   <TierLadder tiers={evaluation.tiers} current={row.tierKey} target={row.recommendation.toTier?.key} compact />
                   <ul className="text-xs text-muted-foreground">
-                    {row.recommendation.reasons.slice(0, 4).map((r, i) => <li key={i}>• {r}</li>)}
+                    {row.recommendation.reasons.map((r, i) => <li key={i}>• {r}</li>)}
                   </ul>
                 </div>
               </SheetDescription>
