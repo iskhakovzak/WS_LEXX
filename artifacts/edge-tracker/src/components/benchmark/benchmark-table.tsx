@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { DataTable, Pill, SortableTh, Sparkline, toneOf, toneText, useTableSort } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { BenchRow } from "./api";
-import { fmtDay, fmtMinutes, fmtNum, fmtPct, fmtR, fmtUsd } from "./format";
+import { fmtMinutes } from "./format";
+import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { PeopleSearchInput } from "@/components/people/people-search-input";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
@@ -119,7 +120,7 @@ export function BenchmarkTable({
                     width={96}
                     height={28}
                     baseline={0}
-                    ariaLabel={`Кривая ${r.trader}: ${usd ? fmtUsd(r.equity.at(-1)?.cum) : fmtR(r.equity.at(-1)?.cum)}`}
+                    ariaLabel={`Кривая ${r.trader}: ${usd ? fmtUsd(r.equity.at(-1)?.cum, { signed: true, decimals: "auto" }) : fmtR(r.equity.at(-1)?.cum)}`}
                   />
                 </td>
                 <td className="text-right">
@@ -127,41 +128,41 @@ export function BenchmarkTable({
                   <div className="text-2xs text-muted-foreground">{r.days} дн</div>
                 </td>
                 <td className="text-right">{fmtNum(r.tradesPerDay, 1)}</td>
-                <td className="text-right" title={`${r.wins} W / ${r.losses} L / ${r.be} BE`}>{fmtPct(r.winRate)}</td>
+                <td className="text-right" title={`${r.wins} W / ${r.losses} L / ${r.be} BE`}>{fmtRate(r.winRate)}</td>
                 <td className="text-right" title={r.profitFactor == null && r.losses === 0 && r.wins > 0 ? "Нет убытков — PF не определён" : undefined}>
                   {r.profitFactor != null ? fmtNum(r.profitFactor) : r.profitFactorR != null ? <span className="text-muted-foreground">{fmtNum(r.profitFactorR)}R</span> : "—"}
                 </td>
                 <td className={cn("text-right font-medium", toneText(toneOf(r.net ?? r.totalR)))}>
-                  {r.net != null ? fmtUsd(r.net) : r.totalR != null ? fmtR(r.totalR) : "—"}
-                  {r.net != null && r.gross != null && <div className="text-2xs font-normal text-muted-foreground">брутто {fmtUsd(r.gross)}</div>}
+                  {r.net != null ? fmtUsd(r.net, { signed: true, decimals: "auto" }) : r.totalR != null ? fmtR(r.totalR) : "—"}
+                  {r.net != null && r.gross != null && <div className="text-2xs font-normal text-muted-foreground">брутто {fmtUsd(r.gross, { signed: true, decimals: "auto" })}</div>}
                 </td>
                 <td className={cn("text-right", toneText(toneOf(r.expectancy ?? r.expectancyR)))}>
-                  {r.expectancy != null ? fmtUsd(r.expectancy) : fmtR(r.expectancyR)}
+                  {r.expectancy != null ? fmtUsd(r.expectancy, { signed: true, decimals: "auto" }) : fmtR(r.expectancyR)}
                 </td>
                 <td className="text-right text-xs">
-                  <span className="text-up">{fmtUsd(r.avgWin)}</span>
+                  <span className="text-up">{fmtUsd(r.avgWin, { signed: true, decimals: "auto" })}</span>
                   <span className="text-muted-foreground"> / </span>
-                  <span className="text-down">{fmtUsd(r.avgLoss)}</span>
+                  <span className="text-down">{fmtUsd(r.avgLoss, { signed: true, decimals: "auto" })}</span>
                 </td>
-                <td className={cn("text-right", (r.feeShare ?? 0) > 0.3 && "text-down")} title={r.fees != null ? `Комиссии ${fmtUsd(r.fees, false)}` : undefined}>
-                  {fmtPct(r.feeShare)}
-                  {r.fees != null && <div className="text-2xs text-muted-foreground">{fmtUsd(r.fees, false)}</div>}
+                <td className={cn("text-right", (r.feeShare ?? 0) > 0.3 && "text-down")} title={r.fees != null ? `Комиссии ${fmtUsd(r.fees, { decimals: "auto" })}` : undefined}>
+                  {fmtRate(r.feeShare)}
+                  {r.fees != null && <div className="text-2xs text-muted-foreground">{fmtUsd(r.fees, { decimals: "auto" })}</div>}
                 </td>
                 <td className="text-right">{fmtNum(r.sharpe)}</td>
                 <td className="text-right">{fmtNum(r.sortino)}</td>
                 <td className="text-right">
-                  {r.maxDd != null ? fmtUsd(r.maxDd, false) : "—"}
+                  {r.maxDd != null ? fmtUsd(r.maxDd, { decimals: "auto" }) : "—"}
                   {r.maxDd != null && r.maxDd > 0 && (
                     <div className={cn("text-2xs", r.ddRecovered ? "text-muted-foreground" : "text-down")}>
                       {r.ddRecovered ? `восст. ${r.recoveryDays} дн` : "не восстановлен"}
                     </div>
                   )}
                 </td>
-                <td className="text-right" title={`${r.greenDays} зелёных / ${r.redDays} красных`}>{fmtPct(r.greenShare)}</td>
+                <td className="text-right" title={`${r.greenDays} зелёных / ${r.redDays} красных`}>{fmtRate(r.greenShare)}</td>
                 <td className="text-right">
                   {r.bestDayShare != null && r.consistencyFlag ? (
-                    <Pill tone={CONS_TONE[r.consistencyFlag]} title={r.bestDay ? `${fmtDay(r.bestDay.day)}: ${fmtUsd(r.bestDay.net)}` : undefined}>
-                      {r.bestDayShare > 9.99 ? ">999%" : fmtPct(r.bestDayShare)}
+                    <Pill tone={CONS_TONE[r.consistencyFlag]} title={r.bestDay ? `${fmtDate(r.bestDay.day, "shortYY")}: ${fmtUsd(r.bestDay.net, { signed: true, decimals: "auto" })}` : undefined}>
+                      {r.bestDayShare > 9.99 ? ">999%" : fmtRate(r.bestDayShare)}
                     </Pill>
                   ) : "—"}
                 </td>
@@ -170,11 +171,11 @@ export function BenchmarkTable({
                 </td>
                 <td className="text-right" title={`Плюсовые ${fmtMinutes(r.avgHoldWinMin)}, минусовые ${fmtMinutes(r.avgHoldLossMin)}`}>{fmtMinutes(r.avgHoldMin)}</td>
                 <td className="text-right">
-                  {r.first15Share != null ? fmtPct(r.first15Share) : "—"}
-                  {r.first15Net != null && <div className={cn("text-2xs", toneText(toneOf(r.first15Net)))}>{fmtUsd(r.first15Net)}</div>}
+                  {r.first15Share != null ? fmtRate(r.first15Share) : "—"}
+                  {r.first15Net != null && <div className={cn("text-2xs", toneText(toneOf(r.first15Net)))}>{fmtUsd(r.first15Net, { signed: true, decimals: "auto" })}</div>}
                 </td>
                 <td className="text-right">
-                  {fmtPct(r.rCoverage)}
+                  {fmtRate(r.rCoverage)}
                   {r.rTrades > 0 && <div className="text-2xs text-muted-foreground">{fmtR(r.totalR)}</div>}
                 </td>
               </tr>

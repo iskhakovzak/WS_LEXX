@@ -1,22 +1,14 @@
-import * as React from "react";
+
 import { Link } from "wouter";
 import { ArrowDownRight, ArrowUpRight, Crosshair, History, LineChart, Lock, Minus, Repeat, TrendingUp } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fmtDayShort, type ContextTrade, type ReviewContext, type ScoreTrend } from "./junior-lib";
+import { fmtDate, fmtNum, fmtR, fmtUsd } from "@/lib/format";
+import { type ContextTrade, type ReviewContext, type ScoreTrend } from "./junior-lib";
 import { ScoreStars } from "./junior-ui";
 
 const H_LABEL: Record<string, string> = { intraday: "интрадей", overnight: "овернайт", swing: "свинг" };
-
-function fmtR(n: number): string {
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
-}
-
-function fmtUsd(n: number): string {
-  const s = Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
-}
 
 /** Last N curator scores as small bars (oldest → newest). Read-only, announced as a list of numbers. */
 export function ScoreTrail({ scores, className }: { scores: ScoreTrend["scores"]; className?: string }) {
@@ -30,7 +22,7 @@ export function ScoreTrail({ scores, className }: { scores: ScoreTrend["scores"]
       {scores.map((s) => (
         <span
           key={s.date}
-          title={`${fmtDayShort(s.date)}: ${s.score}`}
+          title={`${fmtDate(s.date, "dayMonth")}: ${s.score}`}
           className={cn(
             "w-1.5 rounded-sm",
             s.score >= 4 ? "bg-up/80" : s.score === 3 ? "bg-[hsl(var(--chart-3))]/80" : "bg-down/80",
@@ -49,7 +41,7 @@ export function TrendArrow({ trend }: { trend: Pick<ScoreTrend, "direction" | "d
   return (
     <span
       className={cn("inline-flex items-center text-xs", trend.direction === "up" ? "text-up" : trend.direction === "down" ? "text-down" : "text-muted-foreground")}
-      title={`${label}${trend.delta != null ? ` (${trend.delta > 0 ? "+" : ""}${trend.delta.toFixed(1)})` : ""}`}
+      title={`${label}${trend.delta != null ? ` (${fmtNum(trend.delta, { decimals: 1, signed: true })})` : ""}`}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       <span className="sr-only">{label}</span>
@@ -77,7 +69,7 @@ export function PrevFocusCard({ ctx, isLoading }: { ctx: ReviewContext | undefin
       <div className="mb-1 flex flex-wrap items-center gap-2">
         <Crosshair className="h-4 w-4 text-primary" aria-hidden="true" />
         <h3 className="text-sm font-semibold">Фокус, который ставил на этот день</h3>
-        <span className="text-xs text-muted-foreground">из сводки за {fmtDayShort(p.note_date)}</span>
+        <span className="text-xs text-muted-foreground">из сводки за {fmtDate(p.note_date, "dayMonth")}</span>
       </div>
       {p.focus ? (
         <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{p.focus}</p>
@@ -135,9 +127,9 @@ export function ReviewContextRail({
         </div>
         <div className={cn("grid gap-2", money ? "grid-cols-3" : "grid-cols-2")}>
           <Tile label="Сделок" value={trades.totals.count ? `${trades.totals.count} · ${trades.totals.wins}/${trades.totals.losses}` : "0"} hint="плюс / минус" />
-          <Tile label="Итог, R" value={trades.totals.r == null ? "—" : fmtR(trades.totals.r)} tone={toneText(toneOf(trades.totals.r))} />
+          <Tile label="Итог, R" value={trades.totals.r == null ? "—" : fmtR(trades.totals.r, 1)} tone={toneText(toneOf(trades.totals.r))} />
           {money && (
-            <Tile label="P&L net" value={trades.totals.pnl_net == null ? "—" : fmtUsd(trades.totals.pnl_net)} tone={toneText(toneOf(trades.totals.pnl_net))} />
+            <Tile label="P&L net" value={trades.totals.pnl_net == null ? "—" : fmtUsd(trades.totals.pnl_net, { signed: true, decimals: 0 })} tone={toneText(toneOf(trades.totals.pnl_net))} />
           )}
         </div>
         {trades.opened.length === 0 && trades.carried.length === 0 ? (
@@ -157,8 +149,8 @@ export function ReviewContextRail({
         {trend.scores.length ? (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
             <ScoreTrail scores={trend.scores} />
-            <span>средняя <span className="font-medium tabular-nums text-foreground">{trend.avg?.toFixed(1)}</span></span>
-            {trend.recent != null && <span>последние 3 — <span className="tabular-nums text-foreground">{trend.recent.toFixed(1)}</span></span>}
+            <span>средняя <span className="font-medium tabular-nums text-foreground">{fmtNum(trend.avg, 1)}</span></span>
+            {trend.recent != null && <span>последние 3 — <span className="tabular-nums text-foreground">{fmtNum(trend.recent, 1)}</span></span>}
             <TrendArrow trend={trend} />
             {ctx.streak > 1 && <span>серия {ctx.streak} дн.</span>}
           </div>
@@ -175,7 +167,7 @@ export function ReviewContextRail({
           <ul className="flex flex-wrap gap-1.5">
             {repeated.map((m) => (
               <li key={m.key}>
-                <Pill tone={m.count >= 3 ? "warn" : "neutral"} title={`Последний раз ${fmtDayShort(m.last)}`}>
+                <Pill tone={m.count >= 3 ? "warn" : "neutral"} title={`Последний раз ${fmtDate(m.last, "dayMonth")}`}>
                   {m.label} ×{m.count}
                 </Pill>
               </li>
@@ -194,7 +186,7 @@ export function ReviewContextRail({
             {recent_feedback.map((f) => (
               <li key={f.note_date} className="rounded-lg bg-[var(--glass-bg)] px-3 py-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <span className="tabular-nums">{fmtDayShort(f.note_date)}</span>
+                  <span className="tabular-nums">{fmtDate(f.note_date, "dayMonth")}</span>
                   {f.reviewed_by && <span>· {f.reviewed_by}</span>}
                   <ScoreStars score={f.score} className="ml-auto" />
                 </div>
@@ -224,15 +216,15 @@ function TradeLine({ t, money, carried }: { t: ContextTrade; money: boolean; car
         {t.side && <span className="text-xs text-muted-foreground">{t.side}</span>}
         {t.setup && <span className="hidden truncate text-xs text-muted-foreground sm:inline">{t.setup}</span>}
         {(carried || t.horizon !== "intraday") && (
-          <Pill tone="purple">{carried ? `${H_LABEL[t.horizon] ?? t.horizon} с ${fmtDayShort(t.date)}` : H_LABEL[t.horizon] ?? t.horizon}</Pill>
+          <Pill tone="purple">{carried ? `${H_LABEL[t.horizon] ?? t.horizon} с ${fmtDate(t.date, "dayMonth")}` : H_LABEL[t.horizon] ?? t.horizon}</Pill>
         )}
         <span className="ml-auto flex items-center gap-2 tabular-nums">
           {t.r != null ? (
-            <span className={toneText(toneOf(t.r))}>{fmtR(t.r)}</span>
+            <span className={toneText(toneOf(t.r))}>{fmtR(t.r, 1)}</span>
           ) : (
             <span className="text-xs text-muted-foreground">{t.result === "open" ? "открыта" : "—"}</span>
           )}
-          {money && t.pnl_net != null && <span className={cn("text-xs", toneText(toneOf(t.pnl_net)))}>{fmtUsd(t.pnl_net)}</span>}
+          {money && t.pnl_net != null && <span className={cn("text-xs", toneText(toneOf(t.pnl_net)))}>{fmtUsd(t.pnl_net, { signed: true, decimals: 0 })}</span>}
         </span>
     </>
   );

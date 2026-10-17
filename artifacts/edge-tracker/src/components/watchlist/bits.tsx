@@ -9,9 +9,10 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { sessionOf } from "@/components/chart-engine/lib/time";
 import { nyDate } from "@/lib/trading-date";
-import { fmtMoney, fmtPct, fmtPrice, type EarningsHit, type KeyLevel, type NewsDigest, type WatchlistItem } from "./lib";
+import { type EarningsHit, type KeyLevel, type NewsDigest, type WatchlistItem } from "./lib";
 import { QUOTE_INTERVALS, type DayLevelSet, type UpcomingEarnings } from "./use-market";
 import type { TickerHistory } from "./use-history";
+import { fmtDate, fmtNum, fmtPct, fmtPrice, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 
 /* ── Inline note ─────────────────────────────────────────────────────────── */
 
@@ -159,7 +160,7 @@ export function QuoteStatus({
   return (
     <div className="glass-field inline-flex h-9 items-center gap-1 pl-3 pr-1 text-xs" role="status" aria-live="polite">
       <span className={cn("h-2 w-2 shrink-0 rounded-full", dot, state === "live" && "animate-pulse motion-reduce:animate-none")} aria-hidden="true" />
-      <span className={cn("ml-1 tabular-nums", stale ? "text-foreground" : "text-muted-foreground")} title={updatedAt ? new Date(updatedAt).toLocaleTimeString("ru-RU") : undefined}>
+      <span className={cn("ml-1 tabular-nums", stale ? "text-foreground" : "text-muted-foreground")} title={updatedAt ? fmtDate(updatedAt, "timeSeconds") : undefined}>
         {text}
       </span>
       <span className="hidden text-muted-foreground lg:inline" aria-hidden="true">·</span>
@@ -203,7 +204,7 @@ export function QuoteStatus({
 
 /* ── My history on the ticker ────────────────────────────────────────────── */
 
-const wrText = (wr: number | null) => (wr == null ? "—" : `${Math.round(wr * 100)}%`);
+const wrText = (wr: number | null) => fmtRate(wr);
 
 /** «−$300 · 33% · 6» — net coloured as money; a warning icon when the trader keeps losing on the name. */
 export function HistoryCell({ history, me, compact = true }: { history?: TickerHistory; me: string | null; compact?: boolean }) {
@@ -216,31 +217,25 @@ export function HistoryCell({ history, me, compact = true }: { history?: TickerH
       <TooltipTrigger asChild>
         <span className="inline-flex items-center gap-1.5 whitespace-nowrap text-xs tabular-nums" tabIndex={0}>
           {losing && <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-down" aria-label="Ты в минусе на этом тикере" />}
-          <span className={cn("font-medium", toneText(h.net > 0 ? "up" : h.net < 0 ? "down" : "neutral"))}>{fmtMoney(h.net)}</span>
+          <span className={cn("font-medium", toneText(h.net > 0 ? "up" : h.net < 0 ? "down" : "neutral"))}>{fmtUsd(h.net, { signed: true, decimals: 0 })}</span>
           <span className="text-muted-foreground">{compact ? "·" : "· WR"} {wrText(h.wr)} · {h.n}</span>
         </span>
       </TooltipTrigger>
       <TooltipContent side="top" className="max-w-xs text-xs">
         <p className="font-medium">
-          {losing ? `На этом тикере ты в минусе ${fmtMoney(h.net)}` : h.net > 0 ? `На этом тикере ты в плюсе ${fmtMoney(h.net)}` : "На этом тикере в ноль"}
+          {losing ? `На этом тикере ты в минусе ${fmtUsd(h.net, { signed: true, decimals: 0 })}` : h.net > 0 ? `На этом тикере ты в плюсе ${fmtUsd(h.net, { signed: true, decimals: 0 })}` : "На этом тикере в ноль"}
         </p>
         <p className="mt-0.5 text-muted-foreground">
-          {h.n} сд. · {h.wins} W / {h.losses} L · WR {wrText(h.wr)}{h.avg != null ? ` · средняя ${fmtMoney(h.avg)}` : ""}
-          {h.lastDate ? ` · последняя ${fmtDay(h.lastDate)}` : ""}
+          {h.n} сд. · {h.wins} W / {h.losses} L · WR {wrText(h.wr)}{h.avg != null ? ` · средняя ${fmtUsd(h.avg, { signed: true, decimals: 0 })}` : ""}
+          {h.lastDate ? ` · последняя ${fmtDate(h.lastDate.slice(0, 10), "dayMonthNumeric")}` : ""}
         </p>
       </TooltipContent>
     </Tooltip>
   );
 }
 
-export function fmtDay(iso: string): string {
-  const d = new Date(`${iso.slice(0, 10)}T12:00:00Z`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", timeZone: "UTC" });
-}
 
 /* ── Event marks next to the ticker ──────────────────────────────────────── */
-
-const WEEKDAY = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
 export function EventMarks({
   item, earnings, upcoming, news, today,
@@ -249,15 +244,15 @@ export function EventMarks({
   if (earnings) {
     marks.push(
       <span key="e" className="inline-flex h-5 items-center gap-0.5 rounded-full bg-purple/15 px-1.5 text-xs font-medium text-purple"
-        title={earnings.when === "today" ? `Отчёт сегодня ${earnings.callType}` : `Отчёт вчера после закрытия${earnings.epsSurprisePct != null ? ` · EPS ${fmtPct(earnings.epsSurprisePct)}` : ""}`}>
+        title={earnings.when === "today" ? `Отчёт сегодня ${earnings.callType}` : `Отчёт вчера после закрытия${earnings.epsSurprisePct != null ? ` · EPS ${fmtPct(earnings.epsSurprisePct, 1)}` : ""}`}>
         <CalendarClock className="h-3 w-3" aria-hidden="true" />{earnings.when === "today" ? earnings.callType : "AMC"}
       </span>,
     );
   } else if (upcoming && upcoming.date >= today) {
-    const wd = WEEKDAY[new Date(`${upcoming.date}T12:00:00Z`).getUTCDay()];
+    const wd = fmtWeekday(upcoming.date.slice(0, 10), "short");
     marks.push(
       <span key="u" className="inline-flex h-5 items-center gap-0.5 rounded-full border border-purple/40 px-1.5 text-xs text-purple"
-        title={`Отчёт ${fmtDay(upcoming.date)} ${upcoming.callType}`}>
+        title={`Отчёт ${fmtDate(upcoming.date.slice(0, 10), "dayMonthNumeric")} ${upcoming.callType}`}>
         <CalendarClock className="h-3 w-3" aria-hidden="true" />{upcoming.date === today ? upcoming.callType : wd}
       </span>,
     );
@@ -312,7 +307,7 @@ export function LevelCell({ price, levels, keys, loading }: { price: number | nu
         <span className="text-muted-foreground">{fmtPrice(near.price)}</span>
         <span className={cn("truncate", close ? "text-primary" : "text-muted-foreground")}>
           {near.distPct >= 0 ? "↑" : "↓"}
-          {near.distAtr != null ? `${near.distAtr.toFixed(1)} ATR` : `${Math.abs(near.distPct).toFixed(1)}%`}
+          {near.distAtr != null ? `${fmtNum(near.distAtr, 1)} ATR` : fmtPct(Math.abs(near.distPct), { decimals: 1, signed: false })}
         </span>
       </div>
       {pos != null && (

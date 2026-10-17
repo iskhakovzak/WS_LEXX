@@ -8,8 +8,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { apiJson } from "./api";
-import { RULE_PREFIX, VIOLATION_ARCHIVE, VIOLATION_RESOLUTION, VIOLATION_STATUS, fmtR, fmtUsd, severityMeta } from "./constants";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { RULE_PREFIX, VIOLATION_ARCHIVE, VIOLATION_RESOLUTION, VIOLATION_STATUS, severityMeta } from "./constants";
+import { fmtDate, fmtDateCustom, fmtR, fmtUsd } from "@/lib/format";
 import { countedViolations, violationDay, withArchive } from "./discipline";
 import type { MistakePrefill, Severity, Violation, ViolationStatus } from "./types";
 
@@ -105,12 +107,12 @@ export function ViolationsList({
   async function patch(v: Violation, body: Record<string, unknown>, okTitle: string) {
     setBusyId(v.id);
     try {
-      await apiJson(`/rule-violations/${v.id}`, { method: "PATCH", json: body }, "Не удалось обновить нарушение");
+      await http.patch(`/api/rule-violations/${v.id}`, body);
       toast({ title: okTitle, description: v.ruleName ?? v.message });
       setActiveId(null);
       onChanged();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить нарушение"), variant: "destructive" });
     } finally {
       setBusyId(null);
     }
@@ -196,11 +198,11 @@ export function ViolationsList({
                 onClick={() => navigate(links.dayReport(date, trader))}
               >
                 <CalendarDays className="size-3" aria-hidden="true" />
-                {new Date(`${date}T12:00:00`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long" })}
+                {fmtDateCustom(date, { weekday: "short", day: "numeric", month: "long" })}
               </button>
               <span className="normal-case tracking-normal">· {list.length}</span>
               {hasCost && dayCost !== 0 && (
-                <span className={cn("normal-case tracking-normal tabular-nums", dayCost < 0 ? "text-down" : "text-up")}>· {fmtUsd(dayCost)} нетто</span>
+                <span className={cn("normal-case tracking-normal tabular-nums", dayCost < 0 ? "text-down" : "text-up")}>· {fmtUsd(dayCost, { signed: true, decimals: "trim" })} нетто</span>
               )}
             </h3>
             <ul className="flex flex-col gap-2">
@@ -232,9 +234,9 @@ export function ViolationsList({
                         >
                           {v.ticker ?? `#${v.tradeId}`}
                           {v.tradeNetPnl != null ? (
-                            <span className={v.tradeNetPnl < 0 ? "text-down" : v.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(v.tradeNetPnl)}</span>
+                            <span className={v.tradeNetPnl < 0 ? "text-down" : v.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(v.tradeNetPnl, { signed: true, decimals: "trim" })}</span>
                           ) : v.tradeR != null ? (
-                            <span className={v.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(v.tradeR)}</span>
+                            <span className={v.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(v.tradeR, 1)}</span>
                           ) : null}
                         </button>
                       )}
@@ -251,7 +253,7 @@ export function ViolationsList({
                       )}
                       {v.costNet != null && v.costNet !== 0 && (
                         <span className={cn("text-xs font-semibold tabular-nums", v.costNet < 0 ? "text-down" : "text-up")} title="Цена нарушения, нетто">
-                          {fmtUsd(v.costNet)} нетто
+                          {fmtUsd(v.costNet, { signed: true, decimals: "trim" })} нетто
                         </span>
                       )}
                       <div className="ml-auto flex items-center gap-1">
@@ -283,11 +285,11 @@ export function ViolationsList({
                     {(v.comment || v.consequence || v.acknowledgedAt || v.resolvedAt) && !active && (
                       <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                         {v.acknowledgedAt && (
-                          <span>Принято {v.acknowledgedBy ? `· ${v.acknowledgedBy}` : ""} · {fmtWhen(v.acknowledgedAt)}</span>
+                          <span>Принято {v.acknowledgedBy ? `· ${v.acknowledgedBy}` : ""} · {fmtDate(v.acknowledgedAt, "dateTime", { timeZone: "America/New_York" })}</span>
                         )}
                         {v.comment && <p className="break-words text-foreground">«{v.comment}»</p>}
                         {v.resolvedAt && (
-                          <span>{res?.label ?? "Решено"} {v.resolvedBy ? `· ${v.resolvedBy}` : ""} · {fmtWhen(v.resolvedAt)}</span>
+                          <span>{res?.label ?? "Решено"} {v.resolvedBy ? `· ${v.resolvedBy}` : ""} · {fmtDate(v.resolvedAt, "dateTime", { timeZone: "America/New_York" })}</span>
                         )}
                         {v.consequence && <p className="break-words"><span className="font-medium text-foreground">Последствие:</span> {v.consequence}</p>}
                       </div>
@@ -368,10 +370,4 @@ export function ViolationsList({
       })}
     </div>
   );
-}
-
-function fmtWhen(iso: string): string {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return iso;
-  return d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" });
 }

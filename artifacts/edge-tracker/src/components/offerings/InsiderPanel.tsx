@@ -4,7 +4,8 @@ import { cn } from "@/lib/utils";
 import { EmptyState, Panel, Pill, Segmented, toneOf } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useInsiders } from "./use-offerings-data";
-import { fmtDay, fmtSignedUsd, fmtUsd, type InsiderSummary } from "./types";
+import { fmtDay, type InsiderSummary } from "./types";
+import { fmtUsd } from "@/lib/format";
 
 type Scope = "day" | "mine";
 
@@ -13,7 +14,7 @@ export function BuySellBar({ s }: { s: InsiderSummary }) {
   const total = s.buys.usd + s.sells.usd;
   const buyPct = total > 0 ? (s.buys.usd / total) * 100 : 0;
   return (
-    <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" role="img" aria-label={`Покупки ${fmtUsd(s.buys.usd)}, продажи ${fmtUsd(s.sells.usd)}`}>
+    <div className="flex h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" role="img" aria-label={`Покупки ${fmtUsd(s.buys.usd, { compact: true })}, продажи ${fmtUsd(s.sells.usd, { compact: true })}`}>
       {total > 0 && <div className="h-full bg-up" style={{ width: `${buyPct}%` }} />}
       {total > 0 && <div className="h-full bg-down" style={{ width: `${100 - buyPct}%` }} />}
     </div>
@@ -33,13 +34,13 @@ function InsiderRow({ s, onOpen }: { s: InsiderSummary; onOpen: (t: string) => v
           <span className="text-sm font-semibold text-foreground">{s.ticker}</span>
           {s.buys.count > 0 && s.buyers >= 2 && <Pill tone="up" className="text-2xs">кластер покупок</Pill>}
           <span className={cn("ml-auto text-sm font-medium tabular-nums", quiet ? "text-muted-foreground" : s.netUsd >= 0 ? "text-up" : "text-down")}>
-            {quiet ? "тихо" : fmtSignedUsd(s.netUsd)}
+            {quiet ? "тихо" : fmtUsd(s.netUsd, { signed: true, compact: true })}
           </span>
         </div>
         {!quiet && <BuySellBar s={s} />}
         <div className="flex flex-wrap gap-x-3 text-xs tabular-nums text-muted-foreground">
-          <span className="text-up">↑ {s.buys.count} · {fmtUsd(s.buys.usd)}</span>
-          <span className="text-down">↓ {s.sells.count} · {fmtUsd(s.sells.usd)}</span>
+          <span className="text-up">↑ {s.buys.count} · {fmtUsd(s.buys.usd, { compact: true })}</span>
+          <span className="text-down">↓ {s.sells.count} · {fmtUsd(s.sells.usd, { compact: true })}</span>
           {s.planSellPct != null && s.sells.count > 0 && <span>10b5-1: {s.planSellPct}%</span>}
           {s.lastBuyDate && <span>посл. покупка {fmtDay(s.lastBuyDate)}</span>}
         </div>
@@ -109,7 +110,7 @@ export function InsiderPanel({
           <div className="mb-2 flex items-baseline justify-between px-2">
             <span className="text-xs text-muted-foreground">Нетто по {items.length} тикерам</span>
             <span className={cn("text-lg font-semibold tabular-nums", toneOf(netAll) === "up" ? "text-up" : toneOf(netAll) === "down" ? "text-down" : "text-foreground")}>
-              {fmtSignedUsd(netAll)}
+              {fmtUsd(netAll, { signed: true, compact: true })}
             </span>
           </div>
           <ul className="grid gap-0.5 md:grid-cols-2 xl:grid-cols-3">

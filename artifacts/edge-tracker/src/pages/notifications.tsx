@@ -3,7 +3,7 @@
  * navigation (↑/↓ or J/K, Enter, R, E, X, Esc) and the preferences panel.
  * Reads ?tab=inbox|archive|prefs, ?unread=1, ?type=a,b, ?severity=warn,critical from the URL.
  */
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Archive, Bell, CheckCheck, Inbox, Loader2, RefreshCw, Settings2, SquareCheckBig, SquareDashed, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { EmptyState, FilterChip, Kbd, Page, PageHeader, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
@@ -17,8 +17,8 @@ import {
   type ListFilters, type Notification, type NotificationGroup, type Severity,
 } from "@/components/notifications/model";
 import { useMe, useNotificationActions, useNotificationList, useOpenNotification, useUnreadCount } from "@/components/notifications/use-notifications";
-import { pluralRu } from "@/components/rules/constants";
 import { UndoToast } from "@/components/undo-toast";
+import { pluralRu } from "@/lib/format";
 
 type Tab = "inbox" | "archive" | "prefs";
 const ALL = "__all__";

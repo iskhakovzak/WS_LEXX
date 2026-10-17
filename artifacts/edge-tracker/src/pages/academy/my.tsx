@@ -16,8 +16,9 @@ import {
 } from "@/components/academy/cohorts/api";
 import {
   AttendancePill, AttendanceSummaryView, DualTime, GoalCard, LOCAL_TZ, SAME_TZ, StagePill, StatusPill, UserSelect, WhereLine,
-  dateTimeLocal, dayIn, fmtYmd, pct, relMinutes, useNow,
+  dateTimeLocal, dayIn, fmtYmd, relMinutes, useNow,
 } from "@/components/academy/cohorts/shared";
+import { fmtRate } from "@/lib/format";
 import { usePrograms } from "@/components/academy/content/api";
 import { PctBar } from "@/components/academy/content/bits";
 import { academyLinks } from "@/components/academy/content/links";
@@ -96,9 +97,9 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
         <StatCard label="Ближайшее занятие" icon={CalendarClock}
           value={next ? relMinutes(new Date(next.startUtc).getTime(), now) : "—"}
           hint={next ? `${next.title} · ${dayIn(next.startUtc, LOCAL_TZ)}` : "в ближайшие 2 недели занятий нет"} />
-        <StatCard label="Посещаемость, 30 дн." icon={UserCheck} value={pct(att30)}
+        <StatCard label="Посещаемость, 30 дн." icon={UserCheck} value={fmtRate(att30)}
           tone={att30 == null ? "neutral" : att30 >= 0.9 ? "up" : att30 >= 0.75 ? "warn" : "down"}
-          hint={`всего: ${pct(d.attendance?.total.rate ?? null)}`} />
+          hint={`всего: ${fmtRate(d.attendance?.total.rate ?? null)}`} />
         <StatCard label="Цели ИПР" icon={Target} value={`${d.goals.filter((g) => g.status === "achieved").length} / ${d.goals.filter((g) => g.status !== "cancelled").length}`}
           hint={activeGoals.length ? `в работе: ${activeGoals.length}` : "активных целей нет"} />
         <StatCard label="Договорённости" icon={ListChecks} value={openActions.length} tone={overdue ? "down" : "neutral"}

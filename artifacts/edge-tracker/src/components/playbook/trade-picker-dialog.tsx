@@ -12,16 +12,16 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, FilterChip, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest, useTradePicker } from "./api";
-import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, type PickerTrade, type PlaybookEntry, type Tier } from "./model";
+import { invalidateExamples, invalidateTradeLinks, notLiveMessage, useTradePicker } from "./api";
+import { http } from "@/lib/api/http";
+import { TIERS, moneyTone, type PickerTrade, type PlaybookEntry, type Tier } from "./model";
 import { REDACTED_HINT, RedactedHint } from "./setup-bits";
-import { pluralRu } from "@/components/rules/constants";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtDate, fmtR, fmtUsd, pluralRu } from "@/lib/format";
 
 type Period = "30" | "90" | "365" | "all";
 type PickKey = "ticker" | "date" | "trader" | "auto" | "setup" | "net";
@@ -100,10 +100,7 @@ export function TradePickerDialog({
     if (!selected.size || saving) return;
     setSaving(true);
     try {
-      const r = await pbRequest<{ examples: unknown[]; skipped: unknown[]; linked: number }>(`/api/playbook/${entry.id}/examples`, {
-        method: "POST",
-        json: { tradeIds: [...selected], tier, note: note.trim() || null },
-      });
+      const r = await http.post<{ examples: unknown[]; skipped: unknown[]; linked: number }>(`/api/playbook/${entry.id}/examples`, { tradeIds: [...selected], tier, note: note.trim() || null });
       invalidateExamples(qc, entry.id);
       if (r.linked) invalidateTradeLinks(qc);
       const n = r.examples?.length ?? selected.size;
@@ -209,7 +206,7 @@ export function TradePickerDialog({
                     >
                       <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
                         <Checkbox
-                          aria-label={`${t.ticker} ${ddmm(t.closeDate ?? t.date)}`}
+                          aria-label={`${t.ticker} ${fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}`}
                           checked={on || t.inSetup}
                           disabled={t.inSetup}
                           onCheckedChange={() => toggle(t, false)}
@@ -219,7 +216,7 @@ export function TradePickerDialog({
                         {t.ticker}
                         {t.side && <span className={cn("ml-1.5 text-xs font-normal", t.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{t.side.toLowerCase().startsWith("s") ? "S" : "L"}</span>}
                       </td>
-                      <td className="px-2 py-2 tabular-nums text-muted-foreground">{ddmm(t.closeDate ?? t.date)}</td>
+                      <td className="px-2 py-2 tabular-nums text-muted-foreground">{fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}</td>
                       {isCurator && <td className="px-2 py-2 text-muted-foreground">{t.trader ?? "—"}</td>}
                       <td className="px-2 py-2">
                         {t.autoSetup ? (
@@ -236,7 +233,7 @@ export function TradePickerDialog({
                       {t.redacted ? (
                         <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.signedR)))} title={REDACTED_HINT}>{fmtR(t.signedR)}</td>
                       ) : (
-                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.netPnl)))}>{fmtUsd(t.netPnl)}</td>
+                        <td className={cn("px-3 py-2 text-right font-medium tabular-nums", toneText(moneyTone(t.netPnl)))}>{fmtUsd(t.netPnl, { signed: true, decimals: 0 })}</td>
                       )}
                     </tr>
                   );

@@ -4,6 +4,8 @@
 // Covered by catalyst-math.test.ts (synthetic books).
 import { isOpen, netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
 import { addDays } from "@/lib/trading-date";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ───────────── Inputs ───────────── */
 
@@ -368,34 +370,17 @@ export function pooledEarnings(edges: EarningsEdge[]) {
 
 /* ───────────── Copy ───────────── */
 
-export function fmtUsd(n: number | null | undefined, digits = 2): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
-}
-
-export function fmtSignedPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-export function daysWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  const w = m10 === 1 && m100 !== 11 ? "день" : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? "дня" : "дней";
-  return `${n} ${w}`;
-}
-
 /**
  * One-line takeaway for a category row: what the numbers say and what to do about it.
  * Deliberately cautious with thin samples.
  */
 export function takeaway(row: CategoryEdge, _base: DayAgg): string {
   const a = row.agg;
-  if (a.days === 0) return row.calendarDays ? `В такие дни вы не торговали (${daysWord(row.calendarDays)} в календаре).` : "В вашем периоде таких дней не было.";
-  if (row.verdict === "low") return `Всего ${daysWord(a.days)} — пока наблюдение, не правило.`;
+  if (a.days === 0) return row.calendarDays ? `В такие дни вы не торговали (${commonI18n.t("units.days", { count: row.calendarDays })} в календаре).` : "В вашем периоде таких дней не было.";
+  if (row.verdict === "low") return `Всего ${commonI18n.t("units.days", { count: a.days })} — пока наблюдение, не правило.`;
   if (row.verdict === "noise") return "Не отличается от случайного разброса — отдельное правило не нужно.";
   const d = row.delta ?? 0;
   return d < 0
-    ? `Хуже обычного на ${fmtUsd(Math.abs(d), 0).slice(1)}/день — уменьшите размер или ждите выхода цифр.`
-    : `Лучше обычного на ${fmtUsd(d, 0).slice(1)}/день — ваш день: план и лимиты как обычно.`;
+    ? `Хуже обычного на ${fmtUsd(Math.abs(d), { decimals: 0 })}/день — уменьшите размер или ждите выхода цифр.`
+    : `Лучше обычного на ${fmtUsd(d, { decimals: 0 })}/день — ваш день: план и лимиты как обычно.`;
 }

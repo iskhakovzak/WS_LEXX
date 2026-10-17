@@ -6,11 +6,9 @@ import {
 import { TrendingUp, TrendingDown, LineChart as LineIcon, BarChart3, ArrowRight, Clock, CandlestickChart } from "lucide-react";
 import { EquityChart, buildDayCandles, soleTrader } from "@/components/equity-chart";
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
-import {
-  type Unit, type DimensionKey, computeStats, equitySeries, maxDrawdown, rHistogram, streaks, realizedR, median,
-  edgeLeaders, breakdown, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal, sdealDat, pluralRu, reliability, DIMENSIONS,
-  CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
-} from "./metrics";
+import { type Unit, type DimensionKey, computeStats, equitySeries, maxDrawdown, rHistogram, streaks, realizedR, median, edgeLeaders, breakdown, reliability, DIMENSIONS, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtCount, fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd, pluralRu } from "@/lib/format";
 
 export function OverviewTab({
   trades,
@@ -34,7 +32,7 @@ export function OverviewTab({
   const leaders = useMemo(() => edgeLeaders(trades, s.rN >= Math.max(3, s.n * 0.5)), [trades, s]);
 
   const isR = unit === "r";
-  const fmt = (v: number | null | undefined) => (isR ? fmtR(v) : fmtUsd(v));
+  const fmt = (v: number | null | undefined) => (isR ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const expectancy = isR ? s.avgR : s.avgPnl;
   const total = isR ? (s.rN ? s.totalR : null) : (s.pnlN ? s.totalPnl : null);
   const pf = isR ? s.pfR : s.pfPnl;
@@ -45,7 +43,7 @@ export function OverviewTab({
     if (cur == null || prev == null || !p) return {};
     const d = kind === "pp" ? Math.round((cur - prev) * 100) : cur - prev;
     if (kind !== "count" && Math.abs(d) < (kind === "pp" ? 1 : 0.01)) return { delta: "без изменений", deltaTone: "neutral" as Tone };
-    const text = kind === "pp" ? `${fmtSigned(d, 0)} п.п.` : kind === "count" ? fmtSigned(d, 0) : isR ? fmtR(d) : fmtUsd(d);
+    const text = kind === "pp" ? `${fmtNum(d, { decimals: 0, signed: true })} п.п.` : kind === "count" ? fmtNum(d, { decimals: 0, signed: true }) : isR ? fmtR(d) : fmtUsd(d, { signed: true, decimals: "auto" });
     return { delta: text, deltaTone: (kind === "count" ? "neutral" : toneOf(d)) as Tone };
   };
 
@@ -71,9 +69,9 @@ export function OverviewTab({
         />
         <StatCard
           label="Win rate"
-          value={s.decided ? fmtPct(s.winRate) : "—"}
+          value={s.decided ? fmtRate(s.winRate) : "—"}
           tone={s.decided ? (s.winRate >= 0.5 ? "up" : "down") : "neutral"}
-          hint={s.decided ? `95% ДИ ${fmtPct(s.wrLow)}–${fmtPct(s.wrHigh)} · W/(W+L), б/у не считаем` : "нет закрытых сделок"}
+          hint={s.decided ? `95% ДИ ${fmtRate(s.wrLow)}–${fmtRate(s.wrHigh)} · W/(W+L), б/у не считаем` : "нет закрытых сделок"}
           {...delta(s.decided ? s.winRate : null, p?.decided ? p.winRate : null, "pp")}
         />
         <StatCard
@@ -85,7 +83,7 @@ export function OverviewTab({
         />
         <StatCard
           label="Profit factor"
-          value={unit ? fmtPf(pf) : "—"}
+          value={unit ? fmtRatio(pf) : "—"}
           tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
           hint={pf != null ? (pf >= 1.5 ? "сильный" : pf >= 1 ? "в плюс" : "в минус") : unit ? "нет убыточных — PF не определён" : undefined}
         />
@@ -93,9 +91,9 @@ export function OverviewTab({
           label="Средний плюс / минус"
           value={
             <span>
-              <span className="text-up">{avgWin != null ? (isR ? fmtSigned(avgWin, 1) : fmtUsd(avgWin)) : "—"}</span>
+              <span className="text-up">{avgWin != null ? (isR ? fmtNum(avgWin, { decimals: 1, signed: true }) : fmtUsd(avgWin, { signed: true, decimals: "auto" })) : "—"}</span>
               <span className="text-muted-foreground"> / </span>
-              <span className="text-down">{avgLoss != null ? (isR ? fmtSigned(avgLoss, 1) : fmtUsd(avgLoss)) : "—"}</span>
+              <span className="text-down">{avgLoss != null ? (isR ? fmtNum(avgLoss, { decimals: 1, signed: true }) : fmtUsd(avgLoss, { signed: true, decimals: "auto" })) : "—"}</span>
             </span>
           }
           hint={payoffUnit != null ? `${isR ? "в R" : "нетто, $"} · payoff ${payoffUnit.toFixed(2)}` : isR ? "в R" : "нетто, $"}
@@ -104,7 +102,7 @@ export function OverviewTab({
           label={isR ? "Итог, R" : "Итог нетто, $"}
           value={unit ? fmt(total) : "—"}
           tone={toneOf(total)}
-          hint={unit ? `по ${sdealDat(isR ? s.rN : s.pnlN)}` : undefined}
+          hint={unit ? `по ${fmtCount(isR ? s.rN : s.pnlN)} ${pluralRu(isR ? s.rN : s.pnlN, "сделке", "сделкам", "сделкам")}` : undefined}
         />
         <StatCard
           label="Макс. просадка"
@@ -135,8 +133,8 @@ export function OverviewTab({
             <EquityChart days={equityDays} unit={isR ? "r" : "net"} trader={soleTrader(trades)} storageKey="analytics.equity" height={440} />
             {showGross && (
               <p className="px-1 text-xs text-muted-foreground tabular-nums">
-                до комиссий {fmtUsd(s.grossPnl)} · комиссии <span className="text-down">−${s.totalFees.toFixed(s.totalFees >= 100 ? 0 : 2)}</span>
-                {s.grossPnl > 0 && ` (${Math.round((s.totalFees / s.grossPnl) * 100)}% валовой прибыли)`} · нетто {fmtUsd(s.totalPnl)}
+                до комиссий {fmtUsd(s.grossPnl, { signed: true, decimals: "auto" })} · комиссии <span className="text-down">{fmtUsd(-Math.abs(s.totalFees), { decimals: Math.abs(s.totalFees) >= 100 ? 0 : 2 })}</span>
+                {s.grossPnl > 0 && ` (${fmtRate(s.totalFees / s.grossPnl)} валовой прибыли)`} · нетто {fmtUsd(s.totalPnl, { signed: true, decimals: "auto" })}
               </p>
             )}
           </div>
@@ -159,7 +157,7 @@ export function OverviewTab({
                     <CartesianGrid strokeDasharray="3 3" stroke={GRID} vertical={false} />
                     <XAxis dataKey="label" {...AXIS} fontSize={10} interval={0} angle={-35} textAnchor="end" height={40} />
                     <YAxis {...AXIS} allowDecimals={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} formatter={(v: number) => [sdeal(v), "Сделок"]} labelFormatter={(l) => `${l}R`} />
+                    <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={CHART_CURSOR} formatter={(v: number) => [commonI18n.t("units.trades", { count: v }), "Сделок"]} labelFormatter={(l) => `${l}R`} />
                     <Bar dataKey="count" radius={[6, 6, 0, 0]} isAnimationActive={false}>
                       {hist.map((b) => <Cell key={b.label} fill={b.tone === "up" ? "hsl(var(--up))" : "hsl(var(--down))"} fillOpacity={0.85} />)}
                     </Bar>
@@ -169,7 +167,7 @@ export function OverviewTab({
               <div className="grid grid-cols-3 gap-2 text-center">
                 <MiniStat label="Среднее" value={fmtR(rMean)} tone={toneOf(rMean)} />
                 <MiniStat label="Медиана" value={fmtR(rMed)} tone={toneOf(rMed)} />
-                <MiniStat label="≥ +2R" value={fmtPct(rValues.length ? bigWins / rValues.length : null)} />
+                <MiniStat label="≥ +2R" value={fmtRate(rValues.length ? bigWins / rValues.length : null)} />
               </div>
             </div>
           ) : (
@@ -196,14 +194,14 @@ export function OverviewTab({
                 <div key={label} className="rounded-xl bg-[var(--glass-bg)] p-3">
                   <div className="flex items-center justify-between gap-2">
                     <span className="text-sm font-medium text-foreground">{label}</span>
-                    <span className="text-xs tabular-nums text-muted-foreground">{r ? sdeal(r.n) : "нет сделок"}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{r ? commonI18n.t("units.trades", { count: r.n }) : "нет сделок"}</span>
                   </div>
                   {r ? (
                     <>
                       <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
                         <div>
                           <div className="text-muted-foreground">Win rate</div>
-                          <div className={`text-sm font-semibold ${r.winRate >= 0.5 ? "text-up" : "text-down"}`}>{fmtPct(r.winRate)}</div>
+                          <div className={`text-sm font-semibold ${r.winRate >= 0.5 ? "text-up" : "text-down"}`}>{fmtRate(r.winRate)}</div>
                         </div>
                         <div>
                           <div className="text-muted-foreground">Ожидание</div>
@@ -211,12 +209,12 @@ export function OverviewTab({
                         </div>
                         <div>
                           <div className="text-muted-foreground">P&L нетто</div>
-                          <div className={`text-sm font-semibold ${toneCls(r.pnlN ? r.totalPnl : null)}`} title={r.totalFees ? `Комиссии −$${r.totalFees.toFixed(2)}` : undefined}>
-                            {r.pnlN ? fmtUsd(r.totalPnl) : "—"}
+                          <div className={`text-sm font-semibold ${toneCls(r.pnlN ? r.totalPnl : null)}`} title={r.totalFees ? `Комиссии ${fmtUsd(-Math.abs(r.totalFees))}` : undefined}>
+                            {r.pnlN ? fmtUsd(r.totalPnl, { signed: true, decimals: "auto" }) : "—"}
                           </div>
                         </div>
                       </div>
-                      <div className="mt-2 text-2xs text-muted-foreground">{rel.label}{r.totalFees ? ` · комиссии −$${r.totalFees.toFixed(r.totalFees >= 100 ? 0 : 2)}` : ""}</div>
+                      <div className="mt-2 text-2xs text-muted-foreground">{rel.label}{r.totalFees ? ` · комиссии ${fmtUsd(-Math.abs(r.totalFees), { decimals: Math.abs(r.totalFees) >= 100 ? 0 : 2 })}` : ""}</div>
                     </>
                   ) : (
                     <p className="mt-2 text-xs text-muted-foreground">Отметьте горизонт при добавлении сделки.</p>
@@ -324,10 +322,10 @@ function LeaderPanel({
                   </div>
                   <div className="text-right">
                     <div className={`text-sm font-semibold tabular-nums ${useR ? (it.score >= 0 ? "text-up" : "text-down") : it.score >= 0.5 ? "text-up" : "text-down"}`}>
-                      {useR ? fmtR(it.score) : fmtPct(it.score)}
+                      {useR ? fmtR(it.score) : fmtRate(it.score)}
                     </div>
                     <div className="text-2xs text-muted-foreground tabular-nums">
-                      WR {fmtPct(it.stats.winRate)} · {it.n} {pluralRu(it.n, "сд.", "сд.", "сд.")}
+                      WR {fmtRate(it.stats.winRate)} · {commonI18n.t("units.tradesShort", { count: it.n })}
                     </div>
                   </div>
                   <Pill tone={rel.level === "high" ? "up" : rel.level === "medium" ? "warn" : "neutral"} className="hidden sm:inline-flex">{rel.label}</Pill>

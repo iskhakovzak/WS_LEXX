@@ -3,10 +3,11 @@ import { useMemo, type ReactNode } from "react";
 import { BookOpen, CalendarCheck, CheckCircle2, ListChecks, Sparkles, Trophy } from "lucide-react";
 import { EmptyState, Panel, toneText } from "@/components/ds";
 import { PlaybookHealthWidget } from "@/components/playbook-health-widget";
-import { plural } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { ConfidenceMeter, EdgeMini, SetupTypePill, TagChips } from "./setup-bits";
-import { checklistCount, fmtPct, fmtUsd, folderSwatch, isSameLocalDay, moneyTone, timeAgo, usdEdge, type PlaybookEntry, type QuickFilter, type SetupSummary } from "./model";
+import { checklistCount, folderSwatch, isSameLocalDay, moneyTone, timeAgo, usdEdge, type PlaybookEntry, type QuickFilter, type SetupSummary } from "./model";
+import { fmtRate, fmtUsd, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 function MiniList({ items, summary, onOpen, right }: {
   items: PlaybookEntry[]; summary: Map<number, SetupSummary>; onOpen: (id: number) => void; right: (e: PlaybookEntry, s: SetupSummary | undefined) => ReactNode;
@@ -71,15 +72,15 @@ export function Overview({
   }, [entries, summary]);
 
   const facts: { key: string; label: string; f?: QuickFilter }[] = [
-    { key: "total", label: `${stats.total} ${plural(stats.total, "сетап", "сетапа", "сетапов")}`, f: "all" },
+    { key: "total", label: `${commonI18n.t("units.setups", { count: stats.total })}`, f: "all" },
   ];
   if (summaryLoaded) {
     facts.push({ key: "covered", label: `${stats.covered} со сделками`, f: stats.covered < stats.total ? "untested" : undefined });
-    if (stats.tier1 > 0) facts.push({ key: "tier1", label: `${stats.tier1} ${plural(stats.tier1, "эталон", "эталона", "эталонов")} Tier 1` });
+    if (stats.tier1 > 0) facts.push({ key: "tier1", label: `${stats.tier1} ${pluralRu(stats.tier1, "эталон", "эталона", "эталонов")} Tier 1` });
     if (stats.noExamples > 0) facts.push({ key: "noEx", label: `${stats.noExamples} без эталонов`, f: "noExamples" });
     if (stats.today > 0) facts.push({ key: "today", label: `${stats.today} в работе сегодня`, f: "today" });
   }
-  if (showReview && stats.unreviewed > 0) facts.push({ key: "unrev", label: `${stats.unreviewed} не ${plural(stats.unreviewed, "проверен", "проверено", "проверено")}`, f: "unreviewed" });
+  if (showReview && stats.unreviewed > 0) facts.push({ key: "unrev", label: `${stats.unreviewed} не ${pluralRu(stats.unreviewed, "проверен", "проверено", "проверено")}`, f: "unreviewed" });
 
   const list = stats.recent.length ? stats.recent : stats.newest;
 
@@ -118,8 +119,8 @@ export function Overview({
                 const v = usdEdge(s);
                 return (
                   <>
-                    <span className={cn("block text-sm font-semibold tabular-nums", toneText(moneyTone(v)))}>{fmtUsd(v, 2)}</span>
-                    <span className="block text-xs tabular-nums text-muted-foreground">{s?.tradeCount} сд. · WR {fmtPct(s?.winrate)}</span>
+                    <span className={cn("block text-sm font-semibold tabular-nums", toneText(moneyTone(v)))}>{fmtUsd(v, { signed: true, decimals: 2 })}</span>
+                    <span className="block text-xs tabular-nums text-muted-foreground">{s?.tradeCount} сд. · WR {fmtRate(s?.winrate)}</span>
                   </>
                 );
               }}
@@ -183,7 +184,7 @@ export function SetupCard({
         <ConfidenceMeter level={e.confidenceLevel} />
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><ListChecks className="h-3 w-3" aria-hidden="true" />{n || "нет"} {n ? plural(n, "пункт", "пункта", "пунктов") : "чеклиста"}</span>
+        <span className="inline-flex items-center gap-1"><ListChecks className="h-3 w-3" aria-hidden="true" />{n || "нет"} {n ? pluralRu(n, "пункт", "пункта", "пунктов") : "чеклиста"}</span>
         {(s?.tier1Count ?? 0) > 0 && <span className="inline-flex items-center gap-1"><Trophy className="h-3 w-3" aria-hidden="true" />{s!.tier1Count} Tier 1</span>}
         {e.reviewed && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />проверен</span>}
       </div>

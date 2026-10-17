@@ -2,7 +2,7 @@ import { useMemo, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Check, Users, User as UserIcon, RotateCcw } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { Pill, toneText } from "@/components/ds";
@@ -28,9 +28,7 @@ export function deriveChecklistItems(items: ChecklistItem[] | null | undefined, 
 type MarksData = { shared: Record<string, boolean>; personal: Record<string, boolean> };
 
 async function fetchMarks(playbookId: number): Promise<MarksData> {
-  const r = await fetch(`${BASE}/api/playbook/${playbookId}/marks`, { credentials: "include" });
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = await r.json();
+  const j = await http.get<Partial<MarksData> | null>(`/api/playbook/${playbookId}/marks`, { credentials: "include" });
   return { shared: j?.shared ?? {}, personal: j?.personal ?? {} };
 }
 
@@ -85,13 +83,7 @@ export function MarkChecklist({
 
   const mutate = useMutation({
     mutationFn: async (vars: { itemId: string; scope: "shared" | "personal"; done: boolean }) => {
-      const r = await fetch(`${BASE}/api/playbook/${playbookId}/marks/${encodeURIComponent(vars.itemId)}`, {
-        method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ scope: vars.scope, done: vars.done }),
-      });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await http.put(`/api/playbook/${playbookId}/marks/${encodeURIComponent(vars.itemId)}`, { scope: vars.scope, done: vars.done }, { credentials: "include" });
     },
     onMutate: async (vars) => {
       await qc.cancelQueries({ queryKey: ["playbook-marks", playbookId, trader] });

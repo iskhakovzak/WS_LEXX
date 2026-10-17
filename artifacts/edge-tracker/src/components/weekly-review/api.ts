@@ -3,8 +3,9 @@
  * react-query hooks and the text / Markdown export of the memo.
  */
 import { useMutation, useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { nyDate, addDays } from "@/lib/trading-date";
+import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import type { Horizon } from "@/lib/trade-math";
 
 // ── Types (mirror of routes/weekly-review.ts) ────────────────────────────────
@@ -168,63 +169,37 @@ export function isWeekKey(v: string | null | undefined): v is string {
 export const currentWeekKey = () => weekKeyOf(nyDate());
 export const shiftWeek = (key: string, n: number) => weekKeyOf(addDays(weekStartOf(key) ?? nyDate(), n * 7));
 
-const MONTHS_GEN = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
 
+/** "13 окт." / "Пн, 13 окт." (UI language). */
 export function fmtDay(ymd: string, withWeekday = false): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(ymd);
-  if (!m) return ymd;
-  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
-  const base = `${Number(m[3])} ${MONTHS_GEN[d.getUTCMonth()]}`;
-  return withWeekday ? `${WEEKDAYS[(d.getUTCDay() + 6) % 7]}, ${base}` : base;
+  if (!YMD_RE.test(ymd)) return ymd;
+  return withWeekday ? cap(fmtDate(ymd, "weekdayDayMonth")) : fmtDate(ymd, "dayMonth");
 }
 
+/** "Пн" (UI language). */
 export function weekdayShort(ymd: string): string {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? ymd : WEEKDAYS[(d.getUTCDay() + 6) % 7];
+  return YMD_RE.test(ymd) ? cap(fmtWeekday(ymd, "short")) : ymd;
 }
 
-/** "W42 · 13–17 окт 2026" */
+/** "W42 · 13–17 окт. 2026" */
 export function weekLabel(key: string): string {
   const start = weekStartOf(key);
   if (!start) return key;
   const end = addDays(start, 4);
   const [sy, sm, sd] = start.split("-").map(Number);
-  const [, em, ed] = end.split("-").map(Number);
-  const range = sm === em ? `${sd}–${ed} ${MONTHS_GEN[sm - 1]}` : `${sd} ${MONTHS_GEN[sm - 1]} – ${ed} ${MONTHS_GEN[em - 1]}`;
+  const [, em] = end.split("-").map(Number);
+  const range = sm === em ? `${sd}–${fmtDate(end, "dayMonth")}` : `${fmtDate(start, "dayMonth")} – ${fmtDate(end, "dayMonth")}`;
   return `${key.slice(5)} · ${range} ${sy}`;
 }
 
 // ── Formatting ───────────────────────────────────────────────────────────────
-export function fmtUsd(v: number | null | undefined, opts: { signed?: boolean; compact?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  let body: string;
-  if (opts.compact && a >= 10_000) body = a >= 1_000_000 ? `${(a / 1_000_000).toFixed(1)}M` : `${(a / 1000).toFixed(a >= 100_000 ? 0 : 1)}k`;
-  else body = a.toLocaleString("en-US", { maximumFractionDigits: a >= 1000 ? 0 : 2, minimumFractionDigits: 0 });
-  const sign = v < 0 ? "−" : opts.signed && v > 0 ? "+" : "";
-  return `${sign}$${body}`;
-}
-
-export function fmtR(v: number | null | undefined, signed = true): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(Math.abs(v) >= 10 ? 1 : 2).replace(/\.?0+$/, "") || "0";
-  return `${v < 0 ? "−" : signed && v > 0 ? "+" : ""}${s}R`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${(v * 100).toFixed(digits)}%`;
-}
-
-export function fmtX(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${v.toFixed(2)}×`;
-}
+// Money / R / percent / multipliers: @/lib/format (fmtUsd, fmtR, fmtRate, fmtNum(v, { suffix: "×" })).
 
 /** Value in the week's unit: $ when the book has P&L, else R. */
 export function fmtValue(v: number | null | undefined, unit: Unit, signed = true): string {
-  return unit === "usd" ? fmtUsd(v, { signed }) : fmtR(v, signed);
+  return unit === "usd" ? fmtUsd(v, { signed, decimals: "auto" }) : fmtR(v, { signed });
 }
 
 export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
@@ -232,35 +207,6 @@ export const STATUS_LABEL: Record<ReviewStatus | "none", string> = { none: "Не
 export const GOAL_LABEL: Record<GoalStatus, string> = { open: "В работе", done: "Выполнена", partial: "Частично", missed: "Не выполнена" };
 
 // ── HTTP ─────────────────────────────────────────────────────────────────────
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-async function readError(r: Response): Promise<HttpError> {
-  let msg = `HTTP ${r.status}`;
-  try {
-    const j = (await r.json()) as { error?: string };
-    if (j?.error) msg = j.error;
-  } catch { /* not json */ }
-  return new HttpError(r.status, msg);
-}
-
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-async function sendJson<T>(path: string, method: "PUT" | "PATCH", body: unknown): Promise<T> {
-  const r = await fetch(apiUrl(path), { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [400, 401, 403, 404].includes(err.status)) && count < 2;
-
 export const weeklyKeys = {
   all: ["weekly-review"] as const,
   doc: (trader: string, week: string) => ["weekly-review", "doc", trader, week] as const,
@@ -270,22 +216,20 @@ export const weeklyKeys = {
 export function useWeeklyReview(trader: string | null, week: string, enabled = true) {
   return useQuery({
     queryKey: weeklyKeys.doc(trader ?? "", week),
-    queryFn: () => getJson<WeeklyReview>(`/api/weekly-review?trader=${encodeURIComponent(trader ?? "")}&week=${encodeURIComponent(week)}`),
+    queryFn: () => http.get<WeeklyReview>(`/api/weekly-review?trader=${encodeURIComponent(trader ?? "")}&week=${encodeURIComponent(week)}`),
     enabled: enabled && !!trader && isWeekKey(week),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
-    retry,
   });
 }
 
 export function useWeeklyOverview(week: string, enabled = true) {
   return useQuery({
     queryKey: weeklyKeys.overview(week),
-    queryFn: () => getJson<Overview>(`/api/weekly-review/overview?week=${encodeURIComponent(week)}`),
+    queryFn: () => http.get<Overview>(`/api/weekly-review/overview?week=${encodeURIComponent(week)}`),
     enabled: enabled && isWeekKey(week),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
-    retry,
   });
 }
 
@@ -313,22 +257,22 @@ function useReviewMutation<I>(fn: (input: I) => Promise<Review>, docOf: (input: 
 }
 
 export function useSaveSelf() {
-  return useReviewMutation<SelfInput>((b) => sendJson<Review>("/api/weekly-review/self", "PUT", b), () => null);
+  return useReviewMutation<SelfInput>((b) => http.put<Review>("/api/weekly-review/self", b), () => null);
 }
 
 export function useSaveCurator() {
-  return useReviewMutation<CuratorInput>((b) => sendJson<Review>("/api/weekly-review/curator", "PUT", b), (b) => ({ trader: b.trader, week: b.week }));
+  return useReviewMutation<CuratorInput>((b) => http.put<Review>("/api/weekly-review/curator", b), (b) => ({ trader: b.trader, week: b.week }));
 }
 
 export function useSetGoalStatus() {
-  return useReviewMutation<GoalsInput>((b) => sendJson<Review>("/api/weekly-review/goals", "PATCH", b), (b) => ({ trader: b.trader, week: b.week }));
+  return useReviewMutation<GoalsInput>((b) => http.patch<Review>("/api/weekly-review/goals", b), (b) => ({ trader: b.trader, week: b.week }));
 }
 
 // ── Export as text / Markdown ────────────────────────────────────────────────
 function delta(cur: number | null, prev: number | null, unit: Unit): string {
   if (cur == null || prev == null) return "";
   const d = cur - prev;
-  return ` (${unit === "usd" ? fmtUsd(d, { signed: true }) : fmtR(d)} к пред. неделе)`;
+  return ` (${unit === "usd" ? fmtUsd(d, { signed: true, decimals: "auto" }) : fmtR(d)} к пред. неделе)`;
 }
 
 /** The whole memo as plain text or Markdown (same structure as the page). */
@@ -342,21 +286,21 @@ export function reviewToText(doc: WeeklyReview, md: boolean): string {
   const lines: string[] = [];
   lines.push(h(`Отчёт недели ${weekLabel(doc.week.key)} — ${doc.trader}`, 1), "");
   lines.push(h("Итоги"));
-  lines.push(li(`${b("P&L нетто")}: ${fmtUsd(k.netPnl, { signed: true })}${delta(k.netPnl, p.netPnl, "usd")}; комиссии ${fmtUsd(k.fees)}`));
-  if (k.rCount > 0) lines.push(li(`${b("R")}: ${fmtR(k.totalR)}${delta(k.totalR, p.totalR, "r")}; ожидание ${fmtR(k.expectancyR)}; PF ${fmtX(k.profitFactorR)}`));
-  else if (u === "usd") lines.push(li(`${b("PF")}: ${fmtX(k.profitFactorUsd)}; ожидание ${fmtUsd(k.expectancyUsd, { signed: true })} / сделка`));
-  lines.push(li(`${b("Сделки")}: ${k.trades} (${k.wins}W / ${k.losses}L / ${k.be}BE${k.open ? ` / ${k.open} открыто` : ""}); win rate ${fmtPct(k.winRate)}; торговых дней ${k.tradingDays}`));
+  lines.push(li(`${b("P&L нетто")}: ${fmtUsd(k.netPnl, { signed: true, decimals: "auto" })}${delta(k.netPnl, p.netPnl, "usd")}; комиссии ${fmtUsd(k.fees, { decimals: "auto" })}`));
+  if (k.rCount > 0) lines.push(li(`${b("R")}: ${fmtR(k.totalR)}${delta(k.totalR, p.totalR, "r")}; ожидание ${fmtR(k.expectancyR)}; PF ${fmtNum(k.profitFactorR, { suffix: "×" })}`));
+  else if (u === "usd") lines.push(li(`${b("PF")}: ${fmtNum(k.profitFactorUsd, { suffix: "×" })}; ожидание ${fmtUsd(k.expectancyUsd, { signed: true, decimals: "auto" })} / сделка`));
+  lines.push(li(`${b("Сделки")}: ${k.trades} (${k.wins}W / ${k.losses}L / ${k.be}BE${k.open ? ` / ${k.open} открыто` : ""}); win rate ${fmtRate(k.winRate)}; торговых дней ${k.tradingDays}`));
   if (k.bestDay) lines.push(li(`Лучший день ${fmtDay(k.bestDay.date, true)}: ${fmtValue(k.bestDay.value, u)}`));
   if (k.worstDay) lines.push(li(`Худший день ${fmtDay(k.worstDay.date, true)}: ${fmtValue(k.worstDay.value, u)}`));
   lines.push("");
   if (doc.byHorizon.length > 1) {
     lines.push(h("По горизонту"));
-    for (const g of doc.byHorizon) lines.push(li(`${HORIZON_LABEL[g.key as Horizon] ?? g.key}: ${g.trades} сделок, ${fmtValue(u === "usd" ? g.netPnl : g.totalR, u)}, WR ${fmtPct(g.winRate)}`));
+    for (const g of doc.byHorizon) lines.push(li(`${HORIZON_LABEL[g.key as Horizon] ?? g.key}: ${g.trades} сделок, ${fmtValue(u === "usd" ? g.netPnl : g.totalR, u)}, WR ${fmtRate(g.winRate)}`));
     lines.push("");
   }
   if (doc.bySetup.some((g) => g.key !== "—")) {
     lines.push(h("По сетапам"));
-    for (const g of doc.bySetup.slice(0, 8)) lines.push(li(`${g.key}: ${g.trades} сделок, ${fmtValue(u === "usd" ? g.netPnl : g.totalR, u)}, WR ${fmtPct(g.winRate)}${g.rCount ? `, ожидание ${fmtR(g.expectancyR)}` : ""}`));
+    for (const g of doc.bySetup.slice(0, 8)) lines.push(li(`${g.key}: ${g.trades} сделок, ${fmtValue(u === "usd" ? g.netPnl : g.totalR, u)}, WR ${fmtRate(g.winRate)}${g.rCount ? `, ожидание ${fmtR(g.expectancyR)}` : ""}`));
     lines.push("");
   }
   if (doc.bestTrades.length || doc.worstTrades.length) {
@@ -366,9 +310,9 @@ export function reviewToText(doc: WeeklyReview, md: boolean): string {
     lines.push("");
   }
   lines.push(h("Ошибки и нарушения"));
-  lines.push(li(`Ошибок: ${doc.mistakes.items.length}${doc.mistakes.cost.trades ? `, цена ${fmtUsd(doc.mistakes.cost.usd)} / ${fmtR(doc.mistakes.cost.r)}` : ""}`));
+  lines.push(li(`Ошибок: ${doc.mistakes.items.length}${doc.mistakes.cost.trades ? `, цена ${fmtUsd(doc.mistakes.cost.usd, { decimals: "auto" })} / ${fmtR(doc.mistakes.cost.r)}` : ""}`));
   for (const m of doc.mistakes.items.slice(0, 10)) lines.push(`  ${li(`${m.errorType}${m.ticker ? ` (${m.ticker})` : ""}: ${m.description}`)}`);
-  lines.push(li(`Нарушений правил: ${doc.violations.items.length}${doc.violations.cost.trades ? `, цена ${fmtUsd(doc.violations.cost.usd)} / ${fmtR(doc.violations.cost.r)}` : ""}`));
+  lines.push(li(`Нарушений правил: ${doc.violations.items.length}${doc.violations.cost.trades ? `, цена ${fmtUsd(doc.violations.cost.usd, { decimals: "auto" })} / ${fmtR(doc.violations.cost.r)}` : ""}`));
   for (const v of doc.violations.items.slice(0, 10)) lines.push(`  ${li(`${v.ruleName ?? v.ruleKind ?? "Правило"}${v.ticker ? ` (${v.ticker})` : ""}: ${v.message}`)}`);
   lines.push("");
   const d = doc.discipline;
@@ -381,7 +325,7 @@ export function reviewToText(doc: WeeklyReview, md: boolean): string {
   }
   if (doc.openPositions.length) {
     lines.push("", h("Открытые позиции на конец недели"));
-    for (const o of doc.openPositions) lines.push(li(`${o.ticker} ${HORIZON_LABEL[o.horizon]} · ${o.daysHeld} дн.${o.riskUsd != null ? ` · риск ${fmtUsd(o.riskUsd)}` : ""}`));
+    for (const o of doc.openPositions) lines.push(li(`${o.ticker} ${HORIZON_LABEL[o.horizon]} · ${o.daysHeld} дн.${o.riskUsd != null ? ` · риск ${fmtUsd(o.riskUsd, { decimals: "auto" })}` : ""}`));
   }
   const prevGoals = doc.prevGoals;
   if (prevGoals.length) {

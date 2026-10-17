@@ -3,7 +3,8 @@ import { Check, CircleDashed, CornerDownLeft, History } from "lucide-react";
 import { Panel, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { fmtDayLong, fmtR, type DayTrade } from "./author-model";
+import { type DayTrade } from "./author-model";
+import { fmtDate, fmtR } from "@/lib/format";
 import { followThrough, planLines, type FollowItem, type PrevPlan } from "./author-plan";
 import { RichText } from "./author-reader";
 
@@ -23,7 +24,7 @@ function Item({ it, graded }: { it: FollowItem; graded: boolean }) {
           <span className="ml-1.5 whitespace-nowrap text-xs tabular-nums">
             {it.traded.map((t, i) => (
               <span key={t.ticker} className={cn(t.r != null && toneText(toneOf(t.r)))}>
-                {i > 0 ? ", " : ""}{t.ticker}{t.r != null ? ` ${fmtR(t.r)}` : ""}
+                {i > 0 ? ", " : ""}{t.ticker}{t.r != null ? ` ${fmtR(t.r, 1)}` : ""}
               </span>
             ))}
           </span>
@@ -72,7 +73,7 @@ export function AuthorPrevPlan({
       icon={History}
       description={
         <button type="button" onClick={() => onOpenDay(plan.date)} className="inline-block hover:text-foreground hover:underline first-letter:uppercase">
-          {fmtDayLong(plan.date)}
+          {fmtDate(plan.date, "weekdayDayMonthLong")}
         </button>
       }
       actions={

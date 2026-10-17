@@ -14,11 +14,12 @@ import { useToast } from "@/hooks/use-toast";
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Kbd, Panel, Pill, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { BASE } from "@/lib/api";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
 import { BAN_PRESETS } from "./useUserActions";
-import { ROLE_LABEL, adminUrl, errorFrom, isTypingTarget, postJson, timeAgo, useReports, type ContentReport } from "./api";
-import { pluralRu } from "@/components/rules/constants";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { ROLE_LABEL, adminUrl, isTypingTarget, timeAgo, useReports, type ContentReport } from "./api";
+import { pluralRu } from "@/lib/format";
 
 type Status = "open" | "resolved" | "dismissed" | "all";
 
@@ -54,7 +55,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
 
   const resolveMut = useMutation({
     mutationFn: ({ id, kind, resolution }: { id: number; kind: "resolve" | "dismiss"; resolution: string }) =>
-      postJson(adminUrl(`/admin/reports/${id}/${kind}`, actor), { actor, resolution }, "Не удалось обработать жалобу"),
+      http.post(adminUrl(`/admin/reports/${id}/${kind}`, actor), { actor, resolution }),
     onMutate: ({ id }) => { setDialog(null); dropOptimistic([id]); },
     onSuccess: (_d, v) => { invalidate(); toast({ title: v.kind === "resolve" ? "Жалоба решена" : "Жалоба отклонена", description: v.resolution }); },
     onError,
@@ -69,7 +70,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   });
   const bulkMut = useMutation({
     mutationFn: ({ ids, kind, resolution }: { ids: number[]; kind: "resolve" | "dismiss"; resolution: string }) =>
-      postJson<{ updated: number[]; skipped: number[] }>(adminUrl("/admin/reports/bulk", actor), { actor, ids, kind, resolution }, "Не удалось обработать жалобы"),
+      http.post<{ updated: number[]; skipped: number[] }>(adminUrl("/admin/reports/bulk", actor), { actor, ids, kind, resolution }),
     onMutate: ({ ids }) => { setDialog(null); dropOptimistic(ids); setChecked(new Set()); },
     onSuccess: (d, v) => {
       invalidate();
@@ -94,7 +95,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
 
   const banAuthorMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string; author: string }) =>
-      postJson<{ closedReports: number[] }>(adminUrl(`/admin/reports/${id}/ban-author`, actor), { actor, reason, resolveSiblings: true }, "Не удалось забанить автора"),
+      http.post<{ closedReports: number[] }>(adminUrl(`/admin/reports/${id}/ban-author`, actor), { actor, reason, resolveSiblings: true }),
     onMutate: ({ id }) => { setDialog(null); dropOptimistic([id]); },
     onSuccess: (d, v) => {
       invalidate();
@@ -106,9 +107,10 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const deleteMut = useMutation({
     mutationFn: async ({ report, reason }: { report: ContentReport; reason: string }) => {
       const path = report.targetType === "discussion" ? "discussions" : "comments";
-      const r = await fetch(`${BASE}/api/admin/${path}/${encodeURIComponent(report.targetId)}?actor=${encodeURIComponent(actor)}`, { method: "DELETE" });
-      if (!r.ok && r.status !== 404) throw await errorFrom(r, "Не удалось удалить контент");
-      await postJson(adminUrl(`/admin/reports/${report.id}/resolve`, actor), { actor, resolution: `Контент удалён: ${reason}` }, "Контент удалён, но жалобу закрыть не удалось");
+      await http.del(`/api/admin/${path}/${encodeURIComponent(report.targetId)}`, undefined, { query: { actor } }).catch((e) => {
+        if (!isNotFound(e)) throw e;
+      });
+      await http.post(adminUrl(`/admin/reports/${report.id}/resolve`, actor), { actor, resolution: `Контент удалён: ${reason}` });
     },
     onMutate: ({ report }) => { setDialog(null); dropOptimistic([report.id]); },
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/discussions"] }); invalidate(); toast({ title: "Контент удалён, жалоба закрыта" }); },

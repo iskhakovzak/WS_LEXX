@@ -16,6 +16,7 @@ import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { notifyUser } from "../lib/notifyUtils";
 import { activeViolationSql, archiveWhereSql, isArchiveReason, parseArchiveMode } from "../lib/violationArchive";
+import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -131,7 +132,7 @@ router.get("/rules", asyncHandler(async (req, res): Promise<void> => {
 router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const { trader, name, kind, threshold, enabled, note, desk } = req.body as Record<string, unknown>;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой доступ только для просмотра" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const deskWide = desk === true;
   let owner: string;
   let origin: "personal" | "office";
@@ -172,7 +173,7 @@ router.post("/rules", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, kind, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!existing[0]) { res.status(404).json({ error: "Rule not found" }); return; }
   const access = await canTouchRule(req, existing[0]);
@@ -203,7 +204,7 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
     sets.push(`note = $${params.length + 1}`); params.push(n);
   }
   if (enabled !== undefined) { sets.push(`enabled = $${params.length + 1}`); params.push(Boolean(enabled)); }
-  if (sets.length === 0) { res.status(400).json({ error: "Nothing to update" }); return; }
+  if (sets.length === 0) throw badRequest("NO_FIELDS");
   params.push(id);
   const { rows } = await pool.query<any>(
     `UPDATE trading_rules SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING ${RULE_COLS}`,
@@ -236,9 +237,9 @@ router.patch("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin, name FROM trading_rules WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound();
   const access = await canTouchRule(req, existing[0]);
   if (!access.ok) { res.status(403).json({ error: access.error }); return; }
   await pool.query(`UPDATE trading_rules SET deleted_at = NOW(), enabled = false WHERE id = $1`, [id]);
@@ -253,9 +254,9 @@ router.delete("/rules/:id", asyncHandler(async (req, res): Promise<void> => {
 router.post("/rules/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT trader, origin FROM trading_rules WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound();
   const access = await canTouchRule(req, existing[0]);
   if (!access.ok) { res.status(403).json({ error: access.error }); return; }
   const { rows } = await pool.query<any>(`UPDATE trading_rules SET deleted_at = NULL, enabled = true WHERE id = $1 RETURNING ${RULE_COLS}`, [id]);
@@ -397,7 +398,7 @@ router.get("/rules/self-checks", asyncHandler(async (req, res): Promise<void> =>
 router.put("/rules/self-checks", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const body = req.body as Record<string, unknown>;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой доступ только для просмотра" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const scope = await resolveScope(req, body.trader);
   if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader!;
@@ -574,14 +575,14 @@ router.get("/rule-violations", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!auth) throw unauthorized();
   const { rows: existing } = await pool.query<any>(`SELECT trader, message FROM rule_violations WHERE id = $1`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound();
   const owner = existing[0].trader === auth.name;
   const staff = await can(req, "rules.manage.team", { trader: existing[0].trader });
-  if (!owner && !staff) { res.status(403).json({ error: "Нет доступа" }); return; }
+  if (!owner && !staff) throw forbidden();
 
   const body = req.body as Record<string, unknown>;
   const sets: string[] = [];
@@ -617,7 +618,7 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
       push("consequence", c || null);
     }
   }
-  if (!sets.length) { res.status(400).json({ error: "Nothing to update" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   params.push(id);
   await pool.query(`UPDATE rule_violations SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
   const { rows } = await pool.query<any>(`${VIOLATION_SELECT} WHERE v.id = $1`, [id]);
@@ -645,11 +646,11 @@ router.patch("/rule-violations/:id", asyncHandler(async (req, res): Promise<void
 router.delete("/rule-violations/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
+  if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "rules.violations.delete", null, "Снимать нарушения может только куратор — отметьте «принято» или оставьте комментарий"))) return;
   const { rows } = await pool.query<any>(`SELECT trader FROM rule_violations WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   await pool.query(
     `UPDATE rule_violations SET resolution = 'dismissed', resolved_by = $2, resolved_at = COALESCE(resolved_at, NOW()) WHERE id = $1`,
     [id, req.authUser.name],

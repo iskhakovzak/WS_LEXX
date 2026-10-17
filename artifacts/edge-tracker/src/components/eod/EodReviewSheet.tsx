@@ -9,11 +9,13 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { fmtDayLong, plural } from "@/components/journal/utils";
+import { fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { useJournalRange } from "@/components/journal/use-journal-days";
 import { eodApi, hoursText, slaText, useBrokerDaily, useEodDay, useEodMutation, type QueueItem } from "./eod-api";
 import { EodDayReadOnly } from "./EodDayReadOnly";
 
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 const SCORE_HINT = ["Нет разбора", "Формально", "Нормально", "Хорошо", "Образцово"];
 
 /** Curator review of one closed day: read-only day + comment + score 1–5, «Сохранить и следующий». */
@@ -55,12 +57,12 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
       <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <SheetHeader className="border-b border-[var(--glass-border)] px-5 py-4 text-left">
           <SheetTitle className="flex flex-wrap items-center gap-2">
-            {item?.trader} · {item ? fmtDayLong(item.date) : ""}
+            {item?.trader} · {item ? fmtDate(item.date, "long") : ""}
             {item && !reviewed && <Pill tone={item.overdue ? "warn" : "neutral"}>ждёт {hoursText(item.hoursWaiting)} · {slaText(item.hoursWaiting, 24)}</Pill>}
             {reviewed && <Pill tone="up">проверен{item?.reviewedBy ? ` · ${item.reviewedBy}` : ""}</Pill>}
           </SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-x-3">
-            <span>{tradesN} {plural(tradesN, "сделка", "сделки", "сделок")} · закрыт {item?.closedAt ? new Date(item.closedAt).toLocaleString("ru-RU") : "—"}</span>
+            <span>{commonI18n.t("units.trades", { count: tradesN })} · закрыт {item?.closedAt ? fmtDate(item.closedAt, "shortDateTimeSeconds") : "—"}</span>
             {item && (
               <Link href={links.journalDay(item.date, item.trader)} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={onClose}>
                 <ExternalLink className="h-3 w-3" aria-hidden="true" />открыть в дневнике

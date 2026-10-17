@@ -11,18 +11,13 @@ import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { Pencil, Trash2, Plus, ArrowUp, ArrowDown, ClipboardCheck, RotateCcw } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 
 // Access is enforced server-side by the caller's role (curator/admin) from the auth token.
 
 type Item = { id: number; label: string; description: string | null; required: boolean; sortOrder: number; active: boolean };
 type FormData = { label: string; description: string; required: boolean; sortOrder: number; active: boolean };
-
-async function readError(r: Response): Promise<string> {
-  const text = await r.text().catch(() => "");
-  try { return (JSON.parse(text) as { error?: string }).error || text || `HTTP ${r.status}`; } catch { return text || `HTTP ${r.status}`; }
-}
 
 function ItemForm({
   initial, onSubmit, onCancel, pending, submitLabel, showActive,
@@ -74,24 +69,14 @@ export function ChecklistTemplateAdmin() {
 
   const { data: items = [], isLoading, isError, error, refetch } = useQuery<Item[]>({
     queryKey: ["checklist-template", "admin"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/checklist-template?includeInactive=true`);
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<Item[]>("/api/checklist-template", { query: { includeInactive: true }, signal }),
     enabled: isCurator,
   });
 
   const createMut = useMutation({
     mutationFn: async (data: FormData) => {
       const { active: _a, ...rest } = data;
-      const r = await fetch(`${BASE}/api/checklist-template`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(rest),
-      });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
+      return http.post("/api/checklist-template", rest);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
@@ -102,15 +87,7 @@ export function ChecklistTemplateAdmin() {
   });
 
   const updateMut = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: Partial<FormData> }) => {
-      const r = await fetch(`${BASE}/api/checklist-template/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(data),
-      });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json();
-    },
+    mutationFn: ({ id, data }: { id: number; data: Partial<FormData> }) => http.patch(`/api/checklist-template/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
       setEditingId(null);
@@ -119,11 +96,7 @@ export function ChecklistTemplateAdmin() {
   });
 
   const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/checklist-template/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await readError(r));
-      return r.json().catch(() => null);
-    },
+    mutationFn: (id: number) => http.del(`/api/checklist-template/${id}`, undefined, { responseType: "auto" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["checklist-template"] });
       toast({ title: "Пункт деактивирован" });

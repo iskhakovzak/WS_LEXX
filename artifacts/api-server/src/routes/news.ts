@@ -3,6 +3,7 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { getTickerNews } from "../lib/marketDataService";
 import { logger } from "../lib/logger";
+import { badRequest } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -80,7 +81,7 @@ router.get("/news/summary", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/news", asyncHandler(async (req, res): Promise<void> => {
   const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 15));
   const force = req.query.force === "1" || req.query.force === "true";
   let before: Date | null = null;

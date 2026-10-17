@@ -11,13 +11,15 @@ import { addDays } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { CallTypePill } from "@/components/research/earnings-history";
-import { fmtMoney, useEarningsHistory } from "@/components/research/earnings-api";
+import { useEarningsHistory } from "@/components/shared/market/earnings-api";
 import {
-  catLabel, categoryOf, daysWord, earningsEdge, fmtUsd, isClosedRow, isShortDayRow, nextTradingDay,
+  catLabel, categoryOf, earningsEdge, isClosedRow, isShortDayRow, nextTradingDay,
   type CatalystEdge, type CategoryEdge, type MacroRow, type Verdict,
 } from "./catalyst-math";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import type { CatalystData, MyEarnings } from "./use-catalysts";
-import { fmtDay, fmtWeekday, macroTime } from "./event-meta";
+import { fmtDay, weekdayLabel, macroTime } from "./event-meta";
 import { MarketReporters } from "./catalyst-market";
 
 /* ───────────── small pieces ───────────── */
@@ -38,11 +40,11 @@ export function MyDayChip({ row, base }: { row: CategoryEdge | undefined; base: 
   return (
     <span
       className="inline-flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground"
-      title={`Средний net в такой день vs обычный день (${fmtUsd(base.avgNetDay)}/день). ${daysWord(row.agg.days)} с вашими сделками.`}
+      title={`Средний net в такой день vs обычный день (${fmtUsd(base.avgNetDay, { signed: true })}/день). ${commonI18n.t("units.days", { count: row.agg.days })} с вашими сделками.`}
     >
       вы в такие дни:
-      <span className={cn("font-medium tabular-nums", toneText(toneOf(row.agg.avgNetDay)))}>{fmtUsd(row.agg.avgNetDay)}/день</span>
-      <span className="tabular-nums">· {daysWord(row.agg.days)}</span>
+      <span className={cn("font-medium tabular-nums", toneText(toneOf(row.agg.avgNetDay)))}>{fmtUsd(row.agg.avgNetDay, { signed: true })}/день</span>
+      <span className="tabular-nums">· {commonI18n.t("units.days", { count: row.agg.days })}</span>
       <Pill tone={tone} className="ml-0.5">{row.delta != null && row.verdict !== "low" ? `${row.delta < 0 ? "хуже" : "лучше"} обычного · ${verdictLabel(row.verdict)}` : verdictLabel(row.verdict)}</Pill>
     </span>
   );
@@ -100,7 +102,7 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
           <span className="text-sm font-semibold text-foreground">{t}</span>
           <CallTypePill type={e.callType} long />
           <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{e.company}</span>
-          {e.epsEstimate != null && <span className="text-xs tabular-nums text-muted-foreground">EPS прогноз {fmtMoney(e.epsEstimate)}</span>}
+          {e.epsEstimate != null && <span className="text-xs tabular-nums text-muted-foreground">EPS прогноз {fmtUsd(e.epsEstimate)}</span>}
         </span>
         <span className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           {h.isLoading ? (
@@ -115,10 +117,10 @@ export function ReporterRow({ e, data, onOpen }: { e: MyEarnings; data: Catalyst
           )}
           <span className="tabular-nums">
             {mine ? (
-              <>вы: {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net)}</span></>
+              <>вы: {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net, { signed: true })}</span></>
             ) : e.mine === "watch" ? "в вотчлисте, сделок не было" : "сделок не было"}
             {reaction && reaction.event.trades > 0 && (
-              <> · в дни отчёта <span className={toneText(toneOf(reaction.event.net))}>{fmtUsd(reaction.event.net)}</span> ({reaction.event.trades} сд.)</>
+              <> · в дни отчёта <span className={toneText(toneOf(reaction.event.net))}>{fmtUsd(reaction.event.net, { signed: true })}</span> ({reaction.event.trades} сд.)</>
             )}
           </span>
           {e.mine !== "traded" && <Pill tone="neutral">вотчлист</Pill>}
@@ -162,7 +164,7 @@ export function DayBrief({
   const earningsHorizon = data.upcoming.data?.days.at(-1)?.date ?? null;
   const beyondHorizon = !past && earningsHorizon != null && day > earningsHorizon;
 
-  const title = `${fmtWeekday(day, "long")}, ${fmtDay(day, { day: "numeric", month: "long" })}`;
+  const title = `${weekdayLabel(day, "long")}, ${fmtDay(day, "dayMonthLong")}`;
   const whenLabel = day === today ? "сегодня" : day === nextTradingDay(today, closed) && day > today ? "следующая сессия" : past ? "прошедший день" : null;
 
   return (
@@ -185,7 +187,7 @@ export function DayBrief({
                   <p className="font-medium">Короткий день: закрытие в 13:00 ET ({shortRow.name})</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Ликвидность ниже, последний час сдвигается.{" "}
-                    {shortEdge && shortEdge.agg.days > 0 ? `Вы в такие дни: ${fmtUsd(shortEdge.agg.avgNetDay)}/день.` : "Раньше в такие дни вы не торговали."}
+                    {shortEdge && shortEdge.agg.days > 0 ? `Вы в такие дни: ${fmtUsd(shortEdge.agg.avgNetDay, { signed: true })}/день.` : "Раньше в такие дни вы не торговали."}
                   </p>
                 </div>
               </div>
@@ -245,7 +247,7 @@ export function DayBrief({
                 {result ? (
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
                     <span className="text-muted-foreground">Ваш день:</span>
-                    <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net)}</span>
+                    <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net, { signed: true })}</span>
                     <span className="tabular-nums text-muted-foreground">{result.n} сд. · {result.wins}W / {result.losses}L</span>
                     <Link href={links.journalDay(day)} className="ml-auto inline-flex items-center gap-1 text-xs text-primary hover:underline">
                       <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> Журнал дня
@@ -327,14 +329,14 @@ function HorizonPanel({ from, data, onPickDay }: { from: string; data: CatalystD
                 onClick={() => onPickDay?.(it.date)}
                 className="flex w-full items-start gap-3 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
-                <span className="w-24 shrink-0 whitespace-nowrap pt-0.5 text-sm tabular-nums text-muted-foreground">{fmtWeekday(it.date)}, {fmtDay(it.date)}</span>
+                <span className="w-24 shrink-0 whitespace-nowrap pt-0.5 text-sm tabular-nums text-muted-foreground">{weekdayLabel(it.date)}, {fmtDay(it.date)}</span>
                 <span className="min-w-0 flex-1">
                   <span className="text-sm font-medium text-foreground">{it.label}</span>
                   {it.sub && <span className="ml-2 text-xs text-muted-foreground">{it.sub}</span>}
                   {it.row && (
                     <span className="mt-0.5 block text-xs text-muted-foreground">
                       {it.row.agg.days ? (
-                        <>вы: <span className={cn("tabular-nums", toneText(toneOf(it.row.agg.avgNetDay)))}>{fmtUsd(it.row.agg.avgNetDay)}/день</span> · {daysWord(it.row.agg.days)}{" "}
+                        <>вы: <span className={cn("tabular-nums", toneText(toneOf(it.row.agg.avgNetDay)))}>{fmtUsd(it.row.agg.avgNetDay, { signed: true })}/день</span> · {commonI18n.t("units.days", { count: it.row.agg.days })}{" "}
                           <Pill tone={verdictTone(it.row)} className="ml-1">{verdictLabel(it.row.verdict)}</Pill></>
                       ) : "раньше в такие дни не торговали"}
                     </span>
@@ -367,16 +369,16 @@ export function MyTickerEarnings({ ticker, data }: { ticker: string; data: Catal
       ) : (
         <div className="mt-1.5 flex flex-col gap-1 text-sm">
           <p className="tabular-nums">
-            Всего {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net)}</span>
+            Всего {mine.n} сд. · <span className={toneText(toneOf(mine.net))}>{fmtUsd(mine.net, { signed: true })}</span>
             <span className="text-muted-foreground"> · последняя {fmtDay(mine.last)}</span>
           </p>
           {e && (
             e.event.trades ? (
               <p className="tabular-nums">
-                В дни реакции на отчёт: {e.event.trades} сд. за {daysWord(e.event.days)} ·{" "}
-                <span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net)}</span>
+                В дни реакции на отчёт: {e.event.trades} сд. за {commonI18n.t("units.days", { count: e.event.days })} ·{" "}
+                <span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net, { signed: true })}</span>
                 {e.event.winRate != null && <span className="text-muted-foreground"> · WR {e.event.winRate}%</span>}
-                <span className="text-muted-foreground"> (в обычные дни {fmtUsd(e.other.avgNetTrade)}/сд.)</span>
+                <span className="text-muted-foreground"> (в обычные дни {fmtUsd(e.other.avgNetTrade, { signed: true })}/сд.)</span>
               </p>
             ) : (
               <p className="text-muted-foreground">В дни реакции на отчёт вы этот тикер не торговали.</p>
@@ -389,7 +391,7 @@ export function MyTickerEarnings({ ticker, data }: { ticker: string; data: Catal
                 return (
                   <Link key={r.date} href={links.journalDay(r.date)} className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--glass-hover-bg)] px-2 py-1 text-xs hover:underline">
                     <span className="tabular-nums text-muted-foreground">{fmtDay(r.date)}</span>
-                    <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net)}</span>
+                    <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, { signed: true })}</span>
                   </Link>
                 );
               })}

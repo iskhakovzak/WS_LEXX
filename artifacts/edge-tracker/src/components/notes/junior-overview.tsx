@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  fmtDayShort, isUnread, lastTradingDays, localToday, moodMeta, nextTradingDay, prevTradingDay, streakOf,
+  isUnread, lastTradingDays, localToday, moodMeta, nextTradingDay, prevTradingDay, streakOf,
   type JuniorNote, type Reminder,
 } from "./junior-lib";
+import { fmtDate, fmtNum } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Longest run of consecutive trading days with a note. */
 function bestStreak(dates: Set<string>): number {
@@ -65,7 +67,7 @@ export function JuniorKpis({
       <StatCard
         label="Серия"
         icon={Flame}
-        value={`${streak} ${plural(streak, "день", "дня", "дней")}`}
+        value={commonI18n.t("units.days", { count: streak })}
         tone={streak >= 5 ? "up" : streak > 0 ? "accent" : "neutral"}
         hint={todayWritten ? `рекорд ${best}` : streak > 0 ? "напиши сегодня, чтобы не прервать" : `рекорд ${best}`}
       />
@@ -78,7 +80,7 @@ export function JuniorKpis({
       <StatCard
         label="Оценка куратора"
         icon={Star}
-        value={avg == null ? "—" : avg.toFixed(1)}
+        value={avg == null ? "—" : fmtNum(avg, 1)}
         tone={avg == null ? "neutral" : avg >= 4 ? "up" : avg >= 3 ? "neutral" : "down"}
         hint={scores.length ? `средняя по ${scores.length}` : "пока нет оценок"}
       />
@@ -103,7 +105,7 @@ export function JuniorKpis({
         <div className="grid grid-cols-[repeat(15,minmax(0,1fr))] gap-1 sm:grid-cols-[repeat(30,minmax(0,1fr))]" role="list" aria-label="Сводки по дням">
           {days.map((d) => {
             const n = byDate.get(d);
-            const label = `${fmtDayShort(d)}: ${n ? (n.reviewed_at ? `есть ответ куратора${n.curator_score ? `, оценка ${n.curator_score}` : ""}` : "сводка написана") : "нет сводки"}${n?.mood ? `, ${moodMeta(n.mood)?.label.toLowerCase()}` : ""}`;
+            const label = `${fmtDate(d, "dayMonth")}: ${n ? (n.reviewed_at ? `есть ответ куратора${n.curator_score ? `, оценка ${n.curator_score}` : ""}` : "сводка написана") : "нет сводки"}${n?.mood ? `, ${moodMeta(n.mood)?.label.toLowerCase()}` : ""}`;
             return (
               <button
                 key={d}
@@ -138,14 +140,6 @@ function Legend({ className, label }: { className: string; label: string }) {
   );
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 /** In-app nudges: curator reminders + unread curator answers. */
 export function JuniorBanners({
   reminders,
@@ -167,7 +161,7 @@ export function JuniorBanners({
         <div key={r.id} role="status" className="flex flex-wrap items-center gap-3 rounded-2xl bg-[hsl(var(--chart-3)/0.12)] px-4 py-3">
           <BellRing className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
           <p className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">{r.curator}</span> напоминает: напиши сводку за {fmtDayShort(r.note_date)}
+            <span className="font-medium">{r.curator}</span> напоминает: напиши сводку за {fmtDate(r.note_date, "dayMonth")}
             {r.message ? ` — «${r.message}»` : ""}
           </p>
           <Button size="sm" onClick={() => onWrite(r.note_date)}>Написать</Button>
@@ -185,7 +179,7 @@ export function JuniorBanners({
         >
           <MessageSquareQuote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">Разбор</span> сводки за {fmtDayShort(n.note_date)}
+            <span className="font-medium">Разбор</span> сводки за {fmtDate(n.note_date, "dayMonth")}
             {unread.length > 1 ? ` и ещё ${unread.length - 1}` : ""} — {n.reviewed_by}
           </span>
           <span className="text-sm font-medium text-primary">Прочитать</span>

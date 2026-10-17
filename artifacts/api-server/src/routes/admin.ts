@@ -1,16 +1,18 @@
 import { Router, type IRouter } from "express";
-import { eq, desc, and, isNull, sql, ilike, or, gte } from "drizzle-orm";
+import { eq, desc, and, ilike, or, gte } from "drizzle-orm";
 import { z } from "zod";
 import multer from "multer";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
-import { db, pool, auditLogTable, contentReportsTable, discussionsTable, commentsTable, tradesTable } from "@workspace/db";
+import { db, pool, auditLogTable, contentReportsTable, discussionsTable, commentsTable, } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { config } from "../config";
 import { logAudit } from "../lib/audit";
 import { parseTradesReportBuffer, reportTradesToRoundTrips, planSync, applySync, loadAccountMappings } from "../lib/propreports";
 import { getActor, bumpTokenVersion } from "../lib/auth";
 import { can, forbiddenBody, resolveActor, type Capability } from "../lib/permissions";
-import { runDbBackup, listBackups, getBackupDownloadUrl } from "../lib/dbBackupCron";
+import { runDbBackup, listBackups, getBackupDownloadUrl, resolveBackupObjectName } from "../lib/dbBackupCron";
 import { violationDaySql } from "../lib/violationWindow";
+import { AppError, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -70,7 +72,7 @@ router.get("/admin/users", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = roleBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { role } = parsed.data;
@@ -82,7 +84,7 @@ router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void
     `UPDATE users SET role = $1 WHERE id = $2 RETURNING ${USER_COLUMNS}`,
     [role, id],
   );
-  if (!rows[0]) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rows[0]) throw notFound("USER_NOT_FOUND");
   // Role is embedded in the JWT — force re-login so the new role applies everywhere.
   await bumpTokenVersion(id);
   await logAudit({ actor: actor!, action: "user.role.change", targetType: "user", targetId: String(id), details: { name: rows[0].name, role } });
@@ -91,7 +93,7 @@ router.post("/admin/users/:id/role", asyncHandler(async (req, res): Promise<void
 
 router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = banBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { reason } = parsed.data;
@@ -99,7 +101,7 @@ router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void>
   const guard = await requireCapGuard(req, "users.manage");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const { rows: target } = await pool.query<any>(`SELECT name, role FROM users WHERE id = $1`, [id]);
-  if (!target[0]) { res.status(404).json({ error: "User not found" }); return; }
+  if (!target[0]) throw notFound("USER_NOT_FOUND");
   if (target[0].role === "admin") { res.status(403).json({ error: "Cannot ban admin" }); return; }
   if (target[0].name === actor) { res.status(400).json({ error: "Cannot ban yourself" }); return; }
   if (target[0].role === "curator" && !guard.admin) { res.status(403).json({ error: "Only admin can ban curators" }); return; }
@@ -114,7 +116,7 @@ router.post("/admin/users/:id/ban", asyncHandler(async (req, res): Promise<void>
 
 router.post("/admin/users/:id/unban", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = unbanBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const actor = getActor(req);
@@ -124,31 +126,31 @@ router.post("/admin/users/:id/unban", asyncHandler(async (req, res): Promise<voi
     `UPDATE users SET banned = false, banned_at = NULL, banned_reason = NULL WHERE id = $1 RETURNING ${USER_COLUMNS}`,
     [id],
   );
-  if (!rows[0]) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rows[0]) throw notFound("USER_NOT_FOUND");
   await logAudit({ actor: actor!, action: "user.unban", targetType: "user", targetId: String(id), details: { name: rows[0].name } });
   res.json(rows[0]);
 }));
 
 router.delete("/admin/discussions/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const actor = getActor(req);
   const guard = await requireCapGuard(req, "discussions.moderate");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const [d] = await db.update(discussionsTable).set({ deletedAt: new Date() }).where(eq(discussionsTable.id, id)).returning();
-  if (!d) { res.status(404).json({ error: "Not found" }); return; }
+  if (!d) throw notFound();
   await logAudit({ actor: actor!, action: "discussion.delete", targetType: "discussion", targetId: String(id), details: { topic: d.topic, author: d.trader } });
   res.sendStatus(204);
 }));
 
 router.delete("/admin/comments/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const actor = getActor(req);
   const guard = await requireCapGuard(req, "discussions.moderate");
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const [existing] = await db.select().from(commentsTable).where(eq(commentsTable.id, id));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing) throw notFound();
   await db.delete(commentsTable).where(eq(commentsTable.id, id));
   await logAudit({ actor: actor!, action: "comment.delete", targetType: "comment", targetId: String(id), details: { author: existing.trader, discussionId: existing.discussionId } });
   res.sendStatus(204);
@@ -191,7 +193,7 @@ router.post("/reports", asyncHandler(async (req, res): Promise<void> => {
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { targetType, targetId, reason } = parsed.data;
   const reporter = getActor(req);
-  if (!reporter) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (!reporter) throw unauthorized();
   const { rows: bannedCheck } = await pool.query<any>(`SELECT COALESCE(banned, false) AS banned FROM users WHERE name = $1`, [reporter]);
   if (bannedCheck[0]?.banned) { res.status(403).json({ error: "Banned users cannot file reports" }); return; }
   const [row] = await db.insert(contentReportsTable).values({
@@ -315,7 +317,7 @@ const banAuthorBodySchema = z.object({
 // Moderation shortcut: ban the author of the reported content and close the report(s) in one step.
 router.post("/admin/reports/:id/ban-author", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = banAuthorBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { reason, resolveSiblings = true } = parsed.data;
@@ -356,7 +358,7 @@ router.post("/admin/reports/:id/ban-author", asyncHandler(async (req, res): Prom
 
 router.post("/admin/reports/:id/resolve", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { resolution } = parsed.data;
@@ -369,14 +371,14 @@ router.post("/admin/reports/:id/resolve", asyncHandler(async (req, res): Promise
     resolvedAt: new Date(),
     resolution: resolution || null,
   }).where(eq(contentReportsTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   await logAudit({ actor: actor!, action: "report.resolve", targetType: "report", targetId: String(id), details: { resolution } });
   res.json({ ...row, createdAt: row.createdAt.toISOString(), resolvedAt: row.resolvedAt?.toISOString() ?? null });
 }));
 
 router.post("/admin/reports/:id/dismiss", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw new AppError("INVALID_ID");
   const parsed = resolveBodySchema.safeParse(req.body);
   if (!parsed.success) { badRequest(res, parsed); return; }
   const { resolution } = parsed.data;
@@ -389,7 +391,7 @@ router.post("/admin/reports/:id/dismiss", asyncHandler(async (req, res): Promise
     resolvedAt: new Date(),
     resolution: resolution || null,
   }).where(eq(contentReportsTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   await logAudit({ actor: actor!, action: "report.dismiss", targetType: "report", targetId: String(id), details: { resolution } });
   res.json({ ...row, createdAt: row.createdAt.toISOString(), resolvedAt: row.resolvedAt?.toISOString() ?? null });
 }));
@@ -457,8 +459,8 @@ router.get("/admin/db-export", asyncHandler(async (req, res): Promise<void> => {
   const exportedAt = new Date().toISOString();
   const data = {
     exportedAt,
-    database: process.env.PGDATABASE ?? "unknown",
-    nodeEnv: process.env.NODE_ENV ?? "unknown",
+    database: config.databaseName ?? "unknown",
+    nodeEnv: config.nodeEnv,
     partial: requested.length > 0,
     summary,
     tables,
@@ -737,7 +739,8 @@ router.get("/admin/backups/:name/download", asyncHandler(async (req, res): Promi
   if (!guard.ok) { res.status(guard.status).json({ error: guard.error }); return; }
   const name = req.params.name;
   if (!name || name.includes("..") || name.includes("/")) { res.status(400).json({ error: "Invalid name" }); return; }
-  const objectName = `ws-lexx-backups/${name}.sql.gz`;
+  const objectName = await resolveBackupObjectName(String(name));
+  if (!objectName) { res.status(404).json({ error: "Not found" }); return; }
   const url = await getBackupDownloadUrl(objectName);
   res.json({ url });
 }));

@@ -11,9 +11,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { EmptyState, Pill, type Tone } from "@/components/ds";
-import { plural } from "@/components/playbook-sub/bits";
-import { ApiError, pbRequest, usePlaybookActivity } from "./api";
+import { usePlaybookActivity } from "./api";
+import { http, ApiError } from "@/lib/api/http";
 import { timeAgo } from "./model";
+import { commonI18n } from "@/i18n/ns/common";
 
 const destructive = "bg-down text-white hover:bg-down/90";
 
@@ -41,12 +42,12 @@ export function RenameFolderDialog({
     setPending(true);
     setError(null);
     try {
-      const r = await pbRequest<{ merged?: boolean }>("/api/playbook/rename-folder", { method: "PATCH", json: { from: folder, to, trader, merge, ...(space ? { space } : {}) } });
+      const r = await http.patch<{ merged?: boolean }>("/api/playbook/rename-folder", { from: folder, to, trader, merge, ...(space ? { space } : {}) });
       onRenamed(folder, to, !!r?.merged || merge);
       setConflict(null);
       onClose();
     } catch (e) {
-      if (e instanceof ApiError && e.status === 409) setConflict({ to, count: Number(e.data?.targetCount) || 0 });
+      if (e instanceof ApiError && e.status === 409) setConflict({ to, count: Number(e.field("targetCount")) || 0 });
       else setError((e as Error).message);
     } finally {
       setPending(false);
@@ -77,7 +78,7 @@ export function RenameFolderDialog({
           <AlertDialogHeader>
             <AlertDialogTitle>Папка «{conflict?.to}» уже существует</AlertDialogTitle>
             <AlertDialogDescription>
-              В ней {conflict?.count ?? 0} {plural(conflict?.count ?? 0, "сетап", "сетапа", "сетапов")}. Объединить «{folder}» с ней? Отменить объединение потом можно только вручную.
+              В ней {commonI18n.t("units.setups", { count: conflict?.count ?? 0 })}. Объединить «{folder}» с ней? Отменить объединение потом можно только вручную.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -105,7 +106,7 @@ export function DeleteFolderDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Удалить папку «{folder}»?</AlertDialogTitle>
           <AlertDialogDescription>
-            Вместе с ней будут удалены {count} {plural(count, "сетап", "сетапа", "сетапов")}. Для подтверждения введите пароль плейбука.
+            Вместе с ней будут удалены {commonI18n.t("units.setups", { count })}. Для подтверждения введите пароль плейбука.
           </AlertDialogDescription>
         </AlertDialogHeader>
         <form id="pb-del-folder" onSubmit={(e) => { e.preventDefault(); if (pwd && !pending) onConfirm(pwd); }}>

@@ -1,6 +1,8 @@
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { StatCard, StatGrid, toneOf, type Tone } from "@/components/ds";
-import { fmtPct, fmtRatio, fmtValue, pluralRu, type Kpis, type Metric } from "./metrics";
+import { fmtValue, type Kpis, type Metric } from "./metrics";
+import { fmtNum, fmtRate, fmtRatio, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type DeltaKind = "value" | "pct" | "count" | "ratio";
 
@@ -12,7 +14,7 @@ function Delta({ cur, prev, kind, metric }: {
   const text =
     kind === "pct" ? `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(Math.round(d * 100))} п.п.`
     : kind === "count" ? `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(Math.round(d))}`
-    : kind === "ratio" ? `${d > 0 ? "+" : d < 0 ? "−" : ""}${Math.abs(d).toFixed(2)}`
+    : kind === "ratio" ? fmtNum(d, { signed: true })
     : d === 0 ? fmtValue(0, metric, { sign: false }) : fmtValue(d, metric);
   const Icon = d > 0 ? ArrowUpRight : d < 0 ? ArrowDownRight : null;
   return (
@@ -56,14 +58,14 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
     },
     {
       key: "wr", label: "Win rate", title: "Доля прибыльных среди закрытых (BE считается как не-победа)",
-      value: fmtPct(k.winRate), tone: k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down",
+      value: fmtRate(k.winRate), tone: k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down",
       hint: `${k.wins}W · ${k.losses}L${k.breakeven ? ` · ${k.breakeven}BE` : ""}`,
       cur: k.winRate, prev: p?.winRate ?? null, kind: "pct",
     },
     {
       key: "trades", label: "Сделок", title: "Все сделки за период, включая открытые",
       value: String(k.total), tone: "neutral",
-      hint: k.open ? `${k.open} откр. · ${k.tradingDays} ${pluralRu(k.tradingDays, "день", "дня", "дней")}` : `${k.tradingDays} ${pluralRu(k.tradingDays, "торг. день", "торг. дня", "торг. дней")}`,
+      hint: k.open ? `${k.open} откр. · ${commonI18n.t("units.days", { count: k.tradingDays })}` : `${k.tradingDays} ${pluralRu(k.tradingDays, "торг. день", "торг. дня", "торг. дней")}`,
       cur: k.total, prev: p?.total ?? null, kind: "count", neutralDelta: true,
     },
     {
@@ -76,7 +78,7 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
       key: "pf", label: "Profit factor", title: "Сумма прибылей / сумма убытков. >1 — система в плюсе",
       value: fmtRatio(k.profitFactor),
       tone: k.profitFactor == null ? "neutral" : k.profitFactor >= 1 ? "up" : "down",
-      hint: k.payoff != null ? `payoff ${k.payoff.toFixed(2)}` : undefined,
+      hint: k.payoff != null ? `payoff ${fmtNum(k.payoff)}` : undefined,
       cur: finite(k.profitFactor), prev: finite(p?.profitFactor ?? null), kind: "ratio",
     },
     {
@@ -100,13 +102,13 @@ export function KpiGrid({ k, prev, metric }: { k: Kpis; prev: Kpis | null; metri
     },
     {
       key: "wstreak", label: "Лучшая серия", title: "Максимум прибыльных сделок подряд",
-      value: `${k.longestWin} ${pluralRu(k.longestWin, "победа", "победы", "побед")}`, tone: k.longestWin ? "up" : "neutral",
+      value: commonI18n.t("units.wins", { count: k.longestWin }), tone: k.longestWin ? "up" : "neutral",
       hint: k.current.kind === "win" && k.current.len > 0 ? `сейчас ${k.current.len} подряд` : undefined,
       cur: k.longestWin, prev: p?.longestWin ?? null, kind: "count",
     },
     {
       key: "lstreak", label: "Худшая серия", title: "Максимум убыточных сделок подряд",
-      value: `${k.longestLoss} ${pluralRu(k.longestLoss, "убыток", "убытка", "убытков")}`, tone: k.longestLoss ? "down" : "neutral",
+      value: commonI18n.t("units.losses", { count: k.longestLoss }), tone: k.longestLoss ? "down" : "neutral",
       hint: k.current.kind === "loss" && k.current.len > 0 ? `сейчас ${k.current.len} подряд` : undefined,
       cur: k.longestLoss, prev: p?.longestLoss ?? null, kind: "count", higherBetter: false,
     },

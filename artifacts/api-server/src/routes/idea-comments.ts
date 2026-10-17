@@ -7,13 +7,14 @@ import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { isGuest, requireMember } from "../lib/auth";
 import { can } from "../lib/permissions";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
 router.get("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<void> => {
   const ideaId = Number(req.params.id);
-  if (!Number.isInteger(ideaId) || ideaId <= 0) { res.status(400).json({ error: "invalid id" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!Number.isInteger(ideaId) || ideaId <= 0) throw badRequest("INVALID_ID");
+  if (!req.authUser) throw unauthorized();
   const viewer = isGuest(req) ? null : req.authUser.name;
   const isCuratorOrAdmin = await can(req, "ideas.review");
 
@@ -21,11 +22,11 @@ router.get("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<v
     `SELECT trader, status FROM trade_ideas WHERE id = $1 AND deleted_at IS NULL`,
     [ideaId],
   );
-  if (!ideaRows[0]) { res.status(404).json({ error: "idea not found" }); return; }
+  if (!ideaRows[0]) throw notFound("IDEA_NOT_FOUND");
   const ideaAuthor = (ideaRows[0] as { trader: string | null }).trader;
   // Comments on another trader's draft are as invisible as the draft itself.
   if ((ideaRows[0] as { status: string }).status === "draft" && !isCuratorOrAdmin && (!viewer || viewer !== ideaAuthor)) {
-    res.status(404).json({ error: "idea not found" }); return;
+    throw notFound("IDEA_NOT_FOUND");
   }
 
   const { rows } = await pool.query(
@@ -49,7 +50,7 @@ router.get("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<v
 
 router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<void> => {
   const ideaId = Number(req.params.id);
-  if (!Number.isInteger(ideaId) || ideaId <= 0) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!Number.isInteger(ideaId) || ideaId <= 0) throw badRequest("INVALID_ID");
   if (!requireMember(req, res)) return;
   const author = req.authUser!.name;
   const { text, is_private } = req.body as { text?: string; is_private?: boolean };
@@ -61,10 +62,10 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
     `SELECT id, ticker, trader, status FROM trade_ideas WHERE id = $1 AND deleted_at IS NULL`,
     [ideaId],
   );
-  if (!ideaRows[0]) { res.status(404).json({ error: "idea not found" }); return; }
+  if (!ideaRows[0]) throw notFound("IDEA_NOT_FOUND");
   const idea = ideaRows[0] as { id: number; ticker: string; trader: string | null; status: string };
   if (idea.status === "draft" && idea.trader !== author && !(await can(req, "ideas.review", idea.trader ? { trader: idea.trader } : undefined))) {
-    res.status(404).json({ error: "idea not found" }); return;
+    throw notFound("IDEA_NOT_FOUND");
   }
 
   const isPrivate = Boolean(is_private);
@@ -105,7 +106,7 @@ router.delete("/trade-ideas/:id/comments/:commentId", asyncHandler(async (req, r
   const ideaId = Number(req.params.id);
   const commentId = Number(req.params.commentId);
   if (!Number.isInteger(ideaId) || ideaId <= 0 || !Number.isInteger(commentId) || commentId <= 0) {
-    res.status(400).json({ error: "invalid id" }); return;
+    throw badRequest("INVALID_ID");
   }
   if (!requireMember(req, res)) return;
   const actor = req.authUser!;

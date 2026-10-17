@@ -6,7 +6,9 @@
 import * as React from "react";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { PATTERN_SHORT, fmtDateShort, fmtUsdCompact, pluralTrades, type DisciplineDay, type PatternKey } from "./api";
+import { PATTERN_SHORT, type DisciplineDay, type PatternKey } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const MONTHS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
 const WD = ["Пн", "Вт", "Ср", "Чт", "Пт"];
@@ -68,7 +70,7 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
         <Pill tone={avg == null ? "neutral" : avg >= 85 ? "up" : avg >= 65 ? "warn" : "down"} title="Средний индекс по торговым дням периода">
           средний индекс {avg == null ? "—" : Math.round(avg)}
         </Pill>
-        <span>{pluralTrades(totalTrades)} за {days.length} дн.</span>
+        <span>{commonI18n.t("units.trades", { count: totalTrades })} за {days.length} дн.</span>
         {worst.length > 0 && (
           <span className="flex flex-wrap items-center gap-1">
             <span>худшие:</span>
@@ -79,9 +81,9 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
                 onClick={() => onSelect(d.date)}
                 aria-pressed={selected === d.date}
                 className={cn("rounded-full px-2 py-0.5 tabular-nums transition-colors duration-[var(--dur-1)] hover:text-foreground", selected === d.date ? "bg-primary/12 text-foreground" : "bg-[var(--glass-bg)]")}
-                title={`${d.date}: индекс ${d.score}, нетто ${fmtUsdCompact(d.net)}`}
+                title={`${d.date}: индекс ${d.score}, нетто ${fmtUsd(d.net, { signed: true, compact: true })}`}
               >
-                {fmtDateShort(d.date)} · {d.score}
+                {fmtDate(d.date, "dayMonthNumeric")} · {d.score}
               </button>
             ))}
           </span>
@@ -107,7 +109,7 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
                     if (day === undefined) return <span key={di} className="h-5 w-5" aria-hidden="true" />;
                     if (day === null) return <span key={di} className="h-5 w-5 rounded-md bg-muted/30" aria-hidden="true" />;
                     const pen = Object.entries(day.penalties).filter(([, v]) => (v ?? 0) > 0);
-                    const title = `${day.date}: индекс ${day.score}, ${pluralTrades(day.trades)}, нетто ${fmtUsdCompact(day.net)}${pen.length ? "; штрафы: " + pen.map(([k, v]) => `${PATTERN_SHORT[k as PatternKey]} −${v}`).join(", ") : ""}`;
+                    const title = `${day.date}: индекс ${day.score}, ${commonI18n.t("units.trades", { count: day.trades })}, нетто ${fmtUsd(day.net, { signed: true, compact: true })}${pen.length ? "; штрафы: " + pen.map(([k, v]) => `${PATTERN_SHORT[k as PatternKey]} −${v}`).join(", ") : ""}`;
                     const isSel = selected === day.date;
                     return (
                       <button

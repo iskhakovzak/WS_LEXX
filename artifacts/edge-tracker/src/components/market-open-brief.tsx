@@ -16,7 +16,7 @@ import {
   ChevronRight,
 } from "lucide-react";
 import { useMarketBrief, type MarketBrief } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { Segmented, Pill, EmptyState, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,15 +26,13 @@ import {
   IconAction,
   WidgetError,
   SkeletonTiles,
-  fmtPct,
-  fmtPrice,
   relTime,
-  clockTime,
   nySession,
   useNow,
   useStoredState,
   num,
 } from "@/components/widgets/widget-kit";
+import { fmtDate, fmtPct, fmtPrice } from "@/lib/format";
 
 /** 9:25–10:30 ET weekdays: the brief opens itself automatically. */
 function isMarketOpenWindow(now = new Date()): boolean {
@@ -161,12 +159,6 @@ const EVENT_TYPE_RU: Record<string, string> = {
   earnings: "Отчёты",
 };
 
-function fmtShortDate(ymd: string): string {
-  const [y, m, d] = (ymd || "").slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
-}
-
 function CopyButton({ text }: { text: string }) {
   const [ok, setOk] = useState(false);
   return (
@@ -206,12 +198,10 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
     setQuotesFetching(true);
     setNextRefresh(60);
     try {
-      const r = await fetch(`${BASE}/api/market-brief/quotes`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setQuotes(await r.json());
+      setQuotes(await http.get<Quotes>("/api/market-brief/quotes"));
       setQuotesError(null);
     } catch (e) {
-      setQuotesError(e instanceof Error && /^HTTP/.test(e.message) ? `Котировки недоступны (${e.message})` : "Котировки недоступны — ошибка сети");
+      setQuotesError(e instanceof ApiError && !e.isNetwork ? `Котировки недоступны (HTTP ${e.status})` : "Котировки недоступны — ошибка сети");
     } finally {
       setQuotesFetching(false);
     }
@@ -274,7 +264,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
     <WidgetShell
       icon={Sunrise}
       title="Бриф открытия"
-      meta={brief?.date ? fmtShortDate(brief.date) : undefined}
+      meta={brief?.date ? fmtDate(brief.date.slice(0, 10), "weekdayDayMonth") : undefined}
       actions={
         <>
           <IconAction
@@ -310,15 +300,15 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
           {session.label} · NY {session.hhmm}
         </Pill>
         {builtAt && (
-          <span className="tabular-nums" title={new Date(builtAt).toLocaleString("ru-RU")}>
-            Бриф собран {clockTime(builtAt)} · {relTime(builtAt, now)}
+          <span className="tabular-nums" title={fmtDate(builtAt, "shortDateTime")}>
+            Бриф собран {fmtDate(builtAt, "time")} · {relTime(builtAt, now)}
           </span>
         )}
         {stale && <Pill tone="warn">Устаревшие данные</Pill>}
         {quotes && (
           <span className="flex items-center gap-1 tabular-nums text-up">
             <Activity className="h-3 w-3 motion-safe:animate-pulse" aria-hidden="true" />
-            Котировки {clockTime(quotes.quotesAt)}
+            Котировки {fmtDate(quotes.quotesAt, "time")}
             {premarket && <span className="text-muted-foreground">· обновление через {nextRefresh} с</span>}
           </span>
         )}
@@ -499,7 +489,7 @@ export function MarketOpenBrief({ alwaysShow = false }: { alwaysShow?: boolean }
                       return (
                         <li key={e.id} className="flex items-center gap-2 py-1.5 text-sm">
                           <span className={cn("w-24 shrink-0 text-xs tabular-nums", isToday ? "font-semibold text-primary" : "text-muted-foreground")}>
-                            {isToday ? "Сегодня" : fmtShortDate(e.date)}
+                            {isToday ? "Сегодня" : fmtDate(e.date.slice(0, 10), "weekdayDayMonth")}
                           </span>
                           <span className="min-w-0 flex-1 truncate" title={e.description ?? undefined}>{e.name}</span>
                           <Pill tone={e.importance === "high" ? "down" : e.importance === "medium" ? "warn" : "neutral"}>

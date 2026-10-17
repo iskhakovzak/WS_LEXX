@@ -9,7 +9,8 @@ import {
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
   Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert,
 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { fmtDate } from "@/lib/format";
 import type { Tone } from "@/components/ds";
 
 export type Severity = "info" | "warn" | "critical";
@@ -187,13 +188,7 @@ export function timeAgo(iso: string, now = Date.now()): string {
   if (h < 24) return `${h} ч`;
   const d = Math.round(h / 24);
   if (d < 7) return `${d} дн`;
-  return new Date(t).toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit" });
-}
-
-const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit" });
-export function timeOfDay(iso: string): string {
-  const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "" : TIME_FMT.format(d);
+  return fmtDate(t, "dayMonthNumeric");
 }
 
 function localYmd(d: Date): string {
@@ -208,7 +203,7 @@ export function dayLabel(iso: string, now = new Date()): string {
   if (key === localYmd(now)) return "Сегодня";
   const y = new Date(now); y.setDate(y.getDate() - 1);
   if (key === localYmd(y)) return "Вчера";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", ...(d.getFullYear() !== now.getFullYear() ? { year: "numeric" } : {}) });
+  return fmtDate(d, d.getFullYear() !== now.getFullYear() ? "long" : "dayMonthLong");
 }
 
 export type DayGroup = { key: string; label: string; items: Notification[] };
@@ -258,48 +253,25 @@ export function filterParams(f: ListFilters): string {
   return p.toString();
 }
 
-async function readError(r: Response, fallback: string): Promise<Error> {
-  const data = (await r.json().catch(() => null)) as { error?: string } | null;
-  const e = new Error(data?.error || `${fallback} (HTTP ${r.status})`) as Error & { status?: number };
-  e.status = r.status;
-  return e;
-}
-
-async function sendJson(path: string, method: "POST" | "PATCH" | "PUT", body?: unknown): Promise<unknown> {
-  const r = await fetch(`${BASE}${path}`, {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw await readError(r, "Не удалось выполнить действие");
-  return r.json().catch(() => ({}));
-}
-
 export const notificationsApi = {
   async count(): Promise<UnreadCount> {
-    const r = await fetch(`${BASE}/api/notifications/count`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить счётчик");
-    const d = (await r.json()) as Partial<UnreadCount>;
+    const d = await http.get<Partial<UnreadCount>>("/api/notifications/count");
     return { unread: Number(d.unread ?? 0), critical: Number(d.critical ?? 0), warn: Number(d.warn ?? 0) };
   },
   async list(params: string, cursor?: string | null): Promise<NotificationPage> {
-    const r = await fetch(`${BASE}/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить уведомления");
-    return normalizePage(await r.json());
+    return normalizePage(await http.get(`/api/notifications?${params}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`));
   },
   async prefs(): Promise<Prefs> {
-    const r = await fetch(`${BASE}/api/notifications/prefs`);
-    if (!r.ok) throw await readError(r, "Не удалось загрузить настройки");
-    const d = (await r.json()) as Partial<Prefs>;
+    const d = await http.get<Partial<Prefs>>("/api/notifications/prefs");
     return { prefs: Array.isArray(d.prefs) ? d.prefs : [], muteAllUntil: typeof d.muteAllUntil === "string" ? d.muteAllUntil : null };
   },
-  savePrefs: (p: Prefs) => sendJson(`/api/notifications/prefs`, "PUT", p) as Promise<Prefs>,
-  readAll: (type?: string) => sendJson(`/api/notifications/read-all`, "PATCH", type ? { type } : {}),
-  readMany: (ids: number[]) => sendJson(`/api/notifications/read-many`, "POST", { ids }),
-  unreadMany: (ids: number[]) => sendJson(`/api/notifications/unread-many`, "POST", { ids }),
-  archive: (ids: number[]) => sendJson(`/api/notifications/archive`, "POST", { ids }),
+  savePrefs: (p: Prefs) => http.put<Prefs>(`/api/notifications/prefs`, p),
+  readAll: (type?: string) => http.patch(`/api/notifications/read-all`, type ? { type } : {}),
+  readMany: (ids: number[]) => http.post(`/api/notifications/read-many`, { ids }),
+  unreadMany: (ids: number[]) => http.post(`/api/notifications/unread-many`, { ids }),
+  archive: (ids: number[]) => http.post(`/api/notifications/archive`, { ids }),
   /** `ids` — what was archived (for «Отменить»); absent on older API builds. */
-  archiveRead: () => sendJson(`/api/notifications/archive`, "POST", { read: true }) as Promise<{ updated?: number; ids?: number[] }>,
-  unarchive: (ids: number[]) => sendJson(`/api/notifications/unarchive`, "POST", { ids }),
-  readOne: (id: number) => sendJson(`/api/notifications/${id}/read`, "PATCH"),
+  archiveRead: () => http.post<{ updated?: number; ids?: number[] } | null>(`/api/notifications/archive`, { read: true }),
+  unarchive: (ids: number[]) => http.post(`/api/notifications/unarchive`, { ids }),
+  readOne: (id: number) => http.patch(`/api/notifications/${id}/read`),
 };

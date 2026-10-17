@@ -23,9 +23,9 @@ import { PlaybookAICritiqueButton } from "@/components/playbook-ai-critique";
 import { PlaybookRevisionsButton } from "@/components/playbook-revisions";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, notLiveMessage, pbRequest, useSetupExamples } from "./api";
+import { invalidatePlaybook, notLiveMessage, useSetupExamples } from "./api";
+import { http } from "@/lib/api/http";
 import { ConfidenceMeter, DocSection, REDACTED_AGG_HINT, SetupTypePill, TagChips } from "./setup-bits";
 import { ExamplesBoard } from "./examples-board";
 import { ExamplesSection } from "./examples-section";
@@ -36,10 +36,11 @@ import { MoveToFolderButton } from "./move-to-folder";
 import { SetupStatsPanel } from "./setup-stats";
 import { StructuredDescription } from "./structured-editor";
 import {
-  HORIZON_LABEL, SOURCE_LABELS, accessOf, ddmm, fmtPct, fmtR, fmtUsd, folderSwatch, moneyTone, timeAgo,
+  HORIZON_LABEL, SOURCE_LABELS, accessOf, folderSwatch, moneyTone, timeAgo,
   type PlaybookEntry, type SetupAccess, type SetupSummary, type ViewerLike,
 } from "./model";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type SetupTab = "about" | "examples" | "stats" | "history";
 export const SETUP_TABS: SetupTab[] = ["about", "examples", "stats", "history"];
@@ -85,7 +86,7 @@ export function SetupView({
   React.useEffect(() => { topRef.current?.scrollIntoView({ block: "nearest" }); }, [entry.id]);
 
   const reviewedMut = useMutation({
-    mutationFn: (reviewed: boolean) => pbRequest(`/api/playbook/${entry.id}/reviewed`, { method: "POST", json: { reviewed } }),
+    mutationFn: (reviewed: boolean) => http.post(`/api/playbook/${entry.id}/reviewed`, { reviewed }),
     onMutate: async (reviewed) => {
       await qc.cancelQueries({ queryKey: ["playbook"] });
       const prev = qc.getQueryData<PlaybookEntry[]>(["playbook"]);
@@ -101,10 +102,10 @@ export function SetupView({
   const action = useMutation({
     mutationFn: async (kind: "copy" | "propose" | "unpropose" | "decline" | "promote") => {
       const note = proposeNote.trim();
-      if (kind === "copy") return pbRequest<{ id: number; name: string }>(`/api/playbook/${entry.id}/copy`, { method: "POST", json: {} });
-      if (kind === "propose") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "POST", json: note ? { note } : {} });
-      if (kind === "unpropose" || kind === "decline") return pbRequest(`/api/playbook/${entry.id}/propose`, { method: "DELETE" });
-      return pbRequest<{ id: number }>(`/api/playbook/${entry.id}/promote`, { method: "POST", json: {} });
+      if (kind === "copy") return http.post<{ id: number; name: string }>(`/api/playbook/${entry.id}/copy`, {});
+      if (kind === "propose") return http.post(`/api/playbook/${entry.id}/propose`, note ? { note } : {});
+      if (kind === "unpropose" || kind === "decline") return http.del(`/api/playbook/${entry.id}/propose`);
+      return http.post<{ id: number }>(`/api/playbook/${entry.id}/promote`, {});
     },
     onSuccess: (r: any, kind) => {
       invalidatePlaybook(qc, entry.id);
@@ -356,23 +357,23 @@ function StatusLine({
   const exp = s.expectancyUsd ?? (s.netPnl != null && s.tradeCount ? s.netPnl / s.tradeCount : null);
   return (
     <p className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border/60 pt-3 text-sm tabular-nums text-muted-foreground">
-      <button type="button" onClick={onStats} className="hover:text-foreground">{s.tradeCount} {pluralRu(s.tradeCount, "сделка", "сделки", "сделок")}{s.tradeCount < 10 ? " (мало для выводов)" : ""}</button>
+      <button type="button" onClick={onStats} className="hover:text-foreground">{commonI18n.t("units.trades", { count: s.tradeCount })}{s.tradeCount < 10 ? " (мало для выводов)" : ""}</button>
       <span aria-hidden="true">·</span>
-      <span>WR <span className="text-foreground">{fmtPct(s.winrate)}</span></span>
+      <span>WR <span className="text-foreground">{fmtRate(s.winrate)}</span></span>
       <span aria-hidden="true">·</span>
       {s.redacted ? (
         // $ hidden by the server (other traders' trades) → expectancy in R instead.
         <span title={REDACTED_AGG_HINT}><span className={toneText(moneyTone(s.expectancy))}>{fmtR(s.expectancy)}</span> / сделка · суммы скрыты</span>
       ) : (
         <>
-          <span>нетто <span className={toneText(moneyTone(s.netPnl))}>{fmtUsd(s.netPnl)}</span></span>
+          <span>нетто <span className={toneText(moneyTone(s.netPnl))}>{fmtUsd(s.netPnl, { signed: true, decimals: 0 })}</span></span>
           <span aria-hidden="true">·</span>
-          <span><span className={toneText(moneyTone(exp))}>{fmtUsd(exp, 2)}</span> / сделка</span>
+          <span><span className={toneText(moneyTone(exp))}>{fmtUsd(exp, { signed: true, decimals: 2 })}</span> / сделка</span>
         </>
       )}
       <span aria-hidden="true">·</span>
       {ex}
-      {s.lastTradeDate && (<><span aria-hidden="true">·</span><span>последняя {ddmm(s.lastTradeDate)}</span></>)}
+      {s.lastTradeDate && (<><span aria-hidden="true">·</span><span>последняя {fmtDate(s.lastTradeDate, "dayMonthNumeric")}</span></>)}
     </p>
   );
 }
@@ -439,7 +440,7 @@ function ChecklistInlineEditor({ entry, onDone }: { entry: PlaybookEntry; onDone
     if (next === (entry.checklist ?? "").trim()) { onDone(); return; }
     setSaving(true);
     try {
-      await pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { checklist: next || null } });
+      await http.patch(`/api/playbook/${entry.id}`, { checklist: next || null });
       invalidatePlaybook(qc, entry.id);
       toast({ title: next ? "Чеклист сохранён" : "Чеклист очищен" });
       onDone();
@@ -466,7 +467,7 @@ function ChecklistInlineEditor({ entry, onDone }: { entry: PlaybookEntry; onDone
         className="resize-y text-sm"
       />
       <div className="flex items-center gap-2">
-        <span className="mr-auto text-xs tabular-nums text-muted-foreground">{lines ? `${lines} ${pluralRu(lines, "пункт", "пункта", "пунктов")}` : "Пункт на строку"} · Ctrl+Enter</span>
+        <span className="mr-auto text-xs tabular-nums text-muted-foreground">{lines ? `${commonI18n.t("units.items", { count: lines })}` : "Пункт на строку"} · Ctrl+Enter</span>
         <Button size="sm" variant="ghost" onClick={onDone} disabled={saving}>Отмена</Button>
         <Button size="sm" onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить"}</Button>
       </div>
@@ -481,14 +482,9 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
     queryKey: ["playbook-activity", "setup", entry.id],
     queryFn: async () => {
       // The setup's own journal (any reader of the setup). Older API → the global feed, filtered here.
-      const own = await fetch(`${BASE}/api/playbook/${entry.id}/activity`);
-      if (own.ok) {
-        const rows = (await own.json().catch(() => [])) as ActivityRow[];
-        return Array.isArray(rows) ? rows : [];
-      }
-      const r = await fetch(`${BASE}/api/activity`);
-      if (!r.ok) return [];
-      const all = (await r.json().catch(() => [])) as ActivityRow[];
+      const own = await http.get<ActivityRow[]>(`/api/playbook/${entry.id}/activity`).catch(() => undefined);
+      if (own !== undefined) return Array.isArray(own) ? own : [];
+      const all = await http.get<ActivityRow[]>("/api/activity").catch(() => []);
       return (Array.isArray(all) ? all : [])
         .filter((a) => a.section === "playbook" && (String(a.entityId ?? "") === String(entry.id) || (!a.entityId && a.entityTitle === entry.name)))
         .slice(0, 50);
@@ -496,13 +492,13 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
     staleTime: 30_000,
   });
   const facts: [string, string][] = [
-    ["Создан", `${new Date(entry.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}${entry.createdBy ? ` · ${entry.createdBy}` : entry.trader ? ` · ${entry.trader}` : ""}`],
+    ["Создан", `${fmtDate(entry.createdAt, "long")}${entry.createdBy ? ` · ${entry.createdBy}` : entry.trader ? ` · ${entry.trader}` : ""}`],
   ];
   if (entry.updatedAt) facts.push(["Изменён", timeAgo(entry.updatedAt) ?? ""]);
   if (entry.copiedFromAuthor) facts.push(["Скопирован у", `${entry.copiedFromAuthor}${entry.copiedFromId ? ` (#${entry.copiedFromId})` : ""}`]);
   if (entry.promotedFromId) facts.push(["Перенесён в Офис из", `#${entry.promotedFromId}`]);
-  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push(["Открыт", `${new Date(entry.sharedAt).toLocaleDateString("ru-RU")}${entry.sharedBy ? ` · ${entry.sharedBy}` : ""}`]);
-  if (entry.officeProposedAt) facts.push(["Предложен в Офис", `${new Date(entry.officeProposedAt).toLocaleDateString("ru-RU")}${entry.officeProposedBy ? ` · ${entry.officeProposedBy}` : ""}`]);
+  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push(["Открыт", `${fmtDate(entry.sharedAt, "short")}${entry.sharedBy ? ` · ${entry.sharedBy}` : ""}`]);
+  if (entry.officeProposedAt) facts.push(["Предложен в Офис", `${fmtDate(entry.officeProposedAt, "short")}${entry.officeProposedBy ? ` · ${entry.officeProposedBy}` : ""}`]);
   if (entry.reviewed && entry.reviewedBy) facts.push(["Проверил", entry.reviewedBy]);
 
   return (
@@ -516,7 +512,7 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
           <ol className="flex flex-col gap-2">
             {q.data.map((a) => (
               <li key={a.id} className="flex items-start gap-3 text-sm">
-                <time dateTime={a.createdAt} className="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{new Date(a.createdAt).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}</time>
+                <time dateTime={a.createdAt} className="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDate(a.createdAt, "numericDateTime")}</time>
                 <span className="min-w-0 flex-1">
                   <span className="text-foreground">{activityText(a)}</span>
                   {a.trader && <span className="text-muted-foreground"> · {a.trader}</span>}

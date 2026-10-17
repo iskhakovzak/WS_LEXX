@@ -1,7 +1,7 @@
 // /research — archive of the former «Исследования» notes. The section was merged away (Wave I):
 // earnings and price reactions live in «Катализаторы» (/events), repeatable patterns in the Playbook.
 // Old notes stay readable and can be moved to the Playbook with «В плейбук»; nothing new is written here.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -18,7 +18,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
 import { UndoToast } from "@/components/undo-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { ResearchFormDialog, formToResearchBody, type ResearchFormData } from "@/components/research/research-form-dialog";
 import { ResearchPreview, type UpcomingByTicker } from "@/components/research/research-preview";
@@ -99,8 +99,7 @@ export default function ResearchArchivePage() {
     const next = !itemsRef.current.find((x) => x.id === id)?.pinned;
     qc.setQueriesData<ResearchNote[]>({ queryKey: getListResearchQueryKey() }, (old) => old?.map((x) => (x.id === id ? { ...x, pinned: next } : x)));
     try {
-      const res = await fetch(`${BASE}/api/research/${id}/pin`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned: next }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await http.post(`/api/research/${id}/pin`, { pinned: next });
     } catch (e) {
       invalidate();
       toast({ title: "Не удалось изменить закрепление", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -109,8 +108,7 @@ export default function ResearchArchivePage() {
 
   async function saveScreenshotNotes(r: Research, notes: string) {
     try {
-      const res = await fetch(`${BASE}/api/research/${r.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ screenshotNotes: notes }) });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      await http.patch(`/api/research/${r.id}`, { screenshotNotes: notes });
       invalidate();
     } catch (err) {
       toast({ title: "Ошибка сохранения", description: String(err), variant: "destructive" });

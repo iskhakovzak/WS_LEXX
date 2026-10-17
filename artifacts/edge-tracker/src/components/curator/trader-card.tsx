@@ -5,8 +5,8 @@ import { LimitBar, Pill, Sparkline, StatusDot, toneText } from "@/components/ds"
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { PatternBrief, TraderSignal } from "./api";
-import { actionTone, disciplineTone, riskTone, shortDate, usd, worstUsage } from "./curator-math";
-import { pluralRu } from "@/components/rules/constants";
+import { actionTone, disciplineTone, riskTone, worstUsage } from "./curator-math";
+import { fmtDate, fmtUsd, pluralRu } from "@/lib/format";
 
 const TREND_WORD = { up: "растёт", down: "падает", flat: "ровно", none: "нет данных" } as const;
 
@@ -38,8 +38,8 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
       <header className="flex min-w-0 items-start gap-2">
         <button type="button" onClick={() => onOpen()} className="min-w-0 flex-1 text-left">
           <span className="block truncate text-base font-semibold text-foreground hover:text-primary" title={s.nameLatin ? `${s.trader} · ${s.nameLatin}` : s.trader}>{title ?? s.trader}</span>
-          <span className="block truncate text-xs text-muted-foreground" title={[s.stage.label ?? "этап не задан", s.tierName ? `тир ${s.tierName}` : null, s.lastTradeDate ? `посл. сделка ${shortDate(s.lastTradeDate)}` : null].filter(Boolean).join(" · ")}>
-            {s.stage.label ?? "этап не задан"}{s.tierName ? ` · тир ${s.tierName}` : ""}{s.lastTradeDate ? ` · посл. сделка ${shortDate(s.lastTradeDate)}` : ""}
+          <span className="block truncate text-xs text-muted-foreground" title={[s.stage.label ?? "этап не задан", s.tierName ? `тир ${s.tierName}` : null, s.lastTradeDate ? `посл. сделка ${fmtDate(s.lastTradeDate, "dayMonth")}` : null].filter(Boolean).join(" · ")}>
+            {s.stage.label ?? "этап не задан"}{s.tierName ? ` · тир ${s.tierName}` : ""}{s.lastTradeDate ? ` · посл. сделка ${fmtDate(s.lastTradeDate, "dayMonth")}` : ""}
           </span>
         </button>
         <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : "Без лимитов"}</Pill>
@@ -49,7 +49,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
         <Metric label="4 недели" title="Нетто по неделям (пн–пт, NY)">
           <div className="flex flex-wrap items-end justify-between gap-x-1">
             <span className={cn("whitespace-nowrap text-sm font-semibold tabular-nums", !hasTrend ? "text-muted-foreground" : fourWeekNet > 0 ? "text-up" : fourWeekNet < 0 ? "text-down" : "text-foreground")}>
-              {hasTrend ? usd(fourWeekNet) : "—"}
+              {hasTrend ? fmtUsd(fourWeekNet, { signed: true, decimals: 0 }) : "—"}
             </span>
             <Sparkline data={weeks} width={56} height={20} baseline={0} ariaLabel={`Тренд за 4 недели: ${TREND_WORD[s.trendDir]}`} />
           </div>
@@ -62,7 +62,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
         </Metric>
         <Metric label="Сегодня" title="Нетто за сегодня и сделки">
           <span className={cn("text-sm font-semibold tabular-nums", (s.risk.todayPnl ?? 0) > 0 ? "text-up" : (s.risk.todayPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>
-            {s.risk.todayTrades ? usd(s.risk.todayPnl) : "—"}
+            {s.risk.todayTrades ? fmtUsd(s.risk.todayPnl, { signed: true, decimals: 0 }) : "—"}
           </span>
           <span className="text-2xs tabular-nums text-muted-foreground">{s.risk.todayTrades} сд.{s.risk.openPositions ? ` · ${s.risk.openPositions} откр.` : ""}</span>
         </Metric>
@@ -86,7 +86,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
 
       <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
         <dt className="text-muted-foreground">Последний разбор</dt>
-        <dd className="truncate text-right tabular-nums text-foreground">{lastReview ? shortDate(lastReview.slice(0, 10)) : "не было"}</dd>
+        <dd className="truncate text-right tabular-nums text-foreground">{lastReview ? fmtDate(lastReview.slice(0, 10), "dayMonth") : "не было"}</dd>
         <dt className="text-muted-foreground">Очередь / нарушения</dt>
         <dd className="text-right tabular-nums text-foreground">
           {s.eod.pending + (s.weekly.submittedPending ? 1 : 0) + s.academy.pendingSubmissions} / {s.breaches.unreviewed ? <span className="text-down">{s.breaches.unreviewed} без разбора</span> : s.breaches.last30}
@@ -145,7 +145,7 @@ function PatternsLine({ patterns, loading }: { patterns?: PatternBrief[] | null;
     <div className="flex min-w-0 flex-wrap items-center gap-1.5">
       <span className="text-2xs text-muted-foreground">Паттерны:</span>
       {top.map((p) => (
-        <Pill key={p.key} tone={SEVERITY_TONE[p.severity ?? ""] ?? "neutral"} title={p.cost != null ? `Стоимость за 4 недели: ${usd(p.cost)}` : undefined}>
+        <Pill key={p.key} tone={SEVERITY_TONE[p.severity ?? ""] ?? "neutral"} title={p.cost != null ? `Стоимость за 4 недели: ${fmtUsd(p.cost, { signed: true, decimals: 0 })}` : undefined}>
           {p.title} · {p.n}
         </Pill>
       ))}

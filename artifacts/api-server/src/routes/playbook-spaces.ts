@@ -18,6 +18,7 @@ import {
   canSeeAggregateMoney, canSeeTradeMoney, equityByR, redactEdgeStats, redactSlot, redactTradeRow, redactUsdStats,
   type MoneyViewer,
 } from "../lib/playbookPrivacy";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Playbook spaces, tiered examples, gallery, trade picker, sharing, copy / promote, $-stats and media (Wave J3).
@@ -114,7 +115,7 @@ export function autoMatchesSetup(auto: string | null | undefined, setup: { name?
 }
 
 async function setupForRead(req: Request, res: Response, id: number | null) {
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!id) { sendError(res, badRequest("INVALID_ID")); return null; }
   await ensurePlaybookSpaces();
   const row = await loadSetupAccess(id);
   const v = await loadViewer(req);
@@ -184,7 +185,7 @@ router.get("/playbook/:id/examples", asyncHandler(async (req, res): Promise<void
 }));
 
 router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<void> => {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
@@ -258,7 +259,7 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
 }));
 
 router.post("/playbook/:id/examples/reorder", asyncHandler(async (req, res): Promise<void> => {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
@@ -285,7 +286,7 @@ router.post("/playbook/:id/examples/reorder", asyncHandler(async (req, res): Pro
 }));
 
 router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res): Promise<void> => {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
@@ -330,7 +331,7 @@ router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res):
       await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2 AND playbook_id = $3`, [target, ex.tradeId, row.id]);
     }
   }
-  if (!sets.length) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   vals.push(ex.id);
   await pool.query(`UPDATE playbook_examples SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $${vals.length}`, vals);
   const { rows } = await pool.query<any>(`SELECT ${EXAMPLE_SELECT} FROM playbook_examples e JOIN trades t ON t.id = e.trade_id WHERE e.id = $1`, [ex.id]);
@@ -338,7 +339,7 @@ router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res):
 }));
 
 router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res): Promise<void> => {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
@@ -401,7 +402,7 @@ router.get("/playbook-tools/trade-picker", asyncHandler(async (req, res): Promis
   await ensurePlaybookSpaces();
   const requested = typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested, "trades.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const v = await loadViewer(req);
   const setupId = parseId(req.query.setupId);
   let setup: { id: number; name: string; setupType: string | null; tags: string | null } | null = null;
@@ -467,10 +468,10 @@ router.get("/playbook-tools/trade-picker", asyncHandler(async (req, res): Promis
 router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): Promise<void> => {
   await ensurePlaybookSpaces();
   const tradeId = parseId(req.params.tradeId);
-  if (!tradeId) { res.status(400).json({ error: "Invalid tradeId" }); return; }
+  if (!tradeId) throw badRequest("INVALID_ID");
   const access = await canAccessTrade(req, tradeId, "read");
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Нет доступа к сделке" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("TRADE_FORBIDDEN");
   const v = await loadViewer(req);
   const sg = await suggestionJoin("t");
   const { rows: tr } = await pool.query<any>(
@@ -548,7 +549,7 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
   await Promise.all([ensurePlaybookSpaces(), ensureInboxExtras()]);
   const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim() : null;
   const scope = await scopeTrader(req, requested, "trades.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const v = await loadViewer(req);
   const who = scope ?? v.name;
   if (!who || v.guest) { res.json({ trader: null, days: 0, total: 0, trades: [] }); return; }
@@ -619,10 +620,10 @@ function ensureInboxExtras(): Promise<void> {
  * DELETE /playbook-tools/inbox/dismiss { tradeIds } — undo. Staff may do it for any trader's trades.
  */
 async function inboxDismiss(req: Request, res: Response, on: boolean): Promise<void> {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) { sendError(res, new AppError("GUEST_READ_ONLY")); return; }
   await ensureInboxExtras();
   const v = await loadViewer(req);
-  if (!v.name) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!v.name) { sendError(res, unauthorized()); return; }
   const body = req.body as { tradeIds?: unknown };
   const ids = [...new Set((Array.isArray(body.tradeIds) ? body.tradeIds : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 200);
   if (!ids.length) { res.status(400).json({ error: "tradeIds required" }); return; }
@@ -720,7 +721,7 @@ const COPY_COLUMNS = [
 ];
 
 router.post("/playbook/:id/copy", asyncHandler(async (req, res): Promise<void> => {
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
@@ -803,7 +804,7 @@ router.get("/playbook/:id/stats", asyncHandler(async (req, res): Promise<void> =
   if (!ctx) return;
   const requested = typeof req.query.userKey === "string" ? req.query.userKey : typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params: unknown[] = [ctx.row.id];
   let filter = "";
   if (scope) { params.push(scope); filter = `AND t.trader = $2`; }
@@ -902,7 +903,7 @@ router.post(
     });
   },
   asyncHandler(async (req, res): Promise<void> => {
-    if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+    if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
     const ctx = await setupForRead(req, res, parseId(req.query.playbookId));
     if (!ctx) return;
     const { row, v } = ctx;
@@ -928,13 +929,13 @@ router.post(
 
 router.get("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!id) throw badRequest("INVALID_ID");
+  if (!req.authUser) throw unauthorized();
   await ensurePlaybookSpaces();
   const { rows } = await pool.query<any>(`SELECT playbook_id, mime, bytes, size_bytes FROM playbook_media WHERE id = $1 AND deleted_at IS NULL`, [id]);
   const m = rows[0];
   const setup = m ? await loadSetupAccess(m.playbook_id, true) : null;
-  if (!m || !setup || !canReadPure(await loadViewer(req), setup)) { res.status(404).json({ error: "Не найдено" }); return; }
+  if (!m || !setup || !canReadPure(await loadViewer(req), setup)) throw notFound();
   res.setHeader("Content-Type", m.mime);
   res.setHeader("Content-Length", String(m.size_bytes));
   res.setHeader("Cache-Control", "private, max-age=31536000, immutable");
@@ -945,12 +946,12 @@ router.get("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> =
 
 router.delete("/playbook-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!id) throw badRequest("INVALID_ID");
   await ensurePlaybookSpaces();
   const v = await loadViewer(req);
   const { rows } = await pool.query<any>(`SELECT playbook_id, owner FROM playbook_media WHERE id = $1 AND deleted_at IS NULL`, [id]);
   const m = rows[0];
-  if (!m) { res.status(404).json({ error: "Не найдено" }); return; }
+  if (!m) throw notFound();
   const setup = await loadSetupAccess(m.playbook_id, true);
   const ok = !v.guest && !!v.name && (m.owner === v.name || (setup ? await canEditSetupRow(req, setup) : false));
   if (!ok) { res.status(403).json({ error: "Удалить скриншот может автор или редактор сетапа" }); return; }

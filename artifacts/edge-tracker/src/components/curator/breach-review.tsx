@@ -8,7 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { nyDate } from "@/lib/trading-date";
 import { curatorApi, useCuratorMutation, type Breach, type BreachAction } from "./api";
-import { dateTime, shortDate, usd } from "./curator-math";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
 // Mirrors lib/curatorLogic.ts (server validates the keys).
 export const BREACH_REASONS = [
@@ -73,9 +73,9 @@ function BreachItem({ breach, canReview, showTrader }: { breach: Breach; canRevi
       <div className="flex flex-wrap items-center gap-2">
         <Pill tone="down">{breach.kindLabel}</Pill>
         {showTrader && breach.trader && <span className="text-sm font-semibold text-foreground">{breach.trader}</span>}
-        <span className="text-sm font-medium tabular-nums text-foreground">{shortDate(breach.date)}</span>
+        <span className="text-sm font-medium tabular-nums text-foreground">{fmtDate(breach.date, "dayMonth")}</span>
         {breach.used != null && breach.limit != null && (
-          <span className="text-xs tabular-nums text-muted-foreground">{usd(-Math.abs(breach.used))} при лимите {usd(breach.limit, false)}</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{fmtUsd(-Math.abs(breach.used), { signed: true, decimals: 0 })} при лимите {fmtUsd(breach.limit, { decimals: 0 })}</span>
         )}
         {breach.repeat && <Pill tone="warn" title="Второе и более нарушение за 7 дней — уведомлён руководитель деска">Повторное за неделю</Pill>}
         <span className="ml-auto">
@@ -121,14 +121,14 @@ function ReviewSummary({ breach, canReview, onEdit }: { breach: Breach; canRevie
                   {done ? <CheckCircle2 className="h-4 w-4 text-up" /> : <Circle className="h-4 w-4" />}
                 </button>
                 <span className={cn("min-w-0 flex-1", done && "text-muted-foreground line-through", a.status === "dropped" && "text-muted-foreground line-through")}>{a.title}</span>
-                {a.dueOn && <span className={cn("shrink-0 text-xs tabular-nums", !done && a.dueOn < nyDate() ?"text-down" : "text-muted-foreground")}>до {shortDate(a.dueOn)}</span>}
+                {a.dueOn && <span className={cn("shrink-0 text-xs tabular-nums", !done && a.dueOn < nyDate() ?"text-down" : "text-muted-foreground")}>до {fmtDate(a.dueOn, "dayMonth")}</span>}
               </li>
             );
           })}
         </ul>
       )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{r.createdBy}, {dateTime(r.createdAt)}{r.updatedBy && r.updatedAt !== r.createdAt ? ` · изм. ${r.updatedBy}` : ""}</span>
+        <span>{r.createdBy}, {fmtDate(r.createdAt, "dateTime")}{r.updatedBy && r.updatedAt !== r.createdAt ? ` · изм. ${r.updatedBy}` : ""}</span>
         {canReview && <Button type="button" variant="ghost" size="sm" className="ml-auto h-7" onClick={onEdit}>Изменить</Button>}
       </div>
     </div>

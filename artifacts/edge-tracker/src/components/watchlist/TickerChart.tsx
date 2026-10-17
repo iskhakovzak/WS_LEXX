@@ -6,7 +6,7 @@ import {
 } from "lightweight-charts";
 import { cn } from "@/lib/utils";
 import { Segmented } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { addDays } from "@/lib/trading-date";
 import type { Candle } from "@/components/chart-engine/types";
 import { readChartTheme } from "@/components/chart-engine/theme";
@@ -14,7 +14,8 @@ import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { tickMarkLabel, fmtEtDateTime, fmtEtDay } from "@/components/chart-engine/lib/time";
 import { fetchSessionBars, levelsFromBars, sessionDays, type DayLevelSet } from "./use-market";
-import { fmtPrice, num } from "./lib";
+import { num } from "./lib";
+import { fmtPrice } from "@/lib/format";
 
 type Tf = "5m" | "1m" | "D";
 const TF_OPTIONS = [
@@ -29,9 +30,10 @@ async function loadBars(ticker: string, tf: Tf): Promise<ChartPayload> {
   const days = sessionDays();
   if (tf === "D") {
     const from = addDays(days.lastSession, -180);
-    const r = await fetch(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${from}&to=${days.lastSession}&interval=1d`);
-    if (!r.ok) return { bars: [], levels: null };
-    const j = (await r.json()) as { candles?: Candle[] };
+    const j = await http
+      .get<{ candles?: Candle[] }>(`/api/candles/${encodeURIComponent(ticker)}/range?from=${from}&to=${days.lastSession}&interval=1d`)
+      .catch(() => null);
+    if (!j) return { bars: [], levels: null };
     return { bars: Array.isArray(j.candles) ? j.candles : [], levels: null };
   }
   // Intraday: the session + the previous one (levels need yesterday), pre/post market included.

@@ -6,7 +6,8 @@ import {
 } from "recharts";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { EquityChart, buildDayCandles, soleTrader, type EquityTradeInput } from "@/components/equity-chart";
-import { fmtCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
+import { fmtMetricCompact, fmtValue, type EquityPoint, type Metric } from "./metrics";
+import { fmtMonth } from "@/lib/format";
 
 export const CHART_TOOLTIP = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -20,8 +21,11 @@ export const CHART_TOOLTIP = {
 export const CHART_CURSOR = { fill: "hsl(var(--muted-foreground) / 0.08)" };
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 11, tickLine: false, axisLine: false } as const;
 
-const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-const monthLabel = (m: string) => `${MONTHS[Number(m.substring(5, 7)) - 1] ?? m} ${m.substring(2, 4)}`;
+/** "2026-10" → «окт 26» / «Oct 26». */
+const monthLabel = (m: string) => {
+  const i = Number(m.substring(5, 7)) - 1;
+  return i >= 0 && i < 12 ? `${fmtMonth(i, "short").replace(".", "")} ${m.substring(2, 4)}` : m;
+};
 
 type View = "equity" | "monthly";
 
@@ -91,7 +95,7 @@ export function EquityPanel({
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
                   <XAxis dataKey="idx" {...AXIS} minTickGap={48} />
-                  <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtCompact(v, metric) || "0"} />
+                  <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
                   <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP}
@@ -128,7 +132,7 @@ export function EquityPanel({
             <BarChart data={monthly} margin={{ top: 6, right: 8, left: -12, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
               <XAxis dataKey="month" {...AXIS} tickFormatter={monthLabel} />
-              <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtCompact(v, metric) || "0"} />
+              <YAxis {...AXIS} width={60} tickFormatter={(v: number) => fmtMetricCompact(v, metric) || "0"} />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
               <Tooltip
                 contentStyle={CHART_TOOLTIP}

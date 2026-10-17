@@ -3,7 +3,10 @@
 // win rate = W/(W+L), PF = ΣR⁺/|ΣR⁻|). Nothing here recomputes R or P&L.
 import { useCallback, useEffect, useState } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { apiErrorStatus, nullIfMissing } from "@/lib/api/errors";
+import { POLL, STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import { nyDate } from "@/lib/trading-date";
 import type { Horizon } from "@/lib/trade-math";
 
@@ -200,20 +203,9 @@ export type RecentTrade = {
   createdAt: string;
 };
 
-async function getJson<T>(path: string): Promise<T> {
-  const res = await fetch(apiUrl(path));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as T;
-}
-
-/** GET that treats 404 (section not deployed) and non-JSON as "not available" → null. */
-async function getOptional<T>(path: string): Promise<T | null> {
-  const res = await fetch(apiUrl(path));
-  if (res.status === 404 || res.status === 403) return null;
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const ct = res.headers.get("content-type") ?? "";
-  if (!ct.includes("json")) return null;
-  return (await res.json()) as T;
+/** GET where 403 (section not for this role) and 404 / non-JSON (section not deployed) mean "not available" → null. */
+function getOptional<T>(path: string, signal?: AbortSignal): Promise<T | null> {
+  return http.get<T>(path, { signal }).catch((e: unknown) => (apiErrorStatus(e) === 403 ? null : nullIfMissing(e)));
 }
 
 function scopeQuery(scope: Scope) {
@@ -224,10 +216,10 @@ export function useDashboardToday(scope: Scope, enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/dashboard/today", { scope, date }],
-    queryFn: () => getJson<DashboardToday>(`/api/dashboard/today?${scopeQuery(scope)}&date=${date}`),
-    staleTime: 15_000,
+    queryFn: ({ signal }) => http.get<DashboardToday>(`/api/dashboard/today?${scopeQuery(scope)}&date=${date}`, { signal }),
+    staleTime: STALE.live,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     placeholderData: keepPreviousData,
     enabled,
   });
@@ -237,8 +229,8 @@ export function useDashboardEquity(scope: Scope, period: EquityPeriod, enabled =
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/dashboard/equity", { scope, period, date }],
-    queryFn: () => getJson<DashboardEquity>(`/api/dashboard/equity?${scopeQuery(scope)}&period=${period}&date=${date}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<DashboardEquity>(`/api/dashboard/equity?${scopeQuery(scope)}&period=${period}&date=${date}`, { signal }),
+    staleTime: STALE.default,
     refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
     enabled,
@@ -249,8 +241,8 @@ export function useDashboardEquity(scope: Scope, period: EquityPeriod, enabled =
 export function useRecentTrades(scope: Scope, enabled = true) {
   return useQuery({
     queryKey: ["/api/dashboard/recenttrades", { scope }],
-    queryFn: () => getJson<RecentTrade[]>(`/api/dashboard/recenttrades?limit=8&${scopeQuery(scope)}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<RecentTrade[]>(`/api/dashboard/recenttrades?limit=8&${scopeQuery(scope)}`, { signal }),
+    staleTime: STALE.default,
     refetchOnWindowFocus: true,
     placeholderData: keepPreviousData,
     enabled,
@@ -311,14 +303,13 @@ export type RiskMe = {
   todayPnl: number | null;
 };
 
+/** Shares one cache entry with the risk page and the shell badge (lib/api/queries → riskMeQuery). */
 export function useRiskMe(enabled = true) {
   return useQuery({
-    queryKey: ["/api/risk/me", { date: nyDate() }],
-    queryFn: () => getOptional<RiskMe>(`/api/risk/me?date=${nyDate()}`),
-    staleTime: 30_000,
+    ...riskMeQuery<RiskMe>(),
     retry: false,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     enabled,
   });
 }
@@ -364,11 +355,11 @@ export type RiskDesk = {
 export function useRiskDesk(enabled: boolean) {
   return useQuery({
     queryKey: ["/api/risk/desk", { date: nyDate() }],
-    queryFn: () => getOptional<RiskDesk>(`/api/risk/desk?date=${nyDate()}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => getOptional<RiskDesk>(`/api/risk/desk?date=${nyDate()}`, signal),
+    staleTime: STALE.default,
     retry: false,
     refetchOnWindowFocus: true,
-    refetchInterval: 120_000,
+    refetchInterval: POLL.twoMinutes,
     enabled,
   });
 }
@@ -392,8 +383,8 @@ export function useEodStatus(enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/eod/status", { date }],
-    queryFn: () => getOptional<EodStatus>(`/api/eod/status?date=${date}`),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<EodStatus>(`/api/eod/status?date=${date}`, signal),
+    staleTime: STALE.short,
     retry: false,
     refetchOnWindowFocus: true,
     enabled,
@@ -413,8 +404,8 @@ export type PropReportsStatus = {
 export function usePropReportsStatus(enabled = true) {
   return useQuery({
     queryKey: ["/api/propreports/status"],
-    queryFn: () => getOptional<PropReportsStatus>("/api/propreports/status"),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<PropReportsStatus>("/api/propreports/status", signal),
+    staleTime: STALE.short,
     retry: false,
     refetchOnWindowFocus: true,
     enabled,
@@ -439,8 +430,8 @@ export function useEventsToday(enabled = true) {
   const date = nyDate();
   return useQuery({
     queryKey: ["/api/events/today", { date }],
-    queryFn: () => getOptional<EventsToday>(`/api/events/today?date=${date}`),
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => getOptional<EventsToday>(`/api/events/today?date=${date}`, signal),
+    staleTime: STALE.long,
     retry: false,
     enabled,
   });
@@ -450,8 +441,8 @@ export function useEventsToday(enabled = true) {
 export function useEodDay(date: string | null, trader: string | null, enabled = true) {
   return useQuery({
     queryKey: ["/api/eod/status", { date, trader }],
-    queryFn: () => getOptional<EodStatus>(`/api/eod/status?date=${date}&trader=${encodeURIComponent(trader ?? "")}`),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => getOptional<EodStatus>(`/api/eod/status?date=${date}&trader=${encodeURIComponent(trader ?? "")}`, signal),
+    staleTime: STALE.short,
     retry: false,
     enabled: enabled && !!date && !!trader,
   });

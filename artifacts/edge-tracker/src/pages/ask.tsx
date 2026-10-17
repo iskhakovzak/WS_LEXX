@@ -13,7 +13,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
 import { parseAsk, removeToken, replaceToken, type ParseContext } from "@/lib/ask/parse";
 import { askBookKey, askBookScope, fetchAskBook, runAsk, type AskBook, type AskLoadProgress } from "@/lib/ask/run";
-import { dmy, plural } from "@/lib/ask/aggregate";
+import { dmy } from "@/lib/ask/aggregate";
+import { commonI18n } from "@/i18n/ns/common";
 import { AskBar } from "@/components/ask/AskBar";
 import { AskNotUnderstood, AskResult, AskResultSkeleton } from "@/components/ask/AskResult";
 import { AskSidebar } from "@/components/ask/AskSidebar";
@@ -102,7 +103,7 @@ export default function AskPage() {
     : "";
   const meta = book.data ? (
     <span className="tabular-nums">
-      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{book.data.trades.length.toLocaleString("ru-RU")} {plural(book.data.trades.length, "сделка", "сделки", "сделок")} в журнале
+      {isStaff ? (scope === "desk" ? "Весь деск: " : "Ваши: ") : ""}{commonI18n.t("units.trades", { count: book.data.trades.length })} в журнале
       {book.data.firstDate && book.data.lastDate ? ` · ${dmy(book.data.firstDate)} — ${dmy(book.data.lastDate)}` : ""}
       {book.data.truncated ? " · загружены не все" : ""}
     </span>

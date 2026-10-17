@@ -9,7 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { FilterChip, Pill, Segmented } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 
 type Channel = "none" | "telegram" | "email" | "both";
 type DigestSub = {
@@ -60,9 +60,7 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     setLoadError(null);
     try {
       // Subject = the signed-in user (server-side); no identity in the query string.
-      const r = await fetch(`${BASE}/api/digest/subscription`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const data = (await r.json()) as { subscription: Partial<DigestSub> & { telegramChatId?: string | null; email?: string | null } | null };
+      const data = await http.get<{ subscription: Partial<DigestSub> & { telegramChatId?: string | null; email?: string | null } | null }>("/api/digest/subscription");
       const s = data.subscription;
       const next: DigestSub = s ? {
         enabled: !!s.enabled,
@@ -95,17 +93,11 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     if (!trader || emailInvalid) return;
     setSaving(true);
     try {
-      const r = await fetch(`${BASE}/api/digest/subscription`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          enabled: sub.enabled, channel: sub.channel,
-          telegramChatId: sub.telegramChatId.trim() || null, email: sub.email.trim() || null,
-          sendMorning: sub.sendMorning, sendEvening: sub.sendEvening, tradesWindowHours: sub.tradesWindowHours,
-        }),
+      await http.put("/api/digest/subscription", {
+        enabled: sub.enabled, channel: sub.channel,
+        telegramChatId: sub.telegramChatId.trim() || null, email: sub.email.trim() || null,
+        sendMorning: sub.sendMorning, sendEvening: sub.sendEvening, tradesWindowHours: sub.tradesWindowHours,
       });
-      const data = (await r.json().catch(() => ({}))) as { error?: string };
-      if (!r.ok) throw new Error(data.error ?? `HTTP ${r.status}`);
       setSaved(sub);
       toast({ title: "Настройки дайджеста сохранены" });
     } catch (e) {
@@ -119,9 +111,8 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     if (!trader) return;
     setPreviewLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/digest/preview?hours=${sub.tradesWindowHours}`);
-      const data = (await r.json().catch(() => ({}))) as { text?: string; error?: string };
-      if (!r.ok || !data.text) throw new Error(data.error ?? `HTTP ${r.status}`);
+      const data = await http.get<{ text?: string; error?: string } | null>("/api/digest/preview", { query: { hours: sub.tradesWindowHours } });
+      if (!data?.text) throw new Error(data?.error ?? "HTTP 200");
       setPreview(data.text);
     } catch (e) {
       toast({ title: "Предпросмотр недоступен", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -134,16 +125,10 @@ export function DigestSheet({ open, onOpenChange }: { open: boolean; onOpenChang
     if (!trader || !canSend) return;
     setSending(true);
     try {
-      const r = await fetch(`${BASE}/api/digest/send`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const data = (await r.json().catch(() => ({}))) as { sent?: boolean; channels?: string[]; errors?: string[]; error?: string };
-      if (r.ok && data.sent) toast({ title: `Дайджест отправлен: ${(data.channels ?? []).join(", ")}` });
-      else if (r.ok && (data.errors ?? []).length) toast({ title: "Ошибка доставки", description: (data.errors ?? []).join("; "), variant: "destructive" });
-      else if (r.ok) toast({ title: "Канал доставки не настроен или дайджест выключен", variant: "destructive" });
-      else throw new Error(data.error ?? `HTTP ${r.status}`);
+      const data = (await http.post<{ sent?: boolean; channels?: string[]; errors?: string[] } | null>("/api/digest/send", {})) ?? {};
+      if (data.sent) toast({ title: `Дайджест отправлен: ${(data.channels ?? []).join(", ")}` });
+      else if ((data.errors ?? []).length) toast({ title: "Ошибка доставки", description: (data.errors ?? []).join("; "), variant: "destructive" });
+      else toast({ title: "Канал доставки не настроен или дайджест выключен", variant: "destructive" });
     } catch (e) {
       toast({ title: "Не удалось отправить", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {

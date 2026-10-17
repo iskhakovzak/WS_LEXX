@@ -31,12 +31,13 @@ import { addDays } from "../lib/tradingDate";
 import {
   parseDateStrict, pickIntervalForAge, ageDaysOf, fetchSingleDayWithCache, fetchDailyRange, getPrevDailyCloseCached,
   type Candle, type Interval,
-} from "./candles";
+} from "../lib/candles/market";
 import { loadBehaviorRows, rowToBehaviorTrade } from "./behavior";
 import { classifySetup, inputsHash, CLASSIFIER_VERSION, type ClassifierTrade, type MarketInputs, type SetupSuggestion } from "../lib/setupClassifier";
 import { HOUR_BUCKETS, hourBucket, type BehaviorTrade } from "../lib/behaviorEngine";
 import { bootstrapMean, wilson, round2, SMALL_SAMPLE } from "../lib/behaviorStats";
 import { can } from "../lib/permissions";
+import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -274,10 +275,10 @@ function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow |
 
 router.get("/setups-auto", asyncHandler(async (req, res) => {
   const parsed = listSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
@@ -319,10 +320,10 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
 
 router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const parsed = aggSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   await ensureTable();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
@@ -430,7 +431,7 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
   const body = bulkBody.safeParse(req.body ?? {});
   if (!body.success) { res.status(400).json({ error: "Неверные данные", details: body.error.flatten() }); return; }
   const me = req.authUser;
-  if (!me || isGuestUser(me)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
   await ensureTable();
   const ids = [...new Set(body.data.tradeIds)];
   const minConf = body.data.minConfidence ?? 0;
@@ -484,12 +485,12 @@ const acceptBody = z.object({ setup: z.string().trim().min(1).max(200).optional(
 
 router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   const id = idParam.safeParse(req.params.tradeId);
-  if (!id.success) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!id.success) throw badRequest("INVALID_ID");
   const body = acceptBody.safeParse(req.body ?? {});
   if (!body.success) { res.status(400).json({ error: "Неверные данные", details: body.error.flatten() }); return; }
   const access = await canAccessTrade(req, id.data, "write");
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Нет доступа к сделке" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("TRADE_FORBIDDEN");
   await ensureTable();
 
   const current = (await loadSuggestions([id.data])).get(id.data) ?? null;
@@ -499,7 +500,7 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   // Тот же механизм, что у PATCH /trades/:id для поля setup (drizzle update + активность + сброс кэша дашборда),
   // без чеклиста перед сделкой — сделки исторические.
   const [updated] = await db.update(tradesTable).set({ setup }).where(eq(tradesTable.id, id.data)).returning({ id: tradesTable.id, ticker: tradesTable.ticker, trader: tradesTable.trader });
-  if (!updated) { res.status(404).json({ error: "Сделка не найдена" }); return; }
+  if (!updated) throw notFound("TRADE_NOT_FOUND");
   await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'accepted', decided_by = $2, decided_at = NOW(), updated_at = NOW()
      WHERE trade_id = $1`,
@@ -515,10 +516,10 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
 
 router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
   const id = idParam.safeParse(req.params.tradeId);
-  if (!id.success) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!id.success) throw badRequest("INVALID_ID");
   const access = await canAccessTrade(req, id.data, "write");
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Нет доступа к сделке" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("TRADE_FORBIDDEN");
   await ensureTable();
   const { rowCount } = await pool.query(
     `UPDATE trade_setup_suggestions SET status = 'rejected', decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE trade_id = $1`,
@@ -530,13 +531,13 @@ router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
 
 router.post("/setups-auto/:tradeId/recompute", asyncHandler(async (req, res) => {
   const id = idParam.safeParse(req.params.tradeId);
-  if (!id.success) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!id.success) throw badRequest("INVALID_ID");
   const access = await canAccessTrade(req, id.data, "write");
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
-  if (!access) { res.status(403).json({ error: "Нет доступа к сделке" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
+  if (!access) throw new AppError("TRADE_FORBIDDEN");
   await ensureTable();
   const rows = await loadBehaviorRows(null, undefined, undefined, [id.data]);
-  if (!rows[0]) { res.status(404).json({ error: "Сделка не найдена" }); return; }
+  if (!rows[0]) throw notFound("TRADE_NOT_FOUND");
   const trade = rowToBehaviorTrade(rows[0]);
   const exit = rows[0].exit == null ? null : Number(rows[0].exit);
   const hash = inputsHash(toClassifierTrade(trade, exit));

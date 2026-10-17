@@ -1,6 +1,7 @@
 import type { MarketEvent } from "@workspace/api-client-react";
 import type { Tone } from "@/components/ds";
 import { nyDate, addDays as addNyDays } from "@/lib/trading-date";
+import { fmtDate, fmtDateCustom, fmtWeekday, type DateStyle } from "@/lib/format";
 
 /* ───────────── Event types ───────────── */
 
@@ -139,13 +140,15 @@ export function weekStartOf(ymd: string): string {
 /** Trading "today" — the New York calendar date, not the browser's. */
 export const today = () => nyDate();
 
-export function fmtDay(ymd: string, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }) {
+/** Calendar date of the events area in the UI language, without a trailing dot («17 окт»). */
+export function fmtDay(ymd: string, style: DateStyle | Intl.DateTimeFormatOptions = "dayMonth") {
   const d = parseYmd(ymd);
-  return Number.isNaN(d.getTime()) ? ymd : d.toLocaleDateString("ru-RU", opts).replace(/\.$/, "");
+  return (typeof style === "string" ? fmtDate(d, style) : fmtDateCustom(d, style)).replace(/\.$/, "");
 }
 
-export function fmtWeekday(ymd: string, style: "short" | "long" = "short") {
-  const s = parseYmd(ymd).toLocaleDateString("ru-RU", { weekday: style });
+/** Capitalised weekday for column / row heads: «Пн» / «Понедельник». */
+export function weekdayLabel(ymd: string, style: "short" | "long" = "short") {
+  const s = fmtWeekday(parseYmd(ymd), style);
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -157,21 +160,6 @@ export function fmtRange(fromYmd: string, toYmd: string) {
 }
 
 /* ───────────── Numbers / words ───────────── */
-
-export function plural(n: number, one: string, few: string, many: string) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const eventsWord = (n: number) => `${n} ${plural(n, "событие", "события", "событий")}`;
-
-export function fmtPct(n: number | null | undefined, digits = 1) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toFixed(digits);
-  return n > 0 ? `+${s}%` : n < 0 ? `−${s}%` : `${s}%`;
-}
 
 /** Past event with neither a logged move nor a reaction — needs a follow-up. */
 export function needsOutcome(e: MarketEvent, todayYmd = today()): boolean {

@@ -2,6 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can } from "../lib/permissions";
+import { badRequest, unauthorized } from "../lib/http";
 
 /**
  * Day-by-day trading journal (pre-market plan + post-market review).
@@ -129,7 +130,7 @@ function parseBody(b: Body):
 }
 
 router.get("/journal/days", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const from = req.query["from"];
   const to = req.query["to"];
   if (!isIsoDate(from) || !isIsoDate(to)) { res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" }); return; }
@@ -154,9 +155,9 @@ router.get("/journal/days", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/journal/days/:date", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const date = req.params["date"];
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const qTrader = typeof req.query["trader"] === "string" ? (req.query["trader"] as string).trim() : "";
   const trader = qTrader && (await canReadTeam(req, qTrader)) ? qTrader : req.authUser.name;
   await ensureTable();
@@ -172,18 +173,18 @@ function isEmptyEntry(e: EntryValues): boolean {
 }
 
 router.delete("/journal/days/:date", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const date = req.params["date"];
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   await ensureTable();
   await pool.query(`DELETE FROM journal_days WHERE trader = $1 AND day = $2`, [req.authUser.name, date]);
   res.json({ ok: true, trader: req.authUser.name, date });
 }));
 
 router.put("/journal/days/:date", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const date = req.params["date"];
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = parseBody((req.body ?? {}) as Body);
   if (!parsed.ok) { res.status(400).json({ error: parsed.error }); return; }
   const v = parsed.v;

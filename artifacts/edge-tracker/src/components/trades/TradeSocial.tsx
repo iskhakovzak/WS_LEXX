@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 
 type Reaction = { id: number; tradeId: number; trader: string; reactionType: string };
@@ -19,10 +19,6 @@ const RATING: Record<string, { label: string; tone: Tone }> = {
   poor: { label: "Плохо", tone: "down" },
 };
 
-async function errorText(r: Response): Promise<string> {
-  const body: { error?: string } = await r.json().catch(() => ({}));
-  return body?.error ?? `Статус ${r.status}`;
-}
 
 /**
  * Likes + curator reviews for a trade (same endpoints as before the redesign). `showReviews={false}` (another
@@ -42,8 +38,7 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
   React.useEffect(() => {
     let alive = true;
     const load = <T,>(path: string, set: (v: T[]) => void, title: string) =>
-      fetch(`${BASE}/api/trades/${tradeId}/${path}`)
-        .then((r) => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      http.get<T[]>(`/api/trades/${tradeId}/${path}`)
         .then((d) => { if (alive) set(Array.isArray(d) ? d : []); })
         .catch(() => { if (alive) toast({ title, variant: "destructive" }); });
     load<Reaction>("reactions", setReactions, "Ошибка загрузки реакций");
@@ -59,13 +54,8 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
     if (!traderName || likePending) return;
     setLikePending(true);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/reactions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ trader: traderName, reactionType: "like" }),
-      });
-      if (!r.ok) throw new Error(await errorText(r));
-      const updated = await fetch(`${BASE}/api/trades/${tradeId}/reactions`).then((res) => res.json());
+      await http.post(`/api/trades/${tradeId}/reactions`, { trader: traderName, reactionType: "like" });
+      const updated = await http.get<Reaction[]>(`/api/trades/${tradeId}/reactions`);
       if (Array.isArray(updated)) setReactions(updated);
     } catch (e) {
       toast({ title: "Не удалось поставить реакцию", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -78,14 +68,9 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
     if (!reviewText.trim() || !traderName || reviewPending) return;
     setReviewPending(true);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/reviews`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ curator: traderName, comment: reviewText, rating: reviewRating }),
-      });
-      if (!r.ok) throw new Error(await errorText(r));
+      await http.post(`/api/trades/${tradeId}/reviews`, { curator: traderName, comment: reviewText, rating: reviewRating });
       setReviewText("");
-      const updated = await fetch(`${BASE}/api/trades/${tradeId}/reviews`).then((res) => res.json());
+      const updated = await http.get<Review[]>(`/api/trades/${tradeId}/reviews`);
       if (Array.isArray(updated)) setReviews(updated);
       toast({ title: "Ревью отправлено" });
     } catch (e) {
@@ -98,8 +83,7 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
   async function deleteReview(reviewId: number) {
     if (!traderName || !window.confirm("Удалить это ревью?")) return;
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/reviews/${reviewId}?curator=${encodeURIComponent(traderName)}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await errorText(r));
+      await http.del(`/api/trades/${tradeId}/reviews/${reviewId}`, undefined, { query: { curator: traderName } });
       setReviews((prev) => prev.filter((rv) => rv.id !== reviewId));
       toast({ title: "Ревью удалено" });
     } catch (e) {

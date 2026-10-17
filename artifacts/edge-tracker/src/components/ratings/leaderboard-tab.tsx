@@ -1,16 +1,16 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronsUpDown, Crown, Download, Flame, Medal, Trophy, Users } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, toneText } from "@/components/ds";
-import {
-  Avatar, RankDelta, Sparkline, StreakBadge, OutcomeBar,
-  downloadCsv, fetchJson, fmtPct, fmtR, fmtSigned, fmtUsd, pluralRu, useStoredState,
-} from "./shared";
+import { Avatar, RankDelta, Sparkline, StreakBadge, OutcomeBar, downloadCsv, useStoredState } from "./shared";
+import { fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -68,8 +68,8 @@ function metricOf(m: Metric, e: MetricSource): number | null {
 function fmtMetric(m: Metric, v: number | null): string {
   switch (m) {
     case "r": return fmtR(v, 1);
-    case "pnl": return fmtUsd(v);
-    case "winrate": return fmtPct(v);
+    case "pnl": return fmtUsd(v, { signed: true, decimals: 0 });
+    case "winrate": return fmtPct(v, { decimals: 0, signed: false });
     case "expR": return fmtR(v, 2);
   }
 }
@@ -89,8 +89,8 @@ export type RankedEntry = LeaderboardEntry & { rank: number; rankDelta: number |
 export function useLeaderboard(period: Period, metric: Metric | "auto") {
   const q = useQuery<LeaderboardEntry[]>({
     queryKey: ["leaderboard", period],
-    queryFn: () => fetchJson<LeaderboardEntry[]>(period === "all" ? `${BASE}/api/leaderboard` : `${BASE}/api/leaderboard?days=${period}`),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<LeaderboardEntry[]>("/api/leaderboard", { query: { days: period === "all" ? null : period }, signal }),
+    staleTime: STALE.default,
   });
   const leaders = q.data ?? [];
   const hasPnl = leaders.some(hasPnlOf);
@@ -226,8 +226,8 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   <div className="flex flex-col gap-1.5">
                     <OutcomeBar wins={l.wins} losses={l.losses} be={l.breakevens} open={l.open ?? 0} />
                     <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                      <span>{l.totalTrades} {pluralRu(l.totalTrades, "сделка", "сделки", "сделок")}</span>
-                      <span>WR {fmtPct(winPctOf(l))}</span>
+                      <span>{commonI18n.t("units.trades", { count: l.totalTrades })}</span>
+                      <span>WR {fmtPct(winPctOf(l), { decimals: 0, signed: false })}</span>
                     </div>
                   </div>
                 </div>
@@ -238,11 +238,11 @@ export function LeaderboardTab({ me }: { me: string | null }) {
           {team && (
             <StatGrid>
               <StatCard label="Сделок у команды" value={team.trades} icon={Users} hint={`за ${periodLabel === "всё" ? "всё время" : periodLabel}`} />
-              <StatCard label="Винрейт команды" value={fmtPct(team.winrate)} hint="W/(W+L), безубыток не в счёт" />
+              <StatCard label="Винрейт команды" value={fmtPct(team.winrate, { decimals: 0, signed: false })} hint="W/(W+L), безубыток не в счёт" />
               {team.r != null || team.pnl == null ? (
                 <StatCard label="Сумма R команды" value={fmtR(team.r, 1)} tone={toneOf(team.r)} hint={team.r == null ? "R неизвестен — нет стопов" : undefined} />
               ) : (
-                <StatCard label="P&L команды · нетто" value={fmtUsd(team.pnl)} tone={toneOf(team.pnl)} hint="R неизвестен (нет стопа) — показан P&L" />
+                <StatCard label="P&L команды · нетто" value={fmtUsd(team.pnl, { signed: true, decimals: 0 })} tone={toneOf(team.pnl)} hint="R неизвестен (нет стопа) — показан P&L" />
               )}
               <StatCard
                 label={team.hot ? "Горячая серия" : "Лучшая серия"}
@@ -304,20 +304,20 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                                 {mine && <Pill tone="accent">Вы</Pill>}
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
-                                {l.totalTrades} {pluralRu(l.totalTrades, "сделка", "сделки", "сделок")} · {l.wins}/{l.losses}/{l.breakevens}
+                                {commonI18n.t("units.trades", { count: l.totalTrades })} · {l.wins}/{l.losses}/{l.breakevens}
                               </div>
                             </div>
                           </div>
                         </td>
                         <td className={cn("px-2 py-2.5 text-right tabular-nums", toneText(toneOf(l.totalR)), metric === "r" && "font-semibold")}>{fmtR(l.totalR, 1)}</td>
                         <td className={cn("px-2 py-2.5 text-right tabular-nums", hasPnlOf(l) ? toneText(toneOf(l.totalPnl)) : "text-muted-foreground", metric === "pnl" && "font-semibold")}>
-                          {hasPnlOf(l) ? fmtUsd(l.totalPnl) : "—"}
+                          {hasPnlOf(l) ? fmtUsd(l.totalPnl, { signed: true, decimals: 0 }) : "—"}
                         </td>
-                        <td className={cn("px-2 py-2.5 text-right tabular-nums", metric === "winrate" && "font-semibold")}>{fmtPct(winPctOf(l))}</td>
+                        <td className={cn("px-2 py-2.5 text-right tabular-nums", metric === "winrate" && "font-semibold")}>{fmtPct(winPctOf(l), { decimals: 0, signed: false })}</td>
                         <td className={cn("px-2 py-2.5 text-right tabular-nums", toneText(toneOf(l.expectancyR ?? l.avgR)), metric === "expR" && "font-semibold")}>{fmtR(l.expectancyR ?? l.avgR, 2)}</td>
                         <td className="px-2 py-2.5 text-right tabular-nums" title={sh.value == null ? "Нужно ≥ 5 торговых дней" : `По дневным итогам в ${sh.basis === "$" ? "$" : "R"}`}>
                           {sh.value == null ? <span className="text-muted-foreground">—</span> : (
-                            <span className={toneText(toneOf(sh.value))}>{fmtSigned(sh.value, 2)}{sh.basis === "R" && <span className="ml-0.5 text-2xs text-muted-foreground">R</span>}</span>
+                            <span className={toneText(toneOf(sh.value))}>{fmtNum(sh.value, { decimals: 2, signed: true })}{sh.basis === "R" && <span className="ml-0.5 text-2xs text-muted-foreground">R</span>}</span>
                           )}
                         </td>
                         <td className="px-2 py-2.5 text-right">
@@ -355,7 +355,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">
                       <span>{l.totalTrades} сд.</span>
-                      <span>WR {fmtPct(winPctOf(l))}</span>
+                      <span>WR {fmtPct(winPctOf(l), { decimals: 0, signed: false })}</span>
                       <StreakBadge value={l.currentStreak} className="px-1.5 py-0 text-2xs" />
                     </div>
                   </div>

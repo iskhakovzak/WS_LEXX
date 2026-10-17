@@ -47,6 +47,7 @@ import {
   breachStats, normalizeBreachActions, repeatBreachKey, templateDiff, type LimitDiff,
 } from "../lib/curatorLogic";
 import { applyTierTemplate, loadTierTemplates } from "./scaling";
+import { badRequest, forbidden, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -676,7 +677,7 @@ async function escalateRepeatBreach(trader: string, date: string, label: string,
 
 router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const today = clientDate(req.query.date);
   const [limitsMap, days, positions] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today)]);
   const limits = limitsMap.get(me) ?? null;
@@ -769,21 +770,21 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const trader = String(req.params.trader ?? "").trim();
-  if (!trader || trader.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (!trader || trader.length > 100) throw badRequest("INVALID_TRADER");
   if (trader !== req.authUser.name && !(await can(req, "risk.read.team", { trader }))) {
-    res.status(403).json({ error: "Forbidden" }); return;
+    throw forbidden();
   }
   const map = await loadLimits(trader);
   res.json(map.get(trader) ?? null);
 }));
 
 router.get("/risk/limits/:trader/history", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   const trader = String(req.params.trader ?? "").trim();
-  if (!trader || trader.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
-  if (trader !== req.authUser.name && !(await can(req, "risk.read.team", { trader }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!trader || trader.length > 100) throw badRequest("INVALID_TRADER");
+  if (trader !== req.authUser.name && !(await can(req, "risk.read.team", { trader }))) throw forbidden();
   await ensureTables();
   const { rows } = await pool.query(
     `SELECT id, trader, before, after, reason, changed_by, changed_at FROM trader_risk_limit_events WHERE trader = $1 ORDER BY changed_at DESC LIMIT 50`,
@@ -824,7 +825,7 @@ const LimitsBody = z.object({
 
 router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> => {
   const trader = String(req.params.trader ?? "").trim();
-  if (!trader || trader.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (!trader || trader.length > 100) throw badRequest("INVALID_TRADER");
   if (!(await requireCap(req, res, "risk.limits.edit", { trader }))) return;
   const parsed = LimitsBody.safeParse(req.body ?? {});
   if (!parsed.success) {
@@ -1115,7 +1116,7 @@ router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
 /** Pre-trade check: would this hypothetical position (for the caller) breach anything? */
 router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser?.name;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const q = z.object({
     riskUsd: z.coerce.number().min(0).max(1e9).optional(),
     exposureUsd: z.coerce.number().min(0).max(1e12).optional(),
@@ -1362,7 +1363,7 @@ const ReviewBody = z.object({
 
 router.post("/risk/breaches/:alertId/review", asyncHandler(async (req, res): Promise<void> => {
   const alertId = Number(req.params.alertId);
-  if (!Number.isInteger(alertId) || alertId <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(alertId) || alertId <= 0) throw badRequest("INVALID_ID");
   await Promise.all([ensureTables(), ensureCuratorTables()]);
   const { rows: al } = await pool.query(`SELECT id, trader, date, kind, level, message FROM risk_alert_log WHERE id = $1`, [alertId]);
   const alert = al[0];
@@ -1407,13 +1408,13 @@ const ActionStatusBody = z.object({ actionId: z.string().min(1).max(40), status:
 
 router.post("/risk/breach-reviews/:id/action", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT * FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!ex[0]) { res.status(404).json({ error: "Разбор не найден" }); return; }
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader: String(ex[0].trader) }))) return;
   const parsed = ActionStatusBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Проверьте поля" }); return; }
+  if (!parsed.success) throw badRequest("VALIDATION");
   const actions = (Array.isArray(ex[0].actions) ? ex[0].actions : []) as { id: string; status: string }[];
   if (!actions.some((a) => a.id === parsed.data.actionId)) { res.status(404).json({ error: "Договорённость не найдена" }); return; }
   const next = actions.map((a) => (a.id === parsed.data.actionId ? { ...a, status: parsed.data.status } : a));
@@ -1426,7 +1427,7 @@ router.post("/risk/breach-reviews/:id/action", asyncHandler(async (req, res): Pr
 
 router.post("/risk/breach-reviews/:id/archive", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT trader FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!ex[0]) { res.status(404).json({ error: "Разбор не найден" }); return; }

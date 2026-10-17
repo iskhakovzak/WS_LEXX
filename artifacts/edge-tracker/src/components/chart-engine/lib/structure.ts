@@ -3,7 +3,7 @@
  * and the step series of the running position and its average price. Pure.
  */
 import type { Execution, ExecutionKind, Fill, Side, TradeRole } from "../types";
-import { fmtPrice, fmtQty } from "./format";
+import { fmtCount, fmtPrice, fmtR, fmtRate } from "@/lib/format";
 
 export const ROLE_LABEL: Record<TradeRole, string> = {
   entry: "Вход",
@@ -46,21 +46,21 @@ export function roleLabel(role: TradeRole, inferred = false): string {
 
 /** Marker label: «Добор 10.50 × 100». */
 export function fillLabelOf(role: TradeRole, inferred: boolean, price: number, qty: number | null): string {
-  return `${roleLabel(role, inferred)} ${fmtPrice(price)}${qty != null ? ` × ${fmtQty(qty)}` : ""}`;
+  return `${roleLabel(role, inferred)} ${fmtPrice(price)}${qty != null ? ` × ${fmtCount(Math.round(qty))}` : ""}`;
 }
 
 /** Tooltip lines of a marker: role, price, size, share of the max position, R, pieces, why. */
 export function fillDetails(f: Fill): string[] {
   const out: string[] = [];
   const head = [`${roleLabel(f.role, f.inferred)} ${fmtPrice(f.price)}`];
-  if (f.qty != null) head.push(`× ${fmtQty(f.qty)} шт.`);
+  if (f.qty != null) head.push(`× ${fmtCount(Math.round(f.qty))} шт.`);
   out.push(head.join(" "));
   const leg = f.leg;
   const extra: string[] = [];
-  if (leg?.fraction != null && leg.fraction < 0.999) extra.push(`${Math.round(leg.fraction * 100)}% позиции`);
-  if (leg?.positionAfter != null) extra.push(leg.positionAfter > 0 ? `в позиции ${fmtQty(leg.positionAfter)}` : "позиция закрыта");
+  if (leg?.fraction != null && leg.fraction < 0.999) extra.push(`${fmtRate(leg.fraction)} позиции`);
+  if (leg?.positionAfter != null) extra.push(leg.positionAfter > 0 ? `в позиции ${fmtCount(Math.round(leg.positionAfter))}` : "позиция закрыта");
   if (leg?.avgAfter != null && leg.opening) extra.push(`ср. ${fmtPrice(leg.avgAfter)}`);
-  if (leg?.r != null) extra.push(`${leg.r >= 0 ? "+" : "−"}${Math.abs(leg.r).toFixed(2)}R`);
+  if (leg?.r != null) extra.push(fmtR(leg.r));
   else if (leg?.perShare != null && !leg.opening) extra.push(`${leg.perShare >= 0 ? "+" : "−"}${fmtPrice(Math.abs(leg.perShare))} / акц.`);
   if (f.pieces > 1) extra.push(`${f.pieces} исполнения одного ордера`);
   if (extra.length) out.push(extra.join(" · "));

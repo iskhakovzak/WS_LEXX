@@ -6,7 +6,8 @@
  * filters what the server already returned.
  */
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 
 export type AudienceGroup = { token: string; label: string; kind: "stage" | "staff" | "cohort"; members: string[] };
 export type AudienceViewerInfo = { name: string | null; stage: string | null; staff: boolean; moderator: boolean; cohorts: number[]; tokens: string[] };
@@ -29,13 +30,9 @@ export const AUDIENCE_QUERY_KEY = ["discussions-audience"] as const;
 export function useAudienceOptions(enabled = true) {
   return useQuery<AudienceOptions | null>({
     queryKey: AUDIENCE_QUERY_KEY,
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/discussions/audience`);
-      if (!r.ok) return null;
-      return (await r.json()) as AudienceOptions;
-    },
+    queryFn: () => http.get<AudienceOptions>("/api/discussions/audience").catch(() => null),
     enabled,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: false,
   });
 }
@@ -90,9 +87,3 @@ export function addressedToMe(audience: readonly string[] | null | undefined, op
   return opts.viewer.tokens.some((t) => audience!.includes(t));
 }
 
-export function peopleWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "человек";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "человека";
-  return "человек";
-}

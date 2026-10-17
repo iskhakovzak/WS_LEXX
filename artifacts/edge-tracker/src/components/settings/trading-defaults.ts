@@ -15,7 +15,7 @@
  * these are the trader's own preferences inside those limits.
  */
 import { useEffect, useState } from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type RiskMode = "pct" | "usd";
@@ -153,17 +153,13 @@ export function resetTradingDefaults(trader?: string | null): void {
 
 // ─── Server sync (users.settings.tradingDefaults) ─────────────────────────────
 
-const SETTINGS_API = `${BASE}/api/users/me/settings`;
+const SETTINGS_API = "/api/users/me/settings";
 
 /** PUT the defaults (or null = reset) to the server. false when the API is unreachable / refuses. */
 export async function pushTradingDefaults(value: TradingDefaults | null): Promise<boolean> {
   try {
-    const r = await fetch(SETTINGS_API, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tradingDefaults: value }),
-    });
-    return r.ok;
+    await http.put(SETTINGS_API, { tradingDefaults: value });
+    return true;
   } catch {
     return false;
   }
@@ -172,9 +168,7 @@ export async function pushTradingDefaults(value: TradingDefaults | null): Promis
 /** Server copy: TradingDefaults, null (none saved on the server) or undefined (API unavailable). */
 async function fetchServerDefaults(): Promise<TradingDefaults | null | undefined> {
   try {
-    const r = await fetch(SETTINGS_API);
-    if (!r.ok) return undefined;
-    const d = (await r.json()) as { settings?: { tradingDefaults?: unknown } };
+    const d = await http.get<{ settings?: { tradingDefaults?: unknown } } | null>(SETTINGS_API);
     const raw = d?.settings?.tradingDefaults;
     return raw && typeof raw === "object" ? normalizeTradingDefaults(raw) : null;
   } catch {

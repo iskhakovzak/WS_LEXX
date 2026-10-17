@@ -7,8 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EquityChart, fromDashboardDays } from "@/components/equity-chart";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtPct, fmtR, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardEquity, EquityMetric, EquityPeriod } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Server windows of the curve; the engine's own zoom / navigator work inside the loaded one. */
 const PERIOD_OPTIONS: { value: EquityPeriod; label: string; title: string }[] = [
@@ -63,7 +65,7 @@ export function EquityPanel({
   // R only exists when trades have stops; without it the toggle is hidden entirely.
   const hasR = (data?.days ?? []).some((d) => d.r !== 0);
   const effMetric: EquityMetric = metric === "r" && hasR ? "r" : hasPnl ? "pnl" : hasR ? "r" : "pnl";
-  const fmt = effMetric === "pnl" ? fmtMoney : (v: number | null) => fmtR(v);
+  const fmt = effMetric === "pnl" ? (v: number | null) => fmtUsd(v, { signed: true }) : (v: number | null) => fmtR(v);
 
   const days = useMemo(() => fromDashboardDays(data?.days ?? [], effMetric === "pnl" ? "net" : "r"), [data, effMetric]);
 
@@ -135,9 +137,8 @@ export function EquityPanel({
                 {fmt(total)}
               </span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {t.trades} {plural(t.trades, ["сделка", "сделки", "сделок"])} · {t.tradingDays}{" "}
-                {plural(t.tradingDays, ["торговый день", "торговых дня", "торговых дней"])}
-                {effMetric === "pnl" && t.fees ? ` · комиссии ${fmtMoney(-Math.abs(t.fees))}` : ""}
+                {commonI18n.t("units.trades", { count: t.trades })} · {commonI18n.t("units.tradingDays", { count: t.tradingDays })}
+                {effMetric === "pnl" && t.fees ? ` · комиссии ${fmtUsd(-Math.abs(t.fees), { signed: true })}` : ""}
               </span>
             </div>
           )}
@@ -173,7 +174,7 @@ export function EquityPanel({
           {t && days.length > 0 && (
             <div className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
               <Stat label="Win rate" title={KPI_FORMULAS.winRate}>
-                {fmtPct(t.winRate)} <span className="text-xs font-normal text-muted-foreground">{t.wins}W / {t.losses}L</span>
+                {fmtRate(t.winRate)} <span className="text-xs font-normal text-muted-foreground">{t.wins}W / {t.losses}L</span>
               </Stat>
               <Stat label="Лучший день" title={(effMetric === "pnl" ? t.bestNet?.date : t.bestR?.date) ?? undefined}>
                 <span className={toneText(toneOf(best))}>{fmt(best)}</span>

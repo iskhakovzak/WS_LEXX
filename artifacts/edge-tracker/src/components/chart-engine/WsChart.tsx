@@ -25,8 +25,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { Bar, ChartMode, Drawing, DrawingPoint, DrawingType, Execution, Timeframe, TradeLike, TradeStructureDto, TrainingResult } from "./types";
 import { TIMEFRAMES, TF_LABEL, TF_SECONDS } from "./types";
 import { aggregate, availableTimeframes, barSeconds, baseBarLabel } from "./lib/aggregate";
-import { barIndexForTime, fmtEtDateTime, fmtEtDay, fmtEtTime, logicalToTime, tickMarkLabel } from "./lib/time";
-import { fmtPrice } from "./lib/format";
+import { barIndexForTime, etDayKey, fmtEtDateTime, fmtEtDay, fmtEtTime, logicalToTime, tickMarkLabel } from "./lib/time";
+import { fmtPrice, fmtUsd, localeTag } from "@/lib/format";
 import { buildGeometry, type Geometry } from "./lib/geometry";
 import { isOpening, positionAt } from "./lib/position";
 import { DRAWING_POINTS, loadDrawings, makeDrawing, saveDrawings } from "./lib/drawings";
@@ -36,7 +36,8 @@ import {
   type SimAction, type SimState, type TrainingOutcome,
 } from "./lib/training-sim";
 import { buildTradeSummary } from "./lib/trade-summary";
-import { capVolumes, defaultViewRange, followCursor } from "./lib/view";
+import { capVolumes, daySpanOf, defaultViewRange, followCursor, isViewMode, type ViewMode } from "./lib/view";
+import { chartI18n } from "@/i18n/ns/chart";
 import { readChartTheme, type ChartTheme } from "./theme";
 import { useChartData } from "./hooks/useChartData";
 import { useThemeVersion } from "./hooks/useThemeVersion";
@@ -120,6 +121,8 @@ type ChartRefs = {
 const OVERLAYS_KEY = "ws-chart:overlays:v3";
 const PANES_KEY = "ws-chart:panes:v2";
 const REPLAY_KEY = "ws-chart:replay:v2";
+/** Default zoom of a trade: the whole day (owner: «график должен полностью показываться за тот день»). */
+const VIEW_KEY = "ws-chart:view:v1";
 const TICKET_KEY = "ws-chart:ticket:v1";
 type ReplayPrefs = { speed: ReplaySpeed; start: ReplayStart; trainStart: ReplayStart; pauseOnFills: boolean };
 const DEFAULT_REPLAY: ReplayPrefs = { speed: 5, start: "15", trainStart: "30", pauseOnFills: true };
@@ -449,6 +452,21 @@ export function WsChart({
   live.current = { mode, tool, bars, barSec, cursorIdx, revealAll, replayActive, startIdx, speed, last, limitIdx, pauseIdx, pauseOnFills: prefs.pauseOnFills, hideReal };
 
   // ── View ─────────────────────────────────────────────────────────────────
+  const { t: tc } = chartI18n.useT();
+  const [viewMode, setViewModeState] = React.useState<ViewMode>(() => {
+    try { const v = localStorage.getItem(VIEW_KEY); return isViewMode(v) ? v : "day"; } catch { return "day"; }
+  });
+  const setViewMode = React.useCallback((v: ViewMode) => {
+    setViewModeState(v);
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* storage unavailable */ }
+  }, []);
+  // Every bar of the trade's day(s): premarket → after-hours of the entry day … the exit day (context days excluded).
+  const daySpan = React.useMemo(
+    () => (intraday && bars.length ? daySpanOf(bars.map((b) => etDayKey(b.t)), data.dateKey, data.toKey || data.dateKey) : null),
+    [intraday, bars, data.dateKey, data.toKey],
+  );
+  /** «День / Сделка» only makes sense for a trade on intraday bars outside replay (replay follows its cursor). */
+  const showViewSwitch = hasTrade && daySpan != null && !replayActive;
   const fitView = React.useCallback(() => {
     const r = refs.current;
     if (!r) return;
@@ -456,13 +474,19 @@ export function WsChart({
     const ts = r.chart.timeScale();
     if (s.replayActive && !s.revealAll && s.cursorIdx != null) ts.setVisibleLogicalRange({ from: s.cursorIdx - 70, to: s.cursorIdx + 30 });
     else {
-      const range = defaultViewRange({ count: s.bars.length, entryIdx: geo.entryIdx, exitIdx: geo.exitIdx, dayRange: geo.dayRange });
+      const range = defaultViewRange({ count: s.bars.length, entryIdx: geo.entryIdx, exitIdx: geo.exitIdx, dayRange: geo.dayRange, daySpan, mode: hasTrade ? viewMode : "trade" });
       if (range) ts.setVisibleLogicalRange(range); else ts.fitContent();
     }
     r.chart.priceScale("right").applyOptions({ autoScale: true });
-  }, [geo.entryIdx, geo.exitIdx, geo.dayRange]);
+  }, [geo.entryIdx, geo.exitIdx, geo.dayRange, daySpan, viewMode, hasTrade]);
   const fitRef = React.useRef(fitView);
   fitRef.current = fitView;
+  // Switching «День / Сделка» re-frames at once (the chart itself is not rebuilt).
+  const viewInit = React.useRef(true);
+  React.useEffect(() => {
+    if (viewInit.current) { viewInit.current = false; return; }
+    fitRef.current();
+  }, [viewMode]);
 
   // ── Chart build ──────────────────────────────────────────────────────────
   React.useEffect(() => {
@@ -481,7 +505,7 @@ export function WsChart({
         shiftVisibleRangeOnNewBar: false,
         tickMarkFormatter: (time: Time, type: number) => (typeof time === "number" ? tickMarkLabel(time, type) : ""),
       },
-      localization: { locale: "ru-RU", timeFormatter: (time: Time) => (typeof time === "number" ? fmtEtDateTime(time) : String(time)), priceFormatter: (p: number) => fmtPrice(p) },
+      localization: { locale: localeTag(), timeFormatter: (time: Time) => (typeof time === "number" ? fmtEtDateTime(time) : String(time)), priceFormatter: (p: number) => fmtPrice(p) },
       rightPriceScale: { borderColor: theme.border(), scaleMargins: { top: 0.08, bottom: 0.2 } },
       crosshair: {
         mode: CrosshairMode.Normal,
@@ -634,7 +658,7 @@ export function WsChart({
         topLineColor: th.up(1), topFillColor1: th.up(0.3), topFillColor2: th.up(0.03),
         bottomLineColor: th.down(1), bottomFillColor1: th.down(0.03), bottomFillColor2: th.down(0.3),
         lineWidth: 2, priceLineVisible: false, lastValueVisible: true, crosshairMarkerVisible: true,
-        priceFormat: { type: "custom", formatter: (p: number) => `${p < 0 ? "−" : ""}$${Math.abs(p).toFixed(0)}`, minMove: 0.01 },
+        priceFormat: { type: "custom", formatter: (p: number) => fmtUsd(p, { decimals: 0 }), minMove: 0.01 },
         title: "P&L",
       }, 1);
       r.pnl.getPane().setStretchFactor(STRETCH.pnl);
@@ -759,6 +783,7 @@ export function WsChart({
     if ((k === "Delete" || k === "Backspace") && selected) { e.preventDefault(); updateDrawings((d) => d.filter((x) => x.id !== selected)); setSelected(null); return; }
     if (code === "KeyF") { e.preventDefault(); if (e.shiftKey) toggleFullscreen(); else fitView(); return; }
     if (code === "KeyT") { e.preventDefault(); cycleTf(); return; }
+    if (!replayActive && showViewSwitch && (code === "KeyD" || code === "KeyZ")) { e.preventDefault(); setViewMode(code === "KeyD" ? "day" : "trade"); return; }
     if (!replayActive) return;
     const btn = (e.target as HTMLElement | null)?.tagName === "BUTTON";
     if (k === " ") { e.preventDefault(); togglePlay(); return; }
@@ -861,9 +886,10 @@ export function WsChart({
       else rows.push([["E"], "к входу"], [["X"], "к выходу"], [["N"], "к следующему исполнению"], [["P"], "пауза на исполнениях"]);
       rows.push([["Home"], "в начало"]);
     }
+    if (showViewSwitch) rows.push([["D"], tc("hotkeys.day")], [["Z"], tc("hotkeys.trade")]);
     rows.push([["T"], "сменить таймфрейм"], [["F"], "показать сделку целиком"], [["Shift", "F"], "на весь экран"], [["Колесо"], "масштаб"], [["Esc"], "отменить рисование"]);
     return rows;
-  }, [replayActive, training, hasNextTask]);
+  }, [replayActive, training, hasNextTask, showViewSwitch, tc]);
 
   // ── Render ───────────────────────────────────────────────────────────────
   const isWorkspace = layout === "workspace" || fullscreen;
@@ -883,8 +909,9 @@ export function WsChart({
   }
   if (data.error || !bars.length) {
     const err = data.error;
-    const text = err?.reason === "weekend" ? `${data.dateKey} — выходной, биржа закрыта`
-      : err?.reason === "future" ? `${data.dateKey} ещё не наступило`
+    const reason = err?.field<string>("reason");
+    const text = reason === "weekend" ? `${data.dateKey} — выходной, биржа закрыта`
+      : reason === "future" ? `${data.dateKey} ещё не наступило`
       : err?.status === 404 ? `Нет свечей ${trade.ticker} за ${data.fromKey}…${data.toKey}`
       : err ? `Не удалось загрузить свечи: ${err.message}`
       : useDaily && data.daily.loading ? "Загружаем дневные бары…"
@@ -949,6 +976,7 @@ export function WsChart({
         hasEvents={geo.events.length > 0} hasStopOrTarget={geo.stop != null || geo.target != null} lockTrade={hideReal}
         tool={tool} onTool={setTool} drawingsCount={drawings.length} onClearDrawings={clearDrawings}
         onScreenshot={screenshot} onFit={fitView} onFullscreen={toggleFullscreen} fullscreen={fullscreen}
+        view={showViewSwitch ? viewMode : undefined} onView={setViewMode}
         fetching={data.fetching || (useDaily && data.daily.loading)} hotkeys={hotkeys}
       />
       <div className={cn("flex min-w-0 flex-col gap-2", isWorkspace && "min-h-0 flex-1 lg:flex-row")}>
@@ -958,12 +986,13 @@ export function WsChart({
             <LiveLegend store={hoverStore} build={legendAt} ticker={trade.ticker} tfLabel={TF_LABEL[tf]} />
             <FillsKey fills={visibleFills} structure={hideReal ? null : geo.structure} layer={structureLayer} />
             {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/90 px-2.5 py-1 text-xs text-muted-foreground">{hint}</div>}
-            {training && (
+            {((training && hideReal) || (data.baseSec > 60 && intraday)) && (
               <div className="pointer-events-none absolute bottom-8 right-[4.5rem] z-raised flex max-w-[calc(100%-6rem)] flex-wrap justify-end gap-1">
-                {hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">будущее скрыто</span>}
+                {training && hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">будущее скрыто</span>}
                 {data.baseSec > 60 && intraday && (
-                  <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))]" title="Мельче баров за этот день нет: 1-минутки Yahoo хранит 7 дней, 5-минутки — 60 дней (если день не попал в кэш)">
-                    бары {baseBarLabel(data.baseSec)}: мельче за этот день нет
+                  // Honest bar size: an old day may only exist in 5-minute / hourly bars.
+                  <span className="pointer-events-auto cursor-help rounded-full bg-background/90 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))]" title={tc("bars.coarseTitle")}>
+                    {tc("bars.coarse", { tf: baseBarLabel(data.baseSec) })}
                   </span>
                 )}
               </div>

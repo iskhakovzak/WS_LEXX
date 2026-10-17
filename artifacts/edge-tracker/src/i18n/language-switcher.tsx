@@ -1,8 +1,4 @@
-/**
- * Language switchers: the top-bar button (LanguageMenu), the Settings select (LanguageSelect) and the compact
- * segmented control for the login screen (LanguageSegmented). Native names are never translated.
- */
-import React from "react";
+
 import { Check, Languages } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {

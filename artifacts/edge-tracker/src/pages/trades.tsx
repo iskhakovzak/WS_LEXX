@@ -2,7 +2,7 @@
 // here is to look back: by trading day (default) or through smart presets, tag setup / mistake / emotion with the
 // keyboard, and jump to the day report, behaviour patterns or the trade card.
 // Manual entry survives only for staff (?new / ?fromIdea deep links) and for editing legacy manual trades.
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useCreateTrade, useUpdateTrade, getTrade } from "@workspace/api-client-react";
 import type { Trade, CreateTradeBody, UpdateTradeBody } from "@workspace/api-client-react";
@@ -21,28 +21,9 @@ import type { ChecklistResult } from "@/components/pre-trade-checklist";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { useHolidaysRange, type HolidayEvent } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { invalidateTradeDependents } from "@/lib/query-keys";
-import {
-  ENTRY_DECISION_FIELDS,
-  HORIZONS,
-  HORIZON_LABEL,
-  RESULT_LABEL,
-  advancedFilterCount,
-  apiErrorMessage,
-  blankForm,
-  dayOf,
-  downloadCsv,
-  formToBody,
-  isBrokerTrade,
-  isDefaultFilters,
-  isTypingTarget,
-  plural,
-  resultKey,
-  tradeToForm,
-  type FormData,
-  type Outcome,
-} from "@/components/trades/trade-utils";
+import { ENTRY_DECISION_FIELDS, HORIZONS, HORIZON_LABEL, RESULT_LABEL, advancedFilterCount, apiErrorMessage, blankForm, dayOf, downloadCsv, formToBody, isBrokerTrade, isDefaultFilters, isTypingTarget, resultKey, tradeToForm, type FormData, type Outcome } from "@/components/trades/trade-utils";
 import { useTradeFilters } from "@/components/trades/use-trade-filters";
 import { useTradesPage, useTradeDays, dayTradesQuery, patchTradeInPages } from "@/hooks/use-trades-page";
 import { TradeFilterBar } from "@/components/trades/TradeFilterBar";
@@ -59,6 +40,8 @@ import { bulkTrades, type BulkBody } from "@/components/trades/bulk-api";
 import { PRESET_META, hasTag, toggleTag, type Preset, type TagKind } from "@/components/trades/review-presets";
 import type { PickerTarget, PickState } from "@/components/trades/review-tagging";
 import { DayCard, PresetBar, ReviewKpis, ReviewTradeRow, RowsHeader, RowsSkeleton } from "@/components/trades/review-list";
+import { commonI18n } from "@/i18n/ns/common";
+import { pluralRu } from "@/lib/format";
 
 const PERIOD_LABEL = { all: "всё время", today: "сегодня", week: "эта неделя", month: "этот месяц", custom: "диапазон" } as const;
 
@@ -197,7 +180,7 @@ export default function Trades() {
     if (filters.setup) parts.push(filters.setup);
     if (filters.ticker) parts.push(filters.ticker);
     const adv = advancedFilterCount(filters) - (filters.period === "custom" ? 1 : 0) - (filters.ticker ? 1 : 0);
-    if (adv > 0) parts.push(`+${adv} ${plural(adv, ["фильтр", "фильтра", "фильтров"])}`);
+    if (adv > 0) parts.push(`+${adv} ${pluralRu(adv, "фильтр", "фильтра", "фильтров")}`);
     if (filters.q.trim()) parts.push(`«${filters.q.trim()}»`);
     return parts.join(" · ");
   }, [filters]);
@@ -371,11 +354,7 @@ export default function Trades() {
         invalidateTrades();
         if (fromIdeaId && data?.id) {
           try {
-            await fetch(`${BASE}/api/trade-ideas/${fromIdeaId}`, {
-              method: "PATCH",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ status: "converted", convertedTradeId: data.id }),
-            });
+            await http.patch(`/api/trade-ideas/${fromIdeaId}`, { status: "converted", convertedTradeId: data.id });
             qc.invalidateQueries({ queryKey: ["trade-ideas"] });
           } catch {
             // non-blocking: the trade exists; the idea can be re-linked from the ideas page
@@ -448,12 +427,16 @@ export default function Trades() {
     if (!isStaff) { stripParam("fromIdea"); return; }
     (async () => {
       try {
-        const r = await fetch(`${BASE}/api/trade-ideas/${id}`);
-        if (!r.ok) {
-          toast({ title: "Не удалось загрузить идею", description: `Статус ${r.status}`, variant: "destructive" });
-          return;
-        }
-        const idea = await r.json();
+        type IdeaPrefill = {
+          ticker?: string | null; side?: string | null; setup?: string | null; entryZone?: string | number | null;
+          stop?: string | number | null; thesis?: string | null; tags?: string | null; trader?: string | null;
+        };
+        const idea = await http.get<IdeaPrefill>(`/api/trade-ideas/${id}`).catch((err: unknown) => {
+          if (!(err instanceof ApiError) || err.isNetwork) throw err;
+          toast({ title: "Не удалось загрузить идею", description: `Статус ${err.status}`, variant: "destructive" });
+          return null;
+        });
+        if (!idea) return;
         const f = blankForm();
         f.ticker = idea.ticker ?? "";
         if (idea.side === "Long" || idea.side === "Short") f.side = idea.side;
@@ -563,7 +546,7 @@ export default function Trades() {
     if (!ids.length) return;
     const label = ids.length === 1
       ? (rowsRef.current.find((t) => t.id === ids[0]) ?? (detached?.id === ids[0] ? detached : null))?.ticker ?? `#${ids[0]}`
-      : `${ids.length} ${plural(ids.length, ["сделка", "сделки", "сделок"])}`;
+      : `${commonI18n.t("units.trades", { count: ids.length })}`;
     const done = await runBulk({ action: "delete", ids });
     if (!done?.length) return;
     setOpenId((cur) => (cur != null && done.includes(cur) ? null : cur));
@@ -590,7 +573,7 @@ export default function Trades() {
     return n === 0 ? "none" : n === selectedTrades.length ? "all" : "some";
   }, [selectedTrades]);
   const canDeleteSelection = selectedTrades.length > 0 && selectedTrades.every((t) => canEditForm(t));
-  const nTrades = (n: number) => `${n.toLocaleString("ru-RU")} ${plural(n, ["сделка", "сделки", "сделок"])}`;
+  const nTrades = (n: number) => commonI18n.t("units.trades", { count: n });
 
   // ── CSV export of the whole filtered set ────────────────────────────────
   const [exporting, setExporting] = useState(false);
@@ -663,7 +646,7 @@ export default function Trades() {
   const days = summary?.days ?? D.totalDays;
   const headerText = isLoading
     ? "Загрузка…"
-    : `${nTrades(total)}${days ? ` · ${days.toLocaleString("ru-RU")} ${plural(days, ["торговый день", "торговых дня", "торговых дней"])}` : ""} · ${scopeLabel}`;
+    : `${nTrades(total)}${days ? ` · ${commonI18n.t("units.tradingDays", { count: days })}` : ""} · ${scopeLabel}`;
   const presetMeta = preset ? PRESET_META[preset] : null;
 
   const presetEmpty = (p: Preset) => (
@@ -915,7 +898,7 @@ export default function Trades() {
       <AlertDialog open={confirmBulkDelete} onOpenChange={setConfirmBulkDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить {selectedIds.length} {plural(selectedIds.length, ["сделку", "сделки", "сделок"])}?</AlertDialogTitle>
+            <AlertDialogTitle>Удалить {selectedIds.length} {pluralRu(selectedIds.length, "сделку", "сделки", "сделок")}?</AlertDialogTitle>
             <AlertDialogDescription>Отменить удаление можно будет в течение 8 секунд.</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

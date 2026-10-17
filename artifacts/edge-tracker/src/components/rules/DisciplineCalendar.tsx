@@ -2,10 +2,9 @@ import { useMemo } from "react";
 import { cn } from "@/lib/utils";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { mondayOf } from "./discipline";
-import { fmtDay, fmtUsd } from "./constants";
+import { fmtDate, fmtMonth, fmtUsd, fmtWeekday } from "@/lib/format";
 import type { CalendarDay } from "./types";
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт"];
 
 /**
  * Discipline heatmap: one cell per trading day (Mon–Fri columns by week).
@@ -22,9 +21,9 @@ function cellClass(s: CalendarDay | undefined, future: boolean): string {
 }
 
 export function describeDay(s: CalendarDay | undefined, date: string): string {
-  const d = fmtDay(date);
+  const d = fmtDate(date, "dayMonth");
   if (!s || s.trades === 0) return `${d}: нет сделок`;
-  const parts = [`${s.trades} сд.`, fmtUsd(s.net)];
+  const parts = [`${s.trades} сд.`, fmtUsd(s.net, { signed: true, decimals: "trim" })];
   parts.push(s.clean ? "без нарушений" : `нарушений: ${s.violations}`);
   return `${d}: ${parts.join(" · ")}`;
 }
@@ -59,7 +58,10 @@ export function DisciplineCalendar({
     <div className="flex flex-col gap-3">
       <div className="flex gap-2">
         <div className="grid shrink-0 grid-rows-5 gap-[3px] pt-5 text-xs text-muted-foreground" aria-hidden="true">
-          {WEEKDAYS.map((w) => <span key={w} className="flex items-center leading-none">{w}</span>)}
+          {[1, 2, 3, 4, 5].map((i) => {
+            const w = fmtWeekday(i, "short");
+            return <span key={i} className="flex items-center leading-none">{w.charAt(0).toUpperCase() + w.slice(1)}</span>;
+          })}
         </div>
         <div className="min-w-0 flex-1" style={{ maxWidth: weeks * 28 }}>
           <div className="grid gap-[3px] pb-1 text-xs text-muted-foreground" style={{ gridTemplateColumns: `repeat(${weeks}, minmax(0, 1fr))` }} aria-hidden="true">
@@ -68,7 +70,7 @@ export function DisciplineCalendar({
               const showMonth = i === 0 || d.getDate() <= 7;
               return (
                 <span key={col[0]} className="h-4 overflow-visible whitespace-nowrap leading-4">
-                  {showMonth && i < weeks - 1 ? d.toLocaleDateString("ru-RU", { month: "short" }).replace(".", "") : ""}
+                  {showMonth && i < weeks - 1 ? fmtMonth(d, "short").replace(".", "") : ""}
                 </span>
               );
             })}

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useId, useMemo, useRef } from "react";
+import { useState, useEffect, useCallback, useId, useMemo, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,10 +12,12 @@ import { ScreenshotFields } from "@/components/screenshot-fields";
 import { Pill, Segmented } from "@/components/ds";
 import type { TickerFundamentals } from "@/lib/market-intel";
 import { suggestTagsFromFundamentals } from "@/lib/tags";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { LevelsBar } from "@/components/ideas/LevelsBar";
-import { levelPlan, fmtPrice, rrTone, QUALITY_TONE, HORIZONS, horizonOf, setHorizonInTags, type Horizon } from "@/components/ideas/model";
+import { levelPlan, rrTone, QUALITY_TONE, HORIZONS, horizonOf, setHorizonInTags, type Horizon } from "@/components/ideas/model";
+import { fmtCount, fmtPrice } from "@/lib/format";
 import { AlertTriangle, BookOpen, Sparkles, User } from "lucide-react";
 
 const SETUP_QUALITIES = ["A+", "A", "B+", "B", "C", "D"] as const;
@@ -113,13 +115,11 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
 
   const { data: playbook = [] } = useQuery<PlaybookName[]>({
     queryKey: ["trade-idea-form", "playbook-names"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook`);
-      if (!r.ok) return [];
-      const rows = (await r.json()) as PlaybookName[];
+    queryFn: async ({ signal }) => {
+      const rows = await http.get<PlaybookName[]>("/api/playbook", { signal }).catch(() => []);
       return Array.isArray(rows) ? rows.map((p) => ({ id: p.id, name: p.name })) : [];
     },
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
   });
   const linkedPlaybook = form.playbookId ? playbook.find((p) => p.id === form.playbookId) : undefined;
 
@@ -314,7 +314,7 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
             aria-invalid={!!errors.riskAmount} aria-describedby={errors.riskAmount ? fid("risk-err") : shares != null ? fid("risk-hint") : undefined} />
           {errors.riskAmount
             ? <p id={fid("risk-err")} className={errCls}>{errors.riskAmount}</p>
-            : shares != null && <p id={fid("risk-hint")} className="text-2xs tabular-nums text-muted-foreground">≈ {shares.toLocaleString("ru-RU")} акций по стопу</p>}
+            : shares != null && <p id={fid("risk-hint")} className="text-2xs tabular-nums text-muted-foreground">≈ {fmtCount(shares)} акций по стопу</p>}
         </div>
         <div className="space-y-1.5">
           <Label htmlFor={fid("score")} className={labelCls}>Score, 0–100</Label>

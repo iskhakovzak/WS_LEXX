@@ -10,6 +10,7 @@ import { AlertTriangle, CheckCircle2, ChevronDown, ChevronUp, ChevronsUpDown, Ci
 import { TableHead } from "@/components/ui/table";
 import type { Horizon, RiskStatus, StopState } from "./use-risk";
 import type { RankLevel } from "./risk-math";
+import { fmtPct, fmtUsd } from "@/lib/format";
 
 // ─── desk level: ok / near / stop (colour + icon + text) ────────────────────
 
@@ -38,12 +39,12 @@ export function UsageCell({ pct, used, limit, label }: { pct: number | null; use
     return <span className="text-xs text-muted-foreground" title={`${label}: лимит не задан`}>—</span>;
   }
   const w = Math.min(100, Math.max(used > 0 ? 3 : 0, pct));
-  const title = `${label}: ${fmtUsd(used)} из ${fmtUsd(limit)} (${fmtPct(pct)}), осталось ${fmtUsd(Math.max(0, limit - used))}`;
+  const title = `${label}: ${fmtUsd(used, { decimals: 0 })} из ${fmtUsd(limit, { decimals: 0 })} (${fmtPct(pct, { decimals: 0, signed: false })}), осталось ${fmtUsd(Math.max(0, limit - used), { decimals: 0 })}`;
   return (
     <div className="flex min-w-[84px] flex-col gap-1" title={title}>
       <div className="flex items-baseline justify-between gap-2 text-xs tabular-nums">
-        <span className={cn("font-semibold", usageText(pct))}>{fmtPct(pct)}</span>
-        <span className="text-xs text-muted-foreground">ост. {fmtUsd(Math.max(0, limit - used), { compact: true })}</span>
+        <span className={cn("font-semibold", usageText(pct))}>{fmtPct(pct, { decimals: 0, signed: false })}</span>
+        <span className="text-xs text-muted-foreground">ост. {fmtUsd(Math.max(0, limit - used), { decimals: 0, compact: 10_000 })}</span>
       </div>
       <div
         role="meter"
@@ -59,41 +60,6 @@ export function UsageCell({ pct, used, limit, label }: { pct: number | null; use
       </div>
     </div>
   );
-}
-
-// ─── formatters ─────────────────────────────────────────────────────────────
-
-const usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-
-/** $1,234 (no sign). Compact $12.5k for big numbers when compact=true. */
-export function fmtUsd(v: number | null | undefined, opts: { compact?: boolean; cents?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  if (opts.compact && a >= 10_000) {
-    const s = a >= 1_000_000 ? `${(a / 1_000_000).toFixed(a >= 10_000_000 ? 0 : 1)}M` : `${(a / 1000).toFixed(a >= 100_000 ? 0 : 1)}k`;
-    return `${v < 0 ? "−" : ""}$${s}`;
-  }
-  const s = (opts.cents ? usd2 : usd0).format(a);
-  return v < 0 ? `−${s}` : s;
-}
-
-/** Signed: +$120 / −$80 / $0. */
-export function fmtSignedUsd(v: number | null | undefined, compact = false): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v === 0) return "$0";
-  return `${v > 0 ? "+" : ""}${fmtUsd(v, { compact })}`;
-}
-
-export function fmtR(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(Math.abs(v) >= 10 ? 1 : 2).replace(/\.?0+$/, "") || "0";
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}R`;
-}
-
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v)}%`;
 }
 
 export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
@@ -190,7 +156,7 @@ export function LimitBar({
   label,
   used,
   limit,
-  format = (v: number) => fmtUsd(v, { compact: true }),
+  format = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 }),
   size = "md",
   className,
   hint,
@@ -226,7 +192,7 @@ export function LimitBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={pct == null ? undefined : Math.round(Math.min(pct, 999))}
-        aria-valuetext={has ? `${format(used)} из ${format(limit as number)} (${fmtPct(pct)})` : "лимит не задан"}
+        aria-valuetext={has ? `${format(used)} из ${format(limit as number)} (${fmtPct(pct, { decimals: 0, signed: false })})` : "лимит не задан"}
         className={cn("relative mt-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--field-border)]", size === "sm" ? "h-1.5" : "h-2")}
       >
         <div
@@ -238,7 +204,7 @@ export function LimitBar({
       {(hint || (pct != null && pct >= 70)) && (
         <div className="mt-1 flex items-center justify-between gap-2 text-2xs text-muted-foreground">
           <span className="truncate">{hint}</span>
-          {pct != null && <span className={cn("tabular-nums font-medium", usageText(pct))}>{fmtPct(pct)}</span>}
+          {pct != null && <span className={cn("tabular-nums font-medium", usageText(pct))}>{fmtPct(pct, { decimals: 0, signed: false })}</span>}
         </div>
       )}
     </div>

@@ -11,10 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Panel, Pill, ProgressRing, StatCard, StatGrid } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { Markdown } from "./markdown";
 import { api, invalidateAcademy, type AttemptState, type Feedback, type GradeSummary, type PublicQuestion, type QuizResponse } from "./api";
 import { DualTime } from "./time";
+import { pluralRu } from "@/lib/format";
 
 const ptsText = (n: number) => `${n} ${pluralRu(n, "балл", "балла", "баллов")}`;
 

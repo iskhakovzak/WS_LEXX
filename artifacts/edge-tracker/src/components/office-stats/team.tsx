@@ -22,6 +22,7 @@ import { TFOOT } from "./monthly";
 import { profileHref } from "@/components/curator/curator-math";
 import { PeopleSearchInput } from "@/components/people/people-search-input";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
+import { fmtCount, fmtDate } from "@/lib/format";
 
 /** Columns that only fit from ~1400px (the sparkline): hidden on a 1280 screen so the table needs no sideways scroll. */
 const WIDE_ONLY = "hidden min-[1400px]:table-cell";
@@ -103,7 +104,7 @@ export function TradersTable({ view, unit, periodLabel }: { view: OfficeView; un
                   <td className={cn("!px-1.5", WIDE_ONLY)}><Sparkline data={r.spark} width={64} height={22} baseline={0} ariaLabel={`Кривая ${r.trader}`} /></td>
                   <td className={cn("whitespace-nowrap text-right font-semibold", r.net >= 0 ? "text-up" : "text-down")}>{fmtV(r.net, unit)}</td>
                   <td className={cn("text-right font-medium", r.share != null && r.share < 0 && "text-down")}>{fmtShare(r.share)}</td>
-                  <td className="text-right">{r.trades.toLocaleString("ru-RU")}</td>
+                  <td className="text-right">{fmtCount(r.trades)}</td>
                   <td className="text-right">{fmtShare(r.winRate)}</td>
                   <td className={cn("text-right", r.profitFactor != null && (r.profitFactor >= 1 ? "text-up" : "text-down"))}>{r.profitFactor != null ? r.profitFactor.toFixed(2) : "—"}</td>
                   <td className="text-right" title="Доля зелёных дней из торговых">
@@ -128,7 +129,7 @@ export function TradersTable({ view, unit, periodLabel }: { view: OfficeView; un
                 <td className={WIDE_ONLY} />
                 <td className={cn("whitespace-nowrap text-right", t.net >= 0 ? "text-up" : "text-down")}>{fmtV(t.net, unit)}</td>
                 <td className="text-right">100%</td>
-                <td className="text-right">{t.trades.toLocaleString("ru-RU")}</td>
+                <td className="text-right">{fmtCount(t.trades)}</td>
                 <td className="text-right">{fmtShare(t.winRate)}</td>
                 <td className="text-right">{t.profitFactor != null ? t.profitFactor.toFixed(2) : "—"}</td>
                 <td className="text-right">{t.tradingDays ? fmtShare(t.greenDays / t.tradingDays) : "—"}</td>
@@ -188,7 +189,7 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
           <span className="text-destructive">Капитал — положительное число в $</span>
         ) : null}
         {!goalValid && <span className="text-destructive">Цель — больше 0 и не выше 1000 %</span>}
-        {s.updatedBy && <span>изменил {s.updatedBy}{s.updatedAt ? ` · ${new Date(s.updatedAt).toLocaleDateString("ru-RU")}` : ""}</span>}
+        {s.updatedBy && <span>изменил {s.updatedBy}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "short")}` : ""}</span>}
       </p>
     </form>
   );

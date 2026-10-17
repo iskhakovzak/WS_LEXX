@@ -9,7 +9,8 @@ import { Command, CommandEmpty, CommandGroup, CommandItem, CommandList } from "@
 import { QueryError } from "@/components/query-error";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { MARKET_BIAS, TICKER_BIAS, fmtTime, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
+import { MARKET_BIAS, TICKER_BIAS, gpApi, gpKeys, type GamePlan, type InPlayItem, type MyPlanResponse, type PlanStatus, type TraderPlan } from "./types";
+import { fmtDate } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft, type TickerSuggestion } from "./plan-editor";
 import { PlanDocView } from "./plan-doc-view";
@@ -333,7 +334,7 @@ function SaveIndicator({ state, pending, onRetry }: { state: SaveState; pending:
   else if (state.kind === "saved")
     content = (
       <>
-        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> Сохранено {fmtTime(state.at)}
+        <Cloud className="h-3.5 w-3.5" aria-hidden="true" /> Сохранено {fmtDate(state.at, "time")}
       </>
     );
   return (

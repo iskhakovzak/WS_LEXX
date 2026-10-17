@@ -12,9 +12,15 @@ import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { useRuns, useStatus } from "@/components/propreports/api";
-import { adminUrl, downloadBlob, errorFrom, fmtDateTime, timeAgo } from "./api";
+import { http } from "@/lib/api/http";
+import { adminUrl, downloadBlob, timeAgo } from "./api";
 import { useDataQuality, useHealth, type DataCheck } from "./console-api";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtCount, fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { adminJobsI18n } from "@/i18n/ns/adminJobs";
+import { JobsPanel } from "./JobsPanel";
+
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 const EXPORT_TABLES: { key: string; label: string }[] = [
   { key: "trades", label: "Сделки" },
@@ -43,6 +49,7 @@ export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean 
         <ImportHistoryCard />
       </div>
       <DataQualityCard />
+      <JobsPanel isAdmin={isAdmin} />
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
         <ExportCard actor={actor} />
         <BackupsCard actor={actor} isAdmin={isAdmin} />
@@ -109,10 +116,10 @@ function IntegrationStatusCard() {
               tone={st.scheduler.enabled ? "up" : "neutral"}
             />
             {st.scheduler.enabled && (
-              <StatRow label="Следующий запуск" value={st.scheduler.running ? "идёт сейчас" : st.scheduler.nextRunAt ? fmtDateTime(st.scheduler.nextRunAt) : "—"} />
+              <StatRow label="Следующий запуск" value={st.scheduler.running ? "идёт сейчас" : st.scheduler.nextRunAt ? fmtDate(st.scheduler.nextRunAt, "numericDateTime") : "—"} />
             )}
             <StatRow label="Последний синк" value={st.lastRun ? `${timeAgo(st.lastRun.startedAt)} · ${st.lastRun.source === "file" ? "файл" : "API"}` : "ещё не было"} />
-            <StatRow label="Сделок из брокера" value={Number(st.trades.imported).toLocaleString("ru-RU")} />
+            <StatRow label="Сделок из брокера" value={fmtCount(Number(st.trades.imported))} />
             <StatRow
               label="Счета"
               value={`${st.accounts.mapped}/${st.accounts.total} привязано${st.settings.unmatched.length ? ` · новых ${st.settings.unmatched.length}` : ""}`}
@@ -129,7 +136,7 @@ function IntegrationStatusCard() {
             {errors && errors.items.length > 0 ? (
               <ul className="flex flex-col gap-1 text-xs text-muted-foreground">
                 {errors.items.slice(0, 5).map((e, i) => (
-                  <li key={i} className="break-words">{e.at ? `${fmtDateTime(e.at)} · ` : ""}{e.text}</li>
+                  <li key={i} className="break-words">{e.at ? `${fmtDate(e.at, "numericDateTime")} · ` : ""}{e.text}</li>
                 ))}
               </ul>
             ) : (
@@ -183,7 +190,7 @@ function ImportHistoryCard() {
                 return (
                   <tr key={r.id}>
                     <td className="max-w-[11rem]">
-                      <div className="whitespace-nowrap tabular-nums" title={new Date(r.startedAt).toLocaleString("ru-RU")}>{fmtDateTime(r.startedAt)}</div>
+                      <div className="whitespace-nowrap tabular-nums" title={fmtDate(r.startedAt, "shortDateTimeSeconds")}>{fmtDate(r.startedAt, "numericDateTime")}</div>
                       <div className="truncate text-2xs text-muted-foreground" title={[r.fileName, r.actor].filter(Boolean).join(" · ") || undefined}>
                         {r.source === "file" ? (r.fileName ?? "файл") : "API"}{r.actor ? ` · ${r.actor}` : ""}
                       </div>
@@ -222,7 +229,7 @@ const CHECK_LINK: Record<string, { href: string; label: string }> = {
 
 function sampleText(row: Record<string, unknown>): string {
   if (Array.isArray(row.ids)) return `${row.trader ?? "?"} · ${row.ticker ?? ""} · ${row.date ?? ""} · ${row.n} шт (#${(row.ids as unknown[]).join(", #")})`;
-  if (row.account && row.n != null) return `Счёт ${row.account}: ${row.n} ${pluralRu(Number(row.n), "сделка", "сделки", "сделок")}`;
+  if (row.account && row.n != null) return `Счёт ${row.account}: ${commonI18n.t("units.trades", { count: Number(row.n) })}`;
   const parts = [row.date, row.ticker, row.trader ?? "без трейдера"];
   if (row.openedDate) parts.push(`открыта ${row.openedDate}`);
   if (row.exitDate) parts.push(`выход ${row.exitDate}`);
@@ -256,7 +263,7 @@ function DataQualityCard() {
       ) : quality.data === null || quality.data === undefined ? (
         <EmptyState compact icon={AlertTriangle} title="Проверка ещё не подключена" description="Появится после перезапуска API (новый роутер admin-console)." />
       ) : visible.length === 0 ? (
-        <EmptyState compact icon={CheckCircle2} title="Проблем не найдено" description={`Проверено правил: ${checks.length} · ${fmtDateTime(quality.data.generatedAt)}`} />
+        <EmptyState compact icon={CheckCircle2} title="Проблем не найдено" description={`Проверено правил: ${checks.length} · ${fmtDate(quality.data.generatedAt, "numericDateTime")}`} />
       ) : (
         <ul className="flex flex-col gap-2">
           {visible.map((c) => {
@@ -316,16 +323,14 @@ function ExportCard({ actor }: { actor: string }) {
     if (!picked.size) return;
     setBusy(true);
     try {
-      const r = await fetch(adminUrl("/admin/db-export", actor, { tables: all ? undefined : [...picked].join(",") }));
-      if (!r.ok) throw await errorFrom(r, "Не удалось выгрузить данные");
-      const text = await r.text();
+      const text = (await http.get<string | null>(adminUrl("/admin/db-export", actor, { tables: all ? undefined : [...picked].join(",") }), { responseType: "text" })) ?? "";
       const day = new Date().toISOString().slice(0, 10);
       downloadBlob(text, `ws-lexx-${all ? "backup" : "export"}-${day}.json`, "application/json");
       let summary = "";
       try {
         const j = JSON.parse(text) as { summary?: Record<string, number> };
         const total = Object.values(j.summary ?? {}).reduce((s, v) => s + v, 0);
-        summary = `${total.toLocaleString("ru-RU")} ${pluralRu(total, "запись", "записи", "записей")}`;
+        summary = commonI18n.t("units.entries", { count: total });
       } catch { /* ignore */ }
       qc.invalidateQueries({ queryKey: ["admin-audit"] });
       toast({ title: "Экспорт готов", description: summary || undefined });
@@ -363,34 +368,30 @@ function ExportCard({ actor }: { actor: string }) {
   );
 }
 
-interface BackupMeta { name: string; objectName: string; createdAt: string; sizeKb: number }
+/** `file` = name + extension (.dump for pg_dump -Fc, .sql.gz for older backups); absent on older API builds. */
+interface BackupMeta { name: string; objectName: string; file?: string; createdAt: string; sizeKb: number }
 
 function fmtMsk(iso: string) {
   try {
-    return new Date(iso).toLocaleString("ru-RU", { timeZone: "Europe/Moscow", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) + " МСК";
+    return fmtDate(iso, "shortDateTime", { timeZone: "Europe/Moscow" }) + " МСК";
   } catch { return iso; }
 }
 
 function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
+  const { t: tj } = adminJobsI18n.useT();
   const { toast } = useToast();
   const [triggering, setTriggering] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
   const { data: backups, isLoading, isError, error, refetch, isFetching } = useQuery<BackupMeta[]>({
     queryKey: ["admin-backups", actor],
-    queryFn: async () => {
-      const r = await fetch(adminUrl("/admin/backups", actor));
-      if (!r.ok) throw await errorFrom(r, "Не удалось получить список бэкапов");
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<BackupMeta[]>(adminUrl("/admin/backups", actor), { signal }),
     retry: false,
   });
 
   async function trigger() {
     setTriggering(true);
     try {
-      const r = await fetch(adminUrl("/admin/backups/trigger", actor), { method: "POST" });
-      if (!r.ok) throw await errorFrom(r, "Не удалось создать бэкап");
-      const d = await r.json();
+      const d = await http.post<{ name: string; sizeKb: number }>(adminUrl("/admin/backups/trigger", actor));
       toast({ title: "Бэкап создан", description: `${d.name} · ${d.sizeKb} KB` });
       refetch();
     } catch (e) {
@@ -400,15 +401,13 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
     }
   }
 
-  async function download(name: string) {
+  async function download(name: string, file: string) {
     setDownloading(name);
     try {
-      const r = await fetch(adminUrl(`/admin/backups/${encodeURIComponent(name)}/download`, actor));
-      if (!r.ok) throw await errorFrom(r, "Не удалось получить ссылку");
-      const d = await r.json();
+      const d = await http.get<{ url: string }>(adminUrl(`/admin/backups/${encodeURIComponent(name)}/download`, actor));
       const a = document.createElement("a");
       a.href = d.url;
-      a.download = `${name}.sql.gz`;
+      a.download = file;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -422,7 +421,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
   return (
     <Panel
       title="Бэкапы БД"
-      description="pg_dump автоматически каждые 48 ч, хранятся последние 10"
+      description={tj("backups.description")}
       icon={Database}
       fill
       actions={
@@ -447,7 +446,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
         </div>
       ) : !backups || backups.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Бэкапов пока нет. Автобэкап запускается через 3 минуты после старта сервера{isAdmin ? " — или нажмите «Создать сейчас»" : ""}. Если список так и пуст, проверьте, что на сервере установлен pg_dump.
+          {tj("backups.empty")}{isAdmin ? ` ${tj("backups.emptyAdmin")}` : ""} {tj("backups.emptyHint")}
           {!isAdmin && <span className="mt-1 block text-xs">Скачивание доступно только администраторам.</span>}
         </p>
       ) : (
@@ -460,13 +459,13 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
                     {fmtMsk(b.createdAt)}
                     {i === 0 && <Pill tone="up">последний</Pill>}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{b.sizeKb.toLocaleString("ru-RU")} КБ · {b.name}.sql.gz</div>
+                  <div className="truncate text-xs text-muted-foreground">{fmtCount(b.sizeKb)} КБ · {b.file ?? `${b.name}.sql.gz`}</div>
                 </div>
                 {isAdmin && (
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => download(b.name)}
+                    onClick={() => download(b.name, b.file ?? `${b.name}.sql.gz`)}
                     disabled={downloading === b.name}
                     aria-label={`Скачать бэкап ${b.name}`}
                     data-testid={`button-download-backup-${b.name}`}

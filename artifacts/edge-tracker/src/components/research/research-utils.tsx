@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { Research } from "@workspace/api-client-react";
 import { addDays, nyDate } from "@/lib/trading-date";
+import { fmtDateCustom } from "@/lib/format";
 
 /* ── Server shape: generated `Research` + additive fields from `GET /api/research` ── */
 export type ResearchEvidence = {
@@ -50,7 +51,7 @@ export function formatDay(dateStr: string) {
   const today = nyDate();
   if (dateStr === today) return "Сегодня";
   if (dateStr === addDays(today, -1)) return "Вчера";
-  return d.toLocaleDateString("ru-RU", {
+  return fmtDateCustom(d, {
     weekday: "short",
     day: "numeric",
     month: "long",

@@ -5,15 +5,13 @@ import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned } from "@/lib/ownership";
 import { DataTable, SortableTh, toneOf, toneText, type SortDir } from "@/components/ds";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  LIST_LABELS, fmtPct, fmtPrice,
-  type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem,
-} from "./lib";
+import { LIST_LABELS, type EarningsHit, type KeyLevel, type ListName, type NewsDigest, type Plan, type Quote, type WatchlistItem } from "./lib";
 import type { DayLevelSet, UpcomingEarnings } from "./use-market";
 import type { TickerHistory } from "./use-history";
 import { EventMarks, HistoryCell, InlineNote, LevelCell } from "./bits";
 import { RowMenu, type RowActions } from "./WatchlistRow";
 import { Sparkline } from "./visuals";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 /** One prepared row: the watchlist item plus everything the table shows next to it. */
 export type WlRow = {
@@ -268,14 +266,14 @@ const Row = React.memo(function Row({
       </td>
       <td className={cn("text-right", cellY, toneText(toneOf(q?.change)))}>{loadingQuote ? "" : fmtPct(q?.change, 2)}</td>
       <td className={cn("text-right text-xs", cellY, gap != null && Math.abs(gap) >= 3 ? cn("font-semibold", toneText(toneOf(gap))) : "text-muted-foreground")}>
-        {fmtPct(gap)}
+        {fmtPct(gap, 1)}
       </td>
       <td className={cn("text-right text-xs", cellY, rv != null && rv >= 1.5 ? "font-semibold text-primary" : "text-muted-foreground")}>
         {rv != null ? `${rv.toFixed(1)}×` : "—"}
       </td>
       <td className={cn("text-right text-xs", cellY)}>
         {q?.atr != null ? (
-          <span className="whitespace-nowrap"><span className="text-foreground">{q.atr.toFixed(2)}</span>{atrPct != null && <span className="text-muted-foreground"> · {atrPct.toFixed(1)}%</span>}</span>
+          <span className="whitespace-nowrap"><span className="text-foreground">{fmtPrice(q.atr)}</span>{atrPct != null && <span className="text-muted-foreground"> · {fmtPct(atrPct, { decimals: 1, signed: false })}</span>}</span>
         ) : <span className="text-muted-foreground">—</span>}
       </td>
       {comfy && (

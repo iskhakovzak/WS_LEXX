@@ -5,7 +5,9 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { INDICATOR_BY_ID, MIN_DAYS, type Analogue, type AlertRule, type BucketStats, type IndicatorId, type Reading } from "./engine";
 import { NetBar, type DimResult } from "./EdgeByRegime";
-import { dayLabel, daysWord, pctText, toneOfMoney, usd } from "./format";
+import { dayLabel, toneOfMoney, usd } from "./format";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const TEXT = { up: "text-up", down: "text-down", neutral: "text-foreground" } as const;
 const tx = (v: number) => TEXT[toneOfMoney(v) as keyof typeof TEXT];
@@ -45,7 +47,7 @@ export function TodayForYou({
             <>
               <span className={cn("text-2xl font-semibold leading-tight tabular-nums", tx(avg))}>{usd(avg)} <span className="text-sm font-normal text-muted-foreground">в день</span></span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {daysWord(n)} · в плюсе {green} из {n} · медиана {usd(median)} · WR {pctText(w + l ? w / (w + l) : null)} · обычно {usd(base.netPerDay)} в день
+                {commonI18n.t("units.days", { count: n })} · в плюсе {green} из {n} · медиана {usd(median)} · WR {fmtRate(w + l ? w / (w + l) : null)} · обычно {usd(base.netPerDay)} в день
               </span>
               {n < MIN_DAYS && <Pill tone="warn" className="mt-1 self-start">мало похожих дней</Pill>}
             </>

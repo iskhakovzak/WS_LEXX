@@ -2,9 +2,9 @@ import { memo } from "react";
 import { Flame } from "lucide-react";
 import { Pill, Sparkline, SkeletonBlock, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtSigned } from "./lib";
 import type { Big7Row } from "./context";
-import { Signed, earningsLabel, fmtPx, fmtRvol } from "./ui";
+import { Signed, earningsLabel, fmtRvol } from "./ui";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 export type TileProps = {
   row: Big7Row;
@@ -28,7 +28,7 @@ export const TickerTile = memo(function TickerTile({ row, hot, earnings, index, 
     <button
       type="button"
       onClick={() => onOpen(row.symbol)}
-      aria-label={`${row.symbol}${row.price != null ? `, ${fmtPx(row.price)}` : ""}${row.chg != null ? `, ${fmtSigned(row.chg)}` : ""}. Открыть детали`}
+      aria-label={`${row.symbol}${row.price != null ? `, ${fmtPrice(row.price)}` : ""}${row.chg != null ? `, ${fmtPct(row.chg)}` : ""}. Открыть детали`}
       title={index < 9 ? `Клавиша ${index + 1}` : undefined}
       className={cn(
         "glass-panel lift group flex min-w-0 flex-col gap-1.5 rounded-2xl p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -40,11 +40,11 @@ export const TickerTile = memo(function TickerTile({ row, hot, earnings, index, 
           <span className="truncate text-base font-semibold tracking-tight">{row.symbol}</span>
           {hot && <Flame className="h-3.5 w-3.5 shrink-0 text-primary" aria-label="Hot" />}
         </span>
-        <Pill tone={dayTone} className="shrink-0">{fmtSigned(row.chg)}</Pill>
+        <Pill tone={dayTone} className="shrink-0">{fmtPct(row.chg)}</Pill>
       </div>
 
       <div className="flex min-w-0 items-baseline justify-between gap-2">
-        <span className="text-lg font-semibold leading-none tabular-nums">{fmtPx(row.price)}</span>
+        <span className="text-lg font-semibold leading-none tabular-nums">{fmtPrice(row.price)}</span>
         {earnings ? (
           <span className="truncate whitespace-nowrap text-xs font-medium text-warn" title="Ближайший отчёт">{earningsLabel(earnings)}</span>
         ) : (

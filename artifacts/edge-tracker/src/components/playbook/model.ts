@@ -10,6 +10,7 @@ import {
   screenshotUrlsToString,
   screenshotNotesToString,
 } from "@/components/screenshot-fields";
+import { fmtDate } from "@/lib/format";
 
 export type PlaybookEntry = {
   id: number; name: string; folder: string | null; setupType: string | null; conditions: string | null;
@@ -157,13 +158,7 @@ export const STRUCTURED: { key: StructuredKey; label: string; placeholder: strin
   { key: "idealConditions", label: "Идеальные условия", placeholder: "Объём, RVOL, float, время, состояние рынка", tone: "neutral" },
 ];
 
-export const fmtUsd = (v: number | null | undefined, digits = 0) =>
-  v == null || !Number.isFinite(v)
-    ? "—"
-    : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: digits, minimumFractionDigits: digits })}`;
 export const moneyTone = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
-/** dd.MM (tables) from YYYY-MM-DD. */
-export const ddmm = (d: string | null | undefined) => (d && /^\d{4}-\d{2}-\d{2}/.test(d) ? `${d.slice(8, 10)}.${d.slice(5, 7)}` : d ?? "—");
 
 /** Row of GET /api/playbook/:id/trades (shared trade math applied server-side: signedR / netPnl). */
 export type LinkedTrade = {
@@ -299,7 +294,8 @@ export const SETUP_GROUPS: { label: string; items: string[] }[] = [
   { label: "Mean Reversion / Stat Arb", items: ["Mean Reversion", "Pairs Trade", "ETF Arbitrage", "Relative Value"] },
   { label: "Auction / Order Flow / OPG / IMBX / MOC", items: ["OPG", "OPG Gap Fade", "OPG Momentum", "Imbalance", "Opening Imbalance (OPG)", "IMBX Long", "IMBX Short", "IMBX Fade", "IMBX + VWAP", "MOC", "MOC Imbalance", "MOC Fade", "MOC Pin Risk", "Closing Cross Play", "Liquidity Sweep", "Dark Pool Print"] },
   { label: "Prop Desk Specialty", items: ["Halt & Resume", "Sympathy Play", "Sector Rotation Play", "Earnings Drift (PEAD)", "Pre-Earnings Run", "Post-Earnings Continuation", "Basket Trade", "Hedged Swing", "Macro Play"] },
-  { label: "Прочее", items: ["Другой"] },
+  // "other" is a stored code (migration 0014), shown through i18n: dataCodes setupType.other.
+  { label: "Прочее", items: ["other"] },
 ];
 
 export const SOURCE_LABELS: Record<string, string> = {
@@ -389,11 +385,9 @@ export function timeAgo(iso: string | null | undefined): string | null {
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
   const days = Math.floor(diff / 86400);
   if (days < 30) return `${days} дн назад`;
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return fmtDate(iso, "dayMonth");
 }
 
-export const fmtPct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)}%`);
-export const fmtR = (x: number | null | undefined) => (x == null ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(2)}R`);
 
 export type SortKey = "folder" | "edge" | "used" | "new" | "name";
 export type QuickFilter = "all" | "today" | "edge" | "untested" | "unreviewed" | "noExamples";

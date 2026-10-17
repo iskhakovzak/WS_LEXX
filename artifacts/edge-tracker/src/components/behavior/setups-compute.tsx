@@ -6,7 +6,8 @@ import * as React from "react";
 import { Play, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { pluralTrades, type ComputeAllState } from "./api";
+import { type ComputeAllState } from "./api";
+import { commonI18n } from "@/i18n/ns/common";
 
 export const ComputeAllBar = React.memo(function ComputeAllBar({
   state, pending, canRun, onRun, onCancel,
@@ -34,7 +35,7 @@ export const ComputeAllBar = React.memo(function ComputeAllBar({
             Считаем: {doneCount} из {total} · пакет {state.batches + 1} · осталось ~{etaMin} мин
           </span>
         ) : state.status === "done" ? (
-          <span className="text-foreground">Готово: посчитано {pluralTrades(state.done)}.</span>
+          <span className="text-foreground">Готово: посчитано {commonI18n.t("units.trades", { count: state.done })}.</span>
         ) : state.status === "cancelled" ? (
           <span className="text-muted-foreground">Остановлено: посчитано {state.done}, не посчитано {pending}.</span>
         ) : state.status === "stalled" ? (
@@ -43,7 +44,7 @@ export const ComputeAllBar = React.memo(function ComputeAllBar({
           <span className="text-down">Ошибка: {state.error}</span>
         ) : (
           <span className="text-muted-foreground">
-            Не посчитано {pluralTrades(pending)} · примерно {etaMin} мин, пакетами по 30 с паузами (бережём лимиты рыночных данных).
+            Не посчитано {commonI18n.t("units.trades", { count: pending })} · примерно {etaMin} мин, пакетами по 30 с паузами (бережём лимиты рыночных данных).
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">

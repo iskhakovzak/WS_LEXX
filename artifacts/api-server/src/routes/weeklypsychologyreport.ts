@@ -15,6 +15,7 @@ import {
   addDaysYmd,
   getWeeklyReportById,
 } from "../lib/weeklyPsychologyReport";
+import { AppError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -152,8 +153,8 @@ router.post("/psychology/weekly-report/generate", asyncHandler(async (req, res):
  */
 router.post("/psychology/weekly-report/recalculate", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (isGuestUser(auth)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!auth) throw unauthorized();
+  if (isGuestUser(auth)) throw new AppError("GUEST_READ_ONLY");
   const userId = typeof (req.body?.userId ?? req.query.userId) === "string" ? String(req.body?.userId ?? req.query.userId).trim() : "";
   if (!userId) { res.status(400).json({ error: "userId is required" }); return; }
   if (auth.name !== userId && !isStaffRole(await viewerRole(req))) {

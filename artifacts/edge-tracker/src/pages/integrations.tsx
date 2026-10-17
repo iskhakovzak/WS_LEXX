@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { HttpError, prKeys, useAccounts, usePending, useRuns, useStatus } from "@/components/propreports/api";
+import { ApiError } from "@/lib/api/http";
+import { prKeys, useAccounts, usePending, useRuns, useStatus } from "@/components/propreports/api";
 import { StatusHero } from "@/components/propreports/status-hero";
 import { ImportZone } from "@/components/propreports/import-zone";
 import { AccountsEditor } from "@/components/propreports/accounts-editor";
@@ -83,7 +84,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
     );
   }
 
-  const err = status.error instanceof HttpError ? status.error : null;
+  const err = status.error instanceof ApiError ? status.error : null;
 
   return (
     <Page>

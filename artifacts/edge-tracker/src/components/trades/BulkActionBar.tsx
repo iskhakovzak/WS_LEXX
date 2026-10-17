@@ -3,10 +3,11 @@ import { motion, useReducedMotion } from "framer-motion";
 import { BookOpen, CircleDot, Download, Trash2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { RESULTS, plural } from "./trade-utils";
+import { RESULTS } from "./trade-utils";
 import { ResultPill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { KIND_META, TagPicker, pickerOptions, type PickState } from "./review-tagging";
+import { commonI18n } from "@/i18n/ns/common";
 
 /**
  * Floating bar for the selected trades: bulk setup / mistake / emotion tagging (same pickers as the rows),
@@ -77,7 +78,7 @@ export function BulkActionBar({
       className="glass-thick fixed inset-x-3 bottom-4 z-nav mx-auto flex max-w-3xl flex-wrap items-center gap-1.5 rounded-2xl p-2 shadow-2xl sm:inset-x-6"
     >
       <span className="px-2 text-sm font-semibold tabular-nums">
-        {count} {plural(count, ["сделка", "сделки", "сделок"])}
+        {commonI18n.t("units.trades", { count: count })}
       </span>
       {onAddToPlaybook && (
         <Button size="sm" className="gap-1.5 bg-primary-solid" onClick={onAddToPlaybook} disabled={pending}>

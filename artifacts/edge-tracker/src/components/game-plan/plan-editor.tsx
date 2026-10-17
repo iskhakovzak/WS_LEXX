@@ -10,9 +10,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Segmented } from "@/components/ds";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { HORIZON, IMPACT, MARKET_BIAS, RISK_MODE, TICKER_BIAS, fmtLevel, type Horizon, type Impact, type MarketBias, type MediaRef, type RiskMode, type TickerBias } from "./types";
+import { HORIZON, IMPACT, MARKET_BIAS, RISK_MODE, TICKER_BIAS, type Horizon, type Impact, type MarketBias, type MediaRef, type RiskMode, type TickerBias } from "./types";
+import { fmtPrice } from "@/lib/format";
 import {
   MAX_PLAN_MEDIA,
   MAX_PLAN_TV,
@@ -547,7 +549,7 @@ function TickerEditor({
     if (t.catalyst.trim()) parts.push(t.catalyst.trim());
     const sup = parseLevels(t.support).filter(Number.isFinite);
     const res = parseLevels(t.resistance).filter(Number.isFinite);
-    if (sup.length || res.length) parts.push(`S ${sup.map(fmtLevel).join("/") || "—"} · R ${res.map(fmtLevel).join("/") || "—"}`);
+    if (sup.length || res.length) parts.push(`S ${sup.map((v) => fmtPrice(v)).join("/") || "—"} · R ${res.map((v) => fmtPrice(v)).join("/") || "—"}`);
     if (t.scenarioA.trim()) parts.push("сценарий A");
     if (t.scenarioB.trim()) parts.push("B");
     if (t.media.length) parts.push(`${t.media.length} скрин.`);
@@ -720,13 +722,9 @@ function WatchlistPicker({ taken, onPick }: { taken: string[]; onPick: (list: Ti
   const [open, setOpen] = useState(false);
   const q = useQuery({
     queryKey: ["game-plan", "watchlist-picker"],
-    queryFn: async () => {
-      const r = await fetch(apiUrl("/api/watchlist"));
-      if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-      return (await r.json()) as WatchItem[];
-    },
+    queryFn: ({ signal }) => http.get<WatchItem[]>("/api/watchlist", { signal }),
     enabled: open,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
   const { hot, watching } = useMemo(() => {
     const rows = Array.isArray(q.data) ? q.data : [];

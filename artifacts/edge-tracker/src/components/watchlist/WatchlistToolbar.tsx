@@ -20,9 +20,9 @@ import {
 } from "@/components/ui/alert-dialog";
 import { FilterChip, Kbd } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { LISTS, LIST_HINT, LIST_LABELS, type ListName, type WatchlistItem } from "./lib";
 import type { Density } from "./WatchlistTable";
+import { pluralRu } from "@/lib/format";
 
 export type View = ListName | "all" | "archive";
 export type Filter = "events" | "gap" | "rvol" | "level";

@@ -8,8 +8,10 @@ import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { PHASE_LABEL, formatCountdown, getSessionState, type SessionPhase } from "./market-session";
-import { fmtMoney, fmtR, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtDate, fmtR, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -109,14 +111,14 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
     if (!desk) return <Cell label="Риск-лимиты деска" value="—" hint="Риск-деск недоступен" href={links.risk()} />;
     const s = desk.summary;
     const bad = s.halted + s.breach;
-    const value = bad > 0 ? `${bad} ${plural(bad, ["стоп", "стопа", "стопов"])}` : s.warn > 0 ? `${s.warn} близко к лимиту` : "Все в лимитах";
+    const value = bad > 0 ? `${bad} ${pluralRu(bad, "стоп", "стопа", "стопов")}` : s.warn > 0 ? `${s.warn} близко к лимиту` : "Все в лимитах";
     const tone: Tone = bad > 0 ? "down" : s.warn > 0 ? "warn" : "up";
     return (
       <Cell
         label="Риск-лимиты деска"
         value={value}
         tone={tone}
-        hint={s.noLimits > 0 ? `${s.noLimits} ${plural(s.noLimits, ["трейдер", "трейдера", "трейдеров"])} без лимитов` : `${s.traders} ${plural(s.traders, ["трейдер", "трейдера", "трейдеров"])}`}
+        hint={s.noLimits > 0 ? `${commonI18n.t("units.traders", { count: s.noLimits })} без лимитов` : `${commonI18n.t("units.traders", { count: s.traders })}`}
         href={links.risk()}
       />
     );
@@ -136,9 +138,9 @@ function RiskCell({ risk, desk, team, loading }: { risk: RiskMe | null | undefin
   return (
     <Cell
       label="Остаток дневного лимита"
-      value={`$${Math.round(remaining).toLocaleString("ru-RU")}`}
+      value={fmtUsd(remaining, { decimals: 0 })}
       tone={lt === "ok" ? "neutral" : limitToneToTone(lt)}
-      hint={`из $${Math.round(limit).toLocaleString("ru-RU")} · использовано ${Math.round(Math.min(1, loss / limit) * 100)}%`}
+      hint={`из ${fmtUsd(limit, { decimals: 0 })} · использовано ${fmtRate(Math.min(1, loss / limit))}`}
       href={links.risk(risk.trader)}
       extra={<LimitBar used={loss} limit={limit} warnAt={0.6} size="sm" showValues={false} className="mt-1" />}
     />
@@ -177,7 +179,7 @@ export function DashboardHeader({
   customize: ReactNode;
 }) {
   const now = new Date();
-  const rawDate = now.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
+  const rawDate = fmtDate(now, "weekdayDayMonthLong");
   // «Суббота, 17 октября»: only the first letter is capital (CSS `capitalize` would also give «Октября»).
   const dateLabel = rawDate.charAt(0).toUpperCase() + rawDate.slice(1);
   const t = data?.today;
@@ -186,19 +188,19 @@ export function DashboardHeader({
   const team = scope === "team";
   const quietDay = !!data && (data.market.weekend || !!data.market.holidayToday);
 
-  const todayValue = t?.pnlNet != null ? fmtMoney(t.pnlNet) : t && t.rCount > 0 ? fmtR(t.r) : "—";
+  const todayValue = t?.pnlNet != null ? fmtUsd(t.pnlNet, { signed: true }) : t && t.rCount > 0 ? fmtR(t.r) : "—";
   const todayHint = t
     ? t.closed > 0
-      ? `${t.closed} ${plural(t.closed, ["сделка", "сделки", "сделок"])} · ${t.wins}W / ${t.losses}L${t.pnlNet != null && t.rCount > 0 ? ` · ${fmtR(t.r)}` : ""}${t.fees ? ` · комиссии ${fmtMoney(-Math.abs(t.fees))}` : ""}`
+      ? `${commonI18n.t("units.trades", { count: t.closed })} · ${t.wins}W / ${t.losses}L${t.pnlNet != null && t.rCount > 0 ? ` · ${fmtR(t.r)}` : ""}${t.fees ? ` · комиссии ${fmtUsd(-Math.abs(t.fees), { signed: true })}` : ""}`
       : quietDay
         ? "Рынок закрыт"
         : "Закрытых сделок пока нет"
     : undefined;
 
-  const weekValue = w?.pnlNet != null ? fmtMoney(w.pnlNet) : w && w.rCount > 0 ? fmtR(w.r) : "—";
+  const weekValue = w?.pnlNet != null ? fmtUsd(w.pnlNet, { signed: true }) : w && w.rCount > 0 ? fmtR(w.r) : "—";
   const weekHint = w
     ? w.closed > 0
-      ? `${w.closed} ${plural(w.closed, ["сделка", "сделки", "сделок"])} · ${w.greenDays}/${w.tradingDays} дн. в плюсе`
+      ? `${commonI18n.t("units.trades", { count: w.closed })} · ${w.greenDays}/${w.tradingDays} дн. в плюсе`
       : "Сделок на неделе нет"
     : undefined;
 

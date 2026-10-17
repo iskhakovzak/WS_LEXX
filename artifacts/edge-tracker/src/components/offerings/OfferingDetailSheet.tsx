@@ -12,7 +12,6 @@ import { links } from "@/lib/links";
 import { isDecided, netPnl, resultOf } from "@/lib/trade-math";
 import { safeHttpUrl } from "@/lib/url";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { DealTypePill, ExposureBadge, OfferGauge, ScoreBreakdown, SignedPct, pctTone } from "./bits";
 import { BuySellBar } from "./InsiderPanel";
 import {
@@ -20,9 +19,10 @@ import {
 } from "./score";
 import { isMissingEndpoint, useMyTickerTrades, useTickerDetail, useTickerHistory } from "./use-offerings-data";
 import {
-  HORIZON_LABEL, fmtDay, fmtM, fmtPctCap, fmtPrice, fmtShares, fmtSignedUsd, fmtUsd, pctOfMcap,
+  HORIZON_LABEL, fmtDay, fmtM, fmtPctCap, pctOfMcap,
   type Exposure, type HistoryEvent, type InsiderTxn, type Offering, type TimelineKind,
 } from "./types";
+import { fmtCompact, fmtPrice, fmtUsd, pluralRu } from "@/lib/format";
 
 // The chart engine is heavy (lightweight-charts + primitives): load it only when a sheet opens.
 const WsChart = lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
@@ -42,7 +42,7 @@ function InsiderTxns({ txns }: { txns: InsiderTxn[] }) {
             <span className="w-14 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date)}</span>
             <Pill tone={t.code === "P" ? "up" : t.code === "S" ? "down" : "neutral"} className="px-1.5 text-2xs">{TXN_LABEL[t.code] ?? t.code}</Pill>
             <span className="min-w-0 flex-1 truncate" title={t.title ? `${t.owner} · ${t.title}` : t.owner}>{t.owner}{t.title && <span className="text-muted-foreground"> · {t.title}</span>}</span>
-            <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd) : fmtShares(t.shares)}</span>
+            <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{t.usd != null ? fmtUsd(t.usd, { compact: true }) : fmtCompact(t.shares)}</span>
           </li>
         ))}
       </ul>
@@ -243,8 +243,8 @@ export function OfferingDetailSheet({
               ? (h?.company ?? d?.company ?? "Профиль SEC: на выбранный день заявок нет")
               : <>
                   {o.company} · {o.form ?? type.toUpperCase()}
-                  {o.acceptedAt ? ` · подана ${fmtDay(o.acceptedAt.slice(0, 10))} ${o.acceptedAt.slice(11, 16)} ET` : ` · ${fmtDay(o.date, { day: "numeric", month: "long" })}`}
-                  {o.reactionDate && o.reactionDate !== o.date ? ` · торгуется ${fmtDay(o.reactionDate, { weekday: "short", day: "numeric", month: "short" })}` : ""}
+                  {o.acceptedAt ? ` · подана ${fmtDay(o.acceptedAt.slice(0, 10))} ${o.acceptedAt.slice(11, 16)} ET` : ` · ${fmtDay(o.date, "dayMonthLong")}`}
+                  {o.reactionDate && o.reactionDate !== o.date ? ` · торгуется ${fmtDay(o.reactionDate, "weekdayDayMonth")}` : ""}
                 </>}
           </SheetDescription>
           <div className="flex flex-wrap gap-2">
@@ -252,7 +252,7 @@ export function OfferingDetailSheet({
               {watched ? <Check aria-hidden="true" /> : <Star aria-hidden="true" />}
               {watched ? "В вотчлисте" : "В «Сегодня»"}
             </Button>
-            <Button size="sm" variant="outline" disabled={planPending} onClick={() => onAddPlan(o)} title={`Мой план на ${fmtDay(planDate, { day: "numeric", month: "long" })}`}>
+            <Button size="sm" variant="outline" disabled={planPending} onClick={() => onAddPlan(o)} title={`Мой план на ${fmtDay(planDate, "dayMonthLong")}`}>
               <CalendarPlus aria-hidden="true" /> В план дня
             </Button>
             <Button size="sm" asChild>
@@ -278,8 +278,8 @@ export function OfferingDetailSheet({
               <div>
                 <p className="font-medium text-foreground">Открытая позиция по {o.ticker}</p>
                 <p className="text-muted-foreground">
-                  {exposure.held.map((t) => [t.trader, t.side, HORIZON_LABEL[t.horizon ?? "intraday"], t.entry != null ? `вход ${fmtPrice(t.entry)}` : null].filter(Boolean).join(" · ")).join("; ")}.
-                  {" "}Оффер{o.offerPrice != null ? ` ${fmtPrice(o.offerPrice)}` : ""} — вероятная цель гэпа: держите стоп и размер под это.
+                  {exposure.held.map((t) => [t.trader, t.side, HORIZON_LABEL[t.horizon ?? "intraday"], t.entry != null ? `вход ${fmtPrice(t.entry, { dollar: true })}` : null].filter(Boolean).join(" · ")).join("; ")}.
+                  {" "}Оффер{o.offerPrice != null ? ` ${fmtPrice(o.offerPrice, { dollar: true })}` : ""} — вероятная цель гэпа: держите стоп и размер под это.
                 </p>
               </div>
             </div>
@@ -292,10 +292,10 @@ export function OfferingDetailSheet({
                 title={pct != null && pct > 1000 ? "Больше 1000% — скорее всего устаревшее число акций" : undefined} />
               <Num label={fl != null ? "% флоута" : "К ср. объёму"} value={fl != null ? fmtPctCap(fl) : adv != null ? `${adv.toFixed(1)}×` : "—"} />
               <Num label={<TermTooltip term="offerDiscount" />} value={disc != null ? `${disc.toFixed(1)}%` : type === "atm" ? "по рынку" : "—"} tone={disc != null && disc <= -15 ? "text-down" : undefined} />
-              <Num label="Оффер" value={fmtPrice(o.offerPrice)} />
-              <Num label="Закрытие до" value={fmtPrice(o.prevClose)} />
+              <Num label="Оффер" value={fmtPrice(o.offerPrice, { dollar: true })} />
+              <Num label="Закрытие до" value={fmtPrice(o.prevClose, { dollar: true })} />
               <Num label="Мкап" value={fmtM(o.marketCapM)} />
-              <Num label="Флоут" value={fmtShares(merged.floatShares)} />
+              <Num label="Флоут" value={fmtCompact(merged.floatShares)} />
               <Num label="Кэш" value={merged.cashM != null ? fmtM(merged.cashM) : "—"} />
               <Num label={<TermTooltip term="runway" />} value={merged.burnM === 0 ? "CF > 0" : merged.runwayMonths != null ? `${merged.runwayMonths.toFixed(merged.runwayMonths < 10 ? 1 : 0)} мес` : "—"}
                 tone={merged.runwayMonths != null && merged.runwayMonths < 6 ? "text-down" : undefined} />
@@ -325,7 +325,7 @@ export function OfferingDetailSheet({
           )}
 
           {chartDay && (
-            <Section title="График вокруг даты" icon={LineChart} aside={fmtDay(chartDay, { day: "numeric", month: "long" })}>
+            <Section title="График вокруг даты" icon={LineChart} aside={fmtDay(chartDay, "dayMonthLong")}>
               <div className="min-h-[340px] min-w-0">
                 <Suspense fallback={<Skeleton className="h-[340px] w-full rounded-xl" />}>
                   <WsChart key={`${o.ticker}-${chartDay}`} trade={{ id: 0, ticker: o.ticker, date: chartDay }} executions={[]} initialTimeframe="5m" contextDays={1} height={340} />
@@ -387,9 +387,9 @@ export function OfferingDetailSheet({
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-2">
-                  <Num label="Net" value={fmtSignedUsd(mine.net)} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
+                  <Num label="Net" value={fmtUsd(mine.net, { signed: true, compact: true })} tone={mine.net > 0 ? "text-up" : mine.net < 0 ? "text-down" : undefined} />
                   <Num label="Win rate" value={mine.wr != null ? `${mine.wr}%` : "—"} />
-                  <Num label="В дни размещений" value={mine.onDays ? `${mine.onDays} · ${fmtSignedUsd(mine.onNet)}` : "0"} />
+                  <Num label="В дни размещений" value={mine.onDays ? `${mine.onDays} · ${fmtUsd(mine.onNet, { signed: true, compact: true })}` : "0"} />
                 </div>
                 <ul className="divide-y divide-border/50 rounded-xl bg-[var(--glass-bg)] text-sm">
                   {mine.rows.slice(0, 8).map((t) => {
@@ -400,7 +400,7 @@ export function OfferingDetailSheet({
                           <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
                           <span className="text-xs text-muted-foreground">{t.side ?? ""}</span>
                           {offeringDays.has(t.date) && <Pill tone="purple" className="px-1.5 text-2xs">день сделки</Pill>}
-                          <span className={cn("ml-auto tabular-nums", n == null ? "text-muted-foreground" : n >= 0 ? "text-up" : "text-down")}>{fmtSignedUsd(n)}</span>
+                          <span className={cn("ml-auto tabular-nums", n == null ? "text-muted-foreground" : n >= 0 ? "text-up" : "text-down")}>{fmtUsd(n, { signed: true, compact: true })}</span>
                         </Link>
                       </li>
                     );
@@ -413,15 +413,15 @@ export function OfferingDetailSheet({
             )}
           </Section>
 
-          <Section title="Инсайдеры, 90 дней" icon={UserCheck} aside={ins && <span className={cn("text-sm font-semibold tabular-nums", ins.netUsd > 0 ? "text-up" : ins.netUsd < 0 ? "text-down" : "text-muted-foreground")}>{fmtSignedUsd(ins.netUsd)}</span>}>
+          <Section title="Инсайдеры, 90 дней" icon={UserCheck} aside={ins && <span className={cn("text-sm font-semibold tabular-nums", ins.netUsd > 0 ? "text-up" : ins.netUsd < 0 ? "text-down" : "text-muted-foreground")}>{fmtUsd(ins.netUsd, { signed: true, compact: true })}</span>}>
             {detail.isLoading ? <Skeleton className="h-16 w-full rounded-xl" /> : !ins ? (
               <p className="text-sm text-muted-foreground">Нет данных Form 4.</p>
             ) : (
               <>
                 <BuySellBar s={ins} />
                 <div className="flex flex-wrap gap-x-4 text-xs tabular-nums text-muted-foreground">
-                  <span className="text-up">Покупки: {ins.buys.count} · {fmtUsd(ins.buys.usd)} · {ins.buyers} чел.</span>
-                  <span className="text-down">Продажи: {ins.sells.count} · {fmtUsd(ins.sells.usd)}</span>
+                  <span className="text-up">Покупки: {ins.buys.count} · {fmtUsd(ins.buys.usd, { compact: true })} · {ins.buyers} чел.</span>
+                  <span className="text-down">Продажи: {ins.sells.count} · {fmtUsd(ins.sells.usd, { compact: true })}</span>
                   {ins.planSellPct != null && <span>по плану 10b5-1: {ins.planSellPct}%</span>}
                 </div>
                 {ins.txns.length > 0 && <InsiderTxns txns={ins.txns} />}

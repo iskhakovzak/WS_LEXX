@@ -5,6 +5,7 @@ import {
   signedR, netPnl, grossPnl as grossOf, feesOf as feesOfTrade, isOpen, isClosed, resultOf, closeDate,
   horizonOf as horizonOfTrade, maxDrawdown as maxDrawdownOf, type Horizon,
 } from "@/lib/trade-math";
+import { fmtNum, fmtWeekday } from "@/lib/format";
 
 /*
  * All R / P&L numbers on the analytics page come from @/lib/trade-math (signedR, netPnl …) — the one
@@ -342,7 +343,7 @@ export function rHistogram(trades: Trade[]): HistBin[] {
     from: b,
     count,
     tone: b < 0 ? "down" : "up",
-    label: b === MIN ? `≤${fmtSigned(MIN + 1, 0)}` : b === MAX ? `≥+${MAX}` : `${fmtSigned(b, 0)}…${fmtSigned(b + 1, 0)}`,
+    label: b === MIN ? `≤${fmtNum(MIN + 1, { decimals: 0, signed: true })}` : b === MAX ? `≥+${MAX}` : `${fmtNum(b, { decimals: 0, signed: true })}…${fmtNum(b + 1, { decimals: 0, signed: true })}`,
   }));
 }
 
@@ -382,7 +383,8 @@ const EVENT_LABEL: Record<string, string> = {
   earnings: "Отчётность", news: "Новости", other: "Другое", fda: "FDA", offering: "Размещение",
   guidance: "Прогноз", macro: "Макро", ipo: "IPO",
 };
-const WEEKDAYS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+/** "Пн" (capitalised short weekday in the UI language); 0 = Sunday. */
+const weekdayLabel = (d: number) => { const s = fmtWeekday(d, "short"); return s.charAt(0).toUpperCase() + s.slice(1); };
 const HOLD_ORDER = ["До 5 мин", "5–15 мин", "15–60 мин", "1–4 ч", "Больше 4 ч", "Не указано"];
 const PRICE_ORDER = ["До $5", "$5–20", "$20–50", "$50–100", "$100–300", "Больше $300", "Нет цены"];
 const GAP_ORDER = ["Гэп вверх", "Гэп вниз", "Другой гэп", "Без гэпа"];
@@ -476,8 +478,8 @@ export const DIMENSIONS: Dimension[] = [
     emptyHint: "В сделках нет времени входа — используйте разрез «Сессия»." },
   { key: "session", label: "Сессия", keys: (t) => [SESSION_LABEL[(t.session ?? "").toLowerCase()] ?? (t.session || "Не указана")],
     order: ["Премаркет", "Основная сессия", "Постмаркет"] },
-  { key: "weekday", label: "День недели", keys: (t) => { const d = dayOfWeek(t); return [d >= 0 ? WEEKDAYS[d] : "—"]; },
-    order: ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] },
+  { key: "weekday", label: "День недели", keys: (t) => { const d = dayOfWeek(t); return [d >= 0 ? weekdayLabel(d) : "—"]; },
+    get order() { return [1, 2, 3, 4, 5, 6, 0].map(weekdayLabel); } },
   { key: "hold", label: "Удержание (интрадей)", keys: (t) => [holdBucket(t)], order: HOLD_ORDER,
     scope: (t) => horizonOf(t) === "intraday", scopeLabel: "только интрадей" },
   { key: "price", label: "Цена входа", keys: (t) => [priceBucket(t)], order: PRICE_ORDER },
@@ -565,42 +567,7 @@ export function round2(v: number) {
   return Math.round(v * 100) / 100;
 }
 
-export function fmtSigned(v: number, digits = 2): string {
-  if (!Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  return v > 0 ? `+${s}` : v < 0 ? `−${s}` : s;
-}
-
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${fmtSigned(v, digits)}R`;
-}
-
-export function fmtUsd(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v).toLocaleString("en-US", { maximumFractionDigits: Math.abs(v) >= 1000 ? 0 : 2 });
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${abs}`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
-}
-
-export function fmtPf(v: number | null | undefined): string {
-  if (v == null) return "—";
-  if (!Number.isFinite(v)) return "∞";
-  return v.toFixed(2);
-}
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const sdeal = (n: number) => `${n.toLocaleString("ru-RU")} ${pluralRu(n, "сделка", "сделки", "сделок")}`;
-/** Dative, after «по»: «по 1 сделке», «по 5 сделкам». */
-export const sdealDat = (n: number) => `${n.toLocaleString("ru-RU")} ${pluralRu(n, "сделке", "сделкам", "сделкам")}`;
+/* Number / money / percent / plural formatters live in @/lib/format (fmtUsd, fmtR, fmtRate, fmtRatio, commonI18n units). */
 
 /* ───────────────────────── CSV ───────────────────────── */
 

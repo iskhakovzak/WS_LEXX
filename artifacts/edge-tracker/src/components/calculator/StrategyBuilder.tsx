@@ -8,9 +8,10 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  analyzePayoff, blackScholes, fetchQuote, fmtNum, fmtPct, fmtUsd, fmtUsdSigned, netPremium, newLegId, num, positionGreeks,
+  analyzePayoff, blackScholes, fetchQuote, netPremium, newLegId, num, positionGreeks,
   roundStrike, strikeStep, type Leg, type LegKind,
 } from "./lib";
+import { fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { MetricTile, NumField } from "./fields";
 import { PayoffChart } from "./PayoffChart";
 import { GreeksInWords } from "./BlackScholes";
@@ -232,7 +233,7 @@ export default function StrategyBuilder({ b }: { b: BuilderState }) {
                       <NumField label="Премия" term="premium" prefix="$" value={d.kind === "stock" ? "" : d.premium} disabled={d.kind === "stock"}
                         onChange={(v) => update(d.id, { premium: v })}
                         placeholder={d.kind === "stock" ? "—" : Number.isFinite(t) ? fmtNum(t, 2) : "0.00"}
-                        hint={d.kind !== "stock" && Number.isFinite(t) ? `Теоретическая цена: ${fmtUsd(t, 2)}` : undefined} />
+                        hint={d.kind !== "stock" && Number.isFinite(t) ? `Теоретическая цена: ${fmtUsd(t)}` : undefined} />
                       <NumField label={d.kind === "stock" ? "Акций" : "Контр."} value={d.qty} integer onChange={(v) => update(d.id, { qty: v })} />
                       <Button type="button" variant="ghost" size="icon" className="h-9 w-9 self-end justify-self-end"
                         onClick={() => b.setLegs((ls) => ls.filter((l) => l.id !== d.id))} aria-label={`Удалить ногу ${i + 1}`}>
@@ -254,25 +255,25 @@ export default function StrategyBuilder({ b }: { b: BuilderState }) {
       {stats && (
         <>
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label={<OptTerm term="debit">{stats.net >= 0 ? "Дебет (платите)" : "Кредит (получаете)"}</OptTerm>} value={fmtUsd(Math.abs(stats.net), 0)} tone={stats.net >= 0 ? "neutral" : "up"}
+            <StatCard label={<OptTerm term="debit">{stats.net >= 0 ? "Дебет (платите)" : "Кредит (получаете)"}</OptTerm>} value={fmtUsd(Math.abs(stats.net), { decimals: 0 })} tone={stats.net >= 0 ? "neutral" : "up"}
               hint={legs.some((l) => l.kind === "stock") ? "без стоимости акций" : undefined} />
-            <StatCard label="Макс. прибыль" value={stats.summary.maxProfit === null ? "без лимита" : fmtUsd(stats.summary.maxProfit, 0)} tone="up"
+            <StatCard label="Макс. прибыль" value={stats.summary.maxProfit === null ? "без лимита" : fmtUsd(stats.summary.maxProfit, { decimals: 0 })} tone="up"
               hint={stats.rrRatio != null ? `R:R ${fmtNum(stats.rrRatio, 2)}` : undefined} />
-            <StatCard label={<OptTerm term="maxLoss">Макс. убыток</OptTerm>} value={stats.summary.maxLoss === null ? "без лимита" : fmtUsd(-stats.summary.maxLoss, 0)} tone="down" />
-            <StatCard label={<OptTerm term="probProfit">Шанс прибыли</OptTerm>} value={stats.summary.probProfit != null ? fmtPct(stats.summary.probProfit * 100, 0) : "—"}
+            <StatCard label={<OptTerm term="maxLoss">Макс. убыток</OptTerm>} value={stats.summary.maxLoss === null ? "без лимита" : fmtUsd(-stats.summary.maxLoss, { decimals: 0 })} tone="down" />
+            <StatCard label={<OptTerm term="probProfit">Шанс прибыли</OptTerm>} value={stats.summary.probProfit != null ? fmtPct(stats.summary.probProfit * 100, { decimals: 0, signed: false }) : "—"}
               hint={stats.summary.probProfit != null ? "лог-нормальная модель по IV" : "нужны дни и IV"} />
           </div>
           <Panel
             title={<OptTerm term="payoff">Диаграмма выплат</OptTerm>}
-            description={stats.summary.breakevens.length ? `Безубыток: ${stats.summary.breakevens.map((x) => fmtUsd(x, 2)).join(" / ")}` : "Нет точки безубытка в диапазоне"}
+            description={stats.summary.breakevens.length ? `Безубыток: ${stats.summary.breakevens.map((x) => fmtUsd(x)).join(" / ")}` : "Нет точки безубытка в диапазоне"}
           >
             <div className="flex flex-col gap-4">
               <PayoffChart legs={legs} spot={S} days={days} ivPct={ivPct} ratePct={ratePct} breakevens={stats.summary.breakevens} />
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <MetricTile label="Δ позиции" term="delta" value={fmtNum(stats.g.delta, 1)} sub={`${fmtUsdSigned(stats.g.delta)} на $1 · ≈ акций`} />
+                <MetricTile label="Δ позиции" term="delta" value={fmtNum(stats.g.delta, 1)} sub={`${fmtUsd(stats.g.delta, { signed: true, decimals: 0 })} на $1 · ≈ акций`} />
                 <MetricTile label="Γ позиции" term="gamma" value={fmtNum(stats.g.gamma, 2)} sub="изменение Δ на $1" />
-                <MetricTile label="Θ / день" term="theta" value={fmtUsdSigned(stats.g.theta)} tone={stats.g.theta >= 0 ? "text-up" : "text-down"} sub="распад времени" />
-                <MetricTile label="Vega / +1% IV" term="vega" value={fmtUsdSigned(stats.g.vega)} tone={stats.g.vega >= 0 ? "text-up" : "text-down"} sub="чувствительность к IV" />
+                <MetricTile label="Θ / день" term="theta" value={fmtUsd(stats.g.theta, { signed: true, decimals: 0 })} tone={stats.g.theta >= 0 ? "text-up" : "text-down"} sub="распад времени" />
+                <MetricTile label="Vega / +1% IV" term="vega" value={fmtUsd(stats.g.vega, { signed: true, decimals: 0 })} tone={stats.g.vega >= 0 ? "text-up" : "text-down"} sub="чувствительность к IV" />
               </div>
               <GreeksInWords delta={stats.g.delta} theta={stats.g.theta} vega={stats.g.vega} />
             </div>

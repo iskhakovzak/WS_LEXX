@@ -12,15 +12,18 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
+import { authI18n } from "@/i18n/ns/auth";
 import { useTheme } from "@/contexts/theme-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { Avatar, Callout, HttpError, ROLE_LABEL, ROLE_TONE, fetchJson, fmtDate, fmtDaysAgo, readApiError } from "./shared";
+import { ApiError, http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
+import { Avatar, Callout, ROLE_LABEL, ROLE_TONE, fmtDaysAgo } from "./shared";
 import type { SectionId } from "./SettingsNav";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
-import { pluralRu } from "@/components/rules/constants";
 import { LanguageSelect } from "@/i18n/language-switcher";
 import { commonI18n } from "@/i18n/ns/common";
+import { fmtCount, fmtDate } from "@/lib/format";
 
 /** Interface language (also in the top bar and the login screen); saved to the profile by i18n/locale-sync. */
 function LanguagePanel() {
@@ -54,17 +57,17 @@ export const PROFILE_QUERY_KEY = ["users", "me", "profile"] as const;
 export function useMyProfile(enabled: boolean) {
   return useQuery<MyProfile | null>({
     queryKey: PROFILE_QUERY_KEY,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        return await fetchJson<MyProfile>(`${BASE}/api/users/me/profile`);
+        return await http.get<MyProfile>("/api/users/me/profile", { signal });
       } catch (e) {
         // Endpoint not deployed yet → render the profile from the session only.
-        if (e instanceof HttpError && e.status === 404) return null;
+        if (isNotFound(e)) return null;
         throw e;
       }
     },
     enabled,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
 }
 
@@ -85,17 +88,20 @@ function TeamLine({ label, name }: { label: string; name: string | null | undefi
 }
 
 function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
-  const { logout } = useAuth();
+  const { logout, user } = useAuth();
   const { toast } = useToast();
+  const { t: ta } = authI18n.useT();
+  // Policy by role (API lib/security/passwordPolicy): PIN ≥ 6 for traders, password ≥ 10 for curators/admins.
+  const min = user?.secretMin ?? (user?.role === "curator" || user?.role === "admin" ? 10 : 6);
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const tooShort = next.length > 0 && next.length < 4;
+  const tooShort = next.length > 0 && next.length < min;
   const mismatch = repeat.length > 0 && repeat !== next;
-  const valid = current.length > 0 && next.length >= 4 && next === repeat && next !== current;
+  const valid = current.length > 0 && next.length >= min && next === repeat && next !== current;
 
   function reset() { setCurrent(""); setNext(""); setRepeat(""); setError(null); }
 
@@ -105,15 +111,13 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
     setSaving(true);
     setError(null);
     try {
-      const r = await fetch(`${BASE}/api/users/me/password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ currentPassword: current, newPassword: next }),
-      });
-      if (r.status === 404) { setError("Смена пароля пока недоступна на сервере — обратитесь к куратору."); return; }
-      if (r.status === 429) { setError("Слишком много попыток. Попробуйте через 15 минут."); return; }
-      if (!r.ok) {
-        const msg = await readApiError(r);
+      try {
+        await http.post("/api/users/me/password", { currentPassword: current, newPassword: next });
+      } catch (err) {
+        if (!(err instanceof ApiError) || err.isNetwork) throw err;
+        if (err.status === 404) { setError("Смена пароля пока недоступна на сервере — обратитесь к куратору."); return; }
+        if (err.status === 429) { setError("Слишком много попыток. Попробуйте через 15 минут."); return; }
+        const msg = err.field<string>("error") || `Ошибка (HTTP ${err.status})`;
         setError(/incorrect/i.test(msg) ? "Текущий пароль неверный" : msg);
         return;
       }
@@ -146,7 +150,7 @@ function PasswordSheet({ open, onOpenChange }: { open: boolean; onOpenChange: (v
               <Input id="pw-new" type="password" autoComplete="new-password" value={next} maxLength={200}
                 aria-invalid={tooShort} aria-describedby={tooShort ? "pw-new-err" : undefined}
                 onChange={(e) => setNext(e.target.value)} />
-              {tooShort && <p id="pw-new-err" className="text-xs text-down">Минимум 4 символа</p>}
+              {tooShort && <p id="pw-new-err" className="text-xs text-down">{ta("forced.tooShort", { min })}</p>}
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="pw-repeat" className="text-xs text-muted-foreground">Повторите новый пароль</label>
@@ -232,10 +236,10 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
           Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
           <>
-            <StatCard label="Сделок в журнале" value={stats ? stats.total.toLocaleString("ru-RU") : "—"}
+            <StatCard label="Сделок в журнале" value={stats ? fmtCount(stats.total) : "—"}
               hint={stats?.firstTrade ? `с ${fmtDate(stats.firstTrade)}` : undefined} />
-            <StatCard label="За 30 дней" value={stats ? stats.last30.toLocaleString("ru-RU") : "—"}
-              tone={stats && stats.last30 > 0 ? "accent" : "neutral"} hint={stats ? pluralRu(stats.last30, "сделка", "сделки", "сделок") : "сделок"} />
+            <StatCard label="За 30 дней" value={stats ? fmtCount(stats.last30) : "—"}
+              tone={stats && stats.last30 > 0 ? "accent" : "neutral"} hint={stats ? commonI18n.t("units.tradesWord", { count: stats.last30 }) : "сделок"} />
             <StatCard label="Последняя сделка" value={stats ? fmtDaysAgo(stats.lastTrade) : "—"}
               hint={stats?.lastTrade ? fmtDate(stats.lastTrade) : undefined} />
           </>

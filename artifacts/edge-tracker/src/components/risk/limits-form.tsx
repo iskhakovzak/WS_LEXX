@@ -11,8 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import type { LimitsInput, RiskLimits } from "./use-risk";
-import { HttpError, useSaveLimits } from "./use-risk";
-import { TIERS, fmtUsd } from "./primitives";
+import { ApiError } from "@/lib/api/http";
+import { useSaveLimits } from "./use-risk";
+import { TIERS } from "./primitives";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
 /** Scaling plan: default limits per tier (curator can override any field). */
 export const TIER_PRESETS: Record<string, Omit<LimitsInput, "tier" | "notes">> = {
@@ -131,7 +133,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
       },
       onError: (e) => {
         // Server-side validation: map each issue to its field; the rest goes to the toast.
-        const issues = e instanceof HttpError ? e.issues : [];
+        const issues = e instanceof ApiError ? e.field<{ path: string; message: string }[]>("issues") ?? [] : [];
         let mapped = 0;
         for (const it of issues) {
           const path = String(it.path ?? "");
@@ -166,7 +168,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
                   <SelectContent>
                     <SelectItem value="none">Без тира</SelectItem>
                     {TIERS.map((t, i) => (
-                      <SelectItem key={t.value} value={t.value}>{i + 1}. {t.label} — BP {fmtUsd(TIER_PRESETS[t.value]?.maxPositionUsd ?? null, { compact: true })}</SelectItem>
+                      <SelectItem key={t.value} value={t.value}>{i + 1}. {t.label} — BP {fmtUsd(TIER_PRESETS[t.value]?.maxPositionUsd ?? null, { decimals: 0, compact: 10_000 })}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -268,7 +270,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
 
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-xs text-muted-foreground">
-            {limits?.updatedBy ? `Изменено: ${limits.updatedBy}${limits.updatedAt ? `, ${new Date(limits.updatedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}` : ""}` : "Лимиты ещё не заданы"}
+            {limits?.updatedBy ? `Изменено: ${limits.updatedBy}${limits.updatedAt ? `, ${fmtDate(limits.updatedAt, "shortDateTime")}` : ""}` : "Лимиты ещё не заданы"}
           </span>
           <div className="flex gap-2">
             <Button type="button" variant="ghost" size="sm" onClick={() => form.reset(toForm(limits))} disabled={!form.formState.isDirty || save.isPending}>

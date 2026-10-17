@@ -14,7 +14,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { toast } from "@/hooks/use-toast";
-import { gpApi, gpKeys, fmtTime, type GamePlan, type GamePlanResponse } from "./types";
+import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
+import { fmtDate } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft } from "./plan-editor";
 import { TemplateMenu } from "./plan-templates";
@@ -195,7 +196,7 @@ export function PlanEditorSheet({
             <div role="status" className="flex flex-wrap items-center gap-2 border-b border-border bg-primary/8 px-[var(--panel-p)] py-2 text-sm">
               <History className="h-4 w-4 text-primary" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                Несохранённый черновик от {fmtTime(restore.savedAt)}
+                Несохранённый черновик от {fmtDate(restore.savedAt, "time")}
                 {restore.baseUpdatedAt && plan && restore.baseUpdatedAt !== plan.updatedAt ? " — план с тех пор менялся" : ""}
               </span>
               <Button
@@ -253,7 +254,7 @@ export function PlanEditorSheet({
               </Button>
             )}
             <span className="ml-auto text-xs tabular-nums text-muted-foreground" aria-live="polite">
-              {localSavedAt ? `Черновик · ${fmtTime(localSavedAt)}` : dirty ? "" : plan ? "Без изменений" : ""}
+              {localSavedAt ? `Черновик · ${fmtDate(localSavedAt, "time")}` : dirty ? "" : plan ? "Без изменений" : ""}
             </span>
             <Button type="button" variant="ghost" onClick={() => close(false)}>
               Закрыть

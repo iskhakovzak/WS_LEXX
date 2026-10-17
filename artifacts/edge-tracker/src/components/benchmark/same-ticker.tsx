@@ -6,7 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { SameTickerCase, SameTickerResponse } from "./api";
-import { fmtClock, fmtDay, fmtMinutes, fmtNum, fmtPrice, fmtR, fmtUsd } from "./format";
+import { fmtClock, fmtMinutes } from "./format";
+import { fmtDate, fmtNum, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 
 const SIDE_LABEL = { long: "Long", short: "Short", mixed: "Обе стороны" } as const;
 const RANK_BY = { net: "по нетто $", r: "по R", capture: "по % движения" } as const;
@@ -14,11 +15,11 @@ const RANK_BY = { net: "по нетто $", r: "по R", capture: "по % дви
 function CaseCard({ c }: { c: SameTickerCase }) {
   return (
     <Panel
-      title={<span className="flex items-center gap-2"><span className="font-mono">{c.ticker}</span><span className="text-muted-foreground">{fmtDay(c.day)}</span></span>}
+      title={<span className="flex items-center gap-2"><span className="font-mono">{c.ticker}</span><span className="text-muted-foreground">{fmtDate(c.day, "shortYY")}</span></span>}
       description={`${c.traders} трейдера · ${c.sameSide ? "в одну сторону" : "разные стороны"}${c.rankBy ? ` · место ${RANK_BY[c.rankBy]}` : " · без общего мерила"}`}
       actions={
         <div className="flex items-center gap-2">
-          {c.spread != null && <Pill tone="warn" title="Разница нетто между лучшим и худшим">разброс {fmtUsd(c.spread, false)}</Pill>}
+          {c.spread != null && <Pill tone="warn" title="Разница нетто между лучшим и худшим">разброс {fmtUsd(c.spread, { decimals: "auto" })}</Pill>}
           <Link href={links.trades({ ticker: c.ticker, date: c.day })} className="text-xs text-primary underline-offset-2 hover:underline">сделки →</Link>
         </div>
       }
@@ -49,12 +50,12 @@ function CaseCard({ c }: { c: SameTickerCase }) {
                 <td>{p.side ? <Pill tone={p.side === "long" ? "up" : p.side === "short" ? "down" : "neutral"}>{SIDE_LABEL[p.side]}</Pill> : "—"}</td>
                 <td className="text-right">{p.trades}{p.qty != null && <span className="text-muted-foreground"> / {Math.round(p.qty)}</span>}</td>
                 <td className="text-right">
-                  {fmtPrice(p.avgEntry)}
+                  {fmtPrice(p.avgEntry, p.avgEntry != null && p.avgEntry >= 1 && p.avgEntry < 10 ? { decimals: 3 } : {})}
                   {p.entryGapPct != null && p.entryGapPct > 0.005 && <div className="text-2xs text-down">хуже на {fmtNum(p.entryGapPct)}%</div>}
                   {p.entryGapPct === 0 && c.participants.filter((x) => x.side === p.side).length > 1 && <div className="text-2xs text-up">лучший вход</div>}
                 </td>
                 <td className="text-right">
-                  {fmtPrice(p.avgExit)}
+                  {fmtPrice(p.avgExit, p.avgExit != null && p.avgExit >= 1 && p.avgExit < 10 ? { decimals: 3 } : {})}
                   {p.exitGapPct != null && p.exitGapPct > 0.005 && <div className="text-2xs text-down">хуже на {fmtNum(p.exitGapPct)}%</div>}
                   {p.exitGapPct === 0 && c.participants.filter((x) => x.side === p.side).length > 1 && <div className="text-2xs text-up">лучший выход</div>}
                 </td>
@@ -65,7 +66,7 @@ function CaseCard({ c }: { c: SameTickerCase }) {
                   {p.capturePerShare != null && <div className="text-2xs text-muted-foreground">{fmtNum(p.capturePerShare, 3)} $/акц.</div>}
                 </td>
                 <td className={cn("text-right font-medium", toneText(toneOf(p.net ?? p.r)))}>
-                  {p.net != null ? fmtUsd(p.net) : fmtR(p.r)}
+                  {p.net != null ? fmtUsd(p.net, { signed: true, decimals: "auto" }) : fmtR(p.r)}
                   {p.net != null && p.r != null && <div className="text-2xs font-normal text-muted-foreground">{fmtR(p.r)}</div>}
                 </td>
               </tr>

@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import { logger } from "./logger";
+import { config } from "../config";
 
 /**
  * Speech-to-text for voice notes.
@@ -31,7 +32,7 @@ const LOCAL_TIMEOUT_MS = 120_000;
 const OPENAI_TIMEOUT_MS = 60_000;
 
 /** Pure: which providers to try, in order, for the given environment. */
-export function transcribeConfig(env: Record<string, string | undefined> = process.env): TranscribeConfig {
+export function transcribeConfig(env: Record<string, string | undefined> = config.transcribeEnv): TranscribeConfig {
   const primary = (env.TRANSCRIBE_PROVIDER ?? "").trim().toLowerCase() === "local" ? "local" : "openai";
   const fallbackOff = (env.TRANSCRIBE_FALLBACK ?? "").trim().toLowerCase() === "off";
   const providers: TranscribeProvider[] = primary === "local" && !fallbackOff ? ["local", "openai"] : [primary];
@@ -49,8 +50,8 @@ let openaiClient: OpenAI | null = null;
 function openai(): OpenAI {
   if (!openaiClient) {
     openaiClient = new OpenAI({
-      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY ?? "dummy",
+      baseURL: config.ai.openaiBaseUrl,
+      apiKey: config.ai.openaiApiKey,
     });
   }
   return openaiClient;

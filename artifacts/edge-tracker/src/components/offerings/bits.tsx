@@ -6,7 +6,8 @@ import {
   DEAL_TYPE_HINT, DEAL_TYPE_LABEL, DEAL_TYPE_TONE, SCORE_LEVEL_LABEL, SCORE_LEVEL_TONE,
   dealTypeOf, dilutionScore, type DilutionScore,
 } from "./score";
-import { HORIZON_LABEL, fmtPct, fmtPrice, type Exposure, type Offering } from "./types";
+import { HORIZON_LABEL, type Exposure, type Offering } from "./types";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 export const BAR_FILL: Record<Tone, string> = {
   up: "bg-up",
@@ -116,7 +117,7 @@ export function OfferGauge({ o }: { o: Offering }) {
   const a = pos(Math.min(o.offerPrice, o.currentPrice));
   const b = pos(Math.max(o.offerPrice, o.currentPrice));
   return (
-    <div className="space-y-2" aria-label={`Цена ${fmtPrice(o.currentPrice)} против оффера ${fmtPrice(o.offerPrice)}`} role="img">
+    <div className="space-y-2" aria-label={`Цена ${fmtPrice(o.currentPrice, { dollar: true })} против оффера ${fmtPrice(o.offerPrice, { dollar: true })}`} role="img">
       <div className="relative h-2 rounded-full bg-[var(--glass-bg)]">
         <div className={cn("absolute inset-y-0 rounded-full", above ? "bg-up/40" : "bg-down/40")} style={{ left: `${a}%`, width: `${Math.max(1, b - a)}%` }} />
         {o.prevClose != null && <span className="absolute top-1/2 h-3 w-px -translate-y-1/2 bg-muted-foreground/60" style={{ left: `${pos(o.prevClose)}%` }} title="Закрытие до сделки" />}
@@ -124,8 +125,8 @@ export function OfferGauge({ o }: { o: Offering }) {
         <span className={cn("absolute top-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-background", above ? "bg-up" : "bg-down")} style={{ left: `${pos(o.currentPrice)}%` }} />
       </div>
       <div className="flex justify-between gap-2 text-xs tabular-nums text-muted-foreground">
-        <span>Оффер {fmtPrice(o.offerPrice)}{o.prevClose != null ? ` · закрытие до ${fmtPrice(o.prevClose)}` : ""}</span>
-        <span className={above ? "text-up" : "text-down"}>Сейчас {fmtPrice(o.currentPrice)} · {fmtPct(o.priceChangePct)}</span>
+        <span>Оффер {fmtPrice(o.offerPrice, { dollar: true })}{o.prevClose != null ? ` · закрытие до ${fmtPrice(o.prevClose, { dollar: true })}` : ""}</span>
+        <span className={above ? "text-up" : "text-down"}>Сейчас {fmtPrice(o.currentPrice, { dollar: true })} · {fmtPct(o.priceChangePct, 1)}</span>
       </div>
     </div>
   );

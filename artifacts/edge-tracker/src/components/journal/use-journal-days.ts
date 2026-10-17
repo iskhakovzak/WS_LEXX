@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { nullIfMissing } from "@/lib/api/errors";
 
 /**
  * Day journal storage. Uses the server (/api/journal/days) when the route is available,
@@ -129,18 +130,11 @@ export class JournalConflict extends Error {
 }
 
 async function fetchServer(trader: string, from: string, to: string): Promise<JournalEntry[]> {
-  const qs = new URLSearchParams({ from, to });
-  if (trader) qs.set("trader", trader);
-  const res = await fetch(apiUrl(`/api/journal/days?${qs.toString()}`));
-  if (res.status === 404) throw new NotAvailable();
-  const ct = res.headers.get("content-type") ?? "";
-  if (res.ok && !ct.includes("json")) throw new NotAvailable(); // SPA fallback HTML
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try { msg = (await res.json())?.error ?? msg; } catch { /* ignore */ }
-    throw new Error(msg);
-  }
-  const rows = (await res.json()) as Array<Partial<JournalEntry> & { trader: string; date: string }>;
+  // 404 or the SPA's HTML fallback → this API build has no journal route.
+  const rows = await http
+    .get<Array<Partial<JournalEntry> & { trader: string; date: string }>>("/api/journal/days", { query: { from, to, trader } })
+    .catch(nullIfMissing);
+  if (rows === null) throw new NotAvailable();
   return rows.map(normalize);
 }
 
@@ -183,34 +177,31 @@ export function useJournalRange(trader: string, from: string, to: string, enable
 }
 
 async function putServer(e: JournalEntry): Promise<{ entry: JournalEntry; mode: StorageMode } | null> {
-  const res = await fetch(apiUrl(`/api/journal/days/${e.date}`), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      plan: e.plan, well: e.well, mistakes: e.mistakes, lessons: e.lessons,
-      mood: e.mood, discipline: e.discipline, followedPlan: e.followedPlan, tags: e.tags,
-      // Version we edited: the server refuses (409) if another tab saved a newer one.
-      updatedAt: e.pendingSync ? undefined : e.updatedAt ?? undefined,
-    }),
-  });
-  const ct = res.headers.get("content-type") ?? "";
-  if (res.ok && ct.includes("json")) {
-    markServerUp();
-    try { localStorage.removeItem(localKey(e.trader, e.date)); } catch { /* ignore */ }
-    const row = await res.json();
-    return { entry: row?.deleted ? { ...emptyEntry(e.trader, e.date) } : normalize(row), mode: "server" };
+  let row: (Partial<JournalEntry> & { trader: string; date: string; deleted?: boolean }) | null;
+  try {
+    row = await http
+      .put<Partial<JournalEntry> & { trader: string; date: string; deleted?: boolean }>(`/api/journal/days/${e.date}`, {
+        plan: e.plan, well: e.well, mistakes: e.mistakes, lessons: e.lessons,
+        mood: e.mood, discipline: e.discipline, followedPlan: e.followedPlan, tags: e.tags,
+        // Version we edited: the server refuses (409) if another tab saved a newer one.
+        updatedAt: e.pendingSync ? undefined : e.updatedAt ?? undefined,
+      })
+      // 404 or the SPA's HTML fallback → this API build has no journal route.
+      .catch(nullIfMissing);
+  } catch (err) {
+    if (err instanceof ApiError && err.status === 409 && err.body && typeof err.body === "object") {
+      const current = err.field<Partial<JournalEntry> & { trader: string; date: string }>("current");
+      throw new JournalConflict(err.field<string>("error") ?? "Запись изменена в другой вкладке", current ? normalize(current) : null);
+    }
+    throw err;
   }
-  if (res.status === 409 && ct.includes("json")) {
-    const body = await res.json().catch(() => null);
-    throw new JournalConflict(body?.error ?? "Запись изменена в другой вкладке", body?.current ? normalize(body.current) : null);
+  if (row === null) {
+    markServerDown();
+    return null;
   }
-  if (res.status !== 404 && !(res.ok && !ct.includes("json"))) {
-    let msg = `HTTP ${res.status}`;
-    try { msg = (await res.json())?.error ?? msg; } catch { /* ignore */ }
-    throw new Error(msg);
-  }
-  markServerDown();
-  return null;
+  markServerUp();
+  try { localStorage.removeItem(localKey(e.trader, e.date)); } catch { /* ignore */ }
+  return { entry: row.deleted ? { ...emptyEntry(e.trader, e.date) } : normalize(row), mode: "server" };
 }
 
 /** Entries saved locally while the server was down: how many wait, and a flush that pushes them. */

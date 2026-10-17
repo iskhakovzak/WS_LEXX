@@ -8,6 +8,7 @@
  */
 import type { Discussion, Comment } from "@workspace/api-client-react";
 import { matchesAny, prepareQuery } from "@workspace/text-search";
+import { fmtDate, fmtDateCustom } from "@/lib/format";
 
 export type Thread = Discussion & {
   commentCount?: number;
@@ -324,11 +325,11 @@ export function relTime(iso: string): string {
   if (h < 24) return `${h} ч назад`;
   const days = Math.round(h / 24);
   if (days < 7) return `${days} дн назад`;
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: days > 300 ? "numeric" : undefined });
+  return fmtDate(iso, days > 300 ? "medium" : "dayMonth");
 }
 export function absTime(iso: string): string {
   const d = new Date(iso);
-  return Number.isFinite(d.getTime()) ? d.toLocaleString("ru-RU", { dateStyle: "medium", timeStyle: "short" }) : iso;
+  return Number.isFinite(d.getTime()) ? fmtDateCustom(d, { dateStyle: "medium", timeStyle: "short", hourCycle: "h23" }) : iso;
 }
 export function initials(name?: string | null): string {
   if (!name) return "?";

@@ -131,7 +131,4 @@ export function PctBar({ pct, className, label }: { pct: number; className?: str
   );
 }
 
-export const fmtMoney = (v: number | null | undefined) =>
-  v == null || !Number.isFinite(v) ? "—" : `${v >= 0 ? "+" : "−"}$${Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-export const fmtR = (v: number | null | undefined) => (v == null || !Number.isFinite(v) ? "R —" : `${v >= 0 ? "+" : "−"}${Math.abs(v).toFixed(2)}R`);
 export const toneOfNum = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");

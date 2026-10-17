@@ -14,6 +14,7 @@ import {
   attentionOf, buildDayTrades, buildReviewScope, canReadJuniorNotes, canReviewTrader, juniorTeamFilter, missedRun, repeatedMistakes,
   reviewTraderFilter, scoreTrend, type ContextTradeRow, type JuniorNotesViewer, type ReviewScope,
 } from "../lib/juniorReview";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -201,7 +202,7 @@ async function requireNotesReader(
   req: import("express").Request, res: import("express").Response, trader: string,
 ): Promise<boolean> {
   const ctx = await reviewCtx(req);
-  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return false; }
+  if (!ctx) { sendError(res, unauthorized()); return false; }
   if (!canReadJuniorNotes(viewerOf(ctx), ctx.scope, trader)) {
     res.status(403).json({ error: "Сводки трейдера видят он сам, его куратор или наставник", code: "FORBIDDEN" });
     return false;
@@ -214,7 +215,7 @@ async function requireReviewer(
   req: import("express").Request, res: import("express").Response, message = "Только для кураторов и наставников",
 ): Promise<ReviewCtx | null> {
   const ctx = await reviewCtx(req);
-  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
+  if (!ctx) { sendError(res, unauthorized()); return null; }
   if (ctx.scope.kind === "none") { res.status(403).json({ error: message, code: "FORBIDDEN" }); return null; }
   return ctx;
 }
@@ -249,9 +250,9 @@ function streakEndingAt(dates: Set<string>, date: string): number {
 router.get("/junior-notes/team", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const ctx = await reviewCtx(req);
-  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (!ctx) throw unauthorized();
   // Desk reviewers / desk-wide journal.read.team: every junior; mentors & assigned curators: their juniors + own;
   // everyone else: only their own summary. Guests: nothing.
   const filter = juniorTeamFilter(viewerOf(ctx), ctx.scope);
@@ -267,7 +268,7 @@ router.get("/junior-notes/team", requireAuth, asyncHandler(async (req, res): Pro
 /** What the caller may review: drives the senior's UI (tabs, «Мои джуны», review form, money columns). */
 router.get("/junior-notes/reviewer", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const ctx = await reviewCtx(req);
-  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (!ctx) throw unauthorized();
   const s = ctx.scope;
   res.json({
     kind: s.kind,
@@ -288,7 +289,7 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
   const ctx = await requireReviewer(req, res);
   if (!ctx) return;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const filter = reviewTraderFilter(ctx.scope, mineOnly(req.query["scope"]));
   const from = addDays(date, -90);
 
@@ -408,15 +409,15 @@ router.get("/junior-notes/queue", requireAuth, asyncHandler(async (req, res): Pr
 router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const ctx = await reviewCtx(req);
-  if (!ctx) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (!ctx) throw unauthorized();
   const { rows: noteRows } = await pool.query<{ trader: string; note_date: string }>(
     `SELECT trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date FROM junior_notes WHERE id = $1`,
     [id],
   );
   const note = noteRows[0];
-  if (!note) { res.status(404).json({ error: "Not found" }); return; }
+  if (!note) throw notFound();
   if (ctx.guest || (note.trader !== ctx.me && !canReviewTrader(ctx.scope, note.trader, ctx.me))) {
     res.status(403).json({ error: "Контекст сводки доступен куратору или наставнику этого трейдера", code: "FORBIDDEN" });
     return;
@@ -491,7 +492,7 @@ router.get("/junior-notes/history", requireAuth, asyncHandler(async (req, res): 
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const limit = parseLimit(req.query["limit"], 30, 400);
   const q = typeof req.query["q"] === "string" ? req.query["q"].trim().slice(0, 100) : "";
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
   if (!(await requireNotesReader(req, res, trader))) return;
   const params: unknown[] = [trader, limit];
   let where = `trader = $1`;
@@ -529,8 +530,8 @@ router.get("/junior-notes", requireAuth, asyncHandler(async (req, res): Promise<
   await ensureSchema();
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   if (!(await requireNotesReader(req, res, trader))) return;
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
@@ -546,7 +547,7 @@ router.put("/junior-notes", asyncHandler(async (req, res): Promise<void> => {
   const { raw_text, note_date, mood } = req.body as { raw_text?: string; note_date?: string; mood?: string };
   const sections = parseSections((req.body as { sections?: unknown }).sections);
   const date = note_date || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   if (date > addDays(todayNy(), 1)) { res.status(400).json({ error: "Нельзя писать сводку за будущую дату" }); return; }
   const text = sections ? composeSections(sections) : (typeof raw_text === "string" ? raw_text : "").trim().slice(0, 40_000);
   const { rows } = await pool.query(
@@ -567,7 +568,7 @@ router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> =
   await ensureSchema();
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { raw_text, mood } = req.body as { raw_text?: string; mood?: string };
   const sections = parseSections((req.body as { sections?: unknown }).sections);
   const text = sections ? composeSections(sections) : (typeof raw_text === "string" ? raw_text.slice(0, 40_000) : null);
@@ -582,7 +583,7 @@ router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> =
      RETURNING ${NOTE_COLS}`,
     [text, cleanMood(mood), id, trader, !!sections, sections ? JSON.stringify(sections) : null],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   res.json(rows[0]);
 }));
 
@@ -596,9 +597,9 @@ router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<v
   if (!ctx) return;
   const curator = ctx.me;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const owner = await pool.query<{ trader: string }>(`SELECT trader FROM junior_notes WHERE id = $1`, [id]);
-  if (!owner.rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!owner.rows[0]) throw notFound();
   if (!canReviewTrader(ctx.scope, owner.rows[0].trader, ctx.me)) {
     res.status(403).json({ error: "Можно оценивать только сводки своих джунов", code: "FORBIDDEN" });
     return;
@@ -623,7 +624,7 @@ router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<v
      RETURNING ${NOTE_COLS}`,
     [feedback || null, score, curator, clear, id],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   res.json(rows[0]);
 }));
 
@@ -632,14 +633,14 @@ router.post("/junior-notes/:id/seen", asyncHandler(async (req, res): Promise<voi
   await ensureSchema();
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query(
     `UPDATE junior_notes SET feedback_seen_at = NOW()
      WHERE id = $1 AND trader = $2 AND reviewed_at IS NOT NULL
      RETURNING ${NOTE_COLS}`,
     [id, trader],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   res.json(rows[0]);
 }));
 
@@ -653,13 +654,13 @@ router.post("/junior-notes/reminders", asyncHandler(async (req, res): Promise<vo
   const trader = typeof body.trader === "string" ? body.trader.trim() : "";
   const date = isIsoDate(body.date) ? body.date : todayNy();
   const message = typeof body.message === "string" && body.message.trim() ? body.message.trim().slice(0, 300) : null;
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
   if (!canReviewTrader(ctx.scope, trader, ctx.me)) {
     res.status(403).json({ error: "Напоминать можно только своим джунам", code: "FORBIDDEN" });
     return;
   }
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [trader]);
-  if (!exists.rows.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!exists.rows.length) throw notFound("TRADER_NOT_FOUND");
   const { rows } = await pool.query(
     `INSERT INTO junior_note_reminders (trader, note_date, curator, message)
      VALUES ($1, $2, $3, $4)
@@ -675,24 +676,24 @@ router.post("/junior-notes/reminders/:id/dismiss", asyncHandler(async (req, res)
   await ensureSchema();
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rowCount } = await pool.query(
     `UPDATE junior_note_reminders SET dismissed_at = NOW() WHERE id = $1 AND trader = $2`,
     [id, me],
   );
-  if (!rowCount) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rowCount) throw notFound();
   res.json({ ok: true });
 }));
 
 router.delete("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rowCount } = await pool.query(
     `DELETE FROM junior_notes WHERE id = $1 AND trader = $2`,
     [id, trader],
   );
-  if (!rowCount) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rowCount) throw notFound();
   res.json({ ok: true });
 }));
 
@@ -756,7 +757,7 @@ ${text.slice(0, 3000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message, trader }, "junior-notes improve failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 
@@ -815,7 +816,7 @@ ${notesText.slice(0, 8000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message }, "junior-notes team-summary failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 

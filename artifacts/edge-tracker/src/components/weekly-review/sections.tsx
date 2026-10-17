@@ -14,9 +14,10 @@ import { EmptyState, Panel, Pill, ProgressRing, StatCard, toneOf, type Tone } fr
 import { KPI_FORMULAS, type Horizon } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
 import {
-  HORIZON_LABEL, fmtDay, fmtPct, fmtR, fmtUsd, fmtValue, fmtX, weekdayShort,
-  type GroupKpi, type Kpi, type Mistake, type OpenPosition, type RiskEvent, type TradeLite, type Violation, type WeeklyReview,
+  HORIZON_LABEL, fmtDay, fmtValue, weekdayShort,
+  type GroupKpi, type Mistake, type OpenPosition, type RiskEvent, type TradeLite, type Violation, type WeeklyReview,
 } from "./api";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -47,22 +48,22 @@ export function KpiBento({ kpis }: { kpis: WeeklyReview["kpis"] }) {
   const u = k.unit;
   const money = u === "usd";
   const avgHint = (v: string) => (avg4Weeks ? `4 нед: ${v}` : "4 нед: —");
-  const pnlDelta = deltaText(k.netPnl, p.netPnl, (d) => fmtUsd(d, { compact: true }));
-  const rDelta = deltaText(k.totalR, p.totalR, (d) => fmtR(d, false));
+  const pnlDelta = deltaText(k.netPnl, p.netPnl, (d) => fmtUsd(d, { decimals: "auto", compact: 10_000 }));
+  const rDelta = deltaText(k.totalR, p.totalR, (d) => fmtR(d, { signed: false }));
   const wrDelta = deltaText(k.winRate, p.winRate, (d) => `${Math.round(d * 100)} п.п.`);
   const trDelta = deltaText(k.trades, p.trades, (d) => String(d));
-  const expDelta = deltaText(k.expectancyR, p.expectancyR, (d) => fmtR(d, false));
+  const expDelta = deltaText(k.expectancyR, p.expectancyR, (d) => fmtR(d, { signed: false }));
   const pfDelta = deltaText(k.profitFactorR, p.profitFactorR, (d) => d.toFixed(2));
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
       <StatCard
         className="col-span-2"
         label={money ? "P&L нетто" : "Результат, R"}
-        value={money ? fmtUsd(k.netPnl, { signed: true }) : fmtR(k.totalR)}
+        value={money ? fmtUsd(k.netPnl, { signed: true, decimals: "auto" }) : fmtR(k.totalR)}
         tone={toneOf(money ? k.netPnl : k.totalR)}
         delta={money ? pnlDelta?.text : rDelta?.text}
         deltaTone={money ? pnlDelta?.tone : rDelta?.tone}
-        hint={money ? avgHint(fmtUsd(avg4.netPnl, { signed: true, compact: true })) : avgHint(fmtR(avg4.totalR))}
+        hint={money ? avgHint(fmtUsd(avg4.netPnl, { signed: true, decimals: "auto", compact: 10_000 })) : avgHint(fmtR(avg4.totalR))}
       />
       <StatCard
         label={money ? "Сумма R" : "Ожидание"}
@@ -74,19 +75,19 @@ export function KpiBento({ kpis }: { kpis: WeeklyReview["kpis"] }) {
       />
       <StatCard
         label="Win rate"
-        value={fmtPct(k.winRate)}
+        value={fmtRate(k.winRate)}
         tone={k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down"}
         delta={wrDelta?.text}
         deltaTone={wrDelta?.tone}
-        hint={<span title={KPI_FORMULAS.winRate}>{avgHint(fmtPct(avg4.winRate))}</span>}
+        hint={<span title={KPI_FORMULAS.winRate}>{avgHint(fmtRate(avg4.winRate))}</span>}
       />
       <StatCard
         label="Profit factor"
-        value={fmtX(k.profitFactorR)}
+        value={fmtNum(k.profitFactorR, { suffix: "×" })}
         tone={k.profitFactorR == null ? "neutral" : k.profitFactorR >= 1 ? "up" : "down"}
         delta={pfDelta?.text}
         deltaTone={pfDelta?.tone}
-        hint={<span title={KPI_FORMULAS.profitFactorR}>{avgHint(fmtX(avg4.profitFactorR))}</span>}
+        hint={<span title={KPI_FORMULAS.profitFactorR}>{avgHint(fmtNum(avg4.profitFactorR, { suffix: "×" }))}</span>}
       />
       <StatCard
         label="Ожидание"
@@ -94,7 +95,7 @@ export function KpiBento({ kpis }: { kpis: WeeklyReview["kpis"] }) {
         tone={toneOf(k.expectancyR)}
         delta={expDelta?.text}
         deltaTone={expDelta?.tone}
-        hint={<span title={KPI_FORMULAS.expectancyR}>{money && k.expectancyUsd != null ? `${fmtUsd(k.expectancyUsd, { signed: true })} / сделка` : avgHint(fmtR(avg4.expectancyR))}</span>}
+        hint={<span title={KPI_FORMULAS.expectancyR}>{money && k.expectancyUsd != null ? `${fmtUsd(k.expectancyUsd, { signed: true, decimals: "auto" })} / сделка` : avgHint(fmtR(avg4.expectancyR))}</span>}
       />
       <StatCard
         label="Сделки"
@@ -105,9 +106,9 @@ export function KpiBento({ kpis }: { kpis: WeeklyReview["kpis"] }) {
       />
       <StatCard
         label="Комиссии"
-        value={fmtUsd(k.fees)}
+        value={fmtUsd(k.fees, { decimals: "auto" })}
         tone="neutral"
-        hint={k.grossPnl != null ? `брутто ${fmtUsd(k.grossPnl, { signed: true, compact: true })}` : avgHint(fmtUsd(avg4.fees))}
+        hint={k.grossPnl != null ? `брутто ${fmtUsd(k.grossPnl, { signed: true, decimals: "auto", compact: 10_000 })}` : avgHint(fmtUsd(avg4.fees, { decimals: "auto" }))}
       />
       <StatCard
         label="Лучший / худший день"
@@ -138,7 +139,7 @@ export function WeekDaysChart({ doc }: { doc: WeeklyReview }) {
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }} barCategoryGap="28%">
               <XAxis dataKey="label" tick={{ fontSize: 12, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-              <YAxis width={52} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => (u === "usd" ? fmtUsd(v, { compact: true }) : fmtR(v, false))} />
+              <YAxis width={52} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => (u === "usd" ? fmtUsd(v, { decimals: "auto", compact: 10_000 }) : fmtR(v, { signed: false }))} />
               <ReferenceLine y={0} stroke="hsl(var(--border))" />
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
@@ -174,7 +175,7 @@ function GroupRow({ g, unit, label, pill, max }: { g: GroupKpi; unit: "usd" | "r
         <div className="flex min-w-0 items-center gap-2">
           <span className="min-w-0 truncate font-medium text-foreground">{label}</span>
           {pill}
-          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{g.trades} сд. · WR {fmtPct(g.winRate)}</span>
+          <span className="ml-auto shrink-0 text-xs text-muted-foreground tabular-nums">{g.trades} сд. · WR {fmtRate(g.winRate)}</span>
         </div>
         <div className="h-1 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
           <div className={cn("h-full rounded-full", v != null && v < 0 ? "bg-down" : "bg-up")} style={{ width: `${width}%` }} />
@@ -285,7 +286,7 @@ function CostLine({ label, cost }: { label: string; cost: WeeklyReview["mistakes
   if (!cost.trades) return null;
   return (
     <span className="text-xs text-muted-foreground">
-      {label}: <span className="font-semibold text-down tabular-nums">{cost.usd != null ? fmtUsd(cost.usd) : fmtR(cost.r)}</span>
+      {label}: <span className="font-semibold text-down tabular-nums">{cost.usd != null ? fmtUsd(cost.usd, { decimals: "auto" }) : fmtR(cost.r)}</span>
       {cost.usd != null && cost.r != null && <span className="tabular-nums"> ({fmtR(cost.r)})</span>} · {cost.trades} сд.
     </span>
   );
@@ -303,7 +304,7 @@ function MistakeRow({ m }: { m: Mistake }) {
           {m.lesson ? ` · урок: ${m.lesson}` : ""}
         </p>
       </div>
-      {v != null && <span className={cn("shrink-0 text-right font-semibold tabular-nums", v < 0 ? "text-down" : "text-up")}>{m.tradeNet != null ? fmtUsd(m.tradeNet, { signed: true }) : fmtR(m.tradeR)}</span>}
+      {v != null && <span className={cn("shrink-0 text-right font-semibold tabular-nums", v < 0 ? "text-down" : "text-up")}>{m.tradeNet != null ? fmtUsd(m.tradeNet, { signed: true, decimals: "auto" }) : fmtR(m.tradeR)}</span>}
     </li>
   );
 }
@@ -320,7 +321,7 @@ function ViolationRow({ v }: { v: Violation }) {
           {v.tradeId ? <Link href={tradeHref(v.tradeId)} className="hover:underline">{v.ticker ?? `#${v.tradeId}`}{v.tradeDate ? ` · ${fmtDay(v.tradeDate)}` : ""}</Link> : fmtDay(v.occurredAt.slice(0, 10))}
         </p>
       </div>
-      {val != null && <span className={cn("shrink-0 text-right font-semibold tabular-nums", val < 0 ? "text-down" : "text-up")}>{v.tradeNet != null ? fmtUsd(v.tradeNet, { signed: true }) : fmtR(v.tradeR)}</span>}
+      {val != null && <span className={cn("shrink-0 text-right font-semibold tabular-nums", val < 0 ? "text-down" : "text-up")}>{v.tradeNet != null ? fmtUsd(v.tradeNet, { signed: true, decimals: "auto" }) : fmtR(v.tradeR)}</span>}
     </li>
   );
 }
@@ -417,7 +418,7 @@ export function DisciplinePanel({ doc }: { doc: WeeklyReview }) {
 export function RiskPanel({ doc }: { doc: WeeklyReview }) {
   const { limits, events, weeklyLossPct } = doc.risk;
   return (
-    <Panel title="Риск-события" description={limits ? `лимиты: день ${fmtUsd(limits.dailyLossLimit)} · неделя ${fmtUsd(limits.weeklyLossLimit)} · сделка ${fmtUsd(limits.maxRiskPerTrade)}` : "лимиты не заданы"} icon={ShieldAlert} className="min-w-0" actions={<Link href="/risk" className="text-xs text-primary hover:underline">Риск-деск →</Link>}>
+    <Panel title="Риск-события" description={limits ? `лимиты: день ${fmtUsd(limits.dailyLossLimit, { decimals: "auto" })} · неделя ${fmtUsd(limits.weeklyLossLimit, { decimals: "auto" })} · сделка ${fmtUsd(limits.maxRiskPerTrade, { decimals: "auto" })}` : "лимиты не заданы"} icon={ShieldAlert} className="min-w-0" actions={<Link href="/risk" className="text-xs text-primary hover:underline">Риск-деск →</Link>}>
       {!limits ? (
         <p className="py-3 text-sm text-muted-foreground">Куратор ещё не задал лимиты — события не вычисляются.</p>
       ) : events.length === 0 ? (
@@ -430,7 +431,7 @@ export function RiskPanel({ doc }: { doc: WeeklyReview }) {
               <span className="w-14 shrink-0 text-xs text-muted-foreground tabular-nums">{fmtDay(e.date)}</span>
               <span className="min-w-0 flex-1 truncate text-foreground">{e.label}{e.detail ? <span className="text-muted-foreground"> · {e.detail}</span> : null}</span>
               <Pill tone={e.level === "breach" ? "down" : "warn"}>{e.pct != null ? `${e.pct}%` : e.level === "breach" ? "нарушение" : "внимание"}</Pill>
-              {e.limit ? <span className="hidden w-28 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:inline">{fmtUsd(e.used)} / {fmtUsd(e.limit)}</span> : null}
+              {e.limit ? <span className="hidden w-28 shrink-0 text-right text-xs text-muted-foreground tabular-nums sm:inline">{fmtUsd(e.used, { decimals: "auto" })} / {fmtUsd(e.limit, { decimals: "auto" })}</span> : null}
             </li>
           ))}
         </ul>
@@ -445,7 +446,7 @@ export function OpenBookPanel({ doc }: { doc: WeeklyReview }) {
   const risk = rows.reduce((s, p) => s + (p.riskUsd ?? 0), 0);
   const exposure = rows.reduce((s, p) => s + (p.exposureUsd ?? 0), 0);
   return (
-    <Panel title="Позиции на конец недели" description={rows.length ? `${rows.length} поз. · риск ${fmtUsd(risk)} · экспозиция ${fmtUsd(exposure, { compact: true })}` : "овернайт / свинг через выходные"} icon={MoonStar} className="min-w-0">
+    <Panel title="Позиции на конец недели" description={rows.length ? `${rows.length} поз. · риск ${fmtUsd(risk, { decimals: "auto" })} · экспозиция ${fmtUsd(exposure, { decimals: "auto", compact: 10_000 })}` : "овернайт / свинг через выходные"} icon={MoonStar} className="min-w-0">
       {rows.length === 0 ? (
         <p className="py-3 text-sm text-muted-foreground">В выходные книга была пустой.</p>
       ) : (
@@ -456,7 +457,7 @@ export function OpenBookPanel({ doc }: { doc: WeeklyReview }) {
                 <span className="w-16 shrink-0 font-semibold">{p.ticker}</span>
                 <Pill tone={HORIZON_TONE[p.horizon]}>{HORIZON_LABEL[p.horizon]}</Pill>
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">с {fmtDay(p.date)} · {p.daysHeld} дн.{p.side ? ` · ${p.side}` : ""}{!p.stillOpen && p.exitDate ? ` · закрыта ${fmtDay(p.exitDate)}` : ""}</span>
-                <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{p.riskUsd != null ? `риск ${fmtUsd(p.riskUsd)}` : "риск —"}</span>
+                <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{p.riskUsd != null ? `риск ${fmtUsd(p.riskUsd, { decimals: "auto" })}` : "риск —"}</span>
               </Link>
             </li>
           ))}

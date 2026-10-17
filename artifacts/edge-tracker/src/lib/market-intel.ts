@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 
 
 export type TickerFundamentals = {
@@ -66,9 +66,9 @@ export type MarketBrief = {
 
 export async function fetchTickerFundamentals(ticker: string, force = false): Promise<TickerFundamentals | null> {
   if (!ticker) return null;
-  const r = await fetch(`${BASE}/api/stockdata/fundamentals?ticker=${encodeURIComponent(ticker)}${force ? "&force=1" : ""}`);
-  if (!r.ok) return null;
-  return r.json();
+  return http
+    .get<TickerFundamentals>(`/api/stockdata/fundamentals?ticker=${encodeURIComponent(ticker)}${force ? "&force=1" : ""}`)
+    .catch(() => null);
 }
 
 export function useTickerFundamentals(ticker: string | null | undefined, opts: { enabled?: boolean } = {}) {
@@ -79,12 +79,6 @@ export function useTickerFundamentals(ticker: string | null | undefined, opts: {
     staleTime: 30 * 60 * 1000,
     retry: 1,
   });
-}
-
-async function jsonOk<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`Request failed (${r.status}) for ${url}`);
-  return r.json() as Promise<T>;
 }
 
 export function useTickerNews(
@@ -100,8 +94,8 @@ export function useTickerNews(
     queryFn: () => {
       const params = new URLSearchParams({ ticker: ticker!, limit: String(limit) });
       if (beforeIso) params.set("before", beforeIso);
-      return jsonOk<{ ticker: string; items: NewsItem[]; before: string | null }>(
-        `${BASE}/api/news?${params.toString()}`
+      return http.get<{ ticker: string; items: NewsItem[]; before: string | null }>(
+        `/api/news?${params.toString()}`
       );
     },
     enabled: Boolean(ticker && (opts.enabled ?? true)),
@@ -185,7 +179,7 @@ export function useAnalystActions(opts: AnalystActionsOpts = {}) {
   const qs = buildAnalystParams(opts).toString();
   return useQuery<AnalystActionsResponse>({
     queryKey: ["analyst-actions", "flat", qs],
-    queryFn: () => jsonOk<AnalystActionsResponse>(`${BASE}/api/analyst-actions?${qs}`),
+    queryFn: () => http.get<AnalystActionsResponse>(`/api/analyst-actions?${qs}`),
     enabled: opts.enabled ?? true,
     staleTime: 5 * 60 * 1000,
   });
@@ -197,7 +191,7 @@ export function useAnalystActionsGrouped(opts: AnalystActionsOpts = {}) {
   const qs = params.toString();
   return useQuery<AnalystActionsGroupedResponse>({
     queryKey: ["analyst-actions", "grouped", qs],
-    queryFn: () => jsonOk<AnalystActionsGroupedResponse>(`${BASE}/api/analyst-actions?${qs}`),
+    queryFn: () => http.get<AnalystActionsGroupedResponse>(`/api/analyst-actions?${qs}`),
     enabled: opts.enabled ?? true,
     staleTime: 5 * 60 * 1000,
   });
@@ -215,19 +209,13 @@ export type AnalystScanResult = {
 };
 
 export async function refreshAnalystActions(payload: { tickers?: string[]; concurrency?: number } = {}): Promise<AnalystScanResult> {
-  const r = await fetch(`${BASE}/api/analyst-actions/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(`Refresh failed (${r.status})`);
-  return r.json();
+  return http.post<AnalystScanResult>("/api/analyst-actions/refresh", payload);
 }
 
 export function useSectors() {
   return useQuery<{ sectors: SectorPoint[]; fetchedAt: string | null }>({
     queryKey: ["sectors"],
-    queryFn: () => jsonOk<{ sectors: SectorPoint[]; fetchedAt: string | null }>(`${BASE}/api/sectors`),
+    queryFn: () => http.get<{ sectors: SectorPoint[]; fetchedAt: string | null }>(`/api/sectors`),
     refetchInterval: 60 * 1000,
     staleTime: 30 * 1000,
   });
@@ -236,7 +224,7 @@ export function useSectors() {
 export function useTodayHolidays() {
   return useQuery<{ today: HolidayEvent[]; upcoming: HolidayEvent[] }>({
     queryKey: ["holidays-today"],
-    queryFn: () => jsonOk<{ today: HolidayEvent[]; upcoming: HolidayEvent[] }>(`${BASE}/api/holidays/today`),
+    queryFn: () => http.get<{ today: HolidayEvent[]; upcoming: HolidayEvent[] }>(`/api/holidays/today`),
     staleTime: 60 * 60 * 1000,
   });
 }
@@ -244,7 +232,7 @@ export function useTodayHolidays() {
 export function useHolidaysRange(from: string, to: string) {
   return useQuery<{ events: HolidayEvent[] }>({
     queryKey: ["holidays-range", from, to],
-    queryFn: () => jsonOk<{ events: HolidayEvent[] }>(`${BASE}/api/holidays?from=${from}&to=${to}`),
+    queryFn: () => http.get<{ events: HolidayEvent[] }>(`/api/holidays?from=${from}&to=${to}`),
     enabled: !!from && !!to,
     staleTime: 60 * 60 * 1000,
   });
@@ -253,7 +241,7 @@ export function useHolidaysRange(from: string, to: string) {
 export function useMarketBrief(opts: { enabled?: boolean } = {}) {
   return useQuery<MarketBrief>({
     queryKey: ["market-brief"],
-    queryFn: () => jsonOk<MarketBrief>(`${BASE}/api/market-brief`),
+    queryFn: () => http.get<MarketBrief>(`/api/market-brief`),
     enabled: opts.enabled ?? true,
     staleTime: 5 * 60 * 1000,
     refetchInterval: 5 * 60 * 1000,

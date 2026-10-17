@@ -3,7 +3,8 @@
  * `propreports.sync {"runId":3,…}`. Pure functions — unit-tested in audit-text.test.ts.
  */
 import type { Tone } from "@/components/ds";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtCount, fmtNum, fmtUsd, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export interface AuditLike {
   actor: string;
@@ -45,13 +46,6 @@ function parse(raw: string | null): Record<string, any> {
 const s = (v: unknown): string => (v == null ? "" : String(v));
 const n = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
 const reasonOf = (d: Record<string, any>) => s(d.reason || d.comment || d.resolution).trim() || undefined;
-
-function plural(count: number, one: string, few: string, many: string) {
-  const m10 = count % 10, m100 = count % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
 
 function syncCounters(d: Record<string, any>): string {
   const parts: string[] = [];
@@ -168,7 +162,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "propreports.account.map": return { label: "Счета", tone: "accent", text: `привязал счёт ${s(d.account) || s(e.targetId)} к ${s(d.trader)}`, detail: [d.from ? `было: ${d.from}` : "", reason ?? ""].filter(Boolean).join(" · ") || undefined };
     case "propreports.accounts.update": {
       const list: string[] = Array.isArray(d.accounts) ? d.accounts.map(String) : [];
-      return { label: "Счета", tone: "accent", text: `обновил привязку ${list.length} ${plural(list.length, "счёта", "счетов", "счетов")}`, detail: list.slice(0, 6).join(", ") || undefined };
+      return { label: "Счета", tone: "accent", text: `обновил привязку ${list.length} ${pluralRu(list.length, "счёта", "счетов", "счетов")}`, detail: list.slice(0, 6).join(", ") || undefined };
     }
     case "propreports.accounts.delete": return { label: "Счета", tone: "warn", text: `удалил привязку счёта #${s(e.targetId)}` };
     case "propreports.accounts.refresh": return { label: "Счета", tone: "neutral", text: "обновил список счетов PropReports" };
@@ -184,16 +178,16 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       return {
         label: "Отчёт", tone: "accent",
         text: `загрузил отчёт Trade Performance${d.trader ? ` (${d.trader})` : ""}${d.periodFrom ? ` за ${d.periodFrom} — ${d.periodTo}` : ""}`,
-        detail: sum.trades != null ? `${sum.trades} ${pluralRu(Number(sum.trades), "сделка", "сделки", "сделок")}${sum.net != null ? `, net ${Number(sum.net).toFixed(2)}` : ""}` : undefined,
+        detail: sum.trades != null ? `${commonI18n.t("units.trades", { count: Number(sum.trades) })}${sum.net != null ? `, net ${fmtNum(Number(sum.net))}` : ""}` : undefined,
       };
     }
     case "propreports.performance.delete": return { label: "Отчёт", tone: "warn", text: `удалил отчёт Trade Performance #${s(e.targetId)}` };
 
     case "db.export": {
       const t = Array.isArray(d.tables) ? d.tables.length : 0;
-      return { label: "Экспорт", tone: "accent", text: `выгрузил базу${t ? ` (${t} ${plural(t, "таблица", "таблицы", "таблиц")})` : ""}`, detail: d.partial ? "частичный экспорт" : undefined };
+      return { label: "Экспорт", tone: "accent", text: `выгрузил базу${t ? ` (${t} ${pluralRu(t, "таблица", "таблицы", "таблиц")})` : ""}`, detail: d.partial ? "частичный экспорт" : undefined };
     }
-    case "db.backup": return { label: "Бэкап", tone: "accent", text: e.actor === "system" ? "создана резервная копия базы" : "запустил резервную копию базы", detail: d.sizeKb ? `${n(d.sizeKb).toLocaleString("ru-RU")} КБ` : undefined };
+    case "db.backup": return { label: "Бэкап", tone: "accent", text: e.actor === "system" ? "создана резервная копия базы" : "запустил резервную копию базы", detail: d.sizeKb ? `${fmtCount(n(d.sizeKb))} КБ` : undefined };
 
     case "scaling.assign": return { label: "Тир", tone: "purple", text: `назначил тир ${tier(d.toTier)} трейдеру ${s(e.targetId)}`, detail: [d.fromTier ? `был: ${tier(d.fromTier)}` : "", reason ?? ""].filter(Boolean).join(" · ") || undefined };
     case "scaling.proposal.create": return { label: "Тир", tone: "neutral", text: `предложил смену тира${d.trader ? ` для ${d.trader}` : ""}`, detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
@@ -252,11 +246,11 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       const by = d.byKind && typeof d.byKind === "object" ? Object.entries(d.byKind as Record<string, unknown>).map(([k, v]) => `${QUEUE_KIND[k] ?? k} ${n(v)}`) : [];
       return {
         label: "Очередь", tone: "neutral",
-        text: `убрал из очереди разборов ${n(d.archived)} ${plural(n(d.archived), "старый элемент", "старых элемента", "старых элементов")}`,
+        text: `убрал из очереди разборов ${n(d.archived)} ${pluralRu(n(d.archived), "старый элемент", "старых элемента", "старых элементов")}`,
         detail: [d.olderThanDays ? `старше ${n(d.olderThanDays)} дн.` : "", by.join(", ")].filter(Boolean).join(" · ") || undefined,
       };
     }
-    case "office_capital.set": return { label: "Капитал", tone: "neutral", text: `задал капитал офиса на ${s(e.targetId)}`, detail: [d.capital != null ? `капитал ${n(d.capital).toLocaleString("ru-RU")} $` : "", d.goalPct != null ? `цель ${n(d.goalPct)}%` : ""].filter(Boolean).join(" · ") || undefined };
+    case "office_capital.set": return { label: "Капитал", tone: "neutral", text: `задал капитал офиса на ${s(e.targetId)}`, detail: [d.capital != null ? `капитал ${fmtUsd(n(d.capital), { decimals: "trim" })}` : "", d.goalPct != null ? `цель ${n(d.goalPct)}%` : ""].filter(Boolean).join(" · ") || undefined };
     case "academy.stage.assign":
     case "academy.stage.promote":
     case "academy.stage.demote": {

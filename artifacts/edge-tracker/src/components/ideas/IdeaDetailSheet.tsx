@@ -12,7 +12,8 @@ import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { useIdeaMutations } from "./hooks";
@@ -21,16 +22,16 @@ import { LevelsBar } from "./LevelsBar";
 import { CommentsThread } from "./CommentsThread";
 import { ReviewActions, ReviewVerdict } from "./ReviewActions";
 import {
-  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, fmtPrice, fmtValidUntil, ideaHorizon, horizonLabel, fmtR, ideaPlan, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone, splitTags,
+  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, ideaHorizon, horizonLabel, ideaPlan, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone, splitTags,
   type IdeaTracking, type LevelPlan, type Stage, type TradeIdea,
 } from "./model";
+import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 
 const numOrNull = (v: string | number | null | undefined): number | null => {
   if (v == null || v === "") return null;
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-const usd = (v: number) => `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
 
 /**
  * Idea → trade: the plan the idea promised vs. the fill the trade got.
@@ -54,7 +55,7 @@ function ConversionPanel({ idea, plan, onOpenTrade }: { idea: TradeIdea; plan: L
   const rByIdea = planRisk != null && planRisk > 0 && fillEntry != null && fillExit != null && !isOpen ? ((fillExit - fillEntry) * dir) / planRisk : null;
   const rTrade = linkedR(t);
   const net = t.net != null && Number.isFinite(t.net) ? t.net : numOrNull(t.pnl);
-  const slipPct = (slip: number | null) => (slip != null && plan.riskPerShare ? ` · ${fmtR(slip / plan.riskPerShare, 2)}` : "");
+  const slipPct = (slip: number | null) => (slip != null && plan.riskPerShare ? ` · ${fmtR(slip / plan.riskPerShare)}` : "");
   const slipTone = (slip: number | null) => (slip == null ? "neutral" : slip > 0 ? "down" : slip < 0 ? "up" : "neutral");
   const fmtSlip = (slip: number | null) => (slip == null ? "—" : `${slip > 0 ? "+" : slip < 0 ? "−" : ""}$${fmtPrice(Math.abs(slip))}${slipPct(slip)}`);
 
@@ -73,9 +74,9 @@ function ConversionPanel({ idea, plan, onOpenTrade }: { idea: TradeIdea; plan: L
         <StatRow label="Проскальзывание входа" value={fmtSlip(entrySlip)} tone={slipTone(entrySlip)} />
         <StatRow label="Стоп: план → факт" value={`${plan.stop != null ? fmtPrice(plan.stop) : "—"} → ${fillStop != null ? fmtPrice(fillStop) : "—"}`} />
         <StatRow label="Стоп шире плана" value={fmtSlip(stopSlip)} tone={slipTone(stopSlip)} />
-        {!isOpen && <StatRow label="R по плану идеи" value={rByIdea != null ? fmtR(rByIdea, 2) : "—"} tone={toneOf(rByIdea)} />}
-        {!isOpen && <StatRow label="R по сделке" value={rTrade != null ? fmtR(rTrade, 2) : "—"} tone={toneOf(rTrade)} />}
-        {!isOpen && <StatRow label="P&L нетто" value={net != null ? usd(net) : "—"} tone={toneOf(net)} />}
+        {!isOpen && <StatRow label="R по плану идеи" value={rByIdea != null ? fmtR(rByIdea) : "—"} tone={toneOf(rByIdea)} />}
+        {!isOpen && <StatRow label="R по сделке" value={rTrade != null ? fmtR(rTrade) : "—"} tone={toneOf(rTrade)} />}
+        {!isOpen && <StatRow label="P&L нетто" value={net != null ? fmtUsd(net, { decimals: 0 }) : "—"} tone={toneOf(net)} />}
         {t.date && <StatRow label="Дата" value={`${t.date}${t.exitDate && t.exitDate !== t.date ? ` → ${t.exitDate}` : ""}`} />}
       </div>
       {entrySlip != null && planRisk != null && planRisk > 0 && Math.abs(entrySlip) / planRisk >= 0.25 && (
@@ -111,20 +112,11 @@ function ReportIdea({ idea, currentUser }: { idea: TradeIdea; currentUser: strin
     if (!reason.trim()) return;
     setSubmitting(true);
     try {
-      const r = await fetch(`${BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reporter: currentUser, targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() }),
-      });
-      if (r.ok) {
-        toast({ title: "Репорт отправлен куратору" });
-        setReason(""); setOpen(false);
-      } else {
-        const e = (await r.json().catch(() => ({}))) as { error?: string };
-        toast({ title: e.error ?? "Ошибка отправки", variant: "destructive" });
-      }
-    } catch {
-      toast({ title: "Сетевая ошибка", variant: "destructive" });
+      await http.post("/api/reports", { reporter: currentUser, targetType: "trade_idea", targetId: String(idea.id), reason: reason.trim() });
+      toast({ title: "Репорт отправлен куратору" });
+      setReason(""); setOpen(false);
+    } catch (e) {
+      toast({ title: humanizeApiError(e, "Ошибка отправки"), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -320,7 +312,7 @@ export function IdeaDetailSheet({
             {idea.validUntil && (
               <span title={idea.expired ? "Срок идеи истёк — исход не засчитывается" : "Идея действует до этой даты (торговый календарь NY)"}>
                 <Pill tone={idea.expired ? "warn" : "neutral"}>
-                  <Hourglass className="h-3 w-3" aria-hidden="true" />{idea.expired ? "Истекла" : `до ${fmtValidUntil(idea.validUntil)}`}
+                  <Hourglass className="h-3 w-3" aria-hidden="true" />{idea.expired ? "Истекла" : `до ${fmtDate(idea.validUntil, "dayMonth")}`}
                 </Pill>
               </span>
             )}
@@ -373,8 +365,8 @@ export function IdeaDetailSheet({
               <StatRow label="Стоп" value={idea.stop || "—"} tone="down" />
               <StatRow label="Риск на акцию" value={plan.riskPerShare != null ? `$${fmtPrice(plan.riskPerShare)}` : "—"} />
               {plan.rrFinal != null && plan.targets.length > 1 && <StatRow label="R:R до последней цели" value={plan.rrFinal.toFixed(2)} tone={rrTone(plan.rrFinal)} />}
-              <StatRow label="Риск, $" value={risk != null ? `$${risk.toLocaleString("ru-RU")}` : "—"} />
-              {shares != null && <StatRow label="Объём по риску" value={`${shares.toLocaleString("ru-RU")} акций`} />}
+              <StatRow label="Риск, $" value={risk != null ? fmtUsd(risk, { decimals: "trim" }) : "—"} />
+              {shares != null && <StatRow label="Объём по риску" value={`${fmtCount(shares)} акций`} />}
               <StatRow label="Score" value={idea.score ?? "—"} tone={idea.score != null ? scoreTone(idea.score) : "neutral"} />
             </div>
             {plan.issues.length > 0 && (
@@ -391,14 +383,14 @@ export function IdeaDetailSheet({
           {tracking ? (
             <Section
               title="Отслеживание"
-              action={<span className="flex items-center gap-1 text-2xs text-muted-foreground"><Radar className="h-3 w-3" aria-hidden="true" />часовые свечи с {new Date(tracking.since).toLocaleDateString("ru-RU", { day: "numeric", month: "short" })}</span>}
+              action={<span className="flex items-center gap-1 text-2xs text-muted-foreground"><Radar className="h-3 w-3" aria-hidden="true" />часовые свечи с {fmtDate(tracking.since, "dayMonth")}</span>}
             >
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                 <div><div className="text-xs text-muted-foreground">Цена</div><div className="text-lg font-semibold tabular-nums">{fmtPrice(tracking.price)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Сейчас</div><div className={cn("text-lg font-semibold tabular-nums", toneOf(tracking.rNow) === "up" ? "text-up" : toneOf(tracking.rNow) === "down" ? "text-down" : "")}>{fmtR(tracking.rNow, 2)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Сейчас</div><div className={cn("text-lg font-semibold tabular-nums", toneOf(tracking.rNow) === "up" ? "text-up" : toneOf(tracking.rNow) === "down" ? "text-down" : "")}>{fmtR(tracking.rNow)}</div></div>
                 {/* Excursions from the planned entry: a price that never went past entry shows 0R, not a wrong-signed number. */}
-                <div><div className="text-xs text-muted-foreground">Макс. в плюс</div><div className="text-lg font-semibold tabular-nums text-up">{fmtR(tracking.mfeR != null ? Math.max(0, tracking.mfeR) : null, 2)}</div></div>
-                <div><div className="text-xs text-muted-foreground">Макс. в минус</div><div className="text-lg font-semibold tabular-nums text-down">{fmtR(tracking.maeR != null ? Math.min(0, tracking.maeR) : null, 2)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Макс. в плюс</div><div className="text-lg font-semibold tabular-nums text-up">{fmtR(tracking.mfeR != null ? Math.max(0, tracking.mfeR) : null)}</div></div>
+                <div><div className="text-xs text-muted-foreground">Макс. в минус</div><div className="text-lg font-semibold tabular-nums text-down">{fmtR(tracking.maeR != null ? Math.min(0, tracking.maeR) : null)}</div></div>
               </div>
               <div className="mt-3"><OutcomeChips idea={idea} tracking={tracking} /></div>
             </Section>

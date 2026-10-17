@@ -18,7 +18,8 @@ import {
   fetchSingleDayWithCache,
   fetchDailyRange,
   readCachedDay,
-} from "./candles";
+} from "../lib/candles/market";
+import { badRequest, notFound } from "../lib/http";
 
 /**
  * Execution quality (MFE / MAE / exit efficiency / left on the table…) of journal trades,
@@ -382,11 +383,11 @@ router.get("/trades/quality", asyncHandler(batchHandler));
 // Single: GET /api/trades/:id/quality
 router.get("/trades/:id/quality", asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "invalid trade id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const afterExit = parseAfterExit(req.query.afterExit);
   const refresh = req.query.refresh === "1";
   const rows = await loadTrades([id]);
-  if (!rows.length) { res.status(404).json({ error: "trade not found" }); return; }
+  if (!rows.length) throw notFound("TRADE_NOT_FOUND");
   const visible = await visibleTrades(req, rows);
   if (!visible.length) { res.status(403).json({ error: "Можно смотреть качество только своих трейдов" }); return; }
   const { items } = await resolveMany(req, visible, afterExit, refresh, 1);

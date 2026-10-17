@@ -7,13 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { cn } from "@/lib/utils";
-import {
-  HORIZON_LABEL, feesOf, fmtDayShort, fmtMoney, fmtPct, fmtR, grossPnl, netPnl, plural, signedR, splitTags, tradeOutcome,
-  tradeRiskPct, type Trade,
-} from "./utils";
-
-// Kept for existing importers; the single definition lives in utils.
-export { plural } from "./utils";
+import { HORIZON_LABEL, feesOf, grossPnl, netPnl, signedR, splitTags, tradeOutcome, tradeRiskPct, type Trade } from "./utils";
+import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type RuleViolation = {
   id: number;
@@ -126,7 +122,7 @@ export function DayTrades({
     <Panel
       title="Сделки дня"
       icon={ListOrdered}
-      description={trades.length > 0 ? `${trades.length} ${plural(trades.length, "сделка", "сделки", "сделок")}` : undefined}
+      description={trades.length > 0 ? commonI18n.t("units.trades", { count: trades.length }) : undefined}
       actions={
         visible.length > 0 ? (
           <Button
@@ -168,7 +164,7 @@ export function DayTrades({
               {tickers.map(([k, g]) => (
                 <FilterChip key={k} active={activeTicker === k} onClick={() => setTicker(activeTicker === k ? null : k)}>
                   <span className="font-semibold">{k}</span>
-                  <span className={cn("tabular-nums", toneText(toneOf(g.net ?? g.r)))}>{g.net != null ? fmtMoney(g.net) : g.r != null ? fmtR(g.r, 1) : g.count}</span>
+                  <span className={cn("tabular-nums", toneText(toneOf(g.net ?? g.r)))}>{g.net != null ? fmtUsd(g.net, { signed: true, decimals: "auto" }) : g.r != null ? fmtR(g.r, 1) : g.count}</span>
                 </FilterChip>
               ))}
             </div>
@@ -299,10 +295,10 @@ function TradeItem({
             {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
             {t.setup && <span className="truncate text-xs text-muted-foreground">{t.setup}</span>}
             {t.horizon && t.horizon !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizon] ?? t.horizon}</Pill>}
-            {carriedFrom && <Pill>с {fmtDayShort(carriedFrom)}</Pill>}
+            {carriedFrom && <Pill>с {fmtDate(carriedFrom, "dayMonth")}</Pill>}
             {closesToday && <Pill tone="accent">закрыта в этот день</Pill>}
             {openedHere !== undefined && (
-              <Pill tone="purple">{openedHere ? `открыта, закрыта ${fmtDayShort(openedHere)}` : "открыта, ещё держится"}</Pill>
+              <Pill tone="purple">{openedHere ? `открыта, закрыта ${fmtDate(openedHere, "dayMonth")}` : "открыта, ещё держится"}</Pill>
             )}
             {violations.length > 0 && (
               <Pill tone="warn"><ShieldAlert className="h-3 w-3" aria-hidden="true" />{violations.length}</Pill>
@@ -319,7 +315,7 @@ function TradeItem({
         </span>
         <span className="flex shrink-0 flex-col items-end">
           {net != null ? (
-            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtMoney(net)}</span>
+            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
           ) : (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(r)))}>{r != null ? fmtR(r) : OUTCOME_LABEL[outcome]}</span>
           )}
@@ -348,18 +344,18 @@ function TradeItem({
                 <Fact label="Вход" value={t.entry} />
                 <Fact label="Выход" value={t.exit} />
                 <Fact label="Стоп" value={t.stop} />
-                <Fact label="Риск на акцию" value={riskPct != null ? fmtPct(riskPct) : null} />
+                <Fact label="Риск на акцию" value={riskPct != null ? fmtRate(riskPct) : null} />
                 <Fact label="Удержание" value={t.holdTime} />
                 <Fact label="Проскальзывание" value={t.slippage != null ? `${t.slippage}¢` : null} />
                 <Fact label="RVOL" value={t.relativeVolume != null ? `${t.relativeVolume}×` : null} />
                 <Fact label="Результат" value={OUTCOME_LABEL[outcome]} />
-                <Fact label="Кол-во" value={t.qty != null ? t.qty.toLocaleString("en-US") : null} />
-                <Fact label="P&L брутто" value={gross != null ? fmtMoney(gross) : null} />
-                <Fact label="Комиссии" value={fees != null ? fmtMoney(-fees) : null} />
-                <Fact label="P&L нетто" value={net != null ? fmtMoney(net) : null} />
-                <Fact label="Риск, $" value={t.riskUsd != null ? fmtMoney(t.riskUsd, false) : null} />
+                <Fact label="Кол-во" value={t.qty != null ? fmtCount(t.qty) : null} />
+                <Fact label="P&L брутто" value={gross != null ? fmtUsd(gross, { signed: true, decimals: "auto" }) : null} />
+                <Fact label="Комиссии" value={fees != null ? fmtUsd(-fees, { signed: true, decimals: "auto" }) : null} />
+                <Fact label="P&L нетто" value={net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : null} />
+                <Fact label="Риск, $" value={t.riskUsd != null ? fmtUsd(Math.abs(t.riskUsd), { decimals: "auto" }) : null} />
                 <Fact label="Горизонт" value={t.horizon ? HORIZON_LABEL[t.horizon] ?? t.horizon : null} />
-                <Fact label="Дата выхода" value={t.exitDate ? fmtDayShort(t.exitDate) : null} />
+                <Fact label="Дата выхода" value={t.exitDate ? fmtDate(t.exitDate, "dayMonth") : null} />
               </dl>
 
               {hasText && (
@@ -433,7 +429,7 @@ function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
   const sum = (k: keyof TickerAgg) =>
     rows.reduce<number | null>((acc, [, g]) => (g[k] == null ? acc : (acc ?? 0) + (g[k] as number)), null);
   const total: TickerAgg = { count: sum("count") ?? 0, r: sum("r"), qty: sum("qty"), gross: sum("gross"), fees: sum("fees"), net: sum("net") };
-  const money = (v: number | null) => (v == null ? "—" : fmtMoney(v));
+  const money = (v: number | null) => (v == null ? "—" : fmtUsd(v, { signed: true, decimals: "auto" }));
   const showQty = total.qty != null;
   const showMoney = total.gross != null || total.fees != null;
   const showR = total.r != null;
@@ -441,9 +437,9 @@ function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
   if (!showQty && !showMoney) return null;
   const cells = (g: TickerAgg) => [
     <td key="n" className="px-2 py-1.5 text-right">{g.count}</td>,
-    showQty && <td key="q" className="px-2 py-1.5 text-right">{g.qty != null ? g.qty.toLocaleString("en-US") : "—"}</td>,
+    showQty && <td key="q" className="px-2 py-1.5 text-right">{g.qty != null ? fmtCount(g.qty) : "—"}</td>,
     showMoney && <td key="g" className={cn("px-2 py-1.5 text-right", toneText(toneOf(g.gross)))}>{money(g.gross)}</td>,
-    showMoney && <td key="f" className="px-2 py-1.5 text-right text-muted-foreground">{g.fees != null ? fmtMoney(-g.fees) : "—"}</td>,
+    showMoney && <td key="f" className="px-2 py-1.5 text-right text-muted-foreground">{g.fees != null ? fmtUsd(-g.fees, { signed: true, decimals: "auto" }) : "—"}</td>,
     showMoney && <td key="t" className={cn("px-2 py-1.5 text-right font-medium", toneText(toneOf(g.net)))}>{money(g.net)}</td>,
     showR && <td key="r" className={cn("px-2 py-1.5 text-right font-medium", toneText(toneOf(g.r)))}>{fmtR(g.r)}</td>,
   ];

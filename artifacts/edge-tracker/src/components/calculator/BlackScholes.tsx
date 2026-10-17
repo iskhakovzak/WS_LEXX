@@ -7,8 +7,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import {
-  analyzePayoff, blackScholes, fetchQuote, fmtNum, fmtPct, fmtUsd, fmtUsdSigned, normCdf, num, pnlAtExpiry, pnlNow, type Leg,
+  analyzePayoff, blackScholes, fetchQuote, normCdf, num, pnlAtExpiry, pnlNow, type Leg,
 } from "./lib";
+import { fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { MetricTile, NumField, PresetChips } from "./fields";
 import { PayoffChart } from "./PayoffChart";
 import type { OpenInBuilderParams } from "./OptionsSection";
@@ -209,7 +210,7 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
                 <span className="flex min-h-5 items-center gap-1 text-xs text-muted-foreground">Статус опциона <OptTerm term="itm" /></span>
                 <div className="flex h-9 items-center gap-2">
                   <Pill tone={r.status === "ITM" ? "up" : r.status === "OTM" ? "down" : "warn"}>{r.status}</Pill>
-                  <span className="text-xs tabular-nums text-muted-foreground">{fmtPct(r.moneyness, 2, true)} от страйка</span>
+                  <span className="text-xs tabular-nums text-muted-foreground">{fmtPct(r.moneyness, 2)} от страйка</span>
                 </div>
               </div>
             </div>
@@ -218,30 +219,30 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
 
         <div className="flex min-w-0 flex-col gap-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <StatCard label={`${posName}, $ за акцию`} value={fmtUsd(r.optPrice, 2)} tone={r.isCall ? "up" : "down"}
-              hint={r.useUser ? `теор. ${fmtUsd(r.bs.price, 2)}` : `Call ${fmtUsd(r.call.price, 2)} · Put ${fmtUsd(r.put.price, 2)}`} />
-            <StatCard label={r.sell ? "Получите премии" : "Заплатите"} value={fmtUsd(r.cost, 0)} tone={r.sell ? "up" : "neutral"} hint={`${r.N} × 100 акц.`} />
-            <StatCard label={<OptTerm term="breakeven">Безубыток</OptTerm>} value={fmtUsd(r.breakeven, 2)} tone="accent" hint={r.S > 0 ? `${fmtPct(((r.breakeven - r.S) / r.S) * 100, 1, true)} от спота` : undefined} />
-            <StatCard label={<OptTerm term="probProfit">Шанс прибыли</OptTerm>} value={probProfit != null ? fmtPct(probProfit * 100, 0) : "—"}
-              hint={r.probItm != null ? `ITM ${fmtPct(r.probItm * 100, 0)}` : "нужны дни и IV"} />
+            <StatCard label={`${posName}, $ за акцию`} value={fmtUsd(r.optPrice)} tone={r.isCall ? "up" : "down"}
+              hint={r.useUser ? `теор. ${fmtUsd(r.bs.price)}` : `Call ${fmtUsd(r.call.price)} · Put ${fmtUsd(r.put.price)}`} />
+            <StatCard label={r.sell ? "Получите премии" : "Заплатите"} value={fmtUsd(r.cost, { decimals: 0 })} tone={r.sell ? "up" : "neutral"} hint={`${r.N} × 100 акц.`} />
+            <StatCard label={<OptTerm term="breakeven">Безубыток</OptTerm>} value={fmtUsd(r.breakeven)} tone="accent" hint={r.S > 0 ? `${fmtPct(((r.breakeven - r.S) / r.S) * 100, 1)} от спота` : undefined} />
+            <StatCard label={<OptTerm term="probProfit">Шанс прибыли</OptTerm>} value={probProfit != null ? fmtPct(probProfit * 100, { decimals: 0, signed: false }) : "—"}
+              hint={r.probItm != null ? `ITM ${fmtPct(r.probItm * 100, { decimals: 0, signed: false })}` : "нужны дни и IV"} />
           </div>
 
           <Panel title="Деньги и греки" description={`${posName} · ${r.N} контр.`}>
             <div className="flex flex-col gap-3">
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                <MetricTile label="Макс. прибыль" value={r.summary.maxProfit === null ? "без лимита" : fmtUsd(r.summary.maxProfit, 0)} tone="text-up" />
-                <MetricTile label="Макс. убыток" term="maxLoss" value={r.summary.maxLoss === null ? "без лимита" : fmtUsd(-r.summary.maxLoss, 0)} tone="text-down"
+                <MetricTile label="Макс. прибыль" value={r.summary.maxProfit === null ? "без лимита" : fmtUsd(r.summary.maxProfit, { decimals: 0 })} tone="text-up" />
+                <MetricTile label="Макс. убыток" term="maxLoss" value={r.summary.maxLoss === null ? "без лимита" : fmtUsd(-r.summary.maxLoss, { decimals: 0 })} tone="text-down"
                   sub={r.sell ? "проданный опцион — риск большой" : "не больше уплаченной премии"} />
-                <MetricTile label="Внутренняя стоимость" term="intrinsic" value={fmtUsd(r.intrinsic, 2)} sub="за акцию" />
-                <MetricTile label="Временная стоимость" term="timeValue" value={fmtUsd(r.timeValue, 2)} sub="сгорит к экспирации" tone="text-[hsl(var(--chart-3))]" />
+                <MetricTile label="Внутренняя стоимость" term="intrinsic" value={fmtUsd(r.intrinsic)} sub="за акцию" />
+                <MetricTile label="Временная стоимость" term="timeValue" value={fmtUsd(r.timeValue)} sub="сгорит к экспирации" tone="text-[hsl(var(--chart-3))]" />
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
-                <MetricTile label="Δ Delta" term="delta" value={fmtNum(r.sign * r.bs.delta, 3)} sub={`позиция ${fmtUsdSigned(r.sign * r.bs.delta * r.N * 100, 0)} на $1`} />
+                <MetricTile label="Δ Delta" term="delta" value={fmtNum(r.sign * r.bs.delta, 3)} sub={`позиция ${fmtUsd(r.sign * r.bs.delta * r.N * 100, { signed: true, decimals: 0 })} на $1`} />
                 <MetricTile label="Γ Gamma" term="gamma" value={fmtNum(r.sign * r.bs.gamma, 4)} sub="изменение Δ на $1" />
-                <MetricTile label="Θ Theta / день" value={fmtUsdSigned(r.sign * r.bs.theta * r.N * 100, 0)} sub={`${fmtNum(r.sign * r.bs.theta, 3)} за акцию`}
+                <MetricTile label="Θ Theta / день" value={fmtUsd(r.sign * r.bs.theta * r.N * 100, { signed: true, decimals: 0 })} sub={`${fmtNum(r.sign * r.bs.theta, 3)} за акцию`}
                   tone={r.sign * r.bs.theta >= 0 ? "text-up" : "text-down"} term="theta" />
-                <MetricTile label="ν Vega / +1% IV" term="vega" value={fmtUsdSigned(r.sign * r.bs.vega * r.N * 100, 0)} sub={`${fmtNum(r.sign * r.bs.vega, 3)} за акцию`} />
-                <MetricTile label="ρ Rho / +1%" term="rho" value={fmtUsdSigned(r.sign * r.bs.rho * r.N * 100, 0)} sub="ставки" className="col-span-2 sm:col-span-1" />
+                <MetricTile label="ν Vega / +1% IV" term="vega" value={fmtUsd(r.sign * r.bs.vega * r.N * 100, { signed: true, decimals: 0 })} sub={`${fmtNum(r.sign * r.bs.vega, 3)} за акцию`} />
+                <MetricTile label="ρ Rho / +1%" term="rho" value={fmtUsd(r.sign * r.bs.rho * r.N * 100, { signed: true, decimals: 0 })} sub="ставки" className="col-span-2 sm:col-span-1" />
               </div>
               {r.validBs && (
                 <GreeksInWords
@@ -286,10 +287,10 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
             <tbody>
               {r.scenarios.map((x) => (
                 <tr key={x.pct} className={cn("border-b border-border/40 last:border-0", x.pct === 0 && "bg-[var(--glass-bg)]")}>
-                  <td className={cn("py-1.5 pr-2", x.pct > 0 ? "text-up" : x.pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(x.pct, 0, true)}</td>
-                  <td className="px-2 py-1.5 text-right">{fmtUsd(x.x, 2)}</td>
-                  <td className={cn("px-2 py-1.5 text-right", x.half >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(x.half)}</td>
-                  <td className={cn("py-1.5 pl-2 text-right font-medium", x.exp >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(x.exp)}</td>
+                  <td className={cn("py-1.5 pr-2", x.pct > 0 ? "text-up" : x.pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(x.pct, 0)}</td>
+                  <td className="px-2 py-1.5 text-right">{fmtUsd(x.x)}</td>
+                  <td className={cn("px-2 py-1.5 text-right", x.half >= 0 ? "text-up" : "text-down")}>{fmtUsd(x.half, { signed: true, decimals: 0 })}</td>
+                  <td className={cn("py-1.5 pl-2 text-right font-medium", x.exp >= 0 ? "text-up" : "text-down")}>{fmtUsd(x.exp, { signed: true, decimals: 0 })}</td>
                 </tr>
               ))}
             </tbody>
@@ -304,7 +305,7 @@ export default function BlackScholesView({ s, onOpenInBuilder }: { s: BsInputs; 
 /** Greeks as one plain sentence: what happens to the position in $ on a $1 move, one day and +1 pt of IV. */
 export function GreeksInWords({ delta, theta, vega, className }: { delta: number; theta: number; vega: number; className?: string }) {
   const part = (v: number, up: string, down: string) => (
-    <span className={cn("font-medium tabular-nums", v >= 0 ? "text-up" : "text-down")}>{v >= 0 ? up : down} {fmtUsd(Math.abs(v), 0)}</span>
+    <span className={cn("font-medium tabular-nums", v >= 0 ? "text-up" : "text-down")}>{v >= 0 ? up : down} {fmtUsd(Math.abs(v), { decimals: 0 })}</span>
   );
   return (
     <p className={cn("rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs leading-relaxed text-muted-foreground", className)}>

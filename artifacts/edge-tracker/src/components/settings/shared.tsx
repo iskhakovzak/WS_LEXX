@@ -4,45 +4,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Tone } from "@/components/ds";
 
-/** Reads `{error}` from a failed response, with a readable fallback. */
-export async function readApiError(res: Response, fallback = "Ошибка"): Promise<string> {
-  const data = (await res.json().catch(() => null)) as { error?: string } | null;
-  return data?.error || `${fallback} (HTTP ${res.status})`;
-}
-
-/** Thrown by fetchJson so callers can branch on status (e.g. 404 → endpoint not deployed yet). */
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-/** GET JSON from the API (auth header is added globally by install-fetch-auth). */
-export async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  if (!r.ok) throw new HttpError(r.status, await readApiError(r));
-  return (await r.json()) as T;
-}
-
 export const ROLE_LABEL: Record<string, string> = { trader: "Трейдер", curator: "Куратор", admin: "Админ" };
 export const ROLE_TONE: Record<string, Tone> = { trader: "accent", curator: "purple", admin: "warn" };
 
 export const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
-
-const usd0 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
-const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export function fmtUsd(n: number | null | undefined, precise = false): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return (precise ? usd2 : usd0).format(n);
-}
-
-export function fmtDate(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso.length === 10 ? `${iso}T12:00:00` : iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
-}
 
 /** "сегодня", "вчера", "5 дн. назад" for YYYY-MM-DD dates. */
 export function fmtDaysAgo(ymd: string | null | undefined): string {

@@ -6,7 +6,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type JournalEntry } from "./use-journal-days";
 import type { ReviewMark } from "./MonthCalendar";
-import { type DayStats, WEEKDAYS_SHORT, addDays, dayValue, fmtDayShort, fmtPct, fmtUnit, parseDate, pickUnit } from "./utils";
+import { type DayStats, addDays, dayValue, fmtUnit, parseDate, pickUnit, weekdaysShortMonFirst } from "./utils";
+import { fmtDate, fmtRate } from "@/lib/format";
 
 /**
  * Compact week strip inside the journal: Mon–Fri bars with review marks, the week's net / win rate / green-red days,
@@ -76,7 +77,7 @@ export function WeekReview({
     <Panel
       title="Неделя"
       icon={CalendarRange}
-      description={`${fmtDayShort(days[0])} — ${fmtDayShort(days[4])}`}
+      description={`${fmtDate(days[0], "dayMonth")} — ${fmtDate(days[4], "dayMonth")}`}
       actions={
         weeklyHref ? (
           <Button asChild variant="ghost" size="sm">
@@ -88,7 +89,7 @@ export function WeekReview({
       <div className="space-y-4">
         <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
           <Cell label="Итог" value={agg.total != null ? fmtUnit(agg.total, unit) : "—"} tone={toneText(toneOf(agg.total))} />
-          <Cell label="Винрейт" value={decided ? fmtPct(agg.wins / decided) : "—"} hint={agg.trades ? `${agg.trades} сд.` : undefined} />
+          <Cell label="Винрейт" value={decided ? fmtRate(agg.wins / decided) : "—"} hint={agg.trades ? `${agg.trades} сд.` : undefined} />
           <Cell
             label="Дни + / −"
             value={agg.traded ? <><span className="text-up">{agg.green}</span> / <span className="text-down">{agg.red}</span></> : "—"}
@@ -109,7 +110,7 @@ export function WeekReview({
                 type="button"
                 onClick={() => onSelect(d)}
                 aria-pressed={isActive}
-                aria-label={`${fmtDayShort(d)}: ${s ? `${s.trades} сделок, ${fmtUnit(v, unit, 2)}` : "нет сделок"}`}
+                aria-label={`${fmtDate(d, "dayMonth")}: ${s ? `${s.trades} сделок, ${fmtUnit(v, unit, 2)}` : "нет сделок"}`}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-xl p-1.5 transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                   isActive && "bg-[var(--glass-hover-bg)] ring-1 ring-primary",
@@ -125,7 +126,7 @@ export function WeekReview({
                   />
                 </span>
                 <span className={cn("flex items-center gap-1 text-2xs", d === today ? "font-semibold text-primary" : "text-muted-foreground")}>
-                  {WEEKDAYS_SHORT[i]} {parseDate(d).getDate()}
+                  {weekdaysShortMonFirst()[i]} {parseDate(d).getDate()}
                   {showJournal && mark === "reviewed" && <CheckCheck className="h-3 w-3 text-up" aria-label="проверен куратором" />}
                 </span>
                 {showJournal && mark && mark !== "reviewed" && (
@@ -151,7 +152,7 @@ export function WeekReview({
                     onClick={() => onSelect(l.d)}
                     className="w-full rounded-lg px-2 py-1 text-left text-xs transition-colors hover:bg-[var(--glass-hover-bg)]"
                   >
-                    <span className="mr-2 tabular-nums text-muted-foreground">{fmtDayShort(l.d)}</span>
+                    <span className="mr-2 tabular-nums text-muted-foreground">{fmtDate(l.d, "dayMonth")}</span>
                     <span className="line-clamp-2 inline text-foreground/90">{l.text}</span>
                   </button>
                 </li>

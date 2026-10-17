@@ -5,10 +5,11 @@ import { Eye, Lightbulb, LineChart, ArrowUpRight, Filter } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtPrice, pluralRu } from "@/lib/format";
 
 type TickerContextData = {
   ticker: string;
@@ -21,22 +22,11 @@ type TickerContextData = {
 const WATCH_STATUS: Record<string, string> = { watching: "Наблюдаем", active: "Активен", triggered: "Сработал", closed: "Закрыт", archived: "Архив" };
 const IDEA_STATUS: Record<string, string> = { draft: "Черновик", published: "Опубликована", active: "Активна", closed: "Закрыта", converted: "В сделке", invalidated: "Отменена" };
 
-function fmtPrice(v: string | null) {
-  if (v == null || v === "") return "—";
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }) : v;
-}
-
 function TickerContextBody({ ticker, onFilter }: { ticker: string; onFilter?: (t: string) => void }) {
   const { data, isLoading, isError } = useQuery<TickerContextData>({
     queryKey: ["discussions-ticker-context", ticker],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/discussions/ticker-context/${encodeURIComponent(ticker)}`);
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Ошибка загрузки");
-      return body as TickerContextData;
-    },
-    staleTime: 60_000,
+    queryFn: ({ signal }) => http.get<TickerContextData>(`/api/discussions/ticker-context/${encodeURIComponent(ticker)}`, { signal }),
+    staleTime: STALE.short,
   });
 
   return (

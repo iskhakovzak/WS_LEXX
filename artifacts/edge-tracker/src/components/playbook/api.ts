@@ -1,43 +1,20 @@
-/** Data hooks + request helper for the playbook page. Query keys are shared with other pages — keep them stable. */
+/** Data hooks for the playbook page (requests: lib/api/http). Query keys are shared with other pages — keep them stable. */
 import { useMemo } from "react";
 import { useQuery, type QueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound, nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { useAuth } from "@/contexts/auth-context";
 import type {
   ActivityItem, FolderSetting, PickerTrade, PlaybookEntry, SetupExample, SetupStats, SetupSummary, ViewerLike,
 } from "./model";
 
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  data: any;
-  constructor(message: string, status: number, data: any) {
-    super(message);
-    this.status = status;
-    this.code = data?.code;
-    this.data = data;
-  }
-}
-
-/** fetch + JSON + readable error (server `error` field when present). */
-export async function pbRequest<T = any>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const { json, ...rest } = init ?? {};
-  const r = await fetch(`${BASE}${path}`, {
-    ...rest,
-    headers: json !== undefined ? { "Content-Type": "application/json", ...(rest.headers ?? {}) } : rest.headers,
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new ApiError(data?.error ?? `HTTP ${r.status}`, r.status, data);
-  return data as T;
-}
-
 export function usePlaybookEntries() {
   return useQuery<PlaybookEntry[]>({
     queryKey: ["playbook"],
-    queryFn: () => pbRequest<PlaybookEntry[]>("/api/playbook"),
+    queryFn: ({ signal }) => http.get<PlaybookEntry[]>("/api/playbook", { signal }),
     // ~300 KB: don't refetch on every visit; every write invalidates this key anyway.
-    staleTime: 30_000,
+    staleTime: STALE.default,
   });
 }
 
@@ -56,13 +33,10 @@ export function usePlaybookSummary() {
   const qs = userKey ? `?userKey=${encodeURIComponent(userKey)}` : "";
   const q = useQuery<SetupSummary[]>({
     queryKey: ["playbook-summary", userKey],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/summary${qs}`);
-      if (!r.ok) throw new Error(`summary ${r.status}`); // keeps isSuccess=false so the UI shows "—" instead of fake zeros
-      const j = await r.json().catch(() => []);
-      return Array.isArray(j) ? j : [];
-    },
-    staleTime: 30_000,
+    // An error keeps isSuccess=false so the UI shows "—" instead of fake zeros.
+    queryFn: ({ signal }) =>
+      http.get<SetupSummary[]>(`/api/playbook/summary${qs}`, { signal }).then((j) => (Array.isArray(j) ? j : [])),
+    staleTime: STALE.default,
     retry: 1,
   });
   const map = useMemo(() => new Map((q.data ?? []).map((s) => [s.id, s])), [q.data]);
@@ -72,13 +46,12 @@ export function usePlaybookSummary() {
 export function useFolderSettings() {
   return useQuery<FolderSetting[]>({
     queryKey: ["playbook-folder-settings"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/folder-settings`);
-      if (!r.ok) return [];
-      const j = await r.json();
-      return Array.isArray(j) ? j : [];
-    },
-    staleTime: 30_000,
+    queryFn: ({ signal }) =>
+      http
+        .get<FolderSetting[]>("/api/playbook/folder-settings", { signal })
+        .then((j) => (Array.isArray(j) ? j : []))
+        .catch(() => []),
+    staleTime: STALE.default,
   });
 }
 
@@ -86,10 +59,10 @@ export function usePlaybookActivity(enabled: boolean) {
   return useQuery<ActivityItem[]>({
     queryKey: ["playbook-activity"],
     queryFn: async () => {
-      const all = await pbRequest<any[]>("/api/activity");
+      const all = await http.get<any[]>("/api/activity");
       return (Array.isArray(all) ? all : []).filter((a: any) => a.section === "playbook").slice(0, 40);
     },
-    staleTime: 30_000,
+    staleTime: STALE.default,
     enabled,
   });
 }
@@ -130,12 +103,8 @@ export type PlaybookMe = {
 export function usePlaybookMe() {
   return useQuery<PlaybookMe | null>({
     queryKey: ["playbook-me"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/me`);
-      if (!r.ok) return null;
-      return (await r.json().catch(() => null)) as PlaybookMe | null;
-    },
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<PlaybookMe>("/api/playbook/me", { signal }).catch(() => null),
+    staleTime: STALE.long,
     retry: false,
   });
 }
@@ -159,16 +128,16 @@ export function usePlaybookViewer(): ViewerLike & { mayShare: boolean; live: boo
 
 /** 404 from a route that only exists after the API restart → a readable message. */
 export function notLiveMessage(e: unknown): string | null {
-  return e instanceof ApiError && e.status === 404 && !e.data?.error ? "Функция включится после обновления сервера" : null;
+  return e instanceof ApiError && e.status === 404 && !e.field("error") ? "Функция включится после обновления сервера" : null;
 }
 
 export function useSetupExamples(id: number | null, enabled = true) {
   return useQuery<SetupExample[]>({
     queryKey: ["playbook-examples", id],
-    queryFn: () => pbRequest<SetupExample[]>(`/api/playbook/${id}/examples`),
+    queryFn: ({ signal }) => http.get<SetupExample[]>(`/api/playbook/${id}/examples`, { signal }),
     enabled: !!id && enabled,
     staleTime: 15_000,
-    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1,
+    retry: (n, e) => !isNotFound(e) && n < 1,
   });
 }
 
@@ -189,10 +158,10 @@ export function useGallery(f: GalleryFilter, enabled = true) {
   const s = qs.toString();
   return useQuery<SetupExample[]>({
     queryKey: ["playbook-gallery", s],
-    queryFn: () => pbRequest<SetupExample[]>(`/api/playbook-tools/gallery?${s}`),
+    queryFn: ({ signal }) => http.get<SetupExample[]>(`/api/playbook-tools/gallery?${s}`, { signal }),
     enabled,
-    staleTime: 30_000,
-    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1,
+    staleTime: STALE.default,
+    retry: (n, e) => !isNotFound(e) && n < 1,
   });
 }
 
@@ -209,11 +178,11 @@ export function useTradePicker(f: PickerFilter, enabled: boolean) {
   const s = qs.toString();
   return useQuery<PickerResponse>({
     queryKey: ["playbook-trade-picker", s],
-    queryFn: () => pbRequest<PickerResponse>(`/api/playbook-tools/trade-picker?${s}`),
+    queryFn: ({ signal }) => http.get<PickerResponse>(`/api/playbook-tools/trade-picker?${s}`, { signal }),
     enabled,
     staleTime: 15_000,
     placeholderData: (prev) => prev,
-    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1,
+    retry: (n, e) => !isNotFound(e) && n < 1,
   });
 }
 
@@ -221,10 +190,10 @@ export function useSetupStats(id: number | null, enabled = true) {
   const userKey = useUserKey();
   return useQuery<SetupStats>({
     queryKey: ["playbook-stats", id, userKey],
-    queryFn: () => pbRequest<SetupStats>(`/api/playbook/${id}/stats${userKey ? `?userKey=${encodeURIComponent(userKey)}` : ""}`),
+    queryFn: ({ signal }) => http.get<SetupStats>(`/api/playbook/${id}/stats`, { query: { userKey }, signal }),
     enabled: !!id && enabled,
-    staleTime: 30_000,
-    retry: (n, e) => !(e instanceof ApiError && e.status === 404) && n < 1,
+    staleTime: STALE.default,
+    retry: (n, e) => !isNotFound(e) && n < 1,
   });
 }
 
@@ -232,9 +201,9 @@ export type ShareTargets = { users: { name: string; role: string }[]; cohorts: {
 export function useShareTargets(enabled: boolean) {
   return useQuery<ShareTargets>({
     queryKey: ["playbook-share-targets"],
-    queryFn: () => pbRequest<ShareTargets>("/api/playbook-tools/share-targets"),
+    queryFn: ({ signal }) => http.get<ShareTargets>("/api/playbook-tools/share-targets", { signal }),
     enabled,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: false,
   });
 }
@@ -268,16 +237,10 @@ export type InboxResponse = { trader: string | null; days: number; total: number
 export function usePlaybookInbox(days = 14, enabled = true) {
   return useQuery<InboxResponse | null>({
     queryKey: ["playbook-inbox", days],
-    queryFn: async () => {
-      try {
-        return await pbRequest<InboxResponse>(`/api/playbook-tools/inbox?days=${days}&limit=40`);
-      } catch (e) {
-        if (e instanceof ApiError && e.status === 404) return null;
-        throw e;
-      }
-    },
+    queryFn: ({ signal }) =>
+      http.get<InboxResponse>("/api/playbook-tools/inbox", { query: { days, limit: 40 }, signal }).catch(nullIfMissing),
     enabled,
-    staleTime: 30_000,
+    staleTime: STALE.default,
     retry: 1,
   });
 }

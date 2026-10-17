@@ -8,7 +8,8 @@ import { EmptyState, Panel, Pill, StatRow } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { HORIZON_LABEL, fmtPrice, fmtSigned, fmtUsd, useDismissPending, useKeepSeparate, useMerge, type ManualCandidate, type PendingTrade } from "./api";
+import { HORIZON_LABEL, fmtPrice, useDismissPending, useKeepSeparate, useMerge, type ManualCandidate, type PendingTrade } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { ExecutionsList, FeesBreakdown, resultTone } from "./preview-table";
 
 function Side({ title, tone, children }: { title: React.ReactNode; tone: "accent" | "neutral"; children: React.ReactNode }) {
@@ -32,7 +33,7 @@ function Candidate({ c, selected, onSelect }: { c: ManualCandidate; selected: bo
         {c.playbookId != null && <Pill tone="purple">плейбук #{c.playbookId}</Pill>}
       </div>
       <div className="mt-1 grid grid-cols-4 gap-x-2 text-muted-foreground">
-        <span>вход {fmtPrice(c.entry)}</span><span>выход {fmtPrice(c.exit)}</span><span>объём {c.qty ?? "—"}</span><span>net {fmtSigned(net)}</span>
+        <span>вход {fmtPrice(c.entry)}</span><span>выход {fmtPrice(c.exit)}</span><span>объём {c.qty ?? "—"}</span><span>net {fmtUsd(net, { signed: true })}</span>
       </div>
       {c.notes && <div className="mt-1 line-clamp-2 text-muted-foreground" title={c.notes}>{c.notes}</div>}
     </button>
@@ -63,17 +64,17 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
           <span className="text-muted-foreground">{p.date}{t.exitDate && t.exitDate !== p.date ? ` → ${t.exitDate}` : ""}</span>
           <Pill tone="neutral">{p.trader}</Pill>
           {p.account && <Pill tone="neutral">{p.account}</Pill>}
-          <Pill tone={resultTone(t.result)}>{fmtSigned(t.netPnl)} net</Pill>
+          <Pill tone={resultTone(t.result)}>{fmtUsd(t.netPnl, { signed: true })} net</Pill>
         </div>
-        <span className="text-2xs text-muted-foreground">в очереди с {new Date(p.createdAt).toLocaleDateString("ru-RU")}</span>
+        <span className="text-2xs text-muted-foreground">в очереди с {fmtDate(p.createdAt, "short")}</span>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-2">
         <Side title="Из PropReports (брокер)" tone="accent">
           <StatRow label="Вход / выход" value={`${fmtPrice(t.avgEntry)} → ${fmtPrice(t.avgExit)}`} />
           <StatRow label="Объём (макс.)" value={`${t.qty} · ${t.fillCount} fills`} />
-          <StatRow label="Gross / комиссии" value={<span>{fmtSigned(t.grossPnl)} / <FeesBreakdown fees={t.fees} total={t.totalFees} /></span>} />
-          <StatRow label="Net" value={fmtSigned(t.netPnl)} tone={t.netPnl > 0 ? "up" : t.netPnl < 0 ? "down" : "neutral"} />
+          <StatRow label="Gross / комиссии" value={<span>{fmtUsd(t.grossPnl, { signed: true })} / <FeesBreakdown fees={t.fees} total={t.totalFees} /></span>} />
+          <StatRow label="Net" value={fmtUsd(t.netPnl, { signed: true })} tone={t.netPnl > 0 ? "up" : t.netPnl < 0 ? "down" : "neutral"} />
           <StatRow label="Горизонт / удержание" value={`${HORIZON_LABEL[t.horizon]} · ${t.holdTime ?? "—"}`} />
           <button type="button" className="mt-1 text-left text-xs text-primary hover:underline" onClick={() => setShowExec((v) => !v)}>{showExec ? "Скрыть исполнения" : "Показать исполнения"}</button>
           {showExec && <ExecutionsList trip={t} />}

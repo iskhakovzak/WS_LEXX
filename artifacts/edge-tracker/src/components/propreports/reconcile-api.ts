@@ -3,7 +3,8 @@
  * Raw fetch (no codegen); auth header is added by the global fetch hook (lib/install-fetch-auth).
  */
 import { useQuery } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 
 export type Severity = "ok" | "warn" | "error";
 export type CompareStatus = Severity | "na";
@@ -59,10 +60,6 @@ export type ReconcileResponse = {
   issuesTruncated: boolean;
 };
 
-export class ReconcileHttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
 export type ReconcileParams = { trader?: string | null; from?: string | null; to?: string | null };
 
 export function reconcilePath(p: ReconcileParams, format?: "csv"): string {
@@ -75,14 +72,8 @@ export function reconcilePath(p: ReconcileParams, format?: "csv"): string {
   return `/api/reconcile${s ? `?${s}` : ""}`;
 }
 
-export async function fetchReconcile(p: ReconcileParams): Promise<ReconcileResponse> {
-  const r = await fetch(apiUrl(reconcilePath(p)));
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = j.error; } catch { /* not json */ }
-    throw new ReconcileHttpError(r.status, msg);
-  }
-  return (await r.json()) as ReconcileResponse;
+export function fetchReconcile(p: ReconcileParams, signal?: AbortSignal): Promise<ReconcileResponse> {
+  return http.get<ReconcileResponse>(reconcilePath(p), { signal });
 }
 
 export const reconcileKeys = {
@@ -93,10 +84,9 @@ export const reconcileKeys = {
 export function useReconcile(p: ReconcileParams, enabled = true) {
   return useQuery({
     queryKey: reconcileKeys.run(p),
-    queryFn: () => fetchReconcile(p),
+    queryFn: ({ signal }) => fetchReconcile(p, signal),
     enabled,
-    staleTime: 60_000,
-    retry: (count, err) => !(err instanceof ReconcileHttpError && [400, 401, 403, 404].includes(err.status)) && count < 2,
+    staleTime: STALE.short,
   });
 }
 

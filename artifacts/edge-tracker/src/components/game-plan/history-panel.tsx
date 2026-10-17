@@ -1,17 +1,16 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { History, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { MARKET_BIAS, dateObj, gpApi, gpKeys, type GamePlanSummary } from "./types";
+import { fmtDate } from "@/lib/format";
 
 function matches(p: GamePlanSummary, q: string) {
   if (!q) return true;
-  const hay = `${p.date} ${p.author} ${p.marketView} ${p.tickers.join(" ")} ${format(dateObj(p.date), "d MMMM", { locale: ru })}`.toLowerCase();
+  const hay = `${p.date} ${p.author} ${p.marketView} ${p.tickers.join(" ")} ${fmtDate(dateObj(p.date), "dayMonthLong")}`.toLowerCase();
   return q
     .toLowerCase()
     .split(/\s+/)
@@ -80,7 +79,7 @@ export function HistoryPanel({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-sm font-medium capitalize">
-                        {format(dateObj(p.date), "EEEEEE, d MMM", { locale: ru })}
+                        {fmtDate(dateObj(p.date), "weekdayDayMonth")}
                       </span>
                       <Pill tone={b.tone} dot>
                         {b.label}

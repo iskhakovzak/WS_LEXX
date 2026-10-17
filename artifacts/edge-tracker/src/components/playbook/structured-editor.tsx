@@ -16,7 +16,8 @@ import { InlineMd } from "@/components/playbook-sub/bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, notLiveMessage, pbRequest } from "./api";
+import { invalidatePlaybook, notLiveMessage } from "./api";
+import { http } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage, usePlaybookMediaUrl } from "./media";
 import { DocSection } from "./setup-bits";
 import { InlineTextSection, ThesisView, structureConditions } from "./setup-document";
@@ -43,7 +44,7 @@ function useAutosave(entryId: number) {
     setState("saving");
     try {
       // keepalive: the request survives a tab close / navigation that triggered the flush (browser cap ≈ 64 KB).
-      await pbRequest(`/api/playbook/${entryId}`, { method: "PATCH", json: body, keepalive: JSON.stringify(body).length < 60_000 });
+      await http.patch(`/api/playbook/${entryId}`, body, { keepalive: JSON.stringify(body).length < 60_000 });
       setState("saved");
       qc.invalidateQueries({ queryKey: ["playbook-revisions", entryId] });
       qc.invalidateQueries({ queryKey: ["playbook-activity", "setup", entryId] });

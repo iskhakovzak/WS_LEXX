@@ -13,26 +13,30 @@ import { exitEffTone } from "@/components/replay/QualityBlock";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { TradeDay, TradesPageFacets, TradesPageSummary } from "@/hooks/use-trades-page";
-import { fmtHold, fmtMoney, fmtPct, fmtR, holdSeconds, netPnl, plural, tradeWall, wallHm, type QualityMap, type SortConfig, type TradeQualityLite } from "./trade-utils";
+import { fmtHold, holdSeconds, netPnl, tradeWall, wallHm, type QualityMap, type SortConfig, type TradeQualityLite } from "./trade-utils";
 import { PRESETS, PRESET_META, type Preset, type TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
 import { SidePill } from "./trade-bits";
 import { SortHead } from "./sort-head";
 import type { TradesView } from "./use-trade-filters";
+import { fmtCount, fmtDateCustom, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
-/** Counts with thin-space grouping: «45 211», not «45211». */
-const num = (v: number) => v.toLocaleString("ru-RU");
-
-const MONTHS = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-const WEEKDAYS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+/** Counts with locale grouping: «45 211» / «45,211», not «45211». */
+const num = (v: number) => fmtCount(v);
 
 /** «Чт, 15 окт» (+ year when it is not the current one). */
 export function fmtDayLong(d: string, withWeekday = true): string {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
   if (!m) return d;
-  const wd = WEEKDAYS[new Date(`${m[1]}-${m[2]}-${m[3]}T12:00:00Z`).getUTCDay()];
-  const year = Number(m[1]) !== new Date().getFullYear() ? ` ${m[1]}` : "";
-  return `${withWeekday ? `${wd}, ` : ""}${Number(m[3])} ${MONTHS[Number(m[2]) - 1]}${year}`;
+  const otherYear = Number(m[1]) !== new Date().getFullYear();
+  const s = fmtDateCustom(m[0], {
+    ...(withWeekday ? { weekday: "short" } : {}),
+    day: "numeric",
+    month: "short",
+    ...(otherYear ? { year: "numeric" } : {}),
+  }).replace(".", "");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** /behavior deep link (route registered by the lead; `links.behavior` does not exist yet). */
@@ -78,16 +82,16 @@ export function ReviewKpis({
         label="Нетто"
         term="net"
         loading={loading}
-        value={fmtMoney(s?.net ?? null)}
+        value={fmtUsd(s?.net ?? null, { signed: true, decimals: "auto" })}
         tone={toneOf(s?.net ?? null)}
-        hint={s ? `${num(s.total)} ${plural(s.total, ["сделка", "сделки", "сделок"])}${perTrade != null ? ` · ${fmtMoney(perTrade)} на сделку` : ""}` : undefined}
+        hint={s ? `${commonI18n.t("units.trades", { count: s.total })}${perTrade != null ? ` · ${fmtUsd(perTrade, { signed: true, decimals: "auto" })} на сделку` : ""}` : undefined}
         spark={dayCurve.length > 1 ? dayCurve : undefined}
       />
       <StatCard
         label="Win rate"
         term="winrate"
         loading={loading}
-        value={fmtPct(s?.winRate ?? null)}
+        value={fmtRate(s?.winRate ?? null)}
         hint={s ? `${num(s.wins)} W · ${num(s.losses)} L${s.be ? ` · ${num(s.be)} в ноль` : ""}` : undefined}
       />
       <StatCard
@@ -100,7 +104,7 @@ export function ReviewKpis({
         hint={
           !s ? undefined : useR
             ? `ср. ${fmtR(s?.avgWinR ?? null, 2)} / ${fmtR(s?.avgLossR ?? null, 2)}`
-            : `ср. ${fmtMoney(s?.avgWinNet ?? null)} / ${fmtMoney(s?.avgLossNet ?? null)}`
+            : `ср. ${fmtUsd(s?.avgWinNet ?? null, { signed: true, decimals: "auto" })} / ${fmtUsd(s?.avgLossNet ?? null, { signed: true, decimals: "auto" })}`
         }
       />
       <StatCard
@@ -109,16 +113,16 @@ export function ReviewKpis({
         loading={loading}
         value={pf != null ? pf.toFixed(2) : "—"}
         tone={pfTone}
-        hint={useR ? undefined : s?.posNet != null ? `${fmtMoney(s.posNet)} / ${fmtMoney(-(s.negNet ?? 0))}` : undefined}
+        hint={useR ? undefined : s?.posNet != null ? `${fmtUsd(s.posNet, { signed: true, decimals: "auto" })} / ${fmtUsd(-(s.negNet ?? 0), { signed: true, decimals: "auto" })}` : undefined}
       />
       <StatCard
         label="Комиссии"
         term="fees"
         loading={loading}
-        value={fees != null ? fmtMoney(-Math.abs(fees)).replace("−", "") : "—"}
-        delta={feeShare != null ? `${Math.round(feeShare * 100)}% брутто` : undefined}
+        value={fees != null ? fmtUsd(-Math.abs(fees), { signed: true, decimals: "auto" }).replace("−", "") : "—"}
+        delta={feeShare != null ? `${fmtRate(feeShare)} брутто` : undefined}
         deltaTone={feeShare != null && feeShare > 0.5 ? "warn" : "neutral"}
-        hint={gross != null ? `брутто ${fmtMoney(gross)}` : undefined}
+        hint={gross != null ? `брутто ${fmtUsd(gross, { signed: true, decimals: "auto" })}` : undefined}
         onClick={() => onPreset("fees")}
       />
       <StatCard
@@ -235,10 +239,10 @@ export const ROW_GRID = "grid grid-cols-[20px_116px_minmax(96px,0.6fr)_104px_140
 function CaptureCell({ q, pending }: { q: TradeQualityLite | undefined; pending: boolean }) {
   if (!q) return <span className="text-xs text-muted-foreground">{pending ? "…" : "—"}</span>;
   if (q.status === "unavailable" || q.exitEfficiency == null) return <span className="text-xs text-muted-foreground" title="Нет баров для расчёта MFE">—</span>;
-  const mfe = q.mfeR != null ? fmtR(q.mfeR, 1) : q.mfeUsd != null ? fmtMoney(q.mfeUsd) : null;
+  const mfe = q.mfeR != null ? fmtR(q.mfeR, 1) : q.mfeUsd != null ? fmtUsd(q.mfeUsd, { signed: true, decimals: "auto" }) : null;
   return (
     <span className="flex flex-col leading-tight" title="Захвачено от максимального хода в вашу сторону (MFE). ≥ 60% — хороший выход.">
-      <span className={cn("text-sm font-medium tabular-nums", toneText(exitEffTone(q.exitEfficiency)))}>{Math.round(q.exitEfficiency * 100)}%</span>
+      <span className={cn("text-sm font-medium tabular-nums", toneText(exitEffTone(q.exitEfficiency)))}>{fmtRate(q.exitEfficiency)}</span>
       {mfe && <span className="text-xs tabular-nums text-muted-foreground">MFE {mfe}</span>}
     </span>
   );
@@ -325,14 +329,14 @@ export function ReviewTradeRow({
           <SidePill side={t.side} compact />
         </span>
         {showTrader && t.trader && <span className="truncate text-xs text-muted-foreground">{t.trader}</span>}
-        {!showTrader && t.qty != null && <span className="truncate text-xs tabular-nums text-muted-foreground">{t.qty.toLocaleString("en-US")} шт.</span>}
+        {!showTrader && t.qty != null && <span className="truncate text-xs tabular-nums text-muted-foreground">{fmtCount(t.qty)} шт.</span>}
       </span>
       <span className="flex items-center" aria-hidden="true">
         <TradeSparkline trade={t} width={100} height={30} />
       </span>
       <span className="flex flex-col items-end leading-tight">
-        <span className={cn("text-sm font-semibold tabular-nums", net == null ? "text-muted-foreground" : toneText(toneOf(net)))}>{fmtMoney(net)}</span>
-        {t.fees ? <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground" title="Брутто · комиссии">{fmtMoney(t.pnl)} · ком. {fmtMoney(Math.abs(t.fees)).replace("+", "")}</span> : null}
+        <span className={cn("text-sm font-semibold tabular-nums", net == null ? "text-muted-foreground" : toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
+        {t.fees ? <span className="whitespace-nowrap text-xs tabular-nums text-muted-foreground" title="Брутто · комиссии">{fmtUsd(t.pnl, { signed: true, decimals: "auto" })} · ком. {fmtUsd(Math.abs(t.fees), { signed: true, decimals: "auto" }).replace("+", "")}</span> : null}
       </span>
       <span className="flex justify-end">
         <CaptureCell q={quality[t.id]} pending={qualityPending} />
@@ -434,16 +438,16 @@ export function DayCard({
             <span className="block text-xs tabular-nums text-muted-foreground">{day.firstAt && day.lastAt ? `${day.firstAt}–${day.lastAt}` : "время неизвестно"}</span>
           </span>
           <span className={cn("w-[96px] shrink-0 text-right text-lg font-semibold tabular-nums", day.net == null ? "text-muted-foreground" : toneText(toneOf(day.net)))}>
-            {fmtMoney(day.net)}
+            {fmtUsd(day.net, { signed: true, decimals: "auto" })}
           </span>
           <Sparkline data={curve} baseline={0} tone={toneOf(day.net)} width={120} height={30} className="shrink-0" ariaLabel="Кривая дня по сделкам" />
           <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
-            <span className="tabular-nums"><span className="text-foreground">{num(day.count)}</span> {plural(day.count, ["сделка", "сделки", "сделок"])}</span>
-            <span className="tabular-nums">WR <span className="text-foreground">{fmtPct(day.winRate)}</span>{closed ? ` · ${day.wins}/${day.losses}` : ""}</span>
+            <span className="tabular-nums"><span className="text-foreground">{num(day.count)}</span> {commonI18n.t("units.tradesWord", { count: day.count })}</span>
+            <span className="tabular-nums">WR <span className="text-foreground">{fmtRate(day.winRate)}</span>{closed ? ` · ${day.wins}/${day.losses}` : ""}</span>
             {day.fees != null && day.fees > 0 && (
               <span className="tabular-nums" title="Комиссии дня и их доля в брутто">
-                ком. <span className="text-foreground">{fmtMoney(day.fees).replace("+", "")}</span>
-                {feeShare != null && <span className={cn(feeShare > 0.5 && "text-warn")}> · {Math.round(feeShare * 100)}%</span>}
+                ком. <span className="text-foreground">{fmtUsd(day.fees, { signed: true, decimals: "auto" }).replace("+", "")}</span>
+                {feeShare != null && <span className={cn(feeShare > 0.5 && "text-warn")}> · {fmtRate(feeShare)}</span>}
               </span>
             )}
             {day.rCount > 0 && <span className="tabular-nums">{fmtR(day.totalR, 1)}</span>}

@@ -12,9 +12,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { BehaviorFlags, TraderDay } from "./use-risk";
 import { useBehaviorDay, useTraderDay } from "./use-risk";
 import { intradayCurve } from "./risk-math";
-import { AXIS, CHART_TOOLTIP_STYLE, fmtSignedUsd, fmtUsd } from "./primitives";
+import { AXIS, CHART_TOOLTIP_STYLE } from "./primitives";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
-const ddmm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+const ddmm = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 const clock = (min: number) => `${Math.floor(min / 60)}:${String(Math.round(min % 60)).padStart(2, "0")}`;
 
 export function dayLabel(day: TraderDay | undefined): string {
@@ -35,15 +36,15 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
   const x0 = Math.min(...xs);
   const x1 = Math.max(...xs, x0 + 30);
   return (
-    <div style={{ height }} role="img" aria-label={`Кривая P&L за день: итог ${fmtSignedUsd(curve.final)}${limit != null ? `, дневной лимит ${fmtUsd(limit)}` : ""}`}>
+    <div style={{ height }} role="img" aria-label={`Кривая P&L за день: итог ${fmtUsd(curve.final, { signed: true, decimals: 0 })}${limit != null ? `, дневной лимит ${fmtUsd(limit, { decimals: 0 })}` : ""}`}>
       <ResponsiveContainer width="100%" height="100%">
         <LineChart data={curve.points} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
           <XAxis dataKey="min" type="number" domain={[x0, x1]} tickFormatter={clock} {...AXIS} minTickGap={28} />
-          <YAxis {...AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { compact: true })} />
+          <YAxis {...AXIS} width={56} domain={[lo - pad, hi + pad]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 })} />
           {limit != null && <ReferenceArea y1={lo - pad} y2={-limit} fill="hsl(var(--down))" fillOpacity={0.08} ifOverflow="hidden" />}
           {limit != null && (
-            <ReferenceLine y={-limit} stroke="hsl(var(--down))" strokeDasharray="4 3" label={{ value: `стоп −${fmtUsd(limit)}`, position: "insideBottomLeft", fill: "hsl(var(--down))", fontSize: 11 }} />
+            <ReferenceLine y={-limit} stroke="hsl(var(--down))" strokeDasharray="4 3" label={{ value: `стоп −${fmtUsd(limit, { decimals: 0 })}`, position: "insideBottomLeft", fill: "hsl(var(--down))", fontSize: 11 }} />
           )}
           {limit != null && <ReferenceLine y={-limit * 0.7} stroke="hsl(var(--warn))" strokeDasharray="2 4" strokeOpacity={0.7} />}
           <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
@@ -52,7 +53,7 @@ export function IntradayChart({ day, dailyLimit, height = 180 }: { day: TraderDa
             labelFormatter={(l) => (curve.timed ? `${clock(Number(l))} ET` : "")}
             formatter={(v: number, _n, item) => {
               const p = item?.payload as { ticker: string | null; net: number | null } | undefined;
-              return [`${fmtSignedUsd(v)}${p?.ticker ? ` · ${p.ticker} ${fmtSignedUsd(p.net)}` : ""}`, "За день"];
+              return [`${fmtUsd(v, { signed: true, decimals: 0 })}${p?.ticker ? ` · ${p.ticker} ${fmtUsd(p.net, { signed: true, decimals: 0 })}` : ""}`, "За день"];
             }}
           />
           <Line type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} dot={{ r: 2.5, fill: color, strokeWidth: 0 }} isAnimationActive={false} />
@@ -91,10 +92,10 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
                 <span className="ml-1.5 text-xs text-muted-foreground">{(t.side ?? "").toLowerCase().startsWith("s") ? "шорт" : "лонг"}</span>
               </td>
               <td className="px-3 py-1.5 text-right">{t.qty ?? "—"}</td>
-              <td className={cn("px-3 py-1.5 text-right font-medium", (t.net ?? 0) > 0 ? "text-up" : (t.net ?? 0) < 0 ? "text-down" : "")} title={t.fees ? `брутто ${fmtSignedUsd(t.gross)} − комиссии ${fmtUsd(t.fees, { cents: true })}` : undefined}>
-                {t.net != null ? fmtSignedUsd(t.net) : "—"}
+              <td className={cn("px-3 py-1.5 text-right font-medium", (t.net ?? 0) > 0 ? "text-up" : (t.net ?? 0) < 0 ? "text-down" : "")} title={t.fees ? `брутто ${fmtUsd(t.gross, { signed: true, decimals: 0 })} − комиссии ${fmtUsd(t.fees, { decimals: 0 })}` : undefined}>
+                {t.net != null ? fmtUsd(t.net, { signed: true, decimals: 0 }) : "—"}
               </td>
-              <td className={cn("px-3 py-1.5 text-right text-xs", c > 0 ? "text-up" : c < 0 ? "text-down" : "text-muted-foreground")}>{fmtSignedUsd(c)}</td>
+              <td className={cn("px-3 py-1.5 text-right text-xs", c > 0 ? "text-up" : c < 0 ? "text-down" : "text-muted-foreground")}>{fmtUsd(c, { signed: true, decimals: 0 })}</td>
             </tr>
           ))}
         </tbody>
@@ -110,7 +111,7 @@ export function DayTradesList({ day, max }: { day: TraderDay; max?: number }) {
 export function BehaviorNote({ flags, className }: { flags: BehaviorFlags | null | undefined; className?: string }) {
   if (!flags) return null;
   const items: string[] = [];
-  if (flags.revenge > 0) items.push(`${flags.revenge} ${flags.revenge === 1 ? "сделка" : flags.revenge < 5 ? "сделки" : "сделок"} вскоре после убытка (реванш)${flags.revengeCost != null && flags.revengeCost < 0 ? `, итог ${fmtSignedUsd(flags.revengeCost)}` : ""}`);
+  if (flags.revenge > 0) items.push(`${flags.revenge} ${flags.revenge === 1 ? "сделка" : flags.revenge < 5 ? "сделки" : "сделок"} вскоре после убытка (реванш)${flags.revengeCost != null && flags.revengeCost < 0 ? `, итог ${fmtUsd(flags.revengeCost, { signed: true, decimals: 0 })}` : ""}`);
   if (flags.tilt > 0) items.push(`тильт-кластер: ${flags.tilt} сд. подряд в минус`);
   if (flags.martingale > 0) items.push(`рост размера после убытка: ${flags.martingale} сд.`);
   if (flags.overtrading && flags.norm != null) items.push(`${flags.trades} сделок при обычных ≤ ${Math.round(flags.norm)} — овертрейдинг`);
@@ -148,9 +149,9 @@ export function TraderDayBlock({ trader, dailyLimit, showTrades = false, height 
     <div className="flex flex-col gap-3">
       <p className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
         <span className="font-medium text-foreground">{day.isToday ? "Сегодня" : `Последний торговый день · ${ddmm(day.date)}`}</span>
-        <span>нетто <span className={cn("font-semibold", (net ?? 0) > 0 ? "text-up" : (net ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtSignedUsd(net)}</span></span>
+        <span>нетто <span className={cn("font-semibold", (net ?? 0) > 0 ? "text-up" : (net ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(net, { signed: true, decimals: 0 })}</span></span>
         <span>{day.trades.length} сд.</span>
-        {day.fees > 0 && <span>комиссии {fmtUsd(day.fees, { cents: true })}</span>}
+        {day.fees > 0 && <span>комиссии {fmtUsd(day.fees, { decimals: 0 })}</span>}
         <Link href={links.journalDay(day.date, trader)} className="ml-auto text-primary hover:underline">журнал дня →</Link>
       </p>
       <BehaviorNote flags={beh.data} />

@@ -16,9 +16,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Panel, Pill, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import {
-  ApiError, KIND_ARCHIVE, STAGES, STAGE_LABELS, api, useAcademyMutation, useSetups,
+  KIND_ARCHIVE, STAGES, STAGE_LABELS, api, useAcademyMutation, useSetups,
   type AdminItem, type AdminModule, type AdminQuiz, type Assignment, type Attachment, type ItemKind, type Lesson, type Program,
   type QuizOption, type QuizQuestion, type RubricCriterion, type Stage,
 } from "./api";
@@ -27,11 +26,14 @@ import { readingMinutes } from "./markdown-parse";
 import { PROVIDER_LABEL, videoEmbed } from "./video";
 import { VideoPlayer } from "./bits";
 import { academyLinks } from "./links";
+import { pluralRu } from "@/lib/format";
+import { ApiError } from "@/lib/api/http";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 
 function errText(e: unknown): string {
-  if (e instanceof ApiError && e.errors?.length) return `${e.message}: ${e.errors.join("; ")}`;
+  const errors = e instanceof ApiError ? e.field<string[]>("errors") : undefined;
+  if (e instanceof ApiError && errors?.length) return `${e.message}: ${errors.join("; ")}`;
   return (e as Error)?.message ?? "Ошибка";
 }
 

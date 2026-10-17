@@ -1,8 +1,8 @@
-import * as React from "react";
+
 import { Check, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Tier } from "./use-scaling";
-import { fmtUsd } from "./format";
+import { fmtUsd } from "@/lib/format";
 
 /**
  * Horizontal tier ladder: every step shows name + buying power; the current tier is solid accent,

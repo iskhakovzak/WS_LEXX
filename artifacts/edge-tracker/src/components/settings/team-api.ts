@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
-import { HttpError, fetchJson, readApiError } from "./shared";
+import { ApiError, http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 
 export type TeamMember = {
   id: number;
@@ -39,8 +40,8 @@ type LegacyAssignment = {
 /** Old API (before /users/team): merge /users/all + /telegram/assignments client-side. */
 async function loadLegacyTeam(): Promise<TeamMember[]> {
   const [users, assignments] = await Promise.all([
-    fetchJson<LegacyUser[]>(`${BASE}/api/users/all`),
-    fetchJson<LegacyAssignment[]>(`${BASE}/api/telegram/assignments`).catch(() => [] as LegacyAssignment[]),
+    http.get<LegacyUser[]>("/api/users/all"),
+    http.get<LegacyAssignment[]>("/api/telegram/assignments").catch(() => [] as LegacyAssignment[]),
   ]);
   const byName = new Map(assignments.map((a) => [a.name, a]));
   return users.map((u) => {
@@ -57,16 +58,16 @@ async function loadLegacyTeam(): Promise<TeamMember[]> {
 export function useTeam(enabled: boolean) {
   return useQuery<TeamMember[]>({
     queryKey: TEAM_QUERY_KEY,
-    queryFn: async () => {
+    queryFn: async ({ signal }) => {
       try {
-        return await fetchJson<TeamMember[]>(`${BASE}/api/users/team`);
+        return await http.get<TeamMember[]>("/api/users/team", { signal });
       } catch (e) {
-        if (e instanceof HttpError && e.status === 404) return loadLegacyTeam();
+        if (isNotFound(e)) return loadLegacyTeam();
         throw e;
       }
     },
     enabled,
-    staleTime: 30_000,
+    staleTime: STALE.default,
   });
 }
 
@@ -82,32 +83,25 @@ export function invalidateTeam(qc: QueryClient) {
 
 /** PATCH all three assignments for a trader (the endpoint replaces all three). */
 export async function saveAssignments(m: Pick<TeamMember, "name" | AssignmentField>): Promise<void> {
-  const r = await fetch(`${BASE}/api/telegram/assignments/${encodeURIComponent(m.name)}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      assigned_curator: m.assignedCurator,
-      assigned_risk_manager: m.assignedRiskManager,
-      assigned_mentor: m.assignedMentor,
-    }),
+  await http.patch(`/api/telegram/assignments/${encodeURIComponent(m.name)}`, {
+    assigned_curator: m.assignedCurator,
+    assigned_risk_manager: m.assignedRiskManager,
+    assigned_mentor: m.assignedMentor,
   });
-  if (!r.ok) throw new Error(await readApiError(r, "Назначение не сохранено"));
 }
 
 export async function setUserActive(id: number, active: boolean): Promise<void> {
-  const r = active
-    ? await fetch(`${BASE}/api/users/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: true }) })
-    : await fetch(`${BASE}/api/users/${id}`, { method: "DELETE", headers: { "Content-Type": "application/json" }, body: "{}" });
-  if (!r.ok) {
-    const msg = await readApiError(r);
-    if (active && /no fields/i.test(msg)) throw new Error("Сервер ещё не поддерживает повторную активацию — нужен деплой API");
-    throw new Error(msg);
+  try {
+    if (active) await http.patch(`/api/users/${id}`, { active: true });
+    else await http.del(`/api/users/${id}`, {});
+  } catch (e) {
+    if (active && e instanceof ApiError && /no fields/i.test(e.message)) throw new Error("Сервер ещё не поддерживает повторную активацию — нужен деплой API");
+    throw e;
   }
 }
 
 export async function unlinkTelegram(name: string): Promise<void> {
-  const r = await fetch(`${BASE}/api/telegram/admin/disconnect/${encodeURIComponent(name)}`, { method: "DELETE" });
-  if (!r.ok) throw new Error(await readApiError(r, "Не удалось отвязать"));
+  await http.del(`/api/telegram/admin/disconnect/${encodeURIComponent(name)}`);
 }
 
 /** Random temporary password (no ambiguous characters). */

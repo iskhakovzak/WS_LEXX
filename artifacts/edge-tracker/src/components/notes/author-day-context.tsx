@@ -1,11 +1,12 @@
-import * as React from "react";
+
 import { Link } from "wouter";
 import { ArrowUpRight, CandlestickChart, ClipboardList, Moon, CornerDownLeft } from "lucide-react";
 import { Panel, Pill, toneOf, toneText, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { HORIZON_LABEL, fmtDayShort, fmtR, fmtUsd, type DayContext, type DayTrade } from "./author-model";
+import { HORIZON_LABEL, type DayContext, type DayTrade } from "./author-model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 
 const RESULT: Record<string, { label: string; tone: Tone }> = {
   win: { label: "Профит", tone: "up" },
@@ -25,7 +26,7 @@ function TradeLine({ t, showSince }: { t: DayTrade; showSince?: boolean }) {
       >
         <span className="w-14 shrink-0 truncate text-sm font-semibold">{t.ticker}</span>
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {[t.side, t.horizon !== "intraday" ? HORIZON_LABEL[t.horizon].toLowerCase() : null, showSince ? `с ${fmtDayShort(t.date)}` : t.setup]
+          {[t.side, t.horizon !== "intraday" ? HORIZON_LABEL[t.horizon].toLowerCase() : null, showSince ? `с ${fmtDate(t.date, "dayMonth")}` : t.setup]
             .filter(Boolean)
             .join(" · ")}
         </span>
@@ -34,9 +35,9 @@ function TradeLine({ t, showSince }: { t: DayTrade; showSince?: boolean }) {
         ) : (
           <>
             {money != null ? (
-              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(money)))}>{fmtUsd(money)}</span>
+              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(money)))}>{fmtUsd(money, { signed: true, decimals: 0 })}</span>
             ) : (t.rSigned ?? t.rMultiple) != null ? (
-              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(t.rSigned ?? t.rMultiple)))}>{fmtR(t.rSigned ?? t.rMultiple)}</span>
+              <span className={cn("text-sm font-medium tabular-nums", toneText(toneOf(t.rSigned ?? t.rMultiple)))}>{fmtR(t.rSigned ?? t.rMultiple, 1)}</span>
             ) : (
               <Pill tone={res.tone}>{res.label}</Pill>
             )}
@@ -69,7 +70,7 @@ export function AuthorDayContext({
   return (
     <Panel
       title="Торговый день"
-      description={fmtDayShort(date)}
+      description={fmtDate(date, "dayMonth")}
       icon={CandlestickChart}
       actions={
         <Button asChild variant="ghost" size="sm" className="gap-1">
@@ -100,11 +101,11 @@ export function AuthorDayContext({
             </div>
             <div className="rounded-xl bg-[var(--glass-bg)] px-3 py-2">
               <div className="text-xs text-muted-foreground">P&L net</div>
-              <div className={cn("text-lg font-semibold tabular-nums", toneText(toneOf(s?.pnlNet)))}>{fmtUsd(s?.pnlNet)}</div>
+              <div className={cn("text-lg font-semibold tabular-nums", toneText(toneOf(s?.pnlNet)))}>{fmtUsd(s?.pnlNet, { signed: true, decimals: 0 })}</div>
             </div>
             <div className="rounded-xl bg-[var(--glass-bg)] px-3 py-2">
               <div className="text-xs text-muted-foreground">Σ R</div>
-              <div className={cn("text-lg font-semibold tabular-nums", toneText(toneOf(s?.rSum)))}>{fmtR(s?.rSum)}</div>
+              <div className={cn("text-lg font-semibold tabular-nums", toneText(toneOf(s?.rSum)))}>{fmtR(s?.rSum, 1)}</div>
             </div>
           </div>
 
@@ -164,10 +165,10 @@ export function AuthorDayContext({
 export function tradeLine(t: DayTrade): string {
   const parts = [t.ticker, t.side ?? undefined];
   const r = t.rSigned ?? (t.result === "open" ? null : t.rMultiple);
-  const res = r != null ? fmtR(r) : RESULT[t.result]?.label.toLowerCase();
+  const res = r != null ? fmtR(r, 1) : RESULT[t.result]?.label.toLowerCase();
   return `• ${parts.filter(Boolean).join(" ")}${t.setup ? ` (${t.setup})` : ""} — ${res ?? t.result}: `;
 }
 
 export function heldLine(t: DayTrade): string {
-  return `• ${t.ticker}${t.side ? ` ${t.side}` : ""} · ${HORIZON_LABEL[t.horizon].toLowerCase()} с ${fmtDayShort(t.date)} · стоп: · план на гэп: `;
+  return `• ${t.ticker}${t.side ? ` ${t.side}` : ""} · ${HORIZON_LABEL[t.horizon].toLowerCase()} с ${fmtDate(t.date, "dayMonth")} · стоп: · план на гэп: `;
 }

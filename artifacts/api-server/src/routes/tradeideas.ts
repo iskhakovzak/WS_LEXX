@@ -13,6 +13,7 @@ import { defaultValidUntil, ensureIdeaLinkColumns, ensureIdeaLinksFresh } from "
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { redactTradeRow, type MoneyViewer } from "../lib/playbookPrivacy";
 import { signedR, netPnl, normResult } from "../lib/tradeMath";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -77,7 +78,7 @@ function isVisible(v: Visibility, row: { status: string; trader: string | null }
 /** Parses a positive integer route id; responds 400 and returns null when invalid (avoids 500 from Postgres on NaN). */
 function parseId(raw: unknown, res: import("express").Response): number | null {
   const id = Number(raw);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -395,7 +396,7 @@ router.get("/trade-ideas/tracking", asyncHandler(async (req, res): Promise<void>
  */
 router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   const vis = await ideaVisibility(req);
-  if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!vis) throw unauthorized();
   await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const { status, trader, ticker, horizon, expired } = req.query as Record<string, string | undefined>;
   const conds = [isNull(tradeIdeasTable.deletedAt)];
@@ -427,7 +428,7 @@ router.get("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
  */
 router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const from = parseDateOrNull(req.query.from);
   const to = parseDateOrNull(req.query.to);
@@ -570,11 +571,11 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
 router.get("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id, res); if (id == null) return;
   const vis = await ideaVisibility(req);
-  if (!vis) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!vis) throw unauthorized();
   await ensureIdeaLinksFresh(); // idea → PropReports trade auto-links (cached 5 min, also refreshed after a sync)
   const [row] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   // Another trader's draft is indistinguishable from a missing idea (no draft leaks).
-  if (!row || row.deletedAt || !isVisible(vis, row)) { res.status(404).json({ error: "not found" }); return; }
+  if (!row || row.deletedAt || !isVisible(vis, row)) throw notFound();
   const [withR] = await attachReactions([row]);
   const [withLinked] = await attachLinkedTrades([withR], await loadMoneyViewer(req));
   const [withMeta] = await attachMeta([withLinked], req.authUser);
@@ -599,8 +600,8 @@ router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   await ensureIdeaColumns().catch(() => undefined);
   const b = req.body as Record<string, unknown>;
   const ticker = String(b.ticker ?? "").trim().toUpperCase();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
-  if (!IDEA_TICKER_RE.test(ticker)) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
+  if (!IDEA_TICKER_RE.test(ticker)) throw badRequest("INVALID_TICKER");
   const side = parseSide(b.side);
   if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
   const status = b.status === undefined || b.status === null || b.status === "" ? "draft" : String(b.status);
@@ -665,7 +666,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   const b = req.body as Record<string, unknown>;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
   const staff = await can(req, "ideas.review", existing.trader ? { trader: existing.trader } : undefined);
   const manager = staff || (!!existing.trader && existing.trader === req.authUser!.name);
   if (!manager) {
@@ -682,7 +683,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
     res.status(400).json({ error: "score must be 0..100" }); return;
   }
   if (b.trader !== undefined && !staff) { res.status(403).json({ error: "Переназначить автора может только куратор" }); return; }
-  if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) throw badRequest("INVALID_TICKER");
   const side = b.side !== undefined ? parseSide(b.side) : undefined;
   if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
   if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) {
@@ -694,7 +695,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   if (b.convertedTradeId !== undefined && b.convertedTradeId !== null) {
     const tid = Number(b.convertedTradeId);
     const { rows: tr } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`, [tid]);
-    if (!tr[0]) { res.status(400).json({ error: "trade not found" }); return; }
+    if (!tr[0]) throw new AppError("TRADE_NOT_FOUND", 400);
     if (!staff && tr[0].trader !== req.authUser!.name) { res.status(403).json({ error: "Можно привязать только свою сделку" }); return; }
   }
   const update: Record<string, unknown> = {};
@@ -735,7 +736,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   const [row] = Object.keys(update).length
     ? await db.update(tradeIdeasTable).set(update).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt))).returning()
     : await db.select().from(tradeIdeasTable).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)));
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
   if (extra.horizon !== undefined) await pool.query(`UPDATE trade_ideas SET horizon = $2 WHERE id = $1`, [id, extra.horizon]);
   if (extra.validUntil !== undefined) await pool.query(`UPDATE trade_ideas SET valid_until = $2 WHERE id = $1`, [id, extra.validUntil]);
   if (b.convertedTradeId !== undefined) {
@@ -756,14 +757,14 @@ router.post("/trade-ideas/:id/publish", asyncHandler(async (req, res): Promise<v
   await ensureIdeaColumns().catch(() => undefined);
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
   if (!(await canManageIdea(req, existing.trader))) { res.status(403).json({ error: "Опубликовать идею может только автор или куратор" }); return; }
   if (existing.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
   const [row] = await db.update(tradeIdeasTable)
     .set({ status: "published", publishedAt: new Date() })
     .where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)))
     .returning();
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
   // Expiry starts at publish: intraday = this session, overnight = next, swing = +10 sessions (unless set by hand).
   const { rows: hv } = await pool.query<{ horizon: string | null; valid_until: string | null }>(`SELECT horizon, valid_until FROM trade_ideas WHERE id = $1`, [id]);
   if (hv[0] && !hv[0].valid_until) {
@@ -780,7 +781,7 @@ router.post("/trade-ideas/:id/resubmit", asyncHandler(async (req, res): Promise<
   const id = parseId(req.params.id, res); if (id == null) return;
   if (!requireMember(req, res)) return;
   const [idea] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!idea || idea.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!idea || idea.deletedAt) throw notFound();
   if (!(await canManageIdea(req, idea.trader))) { res.status(403).json({ error: "Отправить на ревью может только автор или куратор" }); return; }
   if (idea.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
   await pool.query(
@@ -813,7 +814,7 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
     review_reason?.trim() || null,
     reviewer,
   );
-  if (!updated) { res.status(404).json({ error: "not found" }); return; }
+  if (!updated) throw notFound();
 
   const [fresh] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   const [withMeta] = await attachMeta([fresh], req.authUser);
@@ -836,7 +837,7 @@ router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =
   if (!requireMember(req, res)) return;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || existing.deletedAt) { res.status(404).json({ error: "not found" }); return; }
+  if (!existing || existing.deletedAt) throw notFound();
   // Only the author or a curator/admin may delete an idea (unowned ideas: staff only).
   if (!(await canManageIdea(req, existing.trader))) {
     res.status(403).json({ error: "Удалить идею может только автор или куратор" }); return;
@@ -845,7 +846,7 @@ router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =
     .set({ deletedAt: new Date() })
     .where(eq(tradeIdeasTable.id, id))
     .returning();
-  if (!row) { res.status(404).json({ error: "not found" }); return; }
+  if (!row) throw notFound();
   res.json({ success: true });
 }));
 
@@ -873,7 +874,7 @@ router.post("/trade-ideas/:id/reactions", asyncHandler(async (req, res): Promise
   const vis = await ideaVisibility(req);
   const [idea] = await db.select({ status: tradeIdeasTable.status, trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, tradeIdeaId));
-  if (!idea || idea.deletedAt || !vis || !isVisible(vis, idea)) { res.status(404).json({ error: "not found" }); return; }
+  if (!idea || idea.deletedAt || !vis || !isVisible(vis, idea)) throw notFound();
   const reactionStr = String(reaction);
   if (!["thumbs_up", "warning", "thumbs_down"].includes(reactionStr)) {
     res.status(400).json({ error: "invalid reaction" });

@@ -4,7 +4,7 @@
  */
 import { SkeletonBlock } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtSigned } from "./lib";
+import { fmtNum } from "@/lib/format";
 import { toneHint, type BoardAgg, type Big7Row, type Phase, type Tone } from "./context";
 import { Signed } from "./ui";
 
@@ -44,7 +44,7 @@ function Breadth({ up, down, n }: { up: number; down: number; n: number }) {
   );
 }
 
-const names = (rows: Big7Row[]) => rows.map((r) => `${r.symbol} ${fmtSigned(r.rsQqq, 1, "")}`).join(" · ");
+const names = (rows: Big7Row[]) => rows.map((r) => `${r.symbol} ${fmtNum(r.rsQqq, { decimals: 1, signed: true })}`).join(" · ");
 
 export function ToneBar({ tone, agg, qqq, spy, phase, loading }: {
   tone: Tone | null;

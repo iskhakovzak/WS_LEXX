@@ -1,4 +1,4 @@
-import * as React from "react";
+
 import { ArrowDownRight, ArrowUpRight, Check, ChevronDown, Database } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import {
@@ -9,7 +9,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import type { Trade } from "@workspace/api-client-react";
-import { HORIZON_LABEL, RESULTS, RESULT_LABEL, fmtMoney, fmtR, isBrokerTrade, netPnl, resultKey, resultTone, splitTags, type Horizon } from "./trade-utils";
+import { HORIZON_LABEL, RESULTS, RESULT_LABEL, isBrokerTrade, netPnl, resultKey, resultTone, splitTags, type Horizon } from "./trade-utils";
+import { fmtR, fmtUsd } from "@/lib/format";
 
 export function SidePill({ side, compact }: { side?: string | null; compact?: boolean }) {
   if (!side) return <span className="text-muted-foreground">—</span>;
@@ -141,10 +142,10 @@ export function HorizonPill({ horizon, showIntraday }: { horizon: Horizon; showI
 /** Net P&L (gross − |fees|, shared formula) with the gross/fees breakdown in the tooltip. */
 export function NetPnl({ trade, className }: { trade: Trade; className?: string }) {
   const net = netPnl(trade);
-  const title = trade.pnl != null && trade.fees ? `Брутто ${fmtMoney(trade.pnl)} · комиссии ${fmtMoney(-Math.abs(trade.fees))} · нетто ${fmtMoney(net)}` : undefined;
+  const title = trade.pnl != null && trade.fees ? `Брутто ${fmtUsd(trade.pnl, { signed: true, decimals: "auto" })} · комиссии ${fmtUsd(-Math.abs(trade.fees), { signed: true, decimals: "auto" })} · нетто ${fmtUsd(net, { signed: true, decimals: "auto" })}` : undefined;
   return (
     <span title={title} className={cn("tabular-nums", net == null ? "text-muted-foreground" : toneText(toneOf(net)), className)}>
-      {fmtMoney(net)}
+      {fmtUsd(net, { signed: true, decimals: "auto" })}
     </span>
   );
 }
@@ -188,11 +189,11 @@ export function PnlBreakdown({ trade, className }: { trade: Trade; className?: s
   if (trade.pnl == null) return <span className={cn("text-muted-foreground", className)}>—</span>;
   return (
     <span className={cn("inline-flex items-center gap-2 tabular-nums text-xs", className)}>
-      <span title="Брутто">{fmtMoney(trade.pnl)}</span>
+      <span title="Брутто">{fmtUsd(trade.pnl, { signed: true, decimals: "auto" })}</span>
       <span className="text-muted-foreground">−</span>
-      <span className="text-muted-foreground" title="Комиссии">{fmtMoney(Math.abs(trade.fees ?? 0)).replace(/^[+−]/, "")}</span>
+      <span className="text-muted-foreground" title="Комиссии">{fmtUsd(Math.abs(trade.fees ?? 0), { signed: true, decimals: "auto" }).replace(/^[+−]/, "")}</span>
       <span className="text-muted-foreground">=</span>
-      <span className={cn("font-semibold", net == null ? "text-muted-foreground" : toneText(toneOf(net)))} title="Нетто">{fmtMoney(net)}</span>
+      <span className={cn("font-semibold", net == null ? "text-muted-foreground" : toneText(toneOf(net)))} title="Нетто">{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
     </span>
   );
 }

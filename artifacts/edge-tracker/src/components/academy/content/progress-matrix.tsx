@@ -15,7 +15,7 @@ import { STAGE_LABELS, useProgressMatrix, type ProgressStudent, type Stage } fro
 import { PctBar } from "./bits";
 import { academyLinks } from "./links";
 import { relativeDays } from "./time";
-import { pluralRu } from "@/components/rules/constants";
+import { pluralRu } from "@/lib/format";
 
 function cellTone(pct: number, total: number) {
   if (!total) return "text-muted-foreground";

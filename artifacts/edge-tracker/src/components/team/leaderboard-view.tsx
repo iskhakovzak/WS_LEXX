@@ -5,7 +5,7 @@ import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { TraderAvatar } from "./trader-avatar";
-import { fmtMoney, fmtPct, fmtR } from "./utils";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { METRIC_LABEL, SCORE_PART_LABEL, metricValue, type Metric, type ScorePart, type TraderRow } from "./leaderboard";
 
 /** Scaling tier keys from the API → the desk ladder names. */
@@ -15,14 +15,14 @@ const tierName = (t: string) => TIER_NAME[t] ?? t;
 export function fmtMetric(v: number | null | undefined, metric: Metric): string {
   if (v == null || !Number.isFinite(v)) return "—";
   switch (metric) {
-    case "net": return fmtMoney(v);
+    case "net": return fmtUsd(v, { signed: true });
     case "r":
     case "expectancy": return fmtR(v);
-    case "pf": return v.toFixed(2);
+    case "pf": return fmtNum(v);
     case "consistency":
-    case "winrate": return fmtPct(v);
-    case "drawdown": return Number.isInteger(v) || Math.abs(v) >= 50 ? fmtMoney(v) : fmtR(v);
-    default: return v.toFixed(1);
+    case "winrate": return fmtRate(v);
+    case "drawdown": return Number.isInteger(v) || Math.abs(v) >= 50 ? fmtUsd(v, { signed: true }) : fmtR(v);
+    default: return fmtNum(v, 1);
   }
 }
 
@@ -96,11 +96,11 @@ export function Podium({ rows, metric, onSelect }: { rows: TraderRow[]; metric: 
                 </div>
               </div>
               <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground tabular-nums">
-                <span>{r.net != null ? `${fmtMoney(r.net)} нетто` : fmtR(r.totalR)}</span>
+                <span>{r.net != null ? `${fmtUsd(r.net, { signed: true })} нетто` : fmtR(r.totalR)}</span>
                 <span aria-hidden="true">·</span>
                 <span>{r.closed} сд.</span>
                 <span aria-hidden="true">·</span>
-                <span title={KPI_FORMULAS.winRate}>WR {fmtPct(r.winRate)}</span>
+                <span title={KPI_FORMULAS.winRate}>WR {fmtRate(r.winRate)}</span>
                 {r.tier && (
                   <>
                     <span aria-hidden="true">·</span>
@@ -127,7 +127,7 @@ function ScoreParts({ r, weights }: { r: TraderRow; weights: Record<ScorePart, n
           <li key={k} className="flex min-w-0 flex-col gap-0.5">
             <div className="flex items-baseline justify-between gap-2 text-xs">
               <span className="truncate text-muted-foreground">
-                {SCORE_PART_LABEL[k]} <span className="tabular-nums">· {Math.round(weights[k] * 100)}%</span>
+                {SCORE_PART_LABEL[k]} <span className="tabular-nums">· {fmtRate(weights[k])}</span>
               </span>
               <span className="tabular-nums font-medium">{v == null ? "—" : Math.round(v * 100)}</span>
             </div>
@@ -205,7 +205,7 @@ export function LeaderboardList({
                   <RankDelta delta={r.deltaScore} suffix="" />
                 </span>
                 <span className="block truncate text-xs text-muted-foreground tabular-nums">
-                  {r.closed} сд. · WR {fmtPct(r.winRate)} · {r.net != null ? `${fmtMoney(r.net)} нетто` : fmtR(r.totalR)}
+                  {r.closed} сд. · WR {fmtRate(r.winRate)} · {r.net != null ? `${fmtUsd(r.net, { signed: true })} нетто` : fmtR(r.totalR)}
                   {r.tier ? ` · ${tierName(r.tier)}` : ""}
                 </span>
               </span>
@@ -220,18 +220,18 @@ export function LeaderboardList({
             {open && (
               <div className="mx-2 mb-3 flex flex-col gap-3 rounded-xl border border-border p-3">
                 <div className="grid grid-cols-3 gap-x-4 gap-y-2 md:grid-cols-6">
-                  <Cell label="P&L нетто" value={fmtMoney(r.net)} tone={toneOf(r.net)} title={`${KPI_FORMULAS.netPnl}${r.gross != null ? `. Брутто ${fmtMoney(r.gross)}, комиссии ${fmtMoney(-Math.abs(r.fees ?? 0))}` : ""}`} />
+                  <Cell label="P&L нетто" value={fmtUsd(r.net, { signed: true })} tone={toneOf(r.net)} title={`${KPI_FORMULAS.netPnl}${r.gross != null ? `. Брутто ${fmtUsd(r.gross, { signed: true })}, комиссии ${fmtUsd(-Math.abs(r.fees ?? 0), { signed: true })}` : ""}`} />
                   <Cell label="Сумма R" value={fmtR(r.totalR)} tone={toneOf(r.totalR)} />
                   <Cell label="Ожидание" value={fmtR(r.expectancyR)} tone={toneOf(r.expectancyR)} title={KPI_FORMULAS.expectancyR} />
-                  <Cell label="Profit factor" value={r.profitFactorR != null ? r.profitFactorR.toFixed(2) : r.losses === 0 && r.wins > 0 ? "без убытков" : "—"} title={KPI_FORMULAS.profitFactorR} />
-                  <Cell label="Win rate" value={`${fmtPct(r.winRate)} · ${r.wins}W/${r.losses}L`} title={KPI_FORMULAS.winRate} />
+                  <Cell label="Profit factor" value={r.profitFactorR != null ? fmtNum(r.profitFactorR) : r.losses === 0 && r.wins > 0 ? "без убытков" : "—"} title={KPI_FORMULAS.profitFactorR} />
+                  <Cell label="Win rate" value={`${fmtRate(r.winRate)} · ${r.wins}W/${r.losses}L`} title={KPI_FORMULAS.winRate} />
                   <Cell label="Зелёных дней" value={`${r.greenDays} из ${r.tradingDays}`} />
-                  <Cell label={r.maxDrawdownNet != null ? "Макс. просадка нетто" : "Макс. просадка R"} value={r.maxDrawdownNet != null ? fmtMoney(r.maxDrawdownNet) : fmtR(r.maxDrawdownR)} tone={toneOf(dd)} title={KPI_FORMULAS.maxDrawdown} />
+                  <Cell label={r.maxDrawdownNet != null ? "Макс. просадка нетто" : "Макс. просадка R"} value={r.maxDrawdownNet != null ? fmtUsd(r.maxDrawdownNet, { signed: true }) : fmtR(r.maxDrawdownR)} tone={toneOf(dd)} title={KPI_FORMULAS.maxDrawdown} />
                   <Cell label="Лучшая / худшая R" value={`${fmtR(r.bestR)} / ${fmtR(r.worstR)}`} />
                   <Cell label="Серии" value={`+${r.bestStreak} / ${r.worstStreak}`} title="Лучшая серия побед / худшая серия потерь" />
-                  <Cell label="Нарушений / нед." value={r.violationsPerWeek.toFixed(1)} tone={r.violations > 0 ? "down" : "neutral"} />
-                  <Cell label="Оценка наставника" value={r.rating ? `${r.rating.avg.toFixed(1)} · ${r.rating.n}` : "—"} tone={r.rating ? "purple" : "neutral"} />
-                  <Cell label="Лимиты" value={r.dailyLossLimit != null ? `день ${fmtMoney(-r.dailyLossLimit)}` : "не заданы"} />
+                  <Cell label="Нарушений / нед." value={fmtNum(r.violationsPerWeek, 1)} tone={r.violations > 0 ? "down" : "neutral"} />
+                  <Cell label="Оценка наставника" value={r.rating ? `${fmtNum(r.rating.avg, 1)} · ${r.rating.n}` : "—"} tone={r.rating ? "purple" : "neutral"} />
+                  <Cell label="Лимиты" value={r.dailyLossLimit != null ? `день ${fmtUsd(-r.dailyLossLimit, { signed: true })}` : "не заданы"} />
                 </div>
                 {r.sparkR.length > 1 && (
                   <div className="flex items-center gap-3">

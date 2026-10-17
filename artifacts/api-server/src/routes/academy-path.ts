@@ -49,6 +49,7 @@ import {
   STATUS_LABELS, TEMPLATES, TEMPLATE_BY_KEY, endDateFor, evaluateChallenge, normalizeRules,
   type ChallengeResult, type ChallengeRules, type ChallengeStatus, type ChallengeTrade,
 } from "../lib/challengeEngine";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -193,7 +194,7 @@ function ensureTables(): Promise<void> {
 type Viewer = { name: string; staff: boolean; guest: boolean };
 async function viewer(req: Request, res: Response): Promise<Viewer | null> {
   const name = req.authUser?.name;
-  if (!name) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!name) { sendError(res, unauthorized()); return null; }
   if (isGuest(req)) return { name, staff: false, guest: true };
   return { name, staff: isStaffRole(await viewerRole(req)), guest: false };
 }
@@ -440,10 +441,11 @@ async function maybeNotifyReady(report: ReadinessReport): Promise<void> {
       [report.user, report.stage.key],
     );
     if (!rowCount) return;
-    const msg = `${report.user}: все ${report.total} критериев перевода «${report.stage.name}» → «${report.nextStage.name}» выполнены.`;
-    await notifyUser({ userName: report.user, type: "academy_promotion_ready", title: "Готов к переводу", message: `${msg} Можно подать заявку наставнику.`, link: PATH_LINK(), entityType: "academy_stage", entityId: report.stage.key, source: "academy" });
+    // Text as data: rendered per reader language (lib/notificationText.ts, i18n `notifications`).
+    const params = { user: report.user, total: report.total, from: report.stage.name, to: report.nextStage.name };
+    await notifyUser({ userName: report.user, type: "academy_promotion_ready", params, link: PATH_LINK(), entityType: "academy_stage", entityId: report.stage.key, source: "academy" });
     const staff = await mentorsOf(report.user);
-    await notifyUsers(staff, { type: "academy_promotion_ready", title: "Ученик готов к переводу", message: msg, link: PATH_LINK(report.user), entityType: "academy_stage", entityId: report.stage.key, source: "academy" }, report.user);
+    await notifyUsers(staff, { type: "academy_promotion_ready", params: { ...params, variant: "staff" }, link: PATH_LINK(report.user), entityType: "academy_stage", entityId: report.stage.key, source: "academy" }, report.user);
   } catch (err) {
     logger.warn({ err }, "academy-path: readiness notice failed");
   }
@@ -565,11 +567,10 @@ router.get("/academy/path/report", asyncHandler(async (req, res): Promise<void> 
   if (!v) return;
   await ensureTables();
   const user = await targetUser(req, req.query.user);
-  if (user === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (user === undefined) throw unauthorized();
   const today = clientDate(req.query.date);
   if (user === GUEST_SCOPE) { res.json({ report: null, guest: true }); return; }
   const report = await buildReport(user, today);
-  if (today === nyDate()) await maybeNotifyReady(report);
   const [{ rows: pending }, { rows: hist }] = await Promise.all([
     pool.query(`SELECT * FROM academy_promotion_requests WHERE user_name = $1 AND status = 'pending' AND archived_at IS NULL LIMIT 1`, [user]),
     pool.query(`SELECT * FROM academy_stage_history WHERE user_name = $1 ORDER BY created_at DESC LIMIT 20`, [user]),
@@ -595,7 +596,6 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
   const people = await Promise.all([...names].map(async (name) => {
     const i = info.get(name) ?? { stage: null, since: null, source: null, cohortId: null };
     const r = await buildReport(name, today, { stages, criteria, tiers, info: i });
-    if (today === nyDate()) await maybeNotifyReady(r);
     const p = pending.get(name);
     return {
       user: name, role: roles.get(name) ?? null, stage: i.stage, since: i.since, stageSource: i.source, cohortId: i.cohortId,
@@ -633,7 +633,7 @@ router.get("/academy/path/requests", asyncHandler(async (req, res): Promise<void
   await ensureTables();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const status = typeof req.query.status === "string" && ["pending", "approved", "rejected", "withdrawn"].includes(req.query.status) ? req.query.status : null;
   const { rows } = await pool.query(
     `SELECT * FROM academy_promotion_requests WHERE archived_at IS NULL AND ($1::text IS NULL OR user_name = $1) AND ($2::text IS NULL OR status = $2)
@@ -705,7 +705,7 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
   await ensureTables();
   const id = Number(req.params.id);
   const parsed = DecisionBody.safeParse(req.body ?? {});
-  if (!Number.isInteger(id) || !parsed.success) { res.status(400).json({ error: "Неверный запрос" }); return; }
+  if (!Number.isInteger(id) || !parsed.success) throw badRequest();
   const { rows } = await pool.query(`SELECT * FROM academy_promotion_requests WHERE id = $1 AND archived_at IS NULL`, [id]);
   const r = rows[0];
   if (!r) { res.status(404).json({ error: "Заявка не найдена" }); return; }
@@ -734,7 +734,7 @@ router.post("/academy/path/requests/:id/reject", asyncHandler(async (req, res): 
   await ensureTables();
   const id = Number(req.params.id);
   const parsed = DecisionBody.safeParse(req.body ?? {});
-  if (!Number.isInteger(id) || !parsed.success) { res.status(400).json({ error: "Неверный запрос" }); return; }
+  if (!Number.isInteger(id) || !parsed.success) throw badRequest();
   const comment = parsed.data.comment?.trim();
   if (!comment) { res.status(400).json({ error: "Укажите причину отказа и что улучшить" }); return; }
   const upd = await pool.query(
@@ -758,7 +758,7 @@ router.post("/academy/path/requests/:id/withdraw", asyncHandler(async (req, res)
   if (!v) return;
   await ensureTables();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const upd = await pool.query(
     `UPDATE academy_promotion_requests SET status = 'withdrawn', decided_by = $2, decided_at = NOW() WHERE id = $1 AND status = 'pending' AND (user_name = $2 OR requested_by = $2 OR $3) RETURNING *`,
     [id, v.name, v.staff],
@@ -781,7 +781,7 @@ router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void>
   if (!parsed.success) { bad(res, parsed.error); return; }
   const { user, stage, comment } = parsed.data;
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [user]);
-  if (!exists.rows.length) { res.status(404).json({ error: "Пользователь не найден" }); return; }
+  if (!exists.rows.length) throw notFound("USER_NOT_FOUND");
   const cur = (await loadStageInfo([user])).get(user)?.stage ?? null;
   if (cur === stage) { res.status(409).json({ error: "Уже на этой ступени" }); return; }
   const action = cur == null ? "assign" : STAGE_KEYS.indexOf(stage) > STAGE_KEYS.indexOf(cur) ? "promote" : "demote";
@@ -800,7 +800,7 @@ router.get("/academy/path/history", asyncHandler(async (req, res): Promise<void>
   await ensureTables();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const { rows } = await pool.query(`SELECT * FROM academy_stage_history WHERE ($1::text IS NULL OR user_name = $1) ORDER BY created_at DESC LIMIT 300`, [scope]);
   res.json({ history: rows.map(rowToHistory) });
 }));
@@ -886,10 +886,10 @@ async function persistResult(c: ChallengeRow, result: ChallengeResult, notifiedS
     if (upd.rowCount) {
       const passed = result.status === "passed";
       const type = passed ? "academy_challenge_passed" : "academy_challenge_failed";
-      const title = passed ? `Экзамен сдан: ${c.name}` : result.status === "failed" ? `Экзамен провален: ${c.name}` : `Срок экзамена истёк: ${c.name}`;
-      const msg = passed ? `Итог ${usd(result.stats.net)} за ${result.stats.tradingDays} торговых дней.` : result.reason;
-      await notifyUser({ userName: c.user, type, title, message: msg, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" });
-      await notifyUsers(await mentorsOf(c.user), { type, title: `${c.user}: ${title}`, message: msg, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" }, c.user);
+      // Text as data (lib/notificationText.ts). `reason` is the engine's Russian text until the challenge engine gets codes.
+      const params = { name: c.name, user: c.user, outcome: result.status, net: usd(result.stats.net), days: result.stats.tradingDays, reason: passed ? null : result.reason };
+      await notifyUser({ userName: c.user, type, params, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" });
+      await notifyUsers(await mentorsOf(c.user), { type, params: { ...params, variant: "staff" }, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" }, c.user);
     }
   }
   return changed;
@@ -924,15 +924,35 @@ export async function refreshChallenges(users?: string[] | null): Promise<{ chec
   return { checked: rows.length, changed };
 }
 
-const CHALLENGE_TICK_MS = 15 * 60_000;
-let challengeTimer: NodeJS.Timeout | null = null;
-/** Periodic challenge refresh (date-driven transitions: scheduled → active, expiry). Idempotent; first run after 1 min. */
-export function startChallengeCron(): void {
-  if (challengeTimer) return;
-  const tick = () => { refreshChallenges().catch((err) => logger.warn({ err }, "academy-path: challenge cron failed")); };
-  setTimeout(tick, 60_000).unref?.();
-  challengeTimer = setInterval(tick, CHALLENGE_TICK_MS);
-  challengeTimer.unref?.();
+/**
+ * «Готов к переводу» notices (one per user and stage, academy_readiness_notices) — a write path run by the job registry
+ * ("academy.readiness": every 15 min and after each PropReports sync). GET endpoints only evaluate, never notify.
+ */
+export async function refreshReadinessNotices(users?: string[] | null): Promise<{ checked: number; ready: number }> {
+  await ensureTables();
+  const today = nyDate();
+  const [stages, criteria, tiers, info, usersRes] = await Promise.all([
+    loadStages(), loadCriteria(), loadTiers(), loadStageInfo(null),
+    pool.query(`SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false`),
+  ]);
+  const roles = new Map<string, string>(usersRes.rows.map((u: any) => [String(u.name), String(u.role)]));
+  const names = new Set<string>([...info.keys()].filter((n) => roles.has(n)));
+  for (const [n, role] of roles) if (role === "trader") names.add(n);
+  const only = users?.length ? new Set(users) : null;
+  let checked = 0, ready = 0;
+  for (const name of names) {
+    if (only && !only.has(name)) continue;
+    const i = info.get(name) ?? { stage: null, since: null, source: null, cohortId: null };
+    try {
+      const r = await buildReport(name, today, { stages, criteria, tiers, info: i });
+      checked++;
+      if (r.ready) ready++;
+      await maybeNotifyReady(r);
+    } catch (err) {
+      logger.warn({ err, user: name }, "academy-path: readiness check failed");
+    }
+  }
+  return { checked, ready };
 }
 
 router.get("/academy/challenges/templates", asyncHandler(async (req, res): Promise<void> => {
@@ -947,7 +967,7 @@ router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> =
   await ensureTables();
   const want = typeof req.query.user === "string" ? req.query.user.trim() : "";
   const scope = await scopeTrader(req, want || null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const archived = req.query.archived === "1";
   const today = clientDate(req.query.date);
   const { rows } = await pool.query(
@@ -973,7 +993,7 @@ router.get("/academy/challenges/:id", asyncHandler(async (req, res): Promise<voi
   if (!v) return;
   await ensureTables();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query(`SELECT * FROM academy_challenges WHERE id = $1`, [id]);
   const r = rows[0];
   const c = r ? rowToChallenge(r) : null;
@@ -1033,7 +1053,7 @@ router.post("/academy/challenges", asyncHandler(async (req, res): Promise<void> 
   if (!parsed.success) { bad(res, parsed.error, "Проверьте параметры экзамена"); return; }
   const b = parsed.data;
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [b.user]);
-  if (!exists.rows.length) { res.status(404).json({ error: "Пользователь не найден" }); return; }
+  if (!exists.rows.length) throw notFound("USER_NOT_FOUND");
   const out = await createChallenge(b.user, b.templateKey, b.startsOn, b.endsOn, b.name, b.rules as Partial<ChallengeRules> | undefined, b.comment ?? null, v.name);
   if ("error" in out) { res.status(out.status).json({ error: out.error }); return; }
   await notifyUser({ userName: b.user, type: "academy_challenge_assigned", title: "Назначен экзамен", message: `${v.name}: назначен экзамен «${b.name ?? TEMPLATE_BY_KEY[b.templateKey].name}» с ${b.startsOn}.`, link: CH_LINK(out.id), entityType: "academy_challenge", entityId: out.id, actor: v.name, source: "academy" });
@@ -1046,7 +1066,7 @@ router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Pr
   if (!v) return;
   await ensureTables();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const upd = await pool.query(`UPDATE academy_challenges SET archived_at = NOW(), archived_by = $2 WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id, v.name]);
   if (!upd.rowCount) { res.status(404).json({ error: "Экзамен не найден" }); return; }
   await logAudit({ actor: v.name, action: "academy.challenge.archive", targetType: "academy_challenge", targetId: String(id) });

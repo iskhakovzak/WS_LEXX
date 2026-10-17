@@ -8,10 +8,10 @@ import { Delta, EmptyState, Panel, Pill, TermTooltip } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { GradeChange, KindPill, Marks, RowActions, TargetChange } from "./ActionRow";
 import { REACTION_KIND_LABEL, REACTION_MIN_N, type Row } from "./rows";
-import { fmtPct, gapOf, nyTime, shortDay, SESSION_LABEL, sessionOf } from "./lib";
+import { gapOf, nyTime, shortDay, SESSION_LABEL, sessionOf } from "./lib";
+import { fmtPct, pluralRu } from "@/lib/format";
 
 type Group = { ticker: string; lead: Row; others: Row[]; score: number };
 
@@ -178,8 +178,8 @@ function PremarketCard({
         {hasReaction && (
           <span className="text-xs text-muted-foreground">
             Обычно на {REACTION_KIND_LABEL[r.reactionKind!]}: день{" "}
-            <span className={cn("font-medium tabular-nums", (r.reaction!.avgDay ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtPct(r.reaction!.avgDay)}</span>
-            {r.reaction!.avgGap != null && <>, гэп <span className="tabular-nums text-foreground">{fmtPct(r.reaction!.avgGap)}</span></>}
+            <span className={cn("font-medium tabular-nums", (r.reaction!.avgDay ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtPct(r.reaction!.avgDay, 1)}</span>
+            {r.reaction!.avgGap != null && <>, гэп <span className="tabular-nums text-foreground">{fmtPct(r.reaction!.avgGap, 1)}</span></>}
             {r.reaction!.hitRate != null && <>, в сторону {Math.round(r.reaction!.hitRate * 100)}%</>}
             <span className="tabular-nums"> · n={r.reaction!.n}</span>
           </span>

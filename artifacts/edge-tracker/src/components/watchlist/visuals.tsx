@@ -1,7 +1,8 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { toneText } from "@/components/ds";
-import { fmtPrice, scoreTone, type Plan } from "./lib";
+import { scoreTone, type Plan } from "./lib";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 /** Circular 0–100 score gauge. */
 export function ScoreRing({ score, size = 36, className, pending }: { score: number | null; size?: number; className?: string; pending?: boolean }) {
@@ -62,7 +63,7 @@ export function Sparkline({ data, width = 88, height = 28, className, tone = "ne
       viewBox={`0 0 ${width} ${height}`}
       className={cn("shrink-0 overflow-visible", tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted-foreground", className)}
       role="img"
-      aria-label={`Динамика за ${data.length} дн.: ${change >= 0 ? "+" : "−"}${Math.abs(change).toFixed(1)}%`}
+      aria-label={`Динамика за ${data.length} дн.: ${fmtPct(change, 1)}`}
     >
       <defs>
         <linearGradient id={id} x1="0" x2="0" y1="0" y2="1">

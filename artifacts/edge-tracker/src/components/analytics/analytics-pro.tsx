@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, Segmented } from "@/components/ds";
 import {
   type Filters, type FilterKey, type TimeBucket, type Metric, EMPTY_FILTERS,
-  TIME_BUCKETS, DAY_OF_WEEK_OPTIONS, MONTH_OPTIONS,
+  TIME_BUCKETS, dayOfWeekOptions, monthOptions,
   applyFilters, groupByDay, buildWeeklySummaries, computeOhlc,
   computeClosureStats, buildOhlcCandles, computeEdgeStats, computePeriodExtremes,
   valueFnFor, autoMetric, rOf, yearOf, tagsOf, ymd,
@@ -18,7 +18,7 @@ import { EquityPanel } from "./pro-equity";
 import { BreakdownPanel } from "./pro-breakdown";
 import { ExtremesPanel, KpiGrid, TradingDaysInfo, WeeksPanel, type JumpKind } from "./pro-stats";
 import { loadPref, savePref } from "./pro-format";
-import { pluralRu } from "@/components/rules/constants";
+import { pluralRu } from "@/lib/format";
 
 type Props = { trades: Trade[] };
 
@@ -86,8 +86,8 @@ function buildOptions(trades: Trade[], key: FilterKey): FilterOption[] {
     case "accounts": return uniqSorted(trades.map((t) => t.trader ?? "—"));
     case "symbols": return uniqSorted(trades.map((t) => t.ticker ?? "—"));
     case "years": return uniqSorted(trades.map(yearOf).filter((v) => v !== "—"));
-    case "months": return MONTH_OPTIONS;
-    case "daysOfWeek": return DAY_OF_WEEK_OPTIONS;
+    case "months": return monthOptions();
+    case "daysOfWeek": return dayOfWeekOptions();
     case "timeBuckets": return TIME_BUCKETS.map((b) => ({ id: b.id, label: b.label }));
     case "strategies": return uniqSorted(trades.map((t) => t.setup ?? "—"));
     case "types": return uniqSorted(trades.map((t) => t.side ?? "—"));

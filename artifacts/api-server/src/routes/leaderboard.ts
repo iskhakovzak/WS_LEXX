@@ -13,6 +13,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { signedRSql, netPnlSql, closeDateSql, closedSql, resultSql } from "../lib/tradeMath";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { scopeTrader } from "../lib/auth";
+import { unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -233,7 +234,7 @@ type Metric = (typeof METRICS)[number];
 
 router.get("/leaderboard", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const me = req.authUser?.name ?? "";
   const win = resolveWindow(req.query);
   const metric: Metric = (METRICS as readonly string[]).includes(String(req.query.metric)) ? (req.query.metric as Metric) : "score";

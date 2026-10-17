@@ -29,15 +29,16 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
 import { EmptyState, Kbd, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
-import { IconAction, lsGet, lsSet, plural } from "@/components/playbook-sub/bits";
+import { IconAction, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
 import { cn } from "@/lib/utils";
 import { generatePlaybookMarkdown, downloadMarkdown, generateNotionZip, downloadBlob, type ExportEntry } from "@/lib/playbook-export";
 import {
-  invalidateExamples, invalidatePlaybook, notLiveMessage, pbRequest, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
+  invalidateExamples, invalidatePlaybook, notLiveMessage, useFolderSettings, usePlaybookEntries, usePlaybookSummary, usePlaybookViewer,
   type InboxTrade,
 } from "@/components/playbook/api";
+import { http } from "@/lib/api/http";
 import {
   LS, accessOf, matchesQuickFilter, searchHaystack, sortEntries, spaceTabOf, splitTags,
   type PlaybookEntry, type QuickFilter, type SortKey, type SpaceTab,
@@ -56,6 +57,7 @@ import { ShareDialog } from "@/components/playbook/share-dialog";
 import { hasExampleDrag, patchExample, readExampleDrag } from "@/components/playbook/examples-board";
 import { ActivitySheet, DeleteFolderDialog, DeleteSetupDialog, RenameFolderDialog } from "@/components/playbook/page-dialogs";
 import { useMoveToFolder } from "@/components/playbook/move-to-folder";
+import { commonI18n } from "@/i18n/ns/common";
 
 type View = "library" | "gallery" | "grid";
 const VIEWS: View[] = ["library", "gallery", "grid"];
@@ -505,7 +507,7 @@ export default function Playbook() {
   async function saveFolderSettings(body: { folderName: string; colorIndex?: number; sortOrder?: number }[], errTitle: string) {
     if (!canFolderSettings) return;
     try {
-      await pbRequest("/api/playbook/folder-settings", { method: "PATCH", json: body });
+      await http.patch("/api/playbook/folder-settings", body);
       qc.invalidateQueries({ queryKey: ["playbook-folder-settings"] });
     } catch {
       toast({ title: errTitle, variant: "destructive" });
@@ -566,13 +568,10 @@ export default function Playbook() {
     if (!deleteFolder) return;
     setDeleteFolderPending(true);
     try {
-      const r = await pbRequest<{ deleted?: number }>("/api/playbook/delete-folder", {
-        method: "DELETE",
-        json: { folder: deleteFolder, password, trader },
-      });
+      const r = await http.del<{ deleted?: number }>("/api/playbook/delete-folder", { folder: deleteFolder, password, trader });
       invalidatePlaybook(qc);
       if (selected && selected.folder === deleteFolder) openSetup(null, { replace: true });
-      toast({ title: `Папка «${deleteFolder}» удалена`, description: r?.deleted != null ? `${r.deleted} ${plural(r.deleted, "сетап", "сетапа", "сетапов")} в корзине` : undefined });
+      toast({ title: `Папка «${deleteFolder}» удалена`, description: r?.deleted != null ? `${commonI18n.t("units.setups", { count: r.deleted })} в корзине` : undefined });
       setDeleteFolder(null);
     } catch (e: any) {
       toast({ title: "Не удалось удалить папку", description: e?.message, variant: "destructive" });
@@ -584,7 +583,7 @@ export default function Playbook() {
   /* ---------- setup ops ---------- */
   async function restore(id: number) {
     try {
-      await pbRequest(`/api/playbook/${id}/restore`, { method: "POST", json: { trader } });
+      await http.post(`/api/playbook/${id}/restore`, { trader });
       invalidatePlaybook(qc, id);
       toast({ title: "Сетап восстановлен" });
     } catch (e: any) {
@@ -596,7 +595,7 @@ export default function Playbook() {
     const { id, name } = deleting;
     setDeletePending(true);
     try {
-      await pbRequest(`/api/playbook/${id}`, { method: "DELETE", json: { trader } });
+      await http.del(`/api/playbook/${id}`, { trader });
       invalidatePlaybook(qc, id);
       if (selectedId === id) openSetup(null, { replace: true });
       setDeleting(null);
@@ -663,7 +662,7 @@ export default function Playbook() {
     if (!spaceEntries.length) return;
     try {
       downloadMarkdown(generatePlaybookMarkdown(spaceEntries as unknown as ExportEntry[], allFolders), `playbook-${localDateString()}.md`);
-      toast({ title: "Плейбук экспортирован", description: `${topLevel.length} ${plural(topLevel.length, "сетап", "сетапа", "сетапов")} в .md` });
+      toast({ title: "Плейбук экспортирован", description: `${commonI18n.t("units.setups", { count: topLevel.length })} в .md` });
     } catch (e: any) {
       toast({ title: "Не удалось экспортировать", description: e?.message, variant: "destructive" });
     }

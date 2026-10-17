@@ -9,13 +9,14 @@ import { Activity, BellRing, Brain, CalendarRange, Gauge, Grid3x3, LineChart, Sp
 import {
   EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, Segmented, SkeletonBlock, TableSkeleton,
 } from "@/components/ds";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/auth-context";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { useReducedMotion } from "framer-motion";
 import {
-  fmtDateHeading, pluralTrades, useBehavior, useComputeAll, useSetupAggregates, useSetupsAuto, type BehaviorReport, type Range,
+  useBehavior, useComputeAll, useSetupAggregates, useSetupsAuto, type BehaviorReport, type Range,
 } from "@/components/behavior/api";
+import { fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { TraderProfilePanel } from "@/components/behavior/trader-profile";
 import { PatternCards } from "@/components/behavior/pattern-cards";
 import { DisciplineHeatmap } from "@/components/behavior/discipline-heatmap";
@@ -208,13 +209,13 @@ function BehaviorTab({
   }
   const owner = r.scope ?? me;
   const noTime = r.summary.closed - r.summary.withTime;
-  const periodLabel = r.summary.from && r.summary.to ? `${fmtDateHeading(r.summary.from)} — ${fmtDateHeading(r.summary.to)}` : "";
+  const periodLabel = r.summary.from && r.summary.to ? `${fmtDate(r.summary.from, "weekdayDayMonth")} — ${fmtDate(r.summary.to, "weekdayDayMonth")}` : "";
 
   return (
     <div className={`flex flex-col gap-[var(--grid-gap)] transition-opacity duration-[var(--dur-2)] ${q.isFetching && q.isPlaceholderData ? "opacity-70" : ""}`}>
       {r.profile && <Panel
         title="Профиль трейдера"
-        description={`${pluralTrades(r.summary.closed)} за ${r.summary.days} торг. дн.${periodLabel ? ` · ${periodLabel}` : ""}`}
+        description={`${commonI18n.t("units.trades", { count: r.summary.closed })} за ${r.summary.days} торг. дн.${periodLabel ? ` · ${periodLabel}` : ""}`}
         icon={UserRound}
         actions={noTime > 0 ? <Pill tone="neutral" title="Такие сделки не участвуют в паттернах, зависящих от времени (реванш, тильт, отыгрыш, эйфория)">без времени входа: {noTime}</Pill> : undefined}
       >
@@ -297,7 +298,7 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         />
         {list.data && (
           <span className="text-xs text-muted-foreground">
-            {pluralTrades(list.data.total)} · правила v{list.data.version}
+            {commonI18n.t("units.trades", { count: list.data.total })} · правила v{list.data.version}
           </span>
         )}
       </div>

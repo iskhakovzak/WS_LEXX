@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { eq, and, desc } from "drizzle-orm";
 import { db, voiceNotesTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { config } from "../config";
 import { audioExtension, transcribeAudio } from "../lib/transcribe";
 import { objectStorageClient, ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
@@ -9,6 +10,7 @@ import multer from "multer";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { isGuest } from "../lib/auth";
 import { transcribeLimiter, voiceNoteLimiter } from "../lib/rateLimits";
+import { badRequest, forbidden, unauthorized } from "../lib/http";
 
 function isStaff(req: Request): boolean {
   const role = req.authUser?.role;
@@ -25,16 +27,17 @@ function canActAs(req: Request, userId: string): boolean {
 }
 
 // ─── short-lived media tokens ───────────────────────────────────────────────
-// <audio src> cannot carry an Authorization header. Instead of putting the 30-day session JWT into the
-// URL (?access_token=, still accepted by authMiddleware for this path), the player asks
+// <audio src> cannot carry an Authorization header. The session token never goes into a URL (the API no longer
+// accepts ?access_token=); the player asks
 // GET /voice-notes/:id/audio-url and receives a URL with a 5-minute HMAC token bound to that one note.
 // Token = "<expUnixSec>.<hex hmac-sha256(secret, "voice-note:<id>:<exp>")>"; nothing about the user leaks.
 
 const MEDIA_TOKEN_TTL_SEC = 300;
-const MEDIA_SECRET: string = process.env.MEDIA_TOKEN_SECRET || process.env.JWT_SECRET || "";
+// Separate secret in production (config.ts); derived from JWT_SECRET only in development.
+const mediaSecret = (): string => config.mediaTokenSecret;
 
 function mediaSignature(id: number, exp: number): string {
-  return createHmac("sha256", MEDIA_SECRET).update(`voice-note:${id}:${exp}`).digest("hex");
+  return createHmac("sha256", mediaSecret()).update(`voice-note:${id}:${exp}`).digest("hex");
 }
 
 export function signMediaToken(id: number, nowMs = Date.now()): { token: string; expiresAt: string } {
@@ -43,7 +46,7 @@ export function signMediaToken(id: number, nowMs = Date.now()): { token: string;
 }
 
 export function verifyMediaToken(id: number, raw: unknown, nowMs = Date.now()): boolean {
-  if (!MEDIA_SECRET || typeof raw !== "string") return false;
+  if (!mediaSecret() || typeof raw !== "string") return false;
   const dot = raw.indexOf(".");
   if (dot <= 0) return false;
   const exp = Number(raw.slice(0, dot));
@@ -82,16 +85,16 @@ const upload = {
 
 const router: IRouter = Router();
 
-const BUCKET_ID = process.env.DEFAULT_OBJECT_STORAGE_BUCKET_ID ?? "";
-const PRIVATE_DIR = process.env.PRIVATE_OBJECT_DIR ?? "objects";
+const bucketId = (): string => config.storage.bucketId;
+const privateDir = (): string => config.storage.privateDir || "objects";
 
 async function uploadAudioToStorage(buffer: Buffer, mimeType: string): Promise<string> {
   const ext = audioExtension(mimeType);
-  const objectName = `${PRIVATE_DIR}/voice-notes/${randomUUID()}.${ext}`;
-  const bucket = objectStorageClient.bucket(BUCKET_ID);
+  const objectName = `${privateDir()}/voice-notes/${randomUUID()}.${ext}`;
+  const bucket = objectStorageClient.bucket(bucketId());
   const file = bucket.file(objectName);
   await file.save(buffer, { contentType: mimeType, resumable: false });
-  return `/objects/${objectName.replace(PRIVATE_DIR + "/", "")}`;
+  return `/objects/${objectName.replace(privateDir() + "/", "")}`;
 }
 
 router.post("/voice-notes/transcribe", transcribeLimiter, upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
@@ -191,7 +194,7 @@ router.get("/voice-notes", asyncHandler(async (req, res): Promise<void> => {
 
 router.delete("/voice-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
 
   const { userId } = req.query as Record<string, string>;
   if (!userId) {
@@ -215,12 +218,12 @@ const objectStorageService = new ObjectStorageService();
  */
 router.get("/voice-notes/:id/audio-url", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
-  if (!MEDIA_SECRET) { res.status(503).json({ error: "Media tokens are not configured (JWT_SECRET)" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
+  if (!req.authUser) throw unauthorized();
+  if (!mediaSecret()) { res.status(503).json({ error: "Media tokens are not configured (JWT_SECRET)" }); return; }
   const [note] = await db.select({ id: voiceNotesTable.id, userId: voiceNotesTable.userId }).from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
   if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
-  if (!canActAs(req, note.userId)) { res.status(403).json({ error: "Not authorized" }); return; }
+  if (!canActAs(req, note.userId)) throw forbidden();
   const { token, expiresAt } = signMediaToken(id);
   res.setHeader("Cache-Control", "no-store");
   res.json({ path: `/api/voice-notes/${id}/audio?media_token=${token}`, expiresAt, ttlSec: MEDIA_TOKEN_TTL_SEC });
@@ -228,25 +231,25 @@ router.get("/voice-notes/:id/audio-url", asyncHandler(async (req, res): Promise<
 
 /**
  * Audio redirect. Accepts either a valid `?media_token=` (from /audio-url, no session needed) or an
- * authenticated caller (Bearer / `?access_token=` via authMiddleware) who owns the note or is staff.
+ * authenticated caller (Authorization header) who owns the note or is staff.
  * NOTE: the global API gate still 401s anonymous requests on this path; a media-token-only request works
  * once `/^\/voice-notes\/\d+\/audio$/` (GET) is on PUBLIC_API_ROUTES in lib/auth.ts — the route enforces
  * the token itself, so nothing is exposed without it.
  */
 router.get("/voice-notes/:id/audio", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
 
   const [note] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
   if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
 
   const byToken = verifyMediaToken(id, req.query.media_token);
   if (!byToken) {
-    if (!req.authUser) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
-    if (!canActAs(req, note.userId)) { res.status(403).json({ error: "Not authorized" }); return; }
+    if (!req.authUser) throw unauthorized();
+    if (!canActAs(req, note.userId)) throw forbidden();
     // Legacy clients still send ?userId=; when present it must be the note owner.
     const { userId } = req.query as Record<string, string | undefined>;
-    if (userId && userId.trim() && note.userId !== userId.trim()) { res.status(403).json({ error: "Not authorized" }); return; }
+    if (userId && userId.trim() && note.userId !== userId.trim()) throw forbidden();
   }
 
   res.setHeader("Cache-Control", "private, no-store");

@@ -4,7 +4,6 @@ import { BarChart3, FileDown, Microscope, Printer, RefreshCw, SearchX } from "lu
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, Page, PageHeader, Panel, Segmented, Toolbar } from "@/components/ds";
 import { KpiGrid, KpiGridSkeleton } from "@/components/stats/kpi-grid";
 import { EquityPanel } from "@/components/stats/equity-panel";
@@ -20,10 +19,12 @@ import { usePerformance } from "@/components/propreports/api";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import {
   HORIZON_LABEL, HORIZON_OPTIONS, PERIOD_OPTIONS, computeKpis, dailySeries, equitySeries, feeStats, horizonOf, inRange,
-  monthlySeries, parseKey, periodRanges, pluralTrades, preferredMetric,
+  monthlySeries, parseKey, periodRanges, preferredMetric,
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtDateCustom } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /**
  * /stats — the period "report card": headline KPIs vs the previous period, equity curve, P&L calendar,
@@ -52,11 +53,11 @@ function loadPrefs(): Prefs {
   }
 }
 
-const MONTHS_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 function fmtRange(r: Range): string {
   const f = (k: string) => {
     const d = parseKey(k);
-    return `${d.getDate()} ${MONTHS_SHORT[d.getMonth()]}${d.getFullYear() !== new Date().getFullYear() ? ` ${d.getFullYear()}` : ""}`;
+    const otherYear = d.getFullYear() !== new Date().getFullYear();
+    return fmtDateCustom(d, { day: "numeric", month: "short", ...(otherYear ? { year: "numeric" } : {}) }).replace(".", "");
   };
   if (!r.from) return "всё время";
   return `${f(r.from)} — ${r.to ? f(r.to) : "сегодня"}`;
@@ -229,7 +230,7 @@ export default function Stats() {
 
   const prevNote = ranges.prev
     ? prevKpis && prevKpis.total > 0
-      ? `Сравнение с ${fmtRange(ranges.prev)} · ${prevKpis.total} ${pluralTrades(prevKpis.total)}`
+      ? `Сравнение с ${fmtRange(ranges.prev)} · ${commonI18n.t("units.trades", { count: prevKpis.total })}`
       : `В предыдущем периоде (${fmtRange(ranges.prev)}) сделок нет — сравнивать не с чем`
     : "Выберите период, чтобы сравнить с предыдущим";
 
@@ -294,7 +295,7 @@ export default function Stats() {
           <EmptyState
             icon={SearchX}
             title={`Нет сделок за ${periodOpt.long}${prefs.trader !== "all" ? ` у ${prefs.trader}` : ""}${prefs.horizon !== "all" ? ` · ${HORIZON_LABEL[prefs.horizon]}` : ""}`}
-            description={`${bookTotal != null ? `Всего в журнале${prefs.trader !== "all" ? ` у ${prefs.trader}` : ""} ${bookTotal} ${pluralTrades(bookTotal)} — в` : "В"}ыберите период длиннее${prefs.trader !== "all" || prefs.horizon !== "all" ? " или снимите фильтры" : ""}.`}
+            description={`${bookTotal != null ? `Всего в журнале${prefs.trader !== "all" ? ` у ${prefs.trader}` : ""} ${commonI18n.t("units.trades", { count: bookTotal })} — в` : "В"}ыберите период длиннее${prefs.trader !== "all" || prefs.horizon !== "all" ? " или снимите фильтры" : ""}.`}
             action={
               <div className="flex flex-wrap justify-center gap-2">
                 {prefs.period !== "all" && (
@@ -315,7 +316,7 @@ export default function Stats() {
           <div className="flex flex-wrap items-baseline justify-between gap-2 px-1">
             <h2 className="text-sm font-semibold text-foreground">
               {scopeLabel} · {fmtRange(ranges.cur)}
-              <span className="ml-2 font-normal text-muted-foreground">{trades.length} {pluralTrades(trades.length)}</span>
+              <span className="ml-2 font-normal text-muted-foreground">{commonI18n.t("units.trades", { count: trades.length })}</span>
             </h2>
             <p className="text-xs text-muted-foreground">{prevNote}</p>
           </div>

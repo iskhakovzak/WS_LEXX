@@ -1,5 +1,4 @@
 import { useState } from "react";
-import type { Research } from "@workspace/api-client-react";
 import { CalendarClock, ChevronDown, Link2, Pencil, Pin, PinOff, Repeat, Trash2, UserRound } from "lucide-react";
 import { Pill, StatRow, TermLabel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -8,7 +7,8 @@ import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { cn } from "@/lib/utils";
 import { EarningsHistoryView, CallTypePill } from "./earnings-history";
-import { fmtMoney, fmtShortDate, type UpcomingItem } from "./earnings-api";
+import { type UpcomingItem } from "@/components/shared/market/earnings-api";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { ResearchEvidence } from "./research-evidence";
 import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote } from "./research-utils";
 
@@ -163,10 +163,10 @@ export function ResearchPreview({
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary/10 p-3 text-sm">
           <CalendarClock className="h-4 w-4 text-primary" aria-hidden="true" />
           <span>
-            Отчёт {nextReport.ticker} — <b className="font-semibold">{fmtShortDate(nextReport.date, true)}</b>
+            Отчёт {nextReport.ticker} — <b className="font-semibold">{fmtDate(nextReport.date, "weekdayDayMonth")}</b>
           </span>
           <CallTypePill type={nextReport.callType} />
-          {nextReport.epsEstimate != null && <span className="text-muted-foreground">прогноз EPS {fmtMoney(nextReport.epsEstimate)}</span>}
+          {nextReport.epsEstimate != null && <span className="text-muted-foreground">прогноз EPS {fmtUsd(nextReport.epsEstimate)}</span>}
         </div>
       )}
 

@@ -38,6 +38,11 @@ import { profileHref } from "@/components/curator/curator-math";
 import { PersonSelect } from "@/components/people/person-select";
 import { Highlight } from "@/components/people/highlight";
 import { matchText, prepareQuery } from "@/components/people/search";
+import { fmtDate } from "@/lib/format";
+import { secretMinFor } from "@/lib/secret-policy";
+import { authI18n } from "@/i18n/ns/auth";
+
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 const NL = {
   menu: "Латинское имя…",
@@ -527,7 +532,7 @@ export function PeoplePanel({
                             <Pill tone={STATUS[p.status].tone} dot={p.status !== "archived"}>{STATUS[p.status].label}</Pill>
                             {p.status === "frozen" && p.bannedReason && <div className="max-w-[16rem] whitespace-normal break-words text-2xs text-muted-foreground">{p.bannedReason}</div>}
                           </td>
-                          <td className="whitespace-nowrap text-muted-foreground" title={p.seen ? new Date(p.seen).toLocaleString("ru-RU") : undefined}>{timeAgo(p.seen)}</td>
+                          <td className="whitespace-nowrap text-muted-foreground" title={p.seen ? fmtDate(p.seen, "shortDateTimeSeconds") : undefined}>{timeAgo(p.seen)}</td>
                           <td className="text-right tabular-nums">{p.trades30 || <span className="text-muted-foreground">0</span>}</td>
                           <td className="w-10 text-right">{menu(p)}</td>
                         </tr>
@@ -676,7 +681,8 @@ function AddPersonDialog({
   const [curator, setCurator] = useState("");
   const [reason, setReason] = useState("Новый сотрудник");
   useEffect(() => { if (open) { setName(""); setPassword(""); setRole("trader"); setCurator(""); setReason("Новый сотрудник"); } }, [open]);
-  const valid = name.trim().length > 0 && password.length >= 4 && reason.trim().length >= 3;
+  const minSecret = secretMinFor(role);
+  const valid = name.trim().length > 0 && password.length >= minSecret && reason.trim().length >= 3;
   const submit = () => { if (valid && !busy) onSubmit({ name: name.trim(), password, role, curator: role === "trader" && curator ? curator : null, reason: reason.trim() }); };
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!busy) onOpenChange(v); }}>
@@ -693,7 +699,7 @@ function AddPersonDialog({
             </div>
             <div className="grid gap-1.5">
               <Label htmlFor="np-pass" className="text-xs text-muted-foreground">Временный пароль <span className="text-down">*</span></Label>
-              <Input id="np-pass" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Минимум 4 символа" />
+              <Input id="np-pass" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={authI18n.t("forced.tooShort", { min: minSecret })} />
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div className="grid gap-1.5">

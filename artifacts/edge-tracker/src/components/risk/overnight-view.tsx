@@ -15,12 +15,14 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Catalyst, EarningsHit, OfferingHit, OvernightBook, OvernightTrader, RiskPosition } from "./use-risk";
-import { HttpError, useEarningsMap, useOfferingsMap, useOvernightBook, useQuotes } from "./use-risk";
-import { HORIZON_LABEL, HORIZON_TONE, LimitBar, SortableTableHead, StopPill, fmtPct, fmtSignedUsd, fmtUsd, usageText, useStoredState } from "./primitives";
+import { isNotFound } from "@/lib/api/errors";
+import { useEarningsMap, useOfferingsMap, useOvernightBook, useQuotes } from "./use-risk";
+import { HORIZON_LABEL, HORIZON_TONE, LimitBar, SortableTableHead, StopPill, usageText, useStoredState } from "./primitives";
 import {
   DEFAULT_SHOCKS, concentration, customPctShock, markPosition, runShock, toCsv,
   type BookPosition, type Marked, type ShockMode, type ShockResult, type TraderRoom,
 } from "./risk-math";
+import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 
 type Mode = "book" | "all";
 const MODES: readonly Mode[] = ["book", "all"];
@@ -32,7 +34,7 @@ function catalystsFor(ticker: string, today: string, book: OvernightBook | undef
   const out: CatalystChip[] = [];
   const t = ticker.toUpperCase();
   const soon = addDays(today, 3);
-  const dd = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+  const dd = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
   const e = earnings?.[t];
   if (e) out.push({ kind: "earnings", label: `Отчёт ${dd(e.date)} ${e.callType}`, date: e.date, urgent: e.date <= soon, title: `Earnings ${e.date} ${e.callType}${e.company ? ` — ${e.company}` : ""}` });
   const o = offerings?.[t];
@@ -161,7 +163,7 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
   };
 
   if (book.isError) {
-    const notReady = book.error instanceof HttpError && book.error.status === 404;
+    const notReady = isNotFound(book.error);
     return (
       <Panel>
         <EmptyState icon={Moon} title={notReady ? "Овернайт-книга ещё не подключена на сервере" : "Не удалось загрузить овернайт-книгу"} description={notReady ? "API /api/risk/overnight появится после пересборки сервера." : (book.error as Error).message} />
@@ -191,7 +193,7 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
       <div className="hidden print:block">
         <h1 className="text-xl font-semibold">Отчёт по овернайт-книге — {today}</h1>
         <p className="text-sm text-muted-foreground">
-          {isCurator ? "Весь деск" : trader} · сформирован {new Date().toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })} · котировки {quotes.dataUpdatedAt ? new Date(quotes.dataUpdatedAt).toLocaleTimeString("ru-RU", { timeStyle: "short" }) : "—"}
+          {isCurator ? "Весь деск" : trader} · сформирован {fmtDate(new Date(), "shortDateTime")} · котировки {quotes.dataUpdatedAt ? fmtDate(quotes.dataUpdatedAt, "time") : "—"}
         </p>
       </div>
 
@@ -200,9 +202,9 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
           Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[92px] rounded-2xl" />)
         ) : (
           <>
-            <StatCard label="Овернайт-экспозиция" icon={Moon} value={fmtUsd(totals.mv, { compact: true })} hint={`${rows.length} поз. · ${byTrader.length} трейд. · по рынку${totals.quoted < rows.length ? ` (${rows.length - totals.quoted} без котировки)` : ""}`} />
-            <StatCard label="Нереализованный P&L" value={totals.unrealized != null ? fmtSignedUsd(totals.unrealized) : "—"} tone={toneOf(totals.unrealized)} hint={totals.unrealized == null ? "нет котировок" : "по последней цене"} />
-            <StatCard label="Риск до стопов" icon={Briefcase} value={fmtUsd(totals.riskToStop, { compact: true })} hint="если все стопы сработают на открытии" tone={totals.riskToStop > 0 ? "down" : "neutral"} />
+            <StatCard label="Овернайт-экспозиция" icon={Moon} value={fmtUsd(totals.mv, { decimals: 0, compact: 10_000 })} hint={`${rows.length} поз. · ${byTrader.length} трейд. · по рынку${totals.quoted < rows.length ? ` (${rows.length - totals.quoted} без котировки)` : ""}`} />
+            <StatCard label="Нереализованный P&L" value={totals.unrealized != null ? fmtUsd(totals.unrealized, { signed: true, decimals: 0 }) : "—"} tone={toneOf(totals.unrealized)} hint={totals.unrealized == null ? "нет котировок" : "по последней цене"} />
+            <StatCard label="Риск до стопов" icon={Briefcase} value={fmtUsd(totals.riskToStop, { decimals: 0, compact: 10_000 })} hint="если все стопы сработают на открытии" tone={totals.riskToStop > 0 ? "down" : "neutral"} />
             <StatCard label="С катализатором" icon={CalendarClock} value={totals.catalysts} tone={totals.catalysts ? "warn" : "neutral"} hint="отчёт / размещение в ближайшие 3 дня" />
           </>
         )}
@@ -337,17 +339,17 @@ function TraderBlock({ name, t, rows: data, showTrader }: { name: string; t: Ove
           {forbiddenSwing && <Pill tone="down" dot>свинг запрещён</Pill>}
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground tabular-nums">
-          <span>экспозиция <span className="font-medium text-foreground">{fmtUsd(mv, { compact: true })}</span></span>
-          <span>нереализ. <span className={cn("font-medium", unrealSum == null ? "" : unrealSum > 0 ? "text-up" : unrealSum < 0 ? "text-down" : "text-foreground")}>{unrealSum != null ? fmtSignedUsd(unrealSum) : "—"}</span></span>
-          <span>риск до стопов <span className="font-medium text-foreground">{fmtUsd(risk, { compact: true })}</span></span>
+          <span>экспозиция <span className="font-medium text-foreground">{fmtUsd(mv, { decimals: 0, compact: 10_000 })}</span></span>
+          <span>нереализ. <span className={cn("font-medium", unrealSum == null ? "" : unrealSum > 0 ? "text-up" : unrealSum < 0 ? "text-down" : "text-foreground")}>{unrealSum != null ? fmtUsd(unrealSum, { signed: true, decimals: 0 }) : "—"}</span></span>
+          <span>риск до стопов <span className="font-medium text-foreground">{fmtUsd(risk, { decimals: 0, compact: 10_000 })}</span></span>
           {t && (
             <span className="inline-flex items-center gap-1">
-              сегодня <span className={cn("font-medium", toneOf(t.todayPnlNet) === "up" ? "text-up" : toneOf(t.todayPnlNet) === "down" ? "text-down" : "text-foreground")}>{t.todayPnlNet != null ? fmtSignedUsd(t.todayPnlNet) : "—"}</span>
+              сегодня <span className={cn("font-medium", toneOf(t.todayPnlNet) === "up" ? "text-up" : toneOf(t.todayPnlNet) === "down" ? "text-down" : "text-foreground")}>{t.todayPnlNet != null ? fmtUsd(t.todayPnlNet, { signed: true, decimals: 0 }) : "—"}</span>
             </span>
           )}
         </div>
         <div className="ml-auto w-full sm:w-64">
-          <LimitBar size="sm" label="Макс. овернайт" used={mv} limit={L?.maxOvernightExposure} hint={t?.dailyRemainingUsd != null ? `остаток дня ${fmtUsd(t.dailyRemainingUsd)}` : undefined} />
+          <LimitBar size="sm" label="Макс. овернайт" used={mv} limit={L?.maxOvernightExposure} hint={t?.dailyRemainingUsd != null ? `остаток дня ${fmtUsd(t.dailyRemainingUsd, { decimals: 0 })}` : undefined} />
         </div>
       </div>
 
@@ -386,13 +388,13 @@ function TraderBlock({ name, t, rows: data, showTrader }: { name: string; t: Ove
                   {m.unrealizedPct != null && <div className={cn("text-2xs", m.unrealizedPct > 0 ? "text-up" : m.unrealizedPct < 0 ? "text-down" : "text-muted-foreground")}>{m.unrealizedPct > 0 ? "+" : ""}{m.unrealizedPct}%</div>}
                 </TableCell>
                 <TableCell className={cn("text-right font-medium tabular-nums", m.unrealizedUsd == null ? "text-muted-foreground" : m.unrealizedUsd > 0 ? "text-up" : m.unrealizedUsd < 0 ? "text-down" : "")}>
-                  {m.unrealizedUsd != null ? fmtSignedUsd(m.unrealizedUsd) : "—"}
+                  {m.unrealizedUsd != null ? fmtUsd(m.unrealizedUsd, { signed: true, decimals: 0 }) : "—"}
                 </TableCell>
                 <TableCell className="text-right tabular-nums">
-                  {m.riskToStopUsd != null ? fmtUsd(m.riskToStopUsd) : <span className="text-muted-foreground">нет стопа</span>}
+                  {m.riskToStopUsd != null ? fmtUsd(m.riskToStopUsd, { decimals: 0 }) : <span className="text-muted-foreground">нет стопа</span>}
                   {p.stop != null && <div className="text-2xs text-muted-foreground">стоп {p.stop}{m.riskToStopUsd === 0 ? " · пробит" : ""}</div>}
                 </TableCell>
-                <TableCell className={cn("text-right tabular-nums", usageText(pctOfMax))}>{pctOfMax != null ? fmtPct(pctOfMax) : <span className="text-muted-foreground">—</span>}</TableCell>
+                <TableCell className={cn("text-right tabular-nums", usageText(pctOfMax))}>{pctOfMax != null ? fmtPct(pctOfMax, { decimals: 0, signed: false }) : <span className="text-muted-foreground">—</span>}</TableCell>
                 <TableCell><CatalystPills items={cats} /></TableCell>
                 <TableCell className="max-w-[200px] text-xs text-muted-foreground">{p.sector ?? "—"}</TableCell>
               </TableRow>
@@ -437,19 +439,19 @@ function ScenarioTable({ results, rooms, shockMode }: { results: ShockResult[]; 
               return (
                 <TableRow key={t}>
                   <TableCell className="font-medium">{t}</TableCell>
-                  <TableCell className="text-right tabular-nums text-muted-foreground">{room?.dailyRemainingUsd != null ? fmtUsd(room.dailyRemainingUsd) : "—"}</TableCell>
+                  <TableCell className="text-right tabular-nums text-muted-foreground">{room?.dailyRemainingUsd != null ? fmtUsd(room.dailyRemainingUsd, { decimals: 0 }) : "—"}</TableCell>
                   {results.map((r) => {
                     const x = r.traders.find((y) => y.trader === t);
                     if (!x) return <TableCell key={r.shock.key} className="text-right">—</TableCell>;
                     return (
                       <TableCell key={r.shock.key} className={cn("text-right tabular-nums", x.breach && "bg-down/10")}>
-                        <div className={cn("font-medium", x.pnlUsd > 0 ? "text-up" : x.pnlUsd < 0 ? "text-down" : "")}>{fmtSignedUsd(x.pnlUsd)}</div>
+                        <div className={cn("font-medium", x.pnlUsd > 0 ? "text-up" : x.pnlUsd < 0 ? "text-down" : "")}>{fmtUsd(x.pnlUsd, { signed: true, decimals: 0 })}</div>
                         {x.remainingAfterUsd != null && (
                           <div className={cn("text-2xs", x.breach ? "font-semibold text-down" : "text-muted-foreground")}>
-                            {x.breach ? `стоп −${fmtUsd(-x.remainingAfterUsd)}` : `ост. ${fmtUsd(x.remainingAfterUsd)}`}
+                            {x.breach ? `стоп −${fmtUsd(-x.remainingAfterUsd, { decimals: 0 })}` : `ост. ${fmtUsd(x.remainingAfterUsd, { decimals: 0 })}`}
                           </div>
                         )}
-                        {x.worst[0]?.pnlUsd != null && x.worst[0].pnlUsd < 0 && <div className="text-2xs text-muted-foreground">{x.worst[0].ticker} {fmtSignedUsd(x.worst[0].pnlUsd, true)}</div>}
+                        {x.worst[0]?.pnlUsd != null && x.worst[0].pnlUsd < 0 && <div className="text-2xs text-muted-foreground">{x.worst[0].ticker} {fmtUsd(x.worst[0].pnlUsd, { signed: true, decimals: 0, compact: 10_000 })}</div>}
                       </TableCell>
                     );
                   })}
@@ -461,7 +463,7 @@ function ScenarioTable({ results, rooms, shockMode }: { results: ShockResult[]; 
               <TableCell />
               {results.map((r) => (
                 <TableCell key={r.shock.key} className={cn("text-right tabular-nums", r.desk.pnlUsd > 0 ? "text-up" : r.desk.pnlUsd < 0 ? "text-down" : "")}>
-                  {fmtSignedUsd(r.desk.pnlUsd)}
+                  {fmtUsd(r.desk.pnlUsd, { signed: true, decimals: 0 })}
                   {r.desk.breaches.length > 0 && <div className="text-2xs font-normal text-down">{r.desk.breaches.length} наруш.</div>}
                 </TableCell>
               ))}
@@ -483,7 +485,7 @@ function Bars({ items, max }: { items: { key: string; value: number; pct: number
         <li key={it.key} className="text-xs">
           <div className="flex items-baseline justify-between gap-2">
             <span className="truncate font-medium">{it.key}</span>
-            <span className="shrink-0 tabular-nums text-muted-foreground">{fmtUsd(it.value, { compact: true })} · {Math.round(it.pct)}%</span>
+            <span className="shrink-0 tabular-nums text-muted-foreground">{fmtUsd(it.value, { decimals: 0, compact: 10_000 })} · {Math.round(it.pct)}%</span>
           </div>
           <div className="mt-0.5 h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--field-border)]">
             <div
@@ -509,15 +511,15 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
       <div>
         <div className="mb-1 flex items-center justify-between text-xs">
           <span className="micro-label">Лонг / шорт</span>
-          <span className="tabular-nums text-muted-foreground">нетто {fmtSignedUsd(c.netUsd, true)}</span>
+          <span className="tabular-nums text-muted-foreground">нетто {fmtUsd(c.netUsd, { signed: true, decimals: 0, compact: 10_000 })}</span>
         </div>
         <div className="flex h-2.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--field-border)]" role="img" aria-label={`Лонг ${Math.round(c.bySide.longPct)}%, шорт ${Math.round(100 - c.bySide.longPct)}%`}>
           <div className="h-full bg-up" style={{ width: `${c.bySide.longPct}%` }} />
           <div className="h-full bg-down" style={{ width: `${100 - c.bySide.longPct}%` }} />
         </div>
         <div className="mt-1 flex justify-between text-2xs tabular-nums text-muted-foreground">
-          <span>лонг {fmtUsd(c.longUsd, { compact: true })} ({Math.round(c.bySide.longPct)}%)</span>
-          <span>шорт {fmtUsd(c.shortUsd, { compact: true })}</span>
+          <span>лонг {fmtUsd(c.longUsd, { decimals: 0, compact: 10_000 })} ({Math.round(c.bySide.longPct)}%)</span>
+          <span>шорт {fmtUsd(c.shortUsd, { decimals: 0, compact: 10_000 })}</span>
         </div>
       </div>
 
@@ -528,7 +530,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
         </div>
         <div>
           <div className="micro-label mb-1.5">По секторам</div>
-          <Bars max={topSectors[0]?.grossUsd ?? 0} items={topSectors.map((b) => ({ key: b.key, value: b.grossUsd, pct: b.pctOfGross, tone: b.key === "Без сектора" ? "neutral" : "accent", sub: `${b.count} поз. · лонг ${fmtUsd(b.longUsd, { compact: true })} / шорт ${fmtUsd(b.shortUsd, { compact: true })}` }))} />
+          <Bars max={topSectors[0]?.grossUsd ?? 0} items={topSectors.map((b) => ({ key: b.key, value: b.grossUsd, pct: b.pctOfGross, tone: b.key === "Без сектора" ? "neutral" : "accent", sub: `${b.count} поз. · лонг ${fmtUsd(b.longUsd, { decimals: 0, compact: 10_000 })} / шорт ${fmtUsd(b.shortUsd, { decimals: 0, compact: 10_000 })}` }))} />
         </div>
       </div>
 
@@ -540,7 +542,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
           <ul className="flex flex-wrap gap-1.5">
             {c.sharedTickers.map((s) => (
               <li key={s.ticker}>
-                <Pill tone={s.sameSide ? "warn" : "neutral"}>{s.ticker} · {s.traders.join(", ")} · {s.sameSide ? `все ${s.sides[0] === "long" ? "лонг" : "шорт"}` : "разные стороны"} · {fmtUsd(s.grossUsd, { compact: true })}</Pill>
+                <Pill tone={s.sameSide ? "warn" : "neutral"}>{s.ticker} · {s.traders.join(", ")} · {s.sameSide ? `все ${s.sides[0] === "long" ? "лонг" : "шорт"}` : "разные стороны"} · {fmtUsd(s.grossUsd, { decimals: 0, compact: 10_000 })}</Pill>
               </li>
             ))}
           </ul>
@@ -556,7 +558,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
             {c.correlatedLongs.map((g) => (
               <li key={g.sector} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-warn/10 px-2 py-1.5">
                 <span className="font-medium">{g.sector}</span>
-                <span className="tabular-nums text-muted-foreground">{fmtUsd(g.longUsd, { compact: true })} · {Math.round(g.pctOfGross)}% книги</span>
+                <span className="tabular-nums text-muted-foreground">{fmtUsd(g.longUsd, { decimals: 0, compact: 10_000 })} · {Math.round(g.pctOfGross)}% книги</span>
                 <span className="text-muted-foreground">{g.tickers.join(", ")} · {g.traders.join(", ")}</span>
               </li>
             ))}

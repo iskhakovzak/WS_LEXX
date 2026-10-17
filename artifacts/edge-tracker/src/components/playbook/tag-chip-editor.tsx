@@ -3,7 +3,8 @@ import { useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { TRADE_TAGS, type TagSubgroup } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 import { splitTags } from "./model";
@@ -20,13 +21,12 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
 
   const { data: serverTags = [] } = useQuery<{ tag: string; count: number }[]>({
     queryKey: ["playbook-tags"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/tags`);
-      if (!r.ok) return [];
-      const j = await r.json();
-      return Array.isArray(j) ? j : [];
-    },
-    staleTime: 60_000,
+    queryFn: ({ signal }) =>
+      http
+        .get<{ tag: string; count: number }[]>("/api/playbook/tags", { signal })
+        .then((j) => (Array.isArray(j) ? j : []))
+        .catch(() => []),
+    staleTime: STALE.short,
   });
 
   const inputLower = input.trim().toLowerCase();

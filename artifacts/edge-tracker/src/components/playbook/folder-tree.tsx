@@ -9,11 +9,14 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuSub, DropdownMenuSubContent,
   DropdownMenuSubTrigger, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { IconAction, plural, winrateTone } from "@/components/playbook-sub/bits";
+import { IconAction, winrateTone } from "@/components/playbook-sub/bits";
 import { toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { EdgeMini, Highlight } from "./setup-bits";
-import { FOLDER_SWATCHES, PICKER_SWATCH_INDICES, fmtPct, folderSwatch, isSameLocalDay, spaceOf, type PlaybookEntry, type SetupSummary } from "./model";
+import { FOLDER_SWATCHES, PICKER_SWATCH_INDICES, folderSwatch, isSameLocalDay, spaceOf, type PlaybookEntry, type SetupSummary } from "./model";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { setupTypeLabel } from "@/i18n/ns/dataCodes";
 
 /** Optional row decorations: the author for personal/shared setups, and a drop-target highlight while dragging an example. */
 type RowExtras = { showOwner?: boolean; dropTargetId?: number | null; canDragSetup?: (e: PlaybookEntry) => boolean };
@@ -78,7 +81,7 @@ const SetupRow = memo(function SetupRow({
             {showOwner && spaceOf(e) === "personal" && e.trader ? (
               <span className="truncate text-xs text-muted-foreground">· {e.trader}</span>
             ) : e.setupType ? (
-              <span className="truncate text-xs text-muted-foreground">· {e.setupType}</span>
+              <span className="truncate text-xs text-muted-foreground">· {setupTypeLabel(e.setupType)}</span>
             ) : null}
           </span>
         </span>
@@ -187,8 +190,8 @@ export function FolderTree({
                 <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", sw.bg)} aria-hidden="true" />
                 <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={g.folder ?? "Без папки"}>{g.folder ?? "Без папки"}</span>
                 {edge.n > 0 && (
-                  <span className="hidden shrink-0 text-xs tabular-nums sm:inline" title={`${edge.n} ${plural(edge.n, "сделка", "сделки", "сделок")}`}>
-                    <span className={toneText(winrateTone(edge.wr ?? 0, edge.n))}>{fmtPct(edge.wr)}</span>
+                  <span className="hidden shrink-0 text-xs tabular-nums sm:inline" title={`${commonI18n.t("units.trades", { count: edge.n })}`}>
+                    <span className={toneText(winrateTone(edge.wr ?? 0, edge.n))}>{fmtRate(edge.wr)}</span>
                   </span>
                 )}
                 <span className="shrink-0 text-xs tabular-nums text-muted-foreground">

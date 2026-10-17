@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Quote, RefreshCw, Brain, TrendingUp, Copy, Check, History } from "lucide-react";
 import { useGetTodayDailyQuote, useRegenerateDailyQuote, getGetTodayDailyQuoteQueryKey } from "@workspace/api-client-react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -7,8 +7,9 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Segmented } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { WidgetShell, IconAction, WidgetError, useStoredState } from "@/components/widgets/widget-kit";
 
 type Lang = "ru" | "uz" | "uk" | "en";
@@ -52,22 +53,12 @@ function pick(q: QuoteRow, cat: Cat, lang: Lang): string {
   return q.psychologyEn || q.psychologyRu;
 }
 
-function fmtDay(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
 /** Last 14 days of quotes in the current language/category. */
 function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
   const [open, setOpen] = useState(false);
   const recent = useQuery<QuoteRow[]>({
     queryKey: ["daily-quote-recent"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/daily-quote/recent`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<QuoteRow[]>("/api/daily-quote/recent", { signal }),
     enabled: open,
     staleTime: 10 * 60_000,
   });
@@ -95,7 +86,7 @@ function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
                 const author = cat === "trading" ? q.tradingAuthor : q.psychologyAuthor;
                 return (
                   <li key={q.date} className="py-2">
-                    <div className="mb-0.5 text-2xs tabular-nums text-muted-foreground">{fmtDay(q.date)}{author ? ` · ${author}` : ""}</div>
+                    <div className="mb-0.5 text-2xs tabular-nums text-muted-foreground">{fmtDate(q.date.slice(0, 10), "dayMonth")}{author ? ` · ${author}` : ""}</div>
                     <p className="text-sm leading-snug text-foreground/90" lang={lang}>{pick(q, cat, lang)}</p>
                   </li>
                 );

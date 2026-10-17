@@ -3,7 +3,7 @@
  * the average entry and the average exit, green/red by net result, with the average-entry line.
  * During replay the right edge follows the cursor and the far price edge is the current close.
  */
-import { fmtPrice } from "../lib/format";
+import { fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, layoutLabels, leader, measureLabel } from "./canvas";
 
 export type PositionZoneData = {

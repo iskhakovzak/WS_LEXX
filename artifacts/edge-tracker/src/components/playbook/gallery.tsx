@@ -15,8 +15,8 @@ import { ExampleCard, checklistOf } from "./examples-board";
 import { RedactedHint } from "./setup-bits";
 import { useUrlParams } from "./url-state";
 import type { PlaybookEntry, SetupExample, SpaceTab } from "./model";
-import { pluralRu } from "@/components/rules/constants";
 import { PersonSelect } from "@/components/people/person-select";
+import { pluralRu } from "@/lib/format";
 
 type TierF = "1" | "2" | "3" | "all";
 type PeriodF = "30" | "90" | "365" | "all";

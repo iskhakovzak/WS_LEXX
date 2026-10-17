@@ -21,6 +21,7 @@ import {
   GetDailyFeedResponse,
   UpdateDailyFeedResponse,
 } from "@workspace/api-zod";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Daily feed ("Дейли-фид") — the desk's briefing per trading date.
@@ -130,7 +131,7 @@ async function canModify(req: Request, r: FeedRow): Promise<boolean> {
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -143,7 +144,7 @@ const ListQuery = z.object({
 
 router.get("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const q = ListQuery.safeParse({ from: req.query.from || undefined, to: req.query.to || undefined, limit: req.query.limit, offset: req.query.offset });
   if (!q.success) { res.status(400).json({ error: "from/to must be YYYY-MM-DD; limit 1..2000" }); return; }
   const where: string[] = ["deleted_at IS NULL"];
@@ -185,7 +186,7 @@ type DayContext = {
 router.get("/dailyfeed/context", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const parsed = ContextQuery.safeParse(req.query);
   if (!parsed.success) { res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" }); return; }
   const { from, to } = parsed.data;
@@ -275,9 +276,9 @@ const StreamQuery = z.object({
  * `lastSeenAt` = the viewer's previous visit (POST /dailyfeed/stream/seen moves it).
  */
 router.get("/dailyfeed/stream", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const parsed = StreamQuery.safeParse({ to: req.query.to || undefined, days: req.query.days || undefined });
   if (!parsed.success) { res.status(400).json({ error: "to must be YYYY-MM-DD; days 1..62" }); return; }
   const today = nyDate();
@@ -315,7 +316,7 @@ router.post("/dailyfeed", asyncHandler(async (req, res): Promise<void> => {
   const parsed = CreateDailyFeedBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const d = parsed.data as Record<string, unknown> & { date: string };
-  if (!ISO_DATE.test(String(d.date).slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!ISO_DATE.test(String(d.date).slice(0, 10))) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query<FeedRow>(
     `INSERT INTO daily_feed (date, what_works_now, what_doesnt_work, best_tickers, market_theme, notes, tags, screenshot_url, screenshot_notes, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING ${COLS}`,
@@ -453,7 +454,7 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
     );
     entry = rows[0];
   }
-  logActivity({ action: existing[0] ? "eod_updated" : "eod_created", section: "dailyfeed", entityId: String(entry.id), entityTitle: `Итоги дня ${date}`, trader: req.authUser!.name, details: totalNet != null ? `${totalNet} нетто` : undefined });
+  logActivity({ action: existing[0] ? "eod_updated" : "eod_created", section: "dailyfeed", entityId: String(entry.id), entityTitle: `Итоги дня ${date}`, trader: req.authUser!.name, details: totalNet != null ? `${totalNet} нетто` : undefined, params: { titleKey: "eod_day", date, net: totalNet ?? null } });
   res.status(existing[0] ? 200 : 201).json({ entry: serializeFeed(entry), updated: !!existing[0], ...payload });
 }));
 
@@ -461,11 +462,11 @@ router.post("/dailyfeed/eod", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const params = GetDailyFeedParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const entry = await loadFeed(params.data.id);
-  if (!entry) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!entry) throw notFound("FEED_ENTRY_NOT_FOUND");
   const acks = await acksFor([entry.id], req.authUser.name);
   res.json(serializeFeed(entry, acks.get(entry.id)));
 }));
@@ -483,10 +484,10 @@ router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   const parsed = UpdateDailyFeedBody.safeParse(req.body);
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const existing = await loadFeed(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Изменять запись может только автор или куратор" }); return; }
   const d = parsed.data as Record<string, unknown>;
-  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) throw badRequest("INVALID_DATE");
   const sets: string[] = [];
   const vals: unknown[] = [];
   for (const [k, v] of Object.entries(d)) {
@@ -498,7 +499,7 @@ router.patch("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => {
   if (sets.length) {
     vals.push(existing.id);
     const { rows } = await pool.query<FeedRow>(`UPDATE daily_feed SET ${sets.join(", ")} WHERE id = $${vals.length} AND deleted_at IS NULL RETURNING ${COLS}`, vals);
-    if (!rows[0]) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+    if (!rows[0]) throw notFound("FEED_ENTRY_NOT_FOUND");
     entry = rows[0];
   }
   logActivity({ action: "updated", section: "dailyfeed", entityId: String(entry.id), entityTitle: `${entry.date}${entry.market_theme ? ` · ${entry.market_theme}` : ""}`, trader: req.authUser!.name });
@@ -514,7 +515,7 @@ router.delete("/dailyfeed/:id", asyncHandler(async (req, res): Promise<void> => 
   const params = DeleteDailyFeedParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const existing = await loadFeed(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Удалить запись может только автор или куратор" }); return; }
   await pool.query(`UPDATE daily_feed SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "dailyfeed", entityId: String(existing.id), entityTitle: existing.date, trader: req.authUser!.name });
@@ -526,7 +527,7 @@ router.post("/dailyfeed/:id/restore", asyncHandler(async (req, res): Promise<voi
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id, true);
-  if (!existing || !existing.deleted_at) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing || !existing.deleted_at) throw notFound("FEED_ENTRY_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Восстановить запись может только автор или куратор" }); return; }
   await pool.query(`UPDATE daily_feed SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "dailyfeed", entityId: String(id), entityTitle: existing.date, trader: req.authUser!.name });
@@ -544,7 +545,7 @@ router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> =
   const body = AckBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "kind must be read | ack | trading_this" }); return; }
   const existing = await loadFeed(id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   const on = body.data.on ?? true;
   const me = req.authUser!.name;
   if (on) {
@@ -561,10 +562,10 @@ router.post("/dailyfeed/:id/ack", asyncHandler(async (req, res): Promise<void> =
 
 router.get("/dailyfeed/:id/acks", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadFeed(id);
-  if (!existing) { res.status(404).json({ error: "Daily feed entry not found" }); return; }
+  if (!existing) throw notFound("FEED_ENTRY_NOT_FOUND");
   const { rows } = await pool.query<{ user_name: string; kind: string; created_at: Date }>(
     `SELECT user_name, kind, created_at FROM feed_acks WHERE entry_id = $1 ORDER BY created_at`, [id],
   );

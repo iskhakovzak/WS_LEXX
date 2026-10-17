@@ -9,6 +9,7 @@ import { structureSummary } from "../lib/tradeStructure";
 import { logger } from "../lib/logger";
 import { can, resolveActor } from "../lib/permissions";
 import { canReadTradeExecutions } from "../lib/accessRules";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -105,13 +106,13 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
     [tradeId]
   );
   if (rows.length === 0) {
-    res.status(404).json({ error: "trade not found" });
+    sendError(res, notFound("TRADE_NOT_FOUND"));
     return false;
   }
   const owner = rows[0].trader;
   const actor = await resolveActor(req);
   if (!actor) {
-    res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" });
+    sendError(res, unauthorized());
     return false;
   }
   if (mode === "write") {
@@ -138,8 +139,7 @@ router.get(
   asyncHandler(async (req: Request, res: Response) => {
     const tradeId = Number(req.params.tradeId);
     if (!Number.isFinite(tradeId) || tradeId <= 0) {
-      res.status(400).json({ error: "invalid trade id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     const access = await assertTradeAccess(req, res, tradeId, "read");
     if (!access) return;
@@ -196,8 +196,7 @@ router.get(
     const ids = [...new Set(String(req.query.ids ?? "").split(",").map((s) => Number(s.trim())).filter((n) => Number.isInteger(n) && n > 0))].slice(0, 200);
     const actor = await resolveActor(req);
     if (!actor) {
-      res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" });
-      return;
+      throw unauthorized();
     }
     if (!ids.length || actor.guest) {
       res.json({ items: {} });
@@ -242,8 +241,7 @@ router.post(
   asyncHandler(async (req: Request, res: Response) => {
     const tradeId = Number(req.params.tradeId);
     if (!Number.isFinite(tradeId) || tradeId <= 0) {
-      res.status(400).json({ error: "invalid trade id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     const parsed = parseCreateBody(req.body);
     if (!parsed.ok) {
@@ -271,8 +269,7 @@ router.delete(
     const execId = Number(req.params.execId);
     const validId = (n: number) => Number.isInteger(n) && n > 0;
     if (!validId(tradeId) || !validId(execId)) {
-      res.status(400).json({ error: "invalid id" });
-      return;
+      throw badRequest("INVALID_ID");
     }
     if (!(await assertTradeAccess(req, res, tradeId))) return;
     const { rowCount } = await pool.query(
@@ -280,8 +277,7 @@ router.delete(
       [execId, tradeId]
     );
     if (rowCount === 0) {
-      res.status(404).json({ error: "not found" });
-      return;
+      throw notFound();
     }
     await refreshAfterEdit(tradeId);
     res.status(204).end();

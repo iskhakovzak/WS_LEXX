@@ -1,24 +1,14 @@
 /**
- * Analyst actions — data hooks. Plain fetch (auth header is injected globally by install-fetch-auth).
+ * Analyst actions — data hooks (lib/api/http: auth + X-Lang are added globally, errors are ApiError).
  */
 import { useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { nullIfMissing } from "@/lib/api/errors";
+import { KEYS, POLL, STALE } from "@/lib/api/keys";
+import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
 import { gpApi, gpKeys, type InPlayItem, type PlanDoc } from "@/components/game-plan/types";
 import type { FeedAction, FeedResponse, OpenPosition, Quote } from "./lib";
-
-async function getJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  if (!r.ok) {
-    let msg = `Ошибка ${r.status}`;
-    try {
-      const j = (await r.json()) as { error?: string };
-      if (j?.error) msg = j.error;
-    } catch { /* not json */ }
-    throw new Error(msg);
-  }
-  return r.json() as Promise<T>;
-}
 
 export function useAnalystFeed(opts: { days: number; minCapB: number; includeUnknownCap: boolean }) {
   const qs = useMemo(() => {
@@ -38,9 +28,9 @@ export function useAnalystFeed(opts: { days: number; minCapB: number; includeUnk
 
   return useQuery<FeedResponse>({
     queryKey: ["analyst-actions", "feed", qs],
-    queryFn: () => getJson<FeedResponse>(`${BASE}/api/analyst-actions?${qs}`),
+    queryFn: ({ signal }) => http.get<FeedResponse>(`/api/analyst-actions?${qs}`, { signal }),
     staleTime: 2 * 60_000,
-    refetchInterval: 5 * 60_000,
+    refetchInterval: POLL.fiveMinutes,
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
   });
@@ -51,8 +41,8 @@ export function useTickerHistory(ticker: string | null) {
   return useQuery<FeedResponse>({
     queryKey: ["analyst-actions", "ticker", ticker],
     enabled: !!ticker,
-    queryFn: () => getJson<FeedResponse>(`${BASE}/api/analyst-actions?ticker=${encodeURIComponent(ticker!)}&action=all&limit=500`),
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<FeedResponse>("/api/analyst-actions", { query: { ticker: ticker!, action: "all", limit: 500 }, signal }),
+    staleTime: STALE.long,
   });
 }
 
@@ -86,14 +76,8 @@ export type FirmStatsResponse = {
 export function useFirmStats(days = 180) {
   return useQuery<FirmStatsResponse | null>({
     queryKey: ["analyst-actions", "firms", days],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/analyst-actions/firms?days=${days}&minActions=3`);
-      if (r.status === 404) return null;
-      if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-      const ct = r.headers.get("content-type") ?? "";
-      if (!ct.includes("json")) return null;
-      return (await r.json()) as FirmStatsResponse;
-    },
+    queryFn: ({ signal }) =>
+      http.get<FirmStatsResponse>("/api/analyst-actions/firms", { query: { days, minActions: 3 }, signal }).catch(nullIfMissing),
     staleTime: 10 * 60_000,
     retry: 1,
   });
@@ -110,12 +94,12 @@ export function useQuotes(tickers: string[]) {
       for (let i = 0; i < key.length; i += 50) chunks.push(key.slice(i, i + 50));
       const parts = await Promise.all(
         chunks.map((c) =>
-          getJson<Record<string, Quote>>(`${BASE}/api/stockdata/quote?symbols=${encodeURIComponent(c.join(","))}`).catch(() => ({})),
+          http.get<Record<string, Quote>>("/api/stockdata/quote", { query: { symbols: c.join(",") } }).catch(() => ({})),
         ),
       );
       return Object.assign({}, ...parts) as Record<string, Quote>;
     },
-    staleTime: 60_000,
+    staleTime: STALE.short,
     refetchInterval: 90_000,
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
@@ -123,40 +107,23 @@ export function useQuotes(tickers: string[]) {
   });
 }
 
-type RawTrade = {
-  id: number;
-  ticker: string;
-  date: string;
-  result: string;
-  trader?: string | null;
-  side?: string | null;
-  horizon?: string | null;
-  exitDate?: string | null;
-};
+function toOpenPositions(rows: OpenTradeRow[] | null | undefined): OpenPosition[] {
+  if (!Array.isArray(rows)) return [];
+  return rows
+    .filter((t) => String(t.result).toLowerCase() === "open" && !t.exitDate)
+    .map((t) => ({
+      id: t.id,
+      ticker: String(t.ticker).toUpperCase(),
+      trader: t.trader ?? null,
+      side: t.side ?? null,
+      date: String(t.date ?? ""),
+      horizon: t.horizon === "overnight" || t.horizon === "swing" ? t.horizon : "intraday",
+    }));
+}
 
-/** Positions the desk is carrying (result=open). Horizon null ⇒ intraday. */
+/** Positions the desk is carrying (result=open; one cache entry shared with offerings). Horizon null ⇒ intraday. */
 export function useOpenPositions() {
-  return useQuery<OpenPosition[]>({
-    queryKey: ["analyst-open-positions"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/trades?result=open`);
-      if (!r.ok) return [];
-      const rows = (await r.json()) as RawTrade[];
-      if (!Array.isArray(rows)) return [];
-      return rows
-        .filter((t) => String(t.result).toLowerCase() === "open" && !t.exitDate)
-        .map((t) => ({
-          id: t.id,
-          ticker: String(t.ticker).toUpperCase(),
-          trader: t.trader ?? null,
-          side: t.side ?? null,
-          date: t.date,
-          horizon: t.horizon === "overnight" || t.horizon === "swing" ? t.horizon : "intraday",
-        }));
-    },
-    staleTime: 60_000,
-    retry: 0,
-  });
+  return useQuery({ ...openTradesQuery(), select: toOpenPositions, retry: 0 });
 }
 
 type WatchRow = { id: number; ticker: string; status?: string | null };
@@ -164,9 +131,9 @@ type WatchRow = { id: number; ticker: string; status?: string | null };
 /** Tickers already on the team watchlist (shares the ["watchlist"] cache with the Watchlist page). */
 export function useWatchlistTickers() {
   const q = useQuery<WatchRow[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => getJson<WatchRow[]>(`${BASE}/api/watchlist`),
-    staleTime: 60_000,
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchRow[]>("/api/watchlist", { signal }),
+    staleTime: STALE.short,
     retry: 0,
   });
   const set = useMemo(() => {
@@ -183,40 +150,23 @@ export function useWatchlistTickers() {
 export function useAddToWatchlist() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (vars: { ticker: string; catalyst: string; sector?: string | null; longName?: string | null }) => {
-      const r = await fetch(`${BASE}/api/watchlist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ticker: vars.ticker,
-          catalyst: vars.catalyst,
-          status: "watching",
-          tags: "аналитики",
-          ...(vars.sector ? { sector: vars.sector } : {}),
-          ...(vars.longName ? { longName: vars.longName } : {}),
-        }),
-      });
-      if (!r.ok) {
-        let msg = `Ошибка ${r.status}`;
-        try { const j = (await r.json()) as { error?: string }; if (j?.error) msg = j.error; } catch { /* ignore */ }
-        throw new Error(msg);
-      }
-      return r.json();
-    },
+    mutationFn: (vars: { ticker: string; catalyst: string; sector?: string | null; longName?: string | null }) =>
+      http.post("/api/watchlist", {
+        ticker: vars.ticker,
+        catalyst: vars.catalyst,
+        status: "watching",
+        tags: "аналитики",
+        ...(vars.sector ? { sector: vars.sector } : {}),
+        ...(vars.longName ? { longName: vars.longName } : {}),
+      }),
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: ["watchlist"] });
+      qc.invalidateQueries({ queryKey: KEYS.watchlist() });
     },
   });
 }
 
-export async function runSourceScan(): Promise<{ rowsInserted: number; tickersWithData: number; durationMs: number }> {
-  const r = await fetch(`${BASE}/api/analyst-actions/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ concurrency: 5 }),
-  });
-  if (!r.ok) throw new Error(`Скан не удался (${r.status})`);
-  return r.json();
+export function runSourceScan(): Promise<{ rowsInserted: number; tickersWithData: number; durationMs: number }> {
+  return http.post("/api/analyst-actions/refresh", { concurrency: 5 });
 }
 
 /* ── Market reaction to ratings (2026-10 API; older builds → 404 → null, the UI hides the block) ── */
@@ -279,24 +229,15 @@ export type MyDaysResponse = {
 };
 
 /** GET that maps «endpoint not deployed yet» (404 / HTML fallback) to null. */
-async function getOptional<T>(url: string): Promise<T | null> {
-  const r = await fetch(url);
-  if (r.status === 404) return null;
-  if (!r.ok) {
-    let msg = `Ошибка ${r.status}`;
-    try { const j = (await r.json()) as { error?: string }; if (j?.error) msg = j.error; } catch { /* not json */ }
-    throw new Error(msg);
-  }
-  if (!(r.headers.get("content-type") ?? "").includes("json")) return null;
-  return (await r.json()) as T;
-}
+const getOptional = <T,>(path: string, query?: Record<string, string | number>): Promise<T | null> =>
+  http.get<T>(path, { query }).catch(nullIfMissing);
 
 /** History of the stock's reaction to ratings (sheet). First call for a ticker may wait for Yahoo (~1 s). */
 export function useReactionDetail(ticker: string | null) {
   return useQuery<ReactionDetail | null>({
     queryKey: ["analyst-actions", "reaction", ticker],
     enabled: !!ticker,
-    queryFn: () => getOptional<ReactionDetail>(`${BASE}/api/analyst-actions/reaction?ticker=${encodeURIComponent(ticker!)}`),
+    queryFn: () => getOptional<ReactionDetail>("/api/analyst-actions/reaction", { ticker: ticker! }),
     staleTime: 10 * 60_000,
     retry: 0,
   });
@@ -308,9 +249,9 @@ export function useReactionSummaries(tickers: string[]) {
   return useQuery<ReactionSummaries | null>({
     queryKey: ["analyst-actions", "reactions", key],
     enabled: key.length > 0,
-    queryFn: () => getOptional<ReactionSummaries>(`${BASE}/api/analyst-actions/reactions?tickers=${encodeURIComponent(key.join(","))}`),
-    staleTime: 5 * 60_000,
-    refetchInterval: (q) => (q.state.data?.pending?.length ? 60_000 : false),
+    queryFn: () => getOptional<ReactionSummaries>("/api/analyst-actions/reactions", { tickers: key.join(",") }),
+    staleTime: STALE.long,
+    refetchInterval: (q) => (q.state.data?.pending?.length ? POLL.minute : false),
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
     retry: 0,
@@ -321,7 +262,7 @@ export function useReactionSummaries(tickers: string[]) {
 export function useFirmWeight(days = 730) {
   return useQuery<FirmWeightResponse | null>({
     queryKey: ["analyst-actions", "firm-weight", days],
-    queryFn: () => getOptional<FirmWeightResponse>(`${BASE}/api/analyst-actions/firm-weight?days=${days}`),
+    queryFn: () => getOptional<FirmWeightResponse>("/api/analyst-actions/firm-weight", { days }),
     staleTime: 15 * 60_000,
     refetchInterval: (q) => (q.state.data?.coverage?.warming ? 3 * 60_000 : false),
     refetchIntervalInBackground: false,
@@ -333,11 +274,7 @@ export function useFirmWeight(days = 730) {
 export function useMyDays(trader: string | null | undefined, days = 365) {
   return useQuery<MyDaysResponse | null>({
     queryKey: ["analyst-my-days", trader ?? "", days],
-    queryFn: () => {
-      const p = new URLSearchParams({ days: String(days) });
-      if (trader) p.set("trader", trader);
-      return getOptional<MyDaysResponse>(`${BASE}/api/analyst-actions/my-days?${p}`);
-    },
+    queryFn: () => getOptional<MyDaysResponse>("/api/analyst-actions/my-days", trader ? { days, trader } : { days }),
     staleTime: 10 * 60_000,
     retry: 0,
   });

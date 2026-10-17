@@ -2,12 +2,13 @@ import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Sparkles, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Pill, Segmented } from "@/components/ds";
-import { plural } from "@/components/playbook-sub/bits";
+import { pluralRu } from "@/lib/format";
 
 type Draft = { text: string; on: boolean; dup: boolean };
 
@@ -54,16 +55,7 @@ export function PlaybookGenerateChecklistButton({
   const mut = useMutation({
     mutationFn: async () => {
       if (!playbookId) throw new Error("Сначала сохраните сетап");
-      const res = await fetch(`${BASE}/api/playbook/${playbookId}/generate-checklist`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ conditions: conditions || null, notes: notes || null }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({}));
-        throw new Error(j.error ?? "Ошибка генерации");
-      }
-      return res.json() as Promise<{ checklist: string }>;
+      return http.post<{ checklist: string }>(`/api/playbook/${playbookId}/generate-checklist`, { conditions: conditions || null, notes: notes || null });
     },
     onSuccess: (d) => {
       const cur = readCurrent();
@@ -86,7 +78,7 @@ export function PlaybookGenerateChecklistButton({
       setMode(cur.length > 0 ? "merge" : "replace");
       setOpen(true);
     },
-    onError: (e: any) => toast({ title: "Не удалось сгенерировать", description: e?.message, variant: "destructive" }),
+    onError: (e: any) => toast({ title: "Не удалось сгенерировать", description: humanizeApiError(e, "Ошибка генерации"), variant: "destructive" }),
   });
 
   const selected = drafts.filter((d) => d.on && d.text.trim());
@@ -176,8 +168,8 @@ export function PlaybookGenerateChecklistButton({
 
           <p className="text-xs text-muted-foreground">
             {mode === "merge" && current.length > 0
-              ? <>Итог: {current.length} текущих + {selected.filter((d) => !d.dup).length} новых = <span className="font-medium text-foreground tabular-nums">{result.length}</span> {plural(result.length, "пункт", "пункта", "пунктов")}</>
-              : <>Итог: <span className="font-medium text-foreground tabular-nums">{result.length}</span> {plural(result.length, "пункт", "пункта", "пунктов")}{current.length > 0 && <span className="text-down"> · текущие {current.length} будут удалены</span>}</>}
+              ? <>Итог: {current.length} текущих + {selected.filter((d) => !d.dup).length} новых = <span className="font-medium text-foreground tabular-nums">{result.length}</span> {pluralRu(result.length, "пункт", "пункта", "пунктов")}</>
+              : <>Итог: <span className="font-medium text-foreground tabular-nums">{result.length}</span> {pluralRu(result.length, "пункт", "пункта", "пунктов")}{current.length > 0 && <span className="text-down"> · текущие {current.length} будут удалены</span>}</>}
           </p>
 
           <DialogFooter className="gap-2 sm:gap-2">

@@ -31,6 +31,7 @@
  * runs unless `isConfigured()` and a curator triggers a sync (or PROPREPORTS_SYNC_MINUTES is set).
  */
 import { logger } from "../logger";
+import { config } from "../../config";
 import { parseCsvTable, type CsvTable } from "./csv";
 import { parseFillsCsv } from "./parse-fills";
 import type { DetectedFeeColumn } from "./fees";
@@ -69,7 +70,7 @@ export const ENV_VARS = {
   syncMinutes: "PROPREPORTS_SYNC_MINUTES",
 } as const;
 
-const env = (k: string): string => (process.env[k] ?? "").trim();
+const env = (k: string): string => config.propreportsEnv(k);
 
 export function readConfig(): PropReportsConfig | null {
   const domain = env(ENV_VARS.domain).toLowerCase();

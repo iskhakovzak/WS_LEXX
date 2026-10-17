@@ -6,7 +6,9 @@ import { cn } from "@/lib/utils";
 import { useEodStatus, type EodStatus } from "@/components/eod/eod-api";
 import { MOOD_LABELS } from "./DayJournalEditor";
 import { type JournalEntry, hasReview } from "./use-journal-days";
-import { fmtDayShort, fmtMoney, netPnl, plural, type Trade } from "./utils";
+import { netPnl, type Trade } from "./utils";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type TradeLike = Trade;
 
@@ -68,8 +70,8 @@ export function TeamDay({
       icon={Users}
       description={
         rows.length
-          ? `${fmtDayShort(date)} · разборов ${reviewed}/${rows.length}${notClosed ? ` · не закрыли день: ${notClosed}` : ""}`
-          : fmtDayShort(date)
+          ? `${fmtDate(date, "dayMonth")} · разборов ${reviewed}/${rows.length}${notClosed ? ` · не закрыли день: ${notClosed}` : ""}`
+          : fmtDate(date, "dayMonth")
       }
     >
       {isLoading ? (
@@ -92,8 +94,8 @@ export function TeamDay({
                   <span className="tabular-nums">
                     {r.trades > 0 ? (
                       <>
-                        <span className={cn("font-semibold", toneText(toneOf(r.net)))}>{fmtMoney(r.net)}</span>
-                        <span className="block text-muted-foreground">{r.trades} {plural(r.trades, "сделка", "сделки", "сделок")}</span>
+                        <span className={cn("font-semibold", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</span>
+                        <span className="block text-muted-foreground">{commonI18n.t("units.trades", { count: r.trades })}</span>
                       </>
                     ) : <span className="text-muted-foreground">без сделок</span>}
                   </span>

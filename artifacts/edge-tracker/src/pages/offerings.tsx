@@ -27,9 +27,10 @@ import {
   fetchOfferingsFresh, useAddToPlan, useAddToWatchlist, useExposure, useOfferings, useOfferingsDays,
 } from "@/components/offerings/use-offerings-data";
 import {
-  addBusinessDays, dayTitle, fmtDay, fmtM, fmtPct, offeringKey, pctOfMcap, todayNY,
+  addBusinessDays, dayTitle, fmtDay, fmtM, offeringKey, pctOfMcap, todayNY,
   type Offering,
 } from "@/components/offerings/types";
+import { fmtPct } from "@/lib/format";
 
 type Tab = "today" | "week" | "ipo" | "insiders" | "mine";
 type When = "today" | "next" | "prev" | "all";
@@ -441,7 +442,7 @@ export default function OfferingsPage() {
           <StatCard loading={listLoading} label="Средний дисконт" value={kpi.avgDisc != null ? `${kpi.avgDisc.toFixed(1)}%` : "—"}
             hint={kpi.deep ? `${kpi.deep} с дисконтом ≥ 15%` : "к закрытию до сделки"} />
           <StatCard loading={listLoading} label={kpi.anyLive ? "Открытие → сейчас, ср." : "Открытие → закрытие, ср."}
-            value={kpi.o2c != null ? fmtPct(kpi.o2c) : "—"} tone={kpi.o2c == null ? "neutral" : kpi.o2c < 0 ? "down" : "up"}
+            value={kpi.o2c != null ? fmtPct(kpi.o2c, 1) : "—"} tone={kpi.o2c == null ? "neutral" : kpi.o2c < 0 ? "down" : "up"}
             hint={kpi.reacted ? `ниже открытия ${kpi.red} из ${kpi.reacted}` : "реакция по дневным свечам"} />
         </StatGrid>
       )}

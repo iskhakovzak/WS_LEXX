@@ -22,8 +22,9 @@ import { PsychologyTab } from "@/components/analytics-page/PsychologyTab";
 import {
   type AnalyticsFilters, type DimensionKey, type Unit,
   DEFAULT_FILTERS, DIMENSIONS, PERIOD_OPTIONS, HORIZON_LABEL, applyAnalyticsFilters, applyNonPeriodFilters, activeFilterCount,
-  realizedR, pnlValue, sdeal, accountOf, sourceOf, periodRange,
+  realizedR, pnlValue, accountOf, sourceOf, periodRange,
 } from "@/components/analytics-page/metrics";
+import { commonI18n } from "@/i18n/ns/common";
 
 type TabKey = "overview" | "edge" | "matrix" | "costs" | "whatif" | "montecarlo" | "desk" | "psychology" | "pro";
 
@@ -136,7 +137,7 @@ export default function Analytics() {
   const psychUser = isCurator ? (filters.trader || user?.traderName || "") : (user?.traderName ?? "");
 
   const summary = useMemo(() => {
-    const parts = [sdeal(current.length)];
+    const parts = [commonI18n.t("units.trades", { count: current.length })];
     parts.push(filters.trader || (isCurator ? "вся команда" : "мои сделки"));
     parts.push(PERIOD_OPTIONS.find((p) => p.value === filters.period)?.label.toLowerCase() ?? "");
     if (filters.horizon) parts.push(HORIZON_LABEL[filters.horizon].toLowerCase());

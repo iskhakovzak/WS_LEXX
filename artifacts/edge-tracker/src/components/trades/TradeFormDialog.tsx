@@ -15,9 +15,10 @@ import { TickerFundamentalsBar } from "@/components/ticker-fundamentals-bar";
 import { PreTradeChecklist, type ChecklistResult } from "@/components/pre-trade-checklist";
 import { suggestTagsFromFundamentals } from "@/lib/tags";
 import { cn } from "@/lib/utils";
-import { BROKER_OWNED_FIELDS, EVENT_LABEL, EVENT_TYPES, GRADES, HORIZONS, HORIZON_LABEL, RESULT_LABEL, RESULTS, SESSIONS, SESSION_LABEL, computedR, fmtR, isBrokerTrade, suggestedRiskUsd, type FormData } from "./trade-utils";
+import { BROKER_OWNED_FIELDS, EVENT_LABEL, EVENT_TYPES, GRADES, HORIZONS, HORIZON_LABEL, RESULT_LABEL, RESULTS, SESSIONS, SESSION_LABEL, computedR, isBrokerTrade, suggestedRiskUsd, type FormData } from "./trade-utils";
 import { syncedAgo } from "./trade-bits";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtR } from "@/lib/format";
 
 /** Validation shared with the page's save handler: returns an error message or null. */
 export function formSaveError(form: FormData): string | null {

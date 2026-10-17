@@ -14,7 +14,8 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { byCloseDate, horizonOf, isDecided, netPnl, resultOf, signedR, type Horizon } from "@/lib/trade-math";
-import { invalidateTradeLinks, pbRequest, useTradePicker } from "./api";
+import { invalidateTradeLinks, useTradePicker } from "./api";
+import { http } from "@/lib/api/http";
 import { DocSection, InlineError, REDACTED_HINT, RedactedHint } from "./setup-bits";
 import type { LinkedTrade, PickerTrade, PlaybookEntry } from "./model";
 
@@ -121,7 +122,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
 
   const { data: linked = [], refetch, isLoading, isError } = useQuery<LinkedTrade[]>({
     queryKey: ["playbook-trades", entryId],
-    queryFn: () => pbRequest<LinkedTrade[]>(`/api/playbook/${entryId}/trades`),
+    queryFn: () => http.get<LinkedTrade[]>(`/api/playbook/${entryId}/trades`),
   });
   // Lean server picker (recent trades in scope + server-side setup matching) instead of the full /api/trades payload.
   // A ticker-like query also searches the whole history on the server; setup / trader text filters the recent list.
@@ -161,7 +162,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
 
   async function link(t: LinkedTrade) {
     try {
-      await pbRequest(`/api/playbook/${entryId}/link-trade`, { method: "POST", json: { tradeId: t.id } });
+      await http.post(`/api/playbook/${entryId}/link-trade`, { tradeId: t.id });
       invalidateTradeLinks(qc);
       toast({ title: `Сделка ${t.ticker} привязана` });
     } catch (e: any) {
@@ -170,7 +171,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
   }
   async function unlink(t: LinkedTrade) {
     try {
-      await pbRequest(`/api/playbook/${entryId}/link-trade/${t.id}`, { method: "DELETE" });
+      await http.del(`/api/playbook/${entryId}/link-trade/${t.id}`);
       invalidateTradeLinks(qc);
       toast({ title: `Сделка ${t.ticker} отвязана` });
     } catch (e: any) {

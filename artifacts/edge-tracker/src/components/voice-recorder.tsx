@@ -1,8 +1,9 @@
-import React, { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Mic, Square, Loader2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { recordingToWav } from "@/lib/audio-wav";
 
 
@@ -29,13 +30,6 @@ function micErrorMessage(e: unknown): string {
   return "Не удалось включить микрофон.";
 }
 
-async function readError(res: Response): Promise<string> {
-  try {
-    const d = await res.json();
-    if (d && typeof d.error === "string") return d.error;
-  } catch { /* not JSON */ }
-  return `Ошибка сервера (${res.status})`;
-}
 
 interface VoiceRecorderProps {
   onTranscript: (text: string) => void;
@@ -173,11 +167,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
           formData.append("audio", upload, uploadName);
           const transcribeOnly = !userId || (!tradeId && !dailyFeedId);
           if (transcribeOnly) {
-            const res = await fetch(`${BASE}/api/voice-notes/transcribe`, {
-              method: "POST",
-              body: formData,
-            });
-            if (!res.ok) throw new Error(await readError(res));
+            const res = await http.raw("/api/voice-notes/transcribe", { method: "POST", body: formData });
             const data = await res.json();
             if (data.transcript) onTranscript(data.transcript);
             else toast({ title: "Речь не распознана", description: "Попробуйте говорить ближе к микрофону." });
@@ -186,17 +176,13 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             if (tradeId) formData.append("tradeId", String(tradeId));
             if (dailyFeedId) formData.append("dailyFeedId", String(dailyFeedId));
             formData.append("durationSec", String(dur));
-            const res = await fetch(`${BASE}/api/voice-notes`, {
-              method: "POST",
-              body: formData,
-            });
-            if (!res.ok) throw new Error(await readError(res));
+            const res = await http.raw("/api/voice-notes", { method: "POST", body: formData });
             const data = await res.json();
             if (data.transcript) onTranscript(data.transcript);
             onUploaded?.();
           }
         } catch (e) {
-          toast({ title: "Ошибка записи", description: e instanceof Error ? e.message : "Не удалось обработать запись", variant: "destructive" });
+          toast({ title: "Ошибка записи", description: humanizeApiError(e, "Не удалось обработать запись"), variant: "destructive" });
         } finally {
           setUploading(false);
           setDuration(0);

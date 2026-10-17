@@ -5,9 +5,9 @@ import type { LucideIcon } from "lucide-react";
 import { EmptyState, Panel, type Tone, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { TradeLinkRow } from "./trade-link-row";
-import {
-  WEEKDAYS, dayKey, fmtPct, fmtValue, groupBy, isClosed, pluralRu, pluralTrades, valueOf, weekdayIdx, type Kpis, type Metric,
-} from "./metrics";
+import { dayKey, fmtValue, groupBy, isClosed, valueOf, weekdayIdx, weekdayLabel, type Kpis, type Metric } from "./metrics";
+import { fmtNum, fmtRate, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Insight = { id: string; tone: Tone; icon: LucideIcon; text: string; href?: string; cta?: string };
 
@@ -33,16 +33,16 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
       id: "edge",
       tone: k.winRate >= need ? "up" : "down",
       icon: Target,
-      text: `При payoff ${k.payoff.toFixed(2)} безубыточный win rate — ${fmtPct(need)}; у вас ${fmtPct(k.winRate)}${k.winRate >= need ? " — есть запас." : " — пока ниже порога."}`,
+      text: `При payoff ${fmtNum(k.payoff)} безубыточный win rate — ${fmtRate(need)}; у вас ${fmtRate(k.winRate)}${k.winRate >= need ? " — есть запас." : " — пока ниже порога."}`,
     });
   }
 
   const closed = trades.filter(isClosed);
-  const byDay = groupBy(closed, (t) => WEEKDAYS[weekdayIdx(dayKey(t))], metric).filter((g) => g.valued >= 2 && g.value != null);
+  const byDay = groupBy(closed, (t) => weekdayLabel(weekdayIdx(dayKey(t))), metric).filter((g) => g.valued >= 2 && g.value != null);
   if (byDay.length >= 2) {
     const best = byDay.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = byDay.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
-    if ((best.value ?? 0) > 0) out.push({ id: "bestday", tone: "up", icon: TrendingUp, text: `Лучший день недели — ${best.key}: ${fmtValue(best.value, metric)} за ${best.count} ${pluralTrades(best.count)}.` });
+    if ((best.value ?? 0) > 0) out.push({ id: "bestday", tone: "up", icon: TrendingUp, text: `Лучший день недели — ${best.key}: ${fmtValue(best.value, metric)} за ${commonI18n.t("units.trades", { count: best.count })}.` });
     if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstday", tone: "down", icon: TrendingDown, text: `Слабый день — ${worst.key}: ${fmtValue(worst.value, metric)}. Посмотрите, что мешает в этот день.` });
   }
 
@@ -50,8 +50,8 @@ export function buildInsights(trades: Trade[], k: Kpis, metric: Metric): Insight
   if (bySetup.length) {
     const best = bySetup.reduce((a, b) => ((b.value ?? 0) > (a.value ?? 0) ? b : a));
     const worst = bySetup.reduce((a, b) => ((b.value ?? 0) < (a.value ?? 0) ? b : a));
-    if ((best.value ?? 0) > 0) out.push({ id: "bestsetup", tone: "up", icon: Trophy, text: `Сильнейший сетап — «${best.key}»: ${fmtValue(best.value, metric)}, WR ${fmtPct(best.winRate)}.`, href: "/playbook", cta: "Плейбук" });
-    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstsetup", tone: "down", icon: AlertTriangle, text: `Сетап «${worst.key}» в минусе: ${fmtValue(worst.value, metric)} за ${worst.count} ${pluralTrades(worst.count)}.`, href: "/analytics", cta: "Разобрать" });
+    if ((best.value ?? 0) > 0) out.push({ id: "bestsetup", tone: "up", icon: Trophy, text: `Сильнейший сетап — «${best.key}»: ${fmtValue(best.value, metric)}, WR ${fmtRate(best.winRate)}.`, href: "/playbook", cta: "Плейбук" });
+    if ((worst.value ?? 0) < 0 && worst.key !== best.key) out.push({ id: "worstsetup", tone: "down", icon: AlertTriangle, text: `Сетап «${worst.key}» в минусе: ${fmtValue(worst.value, metric)} за ${commonI18n.t("units.trades", { count: worst.count })}.`, href: "/analytics", cta: "Разобрать" });
   }
 
   if (k.missing > 0) {

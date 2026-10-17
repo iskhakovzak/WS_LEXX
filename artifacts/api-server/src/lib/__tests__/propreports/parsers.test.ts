@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { normHeader, parseCsvRows, parseCsvTable, parseNum, round2, round4 } from "../../propreports/csv";
 import { applyFeeSettings, detectFeeColumns, feeKeyFor, orderedFeeKeys, slug, sumFeesWith, type FeeSettings } from "../../propreports/fees";
 import { isFillsCsv, normalizeDate, normalizeDateTime, parseFillsCsv } from "../../propreports/parse-fills";
-import XLSX from "xlsx";
+import XLSX from "../../propreports/xlsx";
 import { isTradesReport, legacyDedupKey, mergeRawNumbers, parseTradesReportBuffer, parseTradesReportRows, reportTradesToRoundTrips, type TradesReportDiagnostics } from "../../propreports/parse-trades-report";
 import { buildRoundTrips } from "../../propreports/round-trips";
 

@@ -2,18 +2,6 @@ import type { Tone } from "@/components/ds";
 import type { NextActionKind, Phase, QueueKind, TraderSignal } from "./api";
 import { matchesAny } from "@workspace/text-search";
 
-/** Signed compact USD: +$1,240 / −$85 / «—» for null. */
-export function usd(v: number | null | undefined, signed = true): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.round(Math.abs(v)).toLocaleString("en-US");
-  if (!signed) return `$${abs}`;
-  return v > 0 ? `+$${abs}` : v < 0 ? `−$${abs}` : "$0";
-}
-
-export function pct(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${Math.round(v)}%`;
-}
-
 /** «2 ч», «1 д 4 ч» — waiting time in the queue. */
 export function waitLabel(hours: number | null | undefined): string {
   if (hours == null) return "—";
@@ -22,23 +10,6 @@ export function waitLabel(hours: number | null | undefined): string {
   const d = Math.floor(hours / 24);
   const h = Math.round(hours - d * 24);
   return h ? `${d} д ${h} ч` : `${d} д`;
-}
-
-/** «16 окт» from YYYY-MM-DD (no timezone shift). */
-export function shortDate(ymd: string | null | undefined): string {
-  if (!ymd) return "—";
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
-  if (!m) return "—";
-  const months = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-  return `${Number(m[3])} ${months[Number(m[2]) - 1]}`;
-}
-
-/** Date + time for ISO timestamps in the viewer's locale. */
-export function dateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "—";
-  return d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
 export const PHASE_LABEL: Record<Phase, string> = {

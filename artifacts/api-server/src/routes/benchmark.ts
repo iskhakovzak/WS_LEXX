@@ -25,6 +25,7 @@ import {
   badgesFor, computeTraderMetrics, deskMedian, parseHoldMinutes, percentiles, sameTickerCases, trendFor,
   type BenchTrade, type Result, type Side,
 } from "../lib/benchmark";
+import { sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -32,9 +33,9 @@ type Viewer = { name: string; staff: boolean; visible: string[] | null };
 
 /** Who may see what: team.read (desk → everyone, assigned → self + wards) or a plain member (own row only). */
 async function viewerOf(req: Request, res: Response): Promise<Viewer | null> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
   if (actor.guest) { res.status(403).json({ error: "Гостевой режим: бенчмарк недоступен", code: "FORBIDDEN" }); return null; }
   const scope = await readScope(req, "team.read");
   if (scope === null) return { name: actor.name, staff: true, visible: null };

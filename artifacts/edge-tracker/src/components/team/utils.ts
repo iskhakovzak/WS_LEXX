@@ -34,24 +34,6 @@ export function avatarTone(name: string | null | undefined): string {
   return AVATAR_TONES[h % AVATAR_TONES.length];
 }
 
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const f = Math.abs(v).toFixed(digits);
-  const s = f.includes(".") ? f.replace(/\.?0+$/, "") : f;
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}R`;
-}
-
-export function fmtMoney(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const txt = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${txt}`;
-}
-
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v * 100)}%`;
-}
-
 /** First screenshot URL from a trade's newline-separated screenshotUrl field. */
 export function firstScreenshot(raw: string | null | undefined): string | null {
   if (!raw) return null;

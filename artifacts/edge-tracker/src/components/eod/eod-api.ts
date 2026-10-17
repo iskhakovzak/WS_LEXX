@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getListTradesQueryKey } from "@workspace/api-client-react";
-import { apiUrl } from "@/lib/api";
+import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
+import { POLL, STALE } from "@/lib/api/keys";
 import { JOURNAL_DAYS_KEY } from "@/components/journal/use-journal-days";
 
 /**
@@ -80,22 +81,13 @@ export type BrokerDaily = { date: string; trades: number; wins: number; losses: 
 
 class NotAvailable extends Error {}
 
-async function asJson<T>(res: Response): Promise<T> {
-  const ct = res.headers.get("content-type") ?? "";
-  if (res.status === 404 || (res.ok && !ct.includes("json"))) throw new NotAvailable();
-  if (!res.ok) {
-    let msg = `Ошибка ${res.status}`;
-    let body: unknown = null;
-    try { body = await res.json(); if ((body as { error?: string })?.error) msg = (body as { error: string }).error; } catch { /* ignore */ }
-    const err = new Error(msg) as Error & { status?: number; body?: unknown };
-    err.status = res.status;
-    err.body = body;
-    throw err;
-  }
-  return res.json() as Promise<T>;
+/** Route not deployed (404) or the SPA's HTML fallback → `NotAvailable`; other failures stay `ApiError` (status, body). */
+function orNotAvailable<T>(p: Promise<T>): Promise<T> {
+  return p.catch((e: unknown) => {
+    if (isApiError(e) && (e.status === 404 || e.code === CLIENT_CODES.badResponse)) throw new NotAvailable();
+    throw e;
+  });
 }
-
-const json = (body: unknown): RequestInit => ({ headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
 
 export const eodKeys = {
   all: ["eod"] as const,
@@ -111,32 +103,30 @@ export const eodKeys = {
 
 export const eodApi = {
   day: (trader: string, date: string) =>
-    fetch(apiUrl(`/api/eod/day?date=${encodeURIComponent(date)}${trader ? `&trader=${encodeURIComponent(trader)}` : ""}`)).then((r) => asJson<EodDayPayload>(r)),
+    orNotAvailable(http.get<EodDayPayload>("/api/eod/day", { query: { date, trader } })),
   status: (date: string, trader: string) =>
-    fetch(apiUrl(`/api/eod/status?date=${encodeURIComponent(date)}${trader ? `&trader=${encodeURIComponent(trader)}` : ""}`)).then((r) => asJson<EodStatusPayload>(r)),
+    orNotAvailable(http.get<EodStatusPayload>("/api/eod/status", { query: { date, trader } })),
   queue: (limit = 50, reviewed = false) =>
-    fetch(apiUrl(`/api/eod/queue?limit=${limit}${reviewed ? "&reviewed=1" : ""}`)).then((r) => asJson<QueuePayload>(r)),
+    orNotAvailable(http.get<QueuePayload>("/api/eod/queue", { query: { limit, reviewed: reviewed ? 1 : null } })),
   range: (trader: string, from: string, to: string) =>
-    fetch(apiUrl(`/api/eod/days?from=${from}&to=${to}${trader ? `&trader=${encodeURIComponent(trader)}` : ""}`))
-      .then((r) => asJson<{ trader: string; days: EodDayMark[] }>(r)),
-  queueCount: () => fetch(apiUrl(`/api/eod/queue/count`)).then((r) => asJson<{ count: number; overdue: number; slaHours: number }>(r)),
+    orNotAvailable(http.get<{ trader: string; days: EodDayMark[] }>("/api/eod/days", { query: { from, to, trader } })),
+  queueCount: () => orNotAvailable(http.get<{ count: number; overdue: number; slaHours: number }>("/api/eod/queue/count")),
   saveDay: (date: string, body: { discipline?: number | null; summary?: EodSummary }) =>
-    fetch(apiUrl(`/api/eod/day/${date}`), { method: "PUT", ...json(body) }).then((r) => asJson<EodDay>(r)),
+    orNotAvailable(http.put<EodDay>(`/api/eod/day/${date}`, body)),
   close: (date: string, body: { discipline?: number | null; summary?: EodSummary }) =>
-    fetch(apiUrl(`/api/eod/day/${date}/close`), { method: "POST", ...json(body) }).then((r) => asJson<{ day: EodDay; streaks: Streaks }>(r)),
-  reopen: (date: string) => fetch(apiUrl(`/api/eod/day/${date}/reopen`), { method: "POST" }).then((r) => asJson<EodDay>(r)),
+    orNotAvailable(http.post<{ day: EodDay; streaks: Streaks }>(`/api/eod/day/${date}/close`, body)),
+  reopen: (date: string) => orNotAvailable(http.post<EodDay>(`/api/eod/day/${date}/reopen`)),
   reviewTrade: (id: number, body: { followedPlan?: boolean | null; mistakes?: string[]; lesson?: string }) =>
-    fetch(apiUrl(`/api/eod/trades/${id}/review`), { method: "PUT", ...json(body) }).then((r) => asJson<unknown>(r)),
+    orNotAvailable(http.put<unknown>(`/api/eod/trades/${id}/review`, body)),
   /** Setup / grade live on the trade itself. Post-hoc classification is not an entry decision, so the checklist gate is bypassed. */
   patchTrade: (id: number, body: { setup?: string | null; confidenceGrade?: Grade; conclusion?: string | null }) =>
-    fetch(apiUrl(`/api/trades/${id}`), { method: "PATCH", ...json({ ...body, skipChecklist: true }) }).then((r) => asJson<unknown>(r)),
+    orNotAvailable(http.patch<unknown>(`/api/trades/${id}`, { ...body, skipChecklist: true })),
   curatorReview: (id: number, body: { comment: string; score: number }) =>
-    fetch(apiUrl(`/api/eod/days/${id}/review`), { method: "POST", ...json(body) }).then((r) => asJson<{ day: EodDay; next: QueueItem | null }>(r)),
+    orNotAvailable(http.post<{ day: EodDay; next: QueueItem | null }>(`/api/eod/days/${id}/review`, body)),
   brokerDaily: (trader: string, date: string) =>
-    fetch(apiUrl(`/api/propreports/daily?from=${date}&to=${date}${trader ? `&trader=${encodeURIComponent(trader)}` : ""}`))
-      .then((r) => asJson<{ days: BrokerDaily[] }>(r))
+    orNotAvailable(http.get<{ days: BrokerDaily[] }>("/api/propreports/daily", { query: { from: date, to: date, trader } }))
       .then((d) => d.days.find((x) => x.date === date) ?? null),
-  playbook: () => fetch(apiUrl(`/api/playbook`)).then((r) => asJson<Array<{ id: number; name: string; setupType?: string | null; folder?: string | null }>>(r)),
+  playbook: () => orNotAvailable(http.get<Array<{ id: number; name: string; setupType?: string | null; folder?: string | null }>>("/api/playbook")),
 };
 
 /** `null` when the EOD route is not deployed yet (404) — callers hide the feature instead of erroring. */
@@ -144,7 +134,7 @@ export function useEodDay(trader: string, date: string, enabled = true) {
   return useQuery<EodDayPayload | null>({
     queryKey: eodKeys.day(trader, date),
     enabled: enabled && !!trader && !!date,
-    staleTime: 15_000,
+    staleTime: STALE.live,
     retry: false,
     queryFn: async () => {
       try { return await eodApi.day(trader, date); } catch (e) { if (e instanceof NotAvailable) return null; throw e; }
@@ -156,7 +146,7 @@ export function useEodStatus(date: string, trader: string, enabled = true) {
   return useQuery<EodStatusPayload | null>({
     queryKey: eodKeys.status(date, trader),
     enabled: enabled && !!date,
-    staleTime: 30_000,
+    staleTime: STALE.default,
     retry: false,
     queryFn: async () => {
       try { return await eodApi.status(date, trader); } catch (e) { if (e instanceof NotAvailable) return null; throw e; }
@@ -168,8 +158,8 @@ export function useEodQueue(enabled: boolean) {
   return useQuery<QueuePayload | null>({
     queryKey: eodKeys.queue,
     enabled,
-    staleTime: 30_000,
-    refetchInterval: 120_000,
+    staleTime: STALE.default,
+    refetchInterval: POLL.twoMinutes,
     refetchIntervalInBackground: false,
     retry: false,
     queryFn: async () => {

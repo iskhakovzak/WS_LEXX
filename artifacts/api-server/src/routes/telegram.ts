@@ -8,7 +8,6 @@ import {
   answerCallbackQuery,
   buildIdeaHtml,
   buildIdeaKeyboard,
-  buildTraderReplyKeyboard,
   buildMainMenuKeyboard,
   escHtml,
   type InlineButton,
@@ -22,15 +21,15 @@ import {
   getSiteUrl,
 } from "../lib/notifyUtils";
 import crypto from "crypto";
+import { config } from "../config";
+import { AppError, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
-export const TELEGRAM_WEBHOOK_SECRET =
-  (process.env["TELEGRAM_WEBHOOK_SECRET"] ?? "").trim() ||
-  (() => {
-    const jwt = (process.env["JWT_SECRET"] ?? "").trim();
-    return jwt ? crypto.createHash("sha256").update(`tg:${jwt}`).digest("hex").slice(0, 32) : "ws-lexx-tg-secret";
-  })();
+/** Webhook secret (config.ts: required on its own in production; derived from JWT_SECRET only in development). */
+export function telegramWebhookSecret(): string {
+  return config.telegramWebhookSecret || "ws-lexx-tg-secret";
+}
 
 // ─── LINKING API ─────────────────────────────────────────────────────────────
 
@@ -45,7 +44,7 @@ router.post("/telegram/link-token", asyncHandler(async (req, res): Promise<void>
     [token, trader, expiresAt],
   );
 
-  const botUsername = (process.env["TELEGRAM_BOT_USERNAME"] ?? "").trim() || "DailyDigest_WS_bot";
+  const botUsername = config.telegram.botUsername;
   const deepLink = `https://t.me/${botUsername}?start=${token}`;
   res.json({ token, deep_link: deepLink, expires_in: 600, bot_username: botUsername });
 }));
@@ -53,7 +52,7 @@ router.post("/telegram/link-token", asyncHandler(async (req, res): Promise<void>
 router.get("/telegram/status", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query["trader"] === "string" ? req.query["trader"] : undefined;
   const viewer = req.authUser;
-  if (!viewer) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!viewer) throw unauthorized();
   // Only staff may look up another user's Telegram link status.
   const trader = requested && requested !== viewer.name && ["curator", "admin"].includes(viewer.role ?? "")
     ? requested
@@ -79,7 +78,7 @@ router.delete("/telegram/disconnect", asyncHandler(async (req, res): Promise<voi
 
 router.post("/telegram/webhook", asyncHandler(async (req, res): Promise<void> => {
   const secretHeader = req.headers["x-telegram-bot-api-secret-token"];
-  if (secretHeader !== TELEGRAM_WEBHOOK_SECRET) {
+  if (secretHeader !== telegramWebhookSecret()) {
     res.status(403).json({ error: "forbidden" });
     return;
   }
@@ -431,7 +430,7 @@ async function handleMenuCallback(
     const { rows } = await pool.query<IdeaRow>(
       isToday
         ? `SELECT id, ticker, side, status, trader, published_at FROM trade_ideas
-           WHERE published_at::date = CURRENT_DATE AND status != 'draft' AND deleted_at IS NULL
+           WHERE (published_at AT TIME ZONE 'America/New_York')::date = (now() AT TIME ZONE 'America/New_York')::date AND status != 'draft' AND deleted_at IS NULL
            ORDER BY published_at DESC LIMIT 15`
         : `SELECT id, ticker, side, status, trader, published_at FROM trade_ideas
            WHERE status != 'draft' AND deleted_at IS NULL
@@ -486,7 +485,7 @@ async function handleMenuCallback(
     const [{ rows: todayRows }, { rows: recentRows }] = await Promise.all([
       pool.query<IdeaRow>(
         `SELECT id, ticker, side, status, published_at FROM trade_ideas
-         WHERE trader = $1 AND published_at::date = CURRENT_DATE AND status != 'draft' AND deleted_at IS NULL
+         WHERE trader = $1 AND (published_at AT TIME ZONE 'America/New_York')::date = (now() AT TIME ZONE 'America/New_York')::date AND status != 'draft' AND deleted_at IS NULL
          ORDER BY published_at DESC LIMIT 5`,
         [traderName],
       ),
@@ -560,14 +559,14 @@ async function handleMenuCallback(
 router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { name } = req.params;
   const { rowCount } = await pool.query(
     `UPDATE users SET telegram_chat_id = NULL, telegram_linked_at = NULL WHERE name = $1`,
     [name],
   );
-  if (!rowCount) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rowCount) throw notFound("USER_NOT_FOUND");
   logger.info({ admin: viewer.name, target: name }, "Admin force-disconnected Telegram");
   res.json({ ok: true, updated: rowCount ?? 0 });
 }));
@@ -575,7 +574,7 @@ router.delete("/telegram/admin/disconnect/:name", asyncHandler(async (req, res):
 router.post("/telegram/broadcast", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { message } = req.body as { message?: string };
   if (!message || typeof message !== "string" || !message.trim()) {
@@ -605,7 +604,7 @@ router.post("/telegram/broadcast", asyncHandler(async (req, res): Promise<void> 
 router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { rows } = await pool.query(
     `SELECT name, role, active, telegram_chat_id, telegram_linked_at, assigned_curator, assigned_risk_manager, assigned_mentor
@@ -617,7 +616,7 @@ router.get("/telegram/assignments", asyncHandler(async (req, res): Promise<void>
 router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser;
   if (!viewer || !["curator", "admin"].includes(viewer.role ?? "")) {
-    res.status(403).json({ error: "admin/curator only" }); return;
+    throw new AppError("STAFF_ONLY");
   }
   const { name } = req.params;
   const body = (req.body ?? {}) as Record<string, unknown>;
@@ -635,7 +634,7 @@ router.patch("/telegram/assignments/:name", asyncHandler(async (req, res): Promi
     `UPDATE users SET assigned_curator = $1, assigned_risk_manager = $2, assigned_mentor = $3 WHERE name = $4`,
     [...assigned, name],
   );
-  if (!rowCount) { res.status(404).json({ error: "User not found" }); return; }
+  if (!rowCount) throw notFound("USER_NOT_FOUND");
   res.json({ ok: true });
 }));
 

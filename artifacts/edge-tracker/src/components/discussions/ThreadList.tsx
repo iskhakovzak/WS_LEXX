@@ -1,4 +1,4 @@
-import * as React from "react";
+
 import { ArrowBigUp, CheckCircle2, MessageSquare, Pin, AtSign, Lock, Flame } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";

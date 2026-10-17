@@ -15,6 +15,13 @@ import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/compone
 import { shellI18n } from "@/i18n/ns/shell";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
+import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
+
+/**
+ * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
+ * Tailwind v4 does not define (only `--spacing`), so it is set here for the sidebar subtree.
+ */
+const SIDEBAR_SIZES = { "--sidebar-width": "15rem", "--sidebar-width-icon": "3.5rem", "--spacing-4": "1rem" } as React.CSSProperties;
 
 /** On phones the sidebar is a Sheet; close it once a nav link has been followed. */
 function CloseMobileSidebarOnNavigate({ location }: { location: string }) {
@@ -122,9 +129,12 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const routeKey = "/" + (location.split("/")[1] ?? "");
   useScrolledFlag(scrollerRef, routeKey);
   useScrollerGutter(scrollerRef);
+  // Full sidebar or icon rail (header button, the sidebar footer button, Ctrl/⌘ B); remembered per browser.
+  const [sidebarOpen, setSidebarOpen] = React.useState(readSidebarOpen);
+  const onSidebarOpen = React.useCallback((v: boolean) => { setSidebarOpen(v); writeSidebarOpen(v); }, []);
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={onSidebarOpen} style={SIDEBAR_SIZES}>
       <a
         href="#main-content"
         className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-skip focus:rounded-full focus:bg-primary-solid focus:px-4 focus:py-2 focus:text-xs focus:font-medium focus:text-primary-foreground"
@@ -134,9 +144,14 @@ export function Layout({ children }: { children: React.ReactNode }) {
       <CloseMobileSidebarOnNavigate location={location} />
       {/* Fixed-height shell: #main-content is the only vertical scroller (route changes reset it to top,
           page-level `sticky-top` bars stick right under the header). The sidebar never auto-hides (the playbook
-          included): it is toggled only by the user (header button / Ctrl+B), so the layout does not jump. */}
+          included): only the user switches it between full width and the icon rail (header button / sidebar footer /
+          Ctrl+B), so the layout does not jump. */}
       <div className="flex h-svh w-full overflow-hidden text-sm text-foreground">
-        <Sidebar variant="floating" className="p-3 pr-0">
+        <Sidebar
+          variant="floating"
+          collapsible="icon"
+          className="p-3 pr-0 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)+var(--spacing-4))]"
+        >
           <div className="flex h-full min-h-0 flex-col">
             <SidebarNav location={location} />
           </div>

@@ -5,20 +5,17 @@ import { BookOpen, ChevronRight, Lightbulb, ShieldAlert, ShieldCheck, ShieldQues
 import type { Trade } from "@workspace/api-client-react";
 import { Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
-import { DEFAULT_FILTERS, computeStats, dayOf, fmtDay, fmtPct, fmtR, effectiveR } from "./trade-utils";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { DEFAULT_FILTERS, computeStats, dayOf, effectiveR } from "./trade-utils";
 import { ResultPill } from "./trade-bits";
 import { TRADES_PAGE_KEY, buildTradesPageParams, fetchTradesPage } from "@/hooks/use-trades-page";
+import { fmtDate, fmtR, fmtRate } from "@/lib/format";
 
 type PlaybookLite = { id: number; name: string; setupType: string | null; ticker: string | null; sourceType: string | null; sourceId: number | null; folder: string | null };
 type IdeaLite = { id: number; ticker: string; side: string | null; status: string | null; thesis: string | null; createdAt: string; convertedTradeId?: number | null; trader?: string | null; target?: string | null };
 type ChecklistResp = { id: number; passed: boolean; responses: string; createdAt: string };
 
-const getJson = async <T,>(url: string): Promise<T> => {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  return r.json();
-};
 
 const IDEA_STATUS: Record<string, string> = { draft: "Черновик", published: "Опубликована", approved: "Одобрена", needs_work: "На доработке", rejected: "Отклонена", converted: "Сделка" };
 
@@ -36,8 +33,8 @@ function Row({ icon: Icon, children, onClick, label }: { icon: React.ComponentTy
 export function ChecklistStatus({ tradeId }: { tradeId: number }) {
   const q = useQuery<ChecklistResp[]>({
     queryKey: ["trade-checklist-response", tradeId],
-    queryFn: () => getJson(`${BASE}/api/checklist-responses?tradeId=${tradeId}`),
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<ChecklistResp[]>(`/api/checklist-responses?tradeId=${tradeId}`, { signal }),
+    staleTime: STALE.long,
   });
   if (q.isLoading) return <Skeleton className="h-7 w-40 rounded-full" />;
   const r = q.data?.[0];
@@ -67,7 +64,7 @@ export function ChecklistStatus({ tradeId }: { tradeId: number }) {
 export function useTickerIdeas(ticker: string | null | undefined) {
   return useQuery<IdeaLite[]>({
     queryKey: ["trades-related-ideas", ticker ?? ""],
-    queryFn: () => getJson(`${BASE}/api/trade-ideas?ticker=${encodeURIComponent(ticker ?? "")}`),
+    queryFn: ({ signal }) => http.get<IdeaLite[]>(`/api/trade-ideas?ticker=${encodeURIComponent(ticker ?? "")}`, { signal }),
     staleTime: 2 * 60_000,
     enabled: !!ticker,
   });
@@ -86,8 +83,8 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
   const [, setLocation] = useLocation();
   const playbook = useQuery<PlaybookLite[]>({
     queryKey: ["trades-related-playbook"],
-    queryFn: () => getJson(`${BASE}/api/playbook`),
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<PlaybookLite[]>("/api/playbook", { signal }),
+    staleTime: STALE.long,
   });
   const ideas = useTickerIdeas(trade.ticker);
 
@@ -147,7 +144,7 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
               <span className="truncate">{i.thesis?.split("\n")[0] || `Идея #${i.id}`}</span>
               {i.convertedTradeId === trade.id && <Pill tone="accent">источник</Pill>}
             </span>
-            <span className="text-xs text-muted-foreground">{fmtDay(i.createdAt.substring(0, 10))} · {IDEA_STATUS[i.status ?? ""] ?? i.status ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">{fmtDate(i.createdAt.substring(0, 10), "shortYY")} · {IDEA_STATUS[i.status ?? ""] ?? i.status ?? "—"}</span>
           </Row>
         ))}
       </div>
@@ -159,13 +156,13 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
         ) : (
           <>
             <p className="px-2.5 pb-1 text-sm text-muted-foreground">
-              {history.length} сделок · win rate <span className="font-medium text-foreground tabular-nums">{fmtPct(hStats.winRate)}</span> · средний R{" "}
+              {history.length} сделок · win rate <span className="font-medium text-foreground tabular-nums">{fmtRate(hStats.winRate)}</span> · средний R{" "}
               <span className="font-medium text-foreground tabular-nums">{fmtR(hStats.avgR)}</span>
             </p>
             {history.slice(0, 5).map((t) => (
               <Row key={t.id} icon={History} label={`Открыть сделку ${t.ticker} ${dayOf(t)}`} onClick={() => onOpenTrade(t)}>
                 <span className="flex items-center gap-2">
-                  <span className="tabular-nums">{fmtDay(dayOf(t))}</span>
+                  <span className="tabular-nums">{fmtDate(dayOf(t), "shortYY")}</span>
                   <ResultPill result={t.result} />
                   <span className="tabular-nums text-muted-foreground">{fmtR(effectiveR(t).value, 1)}</span>
                   <span className="truncate text-muted-foreground">{t.setup ?? ""}</span>

@@ -35,6 +35,7 @@ import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { limitsSummary, preview as textPreview, scalingActionLabel, uniqueRecipients } from "../lib/notifyEventsCore";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -174,7 +175,7 @@ const num = (v: unknown): number | null => {
 type Viewer = { name: string; staff: boolean };
 async function viewer(req: Request, res: Response): Promise<Viewer | null> {
   const name = req.authUser?.name;
-  if (!name) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!name) { sendError(res, unauthorized()); return null; }
   return { name, staff: await can(req, "scaling.read.team") };
 }
 async function staffOnly(req: Request, res: Response, cap: Capability): Promise<Viewer | null> {
@@ -525,7 +526,7 @@ router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => 
   if (!v) return;
   await ensureTables();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (raw.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (raw.length > 100) throw badRequest("INVALID_TRADER");
   if (!v.staff && raw && raw !== v.name) { res.status(403).json({ error: "Можно смотреть только свой план" }); return; }
   const trader = v.staff ? (raw || null) : v.name;
   const today = clientDate(req.query.date);
@@ -638,7 +639,7 @@ router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =
   if (!parsed.success) { res.status(400).json({ error: "Проверьте поля предложения", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); return; }
   const b = parsed.data;
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!known.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!known.length) throw notFound("TRADER_NOT_FOUND");
   const today = nyDate();
   const { tiers, traders } = await evaluateScope(b.trader, today);
   const e = traders[0];
@@ -731,7 +732,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
   if (!v) return;
   await ensureTables();
   const id = parseId(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
   const comment = parsed.data.comment || null;
@@ -775,7 +776,7 @@ router.post("/scaling/proposals/:id/reject", asyncHandler(async (req, res): Prom
   if (!v) return;
   await ensureTables();
   const id = parseId(req.params.id);
-  if (!id) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
   const comment = parsed.data.comment || null;
@@ -810,7 +811,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: "Проверьте поля", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); return; }
   const b = parsed.data;
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!known.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!known.length) throw notFound("TRADER_NOT_FOUND");
   const tiers = await loadTiers();
   const tier = tiers.find((t) => t.key === b.tierKey);
   if (!tier) { res.status(400).json({ error: `Тир «${b.tierKey}» не найден` }); return; }
@@ -904,7 +905,7 @@ router.get("/scaling/history", asyncHandler(async (req, res): Promise<void> => {
   if (!v) return;
   await ensureTables();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (raw.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (raw.length > 100) throw badRequest("INVALID_TRADER");
   if (!v.staff && raw && raw !== v.name) { res.status(403).json({ error: "Можно смотреть только свою историю" }); return; }
   const trader = v.staff ? (raw || null) : v.name;
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));

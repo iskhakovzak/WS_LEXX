@@ -8,7 +8,8 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import type { Proposal, Tier } from "./use-scaling";
 import { useDecideProposal } from "./use-scaling";
-import { ACTION_META, PROPOSAL_STATUS, fmtDateTime, tierName } from "./format";
+import { ACTION_META, PROPOSAL_STATUS, tierName } from "./format";
+import { fmtDate } from "@/lib/format";
 
 /** Curator decision with an optional comment, in a popover (no page-level forms). */
 function DecisionPopover({
@@ -116,8 +117,8 @@ export function ProposalCard({
         </ul>
       )}
       <div className="flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
-        <span>{proposal.source === "auto" ? "по правилам" : "вручную"} · {proposal.createdBy} · {fmtDateTime(proposal.createdAt)}</span>
-        {proposal.decidedBy && <span>решение: {proposal.decidedBy} · {fmtDateTime(proposal.decidedAt)}</span>}
+        <span>{proposal.source === "auto" ? "по правилам" : "вручную"} · {proposal.createdBy} · {fmtDate(proposal.createdAt, "dateTime")}</span>
+        {proposal.decidedBy && <span>решение: {proposal.decidedBy} · {fmtDate(proposal.decidedAt, "dateTime")}</span>}
         {proposal.decisionComment && <span className="basis-full text-foreground/80">«{proposal.decisionComment}»</span>}
       </div>
     </article>

@@ -9,8 +9,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { apiJson, useRulePreview } from "./api";
-import { fmtPct, fmtUsd, violationsWord } from "./constants";
+import { useRulePreview } from "./api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { violationsWord } from "./constants";
+import { fmtRate, fmtUsd } from "@/lib/format";
 import { autoName, type RuleDraft } from "./templates";
 import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport } from "./types";
 
@@ -180,19 +183,19 @@ export function RuleDialog({
     setError(null);
     try {
       if (editing) {
-        await apiJson(`/rules/${editing.id}`, { method: "PATCH", json: { name: n, threshold, enabled, note: note.trim() || null } }, "Не удалось сохранить правило");
+        await http.patch(`/api/rules/${editing.id}`, { name: n, threshold, enabled, note: note.trim() || null });
         toast({ title: "Правило обновлено" });
       } else {
         const body: Record<string, unknown> = { name: n, kind, threshold, enabled, note: note.trim() || null };
         if (scope === "desk") body.desk = true;
         else body.trader = trader;
-        await apiJson(`/rules`, { method: "POST", json: body }, "Не удалось создать правило");
+        await http.post(`/api/rules`, body);
         toast({ title: "Правило добавлено", description: kindDef.auto === false ? "Отмечайте его раз в день в журнале" : "Проверяется по всем сделкам автоматически" });
       }
       onSaved();
       onOpenChange(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanizeApiError(e, editing ? "Не удалось сохранить правило" : "Не удалось создать правило"));
     } finally {
       setSaving(false);
     }
@@ -360,7 +363,7 @@ function PreviewBox({ q, days }: { q: ReturnType<typeof useRulePreview>; days: n
       {q.isLoading || q.isFetching && !r ? (
         <span className="skeleton block h-5 w-3/4" aria-hidden="true" />
       ) : q.error ? (
-        <span className="text-sm text-muted-foreground">{q.error instanceof Error ? q.error.message : "Предпросмотр недоступен"}</span>
+        <span className="text-sm text-muted-foreground">{humanizeApiError(q.error, "Предпросмотр недоступен")}</span>
       ) : !r ? null : r.status === "no_data" ? (
         <span className="text-sm text-muted-foreground">По вашим сделкам это правило проверить нельзя — нет нужных данных.</span>
       ) : r.violations === 0 ? (
@@ -368,14 +371,14 @@ function PreviewBox({ q, days }: { q: ReturnType<typeof useRulePreview>; days: n
       ) : (
         <>
           <span className="text-sm text-foreground">
-            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в <b className="tabular-nums">{r.violatedDays}</b> из {r.days} дней · соблюдение <b className="tabular-nums">{fmtPct(r.compliance)}</b>
+            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в <b className="tabular-nums">{r.violatedDays}</b> из {r.days} дней · соблюдение <b className="tabular-nums">{fmtRate(r.compliance)}</b>
           </span>
           {r.impact != null && (
             <span className="text-sm">
               {r.impact < 0 ? "Нарушения стоили " : r.impact > 0 ? "Нарушения принесли " : "Влияние на результат "}
-              <b className={cn("tabular-nums", r.impact < 0 ? "text-down" : r.impact > 0 ? "text-up" : "")}>{fmtUsd(r.impact, { sign: false })}</b>
+              <b className={cn("tabular-nums", r.impact < 0 ? "text-down" : r.impact > 0 ? "text-up" : "")}>{fmtUsd(r.impact, { decimals: "trim" })}</b>
               {r.broken.avg != null && r.clean.avg != null && (
-                <span className="text-muted-foreground"> · сделка с нарушением в среднем {fmtUsd(r.broken.avg)} против {fmtUsd(r.clean.avg)}</span>
+                <span className="text-muted-foreground"> · сделка с нарушением в среднем {fmtUsd(r.broken.avg, { signed: true, decimals: "trim" })} против {fmtUsd(r.clean.avg, { signed: true, decimals: "trim" })}</span>
               )}
             </span>
           )}

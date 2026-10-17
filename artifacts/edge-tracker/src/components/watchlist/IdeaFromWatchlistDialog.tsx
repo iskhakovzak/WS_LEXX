@@ -5,8 +5,9 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { TradeIdeaForm, type TradeIdeaFormData } from "@/components/trade-idea-form";
 import { screenshotUrlsToString, stringToScreenshotUrls } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { apiJson, jsonInit, num, type Quote, type WatchlistItem } from "./lib";
+import { http } from "@/lib/api/http";
+import { KEYS } from "@/lib/api/keys";
+import { num, type Quote, type WatchlistItem } from "./lib";
 
 /**
  * One-click "create idea" from a watchlist row: prefilled TradeIdeaForm (ticker, side from levels, stop/target,
@@ -44,16 +45,16 @@ export function IdeaFromWatchlistDialog({
   const createMut = useMutation({
     mutationFn: (data: TradeIdeaFormData) => {
       const { screenshotUrls, ...rest } = data;
-      return apiJson<{ id: number; ticker: string }>(`${BASE}/api/trade-ideas`, jsonInit("POST", {
+      return http.post<{ id: number; ticker: string }>("/api/trade-ideas", {
         ...rest,
         screenshotUrl: screenshotUrlsToString(screenshotUrls) || null,
         score: data.score ? Number(data.score) : null,
         status: "draft",
-      }));
+      });
     },
     onSuccess: (row) => {
       qc.invalidateQueries({ queryKey: ["trade-ideas"] });
-      qc.invalidateQueries({ queryKey: ["watchlist"] });
+      qc.invalidateQueries({ queryKey: KEYS.watchlist() });
       onClose();
       if (thenTrade && row?.id) {
         toast({ title: `Идея по ${row.ticker} сохранена`, description: "Открываем форму сделки…" });

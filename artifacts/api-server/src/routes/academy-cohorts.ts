@@ -54,6 +54,7 @@ import {
   type AttendanceStatus, type AttendanceSummary, type Comparator, type EnrollmentStatus, type GoalEval, type GoalStatus, type IdpTrade,
   type MetricKey, type SessionRule, type Stage,
 } from "../lib/academyCohorts";
+import { AppError, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -87,7 +88,7 @@ export function ensureAcademyCohortTables(): Promise<void> {
            user_name TEXT NOT NULL,
            stage TEXT NOT NULL DEFAULT 'trainee',
            status TEXT NOT NULL DEFAULT 'active',
-           joined_on DATE NOT NULL DEFAULT CURRENT_DATE,
+           joined_on DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
            note TEXT NOT NULL DEFAULT '',
            created_by TEXT,
            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -232,12 +233,12 @@ async function viewer(req: Request): Promise<Viewer> {
 async function enter(req: Request, res: Response): Promise<Viewer | null> {
   await ensureAcademyCohortTables();
   const v = await viewer(req);
-  if (!v.me && !v.guest) { res.status(401).json({ error: "Требуется вход" }); return null; }
+  if (!v.me && !v.guest) { sendError(res, unauthorized()); return null; }
   return v;
 }
 
 function needMember(v: Viewer, res: Response): v is Viewer & { me: string } {
-  if (v.guest || !v.me) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return false; }
+  if (v.guest || !v.me) { sendError(res, new AppError("GUEST_READ_ONLY")); return false; }
   return true;
 }
 
@@ -760,10 +761,10 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   const id = idParam(req); if (!id) return badRequest(res, "id");
   const { rows } = await pool.query<CohortRow>(`SELECT ${COHORT_COLS} FROM academy_cohorts c WHERE c.id = $1`, [id]);
   const c = rows[0];
-  if (!c) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+  if (!c) throw notFound("COHORT_NOT_FOUND");
   if (!v.staff) {
     const own = v.me ? await pool.query(`SELECT 1 FROM academy_enrollments WHERE cohort_id = $1 AND user_name = $2 AND archived_at IS NULL`, [id, v.me]) : { rows: [] };
-    if (!own.rows.length) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+    if (!own.rows.length) throw notFound("COHORT_NOT_FOUND");
   }
   const enr = await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.cohort_id = $1 AND e.archived_at IS NULL ORDER BY e.status = 'active' DESC, e.user_name`, [id]);
@@ -811,7 +812,7 @@ router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   try {
     const { rows } = await pool.query<CohortRow>(
       `UPDATE academy_cohorts c SET ${sets.join(", ")}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, params);
-    if (!rows[0]) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+    if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
     const r = rows[0];
     if (r.starts_on && r.ends_on && r.ends_on < r.starts_on) { res.status(400).json({ error: "Дата окончания раньше даты начала" }); return; }
     res.json(mapCohort(r));
@@ -828,7 +829,7 @@ for (const [path, archive] of [["archive", true], ["restore", false]] as const) 
     try {
       const { rows } = await pool.query<CohortRow>(
         `UPDATE academy_cohorts c SET archived_at = ${archive ? "NOW()" : "NULL"}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, [id]);
-      if (!rows[0]) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+      if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
       res.json(mapCohort(rows[0]));
     } catch (err: any) {
       if (err?.code === "23505") { res.status(409).json({ error: "Активная когорта с таким названием уже есть — переименуйте её" }); return; }
@@ -855,7 +856,7 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
   const b = p.data;
   if (!(await userExists(b.userName))) return badRequest(res, `Пользователь «${b.userName}» не найден или неактивен`);
   const c = await pool.query<{ name: string }>(`SELECT name FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
-  if (!c.rows[0]) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+  if (!c.rows[0]) throw notFound("COHORT_NOT_FOUND");
   try {
     const { rows } = await pool.query<EnrollmentRow>(
       `INSERT INTO academy_enrollments (cohort_id, user_name, stage, status, joined_on, note, created_by)
@@ -898,7 +899,7 @@ router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const { reason, ...patch } = p.data;
   const e = await changeEnrollment(id, patch, v.me, reason ?? "");
-  if (!e) { res.status(404).json({ error: "Запись не найдена" }); return; }
+  if (!e) throw notFound();
   res.json(e);
 }));
 
@@ -907,7 +908,7 @@ router.post("/academy/enrollments/:id/archive", asyncHandler(async (req, res) =>
   const id = idParam(req); if (!id) return badRequest(res, "id");
   const { rows } = await pool.query<EnrollmentRow>(
     `UPDATE academy_enrollments e SET archived_at = NOW(), updated_at = NOW() WHERE e.id = $1 AND e.archived_at IS NULL RETURNING ${ENR_COLS}`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Запись не найдена" }); return; }
+  if (!rows[0]) throw notFound();
   await pool.query(
     `INSERT INTO academy_enrollment_history (enrollment_id, cohort_id, user_name, from_stage, to_stage, from_status, to_status, changed_by, note)
      VALUES ($1, $2, $3, $4, $4, $5, $5, $6, 'Убран из когорты (архив)')`,
@@ -920,7 +921,7 @@ router.get("/academy/enrollments/:id/history", asyncHandler(async (req, res) => 
   const v = await enter(req, res); if (!v) return;
   const id = idParam(req); if (!id) return badRequest(res, "id");
   const own = await pool.query<{ user_name: string }>(`SELECT user_name FROM academy_enrollments WHERE id = $1`, [id]);
-  if (!own.rows[0] || (!v.staff && own.rows[0].user_name !== v.me)) { res.status(404).json({ error: "Запись не найдена" }); return; }
+  if (!own.rows[0] || (!v.staff && own.rows[0].user_name !== v.me)) throw notFound();
   const { rows } = await pool.query(
     `SELECT id, from_stage AS "fromStage", to_stage AS "toStage", from_status AS "fromStatus", to_status AS "toStatus",
             changed_by AS "changedBy", note, changed_at AS "changedAt"
@@ -981,7 +982,7 @@ router.post("/academy/sessions", asyncHandler(async (req, res) => {
   const problem = sessionProblems(b);
   if (problem) return badRequest(res, problem);
   const c = await pool.query(`SELECT 1 FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
-  if (!c.rows.length) { res.status(404).json({ error: "Когорта не найдена" }); return; }
+  if (!c.rows.length) throw notFound("COHORT_NOT_FOUND");
   if (b.host && !(await userExists(b.host))) return badRequest(res, `Пользователь «${b.host}» не найден`);
   const { rows } = await pool.query<SessionRow>(
     `INSERT INTO academy_sessions (cohort_id, title, kind, recurrence, weekdays, start_date, end_date, start_time, duration_min, timezone, mode, room, meeting_url, host, description, created_by)
@@ -1000,7 +1001,7 @@ router.patch("/academy/sessions/:id", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const cur = await pool.query<SessionRow>(`SELECT ${SES_COLS} FROM academy_sessions s WHERE s.id = $1 AND s.archived_at IS NULL`, [id]);
   const s = cur.rows[0];
-  if (!s) { res.status(404).json({ error: "Занятие не найдено" }); return; }
+  if (!s) throw notFound("SESSION_NOT_FOUND");
   const b = p.data;
   const merged = {
     recurrence: b.recurrence ?? s.recurrence, startDate: b.startDate ?? s.start_date, endDate: b.endDate !== undefined ? b.endDate : s.end_date,
@@ -1035,7 +1036,7 @@ router.post("/academy/sessions/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "id");
   const { rows } = await pool.query<SessionRow>(`UPDATE academy_sessions s SET archived_at = NOW(), updated_at = NOW() WHERE s.id = $1 AND s.archived_at IS NULL RETURNING ${SES_COLS}`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Занятие не найдено" }); return; }
+  if (!rows[0]) throw notFound("SESSION_NOT_FOUND");
   res.json(mapSession(rows[0]));
 }));
 
@@ -1048,7 +1049,7 @@ router.get("/academy/sessions/:id/roster", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const id = idParam(req); if (!id) return badRequest(res, "id");
   const s = await sessionById(id);
-  if (!s) { res.status(404).json({ error: "Занятие не найдено" }); return; }
+  if (!s) throw notFound("SESSION_NOT_FOUND");
   const rule = ruleOf(s);
   const date = qs(req, "date") ?? dateInTz(Date.now(), rule.timezone);
   if (!isOccurrence(rule, date)) return badRequest(res, `${date} — не день этого занятия (${describeRule(rule)})`);
@@ -1086,7 +1087,7 @@ router.post("/academy/attendance", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
   const s = await sessionById(b.sessionId);
-  if (!s) { res.status(404).json({ error: "Занятие не найдено" }); return; }
+  if (!s) throw notFound("SESSION_NOT_FOUND");
   const rule = ruleOf(s);
   if (!isOccurrence(rule, b.date)) return badRequest(res, `${b.date} — не день этого занятия`);
   const occ = occurrenceAt(rule, b.date);
@@ -1119,7 +1120,7 @@ router.post("/academy/checkin", asyncHandler(async (req, res) => {
   const p = z.object({ sessionId: z.number().int().positive(), date: ymd.optional() }).safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const s = await sessionById(p.data.sessionId);
-  if (!s || s.archived_at) { res.status(404).json({ error: "Занятие не найдено" }); return; }
+  if (!s || s.archived_at) throw notFound("SESSION_NOT_FOUND");
   if (s.mode === "office") { res.status(400).json({ error: "Это офлайн-занятие — отметку ставит наставник в аудитории", code: "OFFICE_ONLY" }); return; }
   const enr = await pool.query<{ id: number }>(
     `SELECT id FROM academy_enrollments WHERE cohort_id = $1 AND user_name = $2 AND archived_at IS NULL AND status = 'active'`, [s.cohort_id, v.me]);

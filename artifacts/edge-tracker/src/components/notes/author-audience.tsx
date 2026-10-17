@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { STAGE_LABEL, type Audience, type AudienceMember, type AudienceStage } from "./author-model";
 
 const STAGE_TONE: Record<AudienceStage, Tone> = { trainee: "warn", junior: "accent", trader: "neutral", senior: "purple" };
@@ -31,7 +32,7 @@ function MemberRow({ m }: { m: AudienceMember }) {
       <MemberBadge m={m} />
       {m.readAt && (
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-          {new Date(m.readAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+          {fmtDate(m.readAt, "dateTime")}
         </span>
       )}
     </li>

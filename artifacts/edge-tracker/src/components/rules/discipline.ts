@@ -1,5 +1,6 @@
 import { addDays, nyDate } from "@/lib/trading-date";
 import type { DisciplineTrade, Mistake, Violation } from "./types";
+import { fmtDate } from "@/lib/format";
 
 export type DayStat = {
   date: string;
@@ -168,7 +169,7 @@ export function summarize(
   for (let w = mondayOf(from); w <= today; w = addDays(w, 7)) {
     const ws: WeekStat = {
       week: w,
-      label: new Date(`${w}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }),
+      label: fmtDate(w, "dayMonth"),
       violations: 0, mistakes: 0, trades: 0,
     };
     weekly.push(ws);

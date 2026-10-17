@@ -3,7 +3,8 @@ import { EmptyState, Panel, Pill, StatCard, StatGrid, toneOf } from "@/component
 import { cn } from "@/lib/utils";
 import type { BenchmarkResponse } from "./api";
 import { EquityLines } from "./charts";
-import { SERIES_COLORS, fmtMetric, fmtPct, fmtUsd } from "./format";
+import { SERIES_COLORS, fmtMetric } from "./format";
+import { fmtRate, fmtUsd } from "@/lib/format";
 import { TrendView } from "./trend";
 
 /** Trader mode: own metrics against the anonymised desk median (no other trader is named or shown). */
@@ -21,10 +22,10 @@ export function SelfView({ data }: { data: BenchmarkResponse }) {
   return (
     <div className="flex flex-col gap-4">
       <StatGrid>
-        <StatCard label="Нетто" value={me.net != null ? fmtUsd(me.net) : "—"} tone={toneOf(me.net)} hint={me.gross != null ? `брутто ${fmtUsd(me.gross)}` : undefined} />
-        <StatCard label="Win rate" value={fmtPct(me.winRate)} hint={`${me.wins} W / ${me.losses} L`} />
-        <StatCard label="Зелёные дни" value={fmtPct(me.greenShare)} hint={`${me.greenDays} из ${me.days}`} />
-        <StatCard label="Лучший день / прибыль" value={me.bestDayShare != null ? fmtPct(me.bestDayShare) : "—"}
+        <StatCard label="Нетто" value={me.net != null ? fmtUsd(me.net, { signed: true, decimals: "auto" }) : "—"} tone={toneOf(me.net)} hint={me.gross != null ? `брутто ${fmtUsd(me.gross, { signed: true, decimals: "auto" })}` : undefined} />
+        <StatCard label="Win rate" value={fmtRate(me.winRate)} hint={`${me.wins} W / ${me.losses} L`} />
+        <StatCard label="Зелёные дни" value={fmtRate(me.greenShare)} hint={`${me.greenDays} из ${me.days}`} />
+        <StatCard label="Лучший день / прибыль" value={me.bestDayShare != null ? fmtRate(me.bestDayShare) : "—"}
           tone={me.consistencyFlag === "breach" ? "down" : me.consistencyFlag === "warn" ? "warn" : "neutral"}
           hint={`порог ${Math.round(data.rules.consistencyWarn * 100)}–${Math.round(data.rules.consistencyBreach * 100)}%`} />
       </StatGrid>

@@ -6,7 +6,7 @@ import { useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, usePeriodNav } from "@/lib/period-links";
 import type { DayPoint } from "./api";
-import { fmtDay, fmtR, fmtUsd } from "./format";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 
 export type EquitySeries = { name: string; color: string; unit: "usd" | "r" | null; points: DayPoint[] };
 
@@ -42,7 +42,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
     dates: days,
     trader: series.length === 1 ? series[0].name : null,
     label: `Кривая капитала: ${series.map((s) => s.name).join(", ")}`,
-    describe: (i) => fmtDay(days[i]),
+    describe: (i) => fmtDate(days[i], "shortYY"),
   });
   if (days.length < 2) {
     return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>Недостаточно дней для кривой</div>;
@@ -50,7 +50,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
   const x = (i: number) => PL + (i / (days.length - 1)) * (W - PL - PR);
   const y = (v: number) => PT + (1 - (v - min) / (max - min)) * (H - PT - PB);
   const unit = series[0]?.unit ?? "usd";
-  const fmt = (v: number) => (unit === "r" ? fmtR(v) : fmtUsd(v));
+  const fmt = (v: number) => (unit === "r" ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const ticks = [min, (min + max) / 2, max];
   const xTicks = [0, Math.floor((days.length - 1) / 2), days.length - 1];
   const pointAt = (e: React.MouseEvent<SVGRectElement>) => {
@@ -86,7 +86,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
         ))}
         {min < 0 && max > 0 && <line x1={PL} x2={W - PR} y1={y(0)} y2={y(0)} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} strokeWidth={1} />}
         {xTicks.map((i) => (
-          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px] tabular-nums">{fmtDay(days[i])}</text>
+          <text key={i} x={x(i)} y={H - 8} textAnchor={i === 0 ? "start" : i === days.length - 1 ? "end" : "middle"} className="fill-muted-foreground text-[10px] tabular-nums">{fmtDate(days[i], "shortYY")}</text>
         ))}
         {lines.map((l) => {
           let d = "";
@@ -106,7 +106,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
       </svg>
       {shown != null && (
         <div className="glass-panel pointer-events-none absolute right-2 top-2 rounded-lg px-2.5 py-1.5 text-xs tabular-nums">
-          <div className="font-medium text-foreground">{fmtDay(days[shown])}</div>
+          <div className="font-medium text-foreground">{fmtDate(days[shown], "shortYY")}</div>
           {lines.map((l) => (
             <div key={l.name} className="flex items-center gap-1.5">
               <span className="h-2 w-2 rounded-full" style={{ background: l.color }} aria-hidden="true" />

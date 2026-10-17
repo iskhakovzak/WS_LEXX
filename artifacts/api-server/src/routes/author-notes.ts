@@ -14,6 +14,7 @@ import {
   buildAudience, daySnapshot, groupTradesByDay, isAudienceStage,
   type AudienceMemberInput, type AudienceStage, type SnapshotTrade,
 } from "../lib/authorNotesLogic";
+import { AppError, badRequest, forbidden, notFound, sendError } from "../lib/http";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -128,7 +129,7 @@ function getWeekEnd(weekStart: string): string {
 
 router.get("/author-notes/team", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE note_date = $1 ORDER BY trader ASC`,
@@ -140,8 +141,8 @@ router.get("/author-notes/team", requireAuth, asyncHandler(async (req, res): Pro
 router.get("/author-notes", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE trader = $1 AND note_date = $2 LIMIT 1`,
@@ -153,7 +154,7 @@ router.get("/author-notes", requireAuth, asyncHandler(async (req, res): Promise<
 router.get("/author-notes/history", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const limit = parseLimit(req.query["limit"], 30, 366);
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
   const { rows } = await pool.query(
     `SELECT ${NOTE_COLS}
      FROM author_notes WHERE trader = $1 ORDER BY note_date DESC LIMIT $2`,
@@ -165,8 +166,8 @@ router.get("/author-notes/history", requireAuth, asyncHandler(async (req, res): 
 router.get("/author-notes/weekly-summary", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const trader = (req.query["trader"] as string | undefined) || req.authUser?.name;
   const weekStart = (req.query["week_start"] as string | undefined) || getWeekStart(todayNy());
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
-  if (!isIsoDate(weekStart)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
+  if (!isIsoDate(weekStart)) throw badRequest("INVALID_DATE");
   const { rows } = await pool.query(
     `SELECT ${WEEKLY_COLS}
      FROM author_weekly_summaries WHERE trader = $1 AND week_start = $2 LIMIT 1`,
@@ -233,7 +234,7 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
 router.get("/author-notes/day-context", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const date = (req.query["date"] as string | undefined) || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const rawTrader = req.query["trader"];
   const qTrader = typeof rawTrader === "string" ? rawTrader.trim() : "";
   // Traders only see their own book; curators/admins may look at anyone's.
@@ -308,11 +309,11 @@ router.get("/author-notes/day-context", requireAuth, asyncHandler(async (req, re
 router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
-  if (noteRows[0].trader !== auth.name && !(await can(req, "journal.read.team", { trader: noteRows[0].trader }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (!noteRows[0]) throw notFound();
+  if (noteRows[0].trader !== auth.name && !(await can(req, "journal.read.team", { trader: noteRows[0].trader }))) throw forbidden();
   const { rows } = await pool.query(
     `SELECT reader, read_at FROM author_note_reads WHERE note_id = $1 ORDER BY read_at ASC`,
     [id],
@@ -325,12 +326,12 @@ router.get("/author-notes/:id/reads", requireAuth, asyncHandler(async (req, res)
 router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser!;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!noteRows[0]) throw notFound();
   const author = noteRows[0].trader as string;
-  if (author !== auth.name && !(await can(req, "journal.read.team", { trader: author }))) { res.status(403).json({ error: "Forbidden" }); return; }
+  if (author !== auth.name && !(await can(req, "journal.read.team", { trader: author }))) throw forbidden();
   const [{ rows: users }, { rows: reads }] = await Promise.all([
     pool.query<{ name: string; role: string }>(
       `SELECT name, role FROM users
@@ -347,10 +348,10 @@ router.get("/author-notes/:id/audience", requireAuth, asyncHandler(async (req, r
 router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
-  if (!noteRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!noteRows[0]) throw notFound();
   if (noteRows[0].trader === me) { res.status(400).json({ error: "Это твоя запись" }); return; }
   const { rows } = await pool.query(
     `INSERT INTO author_note_reads (note_id, reader) VALUES ($1, $2)
@@ -364,7 +365,7 @@ router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res)
 router.delete("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureReadsTable();
   await pool.query(`DELETE FROM author_note_reads WHERE note_id = $1 AND reader = $2`, [id, me]);
   res.json({ ok: true });
@@ -374,7 +375,7 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { raw_text, note_date, mood } = req.body as { raw_text?: string; note_date?: string; mood?: string };
   const date = note_date || todayNy();
-  if (!isIsoDate(date)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   if (raw_text != null && typeof raw_text !== "string") { res.status(400).json({ error: "raw_text must be a string" }); return; }
   const text = (raw_text ?? "").trim();
   if (text.length > 50_000) { res.status(400).json({ error: "Слишком длинная запись" }); return; }
@@ -395,7 +396,7 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/author-notes/:id/refined", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { refined_text } = req.body as { refined_text: string };
   const { rows } = await pool.query(
     `UPDATE author_notes SET refined_text = $1, updated_at = NOW()
@@ -409,19 +410,19 @@ router.patch("/author-notes/:id/refined", asyncHandler(async (req, res): Promise
 router.delete("/author-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rowCount } = await pool.query(
     `DELETE FROM author_notes WHERE id = $1 AND trader = $2`,
     [id, trader],
   );
-  if (!rowCount) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rowCount) throw notFound();
   res.json({ ok: true });
 }));
 
 router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const id = Number(req.params["id"]);
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { raw_text, mood } = req.body as { raw_text?: string; mood?: string };
   const { rows } = await pool.query(
     `UPDATE author_notes
@@ -433,7 +434,7 @@ router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> =
      RETURNING ${NOTE_COLS}`,
     [raw_text ?? null, mood ?? null, id, trader],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   res.json(rows[0]);
 }));
 
@@ -498,7 +499,7 @@ ${text.slice(0, 4000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message, trader }, "author-notes improve failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 
@@ -506,7 +507,7 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
   const trader = req.authUser!.name;
   const { week_start } = req.body as { week_start?: string };
   const weekStart = week_start || getWeekStart(todayNy());
-  if (!isIsoDate(weekStart)) { res.status(400).json({ error: "Некорректная дата" }); return; }
+  if (!isIsoDate(weekStart)) throw badRequest("INVALID_DATE");
   const weekEnd = getWeekEnd(weekStart);
 
   const { rows: notes } = await pool.query(
@@ -587,7 +588,7 @@ ${notesText.slice(0, 8000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message, trader }, "author-notes weekly summary failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 
@@ -642,7 +643,7 @@ ${notesText.slice(0, 8000)}
     clearTimeout(t);
     if (handleAiNotConfigured(e, res)) return;
     logger.warn({ error: e.message }, "author-notes team-summary failed");
-    res.status(502).json({ error: "AI недоступен, попробуй позже" });
+    sendError(res, new AppError("AI_UNAVAILABLE"));
   }
 }));
 

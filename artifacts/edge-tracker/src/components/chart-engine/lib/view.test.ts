@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { capVolumes, defaultViewRange, followCursor } from "./view";
+import { capVolumes, daySpanOf, defaultViewRange, followCursor } from "./view";
 import { pushHistory, type TrainingRecord } from "./training-sim";
 
 describe("default view", () => {
@@ -11,6 +11,22 @@ describe("default view", () => {
     expect(defaultViewRange({ count: 900, entryIdx: null, exitIdx: null, dayRange: { from: 330, to: 719 } })).toEqual({ from: 325, to: 724 });
     expect(defaultViewRange({ count: 50, entryIdx: null, exitIdx: null, dayRange: null })).toEqual({ from: 0, to: 55 });
     expect(defaultViewRange({ count: 0, entryIdx: null, exitIdx: null, dayRange: null })).toBeNull();
+  });
+});
+
+describe("full-day view", () => {
+  it("frames every bar of the trade day(s) in day mode and the trade window in trade mode", () => {
+    const daySpan = { from: 0, to: 959 };
+    expect(defaultViewRange({ count: 960, entryIdx: 400, exitIdx: 410, dayRange: { from: 330, to: 719 }, daySpan, mode: "day" })).toEqual({ from: -2, to: 962 });
+    expect(defaultViewRange({ count: 960, entryIdx: 400, exitIdx: 410, dayRange: { from: 330, to: 719 }, daySpan, mode: "trade" })).toEqual({ from: 370, to: 430 });
+    // no span known (e.g. daily bars) → trade framing even in day mode
+    expect(defaultViewRange({ count: 960, entryIdx: 400, exitIdx: 410, dayRange: null, daySpan: null, mode: "day" })).toEqual({ from: 370, to: 430 });
+  });
+  it("daySpanOf covers each day a multi-day trade spans and skips context days", () => {
+    const keys = ["2026-10-13", "2026-10-13", "2026-10-14", "2026-10-14", "2026-10-15", "2026-10-15", "2026-10-16"];
+    expect(daySpanOf(keys, "2026-10-14", "2026-10-15")).toEqual({ from: 2, to: 5 });
+    expect(daySpanOf(keys, "2026-10-14", "2026-10-14")).toEqual({ from: 2, to: 3 });
+    expect(daySpanOf(keys, "2026-10-20", "2026-10-21")).toBeNull();
   });
 });
 

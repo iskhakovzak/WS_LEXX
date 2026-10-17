@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { FilterChip } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { useToast } from "@/hooks/use-toast";
 
 export type ReportTarget = { type: "discussion" | "comment"; id: number; preview: string; author?: string | null };
@@ -34,19 +35,11 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
     setBusy(true);
     try {
       const full = [reason, details.trim()].filter(Boolean).join(": ");
-      const r = await fetch(`${BASE}/api/reports`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) }),
-      });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        throw new Error(body?.error ?? "Не удалось отправить жалобу");
-      }
+      await http.post("/api/reports", { targetType: target.type, targetId: target.id, reason: full.slice(0, 2000) });
       toast({ title: "Жалоба отправлена", description: "Кураторы рассмотрят её в админке." });
       onClose();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось отправить жалобу"), variant: "destructive" });
       setBusy(false);
     }
   }

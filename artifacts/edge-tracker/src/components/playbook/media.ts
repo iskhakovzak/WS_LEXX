@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
 import { compressImage, imageFilesFrom } from "@/components/game-plan/media";
 
 /**
  * Playbook screenshots (setup card + example trades): same approach as game-plan media —
  * client-side compression → POST /api/playbook-media?playbookId= (raw bytes) → { id }.
- * Read back with fetch() (the global fetch adds the Bearer token) and shown as blob: URLs, so no token
+ * Read back with http.raw (the global fetch patch adds the Bearer token) and shown as blob: URLs, so no token
  * ever ends up in an <img src>. compressImage / imageFilesFrom are imported read-only from game-plan.
  */
 export { imageFilesFrom };
@@ -15,27 +15,21 @@ export type UploadedPlaybookMedia = { id: number; url: string; size: number };
 const blobUrls = new Map<number, string>();
 const inflight = new Map<number, Promise<string>>();
 
-async function errorText(res: Response): Promise<string> {
-  try {
-    const body = await res.json();
-    if (body && typeof body.error === "string") return body.error;
-  } catch {
-    /* not json */
-  }
-  if (res.status === 404) return "Скриншоты включатся после обновления сервера";
-  return `Ошибка ${res.status}`;
-}
-
 export async function uploadPlaybookImage(file: Blob, playbookId: number): Promise<UploadedPlaybookMedia> {
   const { blob, width, height } = await compressImage(file);
-  const qs = new URLSearchParams({ playbookId: String(playbookId), w: String(width), h: String(height) });
-  const res = await fetch(apiUrl(`/api/playbook-media?${qs.toString()}`), {
-    method: "POST",
-    headers: { "Content-Type": blob.type || "image/jpeg" },
-    body: blob,
-  });
-  if (!res.ok) throw new Error(await errorText(res));
-  const out = (await res.json()) as UploadedPlaybookMedia;
+  let out: UploadedPlaybookMedia;
+  try {
+    out = await http.post<UploadedPlaybookMedia>("/api/playbook-media", blob, {
+      query: { playbookId, w: width, h: height },
+      headers: { "Content-Type": blob.type || "image/jpeg" },
+    });
+  } catch (e) {
+    // An API build without the media route answers a bare 404.
+    if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
+      throw new ApiError({ status: 404, message: "Скриншоты включатся после обновления сервера", body: e.body, method: e.method, url: e.url });
+    }
+    throw e;
+  }
   blobUrls.set(out.id, URL.createObjectURL(blob));
   return out;
 }
@@ -45,9 +39,9 @@ function loadImage(id: number): Promise<string> {
   if (cached) return Promise.resolve(cached);
   const pending = inflight.get(id);
   if (pending) return pending;
-  const p = fetch(apiUrl(`/api/playbook-media/${id}`))
+  const p = http
+    .raw(`/api/playbook-media/${id}`)
     .then(async (r) => {
-      if (!r.ok) throw new Error(String(r.status));
       const url = URL.createObjectURL(await r.blob());
       blobUrls.set(id, url);
       return url;

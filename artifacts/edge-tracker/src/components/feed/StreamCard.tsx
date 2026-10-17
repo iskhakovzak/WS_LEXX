@@ -7,8 +7,10 @@ import {
 } from "lucide-react";
 import { Pill, Truncate, toneOf, tonePill, toneText, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtTime, fmtValue, isNewItem, type FeedKind, type StreamItem } from "./stream-api";
-import { formatDayLong, pluralRu, relativeDayLabel } from "./feed-utils";
+import { fmtValue, isNewItem, type FeedKind, type StreamItem } from "./stream-api";
+import { formatDayLong, relativeDayLabel } from "./feed-utils";
+import { fmtCount, fmtTimeNY, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const KIND_ICON: Record<FeedKind, LucideIcon> = {
   day_result: TrendingUp,
@@ -68,7 +70,7 @@ function RowBody({ item, isNew, showTime = true }: { item: StreamItem; isNew: bo
       </div>
       <div className="flex shrink-0 flex-col items-end gap-0.5 text-right">
         {value && <span className={cn("text-sm font-semibold tabular-nums", toneText(valueTone))}>{value}</span>}
-        {showTime && <span className="text-xs tabular-nums text-muted-foreground" title="время Нью-Йорка">{fmtTime(item.at)}</span>}
+        {showTime && <span className="text-xs tabular-nums text-muted-foreground" title="время Нью-Йорка">{fmtTimeNY(item.at)}</span>}
       </div>
     </>
   );
@@ -121,7 +123,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     return {
       icon: prefix === "desk-day" ? Users : CalendarRange,
       tone: toneOf(sum) === "neutral" ? "accent" : toneOf(sum),
-      title: `${prefix === "desk-day" ? "Итоги деска" : "Деск за неделю"}: ${n} ${pluralRu(n, "трейдер", "трейдера", "трейдеров")}`,
+      title: `${prefix === "desk-day" ? "Итоги деска" : "Деск за неделю"}: ${commonI18n.t("units.traders", { count: n })}`,
       subtitle: [priced.length ? `${green} из ${priced.length} в плюсе` : null, top?.trader && top.value != null && top.value > 0 ? `лучший ${top.trader} ${fmtValue(top.value, "usd")}` : null]
         .filter(Boolean).join(" · ") || null,
       value: sum,
@@ -144,7 +146,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     return { icon: MessagesSquare, tone: "neutral", title: `${n} ${pluralRu(n, "новое обсуждение", "новых обсуждения", "новых обсуждений")}`, subtitle: tickers.length ? listShort(tickers) : null, value: null, valueFmt: null };
   }
   if (prefix === "events") {
-    return { icon: Zap, tone: "neutral", title: `${n} ${pluralRu(n, "событие", "события", "событий")} рынка`, subtitle: tickers.length ? listShort(tickers, 6) : null, value: null, valueFmt: null };
+    return { icon: Zap, tone: "neutral", title: `${commonI18n.t("units.events", { count: n })} рынка`, subtitle: tickers.length ? listShort(tickers, 6) : null, value: null, valueFmt: null };
   }
   if (prefix === "ratings") {
     const curators = uniq(items.map((i) => i.actor));
@@ -153,7 +155,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     return {
       icon: Star, tone: "accent",
       title: `${n} ${pluralRu(n, "оценка", "оценки", "оценок")} за неделю`,
-      subtitle: [avg != null ? `в среднем ${avg.toLocaleString("ru-RU")}/10` : null, curators.length ? listShort(curators, 2) : null].filter(Boolean).join(" · ") || null,
+      subtitle: [avg != null ? `в среднем ${fmtCount(avg)}/10` : null, curators.length ? listShort(curators, 2) : null].filter(Boolean).join(" · ") || null,
       value: null, valueFmt: null,
     };
   }
@@ -226,7 +228,7 @@ export function StreamDayHeader({ day, today, myNet, newCount, count }: {
         </span>
       )}
       <span className="text-xs tabular-nums text-muted-foreground">
-        {count} {pluralRu(count, "событие", "события", "событий")}
+        {commonI18n.t("units.events", { count })}
         {newCount > 0 && <span className="text-primary"> · {newCount} {pluralRu(newCount, "новое", "новых", "новых")}</span>}
       </span>
     </div>

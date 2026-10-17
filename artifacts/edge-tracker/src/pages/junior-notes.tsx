@@ -6,8 +6,9 @@ import { EmptyState, Page, PageHeader, Panel, Segmented } from "@/components/ds"
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import {
-  api, isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
+  isUnread, lastTradingDays, localToday, qk, type JuniorNote, type Reminder, type ReviewerInfo,
 } from "@/components/notes/junior-lib";
+import { http } from "@/lib/api/http";
 import { JuniorEditor } from "@/components/notes/junior-editor";
 import { JuniorHistory } from "@/components/notes/junior-history";
 import { JuniorTeam } from "@/components/notes/junior-team";
@@ -54,7 +55,7 @@ export default function JuniorNotesPage() {
   // Who the caller reviews: curators/admins — everyone; an academy mentor (even a trader) — their mentees.
   const reviewerQ = useQuery({
     queryKey: qk.reviewer,
-    queryFn: () => api<ReviewerInfo>("/junior-notes/reviewer"),
+    queryFn: () => http.get<ReviewerInfo>("/api/junior-notes/reviewer"),
     enabled: !!trader,
     staleTime: 5 * 60_000,
     retry: false,
@@ -77,7 +78,7 @@ export default function JuniorNotesPage() {
 
   const historyQ = useQuery({
     queryKey: qk.history(trader),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/history?trader=${encodeURIComponent(trader)}&limit=250`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/history?trader=${encodeURIComponent(trader)}&limit=250`),
     enabled: !!trader,
     staleTime: 60_000,
   });
@@ -85,7 +86,7 @@ export default function JuniorNotesPage() {
 
   const remindersQ = useQuery({
     queryKey: qk.reminders,
-    queryFn: () => api<Reminder[]>("/junior-notes/reminders/me"),
+    queryFn: () => http.get<Reminder[]>("/api/junior-notes/reminders/me"),
     enabled: !!trader,
     staleTime: 60_000,
     retry: false,
@@ -101,7 +102,7 @@ export default function JuniorNotesPage() {
 
   const dismissReminder = async (id: number) => {
     qc.setQueryData<Reminder[]>(qk.reminders, (prev) => prev?.filter((r) => r.id !== id));
-    try { await api(`/junior-notes/reminders/${id}/dismiss`, { method: "POST", json: {} }); }
+    try { await http.post(`/api/junior-notes/reminders/${id}/dismiss`, {}); }
     catch { toast({ title: "Не удалось скрыть напоминание", variant: "destructive" }); void remindersQ.refetch(); }
   };
 

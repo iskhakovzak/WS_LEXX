@@ -4,9 +4,10 @@
  */
 import * as React from "react";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { invalidateTradeDependents } from "@/lib/query-keys";
 import { dayHref } from "@/lib/period-links";
+import { fmtMonth } from "@/lib/format";
 
 /* ─── Типы: поведение ─────────────────────────────────────────────────────── */
 
@@ -237,48 +238,12 @@ export type BulkAcceptResponse = {
 
 /* ─── fetch ───────────────────────────────────────────────────────────────── */
 
-export class HttpError extends Error {
-  status: number;
-  constructor(status: number, message: string) { super(message); this.status = status; }
-}
-
-async function readError(r: Response): Promise<HttpError> {
-  let msg = `HTTP ${r.status}`;
-  try {
-    const j = (await r.json()) as { error?: string };
-    if (j?.error) msg = j.error;
-  } catch { /* not json */ }
-  return new HttpError(r.status, msg);
-}
-
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<T> {
-  const r = await fetch(apiUrl(path), { signal });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-async function sendJson<T>(method: "POST" | "PATCH" | "DELETE", path: string, body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(path), {
-    method,
-    headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-  });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-function postJson<T>(path: string, body: unknown = {}): Promise<T> {
-  return sendJson<T>("POST", path, body);
-}
-
 function qs(params: Record<string, string | number | null | undefined>): string {
   const p = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v != null && v !== "") p.set(k, String(v));
   const s = p.toString();
   return s ? `?${s}` : "";
 }
-
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [400, 401, 403, 404].includes(err.status)) && count < 2;
 
 /* ─── Ключи и хуки ────────────────────────────────────────────────────────── */
 
@@ -300,11 +265,10 @@ export const setupsAutoKeys = {
 export function useBehavior(trader: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.report(trader, range),
-    queryFn: ({ signal }) => getJson<BehaviorReport>(`/api/behavior${qs({ trader, from: range.from, to: range.to })}`, signal),
+    queryFn: ({ signal }) => http.get<BehaviorReport>(`/api/behavior${qs({ trader, from: range.from, to: range.to })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
-    retry,
   });
 }
 
@@ -313,22 +277,20 @@ export function useSetupsAuto(trader: string | null, range: Range, opts: { withS
   return useQuery({
     queryKey: setupsAutoKeys.list(trader, range, opts.withSetup),
     queryFn: () =>
-      getJson<SetupsAutoResponse>(`/api/setups-auto${qs({ trader, from: range.from, to: range.to, budget: opts.budget, withSetup: opts.withSetup ? 1 : 0, limit: 1000 })}`),
+      http.get<SetupsAutoResponse>(`/api/setups-auto${qs({ trader, from: range.from, to: range.to, budget: opts.budget, withSetup: opts.withSetup ? 1 : 0, limit: 1000 })}`),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
-    retry,
   });
 }
 
 export function useSetupAggregates(trader: string | null, range: Range, withSetup: boolean, enabled = true) {
   return useQuery({
     queryKey: setupsAutoKeys.aggregates(trader, range, withSetup),
-    queryFn: ({ signal }) => getJson<SetupAggregatesResponse>(`/api/setups-auto/aggregates${qs({ trader, from: range.from, to: range.to, withSetup: withSetup ? 1 : 0 })}`, signal),
+    queryFn: ({ signal }) => http.get<SetupAggregatesResponse>(`/api/setups-auto/aggregates${qs({ trader, from: range.from, to: range.to, withSetup: withSetup ? 1 : 0 })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
-    retry,
   });
 }
 
@@ -337,7 +299,7 @@ export function useAcceptSetup() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ tradeId, setup }: { tradeId: number; setup?: string }) =>
-      postJson<{ ok: boolean; tradeId: number; setup: string }>(`/api/setups-auto/${tradeId}/accept`, setup ? { setup } : {}),
+      http.post<{ ok: boolean; tradeId: number; setup: string }>(`/api/setups-auto/${tradeId}/accept`, setup ? { setup } : {}),
     onSuccess: async (_d, v) => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
@@ -351,7 +313,7 @@ export function useAcceptSetup() {
 export function useRejectSetup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ tradeId }: { tradeId: number }) => postJson<{ ok: boolean }>(`/api/setups-auto/${tradeId}/reject`),
+    mutationFn: ({ tradeId }: { tradeId: number }) => http.post<{ ok: boolean }>(`/api/setups-auto/${tradeId}/reject`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
   });
 }
@@ -359,7 +321,7 @@ export function useRejectSetup() {
 export function useRecomputeSetup() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ tradeId }: { tradeId: number }) => postJson<{ ok: boolean; item: SetupItem }>(`/api/setups-auto/${tradeId}/recompute`),
+    mutationFn: ({ tradeId }: { tradeId: number }) => http.post<{ ok: boolean; item: SetupItem }>(`/api/setups-auto/${tradeId}/recompute`, {}),
     onSuccess: () => qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
   });
 }
@@ -368,7 +330,7 @@ export function useRecomputeSetup() {
 export function useAcceptBulk() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (b: { tradeIds: number[]; minConfidence?: number }) => postJson<BulkAcceptResponse>("/api/setups-auto/accept-bulk", b),
+    mutationFn: (b: { tradeIds: number[]; minConfidence?: number }) => http.post<BulkAcceptResponse>("/api/setups-auto/accept-bulk", b),
     onSuccess: async () => {
       await Promise.all([
         qc.invalidateQueries({ queryKey: setupsAutoKeys.all }),
@@ -425,11 +387,11 @@ export function useComputeAll(trader: string | null, range: Range, withSetup: bo
     let done = 0;
     let batches = 0;
     try {
-      start = (await getJson<SetupsAutoResponse>(url(0), ac.signal)).pending;
+      start = (await http.get<SetupsAutoResponse>(url(0), { signal: ac.signal })).pending;
       setState({ status: start ? "running" : "done", start, pending: start, done: 0, batches: 0, error: null });
       let pending = start;
       while (pending > 0 && !ac.signal.aborted) {
-        const j = await getJson<SetupsAutoResponse>(url(BATCH), ac.signal);
+        const j = await http.get<SetupsAutoResponse>(url(BATCH), { signal: ac.signal });
         batches++;
         done += j.computed;
         pending = j.pending;
@@ -463,11 +425,10 @@ export function useComputeAll(trader: string | null, range: Range, withSetup: bo
 export function useBehaviorDay(trader: string | null, date: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.day(trader, date ?? "", range),
-    queryFn: ({ signal }) => getJson<DayTimeline>(`/api/behavior/day${qs({ trader, date, from: range.from, to: range.to })}`, signal),
+    queryFn: ({ signal }) => http.get<DayTimeline>(`/api/behavior/day${qs({ trader, date, from: range.from, to: range.to })}`, { signal }),
     enabled: enabled && !!date,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
-    retry,
   });
 }
 
@@ -476,11 +437,10 @@ export function useBehaviorDay(trader: string | null, date: string | null, range
 export function useTriggers(trader: string | null, range: Range, enabled = true) {
   return useQuery({
     queryKey: behaviorKeys.triggers(trader, range),
-    queryFn: ({ signal }) => getJson<TriggersResponse>(`/api/behavior/triggers${qs({ trader, from: range.from, to: range.to })}`, signal),
+    queryFn: ({ signal }) => http.get<TriggersResponse>(`/api/behavior/triggers${qs({ trader, from: range.from, to: range.to })}`, { signal }),
     enabled,
     placeholderData: keepPreviousData,
     staleTime: 60_000,
-    retry,
   });
 }
 
@@ -493,7 +453,7 @@ export type TriggerInput = { trader?: string | null; kind: TriggerKind; params?:
 export function useCreateTrigger() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (t: TriggerInput) => postJson<BehaviorTrigger>("/api/behavior/triggers", { ...t, trader: t.trader ?? undefined }),
+    mutationFn: (t: TriggerInput) => http.post<BehaviorTrigger>("/api/behavior/triggers", { ...t, trader: t.trader ?? undefined }),
     onSuccess: () => invalidateTriggers(qc),
   });
 }
@@ -502,7 +462,7 @@ export function useUpdateTrigger() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ id, ...patch }: { id: number; name?: string; params?: Record<string, number>; note?: string | null; enabled?: boolean }) =>
-      sendJson<BehaviorTrigger>("PATCH", `/api/behavior/triggers/${id}`, patch),
+      http.patch<BehaviorTrigger>(`/api/behavior/triggers/${id}`, patch),
     onSuccess: () => invalidateTriggers(qc),
   });
 }
@@ -511,7 +471,7 @@ export function useUpdateTrigger() {
 export function useDeleteTrigger() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id }: { id: number }) => sendJson<{ ok: boolean }>("DELETE", `/api/behavior/triggers/${id}`),
+    mutationFn: ({ id }: { id: number }) => http.del<{ ok: boolean }>(`/api/behavior/triggers/${id}`),
     onSuccess: () => invalidateTriggers(qc),
   });
 }
@@ -528,13 +488,13 @@ export function useCreateDeskRule() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ trader, rule }: { trader: string; rule: RuleDraft }): Promise<{ rule: DeskRule; existing: boolean }> => {
-      const list = await getJson<DeskRule[]>(`/api/rules${qs({ trader })}`);
+      const list = await http.get<DeskRule[]>(`/api/rules${qs({ trader })}`);
       const same = list.find((r) => r.trader === trader && r.kind === rule.kind && JSON.stringify(r.threshold ?? {}) === JSON.stringify(rule.threshold));
       if (same) {
-        if (!same.enabled) await sendJson("PATCH", `/api/rules/${same.id}`, { enabled: true });
+        if (!same.enabled) await http.patch(`/api/rules/${same.id}`, { enabled: true });
         return { rule: same, existing: true };
       }
-      const created = await postJson<DeskRule>("/api/rules", { trader, name: rule.name, kind: rule.kind, threshold: rule.threshold });
+      const created = await http.post<DeskRule>("/api/rules", { trader, name: rule.name, kind: rule.kind, threshold: rule.threshold });
       return { rule: created, existing: false };
     },
     onSuccess: () => qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "rules" }),
@@ -550,31 +510,7 @@ export function dayReportHref(date: string, trader?: string | null): string {
 
 /* ─── Форматирование ──────────────────────────────────────────────────────── */
 
-const MINUS = "−";
-
-export function fmtUsd(v: number | null | undefined, opts: { sign?: boolean; digits?: number } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = opts.sign === false ? (v < 0 ? MINUS : "") : v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  const digits = opts.digits ?? (a >= 1000 ? 0 : 2);
-  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-}
-
-export function fmtUsdCompact(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k`;
-  return `${sign}$${a.toFixed(0)}`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
-}
-
-export function fmtRatio(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? "—" : v.toFixed(2);
-}
+// Money / percent / ratio / dates / plurals: @/lib/format (fmtUsd, fmtRate, fmtRatio, fmtDate) and commonI18n units.
 
 export function fmtMinutes(min: number | null | undefined): string {
   if (min == null || !Number.isFinite(min)) return "—";
@@ -589,36 +525,12 @@ export function fmtClock(entryMin: number | null | undefined): string {
   return `${Math.floor(entryMin / 60)}:${String(Math.floor(entryMin % 60)).padStart(2, "0")}`;
 }
 
-/** dd.MM (таблицы, аудит дизайна G-5). */
-export function fmtDateShort(date: string): string {
-  const [, m, d] = date.split("-");
-  return `${d}.${m}`;
-}
-
-const WD_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
-const MON_SHORT = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
-
-/** «чт, 15 окт» (заголовки). */
-export function fmtDateHeading(date: string): string {
-  const [y, m, d] = date.split("-").map(Number);
-  const wd = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
-  return `${WD_SHORT[wd]}, ${d} ${MON_SHORT[m - 1]}`;
-}
-
+/** "окт. 26" for a "YYYY-MM" key (chart axis), month in the UI language. */
 export function monthLabel(ym: string): string {
-  const M = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
   const [y, m] = ym.split("-");
-  return `${M[Number(m) - 1] ?? m} ${y.slice(2)}`;
+  const i = Number(m) - 1;
+  return `${i >= 0 && i < 12 ? fmtMonth(i, "short") : m} ${y.slice(2)}`;
 }
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-export const pluralTrades = (n: number) => `${n} ${pluralRu(n, "сделка", "сделки", "сделок")}`;
-export const pluralDays = (n: number) => `${n} ${pluralRu(n, "день", "дня", "дней")}`;
 
 export const SEVERITY_LABEL: Record<Severity, string> = { none: "не стоит денег", low: "низкая", medium: "средняя", high: "высокая" };
 export const SEVERITY_TONE: Record<Severity, "neutral" | "warn" | "down" | "accent"> = { none: "neutral", low: "neutral", medium: "warn", high: "down" };

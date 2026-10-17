@@ -1,5 +1,6 @@
 import type { Trade } from "@workspace/api-client-react";
 import { signedR, priceR, netPnl, isOpen, closeDate, resultOf } from "@/lib/trade-math";
+import { fmtDate, fmtMonth, fmtWeekday } from "@/lib/format";
 
 export type TimeBucket =
   | "before-8:30"
@@ -26,11 +27,16 @@ export const TIME_BUCKETS: { id: TimeBucket; label: string }[] = [
   { id: "unknown", label: "без времени" },
 ];
 
-const DAY_LABELS = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
-const MONTH_LABELS = ["Янв","Фев","Мар","Апр","Май","Июн","Июл","Авг","Сен","Окт","Ноя","Дек"];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
-export const DAY_OF_WEEK_OPTIONS = [1, 2, 3, 4, 5, 6, 0].map((d) => ({ id: String(d), label: DAY_LABELS[d] }));
-export const MONTH_OPTIONS = MONTH_LABELS.map((m, i) => ({ id: String(i + 1), label: m }));
+/** Weekday filter options Mon…Sun ("Пн"); id = Date#getDay(). Built at call time (follows the UI language). */
+export function dayOfWeekOptions(): { id: string; label: string }[] {
+  return [1, 2, 3, 4, 5, 6, 0].map((d) => ({ id: String(d), label: cap(fmtWeekday(d, "short")) }));
+}
+/** Month filter options ("Янв."); id = 1…12. Built at call time (follows the UI language). */
+export function monthOptions(): { id: string; label: string }[] {
+  return Array.from({ length: 12 }, (_, i) => ({ id: String(i + 1), label: cap(fmtMonth(i, "short")) }));
+}
 
 export function dateOnly(d: string): string {
   return (d ?? "").substring(0, 10);
@@ -248,8 +254,7 @@ export function mondayOf(d: Date): Date {
 
 export function fmtRange(monday: Date): string {
   const sun = new Date(monday); sun.setDate(monday.getDate() + 6);
-  const f = (x: Date) => `${String(x.getDate()).padStart(2, "0")}.${String(x.getMonth() + 1).padStart(2, "0")}`;
-  return `${f(monday)}–${f(sun)}`;
+  return `${fmtDate(monday, "dayMonthNumeric")}–${fmtDate(sun, "dayMonthNumeric")}`;
 }
 
 export type WeekSummary = {
@@ -602,24 +607,19 @@ export type PeriodExtremes = {
   bestMonth: PeriodPoint | null; worstMonth: PeriodPoint | null;
 };
 
-const MONTH_FULL = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MONTH_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-export const MONTH_NAMES = MONTH_FULL;
+/** "Октябрь" (capitalised month name in the UI language); `i` = 0…11. */
+export function monthName(i: number): string {
+  return cap(fmtMonth(i, "long"));
+}
 
 export function ymd(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export function fmtDayLong(date: string): string {
-  const dt = parseDate(date);
-  if (!dt) return date;
-  return `${dt.getDate()} ${MONTH_GEN[dt.getMonth()]} ${dt.getFullYear()}`;
-}
-
 export function fmtMonthKey(key: string): string {
   const [y, m] = key.split("-");
   const i = Number(m) - 1;
-  return i >= 0 && i < 12 ? `${MONTH_FULL[i]} ${y}` : key;
+  return i >= 0 && i < 12 ? cap(fmtDate(new Date(Number(y), i, 1), "monthYear")) : key;
 }
 
 function aggregate(days: DaySummary[], keyOf: (d: DaySummary) => string): Map<string, { net: number; trades: number; valued: number }> {
@@ -648,7 +648,7 @@ export function computePeriodExtremes(days: DaySummary[]): PeriodExtremes {
   };
   const dayPts: PeriodPoint[] = days
     .filter((d) => (d.valued ?? d.trades) > 0)
-    .map((d) => ({ key: d.date, label: fmtDayLong(d.date), net: d.net, trades: d.trades }));
+    .map((d) => ({ key: d.date, label: fmtDate(d.date, "long"), net: d.net, trades: d.trades }));
   const weekPts: PeriodPoint[] = [...aggregate(days, (d) => weekStartKey(d.date)).entries()]
     .filter(([, v]) => v.valued > 0)
     .map(([k, v]) => ({ key: k, label: fmtRange(new Date(`${k}T00:00:00`)) + "." + k.slice(0, 4), net: v.net, trades: v.trades }));

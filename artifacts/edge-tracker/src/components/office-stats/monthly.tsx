@@ -8,9 +8,10 @@ import { CalendarRange, Download } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { MONTHS_LONG, fmtShare, fmtV } from "./api";
+import { fmtShare, fmtV, monthLong } from "./api";
 import { downloadCsv } from "./csv";
 import type { Ctx } from "./overview";
+import { fmtCount } from "@/lib/format";
 
 type Row = {
   month: number;
@@ -76,7 +77,7 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
       ["Месяц", `Нетто ${u}`, `Δ к пред. месяцу ${u}`, ...(prevY ? [`${prevY.year} ${u}`, `Δ к ${prevY.year} ${u}`] : []), `С начала года ${u}`,
         ...(hasPlan ? [`План ${u}`, `К плану ${u}`] : []), "Торговых дней", "Зелёных дней", "Сделок"],
       ...rows.map((r) => [
-        `${MONTHS_LONG[r.month - 1]} ${focus.year}${r.running ? " (идёт)" : ""}`, r.v, r.mom,
+        `${monthLong(r.month - 1)} ${focus.year}${r.running ? " (идёт)" : ""}`, r.v, r.mom,
         ...(prevY ? [r.prevYear, r.yoy] : []), r.cum, ...(hasPlan ? [r.plan, r.vsPlan] : []), r.days, r.green, r.trades,
       ]),
     ]);
@@ -119,9 +120,9 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                       disabled={!r.days}
                       onClick={(e) => { e.stopPropagation(); onPickMonth(r.month); }}
                       className="inline-flex items-center gap-2 rounded-md font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                      title={r.days ? `Открыть ${MONTHS_LONG[r.month - 1].toLowerCase()} ${focus.year}` : "Нет сделок"}
+                      title={r.days ? `Открыть ${monthLong(r.month - 1).toLowerCase()} ${focus.year}` : "Нет сделок"}
                     >
-                      {MONTHS_LONG[r.month - 1]}
+                      {monthLong(r.month - 1)}
                       {r.running && <Pill tone="accent">идёт</Pill>}
                     </button>
                   </td>
@@ -140,7 +141,7 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                   {hasPlan && <td className="text-right text-muted-foreground">{fmtV(r.plan, unit)}</td>}
                   {hasPlan && <td className={cn("text-right font-medium", r.vsPlan == null ? "" : r.vsPlan >= 0 ? "text-up" : "text-warn")}>{fmtV(r.vsPlan, unit)}</td>}
                   <td className="whitespace-nowrap text-right" title={r.days ? `${r.green} зелёных из ${r.days} торговых дней` : undefined}>{r.days ? <>{fmtShare(r.green / r.days)}<span className="ml-1 hidden text-2xs text-muted-foreground min-[1400px]:inline">{r.green}/{r.days}</span></> : "—"}</td>
-                  <td className="hidden text-right min-[1400px]:table-cell">{r.trades.toLocaleString("ru-RU")}</td>
+                  <td className="hidden text-right min-[1400px]:table-cell">{fmtCount(r.trades)}</td>
                 </tr>
               ))}
             </tbody>
@@ -155,7 +156,7 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                 {hasPlan && <td className="whitespace-nowrap text-right text-muted-foreground" title="Годовая цель">цель {fmtV(focus.goal, unit)}</td>}
                 {hasPlan && <td className={cn("text-right", (lastRow?.vsPlan ?? 0) >= 0 ? "text-up" : "text-warn")}>{fmtV(lastRow?.vsPlan, unit)}</td>}
                 <td className="text-right">{totalDays ? fmtShare(totalGreen / totalDays) : "—"}</td>
-                <td className="hidden text-right min-[1400px]:table-cell">{totalTrades.toLocaleString("ru-RU")}</td>
+                <td className="hidden text-right min-[1400px]:table-cell">{fmtCount(totalTrades)}</td>
               </tr>
             </tfoot>
           </table>

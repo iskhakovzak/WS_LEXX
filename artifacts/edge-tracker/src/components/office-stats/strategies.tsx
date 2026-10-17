@@ -9,13 +9,14 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { downloadCsv } from "./csv";
 import {
-  MONTHS_SHORT, STRATEGIES, fmtAxis, fmtDay, fmtParen, fmtShare, fmtV,
+  STRATEGIES, monthShort, fmtAxis, fmtDay, fmtParen, fmtShare, fmtV,
   type PeriodView, type PrevPeriod, type Strategy, type Unit, type YearView,
 } from "./api";
-import { LineCanvas, MONTH_TICKS, type LineSeries } from "./line-canvas";
+import { LineCanvas, monthTicks, type LineSeries } from "./line-canvas";
 import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
 import type { Ctx } from "./overview";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtCount } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 function Swatch({ s, dark }: { s: Strategy; dark: boolean }) {
   return <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: strategyColor(s, dark) }} aria-hidden="true" />;
@@ -61,7 +62,7 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
                   {rows.map((s) => {
                     const w = (Math.abs(s.net) / span) * 100;
                     return (
-                      <li key={s.key} className="grid grid-cols-[5.5rem_minmax(2.5rem,1fr)_4rem] items-center gap-2 text-xs" title={`${s.key}: ${fmtV(s.net, unit)} · ${s.trades} ${pluralRu(s.trades, "сделка", "сделки", "сделок")} · WR ${fmtShare(s.winRate)}`}>
+                      <li key={s.key} className="grid grid-cols-[5.5rem_minmax(2.5rem,1fr)_4rem] items-center gap-2 text-xs" title={`${s.key}: ${fmtV(s.net, unit)} · ${commonI18n.t("units.trades", { count: s.trades })} · WR ${fmtShare(s.winRate)}`}>
                         <span className="flex min-w-0 items-center gap-1.5 truncate text-muted-foreground"><Swatch s={s.key} dark={dark} />{s.key}</span>
                         <span className="relative h-3">
                           {zero > 0.5 && <span className="absolute inset-y-0 w-px bg-border" style={{ left: `${zero}%` }} aria-hidden="true" />}
@@ -127,7 +128,7 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
                       series={series}
                       xMin={0}
                       xMax={366}
-                      xTicks={MONTH_TICKS}
+                      xTicks={monthTicks()}
                       fmtY={fmtY}
                       height={96}
                       compact
@@ -188,7 +189,7 @@ export function VolumeShare({ years }: { years: YearView[] }) {
               <div key={y.year} className="flex flex-col gap-1.5">
                 <div className="flex items-baseline justify-between text-xs">
                   <span className="font-semibold text-foreground">{y.year}</span>
-                  <span className="text-muted-foreground">{y.totals.trades.toLocaleString("ru-RU")} {pluralRu(y.totals.trades, "сделка", "сделки", "сделок")}</span>
+                  <span className="text-muted-foreground">{commonI18n.t("units.trades", { count: y.totals.trades })}</span>
                 </div>
                 <div className="flex h-7 w-full gap-[2px] overflow-hidden rounded-md" role="img" aria-label={`${y.year}: ${parts.map((p) => `${p.key} ${fmtShare(p.volumeShare)}`).join(", ")}`}>
                   {parts.map((p) => {
@@ -199,7 +200,7 @@ export function VolumeShare({ years }: { years: YearView[] }) {
                         key={p.key}
                         onMouseEnter={() => setHover(id)}
                         onMouseLeave={() => setHover(null)}
-                        title={`${p.key} · ${fmtShare(p.volumeShare, 1)} объёма · ${p.trades} ${pluralRu(p.trades, "сделка", "сделки", "сделок")}`}
+                        title={`${p.key} · ${fmtShare(p.volumeShare, 1)} объёма · ${commonI18n.t("units.trades", { count: p.trades })}`}
                         className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold text-white transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
                         style={{ width: `${w}%`, background: strategyColor(p.key, dark) }}
                       >
@@ -236,7 +237,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                 <th className="w-24 text-left font-medium text-muted-foreground" />
                 {Array.from({ length: cols }, (_, i) => (
                   <th key={i} className="font-medium text-muted-foreground">
-                    <button type="button" onClick={() => onPickMonth(i + 1)} className="rounded px-1 hover:text-foreground">{MONTHS_SHORT[i]}</button>
+                    <button type="button" onClick={() => onPickMonth(i + 1)} className="rounded px-1 hover:text-foreground">{monthShort(i)}</button>
                   </th>
                 ))}
                 <th className="pl-2 text-right font-medium text-muted-foreground">Год</th>
@@ -253,7 +254,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                         key={i}
                         className="h-8 rounded-md text-center font-medium text-foreground"
                         style={{ background: v == null ? "transparent" : divergingCell(v, max) }}
-                        title={`${r.key} · ${MONTHS_SHORT[i]}: ${v == null ? "нет сделок" : fmtV(v, unit)}`}
+                        title={`${r.key} · ${monthShort(i)}: ${v == null ? "нет сделок" : fmtV(v, unit)}`}
                       >
                         {v == null ? <span className="text-muted-foreground/50">·</span> : fmtAxis(v, unit)}
                       </td>
@@ -333,7 +334,7 @@ export function StrategyTable({ period, prev, unit, periodLabel }: { period: Per
               return (
                 <tr key={s.key} className={cn(!s.trades && "opacity-50")}>
                   <td><span className="flex items-center gap-1.5 font-medium text-foreground"><Swatch s={s.key} dark={dark} />{s.key}</span></td>
-                  <td className="text-right">{s.trades.toLocaleString("ru-RU")}</td>
+                  <td className="text-right">{fmtCount(s.trades)}</td>
                   <td className="text-right">{fmtShare(s.winRate)}</td>
                   <td className={cn("text-right", s.profitFactor != null && (s.profitFactor >= 1 ? "text-up" : "text-down"))}>{s.profitFactor != null ? s.profitFactor.toFixed(2) : "—"}</td>
                   <td className="text-right">{s.avgR != null ? `${s.avgR >= 0 ? "+" : "−"}${Math.abs(s.avgR).toFixed(2)}R` : "—"}</td>

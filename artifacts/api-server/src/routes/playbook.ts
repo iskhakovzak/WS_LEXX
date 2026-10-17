@@ -5,6 +5,7 @@ import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
 import { logger } from "../lib/logger";
+import { config } from "../config";
 import { sanitizeMultiLineUrls } from "../lib/safe-url";
 import { computeEdge, bucketBy, vixBucket, scoreBucket, edgeScore, type EdgeTrade } from "../lib/playbookEdge";
 import { canAccessTrade, isGuest, requireAuth, scopeTrader } from "../lib/auth";
@@ -15,6 +16,7 @@ import {
   spaceOf, spaceSql, visibleSql,
 } from "../lib/playbookAccess";
 import { canSeeAggregateMoney, canSeeTradeMoney, redactEdgeStats, redactSummaryRow, redactTradeRow } from "../lib/playbookPrivacy";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Playbook (setups) + per-setup edge.
@@ -205,7 +207,7 @@ ensureTables().catch((err) => logger.warn({ err }, "playbook: ensure tables fail
 async function tradeScope(req: Request, res: Response): Promise<string | null | undefined> {
   const requested = typeof req.query.userKey === "string" ? req.query.userKey : typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) res.status(401).json({ error: "Требуется вход" });
+  if (scope === undefined) sendError(res, unauthorized());
   return scope;
 }
 
@@ -217,11 +219,11 @@ async function canEditSetup(req: Request, row: { trader: string | null; space?: 
 
 /** 403 unless the caller may edit setup `id`; returns the row otherwise. A setup the caller cannot read → 404. */
 async function requireSetupEditor(req: Request, res: Response, id: number, includeDeleted = false) {
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   const row = await loadSetupAccess(id, includeDeleted);
-  if (!row) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!row) { sendError(res, notFound()); return null; }
   const v = await loadViewer(req);
-  if (!canReadPure(v, row)) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!canReadPure(v, row)) { sendError(res, notFound()); return null; }
   if (!(await canEditSetup(req, row))) {
     res.status(403).json({ error: spaceOf(row) === "office" ? "Офисный плейбук редактируют кураторы" : "Менять сетап может его автор или куратор" });
     return null;
@@ -231,9 +233,9 @@ async function requireSetupEditor(req: Request, res: Response, id: number, inclu
 
 /** 404 unless the caller may read setup `id`. */
 async function requireSetupReader(req: Request, res: Response, id: number) {
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   const row = await loadSetupAccess(id);
-  if (!row || !canReadPure(await loadViewer(req), row)) { res.status(404).json({ error: "Not found" }); return null; }
+  if (!row || !canReadPure(await loadViewer(req), row)) { sendError(res, notFound()); return null; }
   return row;
 }
 
@@ -720,7 +722,7 @@ router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<voi
   await ensureTables();
   if (!(await requireStaffOr403(req, res))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const reviewer = req.authUser!.name;
   const { reviewed, verdict, comment } = req.body as { reviewed?: unknown; verdict?: unknown; comment?: unknown };
   const v = typeof verdict === "string" && VERDICTS.has(verdict) ? verdict : null;
@@ -728,7 +730,7 @@ router.post("/playbook/:id/reviewed", asyncHandler(async (req, res): Promise<voi
   const flag = typeof reviewed === "boolean" ? reviewed : v != null ? v === "approved" : null;
   if (flag == null && !v) { res.status(400).json({ error: "reviewed or verdict required" }); return; }
   const { rows } = await pool.query<any>(`SELECT name FROM playbook WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   if (flag != null) {
     await pool.query(
       `UPDATE playbook SET reviewed = $1, reviewed_by = $2, reviewed_at = $3 WHERE id = $4`,
@@ -750,7 +752,7 @@ router.get("/playbook/:id/reviews", asyncHandler(async (req, res): Promise<void>
   await ensureTables();
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", reviewer, verdict, comment, created_at AS "createdAt"
        FROM playbook_reviews WHERE playbook_id = $1 ORDER BY created_at DESC LIMIT 50`,
@@ -807,7 +809,7 @@ router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<
   const actor = req.authUser!.name;
   const { folder, password } = req.body as { folder: string; password?: string };
   if (!folder) { res.status(400).json({ error: "folder required" }); return; }
-  const expected = process.env.PLAYBOOK_PASSWORD;
+  const expected = config.playbookPassword;
   if (!expected) { res.status(500).json({ error: "PLAYBOOK_PASSWORD не задан в окружении" }); return; }
   if (password !== expected) { res.status(403).json({ error: "Неверный пароль" }); return; }
   const { rowCount } = await pool.query(
@@ -821,7 +823,7 @@ router.delete("/playbook/delete-folder", asyncHandler(async (req, res): Promise<
 router.post("/playbook", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const auth = req.authUser!;
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const v = await loadViewer(req);
   const staff = v.editAny;
   const body = req.body as Record<string, unknown>;
@@ -904,9 +906,9 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   const { name, folder, setupType, conditions, checklist, checklistItems, notes, confidenceLevel, screenshotUrl, screenshotNotes, screenshots, tags, parentId, reassignTo, ticker, marketCap, float: floatVal, adv, atr, relativeVolume, beta, shortInterest, sector, longName } = req.body as Record<string, unknown>;
 
   const { rows: prevRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
-  if (!prevRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!prevRows[0]) throw notFound();
   const v = await loadViewer(req);
-  if (!canReadPure(v, prevRows[0])) { res.status(404).json({ error: "Not found" }); return; }
+  if (!canReadPure(v, prevRows[0])) throw notFound();
   if (!(await canEditSetup(req, prevRows[0]))) {
     res.status(403).json({ error: prevRows[0].space === "office" ? "Офисный плейбук редактируют кураторы" : "Менять сетап может его автор или куратор" });
     return;
@@ -959,7 +961,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
     if (prevRows[0].space !== "personal") { res.status(400).json({ error: "У офисного сетапа нет автора — используйте копирование в «Мой»" }); return; }
     if (!newOwner) { res.status(400).json({ error: "reassignTo: укажите трейдера" }); return; }
     const { rowCount } = await pool.query(`SELECT 1 FROM users WHERE name = $1`, [newOwner]);
-    if (!rowCount) { res.status(400).json({ error: "Трейдер не найден" }); return; }
+    if (!rowCount) throw new AppError("TRADER_NOT_FOUND", 400);
     fields.push(`trader = $${i++}`); vals.push(newOwner);
   }
   for (const [key, col] of STRUCTURED_FIELDS) {
@@ -983,7 +985,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (shortInterest !== undefined) { fields.push(`short_interest = $${i++}`); vals.push(shortInterest ? Number(shortInterest) : null); }
   if (sector !== undefined) { fields.push(`sector = $${i++}`); vals.push(sector ? String(sector) : null); }
   if (longName !== undefined) { fields.push(`long_name = $${i++}`); vals.push(longName ? String(longName) : null); }
-  if (!fields.length) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (!fields.length) throw badRequest("NO_FIELDS");
   fields.push(`updated_at = NOW()`);
   vals.push(id);
   const { rows } = await pool.query<any>(
@@ -991,7 +993,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
      RETURNING ${PLAYBOOK_SELECT_FIELDS}`,
     vals
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: auth.name, details: `Обновлён сетап` });
   res.json({ ...rows[0], access: accessHints(v, rows[0]) });
 }));
@@ -1029,7 +1031,7 @@ function toEdgeTrade(r: any): EdgeTrade {
 router.get("/playbook/:id/edge", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const params: unknown[] = [id];
@@ -1056,7 +1058,7 @@ router.get("/playbook/:id/edge", asyncHandler(async (req, res): Promise<void> =>
 
 router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const auth = req.authUser!;
   const { tradeId: rawTradeId, checkedItems, score, total } = req.body as any;
   if (!Array.isArray(checkedItems) || typeof score !== "number" || typeof total !== "number") {
@@ -1090,7 +1092,7 @@ router.post("/playbook/:id/checklist-run", requireAuth, asyncHandler(async (req,
 router.get("/playbook/:id/checklist-runs", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const tradeId = req.query.tradeId ? Number(req.query.tradeId) : null;
@@ -1111,7 +1113,7 @@ router.get("/playbook/:id/checklist-runs", asyncHandler(async (req, res): Promis
 router.get("/playbook/:id/marks", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const trader = req.authUser?.name ?? "";
   const { rows } = await pool.query<{ item_id: string; scope: string; trader: string; done: boolean }>(
     `SELECT item_id, scope, trader, done
@@ -1131,7 +1133,7 @@ router.get("/playbook/:id/marks", requireAuth, asyncHandler(async (req, res): Pr
 router.put("/playbook/:id/marks/:itemId", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const itemId = String(req.params.itemId);
-  if (isNaN(id) || !itemId) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id) || !itemId) throw badRequest("INVALID_ID");
   const { scope, done } = req.body as { scope?: string; done?: boolean };
   if (scope !== "shared" && scope !== "personal") { res.status(400).json({ error: "scope must be shared|personal" }); return; }
   if (typeof done !== "boolean") { res.status(400).json({ error: "done required" }); return; }
@@ -1151,7 +1153,7 @@ router.put("/playbook/:id/marks/:itemId", requireAuth, asyncHandler(async (req, 
 router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", trader, snapshot, created_at AS "createdAt"
      FROM playbook_revisions WHERE playbook_id = $1 ORDER BY created_at DESC LIMIT 50`,
@@ -1165,9 +1167,9 @@ router.get("/playbook/:id/revisions", asyncHandler(async (req, res): Promise<voi
 router.post("/playbook/:id/ai-critique", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows: pbRows } = await pool.query<any>(`SELECT ${PLAYBOOK_SELECT_FIELDS} FROM playbook WHERE id = $1`, [id]);
-  if (!pbRows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!pbRows[0]) throw notFound();
   const pb = pbRows[0];
   if (!(await canEditSetup(req, pb))) { res.status(403).json({ error: "AI-разбор доступен автору сетапа и кураторам" }); return; }
   const scope = await tradeScope(req, res);
@@ -1211,7 +1213,7 @@ ${trRows.map((t: any, i: number) => `${i + 1}. ${t.ticker} ${t.date} ${t.side ??
 
   try {
     const result: any = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      model: config.ai.anthropicModel,
       max_tokens: 1500,
       system: sys,
       messages: [{ role: "user", content: usr }],
@@ -1229,10 +1231,10 @@ ${trRows.map((t: any, i: number) => `${i + 1}. ${t.ticker} ${t.date} ${t.side ??
 
 router.post("/playbook/:id/generate-checklist", requireAuth, asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (isNaN(id)) { res.status(400).json({ error: "invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   await ensureTables();
   const { rows } = await pool.query<any>(`SELECT name, trader, space, setup_type AS "setupType", conditions, notes, checklist FROM playbook WHERE id = $1`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   const pb = rows[0];
   if (!(await canEditSetup(req, pb))) { res.status(403).json({ error: "Генерация чеклиста доступна автору сетапа и кураторам" }); return; }
   const body = req.body as Record<string, unknown>;
@@ -1256,7 +1258,7 @@ ${notes || "—"}
 ${pb.checklist ? `Текущий чек-лист (улучши, не дублируй):\n${pb.checklist}` : ""}`;
   try {
     const result: any = await anthropic.messages.create({
-      model: process.env.ANTHROPIC_MODEL ?? "claude-sonnet-4-5",
+      model: config.ai.anthropicModel,
       max_tokens: 800,
       system: sys,
       messages: [{ role: "user", content: usr }],
@@ -1357,7 +1359,7 @@ router.get("/playbook/trades/bulk", asyncHandler(async (req, res): Promise<void>
 router.get("/playbook/:id/trades", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const scope = await tradeScope(req, res);
   if (scope === undefined) return;
   const params: unknown[] = [id];
@@ -1386,7 +1388,7 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
 router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const tradeId = Number(req.params.tradeId);
-  if (isNaN(tradeId)) { res.status(400).json({ error: "Invalid tradeId" }); return; }
+  if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
   if (!own.ok) { res.status(own.status).json({ error: own.error }); return; }
   await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
@@ -1408,7 +1410,7 @@ const PLAYBOOK_IDEA_SELECT = `
 router.get("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   if (!(await requireSetupReader(req, res, id))) return;
-  if (isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(id)) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT ${PLAYBOOK_IDEA_SELECT} FROM trade_ideas
      WHERE playbook_id = $1 AND deleted_at IS NULL AND status = ANY($2)
@@ -1424,7 +1426,7 @@ router.post("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> 
   if (!setup) return;
   const b = req.body as Record<string, unknown>;
   const { ticker, side, entryZone, target, stop, status, notes, date } = b;
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const n = (v: unknown) => (v !== undefined && v !== null && v !== "" ? String(v) : null);
   const { rows } = await pool.query<any>(
     `INSERT INTO trade_ideas
@@ -1442,7 +1444,7 @@ router.post("/playbook/:id/ideas", asyncHandler(async (req, res): Promise<void> 
 router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const ideaId = Number(req.params.ideaId);
-  if (isNaN(ideaId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(ideaId) || isNaN(id)) throw badRequest("INVALID_ID");
   const setup = await requireSetupEditor(req, res, id);
   if (!setup) return;
   const b = req.body as Record<string, unknown>;
@@ -1464,7 +1466,7 @@ router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promi
     vals.push(conv(b[key]));
     sets.push(`${col} = $${vals.length}`);
   }
-  if (!sets.length) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (!sets.length) throw badRequest("NO_FIELDS");
   vals.push(ideaId, id);
   const { rows } = await pool.query<any>(
     `UPDATE trade_ideas SET ${sets.join(", ")}
@@ -1472,7 +1474,7 @@ router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promi
      RETURNING ${PLAYBOOK_IDEA_SELECT}`,
     vals
   );
-  if (!rows[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!rows[0]) throw notFound();
   await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: `Пример: ${rows[0].ticker}`, trader: req.authUser!.name });
   res.json(rows[0]);
 }));
@@ -1480,7 +1482,7 @@ router.patch("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promi
 router.delete("/playbook/:id/ideas/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
   const ideaId = Number(req.params.ideaId);
-  if (isNaN(ideaId) || isNaN(id)) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (isNaN(ideaId) || isNaN(id)) throw badRequest("INVALID_ID");
   const setup = await requireSetupEditor(req, res, id);
   if (!setup) return;
   const { rows: prev } = await pool.query<any>(`SELECT ticker FROM trade_ideas WHERE id = $1 AND playbook_id = $2`, [ideaId, id]);

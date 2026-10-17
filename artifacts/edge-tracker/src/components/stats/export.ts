@@ -1,8 +1,9 @@
 import type { Trade } from "@workspace/api-client-react";
 import {
-  chrono, dailySeries, dayKey, feesOf, fmtPct, fmtRatio, fmtValue, horizonOf, HORIZON_LABEL, sessionKey, sessionLabel, tx, valueOf,
+  chrono, dailySeries, dayKey, feesOf, fmtValue, horizonOf, HORIZON_LABEL, sessionKey, sessionLabel, tx, valueOf,
   type FeeStats, type Kpis, type Metric,
 } from "./metrics";
+import { fmtDate, fmtRate, fmtRatio } from "@/lib/format";
 
 export type ReportMeta = { title: string; periodLabel: string; scopeLabel: string; metric: Metric; generatedAt: Date; fees?: FeeStats };
 
@@ -15,7 +16,7 @@ function kpiRows(k: Kpis, prev: Kpis | null, metric: Metric): [string, string, s
     ["Сделок", String(k.total), p ? String(p.total) : ""],
     ["Закрыто / открыто", `${k.closed} / ${k.open}`, p ? `${p.closed} / ${p.open}` : ""],
     ["Win / Loss / BE", `${k.wins} / ${k.losses} / ${k.breakeven}`, p ? `${p.wins} / ${p.losses} / ${p.breakeven}` : ""],
-    ["Win rate", fmtPct(k.winRate), p ? fmtPct(p.winRate) : ""],
+    ["Win rate", fmtRate(k.winRate), p ? fmtRate(p.winRate) : ""],
     ["Результат", v(k.net), p ? v(p.net) : ""],
     ["Матожидание на сделку", v(k.expectancy), p ? v(p.expectancy) : ""],
     ["Profit factor", fmtRatio(k.profitFactor), p ? fmtRatio(p.profitFactor) : ""],
@@ -45,7 +46,7 @@ export function downloadReportCsv(trades: Trade[], k: Kpis, prev: Kpis | null, m
   row("Трейдер", meta.scopeLabel);
   row("Метрика", METRIC_NAME[meta.metric]);
   if (meta.fees) row("Gross / комиссии / net, $", meta.fees.gross?.toFixed(2) ?? "", meta.fees.fees.toFixed(2), meta.fees.net?.toFixed(2) ?? "");
-  row("Сформирован", meta.generatedAt.toLocaleString("ru-RU"));
+  row("Сформирован", fmtDate(meta.generatedAt, "shortDateTime"));
   row();
   row("Показатель", "Текущий период", "Предыдущий период");
   kpiRows(k, prev, meta.metric).forEach((r) => row(...r));
@@ -99,14 +100,18 @@ export function openPrintReport(trades: Trade[], k: Kpis, prev: Kpis | null, met
   @media print{body{margin:12mm} tr{break-inside:avoid}}
 </style></head><body>
 <h1>${esc(meta.title)}</h1>
-<p class="sub">${esc(meta.periodLabel)} · ${esc(meta.scopeLabel)} · метрика: ${esc(METRIC_NAME[meta.metric])} · ${esc(meta.generatedAt.toLocaleString("ru-RU"))}</p>
+<p class="sub">${esc(meta.periodLabel)} · ${esc(meta.scopeLabel)} · метрика: ${esc(METRIC_NAME[meta.metric])} · ${esc(fmtDate(meta.generatedAt, "shortDateTime"))}</p>
 <h2>Показатели</h2>
 <table><thead><tr><th>Показатель</th><th class="n">Период</th><th class="n">Пред. период</th></tr></thead><tbody>${kpis}</tbody></table>
 ${meta.fees && meta.fees.gross != null ? `<h2>Gross / комиссии / net</h2><table><tbody><tr><td>P&amp;L gross</td><td class="n">${esc(fmtValue(meta.fees.gross, "usd"))}</td></tr><tr><td>Комиссии</td><td class="n">${esc(fmtValue(-meta.fees.fees, "usd"))}</td></tr><tr><td><b>P&amp;L net</b></td><td class="n"><b>${esc(fmtValue(meta.fees.net, "usd"))}</b></td></tr></tbody></table>` : ""}
 <h2>Сделки (${trades.length})</h2>
 <table><thead><tr><th>Дата</th><th>Тикер</th><th>Трейдер</th><th>Горизонт</th><th>Сетап</th><th>Итог</th><th class="n">${meta.metric === "r" ? "R" : meta.metric === "net" ? "Net $" : "Gross $"}</th></tr></thead><tbody>${list}</tbody></table>
-<script>(function(){var go=function(){setTimeout(function(){window.focus();window.print()},200)};if(document.readyState==="complete")go();else window.addEventListener("load",go);})();</script>
 </body></html>`);
   w.document.close();
+  // Printed from here, not by an inline <script> in the popup: the about:blank popup inherits the app's CSP,
+  // which blocks inline scripts (scripts/csp-meta.mjs).
+  const go = () => setTimeout(() => { w.focus(); w.print(); }, 200);
+  if (w.document.readyState === "complete") go();
+  else w.addEventListener("load", go, { once: true });
   return true;
 }

@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AlertTriangle, Crosshair, Star, Wand2 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,7 +16,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Pill, StatRow, toneOf } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { VoiceRecorder } from "@/components/voice-recorder";
-import { fetchJson, fmtR } from "./shared";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import {
   CRITERIA, OVERALL, TIER_LABELS, avgScores, shiftWeek, tierLabel, weekLabel, weekOf,
   type CriterionKey, type Rating, type RatingEvidence, type ScoreKey,
@@ -29,8 +31,6 @@ const blank = (trader: string, week: string): Form => ({
   comment: "", focus: "", tier: "",
 });
 
-const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round(v * 100)}%`);
-const usd = (v: number | null | undefined) => (v == null ? "—" : `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
 
 /** The week's facts the rubric is scored against — pulled from trades, journal, ideas and the risk desk. */
 function EvidencePanel({ trader, week, evidence, loading }: { trader: string; week: string; evidence: RatingEvidence | null; loading: boolean }) {
@@ -52,15 +52,15 @@ function EvidencePanel({ trader, week, evidence, loading }: { trader: string; we
       </div>
       <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
         <StatRow label="Сделок (W/L/BE)" value={t.trades ? `${t.trades} (${t.wins}/${t.losses}/${t.be})` : "0"} />
-        <StatRow label="Win rate" value={pct(t.winRate)} tone={t.winRate == null ? "neutral" : t.winRate >= 0.5 ? "up" : "down"} />
+        <StatRow label="Win rate" value={fmtRate(t.winRate)} tone={t.winRate == null ? "neutral" : t.winRate >= 0.5 ? "up" : "down"} />
         <StatRow label="Σ R / ср. R" value={`${fmtR(t.totalR, 1)} / ${fmtR(t.avgR)}`} tone={toneOf(t.totalR)} />
-        <StatRow label="P&L нетто" value={usd(t.net)} tone={toneOf(t.net)} />
-        <StatRow label="Худший день (нетто)" value={usd(evidence.worstDayNet)} tone={toneOf(evidence.worstDayNet)} />
+        <StatRow label="P&L нетто" value={fmtUsd(t.net, { decimals: 0 })} tone={toneOf(t.net)} />
+        <StatRow label="Худший день (нетто)" value={fmtUsd(evidence.worstDayNet, { decimals: 0 })} tone={toneOf(evidence.worstDayNet)} />
         <StatRow label="Макс. убыток, R" value={fmtR(t.maxLossR)} tone={t.maxLossR != null && t.maxLossR < -1.5 ? "down" : "neutral"} />
-        <StatRow label="Журнал (дней / план)" value={`${evidence.journal.days} / ${pct(evidence.journal.planFollowedPct)}`} />
+        <StatRow label="Журнал (дней / план)" value={`${evidence.journal.days} / ${fmtRate(evidence.journal.planFollowedPct)}`} />
         <StatRow label="Идей опубл. / в сделке" value={`${evidence.ideas.published} / ${evidence.ideas.converted}`} />
-        <StatRow label="Заметки к сделкам" value={pct(t.tradesWithNotesPct)} />
-        <StatRow label="К прошлой неделе" value={evidence.netDelta == null ? "—" : usd(evidence.netDelta)} tone={toneOf(evidence.netDelta)} />
+        <StatRow label="Заметки к сделкам" value={fmtRate(t.tradesWithNotesPct)} />
+        <StatRow label="К прошлой неделе" value={evidence.netDelta == null ? "—" : fmtUsd(evidence.netDelta, { decimals: 0 })} tone={toneOf(evidence.netDelta)} />
       </div>
       {evidence.breaches.length > 0 && (
         <ul className="mt-2 space-y-1">
@@ -185,9 +185,9 @@ export function RatingDialog({
   const weekValid = /^\d{4}-\d{2}-\d{2}$/.test(form.week);
   const evidenceQ = useQuery<RatingEvidence>({
     queryKey: ["ratings", "evidence", form.trader, form.week],
-    queryFn: () => fetchJson<RatingEvidence>(`${BASE}/api/ratings/evidence?trader=${encodeURIComponent(form.trader)}&week=${form.week}`),
+    queryFn: ({ signal }) => http.get<RatingEvidence>("/api/ratings/evidence", { query: { trader: form.trader, week: form.week }, signal }),
     enabled: open && !!form.trader && weekValid,
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: 0,
   });
   // The desk's risk tier pre-fills the rating's tier (staff change the desk tier itself on /risk).
@@ -206,22 +206,16 @@ export function RatingDialog({
         // Snapshot of the facts the score was based on — shown to the trader with the rating.
         evidence: ev ? { trades: ev.trades, worstDayNet: ev.worstDayNet, journal: ev.journal, ideas: ev.ideas, breaches: ev.breaches, netDelta: ev.netDelta } : undefined,
       };
-      const r = editing
-        ? await fetch(`${BASE}/api/ratings/${editing.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
-        : await fetch(`${BASE}/api/ratings`, {
-            method: "POST", headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ ...payload, trader: form.trader, week: form.week }),
-          });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось сохранить оценку");
-      return body as Rating & { updated?: boolean };
+      return editing
+        ? http.patch<Rating & { updated?: boolean }>(`/api/ratings/${editing.id}`, payload)
+        : http.post<Rating & { updated?: boolean }>("/api/ratings", { ...payload, trader: form.trader, week: form.week });
     },
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["ratings"] });
       onOpenChange(false);
       toast({ title: editing || res?.updated ? "Оценка обновлена" : "Оценка сохранена", description: `${form.trader} · ${weekLabel(form.week)}` });
     },
-    onError: (e: Error) => toast({ title: "Ошибка сохранения", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Ошибка сохранения", description: humanizeApiError(e, "Не удалось сохранить оценку"), variant: "destructive" }),
   });
 
   const canSave = !!form.trader && weekValid && !save.isPending;
@@ -231,11 +225,11 @@ export function RatingDialog({
     if (!ev) return undefined;
     const t = ev.trades;
     switch (key) {
-      case "discipline": return `план ${pct(ev.journal.planFollowedPct)} · журнал ${ev.journal.days} дн · макс. убыток ${fmtR(t.maxLossR)}`;
-      case "riskManagement": return `худший день ${usd(ev.worstDayNet)} · ср. риск ${usd(t.avgRiskUsd)}${ev.breaches.length ? ` · нарушений ${ev.breaches.length}` : ""}`;
-      case "execution": return `win rate ${pct(t.winRate)} · ср. R ${fmtR(t.avgR)} · PF ${t.profitFactor == null ? "—" : t.profitFactor.toFixed(2)}`;
-      case "journaling": return `дней ${ev.journal.days} · заметки ${pct(t.tradesWithNotesPct)} · идей ${ev.ideas.published}`;
-      case "improvement": return `к прошлой неделе ${ev.netDelta == null ? "—" : usd(ev.netDelta)}${ev.prevFocus ? ` · фокус: ${ev.prevFocus}` : ""}`;
+      case "discipline": return `план ${fmtRate(ev.journal.planFollowedPct)} · журнал ${ev.journal.days} дн · макс. убыток ${fmtR(t.maxLossR)}`;
+      case "riskManagement": return `худший день ${fmtUsd(ev.worstDayNet, { decimals: 0 })} · ср. риск ${fmtUsd(t.avgRiskUsd, { decimals: 0 })}${ev.breaches.length ? ` · нарушений ${ev.breaches.length}` : ""}`;
+      case "execution": return `win rate ${fmtRate(t.winRate)} · ср. R ${fmtR(t.avgR)} · PF ${fmtNum(t.profitFactor)}`;
+      case "journaling": return `дней ${ev.journal.days} · заметки ${fmtRate(t.tradesWithNotesPct)} · идей ${ev.ideas.published}`;
+      case "improvement": return `к прошлой неделе ${ev.netDelta == null ? "—" : fmtUsd(ev.netDelta, { decimals: 0 })}${ev.prevFocus ? ` · фокус: ${ev.prevFocus}` : ""}`;
     }
   };
   const set = (k: ScoreKey, v: number) => setForm((f) => ({ ...f, [k]: v }));

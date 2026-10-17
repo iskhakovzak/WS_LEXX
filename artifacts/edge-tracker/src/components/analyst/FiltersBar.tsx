@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { fmtCount } from "@/lib/format";
 import {
   CAP_PRESETS, DEFAULT_FILTERS, PERIODS, PT_SIZES, activeFilterCount,
   type Filters, type Period, type PtSize, type SavedView, type SortKey, type TierFilter, type TypeFilter,
@@ -206,7 +207,7 @@ export function FiltersBar({
         )}
 
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs tabular-nums text-muted-foreground">{shown.toLocaleString("ru-RU")} строк</span>
+          <span className="text-xs tabular-nums text-muted-foreground">{fmtCount(shown)} строк</span>
           <Segmented<SortKey>
             ariaLabel="Порядок строк"
             size="sm"

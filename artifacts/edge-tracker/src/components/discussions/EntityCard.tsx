@@ -4,9 +4,12 @@ import { Link } from "wouter";
 import { ArrowUpRight, BookOpen, CalendarClock, Lightbulb, LineChart, Lock, NotebookPen } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import type { Thread } from "./lib";
 
 /* `GET /api/discussions/:id/entity` — the thing a contextual thread is about.
@@ -32,13 +35,6 @@ export function hasContext(t: Thread): boolean {
   return !!(t.tradeId || t.eventId || t.ideaId || t.playbookId || t.journalDate);
 }
 
-function fmtUsd(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
-  return n < 0 ? `−$${s}` : `$${s}`;
-}
-const fmtNum = (n: number | null) => (n == null ? "—" : n.toLocaleString("ru-RU", { maximumFractionDigits: 2 }));
-
 function Row({ icon: Icon, label, href, children }: { icon: React.ElementType; label: string; href: string; children: React.ReactNode }) {
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
@@ -54,14 +50,10 @@ export function EntityCard({ thread }: { thread: Thread }) {
   const enabled = hasContext(thread);
   const q = useQuery({
     queryKey: ["discussion-entity", thread.id, thread.tradeId ?? 0, thread.eventId ?? 0, thread.ideaId ?? 0, thread.playbookId ?? 0, thread.journalDate ?? ""],
-    queryFn: async (): Promise<EntityPayload | null> => {
-      const r = await fetch(`${BASE}/api/discussions/${thread.id}/entity`);
-      if (r.status === 404) return null;
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return (await r.json()) as EntityPayload;
-    },
+    queryFn: ({ signal }): Promise<EntityPayload | null> =>
+      http.get<EntityPayload>(`/api/discussions/${thread.id}/entity`, { signal }).catch(nullIfMissing),
     enabled,
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: false,
   });
   if (!enabled) return null;
@@ -83,9 +75,9 @@ export function EntityCard({ thread }: { thread: Thread }) {
           {t.setup && <span className="truncate text-muted-foreground">{t.setup}</span>}
           {t.horizon && <Pill tone="neutral" className="py-0 text-2xs">{t.horizon}</Pill>}
           {t.trader && <span className="text-muted-foreground">{t.trader}</span>}
-          {t.entry != null && <span className="tabular-nums text-muted-foreground">вход {fmtNum(t.entry)}{t.stop != null ? ` · стоп ${fmtNum(t.stop)}` : ""}{t.exit != null ? ` · выход ${fmtNum(t.exit)}` : ""}</span>}
-          {t.signedR != null && <span className={cn("font-semibold tabular-nums", toneText(toneOf(t.signedR)))}>{t.signedR > 0 ? "+" : ""}{t.signedR.toFixed(1)}R</span>}
-          {t.netPnl != null && <span className={cn("tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl)} · комиссии ${fmtUsd(t.fees)}`}>{fmtUsd(t.netPnl)} нетто</span>}
+          {t.entry != null && <span className="tabular-nums text-muted-foreground">вход {fmtPrice(t.entry)}{t.stop != null ? ` · стоп ${fmtPrice(t.stop)}` : ""}{t.exit != null ? ` · выход ${fmtPrice(t.exit)}` : ""}</span>}
+          {t.signedR != null && <span className={cn("font-semibold tabular-nums", toneText(toneOf(t.signedR)))}>{fmtR(t.signedR, 1)}</span>}
+          {t.netPnl != null && <span className={cn("tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl, { decimals: 0 })} · комиссии ${fmtUsd(t.fees, { decimals: 0 })}`}>{fmtUsd(t.netPnl, { decimals: 0 })} нетто</span>}
           <Pill tone={t.res === "win" ? "up" : t.res === "loss" ? "down" : "neutral"} className="py-0 text-2xs">{t.res ?? "open"}</Pill>
           {t.playbookId != null && <Link href={links.setup(t.playbookId)} className="text-primary hover:underline">сетап</Link>}
         </Row>
@@ -95,7 +87,7 @@ export function EntityCard({ thread }: { thread: Thread }) {
           <span className="font-semibold text-foreground">{d.event.ticker}</span>
           <span className="tabular-nums text-muted-foreground">{d.event.date}{d.event.session ? ` ${d.event.session}` : ""}</span>
           <span className="truncate">{d.event.headline}</span>
-          {d.event.percentMove != null && <span className={cn("tabular-nums", toneText(toneOf(d.event.percentMove)))}>{d.event.percentMove > 0 ? "+" : ""}{d.event.percentMove.toFixed(1)}%</span>}
+          {d.event.percentMove != null && <span className={cn("tabular-nums", toneText(toneOf(d.event.percentMove)))}>{fmtPct(d.event.percentMove, 1)}</span>}
         </Row>
       )}
       {d.idea && (

@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { toast } from "@/hooks/use-toast";
@@ -27,7 +28,8 @@ import {
   TASK_RECENT_KEY, countFor, noTasksMessage, parseRecent, parseTaskSettings, pushRecent, settingsForRole, taskQuery, taskSettingsKey, taskUrl,
   type PickedTask, type PoolCounts, type TaskSettings, type TaskSource,
 } from "@/lib/training-tasks";
-import { WsChart, TIMEFRAMES, fmtMoney, fmtR, type ChartMode, type Execution, type Timeframe, type TradeLike, type TradeStructureDto } from "@/components/chart-engine";
+import { WsChart, TIMEFRAMES, type ChartMode, type Execution, type Timeframe, type TradeLike, type TradeStructureDto } from "@/components/chart-engine";
+import { fmtR, fmtUsd } from "@/lib/format";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { useAuth } from "@/contexts/auth-context";
 
@@ -41,18 +43,6 @@ type TaskResp = { task: PickedTask; counts: PoolCounts };
 const MODES: ChartMode[] = ["analysis", "replay", "training"];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
-class HttpError extends Error {
-  constructor(message: string, readonly status: number, readonly body: Record<string, unknown>) { super(message); }
-}
-
-async function getJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  if (!r.ok) {
-    const body = (await r.json().catch(() => ({}))) as Record<string, unknown>;
-    throw new HttpError(typeof body.error === "string" ? body.error : `HTTP ${r.status}`, r.status, body);
-  }
-  return r.json() as Promise<T>;
-}
 
 function readStored<T>(key: string, parse: (raw: string | null) => T): T {
   try { return parse(localStorage.getItem(key)); } catch { return parse(null); }
@@ -90,7 +80,7 @@ const rOf = (t: TradeRow) => {
  */
 function ResultText({ t }: { t: TradeRow }) {
   const r = rOf(t);
-  if (!t.redacted && t.pnl != null) return <span className={t.pnl >= 0 ? "text-up" : "text-down"}>{fmtMoney(t.pnl)}</span>;
+  if (!t.redacted && t.pnl != null) return <span className={t.pnl >= 0 ? "text-up" : "text-down"}>{fmtUsd(t.pnl, { signed: true, decimals: "auto" })}</span>;
   if (r != null) return <span className={r >= 0 ? "text-up" : "text-down"}>{fmtR(r)}</span>;
   const pct = t.movePct != null && Number.isFinite(t.movePct) ? t.movePct : null;
   if (pct != null) return <span className={pct >= 0 ? "text-up" : "text-down"} title="Ход цены от входа до выхода">{pct > 0 ? "+" : pct < 0 ? "−" : ""}{Math.abs(pct).toFixed(2)}%</span>;
@@ -112,7 +102,7 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
   const q = useDebounced(text, 250);
   const list = useQuery<TradeRow[], Error>({
     queryKey: ["chart-lab", "search", q],
-    queryFn: async () => (await getJson<PageResp>(`${BASE}/api/trades/page?${searchParams(q)}`)).items ?? [],
+    queryFn: async ({ signal }) => (await http.get<PageResp>(`/api/trades/page?${searchParams(q)}`, { signal })).items ?? [],
     enabled: open,
     staleTime: 30_000,
   });
@@ -198,8 +188,8 @@ export default function ChartLabPage() {
   const trade = useQuery<TrainingTradeResp, Error>({
     queryKey: ["chart-lab", "trade", tradeId, viaTraining],
     queryFn: async () => viaTraining
-      ? getJson<TrainingTradeResp>(`${BASE}/api/training/trades/${tradeId}`)
-      : { trade: await getJson<TradeRow>(`${BASE}/api/trades/${tradeId}`), executions: [], structure: null },
+      ? http.get<TrainingTradeResp>(`/api/training/trades/${tradeId}`)
+      : { trade: await http.get<TradeRow>(`/api/trades/${tradeId}`), executions: [], structure: null },
     enabled: tradeId != null,
     retry: false,
     placeholderData: (prev) => (prev && prev.trade.id === tradeId ? prev : undefined),
@@ -222,7 +212,7 @@ export default function ChartLabPage() {
   const poolQs = taskQuery(settings);
   const pool = useQuery<PoolResp, Error>({
     queryKey: ["chart-lab", "training-pool", settingsKey, poolQs],
-    queryFn: () => getJson<PoolResp>(`${BASE}/api/training/pool?${poolQs}`),
+    queryFn: ({ signal }) => http.get<PoolResp>(`/api/training/pool?${poolQs}`, { signal }),
     staleTime: 60_000,
     placeholderData: (prev) => prev,
   });
@@ -235,7 +225,7 @@ export default function ChartLabPage() {
   const available = countFor(pool.data?.counts, settings.res);
   // A server without /api/training (not restarted after the update) answers 404 — say so instead of «нет задач».
   const poolError = pool.isError && !pool.data
-    ? ((pool.error as HttpError).status === 404 ? "Сервер не отдаёт задачи — его нужно перезапустить после обновления." : "Не удалось посчитать задачи — попробуй ещё раз.")
+    ? (isNotFound(pool.error) ? "Сервер не отдаёт задачи — его нужно перезапустить после обновления." : "Не удалось посчитать задачи — попробуй ещё раз.")
     : null;
   const [picking, setPicking] = React.useState(false);
   const currentKey = tradeId != null ? `t${tradeId}` : adTicker && adDate ? `d:${adTicker}:${adDate}` : null;
@@ -246,13 +236,15 @@ export default function ChartLabPage() {
     try {
       const recent = readStored(TASK_RECENT_KEY, parseRecent);
       const exclude = currentKey ? pushRecent(recent, currentKey) : recent;
-      const { task } = await getJson<TaskResp>(`${BASE}/api/training/task?${taskQuery(settings, { forTask: true, exclude })}`);
+      const { task } = await http.get<TaskResp>(`/api/training/task?${taskQuery(settings, { forTask: true, exclude })}`);
       store(TASK_RECENT_KEY, pushRecent(exclude, task.key));
       navigate(taskUrl(task, tf));
     } catch (e) {
-      const err = e as HttpError;
-      const description = err.status === 404 ? noTasksMessage(settings, (err.body?.counts as PoolCounts | undefined) ?? pool.data?.counts) : err.message;
-      toast({ title: "Задачу не нашли", description, variant: err.status === 404 ? "default" : "destructive" });
+      const notFound = isNotFound(e);
+      const description = notFound
+        ? noTasksMessage(settings, (e instanceof ApiError ? e.field<PoolCounts>("counts") : undefined) ?? pool.data?.counts)
+        : e instanceof Error ? e.message : String(e);
+      toast({ title: "Задачу не нашли", description, variant: notFound ? "default" : "destructive" });
     } finally {
       setPicking(false);
     }

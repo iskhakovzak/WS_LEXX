@@ -1,0 +1,28 @@
+{
+  "check": "check-ru-locale",
+  "mode": "total",
+  "description": "\"ru-RU\" string literals outside src/i18n and src/lib/format",
+  "metrics": {
+    "web": {
+      "total": 2,
+      "byKey": {
+        "artifacts/edge-tracker/src/components/notes/author-dictation.ts": 1,
+        "artifacts/edge-tracker/src/components/notes/junior-editor.tsx": 1
+      }
+    },
+    "api": {
+      "total": 16,
+      "byKey": {
+        "artifacts/api-server/src/lib/challengeEngine.ts": 1,
+        "artifacts/api-server/src/lib/digest.ts": 5,
+        "artifacts/api-server/src/lib/feedStream.ts": 1,
+        "artifacts/api-server/src/lib/promotionEngine.ts": 2,
+        "artifacts/api-server/src/lib/rulesCatalog.ts": 1,
+        "artifacts/api-server/src/lib/rulesEval.ts": 2,
+        "artifacts/api-server/src/lib/scalingEngine.ts": 2,
+        "artifacts/api-server/src/routes/academy-path.ts": 1,
+        "artifacts/api-server/src/routes/dailyfeed.ts": 1
+      }
+    }
+  }
+}

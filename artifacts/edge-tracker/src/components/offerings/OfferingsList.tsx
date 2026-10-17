@@ -8,9 +8,10 @@ import { cn } from "@/lib/utils";
 import { DealTypePill, ExposureBadge, ScoreBadge, SignedPct, pctTone } from "./bits";
 import { advMultiple, dealTypeOf, dilutionScore, discountOf, hasWarrants, pctOfFloat } from "./score";
 import {
-  fmtDay, fmtM, fmtPctCap, fmtPrice, fmtShares, pctOfMcap,
+  fmtDay, fmtM, fmtPctCap, pctOfMcap,
   type Exposure, type Offering,
 } from "./types";
+import { fmtCompact, fmtPrice } from "@/lib/format";
 
 export type SortKey = "score" | "pct" | "size" | "discount" | "adv" | "delta" | "time" | "gap" | "ticker" | "price";
 export const SORT_LABEL: Record<SortKey, string> = {
@@ -186,8 +187,8 @@ const Row = memo(function Row({
       {variant === "deals" && (
         <>
           <td className={cn(numCell, "hidden xl:table-cell")}>
-            {fl != null ? <span title={`${fmtShares(o.sharesOffered)} акций · ${fl}% флоута`}>{fmtPctCap(fl, 0)} фл.</span>
-              : adv != null ? <span title={`${fmtShares(o.sharesOffered)} акций · ${adv}× среднего дневного объёма`}>{adv < 10 ? adv.toFixed(1) : Math.round(adv)}× ADV</span>
+            {fl != null ? <span title={`${fmtCompact(o.sharesOffered)} акций · ${fl}% флоута`}>{fmtPctCap(fl, 0)} фл.</span>
+              : adv != null ? <span title={`${fmtCompact(o.sharesOffered)} акций · ${adv}× среднего дневного объёма`}>{adv < 10 ? adv.toFixed(1) : Math.round(adv)}× ADV</span>
               : <span className="text-muted-foreground">—</span>}
           </td>
           <td className={numCell}>
@@ -198,8 +199,8 @@ const Row = memo(function Row({
       )}
       <td className={numCell}>
         <div className="leading-tight">
-          <div className="text-foreground">{fmtPrice(price ?? o.offerPrice)}</div>
-          {o.offerPrice != null && price != null && <div className="text-2xs text-muted-foreground">оф. {fmtPrice(o.offerPrice)}</div>}
+          <div className="text-foreground">{fmtPrice(price ?? o.offerPrice, { dollar: true })}</div>
+          {o.offerPrice != null && price != null && <div className="text-2xs text-muted-foreground">оф. {fmtPrice(o.offerPrice, { dollar: true })}</div>}
           {o.offerPrice == null && o.priceRange && <div className="text-2xs text-muted-foreground">${o.priceRange}</div>}
         </div>
       </td>

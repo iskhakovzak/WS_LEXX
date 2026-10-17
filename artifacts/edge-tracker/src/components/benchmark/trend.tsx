@@ -4,7 +4,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, weekHref } from "@/lib/period-links";
 import type { TrendResult, TrendSlice } from "./api";
-import { fmtDay, fmtNum, fmtPct, fmtR, fmtUsd } from "./format";
+import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 const VERDICT = {
   better: { tone: "up", label: "Лучше" },
@@ -17,13 +17,13 @@ type Col = { key: keyof TrendSlice; label: string; fmt: (v: number | null) => st
 
 const COLS: Col[] = [
   { key: "trades", label: "Сделки", fmt: (v) => (v == null ? "—" : String(v)) },
-  { key: "net", label: "Нетто", fmt: (v) => fmtUsd(v), delta: { scale: 1, suffix: "", precision: 0 } },
-  { key: "winRate", label: "Win rate", fmt: (v) => fmtPct(v), delta: { scale: 100, suffix: " п.п.", precision: 0 } },
+  { key: "net", label: "Нетто", fmt: (v) => fmtUsd(v, { signed: true, decimals: "auto" }), delta: { scale: 1, suffix: "", precision: 0 } },
+  { key: "winRate", label: "Win rate", fmt: (v) => fmtRate(v), delta: { scale: 100, suffix: " п.п.", precision: 0 } },
   { key: "profitFactor", label: "PF", fmt: (v) => fmtNum(v), delta: { scale: 1, suffix: "", precision: 2 } },
-  { key: "expectancy", label: "Ожидание", fmt: (v) => fmtUsd(v), delta: { scale: 1, suffix: "", precision: 2 } },
-  { key: "greenShare", label: "Зел. дни", fmt: (v) => fmtPct(v), delta: { scale: 100, suffix: " п.п.", precision: 0 } },
-  { key: "maxDd", label: "Макс. DD", fmt: (v) => (v == null ? "—" : fmtUsd(v, false)), delta: { scale: 1, suffix: "", invert: true, precision: 0 } },
-  { key: "feeShare", label: "Комиссии", fmt: (v) => fmtPct(v), delta: { scale: 100, suffix: " п.п.", invert: true, precision: 0 } },
+  { key: "expectancy", label: "Ожидание", fmt: (v) => fmtUsd(v, { signed: true, decimals: "auto" }), delta: { scale: 1, suffix: "", precision: 2 } },
+  { key: "greenShare", label: "Зел. дни", fmt: (v) => fmtRate(v), delta: { scale: 100, suffix: " п.п.", precision: 0 } },
+  { key: "maxDd", label: "Макс. DD", fmt: (v) => (v == null ? "—" : fmtUsd(v, { decimals: "auto" })), delta: { scale: 1, suffix: "", invert: true, precision: 0 } },
+  { key: "feeShare", label: "Комиссии", fmt: (v) => fmtRate(v), delta: { scale: 100, suffix: " п.п.", invert: true, precision: 0 } },
   { key: "totalR", label: "Σ R", fmt: (v) => fmtR(v), delta: { scale: 1, suffix: "R", precision: 2 } },
 ];
 
@@ -41,12 +41,12 @@ function WeekBars({ weeks, trader }: { weeks: TrendResult["weeks"]; trader: stri
   const max = Math.max(1e-9, ...vals.map(Math.abs));
   const W = 8 * weeks.length + 2 * (weeks.length - 1), H = 28;
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`${trader}, недели: ${weeks.map((w) => `${fmtDay(w.week)} ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)}`).join("; ")}`} className="overflow-visible">
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={`${trader}, недели: ${weeks.map((w) => `${fmtDate(w.week, "shortYY")} ${w.net != null ? fmtUsd(w.net, { signed: true, decimals: "auto" }) : fmtR(w.r)}`).join("; ")}`} className="overflow-visible">
       <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="hsl(var(--border))" />
       {weeks.map((w, i) => {
         const v = vals[i];
         const h = (Math.abs(v) / max) * (H / 2 - 1);
-        const title = `${fmtDay(w.week)}: ${w.net != null ? fmtUsd(w.net) : fmtR(w.r)} · ${w.trades} сд. — ${PERIOD_HINT.week.toLowerCase()}`;
+        const title = `${fmtDate(w.week, "shortYY")}: ${w.net != null ? fmtUsd(w.net, { signed: true, decimals: "auto" }) : fmtR(w.r)} · ${w.trades} сд. — ${PERIOD_HINT.week.toLowerCase()}`;
         return (
           <Link key={w.week} href={weekHref(w.week, trader)} aria-label={title} className="group cursor-pointer outline-none">
             <title>{title}</title>
@@ -72,7 +72,7 @@ function TrendTable({ trend, t0 }: { trend: TrendResult[]; t0: TrendResult }) {
   return (
     <div className="flex flex-col gap-2">
       <p className="text-xs text-muted-foreground">
-        Последние 4 недели ({fmtDay(t0.cur.from)}–{fmtDay(t0.cur.to)}) против предыдущих 4 ({fmtDay(t0.prev.from)}–{fmtDay(t0.prev.to)}). Серые столбики — прошлый отрезок.
+        Последние 4 недели ({fmtDate(t0.cur.from, "shortYY")}–{fmtDate(t0.cur.to, "shortYY")}) против предыдущих 4 ({fmtDate(t0.prev.from, "shortYY")}–{fmtDate(t0.prev.to, "shortYY")}). Серые столбики — прошлый отрезок.
       </p>
       <DataTable stickyFirstCol ariaLabel="Тренд трейдеров">
         <table>

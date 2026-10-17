@@ -3,18 +3,19 @@ import { Check, ClipboardCheck, Crosshair, History, MessageSquareQuote, Pencil, 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
-import { Avatar, ScoreBar, Sparkline, fmtSigned, pluralRu } from "./shared";
+import { Avatar, ScoreBar, Sparkline } from "./shared";
 import { CRITERIA, buildScorecards, criterionLabel, shiftWeek, tierLabel, weekLabel, weekOf, type Rating, type Scorecard } from "./scorecard-model";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtDate, fmtNum, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 function Delta({ cur, prev, className }: { cur: number; prev: number | null | undefined; className?: string }) {
   if (prev == null) return null;
   const d = Math.round((cur - prev) * 10) / 10;
   if (d === 0) return <span className={cn("text-2xs text-muted-foreground tabular-nums", className)}>±0</span>;
-  return <span className={cn("text-2xs font-semibold tabular-nums", toneText(toneOf(d)), className)}>{fmtSigned(d)}</span>;
+  return <span className={cn("text-2xs font-semibold tabular-nums", toneText(toneOf(d)), className)}>{fmtNum(d, { decimals: 1, signed: true })}</span>;
 }
 
 export function ScorecardCard({ card, onHistory, onRate, highlight }: {
@@ -55,7 +56,7 @@ export function ScorecardCard({ card, onHistory, onRate, highlight }: {
 
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="micro-label">Тренд · {card.series.length} {pluralRu(card.series.length, "неделя", "недели", "недель")}</div>
+          <div className="micro-label">Тренд · {commonI18n.t("units.weeks", { count: card.series.length })}</div>
           <div className="text-xs text-muted-foreground tabular-nums">
             среднее за всё время {card.avg.overall.toFixed(1)} · {card.totalRatings} {pluralRu(card.totalRatings, "оценка", "оценки", "оценок")}
           </div>
@@ -281,7 +282,7 @@ export function ScorecardsTab({
                                 ))}
                               </div>
                               {r.comment && <p className="whitespace-pre-wrap text-sm text-foreground/90 [overflow-wrap:anywhere]">{r.comment}</p>}
-                              <time className="text-2xs text-muted-foreground" dateTime={r.createdAt}>{new Date(r.createdAt).toLocaleString("ru-RU")}</time>
+                              <time className="text-2xs text-muted-foreground" dateTime={r.createdAt}>{fmtDate(r.createdAt, "shortDateTime")}</time>
                             </div>
                             {canManage && (
                               <div className="flex shrink-0 gap-1 self-end sm:self-start">

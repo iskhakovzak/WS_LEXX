@@ -10,6 +10,7 @@ import {
   sniffImageMime,
   type MediaContext,
 } from "../lib/planMedia";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 /**
  * Screenshots for «План дня» (desk game plan and personal trader plans).
@@ -54,8 +55,7 @@ router.post(
     }
     const me = req.authUser?.name;
     if (!me) {
-      res.status(401).json({ error: "Требуется вход" });
-      return;
+      throw unauthorized();
     }
     const ok =
       context === "desk"
@@ -106,12 +106,10 @@ type MediaRow = { id: number; context: MediaContext; owner: string; mime: string
 router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   if (!req.authUser) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   await ensurePlanMedia();
   const { rows } = await pool.query<MediaRow>(
@@ -120,15 +118,13 @@ router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   );
   const row = rows[0];
   if (!row) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   if (row.context === "personal") {
     // Owner always; others only within their journal.read.team scope (guest → sentinel ≠ owner).
     const scope = await scopeTrader(req, row.owner, "journal.read.team");
     if (scope !== row.owner) {
-      res.status(404).json({ error: "Не найдено" });
-      return;
+      throw notFound();
     }
   }
   res.setHeader("Content-Type", row.mime);
@@ -142,13 +138,11 @@ router.get("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/plan-media/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (!id) {
-    res.status(400).json({ error: "invalid id" });
-    return;
+    throw badRequest("INVALID_ID");
   }
   const me = req.authUser?.name;
   if (!me) {
-    res.status(401).json({ error: "Требуется вход" });
-    return;
+    throw unauthorized();
   }
   await ensurePlanMedia();
   const { rows } = await pool.query<{ context: MediaContext; owner: string }>(
@@ -157,14 +151,12 @@ router.delete("/plan-media/:id", asyncHandler(async (req, res): Promise<void> =>
   );
   const row = rows[0];
   if (!row) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   if (row.context === "desk") {
     if (!(await requireCap(req, res, "gameplan.publish", null, "Удалять скриншоты плана деска может куратор"))) return;
   } else if (row.owner !== me) {
-    res.status(404).json({ error: "Не найдено" });
-    return;
+    throw notFound();
   }
   await pool.query(`UPDATE plan_media SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [id]);
   res.json({ ok: true, id });

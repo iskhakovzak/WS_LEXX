@@ -6,7 +6,9 @@ import * as React from "react";
 import { Grid3x3 } from "lucide-react";
 import { EmptyState, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtPct, fmtUsd, fmtUsdCompact, pluralTrades, type MatrixCell, type SetupAggregatesResponse } from "./api";
+import { type MatrixCell, type SetupAggregatesResponse } from "./api";
+import { fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { hourLabel } from "./trader-profile";
 
 type Axis = "hour" | "hold";
@@ -18,8 +20,8 @@ function cellValue(c: MatrixCell, m: Metric): number | null {
 }
 
 function fmtCell(c: MatrixCell, m: Metric): string {
-  if (m === "wr") return fmtPct(c.winRate);
-  return fmtUsdCompact(m === "avg" ? c.avg : c.net);
+  if (m === "wr") return fmtRate(c.winRate);
+  return fmtUsd(m === "avg" ? c.avg : c.net, { signed: true, compact: true });
 }
 
 export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: SetupAggregatesResponse }) {
@@ -73,7 +75,7 @@ export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: S
                   const v = cellValue(c, metric) ?? 0;
                   const small = c.n < MIN_N;
                   const a = small ? 0.08 : 0.12 + 0.5 * Math.min(1, Math.abs(v) / model.max);
-                  const title = `${s} · ${label(b)}: ${pluralTrades(c.n)}, Σ ${fmtUsd(c.net)}, ср. ${fmtUsd(c.avg)}, WR ${fmtPct(c.winRate)}${small ? " (мало данных)" : ""}`;
+                  const title = `${s} · ${label(b)}: ${commonI18n.t("units.trades", { count: c.n })}, Σ ${fmtUsd(c.net, { signed: true, decimals: "auto" })}, ср. ${fmtUsd(c.avg, { signed: true, decimals: "auto" })}, WR ${fmtRate(c.winRate)}${small ? " (мало данных)" : ""}`;
                   return (
                     <td
                       key={b}
@@ -95,7 +97,7 @@ export const SetupsMatrix = React.memo(function SetupsMatrix({ data }: { data: S
               <th scope="row" className="sticky left-0 z-raised bg-[var(--sticky-bg)] px-2 text-left font-medium text-muted-foreground">Итого</th>
               {model.colTotals.map((t) => (
                 <td key={t.b} className="px-1 text-center tabular-nums text-muted-foreground">
-                  {fmtUsdCompact(t.net)} <span className="block">n={t.n}</span>
+                  {fmtUsd(t.net, { signed: true, compact: true })} <span className="block">n={t.n}</span>
                 </td>
               ))}
             </tr>

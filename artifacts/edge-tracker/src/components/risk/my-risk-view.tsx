@@ -5,8 +5,9 @@ import { cn } from "@/lib/utils";
 import { EmptyState, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useRiskMe, useRiskPositions, HttpError } from "./use-risk";
-import { TIERS, TierPill, fmtR, fmtSignedUsd, fmtUsd } from "./primitives";
+import { isNotFound } from "@/lib/api/errors";
+import { useRiskMe, useRiskPositions } from "./use-risk";
+import { TIERS, TierPill } from "./primitives";
 import { links } from "@/lib/links";
 import { AlertList } from "./usage";
 import { PositionsTable } from "./positions-table";
@@ -16,6 +17,7 @@ import { StopRemaining } from "./remaining";
 import { TraderDayBlock } from "./intraday";
 import { BreachHistory } from "./breaches";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { fmtR, fmtUsd } from "@/lib/format";
 
 function Allowed({ ok, label }: { ok: boolean; label: string }) {
   return (
@@ -62,7 +64,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
     );
   }
   if (me.isError || !me.data) {
-    const notReady = me.error instanceof HttpError && me.error.status === 404;
+    const notReady = isNotFound(me.error);
     return (
       <Panel>
         <EmptyState
@@ -110,9 +112,9 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
             </p>
           </div>
           <div className="flex items-center gap-6">
-            <Fact label="P&L сегодня, нетто" value={pnl != null ? fmtSignedUsd(pnl) : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
+            <Fact label="P&L сегодня, нетто" value={pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : m.today.trades ? fmtR(m.today.r) : "—"} tone={(pnl ?? 0) > 0 ? "up" : (pnl ?? 0) < 0 ? "down" : undefined} />
             <Fact label="Сделок сегодня" value={m.today.trades} />
-            {m.today.openPositions > 0 && <Fact label="Открытый риск" value={fmtUsd(m.today.openRiskUsd)} tone={afterOpen != null && afterOpen < 0 ? "down" : undefined} />}
+            {m.today.openPositions > 0 && <Fact label="Открытый риск" value={fmtUsd(m.today.openRiskUsd, { decimals: 0 })} tone={afterOpen != null && afterOpen < 0 ? "down" : undefined} />}
           </div>
           {stop.state === "no_limits" && canEditLimits && <Button size="sm" onClick={() => setLimitsOpen(true)}>Задать лимиты</Button>}
         </div>
@@ -121,7 +123,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
 
         {L && m.today.openRiskUsd > 0 && afterOpen != null && (
           <p className={cn("text-xs tabular-nums", afterOpen < 0 ? "font-medium text-down" : "text-muted-foreground")}>
-            Если сработают все стопы открытых позиций: {afterOpen < 0 ? `превышение дневного лимита на ${fmtUsd(-afterOpen)}` : `останется ${fmtUsd(afterOpen)} до дневного стопа`}.
+            Если сработают все стопы открытых позиций: {afterOpen < 0 ? `превышение дневного лимита на ${fmtUsd(-afterOpen, { decimals: 0 })}` : `останется ${fmtUsd(afterOpen, { decimals: 0 })} до дневного стопа`}.
           </p>
         )}
 
@@ -140,10 +142,10 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
           {
             <div className="flex flex-col gap-3">
               <dl className="grid grid-cols-2 gap-3 text-sm">
-                <div><dt className="text-xs text-muted-foreground">BP на позицию</dt><dd className="font-medium tabular-nums">{fmtUsd(L.maxPositionUsd)}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">1R (риск/сделка)</dt><dd className="font-medium tabular-nums">{fmtUsd(L.maxRiskPerTrade)}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">BP на позицию</dt><dd className="font-medium tabular-nums">{fmtUsd(L.maxPositionUsd, { decimals: 0 })}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">1R (риск/сделка)</dt><dd className="font-medium tabular-nums">{fmtUsd(L.maxRiskPerTrade, { decimals: 0 })}</dd></div>
                 <div><dt className="text-xs text-muted-foreground">Позиций одновременно</dt><dd className="font-medium tabular-nums">{L.maxOpenPositions ?? "—"}</dd></div>
-                <div><dt className="text-xs text-muted-foreground">Овернайт до</dt><dd className="font-medium tabular-nums">{L.allowOvernight ? fmtUsd(L.maxOvernightExposure, { compact: true }) : "—"}</dd></div>
+                <div><dt className="text-xs text-muted-foreground">Овернайт до</dt><dd className="font-medium tabular-nums">{L.allowOvernight ? fmtUsd(L.maxOvernightExposure, { decimals: 0, compact: 10_000 }) : "—"}</dd></div>
               </dl>
               <div className="flex flex-wrap gap-3">
                 <Allowed ok label="Интрадей" />

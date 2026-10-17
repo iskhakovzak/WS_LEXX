@@ -1,4 +1,4 @@
-import * as React from "react";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, Calculator, ClipboardCheck, Landmark, RotateCcw, ShieldAlert, SlidersHorizontal } from "lucide-react";
@@ -7,14 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ChecklistTemplateAdmin } from "@/components/checklist-template-admin";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import { cn } from "@/lib/utils";
 import {
   DEFAULT_TRADING_DEFAULTS, TRADING_DEFAULT_LIMITS, buyingPower, getTradingDefaults, normalizeTradingDefaults,
   resetTradingDefaults, riskPerTradePct, riskPerTradeUsd, roundTripCommission, setTradingDefaults, sharesForRisk, syncTradingDefaults,
   type Horizon, type RiskMode, type TradingDefaults,
 } from "./trading-defaults";
-import { Callout, HORIZON_LABEL, fmtUsd } from "./shared";
+import { Callout, HORIZON_LABEL } from "./shared";
+import { fmtCount, fmtDate, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 
 type DeskLimits = {
   accountSize: number | null;
@@ -28,18 +30,12 @@ type DeskLimits = {
 
 /** Desk limits from the Risk section; null when the endpoint is missing or the trader has no limits. */
 function useDeskLimits(enabled: boolean) {
-  return useQuery<DeskLimits | null>({
-    queryKey: ["risk", "me", "settings-limits"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/risk/me`);
-      if (!r.ok) return null;
-      const ct = r.headers.get("content-type") ?? "";
-      if (!ct.includes("json")) return null;
-      const d = (await r.json()) as { limits?: DeskLimits | null };
-      return d.limits ?? null;
-    },
+  // Shared /api/risk/me cache entry (today's NY date); an error just leaves data undefined (= no desk limits).
+  return useQuery({
+    ...riskMeQuery<{ limits?: DeskLimits | null } | null>(),
+    select: (d): DeskLimits | null => d?.limits ?? null,
     enabled,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: false,
   });
 }
@@ -63,7 +59,7 @@ function fieldError(key: keyof Draft, raw: string): string | null {
   const n = Number(raw.replace(",", "."));
   if (!Number.isFinite(n)) return "Нужно число";
   const b = TRADING_DEFAULT_LIMITS[key];
-  if (n < b.min || n > b.max) return `От ${b.min} до ${b.max.toLocaleString("ru-RU")}`;
+  if (n < b.min || n > b.max) return `От ${b.min} до ${fmtCount(b.max)}`;
   return null;
 }
 
@@ -112,7 +108,7 @@ function useSecondsAgo(iso: string | null): string | null {
   if (s < 60) return `${s} сек назад`;
   const m = Math.round(s / 60);
   if (m < 60) return `${m} мин назад`;
-  return new Date(iso).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
+  return fmtDate(iso, "dateTime");
 }
 
 export function TradingSection() {
@@ -205,13 +201,13 @@ export function TradingSection() {
   const warnings: string[] = [];
   if (desk) {
     if (desk.maxRiskPerTrade != null && riskUsd > desk.maxRiskPerTrade + 0.005)
-      warnings.push(`Риск на сделку ${fmtUsd(riskUsd)} выше лимита деска ${fmtUsd(desk.maxRiskPerTrade)}.`);
+      warnings.push(`Риск на сделку ${fmtUsd(riskUsd, { decimals: 0 })} выше лимита деска ${fmtUsd(desk.maxRiskPerTrade, { decimals: 0 })}.`);
     if (desk.accountSize != null && Math.abs(desk.accountSize - candidate.accountSize) > 0.5)
-      warnings.push(`Размер счёта отличается от выделенного деском (${fmtUsd(desk.accountSize)}).`);
+      warnings.push(`Размер счёта отличается от выделенного деском (${fmtUsd(desk.accountSize, { decimals: 0 })}).`);
     if (candidate.defaultHorizon === "overnight" && !desk.allowOvernight) warnings.push("Овернайт-позиции вам сейчас не разрешены деском.");
     if (candidate.defaultHorizon === "swing" && !desk.allowSwing) warnings.push("Свинг-позиции вам сейчас не разрешены деском.");
     if (desk.maxOvernightExposure != null && candidate.defaultHorizon !== "intraday" && buyingPower(candidate, "overnight") > desk.maxOvernightExposure)
-      warnings.push(`Овернайт buying power ${fmtUsd(buyingPower(candidate, "overnight"))} выше лимита экспозиции ${fmtUsd(desk.maxOvernightExposure)}.`);
+      warnings.push(`Овернайт buying power ${fmtUsd(buyingPower(candidate, "overnight"), { decimals: 0 })} выше лимита экспозиции ${fmtUsd(desk.maxOvernightExposure, { decimals: 0 })}.`);
   }
 
   if (!isMember) {
@@ -259,7 +255,7 @@ export function TradingSection() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  = {riskMode === "pct" ? fmtUsd(riskUsd) : `${riskPerTradePct(candidate).toFixed(2)}% счёта`} — это ваш 1R
+                  = {riskMode === "pct" ? fmtUsd(riskUsd, { decimals: 0 }) : `${fmtPct(riskPerTradePct(candidate), { decimals: 2, signed: false })} счёта`} — это ваш 1R
                 </p>
               </div>
             </div>
@@ -275,8 +271,8 @@ export function TradingSection() {
             <div>
               <div className="micro-label mb-2">Плечо</div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <NumberField id="td-lev-intra" label="Интрадей" suffix="×" value={draft.leverageIntraday} onChange={set("leverageIntraday")} error={errors.leverageIntraday ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "intraday"))}`} />
-                <NumberField id="td-lev-on" label="Овернайт / свинг" suffix="×" value={draft.leverageOvernight} onChange={set("leverageOvernight")} error={errors.leverageOvernight ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "overnight"))}`} />
+                <NumberField id="td-lev-intra" label="Интрадей" suffix="×" value={draft.leverageIntraday} onChange={set("leverageIntraday")} error={errors.leverageIntraday ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "intraday"), { decimals: 0 })}`} />
+                <NumberField id="td-lev-on" label="Овернайт / свинг" suffix="×" value={draft.leverageOvernight} onChange={set("leverageOvernight")} error={errors.leverageOvernight ?? null} hint={`Buying power ${fmtUsd(buyingPower(candidate, "overnight"), { decimals: 0 })}`} />
               </div>
             </div>
 
@@ -296,8 +292,8 @@ export function TradingSection() {
           <Panel title="Ваш 1R" description="Как параметры работают в сделке" icon={Calculator}>
             <div className="flex items-end justify-between gap-3">
               <div>
-                <div className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">{fmtUsd(riskUsd)}</div>
-                <div className="text-xs text-muted-foreground tabular-nums">{riskPerTradePct(candidate).toFixed(2)}% от {fmtUsd(candidate.accountSize)}</div>
+                <div className="text-3xl font-semibold tabular-nums tracking-tight text-foreground">{fmtUsd(riskUsd, { decimals: 0 })}</div>
+                <div className="text-xs text-muted-foreground tabular-nums">{fmtPct(riskPerTradePct(candidate), { decimals: 2, signed: false })} от {fmtUsd(candidate.accountSize, { decimals: 0 })}</div>
               </div>
               <Pill tone="accent">{HORIZON_LABEL[candidate.defaultHorizon]}</Pill>
             </div>
@@ -307,14 +303,14 @@ export function TradingSection() {
               <NumberField id="td-sample-stop" label="Стоп" prefix="$" value={stop} onChange={setStop} error={Number.isFinite(stopN) && stopN > 0 && stopN !== entryN ? null : "≠ входа"} />
             </div>
             <div className="mt-3 divide-y divide-border">
-              <StatRow label="Размер позиции" value={sample.shares > 0 ? `${sample.shares.toLocaleString("ru-RU")} акц.` : "—"} />
-              <StatRow label="Объём" value={fmtUsd(sample.positionUsd)} />
-              <StatRow label="Фактический риск" value={fmtUsd(sample.riskUsd)} />
-              <StatRow label="Комиссия туда-обратно" value={fmtUsd(rt, true)} />
-              <StatRow label="Комиссия в R" value={`${commInR.toFixed(2)}R`} tone={commInR > 0.1 ? "down" : "neutral"} />
+              <StatRow label="Размер позиции" value={sample.shares > 0 ? `${fmtCount(sample.shares)} акц.` : "—"} />
+              <StatRow label="Объём" value={fmtUsd(sample.positionUsd, { decimals: 0 })} />
+              <StatRow label="Фактический риск" value={fmtUsd(sample.riskUsd, { decimals: 0 })} />
+              <StatRow label="Комиссия туда-обратно" value={fmtUsd(rt)} />
+              <StatRow label="Комиссия в R" value={fmtR(commInR, { signed: false })} tone={commInR > 0.1 ? "down" : "neutral"} />
             </div>
             {sample.cappedByBuyingPower && (
-              <Callout tone="warn" icon={AlertTriangle} className="mt-3">Размер урезан до buying power ({fmtUsd(buyingPower(candidate))}) — стоп слишком близко для этого риска.</Callout>
+              <Callout tone="warn" icon={AlertTriangle} className="mt-3">Размер урезан до buying power ({fmtUsd(buyingPower(candidate), { decimals: 0 })}) — стоп слишком близко для этого риска.</Callout>
             )}
             {commInR > 0.1 && (
               <Callout tone="down" icon={AlertTriangle} className="mt-3">Комиссии съедают больше 0.1R на сделку — расширьте стоп или увеличьте риск.</Callout>
@@ -325,9 +321,9 @@ export function TradingSection() {
             <Panel title="Лимиты деска" description="Задаются риск-менеджером и имеют приоритет" icon={Landmark}
               actions={desk.tier ? <Pill tone="purple">{desk.tier}</Pill> : undefined}>
               <div className="divide-y divide-border">
-                <StatRow label="Выделенный счёт" value={fmtUsd(desk.accountSize)} />
-                <StatRow label="Макс. риск на сделку" value={fmtUsd(desk.maxRiskPerTrade)} />
-                <StatRow label="Макс. позиция" value={fmtUsd(desk.maxPositionUsd)} />
+                <StatRow label="Выделенный счёт" value={fmtUsd(desk.accountSize, { decimals: 0 })} />
+                <StatRow label="Макс. риск на сделку" value={fmtUsd(desk.maxRiskPerTrade, { decimals: 0 })} />
+                <StatRow label="Макс. позиция" value={fmtUsd(desk.maxPositionUsd, { decimals: 0 })} />
                 <StatRow label="Овернайт / свинг" value={`${desk.allowOvernight ? "да" : "нет"} / ${desk.allowSwing ? "да" : "нет"}`} />
               </div>
               {warnings.length > 0 ? (

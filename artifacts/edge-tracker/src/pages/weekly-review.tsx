@@ -9,7 +9,6 @@ import * as React from "react";
 import { Briefcase, CalendarRange, ChevronLeft, ChevronRight, ClipboardCopy, FileText, GraduationCap, Lock, Printer, UserRound } from "lucide-react";
 import { EmptyState, ErrorState, Page, PageHeader, Panel, PanelSkeleton, Pill, SectionTabs, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";

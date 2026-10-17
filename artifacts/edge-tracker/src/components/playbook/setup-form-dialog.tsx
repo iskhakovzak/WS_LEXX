@@ -27,11 +27,13 @@ import type { TickerFundamentals } from "@/lib/market-intel";
 import { suggestTagsFromFundamentals } from "@/lib/tags";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidateExamples, invalidatePlaybook, pbRequest } from "./api";
+import { invalidateExamples, invalidatePlaybook } from "./api";
+import { http } from "@/lib/api/http";
 import {
-  HORIZON_LABEL, STRUCTURED, TIME_OF_DAY_OPTIONS, blankForm, ddmm, draftKey, entryToForm, formToBody, spaceOf, splitTags, tierMeta,
+  HORIZON_LABEL, STRUCTURED, TIME_OF_DAY_OPTIONS, blankForm, draftKey, entryToForm, formToBody, spaceOf, splitTags, tierMeta,
   type FormData, type PlaybookEntry, type Space, type StructuredKey, type Tier,
 } from "./model";
+import { fmtDate } from "@/lib/format";
 import { SetupTypeSelect } from "./setup-type-select";
 import { TagChipEditor } from "./tag-chip-editor";
 import { confidenceTone } from "./setup-bits";
@@ -226,17 +228,17 @@ export function SetupFormDialog({
         // Never send `trader` on edit: for staff the API reads it as «re-assign the owner» (a curator editing a
         // trader's personal setup would take it over).
         const { trader: _owner, ...patch } = body;
-        await pbRequest(`/api/playbook/${mode.entry.id}`, { method: "PATCH", json: patch });
+        await http.patch(`/api/playbook/${mode.entry.id}`, patch);
         id = mode.entry.id;
       } else {
         const parentId = mode.kind === "child" ? mode.parent.id : mode.kind === "duplicate" ? mode.source.parentId : null;
         const space = spaceFor(mode);
-        const row = await pbRequest<{ id?: number }>("/api/playbook", { method: "POST", json: { ...body, parentId, ...(space ? { space } : {}) } });
+        const row = await http.post<{ id?: number }>("/api/playbook", { ...body, parentId, ...(space ? { space } : {}) });
         id = typeof row?.id === "number" ? row.id : null;
         const ft = mode.kind === "create" ? mode.fromTrade : undefined;
         if (ft && id != null) {
           try {
-            await pbRequest(`/api/playbook/${id}/examples`, { method: "POST", json: { tradeIds: [ft.id], tier: ft.tier } });
+            await http.post(`/api/playbook/${id}/examples`, { tradeIds: [ft.id], tier: ft.tier });
             invalidateExamples(qc, id);
           } catch (e) {
             toast({ title: "Сетап создан, но сделка не добавлена", description: (e as Error)?.message, variant: "destructive" });
@@ -264,7 +266,7 @@ export function SetupFormDialog({
   const subtitle = !mode ? ""
     : mode.kind === "child" ? `Дочерний для «${mode.parent.name}»`
     : mode.kind === "edit" ? mode.entry.name
-    : mode.kind === "create" && mode.fromTrade ? `Из сделки ${mode.fromTrade.ticker}${mode.fromTrade.date ? ` ${ddmm(mode.fromTrade.date)}` : ""} — она станет первым эталоном (${tierMeta(mode.fromTrade.tier).label})`
+    : mode.kind === "create" && mode.fromTrade ? `Из сделки ${mode.fromTrade.ticker}${mode.fromTrade.date ? ` ${fmtDate(mode.fromTrade.date, "dayMonthNumeric")}` : ""} — она станет первым эталоном (${tierMeta(mode.fromTrade.tier).label})`
     : "Опишите, когда и как вы торгуете этот сетап";
   /** Folders of the space the setup lives in first; the rest («ещё папки») stay pickable below. */
   const folderGroups = useMemo(() => {

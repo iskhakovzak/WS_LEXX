@@ -17,10 +17,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { groupedCapabilities, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
-import { Callout, InlineError, ROLE_LABEL, fetchJson, fmtDate } from "./shared";
+import { Callout, InlineError, ROLE_LABEL } from "./shared";
+import { fmtDate } from "@/lib/format";
 
 type Grant = { allowed: boolean; scope: Scope };
 type Matrix = Record<Role, Record<Capability, Grant>>;
@@ -76,8 +78,8 @@ export function PermissionsSection() {
 
   const { data, isLoading, isError, error, refetch } = useQuery<MatrixPayload>({
     queryKey: QUERY_KEY,
-    queryFn: () => fetchJson<MatrixPayload>(`${BASE}/api/permissions/matrix`),
-    staleTime: 15_000,
+    queryFn: ({ signal }) => http.get<MatrixPayload>("/api/permissions/matrix", { signal }),
+    staleTime: STALE.live,
   });
 
   const [draft, setDraft] = useState<Matrix | null>(null);
@@ -106,16 +108,7 @@ export function PermissionsSection() {
   async function submit(body: { cells: Cell[] } | { reset: true }) {
     setBusy(true);
     try {
-      const r = await fetch(`${BASE}/api/permissions/matrix`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) {
-        const msg = await r.json().then((j: { error?: string }) => j?.error).catch(() => null);
-        throw new Error(msg || `HTTP ${r.status}`);
-      }
-      const payload = (await r.json()) as MatrixPayload & { changed: number };
+      const payload = await http.put<MatrixPayload & { changed: number }>("/api/permissions/matrix", body);
       qc.setQueryData(QUERY_KEY, payload);
       refreshPermissions();
       toast({ title: "reset" in body ? "Права сброшены к умолчаниям" : "Права сохранены", description: `Изменено ячеек: ${payload.changed ?? 0}` });

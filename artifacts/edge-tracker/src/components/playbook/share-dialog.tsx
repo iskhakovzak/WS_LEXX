@@ -11,8 +11,10 @@ import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, notLiveMessage, pbRequest, useShareTargets } from "./api";
+import { invalidatePlaybook, notLiveMessage, useShareTargets } from "./api";
+import { http } from "@/lib/api/http";
 import type { PlaybookEntry, Visibility } from "./model";
+import { fmtDate } from "@/lib/format";
 
 const OPTIONS: { value: Visibility; label: string; hint: string; icon: typeof Lock }[] = [
   { value: "private", label: "Только я", hint: "Видите вы и кураторы", icon: Lock },
@@ -44,10 +46,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
   async function save() {
     setSaving(true);
     try {
-      await pbRequest(`/api/playbook/${entry.id}/share`, {
-        method: "POST",
-        json: { visibility: nothingPicked ? "private" : vis, users: [...users], cohorts: [...cohorts] },
-      });
+      await http.post(`/api/playbook/${entry.id}/share`, { visibility: nothingPicked ? "private" : vis, users: [...users], cohorts: [...cohorts] });
       invalidatePlaybook(qc, entry.id);
       toast({ title: vis === "private" || nothingPicked ? "Доступ закрыт — сетап снова личный" : vis === "all" ? "Сетап открыт всему офису" : "Доступ выдан выбранным" });
       onOpenChange(false);
@@ -132,7 +131,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
 
         <DialogFooter className="items-center gap-2 sm:justify-between">
           <span className="text-xs text-muted-foreground">
-            {entry.sharedAt && entry.visibility !== "private" ? `Открыт ${new Date(entry.sharedAt).toLocaleDateString("ru-RU")}` : ""}
+            {entry.sharedAt && entry.visibility !== "private" ? `Открыт ${fmtDate(entry.sharedAt, "short")}` : ""}
           </span>
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>

@@ -4,7 +4,8 @@
 import * as React from "react";
 import { ChevronDown, ChevronRight, History } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, useTableSort, type Tone } from "@/components/ds";
-import { fmtDateTime, type SyncRun } from "./api";
+import { type SyncRun } from "./api";
+import { fmtDate } from "@/lib/format";
 
 const STATUS: Record<SyncRun["status"], { label: string; tone: Tone }> = {
   running: { label: "идёт", tone: "accent" },
@@ -75,7 +76,7 @@ export function SyncHistory({ runs, loading }: { runs: SyncRun[]; loading: boole
                           </button>
                         )}
                       </td>
-                      <td className="whitespace-nowrap">{fmtDateTime(r.startedAt)}{dur != null && <span className="text-muted-foreground"> · {dur}с</span>}</td>
+                      <td className="whitespace-nowrap">{fmtDate(r.startedAt, "numericDateTime")}{dur != null && <span className="text-muted-foreground"> · {dur}с</span>}</td>
                       <td>{r.source === "api" ? <Pill tone="accent">API</Pill> : <Pill tone="neutral">файл</Pill>}</td>
                       <td className="max-w-[10rem] truncate text-xs text-muted-foreground" title={r.fileName ?? undefined}>{r.fileName ?? (r.dateFrom ? `${r.dateFrom} → ${r.dateTo}` : "—")}</td>
                       <td><Pill tone={st.tone} dot>{st.label}</Pill></td>

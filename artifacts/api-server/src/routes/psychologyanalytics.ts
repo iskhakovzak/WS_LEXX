@@ -5,6 +5,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { TtlCache } from "../lib/hotCache";
 import { netPnl as netPnlOf, normResult, signedR } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
+import { badRequest, forbidden } from "../lib/http";
 
 const psychologyCache = new TtlCache<string, unknown>(3 * 60 * 1000);
 
@@ -171,8 +172,7 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   // Emotional check-ins are personal: traders may only read their own analytics.
   const viewer = req.authUser;
   if (viewer && !["curator", "admin"].includes(viewer.role) && viewer.name !== userId) {
-    res.status(403).json({ error: "Forbidden" });
-    return;
+    throw forbidden();
   }
 
   // Optional filters shared with the analytics page filter bar.
@@ -196,8 +196,7 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
     return;
   }
   if (ticker && !TICKER_RE.test(ticker)) {
-    res.status(400).json({ error: "invalid ticker" });
-    return;
+    throw badRequest("INVALID_TICKER");
   }
   if (setup.length > 120) {
     res.status(400).json({ error: "setup is too long" });

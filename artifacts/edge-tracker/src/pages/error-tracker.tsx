@@ -3,7 +3,6 @@ import { Plus, ShieldCheck } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { ErrorState, Page, PageHeader, PanelSkeleton, SectionTabs, Segmented, StatGridSkeleton } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useArchivedViolations, useDiscipline, useInvalidateRules, useMistakes, useRuleKinds, useRulesReport, useViolations } from "@/components/rules/api";
 import { RulesOnboarding, RulesOverview } from "@/components/rules/RulesOverview";

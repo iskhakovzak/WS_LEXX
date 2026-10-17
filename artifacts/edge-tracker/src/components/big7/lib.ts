@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { Tone } from "@/components/ds";
 import { nyDate } from "@/lib/trading-date";
+import { fmtWeekday } from "@/lib/format";
 
 // ─── dates ──────────────────────────────────────────────────────────────────
 /** Local YYYY-MM-DD (toISOString is UTC and jumps a day in the evening). */
@@ -72,13 +73,10 @@ export function addDays(dateStr: string, n: number): string {
   d.setDate(d.getDate() + n);
   return localDateStr(d);
 }
-const WD = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"];
+/** «Пн», «Вт»… in the UI language, capitalised for column heads. */
 export function weekdayShort(dateStr: string) {
-  return WD[parseLocalDate(dateStr).getDay()];
-}
-export function dayMonth(dateStr: string) {
-  const [, m, d] = dateStr.split("-");
-  return `${d}.${m}`;
+  const s = fmtWeekday(parseLocalDate(dateStr), "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 export function relDayLabel(dateStr: string): string {
   const today = big7Today();
@@ -97,21 +95,6 @@ export function num(v: unknown): number | null {
   if (s === "" || s === "+" || s === "-") return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
-}
-export const fmt2 = (n: number) => n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const fmtUsd = (n: number, digits = 2) =>
-  `$${n.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
-export const fmtInt = (n: number) => n.toLocaleString("ru-RU");
-export function fmtSigned(n: number | null | undefined, digits = 2, suffix = "%") {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}${suffix}`;
-}
-export function fmtVol(v: number | null | undefined) {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
 }
 
 // ─── localStorage ───────────────────────────────────────────────────────────

@@ -1,76 +1,93 @@
-/** Per-user navigation preferences: pinned favourites and collapsed sidebar groups (localStorage, fail-safe). */
+/**
+ * Per-browser navigation preferences (localStorage, fail-safe):
+ * - pinned pages: second-level pages (Статистика, Поведение, Симулятор…) kept visible under their sidebar row;
+ * - the desktop sidebar width: full or an icon rail.
+ */
 import { useCallback, useEffect, useState } from "react";
+import { ALL_NAV_ITEMS, parentOf } from "./nav";
 
-const PINS_KEY = "ws_lexx_nav_pins";
-const COLLAPSED_KEY = "ws_lexx_nav_collapsed";
+const PINS_KEY = "ws_lexx_nav_pins_v2";
+/** v1 kept up to 7 «favourites» in a block above the groups (mostly top-level rows, which are always visible now). */
+const PINS_KEY_V1 = "ws_lexx_nav_pins";
+const RAIL_KEY = "ws_lexx_sidebar_rail";
 const SYNC_EVENT = "ws-nav-prefs";
 
-/** At most this many favourites (the block must stay short — it sits above every group). */
-export const MAX_PINS = 7;
+/** At most this many pinned pages (each adds a row to the sidebar). */
+export const MAX_PINS = 5;
 
-/**
- * First-visit defaults; the user's own choice (anything written to localStorage) wins afterwards.
- * - Favourites: the daily trader loop (plan → trades → journal → analytics → playbook), 6 items.
- * - Folded groups: the rarely visited ones (Команда, Академия, Админ). The group holding the current page is
- *   always shown expanded by the sidebar regardless (see sidebar-nav.tsx).
- */
-export const DEFAULT_PINS = ["/", "/game-plan", "/trades", "/journal", "/analytics", "/playbook"];
-export const DEFAULT_COLLAPSED = ["team", "academy", "admin"];
-const DEFAULTS: Record<string, string[]> = { [PINS_KEY]: DEFAULT_PINS, [COLLAPSED_KEY]: DEFAULT_COLLAPSED };
+/** Only second-level pages can be pinned: sidebar rows are always visible anyway. */
+export function isPinnable(href: string): boolean {
+  const item = ALL_NAV_ITEMS.find((i) => i.href === href);
+  return !!item && !!parentOf(item);
+}
 
-function read(key: string): string[] {
+/** First-visit pins by role: partners (admin) start with the office results one click away. */
+export const DEFAULT_PINS: Record<string, string[]> = { admin: ["/office"] };
+
+function parse(raw: string | null): string[] | null {
+  if (raw == null) return null;
   try {
-    const raw = localStorage.getItem(key);
-    if (raw == null) return DEFAULTS[key] ?? [];
     const v = JSON.parse(raw);
-    return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [];
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
   } catch {
-    return DEFAULTS[key] ?? [];
+    return [];
   }
 }
 
-function write(key: string, v: string[]) {
+function readPins(role: string | undefined): string[] {
   try {
-    localStorage.setItem(key, JSON.stringify(v));
+    const v2 = parse(localStorage.getItem(PINS_KEY));
+    if (v2) return v2.filter(isPinnable);
+    // Carry over v1 favourites that are second-level pages now (e.g. /stats); top-level ones are always shown.
+    const v1 = parse(localStorage.getItem(PINS_KEY_V1));
+    if (v1) return v1.filter(isPinnable).slice(0, MAX_PINS);
   } catch {}
-  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: key }));
+  return DEFAULT_PINS[role ?? ""] ?? [];
 }
 
-/** A string-set in localStorage that stays in sync across every component using the same key. */
-function useStoredSet(key: string, max = Infinity) {
-  const [list, setList] = useState<string[]>(() => read(key));
+function writePins(v: string[]) {
+  try {
+    localStorage.setItem(PINS_KEY, JSON.stringify(v));
+  } catch {}
+  window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: PINS_KEY }));
+}
+
+/** Pinned second-level pages, in sync across the sidebar, the mobile sheet and other tabs. */
+export function usePinnedNav(role?: string) {
+  const [pins, setPins] = useState<string[]>(() => readPins(role));
   useEffect(() => {
-    const onSync = (e: Event) => {
-      const k = (e as CustomEvent<string>).detail;
-      if (k === key) setList(read(key));
-    };
-    const onStorage = (e: StorageEvent) => { if (e.key === key) setList(read(key)); };
+    setPins(readPins(role));
+    const onSync = (e: Event) => { if ((e as CustomEvent<string>).detail === PINS_KEY) setPins(readPins(role)); };
+    const onStorage = (e: StorageEvent) => { if (e.key === PINS_KEY) setPins(readPins(role)); };
     window.addEventListener(SYNC_EVENT, onSync);
     window.addEventListener("storage", onStorage);
     return () => {
       window.removeEventListener(SYNC_EVENT, onSync);
       window.removeEventListener("storage", onStorage);
     };
-  }, [key]);
-  const toggle = useCallback(
-    (id: string) => {
-      const cur = read(key);
-      if (cur.includes(id)) write(key, cur.filter((x) => x !== id));
-      else if (cur.length < max) write(key, [...cur, id]);
+  }, [role]);
+  const togglePin = useCallback(
+    (href: string) => {
+      const cur = readPins(role);
+      if (cur.includes(href)) writePins(cur.filter((x) => x !== href));
+      else if (cur.length < MAX_PINS && isPinnable(href)) writePins([...cur, href]);
     },
-    [key, max],
+    [role],
   );
-  return [list, toggle] as const;
-}
-
-export function usePinnedNav() {
-  const [pins, togglePin] = useStoredSet(PINS_KEY, MAX_PINS);
   return { pins, togglePin, isPinned: (href: string) => pins.includes(href), canPin: pins.length < MAX_PINS, maxPins: MAX_PINS };
 }
 
-export function useCollapsedGroups() {
-  const [collapsed, toggleGroup] = useStoredSet(COLLAPSED_KEY);
-  /** Fold the given groups (fold=true) or unfold everything (fold=false). */
-  const setAll = useCallback((ids: string[], fold: boolean) => write(COLLAPSED_KEY, fold ? ids : []), []);
-  return { collapsed, toggleGroup, setAll, isCollapsed: (id: string) => collapsed.includes(id) };
+/** Desktop sidebar: true = full width with labels, false = icon rail. Remembered per browser (default: full). */
+export function readSidebarOpen(): boolean {
+  try {
+    return localStorage.getItem(RAIL_KEY) !== "1";
+  } catch {
+    return true;
+  }
+}
+
+export function writeSidebarOpen(open: boolean) {
+  try {
+    localStorage.setItem(RAIL_KEY, open ? "0" : "1");
+  } catch {}
 }

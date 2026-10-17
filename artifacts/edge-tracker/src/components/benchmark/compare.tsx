@@ -1,7 +1,6 @@
 import { useMemo } from "react";
 import { GitCompare } from "lucide-react";
 import { EmptyState, Panel, toneText } from "@/components/ds";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import type { BenchRow, MetricDef } from "./api";
 import { EquityLines, Radar } from "./charts";

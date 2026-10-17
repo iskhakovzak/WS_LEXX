@@ -4,7 +4,6 @@ import { db, dailyQuotesTable } from "@workspace/db";
 import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
-import { logger } from "../lib/logger";
 import { logAudit } from "../lib/audit";
 
 const router: IRouter = Router();

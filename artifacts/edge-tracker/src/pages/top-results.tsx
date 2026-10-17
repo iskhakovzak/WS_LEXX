@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, StatCard, StatGrid, Toolbar, toneOf, toneText, type SegmentOption } from "@/components/ds";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS, closeDate } from "@/lib/trade-math";
 import { cn } from "@/lib/utils";
@@ -32,7 +32,8 @@ import {
 import { LeaderboardList, Podium, ScoreRing, fmtMetric } from "@/components/team/leaderboard-view";
 import { BestTradeCard, TradeDetailSheet } from "@/components/team/trade-cards";
 import { TraderAvatar } from "@/components/team/trader-avatar";
-import { downloadCsv, fmtMoney, fmtPct, fmtR, isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
+import { downloadCsv, isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
+import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 const VIEW_KEY = "ws_top_results_view_v2";
 type SavedView = { period: Period; metric: Metric; minTrades: number };
@@ -49,9 +50,7 @@ const PERIOD_OPTIONS: SegmentOption<Period>[] = [
 const PREV_LABEL: Record<Period, string> = { week: "к пред. неделе", month: "к пред. месяцу", quarter: "к пред. кварталу", all: "" };
 
 async function fetchDesk(params: URLSearchParams): Promise<DeskLeaderboard> {
-  const res = await fetch(apiUrl(`/api/leaderboard?${params.toString()}`));
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  return (await res.json()) as DeskLeaderboard;
+  return http.get<DeskLeaderboard>(`/api/leaderboard?${params.toString()}`);
 }
 
 function deltaNode(cur: number | null, prev: number | null, fmt: (n: number) => string) {
@@ -293,9 +292,9 @@ export default function TopResultsPage() {
           <StatGrid className="xl:grid-cols-5">
             <StatCard
               label={<span title={KPI_FORMULAS.netPnl}>P&L деска · нетто</span>}
-              value={kpi.net != null ? fmtMoney(kpi.net) : fmtR(kpi.totalR)}
+              value={kpi.net != null ? fmtUsd(kpi.net, { signed: true }) : fmtR(kpi.totalR)}
               tone={toneOf(kpi.net ?? kpi.totalR)}
-              delta={prevKpi ? deltaNode(kpi.net, prevKpi.net, fmtMoney) : undefined}
+              delta={prevKpi ? deltaNode(kpi.net, prevKpi.net, (n) => fmtUsd(n, { signed: true })) : undefined}
               deltaTone={prevKpi ? toneOf((kpi.net ?? 0) - (prevKpi.net ?? 0)) : undefined}
               hint={kpi.net != null ? `${kpi.totalR != null ? `${fmtR(kpi.totalR)} суммарно` : "R неизвестен (нет стопов)"}${prevKpi && PREV_LABEL[period] ? ` · ${PREV_LABEL[period]}` : ""}` : "P&L не заполнен — показана сумма R"}
             />
@@ -307,7 +306,7 @@ export default function TopResultsPage() {
             />
             <StatCard
               label={<span title={KPI_FORMULAS.winRate}>Win rate деска</span>}
-              value={fmtPct(kpi.winRate)}
+              value={fmtRate(kpi.winRate)}
               hint={`${kpi.wins} W / ${kpi.losses} L`}
             />
             <StatCard
@@ -466,14 +465,14 @@ function SetupBars({ setups }: { setups: ReturnType<typeof rollupSetups> }) {
             </Link>
             <span className={cn("shrink-0 font-semibold tabular-nums", toneText(toneOf(s.r)))}>
               {fmtR(s.r)}
-              {s.net != null && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{fmtMoney(s.net)} нетто</span>}
+              {s.net != null && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{fmtUsd(s.net, { signed: true })} нетто</span>}
             </span>
           </div>
           <div className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
             <div className={cn("h-full rounded-full", s.r >= 0 ? "bg-up/70" : "bg-down/70")} style={{ width: `${Math.max(4, (Math.abs(s.r) / maxAbs) * 100)}%` }} />
           </div>
           <span className="text-xs text-muted-foreground tabular-nums" title={KPI_FORMULAS.winRate}>
-            {s.count} сд. · WR {fmtPct(s.winRate)}
+            {s.count} сд. · WR {fmtRate(s.winRate)}
           </span>
         </li>
       ))}

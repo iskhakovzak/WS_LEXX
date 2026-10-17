@@ -1,4 +1,4 @@
-import * as React from "react";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Bell, BellOff, Eye, Mail, Send, ChevronRight } from "lucide-react";
 import { Panel, Pill, Segmented } from "@/components/ds";
@@ -9,8 +9,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { Callout, InlineError, SettingRow, readApiError } from "./shared";
+import { ApiError, http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { fmtDate } from "@/lib/format";
+import { Callout, InlineError, SettingRow } from "./shared";
 import { useMyProfile } from "./ProfileSection";
 import type { SectionId } from "./SettingsNav";
 
@@ -20,7 +22,7 @@ const DIGEST_EVENING_UTC = 18;
 function digestLocalTime(utcHour: number): string {
   const d = new Date();
   d.setUTCHours(utcHour, 0, 0, 0);
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return fmtDate(d, "time");
 }
 
 type DigestSub = {
@@ -56,9 +58,7 @@ function DigestPanel() {
     if (!trader) return;
     setState("loading");
     try {
-      const res = await fetch(`${BASE}/api/digest/subscription?trader=${encodeURIComponent(trader)}`);
-      if (!res.ok) throw new Error(String(res.status));
-      const data = (await res.json()) as { subscription: DigestSub | null };
+      const data = await http.get<{ subscription: DigestSub | null }>("/api/digest/subscription", { query: { trader } });
       const s = data.subscription
         ? { ...data.subscription, telegramChatId: data.subscription.telegramChatId ?? "", email: data.subscription.email ?? "" }
         : EMPTY_SUB;
@@ -80,16 +80,17 @@ function DigestPanel() {
     if (!trader || emailInvalid) return;
     setSaving(true);
     try {
-      const res = await fetch(`${BASE}/api/digest/subscription`, {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      try {
+        await http.put("/api/digest/subscription", {
           trader, enabled: sub.enabled, channel: sub.channel,
           telegramChatId: sub.telegramChatId || null, email: sub.email || null,
           sendMorning: sub.sendMorning, sendEvening: sub.sendEvening, tradesWindowHours: sub.tradesWindowHours,
-        }),
-      });
-      if (!res.ok) { toast({ title: await readApiError(res, "Ошибка сохранения"), variant: "destructive" }); return; }
+        });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        toast({ title: humanizeApiError(e, "Ошибка сохранения"), variant: "destructive" });
+        return;
+      }
       setSavedSub(sub);
       toast({ title: "Настройки дайджеста сохранены" });
     } catch {
@@ -103,13 +104,19 @@ function DigestPanel() {
     if (!trader) return;
     setSending(true);
     try {
-      const res = await fetch(`${BASE}/api/digest/send`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ trader }),
-      });
-      const data = (await res.json().catch(() => ({}))) as { sent?: boolean; channels?: string[]; errors?: string[]; error?: string };
-      if (res.ok && data.sent) toast({ title: `Дайджест отправлен: ${(data.channels ?? []).join(", ")}` });
-      else if (res.ok && (data.errors ?? []).length > 0) toast({ title: `Ошибка доставки: ${(data.errors ?? []).join("; ")}`, variant: "destructive" });
-      else if (res.ok) toast({ title: "Канал доставки не настроен или доставка отключена", variant: "destructive" });
+      type SendResp = { sent?: boolean; channels?: string[]; errors?: string[]; error?: string };
+      let ok = true;
+      let data: SendResp;
+      try {
+        data = (await http.post<SendResp | null>("/api/digest/send", { trader })) ?? {};
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        ok = e.status < 300;
+        data = ok ? {} : { error: e.field<string>("error") };
+      }
+      if (ok && data.sent) toast({ title: `Дайджест отправлен: ${(data.channels ?? []).join(", ")}` });
+      else if (ok && (data.errors ?? []).length > 0) toast({ title: `Ошибка доставки: ${(data.errors ?? []).join("; ")}`, variant: "destructive" });
+      else if (ok) toast({ title: "Канал доставки не настроен или доставка отключена", variant: "destructive" });
       else toast({ title: data.error ?? "Ошибка отправки", variant: "destructive" });
     } catch {
       toast({ title: "Сетевая ошибка", variant: "destructive" });
@@ -124,10 +131,18 @@ function DigestPanel() {
     setPreviewLoading(true);
     setPreviewText(null);
     try {
-      const res = await fetch(`${BASE}/api/digest/preview?trader=${encodeURIComponent(trader)}&hours=${sub.tradesWindowHours}`);
-      const data = (await res.json().catch(() => ({}))) as { text?: string; error?: string };
-      if (res.ok && data.text) setPreviewText(data.text);
-      else setPreviewText(`Не удалось построить предпросмотр: ${data.error ?? `HTTP ${res.status}`}`);
+      type PreviewResp = { text?: string; error?: string };
+      let status = 200;
+      let data: PreviewResp;
+      try {
+        data = (await http.get<PreviewResp | null>("/api/digest/preview", { query: { trader, hours: sub.tradesWindowHours } })) ?? {};
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        status = e.status;
+        data = { error: e.field<string>("error") };
+      }
+      if (status < 300 && data.text) setPreviewText(data.text);
+      else setPreviewText(`Не удалось построить предпросмотр: ${data.error ?? `HTTP ${status}`}`);
     } catch {
       setPreviewText("Сетевая ошибка");
     } finally {
@@ -229,8 +244,8 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
 
   useEffect(() => {
     if (!name) return;
-    fetch(`${BASE}/api/users/tg-notifications?name=${encodeURIComponent(name)}`)
-      .then((r) => (r.ok ? r.json() : null))
+    http.get<{ enabled?: unknown } | null>("/api/users/tg-notifications", { query: { name } })
+      .catch(() => null)
       .then((d) => { if (d && typeof d.enabled === "boolean") setEnabled(d.enabled); else setEnabled(true); })
       .catch(() => setEnabled(true));
   }, [name]);
@@ -240,10 +255,14 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
     const prev = enabled;
     setEnabled(v);
     try {
-      const r = await fetch(`${BASE}/api/users/tg-notifications`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name, enabled: v }),
-      });
-      if (!r.ok) { setEnabled(prev); toast({ title: "Ошибка сохранения", description: await readApiError(r), variant: "destructive" }); return; }
+      try {
+        await http.patch("/api/users/tg-notifications", { name, enabled: v });
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        setEnabled(prev);
+        toast({ title: "Ошибка сохранения", description: humanizeApiError(e), variant: "destructive" });
+        return;
+      }
       toast({ title: v ? "Оповещения включены" : "Оповещения на паузе" });
     } catch {
       setEnabled(prev);

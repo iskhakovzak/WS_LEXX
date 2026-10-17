@@ -4,8 +4,10 @@ import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtR, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtCount, fmtPrice, fmtR, fmtUsd, pluralRu } from "@/lib/format";
 import type { DashboardToday, Horizon, OpenPosition } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
 
 export const HORIZON_LABEL: Record<Horizon, string> = {
   intraday: "Интрадей",
@@ -15,7 +17,6 @@ export const HORIZON_LABEL: Record<Horizon, string> = {
 
 const HORIZON_TONE = { intraday: "accent", overnight: "purple", swing: "warn" } as const;
 
-const price = (v: number | null) => (v == null ? "—" : v.toLocaleString("ru-RU", { maximumFractionDigits: 2 }));
 
 function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: boolean; today: string }) {
   const isShort = (p.side ?? "").toLowerCase().startsWith("s");
@@ -45,22 +46,22 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
           )}
         </div>
         <span className="text-right text-sm tabular-nums">
-          {p.daysHeld === 0 ? "сегодня" : `${p.daysHeld} ${plural(p.daysHeld, ["день", "дня", "дней"])}`}
+          {p.daysHeld === 0 ? "сегодня" : `${commonI18n.t("units.days", { count: p.daysHeld })}`}
         </span>
         <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block" title="Вход → стоп">
           {p.entry != null || p.stop != null ? (
             <>
-              {price(p.entry)} <span aria-hidden="true">→</span> {price(p.stop)}
+              {fmtPrice(p.entry)} <span aria-hidden="true">→</span> {fmtPrice(p.stop)}
               {p.stopPct != null ? <span className="ml-1">({p.stopPct}%)</span> : null}
             </>
           ) : (
             "—"
           )}
         </span>
-        <span className="hidden text-right text-sm tabular-nums sm:block">{p.qty != null ? `${p.qty.toLocaleString("ru-RU")} шт` : "—"}</span>
+        <span className="hidden text-right text-sm tabular-nums sm:block">{p.qty != null ? `${fmtCount(p.qty)} шт` : "—"}</span>
         <span className="hidden text-right text-sm tabular-nums sm:block">
           {p.riskUsd != null ? (
-            <span className="text-down">{fmtMoney(-Math.abs(p.riskUsd))}</span>
+            <span className="text-down">{fmtUsd(-Math.abs(p.riskUsd), { signed: true })}</span>
           ) : (
             <span className="text-muted-foreground" title="Риск $ не указан: нет стопа или объёма">
               риск —
@@ -97,7 +98,7 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
         <div className="flex flex-wrap items-center gap-1.5">
           {carried.length > 0 && (
             <span title="Суммарный плановый риск переносимых позиций (до стопа)">
-              <Pill tone="down">Риск на ночь {fmtMoney(-Math.abs(carriedRisk))}</Pill>
+              <Pill tone="down">Риск на ночь {fmtUsd(-Math.abs(carriedRisk), { signed: true })}</Pill>
             </span>
           )}
           {!team && (
@@ -121,12 +122,12 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
                   <div key={h.horizon} className="min-w-0 rounded-xl border border-border/60 bg-[var(--glass-bg)] p-3">
                     <div className="truncate text-xs text-muted-foreground">{HORIZON_LABEL[h.horizon]}</div>
                     <div className={cn("truncate text-lg font-semibold tabular-nums", toneText(toneOf(val ?? h.r)))}>
-                      {val != null ? fmtMoney(val) : h.trades > 0 ? fmtR(h.r) : "—"}
+                      {val != null ? fmtUsd(val, { signed: true }) : h.trades > 0 ? fmtR(h.r) : "—"}
                     </div>
                     <div className="truncate text-2xs text-muted-foreground">
-                      {h.trades} {plural(h.trades, ["сделка", "сделки", "сделок"])}
+                      {commonI18n.t("units.trades", { count: h.trades })}
                       {val != null && h.trades > 0 ? ` · ${fmtR(h.r)}` : ""}
-                      {h.fees ? ` · комиссии ${fmtMoney(-Math.abs(h.fees))}` : ""}
+                      {h.fees ? ` · комиссии ${fmtUsd(-Math.abs(h.fees), { signed: true })}` : ""}
                     </div>
                   </div>
                 );
@@ -168,7 +169,7 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
             ))}
             {(noRisk > 0 || staleIntraday.length > 0) && (
               <p className="px-2 text-xs text-muted-foreground">
-                {noRisk > 0 && `${noRisk} ${plural(noRisk, ["позиция", "позиции", "позиций"])} на ночь без указанного риска $ (нет стопа или объёма). `}
+                {noRisk > 0 && `${noRisk} ${pluralRu(noRisk, "позиция", "позиции", "позиций")} на ночь без указанного риска $ (нет стопа или объёма). `}
                 {staleIntraday.length > 0 &&
                   `Интрадей-позиция ${staleIntraday[0].ticker} открыта с ${shortDate(staleIntraday[0].date)} — закройте или смените горизонт на овернайт/свинг.`}
               </p>

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, Users } from "lucide-react";
+import { Activity, Bug, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/components/ds";
@@ -13,9 +13,11 @@ import { ModerationQueue } from "@/components/admin/ModerationQueue";
 import { RolesPanel } from "@/components/admin/RolesPanel";
 import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
+import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
+import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useTiers } from "@/components/admin/console-api";
 
-const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "data", "audit"];
+const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "data", "audit", "errors"];
 // Old tab ids (links/bookmarks) map onto the new ones.
 const LEGACY: Record<string, AdminTab> = { users: "people", traders: "people", reports: "moderation", tools: "data", permissions: "roles" };
 const TAB_KEY = "admin.tab";
@@ -62,10 +64,14 @@ export default function AdminPage() {
 }
 
 function AdminConsole() {
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, can } = useAuth();
+  // «Ошибки» (internal error tracker) is admin-only (capability admin.errors).
+  const showErrors = isAdmin && can("admin.errors");
+  const tabs = showErrors ? TABS : TABS.filter((x) => x !== "errors");
   const actor = user?.traderName ?? "";
   const qc = useQueryClient();
-  const [tab, setTabState] = useState<AdminTab>(initialTab);
+  const [tabState, setTabState] = useState<AdminTab>(initialTab);
+  const tab: AdminTab = tabState === "errors" && !showErrors ? "overview" : tabState;
   const [traderFilter, setTraderFilterState] = useState<TraderFilter>(initialFilter);
   const [peopleView, setPeopleViewState] = useState<PeopleView>(initialView);
 
@@ -124,11 +130,11 @@ function AdminConsole() {
       if (isTypingTarget(e.target) || e.ctrlKey || e.metaKey || e.altKey) return;
       if (document.querySelector("[role=dialog],[role=menu],[role=alertdialog]")) return;
       const n = Number(e.key);
-      if (Number.isInteger(n) && n >= 1 && n <= TABS.length) { e.preventDefault(); setTab(TABS[n - 1]); }
+      if (Number.isInteger(n) && n >= 1 && n <= tabs.length) { e.preventDefault(); setTab(tabs[n - 1]); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [setTab]);
+  }, [setTab, tabs]);
 
   const openReports = pulse.data?.summary.openReports ?? overview.data?.openReports;
   const fetching = pulse.isFetching || overview.isFetching || health.isFetching;
@@ -168,10 +174,11 @@ function AdminConsole() {
             { value: "roles", label: "Роли и права", icon: KeyRound },
             { value: "data", label: "Данные", icon: Database },
             { value: "audit", label: "Аудит", icon: ScrollText },
+            ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),
           ]}
         />
         <p className="hidden items-center gap-1 self-end text-2xs text-muted-foreground md:inline-flex">
-          <Kbd>1</Kbd>–<Kbd>6</Kbd> разделы
+          <Kbd>1</Kbd>–<Kbd>{tabs.length}</Kbd> разделы
         </p>
       </div>
 
@@ -211,6 +218,7 @@ function AdminConsole() {
         {tab === "roles" && <RolesPanel />}
         {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
+        {tab === "errors" && <AppErrorsPanel />}
       </div>
     </Page>
   );

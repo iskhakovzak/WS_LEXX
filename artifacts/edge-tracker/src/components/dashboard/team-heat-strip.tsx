@@ -7,8 +7,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtR, plural } from "./fmt";
+import { fmtR, fmtUsd } from "@/lib/format";
 import type { RiskDesk, RiskDeskRow } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
 
 const STATUS_TONE: Record<RiskDeskRow["status"], Tone> = { breach: "down", warn: "warn", ok: "up", no_limits: "neutral" };
 const STATUS_LABEL: Record<RiskDeskRow["status"], string> = { breach: "лимит", warn: "близко", ok: "в лимите", no_limits: "нет лимита" };
@@ -33,7 +34,7 @@ const DESK_ACCESSORS = {
 } as const;
 
 function money(v: number | null, r: number, trades: number) {
-  return v != null ? fmtMoney(v) : trades > 0 && r !== 0 ? fmtR(r) : "—";
+  return v != null ? fmtUsd(v, { signed: true }) : trades > 0 && r !== 0 ? fmtR(r) : "—";
 }
 
 function TraderRow({ r }: { r: RiskDeskRow }) {
@@ -52,7 +53,7 @@ function TraderRow({ r }: { r: RiskDeskRow }) {
         <span className="min-w-0">
           <span className="block truncate text-sm font-medium">{r.trader}</span>
           <span className="block truncate text-2xs text-muted-foreground tabular-nums">
-            {r.today.trades} {plural(r.today.trades, ["сделка", "сделки", "сделок"])}
+            {commonI18n.t("units.trades", { count: r.today.trades })}
             {r.today.carriedTonight > 0 ? ` · ${r.today.carriedTonight} на ночь` : ""}
           </span>
         </span>
@@ -100,7 +101,7 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
       title="Деск сегодня"
       icon={Users}
       fill={fill}
-      description={`${s.traders} ${plural(s.traders, ["трейдер", "трейдера", "трейдеров"])} · ${s.tradesToday} ${plural(s.tradesToday, ["сделка", "сделки", "сделок"])} сегодня`}
+      description={`${commonI18n.t("units.traders", { count: s.traders })} · ${commonI18n.t("units.trades", { count: s.tradesToday })} сегодня`}
       actions={
         s.halted + s.breach > 0 ? (
           <Pill tone="down" dot>
@@ -116,7 +117,7 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
       footer={
         <>
           <span className="tabular-nums">
-            {s.pnlNetToday != null ? `Деск сегодня ${fmtMoney(s.pnlNetToday)} нетто` : "Сегодня сделок нет"}
+            {s.pnlNetToday != null ? `Деск сегодня ${fmtUsd(s.pnlNetToday, { signed: true })} нетто` : "Сегодня сделок нет"}
             {s.carriedTonight ? ` · ${s.carriedTonight} на ночь` : ""}
           </span>
           <Link href={links.risk()} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">

@@ -6,8 +6,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, EmptyState, type Tone } from "@/components/ds";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { humanizeApiError, nullIfMissing } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import {
   Sparkles, ThumbsUp, AlertTriangle, Target, Clock, ChevronDown, Copy, Check, RefreshCw, Brain, Loader2,
   type LucideIcon,
@@ -248,8 +250,7 @@ export function AiReviewPanel({
   const loadUsage = useCallback(async () => {
     try {
       // Usage is keyed by the signed-in member on the server (Bearer token from lib/install-fetch-auth).
-      const r = await fetch(`${BASE}/api/ai-review/usage`);
-      if (r.ok) setUsage(await r.json());
+      setUsage(await http.get<UsageInfo>("/api/ai-review/usage"));
     } catch {
       /* usage is informational */
     }
@@ -261,10 +262,8 @@ export function AiReviewPanel({
       return;
     }
     try {
-      const r = await fetch(
-        `${BASE}/api/emotional-state/by-date?userId=${encodeURIComponent(trader)}&date=${encodeURIComponent(tradeDate.slice(0, 10))}`
-      );
-      setEmotionalState(r.ok ? ((await r.json()) ?? null) : null);
+      const row = await http.get<EmotionalState | null>("/api/emotional-state/by-date", { query: { userId: trader, date: tradeDate.slice(0, 10) } });
+      setEmotionalState(row ?? null);
     } catch {
       setEmotionalState(null);
     }
@@ -274,12 +273,10 @@ export function AiReviewPanel({
     setLoading(true);
     setLoadErr(null);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/ai-review`);
-      if (r.status === 404) setReview(null);
-      else if (r.ok) setReview(await r.json());
-      else setLoadErr(`Не удалось загрузить разбор (HTTP ${r.status})`);
+      // 404 = no review yet.
+      setReview(await http.get<Review>(`/api/trades/${tradeId}/ai-review`).catch(nullIfMissing));
     } catch (e: unknown) {
-      setLoadErr(e instanceof Error ? e.message : "Сеть недоступна");
+      setLoadErr(humanizeApiError(e, "Не удалось загрузить разбор"));
     } finally {
       setLoading(false);
     }
@@ -293,25 +290,16 @@ export function AiReviewPanel({
     setErr(null);
     setGenerating(true);
     try {
-      const r = await fetch(`${BASE}/api/trades/${tradeId}/ai-review${force ? "?force=true" : ""}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ force }),
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) {
-        if (r.status === 429) {
-          setErr(`Лимит запросов. Повторите через ${data?.retryAfterSec ?? 60} с.`);
-          loadUsage();
-        } else {
-          setErr(data?.error || `Ошибка ${r.status}`);
-        }
-      } else {
-        setReview(data);
-        loadUsage();
-      }
+      const data = await http.post<Review>(`/api/trades/${tradeId}/ai-review`, { force }, { query: { force: force ? "true" : null } });
+      setReview(data);
+      loadUsage();
     } catch (e: unknown) {
-      setErr(e instanceof Error ? e.message : "Сеть недоступна");
+      if (e instanceof ApiError && e.status === 429) {
+        setErr(`Лимит запросов. Повторите через ${e.field("retryAfterSec") ?? 60} с.`);
+        loadUsage();
+      } else {
+        setErr(humanizeApiError(e));
+      }
     } finally {
       setGenerating(false);
     }
@@ -332,7 +320,7 @@ export function AiReviewPanel({
 
   const nearLimit = usage != null && usage.hourlyCount >= Math.max(1, usage.hourlyLimit - 5);
   const atLimit = usage != null && usage.hourlyCount >= usage.hourlyLimit;
-  const dailyCostFormatted = usage ? `$${Number(usage.dailyCostUsd ?? 0).toFixed(4)}` : "—";
+  const dailyCostFormatted = usage ? fmtUsd(Number(usage.dailyCostUsd ?? 0), { decimals: 4 }) : "—";
 
   async function copyReview() {
     if (!review) return;
@@ -482,10 +470,10 @@ export function AiReviewPanel({
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[var(--glass-border)] pt-2 text-2xs tabular-nums text-muted-foreground">
-              <span>{review.model} · {new Date(review.generatedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+              <span>{review.model} · {fmtDate(review.generatedAt, "dateTime")}</span>
               <span>
                 {review.inputTokens ?? "?"}→{review.outputTokens ?? "?"} токенов
-                {review.costUsd != null && <> · ${Number(review.costUsd).toFixed(4)}</>}
+                {review.costUsd != null && <> · {fmtUsd(Number(review.costUsd), { decimals: 4 })}</>}
               </span>
             </div>
           </div>

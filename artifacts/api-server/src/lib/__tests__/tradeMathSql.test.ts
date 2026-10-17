@@ -1,7 +1,7 @@
 /**
  * SQL builders vs JS: the same fixture rows through signedRSql / netPnlSql / resultSql / decidedSql / closedSql
  * / closeDateSql / horizonSql over a VALUES(...) CTE aliased `t`. Read-only SELECTs, no tables touched.
- * Skips cleanly when the local Postgres (TEST_DATABASE_URL, default postgresql://postgres:postgres@localhost:5432/edge_tracker)
+ * Skips cleanly when the local Postgres (TEST_DATABASE_URL, default postgresql://postgres:postgres@localhost:5432/edge_tracker_test)
  * is not reachable.
  */
 import { afterAll, describe, expect, it } from "vitest";

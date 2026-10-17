@@ -2,57 +2,31 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from "react"
 import { Mic, Play, Pause, Loader2, ChevronDown, AlertCircle, Copy, Check, Search, RotateCcw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { BASE } from "@/lib/api";
-import { useAuth } from "@/contexts/auth-context";
+import { ApiError, http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 
 // ─── authenticated audio sources ──────────────────────────────────────────────
-// <audio src> cannot send the Authorization header, and every /api/* call needs auth. Preferred path:
-// GET /api/voice-notes/:id/audio-url returns a URL with a 5-minute HMAC media token bound to that note
-// (nothing about the session leaks). Fallback for older API builds (404) or while the audio path is not
-// on the public allowlist (the token-only request 401s): `?access_token=<session JWT>` — accepted by
-// authMiddleware for exactly this path. On a playback error the source is rebuilt once with a freshly
-// re-read token (rotated/renewed sessions), then the error is shown.
+// <audio src> cannot send the Authorization header. GET /api/voice-notes/:id/audio-url returns a URL with a
+// 5-minute HMAC media token bound to that one note (nothing about the session leaks; the session token is never
+// put into a URL — the API no longer accepts `?access_token=`). On a playback error (expired media token) the
+// source is rebuilt once with a fresh media URL, then the error is shown.
 // The token-bearing URL is never logged, never put into React keys/attributes other than `src`, and
 // is removed from the element on unmount.
 
-const TOKEN_KEY = "ws_lexx_token";
+class MediaUrlError extends Error {}
 
-/** Current session token: auth context first, then the same localStorage key install-fetch-auth reads. */
-function readSessionToken(fromContext: string | null | undefined): string | null {
-  if (fromContext) return fromContext;
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
-}
-
-type SrcKind = "media" | "session";
-type AudioSource = { url: string; kind: SrcKind };
-
-async function fetchMediaUrl(noteId: number): Promise<string | null> {
-  try {
-    const r = await fetch(`${BASE}/api/voice-notes/${noteId}/audio-url`);
-    if (!r.ok) return null; // 404 = older API, 403/503 = no media token available → fall back to the session token
-    const d = (await r.json().catch(() => null)) as { path?: string } | null;
-    if (!d?.path || typeof d.path !== "string" || !d.path.startsWith("/api/")) return null;
-    return `${BASE}${d.path}`;
-  } catch {
-    return null;
-  }
-}
-
-function sessionUrl(noteId: number, userId: string, token: string | null): string {
-  const q = new URLSearchParams({ userId });
-  if (token) q.set("access_token", token);
-  return `${BASE}/api/voice-notes/${noteId}/audio?${q.toString()}`;
-}
-
-/** Resolve the best playable source: media token when the server offers one, else the session token. */
-async function resolveAudioSource(noteId: number, userId: string, token: string | null, preferMedia: boolean): Promise<AudioSource> {
-  if (preferMedia) {
-    const media = await fetchMediaUrl(noteId);
-    if (media) return { url: media, kind: "media" };
-  }
-  return { url: sessionUrl(noteId, userId, token), kind: "session" };
+async function fetchMediaUrl(noteId: number): Promise<string> {
+  const d = await http.get<{ path?: string } | null>(`/api/voice-notes/${noteId}/audio-url`).catch((e: unknown) => {
+    // Answered but refused / not JSON → final; network errors stay retryable.
+    if (e instanceof ApiError && !e.isNetwork) throw new MediaUrlError(e.code === "BAD_RESPONSE" ? "bad media url" : `HTTP ${e.status}`);
+    throw e;
+  });
+  if (!d?.path || typeof d.path !== "string" || !d.path.startsWith("/api/")) throw new MediaUrlError("bad media url");
+  return `${BASE}${d.path}`;
 }
 
 interface VoiceNote {
@@ -90,10 +64,9 @@ function formatDuration(sec: number | null | undefined): string {
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-const DATE_FMT = new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 function formatCreated(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? iso.substring(0, 10) : DATE_FMT.format(d);
+  return Number.isNaN(d.getTime()) ? iso.substring(0, 10) : fmtDate(d, "dateTime");
 }
 
 /** Deterministic pseudo-waveform (decorative) seeded by note id. */
@@ -132,7 +105,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
   return <>{parts}</>;
 }
 
-function VoiceNoteItem({ note, userId, query, token }: { note: VoiceNote; userId: string; query: string; token: string | null }) {
+function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -144,10 +117,8 @@ function VoiceNoteItem({ note, userId, query, token }: { note: VoiceNote; userId
   const audioRef = useRef<HTMLAudioElement>(null);
   const draggingRef = useRef(false);
   // Source bookkeeping lives in refs: the token-bearing URL must not become React state/props.
-  const srcKindRef = useRef<SrcKind | null>(null);
   const retriedRef = useRef(false);
   const resolvingRef = useRef<Promise<void> | null>(null);
-  const mediaSupportedRef = useRef(true);
 
   const bars = useMemo(() => makeBars(note.id, BAR_COUNT), [note.id]);
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
@@ -172,19 +143,13 @@ function VoiceNoteItem({ note, userId, query, token }: { note: VoiceNote; userId
     if (audioRef.current) audioRef.current.playbackRate = speed;
   }, [speed]);
 
-  /**
-   * Attach a playable src. `force` rebuilds it even when one is set (after an error).
-   * Media token is tried first; after a failure with a media URL the next attempt uses the session token.
-   */
+  /** Attach a playable src (fresh media-token URL). `force` rebuilds it even when one is set (after an error). */
   function ensureSrc(audio: HTMLAudioElement, force = false): Promise<void> {
     if (audio.getAttribute("src") && !force) return Promise.resolve();
     if (resolvingRef.current) return resolvingRef.current;
-    const preferMedia = mediaSupportedRef.current && srcKindRef.current !== "media";
-    const p = resolveAudioSource(note.id, userId, readSessionToken(token), preferMedia)
-      .then((src) => {
-        if (src.kind === "session" && preferMedia) mediaSupportedRef.current = false;
-        srcKindRef.current = src.kind;
-        audio.src = src.url;
+    const p = fetchMediaUrl(note.id)
+      .then((url) => {
+        audio.src = url;
         audio.playbackRate = speed;
       })
       .finally(() => { resolvingRef.current = null; });
@@ -199,13 +164,12 @@ function VoiceNoteItem({ note, userId, query, token }: { note: VoiceNote; userId
     retriedRef.current = true;
     const wasPlaying = resume;
     const resumeAt = currentTime;
-    // A failed media-token URL falls back to the session token; a failed session URL is rebuilt with a re-read token.
-    if (srcKindRef.current === "media") mediaSupportedRef.current = false;
+    // Media tokens live 5 minutes: a paused player resumed later needs a fresh URL.
     ensureSrc(audio, true).then(() => {
       if (resumeAt > 0) audio.addEventListener("loadedmetadata", () => { audio.currentTime = resumeAt; }, { once: true });
       audio.load();
       if (wasPlaying) audio.play().catch(() => { setLoading(false); setPlayError(true); });
-    });
+    }, () => { setLoading(false); setPlayError(true); });
     return true;
   }
 
@@ -229,7 +193,7 @@ function VoiceNoteItem({ note, userId, query, token }: { note: VoiceNote; userId
       return audio.play();
     }).catch((e) => {
       if (e?.name === "AbortError") return;
-      if (recoverFromError(true)) return;
+      if (!(e instanceof MediaUrlError) && recoverFromError(true)) return;
       setLoading(false);
       setPlayError(true);
     });
@@ -450,18 +414,14 @@ interface VoiceNotePlayerProps {
 
 export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, className }: VoiceNotePlayerProps) {
   const [query, setQuery] = useState("");
-  const { user } = useAuth();
-  const token = user?.token ?? null;
   const { data: notes = [], isLoading, isError, refetch } = useQuery<VoiceNote[]>({
     queryKey: ["voice-notes", tradeId, userId, refreshKey],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/voice-notes?userId=${encodeURIComponent(userId)}&tradeId=${tradeId}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
+    queryFn: async ({ signal }) => {
+      const d = await http.get<VoiceNote[]>(`/api/voice-notes?userId=${encodeURIComponent(userId)}&tradeId=${tradeId}`, { signal });
       return Array.isArray(d) ? d : [];
     },
     enabled: !!userId,
-    staleTime: 30_000,
+    staleTime: STALE.default,
   });
 
   const totalSec = useMemo(() => notes.reduce((s, n) => s + (Number(n.durationSec) || 0), 0), [notes]);
@@ -526,7 +486,7 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
       </div>
       <div className="space-y-2">
         {filtered.map((note) => (
-          <VoiceNoteItem key={note.id} note={note} userId={userId} query={query} token={token} />
+          <VoiceNoteItem key={note.id} note={note} query={query} />
         ))}
         {filtered.length === 0 && (
           <p className="text-xs text-muted-foreground">Ничего не найдено по «{query}»</p>

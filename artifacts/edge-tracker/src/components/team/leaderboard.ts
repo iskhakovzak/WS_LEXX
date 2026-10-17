@@ -4,6 +4,7 @@
 import type { Trade } from "@workspace/api-client-react";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { closeDate, isClosed, netPnl, signedR } from "@/lib/trade-math";
+import { fmtDate } from "@/lib/format";
 
 export type Period = "week" | "month" | "quarter" | "all";
 export type Metric = "score" | "net" | "r" | "expectancy" | "pf" | "consistency" | "drawdown" | "winrate";
@@ -21,14 +22,12 @@ export const METRIC_LABEL: Record<Metric, string> = {
 
 export type Range = { kind: Period; from: string | null; to: string | null; label: string };
 
-const MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const MONTHS_NOM = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-
 function parts(ymd: string) {
   const [y, m, d] = ymd.split("-").map(Number);
   return { y, m, d };
 }
 const pad = (n: number) => String(n).padStart(2, "0");
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Monday of the NY week containing `ymd`. */
 export function mondayOf(ymd: string): string {
@@ -41,9 +40,9 @@ function lastDayOfMonth(y: number, m: number): number {
   return new Date(Date.UTC(y, m, 0)).getUTCDate();
 }
 
+/** «17 октября» / «17 октября 2026 г.» */
 export function fmtDay(ymd: string, withYear = false): string {
-  const { y, m, d } = parts(ymd);
-  return `${d} ${MONTHS[m - 1]}${withYear ? ` ${y}` : ""}`;
+  return fmtDate(ymd, withYear ? "long" : "dayMonthLong");
 }
 
 /** Window for an anchor date: Mon–Fri week, calendar month, calendar quarter, or everything. */
@@ -54,11 +53,11 @@ export function periodRange(anchor: string, period: Period): Range {
     const from = mondayOf(anchor);
     const to = addDays(from, 4);
     const a = parts(from), b = parts(to);
-    const label = a.m === b.m ? `${a.d}–${b.d} ${MONTHS[b.m - 1]} ${b.y}` : `${fmtDay(from)} – ${fmtDay(to, true)}`;
+    const label = a.m === b.m ? `${a.d}–${fmtDay(to, true)}` : `${fmtDay(from)} – ${fmtDay(to, true)}`;
     return { kind: "week", from, to, label };
   }
   if (period === "month") {
-    return { kind: "month", from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDayOfMonth(y, m))}`, label: `${MONTHS_NOM[m - 1]} ${y}` };
+    return { kind: "month", from: `${y}-${pad(m)}-01`, to: `${y}-${pad(m)}-${pad(lastDayOfMonth(y, m))}`, label: capFirst(fmtDate(`${y}-${pad(m)}-01`, "monthYear")) };
   }
   const q = Math.floor((m - 1) / 3);
   const fm = q * 3 + 1, lm = fm + 2;

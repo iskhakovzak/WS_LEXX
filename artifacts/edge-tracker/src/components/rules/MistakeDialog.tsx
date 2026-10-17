@@ -10,8 +10,10 @@ import { Kbd } from "@/components/ui/kbd";
 import { Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { apiJson } from "./api";
-import { MISTAKE_CATEGORIES, RULE_PREFIX, SEVERITY, SEVERITY_ORDER, fmtDay, fmtR, fmtUsd } from "./constants";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { MISTAKE_CATEGORIES, RULE_PREFIX, SEVERITY, SEVERITY_ORDER } from "./constants";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import type { DisciplineTrade, Mistake, MistakePrefill, Rule, Severity } from "./types";
 
 const NO_TRADE = "none";
@@ -118,16 +120,16 @@ export function MistakeDialog({
     try {
       if (editing) {
         body.resolved = resolved ? "yes" : "no";
-        await apiJson(`/errors/${editing.id}`, { method: "PATCH", json: body }, "Не удалось сохранить");
+        await http.patch(`/api/errors/${editing.id}`, body);
         toast({ title: "Запись обновлена" });
       } else {
-        await apiJson(`/errors`, { method: "POST", json: { ...body, trader } }, "Не удалось записать ошибку");
+        await http.post(`/api/errors`, { ...body, trader });
         toast({ title: "Ошибка записана", description: "Разберите её, когда будет время — добавьте урок." });
       }
       onSaved();
       onOpenChange(false);
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, editing ? "Не удалось сохранить" : "Не удалось записать ошибку"), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -219,7 +221,7 @@ export function MistakeDialog({
                   {tradeOptions.map((t) => (
                     <SelectItem key={t.id} value={String(t.id)}>
                       <span className="font-medium">{t.ticker}</span>
-                      <span className="ml-2 text-muted-foreground tabular-nums">{fmtDay(t.closeDate || t.date)}{t.netPnl != null ? ` · ${fmtUsd(t.netPnl)}` : t.rMultiple != null ? ` · ${fmtR(t.rMultiple)}` : ""}</span>
+                      <span className="ml-2 text-muted-foreground tabular-nums">{fmtDate(t.closeDate || t.date, "dayMonth")}{t.netPnl != null ? ` · ${fmtUsd(t.netPnl, { signed: true, decimals: "trim" })}` : t.rMultiple != null ? ` · ${fmtR(t.rMultiple, 1)}` : ""}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>

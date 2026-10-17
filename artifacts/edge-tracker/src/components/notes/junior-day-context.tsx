@@ -7,6 +7,7 @@ import { Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { fmtR, fmtUsd } from "@/lib/format";
 import { horizonOf, netPnl, resultOf, signedR } from "@/lib/trade-math";
 import type { SectionKey } from "./junior-lib";
 
@@ -14,22 +15,13 @@ type Horizon = "intraday" | "overnight" | "swing";
 
 const H_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
 
-function fmtUsd(n: number): string {
-  const s = Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 });
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
-}
-
-function fmtR(n: number): string {
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(1)}R`;
-}
-
 /** One line per trade, ready to drop into the matching section of the summary. */
 export function tradeLine(t: Trade): string {
   const bits = [t.ticker, t.side ?? "", t.setup ?? ""].filter(Boolean).join(" · ");
   const r = signedR(t);
   const pnl = netPnl(t);
   const outcome = resultOf(t);
-  const res = [r != null ? fmtR(r) : "", pnl != null ? fmtUsd(pnl) : "", outcome === "win" ? "плюс" : outcome === "loss" ? "минус" : outcome === "be" ? "в ноль" : ""]
+  const res = [r != null ? fmtR(r, 1) : "", pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : "", outcome === "win" ? "плюс" : outcome === "loss" ? "минус" : outcome === "be" ? "в ноль" : ""]
     .filter(Boolean)
     .join(", ");
   return `${bits}${res ? ` — ${res}` : ""}. `;
@@ -104,8 +96,8 @@ export function JuniorDayContext({
         <div className="space-y-4">
           <div className="grid grid-cols-3 gap-2">
             <Tile label="Сделок" value={String(opened.length)} />
-            <Tile label="Итог, R" value={totals.r == null ? "—" : fmtR(totals.r)} tone={toneText(toneOf(totals.r))} />
-            <Tile label="P&L net" value={totals.pnl == null ? "—" : fmtUsd(totals.pnl)} tone={toneText(toneOf(totals.pnl))} />
+            <Tile label="Итог, R" value={totals.r == null ? "—" : fmtR(totals.r, 1)} tone={toneText(toneOf(totals.r))} />
+            <Tile label="P&L net" value={totals.pnl == null ? "—" : fmtUsd(totals.pnl, { signed: true, decimals: 0 })} tone={toneText(toneOf(totals.pnl))} />
           </div>
 
           {opened.length === 0 && carried.length === 0 && (
@@ -188,8 +180,8 @@ function TradeRow({ t, carried }: { t: Trade; carried?: boolean }) {
         {t.side && <span className="text-xs text-muted-foreground">{t.side}</span>}
         {carried && <Pill tone="purple">{horizonOf(t) === "swing" ? "свинг" : "овернайт"}</Pill>}
         <span className="ml-auto flex items-center gap-2 tabular-nums">
-          {r != null && <span className={toneText(toneOf(r))}>{fmtR(r)}</span>}
-          {pnl != null && <span className={cn("text-xs", toneText(toneOf(pnl)))}>{fmtUsd(pnl)}</span>}
+          {r != null && <span className={toneText(toneOf(r))}>{fmtR(r, 1)}</span>}
+          {pnl != null && <span className={cn("text-xs", toneText(toneOf(pnl)))}>{fmtUsd(pnl, { signed: true, decimals: 0 })}</span>}
           {r == null && pnl == null && (
             <span className="text-xs text-muted-foreground">{t.result === "open" ? "открыта" : t.result}</span>
           )}

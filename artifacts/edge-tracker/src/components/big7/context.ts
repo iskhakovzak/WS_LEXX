@@ -11,6 +11,7 @@ import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { etParts, RTH_OPEN_MIN, RTH_CLOSE_MIN, PRE_OPEN_MIN } from "@/components/chart-engine/lib/time";
 import type { Candle } from "@/components/chart-engine/types";
 import { nyDate, prevWeekday } from "@/lib/trading-date";
+import { fmtNum } from "@/lib/format";
 import type { GapStats, StockQuote } from "./lib";
 
 // ─── session date / phase ───────────────────────────────────────────────────
@@ -358,7 +359,6 @@ export type ToneKind = "on" | "off" | "mixed";
 export type Tone = { kind: ToneKind; label: string; score: number; reasons: string[]; divergence: boolean };
 
 const clamp1 = (x: number) => Math.max(-1, Math.min(1, x));
-const s2 = (n: number) => `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}`;
 
 /**
  * Risk-on / risk-off from five signals, each in [−1, 1] with a weight:
@@ -391,7 +391,7 @@ export function marketTone(i: {
   if (i.qqqVwapDist != null && i.phase !== "pre") reasons.push(`QQQ ${i.qqqVwapDist >= 0 ? "над" : "под"} VWAP`);
   if (divergence) reasons.push("Big 7 против индекса — ротация");
   else if (i.agg.shareQqq != null && i.agg.contribQqq != null && Math.abs(i.agg.shareQqq) >= 0.15)
-    reasons.push(`мегакэпы ≈ ${s2(i.agg.contribQqq)} п.п. движения QQQ`);
+    reasons.push(`мегакэпы ≈ ${fmtNum(i.agg.contribQqq, { signed: true })} п.п. движения QQQ`);
   if (i.qqqAboveSma20 != null && reasons.length < 3) reasons.push(`QQQ ${i.qqqAboveSma20 ? "над" : "под"} SMA20`);
 
   const label = kind === "on" ? "Risk-on" : kind === "off" ? "Risk-off" : "Смешанный";

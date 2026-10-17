@@ -16,9 +16,10 @@ import { canModifyOwned, createdByOf } from "@/lib/ownership";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  ACTION_OPTIONS, ACTION_RU, LEVEL_LABELS, actionTone, fmt2, fmtSigned, levelLabel, num, splitLevelNotes,
+  ACTION_OPTIONS, ACTION_RU, LEVEL_LABELS, actionTone, levelLabel, num, splitLevelNotes,
   type GapStats, type StockQuote,
 } from "./lib";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 type Form = { label: string; price: string; notes: string; action: string };
 const EMPTY: Form = { label: "support", price: "", notes: "", action: "" };
@@ -127,7 +128,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
   const quickAdd = async (label: string, p: number | null | undefined) => {
     if (p == null || !(p > 0)) return;
     if (levels.some((l) => Math.abs(Number(l.price) - p) < 0.005)) {
-      toast({ title: `${levelLabel(label)} ${fmt2(p)} уже на лесенке` });
+      toast({ title: `${levelLabel(label)} ${fmtPrice(p)} уже на лесенке` });
       return;
     }
     try {
@@ -139,7 +140,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
   };
 
   const remove = async (l: Big7Level) => {
-    if (!window.confirm(`Удалить уровень ${levelLabel(l.label)} ${fmt2(Number(l.price))} (${ticker})?`)) return;
+    if (!window.confirm(`Удалить уровень ${levelLabel(l.label)} ${fmtPrice(Number(l.price))} (${ticker})?`)) return;
     try {
       await deleteM.mutateAsync({ id: l.id });
       await invalidate();
@@ -185,9 +186,9 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
       >
         <span className={cn("absolute inset-y-1.5 left-0 w-0.5 rounded-full", price == null ? "bg-border" : isAbove ? "bg-down" : "bg-up")} aria-hidden="true" />
         <span className="w-[5.5rem] shrink-0 truncate text-xs text-muted-foreground" title={l.label}>{levelLabel(l.label)}</span>
-        <span className="w-16 shrink-0 font-semibold tabular-nums text-foreground">{fmt2(lp)}</span>
+        <span className="w-16 shrink-0 font-semibold tabular-nums text-foreground">{fmtPrice(lp)}</span>
         <span className="hidden w-[4.5rem] shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:inline" title={distAtr != null ? `${distAtr.toFixed(2)} ATR` : undefined}>
-          {dist != null ? fmtSigned(dist, 1) : ""}
+          {dist != null ? fmtPct(dist, 1) : ""}
           {distAtr != null && <span className="block text-2xs">{Math.abs(distAtr).toFixed(1)} ATR</span>}
         </span>
         <span className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -199,7 +200,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                aria-label={`Действия с уровнем ${levelLabel(l.label)} ${fmt2(lp)}`}
+                aria-label={`Действия с уровнем ${levelLabel(l.label)} ${fmtPrice(lp)}`}
                 className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100"
               >
                 <MoreHorizontal className="h-4 w-4" aria-hidden="true" />
@@ -221,7 +222,7 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
       icon={Layers}
       description={
         nearestR || nearestS
-          ? `Ближайшие: ${nearestR ? `R ${fmt2(Number(nearestR.price))}` : "R —"} · ${nearestS ? `S ${fmt2(Number(nearestS.price))}` : "S —"}`
+          ? `Ближайшие: ${nearestR ? `R ${fmtPrice(Number(nearestR.price))}` : "R —"} · ${nearestS ? `S ${fmtPrice(Number(nearestS.price))}` : "S —"}`
           : "Поддержка ниже цены, сопротивление выше"
       }
       actions={
@@ -259,9 +260,9 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
             <ul className="space-y-0.5" aria-label={`Уровни ${ticker}`}>
               {above.map(row)}
               {price != null && (
-                <li className="flex items-center gap-2 py-1" aria-label={`Текущая цена ${fmt2(price)}`}>
+                <li className="flex items-center gap-2 py-1" aria-label={`Текущая цена ${fmtPrice(price)}`}>
                   <span className="h-px flex-1 bg-primary/50" aria-hidden="true" />
-                  <Pill tone="accent" className="shrink-0">Цена {fmt2(price)}</Pill>
+                  <Pill tone="accent" className="shrink-0">Цена {fmtPrice(price)}</Pill>
                   <span className="h-px flex-1 bg-primary/50" aria-hidden="true" />
                 </li>
               )}
@@ -279,9 +280,9 @@ export function LevelsLadder({ ticker, quote, stats, atr }: { ticker: string; qu
                     disabled={createM.isPending}
                     onClick={() => quickAdd(q.label, q.price)}
                     className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs tabular-nums disabled:opacity-50"
-                    title={`Добавить ${q.text} ${fmt2(q.price!)} на лесенку`}
+                    title={`Добавить ${q.text} ${fmtPrice(q.price!)} на лесенку`}
                   >
-                    <Plus className="h-3 w-3" aria-hidden="true" />{q.text} <span className="text-muted-foreground">{fmt2(q.price!)}</span>
+                    <Plus className="h-3 w-3" aria-hidden="true" />{q.text} <span className="text-muted-foreground">{fmtPrice(q.price!)}</span>
                   </button>
                 ))}
               </div>

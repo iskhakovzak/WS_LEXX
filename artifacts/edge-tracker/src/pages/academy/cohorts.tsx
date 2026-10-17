@@ -14,8 +14,9 @@ import {
 } from "@/components/academy/cohorts/api";
 import { CohortDialog, EnrollDialog, EnrollmentEditDialog, RosterDialog, SessionDialog } from "@/components/academy/cohorts/dialogs";
 import {
-  AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeLocal, fmtYmd, pct,
+  AttendanceSummaryView, DualTime, StagePill, StatusPill, WhereLine, dateTimeLocal, fmtYmd,
 } from "@/components/academy/cohorts/shared";
+import { fmtRate } from "@/lib/format";
 
 /**
  * /academy/cohorts — управление когортами деска (офис / удалённо / гибрид): состав и ступени
@@ -147,9 +148,9 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
         )}
         <StatGrid className="mt-3">
           <StatCard label="Учатся" value={active} hint={`всего в составе: ${d.enrollments.length}`} />
-          <StatCard label="Посещаемость" value={pct(d.attendance.rate)} tone={d.attendance.rate == null ? "neutral" : d.attendance.rate >= 0.9 ? "up" : d.attendance.rate >= 0.75 ? "warn" : "down"}
+          <StatCard label="Посещаемость" value={fmtRate(d.attendance.rate)} tone={d.attendance.rate == null ? "neutral" : d.attendance.rate >= 0.9 ? "up" : d.attendance.rate >= 0.75 ? "warn" : "down"}
             hint={staff ? "по всем студентам" : "ваша"} />
-          <StatCard label="Пунктуальность" value={pct(d.attendance.punctuality)} hint="пришли вовремя" />
+          <StatCard label="Пунктуальность" value={fmtRate(d.attendance.punctuality)} hint="пришли вовремя" />
           <StatCard label="Занятий в расписании" value={d.sessions.length} />
         </StatGrid>
       </Panel>
@@ -230,8 +231,8 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   <td><StagePill stage={e.stage} /></td>
                   <td><StatusPill status={e.status} /></td>
                   <td className="whitespace-nowrap">{fmtYmd(e.joinedOn)}</td>
-                  <td className="text-right">{e.attendance ? pct(e.attendance.rate) : "—"}</td>
-                  <td className="text-right">{e.attendance30 ? pct(e.attendance30.rate) : "—"}</td>
+                  <td className="text-right">{e.attendance ? fmtRate(e.attendance.rate) : "—"}</td>
+                  <td className="text-right">{e.attendance30 ? fmtRate(e.attendance30.rate) : "—"}</td>
                   {staff && (
                     <td className="whitespace-nowrap text-right">
                       <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>Ступень / статус</Button>
@@ -370,8 +371,8 @@ function AttendanceTab({ d }: { d: CohortDetail }) {
                   return (
                     <tr key={e.id}>
                       <td className="font-medium">{e.userName}</td><td>{a.total}</td><td>{a.present}</td><td>{a.late}</td><td>{a.absent}</td><td>{a.excused}</td><td>{a.unmarked}</td>
-                      <td className={cn(a.rate != null && (a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down"))}>{pct(a.rate)}</td>
-                      <td>{pct(e.attendance30?.rate ?? null)}</td>
+                      <td className={cn(a.rate != null && (a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down"))}>{fmtRate(a.rate)}</td>
+                      <td>{fmtRate(e.attendance30?.rate ?? null)}</td>
                       <td className={cn(a.absentStreak > 1 && "text-down")}>{a.absentStreak || "—"}</td>
                     </tr>
                   );

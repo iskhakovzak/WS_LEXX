@@ -10,6 +10,7 @@ import { readChartTheme, type ChartTheme } from "@/components/chart-engine/theme
 import { useThemeVersion } from "@/components/chart-engine/hooks/useThemeVersion";
 import { niceTicks } from "@/components/equity-chart/scale";
 import { cn } from "@/lib/utils";
+import { fmtMonth, localeTag } from "@/lib/format";
 
 export type LinePoint = { x: number; y: number; date: string };
 export type LineSeries = {
@@ -375,8 +376,21 @@ export function downloadCanvasPng(root: HTMLElement | null, filename: string, me
   a.click();
 }
 
-/** Month ticks (1st of each month) on a day-of-year axis. */
-export const MONTH_TICKS: { x: number; label: string }[] = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"].map((label, i) => ({
-  x: Math.round((Date.UTC(2026, i, 1) - Date.UTC(2026, 0, 1)) / 86_400_000) + 1,
-  label,
-}));
+/**
+ * Month ticks (1st of each month) on a day-of-year axis; labels in the UI language («янв» / «Jan»). Built at call
+ * time and cached per language, so the array stays referentially stable between renders.
+ */
+let ticksCache: { tag: string; ticks: { x: number; label: string }[] } | null = null;
+export function monthTicks(): { x: number; label: string }[] {
+  const tag = localeTag();
+  if (ticksCache?.tag !== tag) {
+    ticksCache = {
+      tag,
+      ticks: Array.from({ length: 12 }, (_, i) => ({
+        x: Math.round((Date.UTC(2026, i, 1) - Date.UTC(2026, 0, 1)) / 86_400_000) + 1,
+        label: fmtMonth(i, "short").replace(".", ""),
+      })),
+    };
+  }
+  return ticksCache.ticks;
+}

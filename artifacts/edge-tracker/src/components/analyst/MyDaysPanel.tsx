@@ -8,7 +8,7 @@ import { EmptyState, Panel, TermTooltip } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { DayBucket, MyDaysResponse } from "./api";
-import { fmtMoney } from "./lib";
+import { fmtUsd } from "@/lib/format";
 
 const MIN_TRADES = 5;
 
@@ -19,11 +19,11 @@ function BucketRow({ label, b, hint, strong }: { label: React.ReactNode; b: DayB
       <th scope="row" className="py-1.5 pr-2 text-left text-xs font-normal text-muted-foreground" title={hint}>{label}</th>
       <td className="py-1.5 text-right text-xs tabular-nums text-foreground">{b.trades}</td>
       <td className={cn("py-1.5 text-right text-xs tabular-nums", b.trades ? (b.net >= 0 ? "text-up" : "text-down") : "text-muted-foreground")}>
-        {b.trades ? fmtMoney(b.net) : "—"}
+        {b.trades ? fmtUsd(b.net, { signed: true, decimals: "auto" }) : "—"}
       </td>
       <td className="py-1.5 text-right text-xs tabular-nums text-foreground">{wr != null ? `${wr}%` : "—"}</td>
       <td className={cn("py-1.5 text-right text-xs tabular-nums", b.avgNet == null ? "text-muted-foreground" : b.avgNet >= 0 ? "text-up" : "text-down")}>
-        {b.avgNet != null ? fmtMoney(b.avgNet) : "—"}
+        {b.avgNet != null ? fmtUsd(b.avgNet, { signed: true, decimals: "auto" }) : "—"}
       </td>
     </tr>
   );
@@ -37,8 +37,8 @@ function insight(d: MyDaysResponse): string | null {
     if (Math.abs(diff) >= 1) {
       parts.push(
         diff > 0
-          ? `В дни смены рейтинга сделка в среднем приносит на ${fmtMoney(diff).replace("+", "")} больше, чем в обычные дни.`
-          : `В дни смены рейтинга сделка в среднем на ${fmtMoney(-diff).replace("+", "")} хуже обычного — осторожнее с такими тикерами.`,
+          ? `В дни смены рейтинга сделка в среднем приносит на ${fmtUsd(diff, { decimals: "auto" })} больше, чем в обычные дни.`
+          : `В дни смены рейтинга сделка в среднем на ${fmtUsd(-diff, { decimals: "auto" })} хуже обычного — осторожнее с такими тикерами.`,
       );
     }
   }

@@ -11,7 +11,9 @@ import { BentoGrid, EmptyState, Page, PageHeader, Panel, Pill, Segmented, usePer
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { HttpError, MONTHS_LONG, fmtDay, useOfficeStats, type Unit } from "@/components/office-stats/api";
+import { ApiError } from "@/lib/api/http";
+import { fmtDay, monthLong, useOfficeStats, type Unit } from "@/components/office-stats/api";
+import { nyDate } from "@/lib/trading-date";
 import {
   CalendarHeatmap, DayDetail, GeneralChart, InsightsStrip, KpiRow, PacePanel, type Ctx,
 } from "@/components/office-stats/overview";
@@ -22,9 +24,7 @@ import { MonthlyPanel } from "@/components/office-stats/monthly";
 
 type PeriodMode = "ytd" | "quarter" | "month" | "custom";
 
-function nyToday(): string {
-  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
-}
+const nyToday = (): string => nyDate();
 const pad2 = (n: number) => String(n).padStart(2, "0");
 const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate();
 const minYmd = (a: string, b: string) => (a < b ? a : b);
@@ -85,7 +85,7 @@ export default function OfficeStatsPage() {
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
   }, [mode, effQuarter, effMonth, custom, focusYear, today]);
 
-  const periodLabel = mode === "quarter" ? `${effQuarter} кв. ${focusYear}` : mode === "month" ? `${MONTHS_LONG[effMonth - 1]} ${focusYear}` : mode === "custom" ? `${fmtDay(period.from)} – ${fmtDay(period.to)}` : `С начала ${focusYear}`;
+  const periodLabel = mode === "quarter" ? `${effQuarter} кв. ${focusYear}` : mode === "month" ? `${monthLong(effMonth - 1)} ${focusYear}` : mode === "custom" ? `${fmtDay(period.from)} – ${fmtDay(period.to)}` : `С начала ${focusYear}`;
 
   const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
   const data = q.data;
@@ -125,7 +125,7 @@ export default function OfficeStatsPage() {
     return has ? cur.filter((x) => x !== y) : [...cur, y].sort((a, b) => a - b);
   });
 
-  const forbidden = q.error instanceof HttpError && (q.error.status === 403 || q.error.status === 401);
+  const forbidden = q.error instanceof ApiError && (q.error.status === 403 || q.error.status === 401);
   const memberNoCapital = data?.role === "member" && !capitalSet;
   const adminPctNoCapital = isAdmin && unit === "pct" && !capitalSet;
 
@@ -204,8 +204,8 @@ export default function OfficeStatsPage() {
               onChange={(e) => setMonth(Number(e.target.value))}
               className="glass-field h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
             >
-              {MONTHS_LONG.map((m, i) => (
-                <option key={m} value={i + 1} disabled={focusYear === ty && i + 1 > Number(today.slice(5, 7))}>{m}</option>
+              {Array.from({ length: 12 }, (_, i) => monthLong(i)).map((m, i) => (
+                <option key={i} value={i + 1} disabled={focusYear === ty && i + 1 > Number(today.slice(5, 7))}>{m}</option>
               ))}
             </select>
           )}

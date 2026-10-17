@@ -3,6 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { db, big7CatalystsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
+import { badRequest, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -24,13 +25,11 @@ router.post("/big7/catalysts", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(String(date)))) {
-    res.status(400).json({ error: "date must be YYYY-MM-DD" });
-    return;
+    throw badRequest("INVALID_DATE");
   }
   const tickerStr = String(ticker).trim().toUpperCase().replace(/^\$/, "");
   if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(tickerStr)) {
-    res.status(400).json({ error: "invalid ticker" });
-    return;
+    throw badRequest("INVALID_TICKER");
   }
   const [row] = await db.insert(big7CatalystsTable).values({
     ticker: tickerStr,
@@ -46,21 +45,20 @@ router.post("/big7/catalysts", asyncHandler(async (req, res): Promise<void> => {
 // PATCH /api/big7/catalysts/:id — edit date / type / description / impact (ticker too).
 router.patch("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ createdBy: big7CatalystsTable.createdBy }).from(big7CatalystsTable).where(eq(big7CatalystsTable.id, id));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing) throw notFound();
   if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;
   const { ticker, date, type, description, impact } = req.body as Record<string, unknown>;
   const patch: Partial<typeof big7CatalystsTable.$inferInsert> = {};
   if (ticker !== undefined) {
     const t = String(ticker).trim().toUpperCase();
-    if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t)) { res.status(400).json({ error: "invalid ticker" }); return; }
+    if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(t)) throw badRequest("INVALID_TICKER");
     patch.ticker = t;
   }
   if (date !== undefined) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(String(date)))) {
-      res.status(400).json({ error: "date must be YYYY-MM-DD" });
-      return;
+      throw badRequest("INVALID_DATE");
     }
     patch.date = String(date);
   }
@@ -78,13 +76,13 @@ router.patch("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void>
   }
   if (Object.keys(patch).length === 0) { res.status(400).json({ error: "nothing to update" }); return; }
   const [row] = await db.update(big7CatalystsTable).set(patch).where(eq(big7CatalystsTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   res.json(row);
 }));
 
 router.delete("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ createdBy: big7CatalystsTable.createdBy }).from(big7CatalystsTable).where(eq(big7CatalystsTable.id, id));
   if (!existing) { res.status(204).send(); return; }
   if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;

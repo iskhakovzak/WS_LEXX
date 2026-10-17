@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { config } from "../config";
 
 export async function runMigrations() {
   logger.info("Running database migrations...");
@@ -528,7 +529,7 @@ export async function runMigrations() {
     `CREATE TABLE IF NOT EXISTS "author_notes" (
       "id" SERIAL PRIMARY KEY,
       "trader" TEXT NOT NULL,
-      "note_date" DATE NOT NULL DEFAULT CURRENT_DATE,
+      "note_date" DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
       "raw_text" TEXT NOT NULL DEFAULT '',
       "refined_text" TEXT,
       "mood" TEXT,
@@ -732,7 +733,7 @@ export async function runMigrations() {
     }
   }
 
-  await pool.query(`UPDATE users SET name = 'Ориф' WHERE name = 'Ариф'`).catch(() => {});
+  // Ариф → Ориф rename: src/db/migrations/0008_rename_arif_orif.sql (no longer re-run on every boot).
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS playbook_checklist_marks (
@@ -815,43 +816,19 @@ export async function runMigrations() {
     logger.warn({ error: e.message }, "Migration: backfill checklist_items/screenshots");
   }
 
-  try {
-    const { rows: tableRows } = await pool.query(
-      `SELECT 1 FROM pg_tables WHERE schemaname = 'public' AND tablename = 'playbook_trade_ideas'`
-    );
-    if (tableRows.length > 0) {
-      const { rowCount: copied } = await pool.query(
-        `INSERT INTO trade_ideas
-          (playbook_id, ticker, side, entry_zone, target, stop, status, notes, idea_date,
-           market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
-           created_at)
-         SELECT
-           playbook_entry_id, ticker, side, entry_zone, target, stop,
-           COALESCE(status, 'watching'), notes, date,
-           market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
-           created_at
-         FROM playbook_trade_ideas`
-      );
-      await pool.query(`DROP TABLE playbook_trade_ideas CASCADE`);
-      logger.info(`Merged ${copied} playbook_trade_ideas rows into trade_ideas, dropped legacy table`);
-    }
-  } catch (e: any) {
-    logger.warn({ error: e.message }, "Migration: merge playbook_trade_ideas → trade_ideas");
-  }
+  // Legacy playbook_trade_ideas: dropped when empty by src/db/migrations/0007_drop_playbook_trade_ideas.sql (the merge failed on every boot).
 
-  const { rowCount: restored } = await pool.query(
-    `UPDATE playbook SET deleted_at = NULL WHERE deleted_at >= '2026-04-22T17:35:00Z' AND deleted_at <= '2026-04-22T17:40:00Z'`
-  ).catch(() => ({ rowCount: 0 })) as any;
-  if (restored > 0) logger.info(`Restored ${restored} accidentally deleted playbook entries`);
+  // 2026-04-22 playbook restore window: src/db/migrations/0009_restore_playbook_20260422.sql.
 
   // Initial accounts come from SEED_USERS (JSON: [{"name","password","role"}]) — no PINs in the code.
-  // Without it, a fresh dev DB gets the desk names with random 6-digit PINs (logged once, development only).
+  // Without it, a fresh dev DB gets the desk names with random 6-digit PINs that are NEVER logged (A1 security):
+  // choose them with SEED_USERS, or set them later via an admin reset / POST /auth/init-passwords.
   const defaultUsers: { name: string; password: string; role: string }[] = (() => {
     try {
-      const parsed = JSON.parse(process.env.SEED_USERS ?? "null");
+      const parsed = JSON.parse(config.seedUsers ?? "null");
       if (Array.isArray(parsed)) return parsed.filter((u) => u && typeof u.name === "string" && typeof u.password === "string");
     } catch (e: any) { logger.warn({ error: e.message }, "SEED_USERS is not valid JSON"); }
-    if (process.env.NODE_ENV === "production") return [];
+    if (config.isProduction) return [];
     const rand = () => String(Math.floor(100000 + Math.random() * 900000));
     return [
       { name: "Закир", role: "trader" }, { name: "Антон", role: "curator" }, { name: "Артур", role: "trader" },
@@ -870,7 +847,7 @@ export async function runMigrations() {
       } catch (e: any) { logger.warn({ error: e.message }, `Seed user ${u.name}`); }
     }
     if (defaultUsers.some((u: any) => u.generated)) {
-      logger.info({ pins: defaultUsers.map((u) => `${u.name}: ${u.password}`) }, "Dev users seeded with random PINs (set SEED_USERS to choose them)");
+      logger.info({ users: defaultUsers.map((u) => u.name) }, "Dev users seeded with random PINs (not logged; set SEED_USERS to choose them)");
     }
     logger.info("Default users seeded");
   } else {
@@ -889,14 +866,14 @@ export async function runMigrations() {
       }
       if (defaultUsers.some((u: any) => u.generated)) {
         const fixed = new Set(nullHashUsers.map((r: any) => r.name));
-        logger.info({ pins: defaultUsers.filter((u) => fixed.has(u.name)).map((u) => `${u.name}: ${u.password}`) }, "Dev users got random PINs (set SEED_USERS to choose them)");
+        logger.info({ users: defaultUsers.filter((u) => fixed.has(u.name)).map((u) => u.name) }, "Dev users got random PINs (not logged; set SEED_USERS to choose them)");
       }
       logger.info("NULL password_hash users fixed");
     }
   }
 
   const smbStrategies = [
-    { name: "ATM Offering Play — Short", folder: "SMB Capital — Offering Plays", setupType: "Другой", confidenceLevel: 80, conditions: "Stock announces ATM offering (shelf registration). Price drops on dilution fear. Short into the bounce after initial panic selling.", checklist: "- ATM offering confirmed (SEC filing)\n- Price dropped >5% on news\n- Volume spike > 3x average\n- Wait for first bounce attempt\n- Entry on failed bounce / rejection at VWAP\n- Stop above pre-market high", notes: "One of SMB Capital's core plays. ATM offerings create sustained selling pressure as the company sells shares into the open market. Key: don't short the initial drop, wait for the bounce attempt and short the failure." },
+    { name: "ATM Offering Play — Short", folder: "SMB Capital — Offering Plays", setupType: "other", confidenceLevel: 80, conditions: "Stock announces ATM offering (shelf registration). Price drops on dilution fear. Short into the bounce after initial panic selling.", checklist: "- ATM offering confirmed (SEC filing)\n- Price dropped >5% on news\n- Volume spike > 3x average\n- Wait for first bounce attempt\n- Entry on failed bounce / rejection at VWAP\n- Stop above pre-market high", notes: "One of SMB Capital's core plays. ATM offerings create sustained selling pressure as the company sells shares into the open market. Key: don't short the initial drop, wait for the bounce attempt and short the failure." },
     { name: "Pricing Play — Long Bounce", folder: "SMB Capital — Offering Plays", setupType: "Reversal", confidenceLevel: 65, conditions: "After offering is priced (usually after hours), stock often gaps down to or below offering price. Long bounce off offering price level.", checklist: "- Offering priced (press release confirms price)\n- Stock trades at or below offering price\n- Volume confirms capitulation\n- Entry near offering price with tight stop\n- Target: VWAP or prior support turned resistance", notes: "Offering price acts as strong support because institutions bought at that level. They defend their position. Key risk: if offering price breaks, there's no floor." },
     { name: "Gap and Go — Earnings Momentum", folder: "SMB Capital — Gap Plays", setupType: "Earnings Gap Up", confidenceLevel: 75, conditions: "Stock gaps up >5% on strong earnings. Follow-through buying in first 30 minutes. Long continuation above opening range.", checklist: "- Earnings beat expectations significantly\n- Gap > 5% with volume > 2x average\n- Stock holds above VWAP in first 15 min\n- Entry on first pullback to VWAP or opening range high break\n- Stop below VWAP or opening range low\n- Target: prior resistance levels", notes: "Classic SMB play. The key is waiting for the first pullback rather than chasing the gap. Quality of earnings matters — revenue growth > EPS beats." },
     { name: "IPO Day Trade — First Day Play", folder: "SMB Capital — IPO Plays", setupType: "IPO Day Trade", confidenceLevel: 60, conditions: "First day of trading for IPO. Wait for opening range to establish (first 5-15 min), then trade the breakout or breakdown.", checklist: "- IPO with significant hype/demand\n- Wait for opening print and first range\n- Don't trade first 5 minutes\n- Long above opening range high OR short below opening range low\n- Use half size (IPO = volatile)\n- Stop: middle of opening range", notes: "SMB teaches patience on IPO day 1. The opening range is key. Many traders get chopped trying to trade the first 5 minutes. Wait for the range, then trade the break." },
@@ -908,13 +885,13 @@ export async function runMigrations() {
     { name: "Failed Follow Through — Bear Flag Short", folder: "SMB Capital — Short Setups", setupType: "Reversal", confidenceLevel: 73, conditions: "Stock had a big move up but fails to follow through. Forms a bear flag (weak bounce on low volume). Short the breakdown of the flag.", checklist: "- Prior move up on Day 1\n- Day 2/3: weak bounce, low volume\n- Bear flag pattern forms (lower highs)\n- Entry on break below flag support\n- Volume increases on breakdown\n- Stop above flag high\n- Target: measured move down (flag pole)", notes: "Failed follow-through is the opposite of the Second Day Play. When momentum should continue but doesn't, it's a powerful reversal signal. SMB uses this as one of their primary short setups." },
     { name: "Short Squeeze Play", folder: "SMB Capital — Momentum Setups", setupType: "Intraday Momentum", confidenceLevel: 55, conditions: "High short interest stock (>20%) gets a catalyst. Short sellers forced to cover, creating buying pressure and rapid price increase.", checklist: "- Short interest > 20% of float\n- Catalyst (earnings beat, news, upgrade)\n- Pre-market gap up with high volume\n- Entry on first pullback after initial squeeze\n- Monitor short interest data / borrow rates\n- Tight stop (if squeeze fails, reversal is sharp)\n- Target: prior resistance levels from weekly chart", notes: "Short squeezes are unpredictable. SMB teaches to trade them small and respect the volatility. The best squeezes happen when fundamental catalyst + high short interest + low float combine." },
     { name: "Sympathy Play — Sector Follower", folder: "SMB Capital — Momentum Setups", setupType: "Intraday Momentum", confidenceLevel: 60, conditions: "When a sector leader makes a big move, other stocks in the same sector often follow (sympathy move). Trade the follower.", checklist: "- Identify the sector leader making the move\n- Find related stocks in same sector/industry\n- Sympathy stock should have its own catalyst or setup\n- Entry on breakout or momentum confirmation\n- Don't chase — wait for your setup\n- Stop based on the sympathy stock's chart, not the leader\n- Target: proportional move to leader", notes: "Sympathy plays are a staple of prop trading. When NVDA moves, watch AMD, AVGO, MU. When one biotech gets FDA approval, watch similar pipeline companies. Key: the leader goes first, sympathies follow with a delay." },
-    { name: "Halt & Resume Play", folder: "SMB Capital — Intraday Setups", setupType: "Другой", confidenceLevel: 65, conditions: "Stock gets halted (LULD halt or news halt). Trade the resume — either continuation or reversal depending on context.", checklist: "- Note halt type (LULD up/down, news pending)\n- During halt: assess catalyst, level 2, pre-halt momentum\n- On resume: wait 30 seconds for price discovery\n- If continuation: long above halt price (up halt) or short below (down halt)\n- If reversal: opposite direction after failed continuation\n- Use small size — halts = maximum volatility\n- Stop: opposite side of resume range", notes: "Halt resumes are some of the highest-volatility moments in trading. SMB teaches discipline: don't place orders during halt, wait for resume, let price discover, then act. Many traders get destroyed by blindly buying/shorting halts." },
+    { name: "Halt & Resume Play", folder: "SMB Capital — Intraday Setups", setupType: "other", confidenceLevel: 65, conditions: "Stock gets halted (LULD halt or news halt). Trade the resume — either continuation or reversal depending on context.", checklist: "- Note halt type (LULD up/down, news pending)\n- During halt: assess catalyst, level 2, pre-halt momentum\n- On resume: wait 30 seconds for price discovery\n- If continuation: long above halt price (up halt) or short below (down halt)\n- If reversal: opposite direction after failed continuation\n- Use small size — halts = maximum volatility\n- Stop: opposite side of resume range", notes: "Halt resumes are some of the highest-volatility moments in trading. SMB teaches discipline: don't place orders during halt, wait for resume, let price discover, then act. Many traders get destroyed by blindly buying/shorting halts." },
     { name: "Anchored VWAP — Earnings / IPO Level", folder: "SMB Capital — Intraday Setups", setupType: "Breakout", confidenceLevel: 70, conditions: "Anchored VWAP from significant event (earnings, IPO, offering) acts as key support/resistance. Trade the reaction at this level.", checklist: "- Identify significant event date (earnings, IPO, offering)\n- Calculate anchored VWAP from that date\n- Wait for price to reach anchored VWAP level\n- Look for reaction (bounce or break)\n- Entry on confirmation of direction\n- Stop: other side of anchored VWAP\n- Target: next significant level", notes: "Anchored VWAP shows the average price paid by all participants since a significant event. Institutions track this level closely. It's especially powerful from earnings dates and IPO dates." },
     { name: "9 EMA Daily — Swing Entry на Trend", folder: "SMB Capital — Swing Setups", setupType: "Breakout", confidenceLevel: 74, conditions: "Stock in strong uptrend pulls back to 9 EMA on daily chart. This is the 'trend pullback' entry for swing traders.", checklist: "- Stock in clear uptrend (higher highs, higher lows)\n- Pullback to 9 EMA daily (within 1-2% of EMA)\n- Volume decreases on pullback\n- Entry on bounce off 9 EMA with volume\n- Stop: below 9 EMA or recent swing low\n- Target: prior high or measured move\n- Hold time: 2-10 days", notes: "The 9 EMA daily is SMB's favorite swing setup. It works because strong stocks rarely pull back more than 3-5 days before continuing. The 9 EMA captures this rhythm perfectly." },
     { name: "Dead Cat Bounce — Short the Recovery", folder: "SMB Capital — Short Setups", setupType: "Reversal", confidenceLevel: 68, conditions: "Stock drops sharply on bad news (earnings miss, downgrade). A weak bounce follows. Short the failed bounce.", checklist: "- Stock dropped >10% on negative catalyst\n- Weak bounce: low volume, doesn't reclaim VWAP\n- Bounce reaches resistance (prior support, moving average)\n- Entry on reversal from bounce high\n- Stop above bounce high\n- Target: retest of lows or new low", notes: "Dead cat bounces occur because: 1) Short covering, 2) Bottom fishers, 3) Algorithmic mean reversion. These bounces typically fail because the fundamental damage is real. SMB shorts these aggressively." },
     { name: "High of Day Break — Momentum Ignition", folder: "SMB Capital — Intraday Setups", setupType: "Breakout", confidenceLevel: 73, conditions: "Stock consolidates near HOD then breaks to new highs. This 'momentum ignition' triggers stops and algorithms, creating a powerful move.", checklist: "- Stock near HOD with tightening range\n- At least 2-3 tests of HOD level\n- Volume building on each test\n- Entry on break above HOD with volume surge\n- Stop below consolidation / last pullback low\n- Target: next resistance or measured move", notes: "HOD breaks are powerful because they trigger: 1) Buy stops from shorts, 2) Momentum algorithms, 3) Breakout traders. The combination creates a supply/demand imbalance that drives price higher quickly." },
     { name: "News Fade — Sell/Short the News", folder: "SMB Capital — Reversal Setups", setupType: "Reversal", confidenceLevel: 66, conditions: "Stock spikes on news but the news is already priced in or overhyped. Fade the initial move as it reverses.", checklist: "- News event causes spike (upgrade, product launch, partnership)\n- Assess if news is truly new or already expected\n- Wait for first signs of reversal (red candle, volume shift)\n- Entry on break of initial spike candle low\n- Stop above spike high\n- Target: pre-news price or VWAP", notes: "'Buy the rumor, sell the news' — one of the oldest market principles. SMB teaches to identify when news is already priced in by checking: pre-news price action, options activity, and whether the move is proportional to the catalyst." },
-    { name: "In Play Stock Framework — Отбор акций", folder: "SMB Capital — Frameworks", setupType: "Другой", confidenceLevel: 90, conditions: "Framework for identifying 'In Play' stocks — stocks that will have the most opportunity for day traders on a given day.", checklist: "- Fresh catalyst (earnings, FDA, news) within 24 hours\n- Gap > 4% (up or down)\n- Pre-market volume > 500K shares\n- Relative volume > 2x average\n- ATR > $2 (enough range to trade)\n- Float < 100M preferred\n- Not in a halt or pending news\n- Check sector (is the whole sector moving?)", notes: "The In Play framework is the foundation of SMB Capital's methodology. Before trading any setup, the stock must be 'In Play' — meaning it has a catalyst, volume, and range to create opportunity. Without In Play status, setups have much lower probability." },
+    { name: "In Play Stock Framework — Отбор акций", folder: "SMB Capital — Frameworks", setupType: "other", confidenceLevel: 90, conditions: "Framework for identifying 'In Play' stocks — stocks that will have the most opportunity for day traders on a given day.", checklist: "- Fresh catalyst (earnings, FDA, news) within 24 hours\n- Gap > 4% (up or down)\n- Pre-market volume > 500K shares\n- Relative volume > 2x average\n- ATR > $2 (enough range to trade)\n- Float < 100M preferred\n- Not in a halt or pending news\n- Check sector (is the whole sector moving?)", notes: "The In Play framework is the foundation of SMB Capital's methodology. Before trading any setup, the stock must be 'In Play' — meaning it has a catalyst, volume, and range to create opportunity. Without In Play status, setups have much lower probability." },
     { name: "Power Hour Momentum — 3:00–4:00 PM", folder: "SMB Capital — Intraday Setups", setupType: "Intraday Momentum", confidenceLevel: 68, conditions: "Last hour of trading (3:00-4:00 PM). Institutions execute large orders, creating momentum. Trade in direction of the day's trend.", checklist: "- Identify day's trend (above/below VWAP)\n- Wait until 3:00 PM\n- Look for volume increase (institutional activity)\n- Long if above VWAP all day, Short if below\n- Entry on pullback within the trend\n- Stop: VWAP cross\n- Target: close of day or trailing stop", notes: "Power hour is when institutions execute their remaining orders for the day. This creates volume and momentum. SMB teaches that the last hour often mirrors the first hour in terms of direction and opportunity." },
   ];
 
@@ -1208,18 +1185,7 @@ export async function runMigrations() {
   // Legacy admin XLS import stored pnl = NET and kept gross/fees/qty only inside context_snapshot.
   // Contract: pnl = gross, fees = total fees, qty filled, source = 'propreports'. Repair once (marker in context_snapshot);
   // external_id / broker_account are assigned later by the sync engine when the same trade is re-imported (adoption).
-  await pool.query(`
-    UPDATE trades SET
-      pnl = COALESCE((context_snapshot ->> 'gross')::numeric, pnl),
-      fees = COALESCE((context_snapshot ->> 'totalFees')::numeric, fees),
-      qty = COALESCE(qty, (context_snapshot ->> 'qty')::numeric),
-      source = COALESCE(source, 'propreports'),
-      context_snapshot = context_snapshot || '{"legacyPnlRepaired": true}'::jsonb
-    WHERE context_snapshot ->> 'source' = 'propreports'
-      AND external_id IS NULL
-      AND COALESCE(context_snapshot ->> 'legacyPnlRepaired', '') <> 'true'
-      AND (context_snapshot ->> 'gross') ~ '^-?[0-9]+(\\.[0-9]+)?$'
-  `).catch((e: any) => logger.warn({ error: e.message }, "repair legacy propreports pnl"));
+  // Legacy PropReports pnl repair: src/db/migrations/0012_legacy_propreports_pnl_repair.sql.
   // Self-configuration: key/value settings (fee columns, groupId, unmatched accounts, connection check) + account aliases.
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "propreports_settings" (
@@ -1247,16 +1213,7 @@ export async function runMigrations() {
   await pool.query(`CREATE INDEX IF NOT EXISTS propreports_perf_trader_idx ON propreports_performance_reports(trader_name)`).catch(() => {});
   // ─── end PropReports integration ───
 
-  // Tier seed rename «Джуниор» → «Джун» (lib/scalingEngine.ts) for databases seeded before it. Only the untouched
-  // system row is renamed — a curator's own name (updated_by ≠ 'system') stays. scaling_tiers is created lazily by
-  // routes/scaling.ts, hence the to_regclass guard; idempotent (a second run matches nothing).
-  await pool.query(`
-    DO $$ BEGIN
-      IF to_regclass('public.scaling_tiers') IS NOT NULL THEN
-        UPDATE scaling_tiers SET name = 'Джун' WHERE key = 'junior' AND name = 'Джуниор' AND updated_by = 'system';
-      END IF;
-    END $$
-  `).catch((err) => logger.warn({ err: err instanceof Error ? err.message : String(err) }, "migrate: scaling tier rename failed"));
+  // Tier rename «Джуниор» → «Джун»: src/db/migrations/0013_scaling_tier_junior_rename.sql.
 
   // Interface language per user (RU / EN / UZ): server texts use X-Lang → users.locale → ru (src/i18n).
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS locale TEXT NOT NULL DEFAULT 'ru'`).catch((e: any) => logger.warn({ error: e.message }, "users.locale"));
@@ -1265,121 +1222,19 @@ export async function runMigrations() {
   // Names stay the identifiers (trades.trader, users.assigned_curator); this column is search-only. Idempotent.
   await pool.query(`ALTER TABLE users ADD COLUMN IF NOT EXISTS name_latin TEXT`).catch((e: any) => logger.warn({ error: e.message }, "users.name_latin"));
 
-  await seedHolidays2026();
+  // 2026/2027 market calendars: src/db/migrations/0016_market_calendar_2026.sql, 0017_market_calendar_2027.sql.
+  await ensureLateTables();
 
   logger.info("Database migrations completed");
 }
 
-async function seedHolidays2026() {
-  const events: { date: string; type: string; name: string; description?: string; importance: "high" | "medium" | "low" }[] = [];
-
-  const nyseHolidays = [
-    { date: "2026-01-01", name: "New Year's Day", desc: "Market closed" },
-    { date: "2026-01-19", name: "MLK Day", desc: "Market closed" },
-    { date: "2026-02-16", name: "Presidents Day", desc: "Market closed" },
-    { date: "2026-04-03", name: "Good Friday", desc: "Market closed" },
-    { date: "2026-05-25", name: "Memorial Day", desc: "Market closed" },
-    { date: "2026-06-19", name: "Juneteenth", desc: "Market closed" },
-    { date: "2026-07-03", name: "Independence Day (observed)", desc: "Early close 1pm ET" },
-    { date: "2026-09-07", name: "Labor Day", desc: "Market closed" },
-    { date: "2026-11-26", name: "Thanksgiving", desc: "Market closed" },
-    { date: "2026-11-27", name: "Day after Thanksgiving", desc: "Early close 1pm ET" },
-    { date: "2026-12-24", name: "Christmas Eve", desc: "Early close 1pm ET" },
-    { date: "2026-12-25", name: "Christmas Day", desc: "Market closed" },
-  ];
-  for (const h of nyseHolidays) {
-    events.push({ date: h.date, type: "holiday", name: h.name, description: h.desc, importance: "high" });
-  }
-
-  const fomc = [
-    { dates: ["2026-01-27", "2026-01-28"], name: "FOMC Meeting" },
-    { dates: ["2026-03-17", "2026-03-18"], name: "FOMC Meeting + SEP" },
-    { dates: ["2026-04-28", "2026-04-29"], name: "FOMC Meeting" },
-    { dates: ["2026-06-16", "2026-06-17"], name: "FOMC Meeting + SEP" },
-    { dates: ["2026-07-28", "2026-07-29"], name: "FOMC Meeting" },
-    { dates: ["2026-09-15", "2026-09-16"], name: "FOMC Meeting + SEP" },
-    { dates: ["2026-11-03", "2026-11-04"], name: "FOMC Meeting" },
-    { dates: ["2026-12-15", "2026-12-16"], name: "FOMC Meeting + SEP" },
-  ];
-  for (const m of fomc) {
-    for (let i = 0; i < m.dates.length; i++) {
-      events.push({
-        date: m.dates[i],
-        type: "fomc",
-        name: i === m.dates.length - 1 ? `${m.name} (Decision Day)` : m.name,
-        description: i === m.dates.length - 1 ? "Statement 2pm ET, Powell presser 2:30pm ET" : "FOMC begins",
-        importance: i === m.dates.length - 1 ? "high" : "medium",
-      });
-    }
-  }
-
-  const cpi = [
-    "2026-01-13", "2026-02-12", "2026-03-11", "2026-04-14",
-    "2026-05-12", "2026-06-10", "2026-07-15", "2026-08-12",
-    "2026-09-10", "2026-10-13", "2026-11-12", "2026-12-10",
-  ];
-  for (const d of cpi) {
-    events.push({ date: d, type: "cpi", name: "CPI Release", description: "8:30am ET — Consumer Price Index", importance: "high" });
-  }
-
-  const ppi = [
-    "2026-01-14", "2026-02-13", "2026-03-12", "2026-04-15",
-    "2026-05-13", "2026-06-11", "2026-07-16", "2026-08-13",
-    "2026-09-11", "2026-10-14", "2026-11-13", "2026-12-11",
-  ];
-  for (const d of ppi) {
-    events.push({ date: d, type: "ppi", name: "PPI Release", description: "8:30am ET — Producer Price Index", importance: "medium" });
-  }
-
-  const nfp = [
-    "2026-01-02", "2026-02-06", "2026-03-06", "2026-04-03",
-    "2026-05-01", "2026-06-05", "2026-07-02", "2026-08-07",
-    "2026-09-04", "2026-10-02", "2026-11-06", "2026-12-04",
-  ];
-  for (const d of nfp) {
-    events.push({ date: d, type: "nfp", name: "NFP Jobs Report", description: "8:30am ET — Non-Farm Payrolls", importance: "high" });
-  }
-
-  const opex = [
-    "2026-01-16", "2026-02-20", "2026-03-20", "2026-04-17",
-    "2026-05-15", "2026-06-19", "2026-07-17", "2026-08-21",
-    "2026-09-18", "2026-10-16", "2026-11-20", "2026-12-18",
-  ];
-  const quad = new Set(["2026-03-20", "2026-06-19", "2026-09-18", "2026-12-18"]);
-  for (const d of opex) {
-    if (quad.has(d)) {
-      events.push({ date: d, type: "quad_witching", name: "Quadruple Witching", description: "Index futures, index options, stock futures, stock options all expire", importance: "high" });
-    } else {
-      events.push({ date: d, type: "opex", name: "Monthly OPEX", description: "Monthly options expiration — elevated volume into close", importance: "medium" });
-    }
-  }
-
-  const monthEnd = ["2026-01-30", "2026-02-27", "2026-03-31", "2026-04-30", "2026-05-29", "2026-06-30", "2026-07-31", "2026-08-31", "2026-09-30", "2026-10-30", "2026-11-30", "2026-12-31"];
-  for (const d of monthEnd) {
-    events.push({ date: d, type: "month_end", name: "Month-End Rebalance", description: "Institutional rebalancing flows", importance: "low" });
-  }
-
-  let inserted = 0;
-  for (const e of events) {
-    try {
-      const { rowCount } = await pool.query(
-        `INSERT INTO holiday_calendar (date, type, name, description, importance)
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (date, type, name) DO NOTHING`,
-        [e.date, e.type, e.name, e.description || null, e.importance]
-      );
-      if (rowCount && rowCount > 0) inserted++;
-    } catch (err: any) {
-      logger.warn({ error: err.message, event: e }, "holiday seed insert failed");
-    }
-  }
-  if (inserted > 0) logger.info(`Seeded ${inserted} new holiday/calendar events for 2026`);
-
+/** DDL that used to sit at the end of the 2026 holiday seed (idempotent safety net; the tables are in 0001_baseline). */
+async function ensureLateTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS "junior_notes" (
       "id" SERIAL PRIMARY KEY,
       "trader" TEXT NOT NULL,
-      "note_date" DATE NOT NULL DEFAULT CURRENT_DATE,
+      "note_date" DATE NOT NULL DEFAULT ((now() AT TIME ZONE 'America/New_York')::date),
       "raw_text" TEXT NOT NULL DEFAULT '',
       "refined_text" TEXT,
       "mood" TEXT,

@@ -1,8 +1,9 @@
-import React from "react";
+
 import { useTodayHolidays, type HolidayEvent } from "@/lib/market-intel";
 import { Pill, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { CalendarDays, AlertTriangle, Zap } from "lucide-react";
 
 const TYPE_META: Record<string, { label: string; tone: Tone; hint?: string }> = {
@@ -30,7 +31,7 @@ function parseLocal(d: string): Date {
 function shortDate(d: string) {
   const date = parseLocal(d);
   if (Number.isNaN(date.getTime())) return d ?? "";
-  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "short", weekday: "short" });
+  return fmtDate(date, "weekdayDayMonth");
 }
 
 function daysUntil(d: string): number | null {

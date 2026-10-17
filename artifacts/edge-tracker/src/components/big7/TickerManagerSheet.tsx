@@ -14,8 +14,8 @@ import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned, createdByOf } from "@/lib/ownership";
-import { pluralRu } from "@/components/rules/constants";
 import { DEFAULT_BIG7, big7Today, parseTickerSymbols } from "./lib";
+import { pluralRu } from "@/lib/format";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 const SYM_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;

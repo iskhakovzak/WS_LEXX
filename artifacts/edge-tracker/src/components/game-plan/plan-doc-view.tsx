@@ -3,8 +3,7 @@ import { Pill } from "@/components/ds";
 import { InPlayCard, FocusBanner } from "./plan-briefing";
 import { MediaGallery } from "./plan-media";
 import { MARKET_BIAS, type PlanDoc } from "./types";
-
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+import { fmtUsd } from "@/lib/format";
 
 /** Read-only rendering of a personal plan (trader's own read mode and the curator's «Трейдеры» view). */
 export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; compactTickers?: boolean }) {
@@ -44,7 +43,7 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
             {doc.maxLossUsd != null && (
               <span className="text-sm">
                 <span className="text-muted-foreground">Макс. убыток </span>
-                <span className="font-semibold tabular-nums">{usd.format(doc.maxLossUsd)}</span>
+                <span className="font-semibold tabular-nums">{fmtUsd(doc.maxLossUsd, { decimals: 0 })}</span>
               </span>
             )}
             {doc.maxTrades != null && (

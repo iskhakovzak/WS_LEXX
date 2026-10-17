@@ -4,7 +4,7 @@
  */
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http, type ApiError } from "@/lib/api/http";
 import { addDays } from "@/lib/trading-date";
 import { tradeWindow } from "../lib/window";
 import type { ApiInterval, Candle, Execution, ExecutionsResponse, MarketEventLite, TradeLike, TradeStructureDto } from "../types";
@@ -14,18 +14,8 @@ export { tradeWindow };
 
 export type RangeResponse = { ticker: string; from: string; to: string; interval: string; candles: Candle[]; prevClose: number | null };
 
-export type ChartError = Error & { status?: number; reason?: string };
-
-async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    const body: { error?: string; reason?: string } = await resp.json().catch(() => ({}));
-    const err = new Error(body.error || `HTTP ${resp.status}`) as ChartError;
-    err.status = resp.status; err.reason = body.reason;
-    throw err;
-  }
-  return resp.json() as Promise<T>;
-}
+/** `status` = HTTP status; the server's `reason` ("weekend" | "future") is `err.field<string>("reason")`. */
+export type ChartError = ApiError;
 
 const noRetry = (count: number, err: unknown) => {
   const s = (err as ChartError).status;
@@ -60,7 +50,7 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
 
   const bars = useQuery<RangeResponse, ChartError>({
     queryKey: ["ws-chart", "range", ticker, fromKey, toKey],
-    queryFn: () => getJson<RangeResponse>(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${fromKey}&to=${toKey}&interval=1m&extended=1&trim=1`),
+    queryFn: ({ signal }) => http.get<RangeResponse>(`/api/candles/${encodeURIComponent(ticker)}/range?from=${fromKey}&to=${toKey}&interval=1m&extended=1&trim=1`, { signal }),
     enabled, staleTime: 5 * 60 * 1000, retry: noRetry,
   });
 
@@ -68,13 +58,13 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
   const dailyFrom = React.useMemo(() => addDays(dateKey, -120), [dateKey]);
   const daily = useQuery<RangeResponse, ChartError>({
     queryKey: ["ws-chart", "daily", ticker, dailyFrom, toKey],
-    queryFn: () => getJson<RangeResponse>(`${BASE}/api/candles/${encodeURIComponent(ticker)}/range?from=${dailyFrom}&to=${toKey}&interval=1d`),
+    queryFn: ({ signal }) => http.get<RangeResponse>(`/api/candles/${encodeURIComponent(ticker)}/range?from=${dailyFrom}&to=${toKey}&interval=1d`, { signal }),
     enabled: enabled && dailyRequested, staleTime: 10 * 60 * 1000, retry: noRetry,
   });
 
   const execs = useQuery<ExecutionsResponse, ChartError>({
     queryKey: ["trade-executions", trade.id],
-    queryFn: () => getJson<ExecutionsResponse>(`${BASE}/api/trades/${trade.id}/executions`),
+    queryFn: ({ signal }) => http.get<ExecutionsResponse>(`/api/trades/${trade.id}/executions`, { signal }),
     enabled: enabled && opts.executions === undefined && trade.id > 0, staleTime: 30 * 1000, retry: noRetry,
   });
 
@@ -82,7 +72,7 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
     queryKey: ["ws-chart", "events", ticker, dateKey, toKey],
     queryFn: async () => {
       try {
-        const r = await getJson<unknown>(`${BASE}/api/events?ticker=${encodeURIComponent(ticker)}&from=${dateKey}&to=${toKey}&limit=50`);
+        const r = await http.get<unknown>(`/api/events?ticker=${encodeURIComponent(ticker)}&from=${dateKey}&to=${toKey}&limit=50`);
         return Array.isArray(r) ? (r as MarketEventLite[]).filter((e) => e && typeof e.headline === "string" && typeof e.date === "string") : [];
       } catch { return []; }
     },

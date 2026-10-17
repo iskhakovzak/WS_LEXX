@@ -9,12 +9,11 @@ import {
 import { Panel, StatCard, StatGrid, EmptyState, Pill, toneOf, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
-import {
-  type AnalyticsFilters, periodRange, fmtR, fmtPct, fmtUsd, sdeal, pluralRu,
-  CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
-} from "./metrics";
+import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 /* ───────────── API types ───────────── */
 
@@ -55,7 +54,7 @@ function corrSentence(r: number, what: string): { text: string; tone: Tone } {
   const a = Math.abs(r);
   const strength = a < 0.1 ? "нет" : a < 0.3 ? "слабая" : a < 0.5 ? "умеренная" : "сильная";
   const dir = r > 0 ? "прямая" : "обратная";
-  const rStr = `r = ${r > 0 ? "+" : r < 0 ? "−" : ""}${a.toFixed(2)}`;
+  const rStr = `r = ${fmtNum(r, { signed: true })}`;
   if (a < 0.1) return { text: `${what}: связи с результатом нет (${rStr}). Пока эта оценка не помогает предсказать исход.`, tone: "neutral" };
   if (a < 0.3) return { text: `${what}: ${strength} ${dir} связь (${rStr}). Тенденция есть, но полагаться на неё рано.`, tone: "neutral" };
   return r > 0
@@ -91,11 +90,7 @@ export function PsychologyTab({
     queryKey: ["analytics-psychology", params],
     enabled: !!userId,
     staleTime: 60_000,
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/analytics/psychology?${params}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<PsychologyAnalytics>(`/api/analytics/psychology?${params}`, { signal }),
   });
 
   const myTrades = useMemo(() => trades.filter((t) => (t.trader ?? "") === userId), [trades, userId]);
@@ -160,7 +155,7 @@ export function PsychologyTab({
           hint={cov?.checkins ? undefined : "утренний чек-ин на главной"} />
         <StatCard
           label="Сделок с чек-ином"
-          value={covPct != null ? fmtPct(covPct) : "—"}
+          value={covPct != null ? fmtRate(covPct) : "—"}
           tone={covPct == null ? "neutral" : covPct >= 0.7 ? "up" : covPct >= 0.3 ? "warn" : "down"}
           hint={cov ? `${cov.tradesWithCheckin} из ${cov.trades}` : undefined}
           icon={Activity}
@@ -174,7 +169,7 @@ export function PsychologyTab({
         <StatCard
           label="Сделок с оценкой A+…C"
           value={cov?.tradesWithGrade ?? 0}
-          hint={cov && cov.trades ? fmtPct(cov.tradesWithGrade / cov.trades) + " сделок" : undefined}
+          hint={cov && cov.trades ? fmtRate(cov.tradesWithGrade / cov.trades) + " сделок" : undefined}
           icon={Sparkles}
         />
       </StatGrid>
@@ -272,7 +267,7 @@ export function PsychologyTab({
                         cursor={CHART_CURSOR}
                         formatter={(v: number, _n, item) => {
                           const d = item.payload as { count: number; wr: number | null; avgR?: number | null };
-                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${sdeal(d.count)}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : "нет сделок", "Win rate"];
+                          return [d.count ? `${d.wr == null ? "—" : `${v}%`} · ${commonI18n.t("units.trades", { count: d.count })}${d.avgR != null ? ` · ${fmtR(d.avgR)}` : ""}` : "нет сделок", "Win rate"];
                         }}
                       />
                       <Bar dataKey="wr" radius={[6, 6, 0, 0]} isAnimationActive={false}>
@@ -410,9 +405,9 @@ function CompareBar({ label, g, strong }: { label: string; g: GroupAgg; strong?:
         )}
       </div>
       <span className="w-[8.5rem] text-right text-muted-foreground">
-        <span className="text-foreground">{fmtPct(g.winRate)}</span>
+        <span className="text-foreground">{fmtRate(g.winRate)}</span>
         {g.avgR != null && <> · {fmtR(g.avgR, 1)}</>}
-        {g.avgR == null && g.avgPnl != null && <> · {fmtUsd(g.avgPnl)}</>}
+        {g.avgR == null && g.avgPnl != null && <> · {fmtUsd(g.avgPnl, { signed: true, decimals: "auto" })}</>}
         {" · "}{g.count}
       </span>
     </div>
@@ -453,13 +448,13 @@ function GradeMatrix({ psych }: { psych: PsychologyAnalytics }) {
                 return (
                   <td key={o.k} className="p-1">
                     <div className={cn("rounded-lg px-2 py-1.5 text-center", n ? o.cls : "text-muted-foreground")}>
-                      {n ? <>{n}<span className="ml-1 text-2xs opacity-80">{Math.round((n / total) * 100)}%</span></> : "—"}
+                      {n ? <>{n}<span className="ml-1 text-2xs opacity-80">{fmtRate(n / total)}</span></> : "—"}
                     </div>
                   </td>
                 );
               })}
               <td className="py-1 pl-2 text-right text-xs text-muted-foreground">
-                {st ? <>{fmtPct(st.winRate)}{st.avgR != null && <> · {fmtR(st.avgR, 1)}</>}</> : "—"}
+                {st ? <>{fmtRate(st.winRate)}{st.avgR != null && <> · {fmtR(st.avgR, 1)}</>}</> : "—"}
               </td>
             </tr>
           );
@@ -481,14 +476,14 @@ const STATE_PILLS: { k: keyof Checkin; label: string; tone: Tone }[] = [
 function CheckinTile({ c }: { c: Checkin }) {
   const states = STATE_PILLS.filter((s) => c[s.k]);
   const d = new Date(`${c.date}T00:00:00`);
-  const label = isNaN(d.getTime()) ? c.date : d.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  const label = isNaN(d.getTime()) ? c.date : fmtDate(d, "weekdayDayMonth");
   return (
     <li className="flex flex-col gap-2 rounded-xl bg-[var(--glass-bg)] p-3">
       <div className="flex items-center justify-between gap-2 text-xs">
         <span className="font-medium text-foreground">{label}</span>
         {c.trades ? (
           <span className="tabular-nums text-muted-foreground">
-            {c.trades} {pluralRu(c.trades, "сделка", "сделки", "сделок")} · {c.wins ?? 0} в плюс
+            {commonI18n.t("units.trades", { count: c.trades })} · {c.wins ?? 0} в плюс
             {c.sumR != null && <span className={cn("ml-1 font-medium", c.sumR >= 0 ? "text-up" : "text-down")}>{fmtR(c.sumR, 1)}</span>}
           </span>
         ) : (

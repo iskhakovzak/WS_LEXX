@@ -4,7 +4,8 @@ import * as React from "react";
 import { useReducedMotion } from "framer-motion";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CSSProperties } from "react";
-import { fmtMetric, fmtMoney, type AskChart as AskChartData } from "@/lib/ask/aggregate";
+import { fmtMetric, type AskChart as AskChartData } from "@/lib/ask/aggregate";
+import { fmtUsd } from "@/lib/format";
 
 const TOOLTIP: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.95)",
@@ -23,12 +24,6 @@ const NEUTRAL = "hsl(var(--chart-1))";
 const MUTED = "hsl(var(--muted-foreground) / 0.45)";
 /** Bars always start at zero (two negative groups must not look like a big gap). */
 const ZERO_DOMAIN: [(v: number) => number, (v: number) => number] = [(min) => Math.min(0, min), (max) => Math.max(0, max)];
-
-const compactMoney = (v: number) => {
-  const a = Math.abs(v);
-  const s = a >= 1000 ? `${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k` : a.toFixed(0);
-  return `${v < 0 ? "−" : ""}$${s}`;
-};
 
 export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartData; height?: number; onBarClick?: (ask: string) => void }) {
   const reduce = useReducedMotion();
@@ -52,13 +47,13 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
               </defs>
               <CartesianGrid stroke={GRID} vertical={false} strokeOpacity={0.5} />
               <XAxis dataKey="i" {...AXIS} minTickGap={32} />
-              <YAxis {...AXIS} width={56} tickFormatter={compactMoney} />
+              <YAxis {...AXIS} width={56} tickFormatter={(v: number) => fmtUsd(v, { compact: true })} />
               <ReferenceLine y={0} stroke={GRID} />
               <Tooltip
                 contentStyle={TOOLTIP}
                 cursor={{ stroke: GRID }}
                 labelFormatter={(_, p) => (p?.[0]?.payload ? `#${p[0].payload.i} · ${p[0].payload.label}` : "")}
-                formatter={(v: number) => [fmtMoney(v), "Нетто, накопл."]}
+                formatter={(v: number) => [fmtUsd(v, { signed: true }), "Нетто, накопл."]}
               />
               <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#eq-${gid})`} isAnimationActive={anim} animationDuration={240} dot={false} />
             </AreaChart>
@@ -85,7 +80,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
             {horizontal ? (
               <BarChart data={chart.rows} layout="vertical" margin={{ top: 0, right: 12, bottom: 0, left: 0 }}>
                 <CartesianGrid stroke={GRID} horizontal={false} strokeOpacity={0.5} />
-                <XAxis type="number" {...AXIS} domain={ZERO_DOMAIN} tickFormatter={money ? compactMoney : undefined} />
+                <XAxis type="number" {...AXIS} domain={ZERO_DOMAIN} tickFormatter={money ? (v: number) => fmtUsd(v, { compact: true }) : undefined} />
                 <YAxis type="category" dataKey="label" {...AXIS} width={labelW} interval={0} tickFormatter={(v: string) => (v.length > 30 ? `${v.slice(0, 29)}…` : v)} />
                 <ReferenceLine x={0} stroke={GRID} />
                 <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), "Значение"]} />
@@ -97,7 +92,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
               <BarChart data={chart.rows} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
                 <CartesianGrid stroke={GRID} vertical={false} strokeOpacity={0.5} />
                 <XAxis dataKey="label" {...AXIS} interval={0} />
-                <YAxis {...AXIS} width={56} domain={ZERO_DOMAIN} tickFormatter={money ? compactMoney : undefined} />
+                <YAxis {...AXIS} width={56} domain={ZERO_DOMAIN} tickFormatter={money ? (v: number) => fmtUsd(v, { compact: true }) : undefined} />
                 <ReferenceLine y={0} stroke={GRID} />
                 <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), "Значение"]} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={56} isAnimationActive={anim} animationDuration={240} cursor={clickable ? "pointer" : undefined} onClick={onClick}>

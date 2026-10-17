@@ -2,7 +2,7 @@ import { Flame, Snowflake, Zap } from "lucide-react";
 import { Panel } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { plural } from "./fmt";
+import { pluralRu } from "@/lib/format";
 import type { DashboardToday } from "./use-dashboard";
 
 function Mini({ label, value, unit }: { label: string; value: number; unit: string }) {
@@ -52,7 +52,7 @@ export function StreaksPanel({ data, isLoading, fill }: { data: DashboardToday |
             <div className="text-xs text-muted-foreground">Текущая серия</div>
             <div className={cn("text-xl font-semibold tabular-nums", isWin ? "text-up" : isLoss ? "text-down" : "")}>
               {cur.count > 0
-                ? `${cur.count} ${isWin ? plural(cur.count, ["победа", "победы", "побед"]) : plural(cur.count, ["потеря", "потери", "потерь"])} подряд`
+                ? `${cur.count} ${isWin ? pluralRu(cur.count, "победа", "победы", "побед") : pluralRu(cur.count, "потеря", "потери", "потерь")} подряд`
                 : "Нет серии"}
             </div>
           </div>
@@ -60,7 +60,7 @@ export function StreaksPanel({ data, isLoading, fill }: { data: DashboardToday |
 
         <div>
           <div className="mb-1.5 text-xs text-muted-foreground">
-            {s.recent.length === 1 ? "Последняя сделка" : `Последние ${s.recent.length || 20} ${plural(s.recent.length || 20, ["сделка", "сделки", "сделок"])}`}
+            {s.recent.length === 1 ? "Последняя сделка" : `Последние ${s.recent.length || 20} ${pluralRu(s.recent.length || 20, "сделка", "сделки", "сделок")}`}
           </div>
           {s.recent.length === 0 ? (
             <p className="text-xs text-muted-foreground">Пока нет закрытых сделок.</p>

@@ -1,7 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { ru } from "date-fns/locale";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -10,12 +8,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { History, RotateCcw, AlertTriangle } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { EmptyState, Pill, Segmented } from "@/components/ds";
-import { IconAction, plural } from "@/components/playbook-sub/bits";
+import { IconAction } from "@/components/playbook-sub/bits";
+import { fmtDateCustom, fmtRelative, pluralRu } from "@/lib/format";
 
 type Revision = {
   id: number;
@@ -109,14 +108,9 @@ function FieldDiff({ label, before, after, multiline }: { label: string; before:
   );
 }
 
-function fmtAbs(iso: string) {
-  try {
-    return new Date(iso).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" });
-  } catch { return iso; }
-}
-function fmtRel(iso: string) {
-  try { return formatDistanceToNow(new Date(iso), { addSuffix: true, locale: ru }); } catch { return ""; }
-}
+
+/** «17.10.26, 14:05» — revision stamp (no fmtDate style for 2-digit year + time). */
+const REV_STAMP: Intl.DateTimeFormatOptions = { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" };
 
 /** Build the PATCH body that brings a setup back to `snap`. Keeps the current owner (`trader`) intact. */
 function restoreBody(snap: Record<string, any>, current?: Record<string, any>) {
@@ -158,12 +152,8 @@ export function PlaybookRevisionsButton({
 
   const { data: revisions = [], isLoading, isError, refetch } = useQuery<Revision[]>({
     queryKey: ["playbook-revisions", playbookId],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/playbook/${playbookId}/revisions`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const j = await res.json();
-      return Array.isArray(j) ? j : [];
-    },
+    queryFn: ({ signal }) =>
+      http.get<Revision[]>(`/api/playbook/${playbookId}/revisions`, { signal }).then((j) => (Array.isArray(j) ? j : [])),
     enabled: open,
   });
 
@@ -184,18 +174,7 @@ export function PlaybookRevisionsButton({
   const sameAsCurrent = sel ? changedFields(sel.rev.snapshot, currentSnapshot).length === 0 : true;
 
   const restore = useMutation({
-    mutationFn: async (snap: Record<string, any>) => {
-      const r = await fetch(`${BASE}/api/playbook/${playbookId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(restoreBody(snap, currentSnapshot)),
-      });
-      if (!r.ok) {
-        const j = await r.json().catch(() => ({}));
-        throw new Error(j?.error ?? `HTTP ${r.status}`);
-      }
-      return r.json();
-    },
+    mutationFn: (snap: Record<string, any>) => http.patch(`/api/playbook/${playbookId}`, restoreBody(snap, currentSnapshot)),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["playbook"] });
       qc.invalidateQueries({ queryKey: ["playbook-children"] });
@@ -235,7 +214,7 @@ export function PlaybookRevisionsButton({
               <History className="h-4 w-4 text-primary" aria-hidden="true" /> История изменений
               {revisions.length > 0 && (
                 <span className="text-xs font-normal tabular-nums text-muted-foreground">
-                  {revisions.length} {plural(revisions.length, "правка", "правки", "правок")}
+                  {revisions.length} {pluralRu(revisions.length, "правка", "правки", "правок")}
                 </span>
               )}
             </DialogTitle>
@@ -295,8 +274,8 @@ export function PlaybookRevisionsButton({
                             aria-hidden="true"
                           />
                           <span className="min-w-0 flex-1">
-                            <span className="block text-sm font-medium text-foreground">{fmtRel(rev.createdAt) || fmtAbs(rev.createdAt)}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{fmtAbs(rev.createdAt)} · {rev.trader ?? "система"}</span>
+                            <span className="block text-sm font-medium text-foreground">{fmtRelative(rev.createdAt) || fmtDateCustom(rev.createdAt, REV_STAMP)}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{fmtDateCustom(rev.createdAt, REV_STAMP)} · {rev.trader ?? "система"}</span>
                             <span className="mt-1 flex flex-wrap gap-1">
                               {changes.length === 0
                                 ? <span className="text-xs text-muted-foreground">без видимых изменений</span>
@@ -349,7 +328,7 @@ export function PlaybookRevisionsButton({
                     {canEdit && (
                       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--glass-border)] pt-3">
                         <span className="mr-auto text-xs text-muted-foreground">
-                          Вернуть состояние до правки от {fmtAbs(sel.rev.createdAt)}
+                          Вернуть состояние до правки от {fmtDateCustom(sel.rev.createdAt, REV_STAMP)}
                         </span>
                         <Button size="sm" onClick={() => setConfirm(true)} disabled={sameAsCurrent || restore.isPending}>
                           <RotateCcw aria-hidden="true" /> Восстановить
@@ -369,7 +348,7 @@ export function PlaybookRevisionsButton({
           <AlertDialogHeader>
             <AlertDialogTitle>Восстановить эту версию?</AlertDialogTitle>
             <AlertDialogDescription>
-              Название, папка, тип, уверенность, теги, условия, чек-лист и заметки вернутся к состоянию до правки от {sel ? fmtAbs(sel.rev.createdAt) : ""}.
+              Название, папка, тип, уверенность, теги, условия, чек-лист и заметки вернутся к состоянию до правки от {sel ? fmtDateCustom(sel.rev.createdAt, REV_STAMP) : ""}.
               Текущая версия сохранится в истории. Скриншоты и привязанные сделки не изменятся.
             </AlertDialogDescription>
           </AlertDialogHeader>

@@ -26,11 +26,13 @@ import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { invalidateExamples, notLiveMessage, pbRequest, useSetupExamples } from "./api";
+import { invalidateExamples, notLiveMessage, useSetupExamples } from "./api";
+import { http } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage, usePlaybookMediaUrl } from "./media";
 import {
-  TIERS, ddmm, fmtR, fmtUsd, moneyTone, tierMeta, type PlaybookEntry, type SetupAccess, type SetupExample, type Tier,
+  TIERS, moneyTone, tierMeta, type PlaybookEntry, type SetupAccess, type SetupExample, type Tier,
 } from "./model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { REDACTED_HINT, RedactedHint } from "./setup-bits";
 
 /** dataTransfer type for dragging an example card (the page's sidebar accepts it to move between setups). */
@@ -54,7 +56,7 @@ export function hasExampleDrag(dt: DataTransfer | null) {
 
 /** PATCH an example (tier / note / marks / media / move to another setup). */
 export function patchExample(setupId: number, exampleId: number, body: Record<string, unknown>) {
-  return pbRequest<SetupExample & { merged?: boolean }>(`/api/playbook/${setupId}/examples/${exampleId}`, { method: "PATCH", json: body });
+  return http.patch<SetupExample & { merged?: boolean }>(`/api/playbook/${setupId}/examples/${exampleId}`, body);
 }
 
 export function checklistOf(entry: Pick<PlaybookEntry, "checklistItems" | "checklist">): ChecklistItem[] {
@@ -119,7 +121,7 @@ export function ExamplesBoard({
   });
 
   const reorder = useMutation({
-    mutationFn: ({ tier, ids }: { tier: Tier; ids: number[] }) => pbRequest(`/api/playbook/${entry.id}/examples/reorder`, { method: "POST", json: { tier, ids } }),
+    mutationFn: ({ tier, ids }: { tier: Tier; ids: number[] }) => http.post(`/api/playbook/${entry.id}/examples/reorder`, { tier, ids }),
     onMutate: ({ tier, ids }) => {
       const prev = setLocal((list) => list.map((x) => (ids.includes(x.id) ? { ...x, tier, sortOrder: ids.indexOf(x.id) } : x)));
       return { prev };
@@ -130,10 +132,7 @@ export function ExamplesBoard({
 
   const restore = async (ex: SetupExample) => {
     try {
-      await pbRequest(`/api/playbook/${entry.id}/examples`, {
-        method: "POST",
-        json: { tradeIds: [ex.tradeId], tier: ex.tier, note: ex.note, checklistMarks: ex.checklistMarks, link: false },
-      });
+      await http.post(`/api/playbook/${entry.id}/examples`, { tradeIds: [ex.tradeId], tier: ex.tier, note: ex.note, checklistMarks: ex.checklistMarks, link: false });
       invalidateExamples(qc, entry.id);
     } catch (e) {
       toast({ title: "Не удалось вернуть эталон", description: (e as Error)?.message, variant: "destructive" });
@@ -141,12 +140,12 @@ export function ExamplesBoard({
   };
 
   const remove = useMutation({
-    mutationFn: (ex: SetupExample) => pbRequest(`/api/playbook/${entry.id}/examples/${ex.id}`, { method: "DELETE" }),
+    mutationFn: (ex: SetupExample) => http.del(`/api/playbook/${entry.id}/examples/${ex.id}`),
     onMutate: (ex) => ({ prev: setLocal((list) => list.filter((x) => x.id !== ex.id)) }),
     onError: (e, _v, ctx) => fail(e, ctx?.prev, "Не удалось убрать эталон"),
     onSuccess: (_d, ex) =>
       toast({
-        title: `${ex.ticker} ${ddmm(ex.closeDate ?? ex.date)} убран из эталонов`,
+        title: `${ex.ticker} ${fmtDate(ex.closeDate ?? ex.date, "dayMonthNumeric")} убран из эталонов`,
         action: <ToastAction altText="Вернуть эталон" onClick={() => restore(ex)}>Вернуть</ToastAction>,
       }),
     onSettled: () => invalidateExamples(qc, entry.id),
@@ -285,7 +284,7 @@ export function ExamplesBoard({
  * traders' trades for non-staff — see lib/playbookPrivacy.ts on the API).
  */
 export function exampleFigure(ex: SetupExample): { text: string; tone: ReturnType<typeof moneyTone> } {
-  if (!ex.redacted) return { text: fmtUsd(ex.netPnl), tone: moneyTone(ex.netPnl) };
+  if (!ex.redacted) return { text: fmtUsd(ex.netPnl, { signed: true, decimals: 0 }), tone: moneyTone(ex.netPnl) };
   if (ex.signedR != null) return { text: fmtR(ex.signedR), tone: moneyTone(ex.signedR) };
   // Someone else's trade without a stop: no $ and no R — show the outcome word instead of «—».
   const r = (ex.result ?? "").toLowerCase();
@@ -293,6 +292,7 @@ export function exampleFigure(ex: SetupExample): { text: string; tone: ReturnTyp
 }
 
 /** Price path for the card. Another trader's trade: pass the known prices / fill times instead of loading it by id. */
+/** The example's whole trading day (4:00–20:00 ET from the candle archive), the trade itself highlighted. */
 function ExampleChart({ ex, compact }: { ex: SetupExample; compact?: boolean }) {
   const day = ex.closeDate ?? ex.date;
   const size = { width: compact ? 220 : 280, height: compact ? 64 : 88 };
@@ -307,8 +307,8 @@ function ExampleChart({ ex, compact }: { ex: SetupExample; compact?: boolean }) 
     [ex.redacted, ex.tradeId, ex.ticker, ex.date, ex.closeDate, ex.side, ex.entry, ex.exit, ex.horizon, ex.result, ex.entryTime, ex.exitTime],
   );
   return trade
-    ? <TradeSparkline trade={trade} {...size} className="max-w-full" title={`${ex.ticker} ${ddmm(day)}`} />
-    : <TradeSparkline tradeId={ex.tradeId} {...size} className="max-w-full" title={`${ex.ticker} ${ddmm(day)}`} />;
+    ? <TradeSparkline trade={trade} span="day" {...size} className="max-w-full" title={`${ex.ticker} ${fmtDate(day, "dayMonthNumeric")}`} />
+    : <TradeSparkline tradeId={ex.tradeId} span="day" {...size} className="max-w-full" title={`${ex.ticker} ${fmtDate(day, "dayMonthNumeric")}`} />;
 }
 
 /* ───────────────────────── card ───────────────────────── */
@@ -387,7 +387,7 @@ export function ExampleCard({
         const files = imageFilesFrom(e.clipboardData);
         if (files.length) { e.preventDefault(); attach(files); }
       }}
-      aria-label={`${ex.ticker} ${ddmm(day)} · ${figure.text}${ex.redacted ? " (суммы скрыты)" : ""} · ${tierMeta(ex.tier).label}`}
+      aria-label={`${ex.ticker} ${fmtDate(day, "dayMonthNumeric")} · ${figure.text}${ex.redacted ? " (суммы скрыты)" : ""} · ${tierMeta(ex.tier).label}`}
       className={cn(
         "group flex min-w-0 flex-col gap-2 rounded-xl border border-border/60 bg-[hsl(var(--card))] p-3 outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
@@ -398,7 +398,7 @@ export function ExampleCard({
       <div className="flex items-center gap-2">
         <span className="font-semibold text-foreground">{ex.ticker}</span>
         {ex.side && <span className={cn("text-xs", ex.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{ex.side.toLowerCase().startsWith("s") ? "Шорт" : "Лонг"}</span>}
-        <span className="text-xs tabular-nums text-muted-foreground">{ddmm(day)}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(day, "dayMonthNumeric")}</span>
         <span
           className={cn("ml-auto text-sm font-semibold tabular-nums", toneText(figure.tone))}
           title={ex.redacted ? REDACTED_HINT : "P&L нетто"}
@@ -457,7 +457,7 @@ export function ExampleCard({
 
       {/* One media box height for chart and screenshot, so cards in a row line up. */}
       {ex.mediaId ? (
-        <ExampleShot id={ex.mediaId} alt={`Скриншот ${ex.ticker} ${ddmm(day)}`} compact={compact} />
+        <ExampleShot id={ex.mediaId} alt={`Скриншот ${ex.ticker} ${fmtDate(day, "dayMonthNumeric")}`} compact={compact} />
       ) : (
         <div className={cn("flex items-center justify-center overflow-hidden rounded-lg", compact ? "h-24" : "h-32")}>
           <ExampleChart ex={ex} compact={compact} />

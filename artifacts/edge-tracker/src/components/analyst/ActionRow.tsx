@@ -15,7 +15,8 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { ReactionAgg } from "./api";
 import { REACTION_MIN_N } from "./rows";
-import { KIND_META, fmtPct, fmtUsd, num, ptChangePct, upsidePct, type FeedAction, type OpenPosition } from "./lib";
+import { KIND_META, num, ptChangePct, upsidePct, type FeedAction, type OpenPosition } from "./lib";
+import { fmtPct, fmtUsd } from "@/lib/format";
 
 export function Highlight({ text, query }: { text: string; query: string }) {
   const q = query.trim();
@@ -71,12 +72,12 @@ export function TargetChange({ action, price, showUpside = true }: { action: Fee
     <span className="inline-flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-xs tabular-nums">
       {from != null && to != null && from !== to ? (
         <>
-          <span className="text-muted-foreground">{fmtUsd(from)}</span>
+          <span className="text-muted-foreground">{fmtUsd(from, { decimals: "trim" })}</span>
           <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
-          <span className="font-medium text-foreground">{fmtUsd(to)}</span>
+          <span className="font-medium text-foreground">{fmtUsd(to, { decimals: "trim" })}</span>
         </>
       ) : (
-        <span className="font-medium text-foreground">{fmtUsd(to ?? from)}</span>
+        <span className="font-medium text-foreground">{fmtUsd(to ?? from, { decimals: "trim" })}</span>
       )}
       {chg != null && chg !== 0 && <Delta value={chg} suffix="%" precision={0} showIcon={false} bare />}
       {up != null && (
@@ -121,7 +122,7 @@ export function Marks({ held, watched, traded, className }: { held: OpenPosition
 export function ReactionChip({ agg, compact = false }: { agg: ReactionAgg | null; compact?: boolean }) {
   if (!agg || agg.n < REACTION_MIN_N || agg.avgDay == null) return <span className="text-xs text-muted-foreground">—</span>;
   const hit = agg.hitRate != null ? Math.round(agg.hitRate * 100) : null;
-  const title = `Обычно в день реакции: ${fmtPct(agg.avgDay)} к закрытию, гэп ${fmtPct(agg.avgGap)}; в сторону рейтинга ${hit ?? "—"}%; событий ${agg.n}`;
+  const title = `Обычно в день реакции: ${fmtPct(agg.avgDay, 1)} к закрытию, гэп ${fmtPct(agg.avgGap, 1)}; в сторону рейтинга ${hit ?? "—"}%; событий ${agg.n}`;
   return (
     <span className="inline-flex flex-col items-end leading-tight" title={title}>
       <Delta value={agg.avgDay} suffix="%" bare showIcon={false} />

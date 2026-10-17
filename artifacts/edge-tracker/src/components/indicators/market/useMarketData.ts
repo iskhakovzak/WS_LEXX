@@ -6,16 +6,14 @@
  */
 import { useMemo } from "react";
 import { useQueries } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { nyDate } from "@/lib/trading-date";
 import { SYMBOLS, SYMBOL_KEYS, type Bar, type MarketData, type SymbolKey } from "./engine";
 
 type ChartResp = { candles?: Array<{ t: number; o: number | null; h: number | null; l: number | null; c: number | null }> };
 
 async function fetchBars(symbol: string, signal?: AbortSignal): Promise<Bar[]> {
-  const r = await fetch(`${BASE}/api/stockdata/chart?symbol=${encodeURIComponent(symbol)}&range=2y&interval=1d`, { signal });
-  if (!r.ok) throw new Error(`chart ${symbol}: ${r.status}`);
-  const data = (await r.json()) as ChartResp;
+  const data = await http.get<ChartResp>("/api/stockdata/chart", { query: { symbol, range: "2y", interval: "1d" }, signal });
   const byDate = new Map<string, Bar>();
   for (const c of data.candles ?? []) {
     if (c.c == null || !Number.isFinite(c.c)) continue;

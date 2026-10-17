@@ -5,7 +5,8 @@ import { Button } from "@/components/ui/button";
 import { EmptyState, Panel, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { EVENT_LABEL } from "@/components/trades/trade-utils";
-import { fmtPct, fmtValue, groupBy, sessionKey, sessionLabel, type GroupStat, type Metric } from "./metrics";
+import { fmtValue, groupBy, sessionKey, sessionLabel, type GroupStat, type Metric } from "./metrics";
+import { fmtRate } from "@/lib/format";
 
 export type Dimension = "trader" | "setup" | "sector" | "ticker" | "session" | "conviction";
 
@@ -121,7 +122,7 @@ export function BreakdownPanel({
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.count}</td>
                     <td className={cn("px-2 py-2 text-right tabular-nums", r.winRate == null ? "text-muted-foreground" : r.winRate >= 0.5 ? "text-up" : "text-down")}>
-                      {fmtPct(r.winRate)}
+                      {fmtRate(r.winRate)}
                     </td>
                     <td className="hidden px-2 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">{fmtValue(r.avg, metric)}</td>
                     <td className="px-2 py-2 text-right">

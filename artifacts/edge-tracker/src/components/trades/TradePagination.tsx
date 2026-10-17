@@ -3,7 +3,8 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { PAGE_SIZES, plural } from "./trade-utils";
+import { PAGE_SIZES } from "./trade-utils";
+import { pluralRu } from "@/lib/format";
 
 type Props = {
   page: number;
@@ -36,7 +37,7 @@ export function TradePagination(p: Props) {
       <div className="flex items-center gap-2 tabular-nums">
         {p.fetching && <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Загрузка" />}
         <span>
-          {p.total === 0 ? "Нет строк" : `${from}–${to} из ${p.total} ${plural(p.total, ["сделки", "сделок", "сделок"])}`}
+          {p.total === 0 ? "Нет строк" : `${from}–${to} из ${p.total} ${pluralRu(p.total, "сделки", "сделок", "сделок")}`}
         </span>
       </div>
       <div className="flex items-center gap-1.5">

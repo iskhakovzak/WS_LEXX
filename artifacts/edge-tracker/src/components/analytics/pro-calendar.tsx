@@ -8,9 +8,11 @@ import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
 import {
   type DaySummary, type Metric, type ValueFn,
-  MONTH_NAMES, dateOnly, fmtDayLong, monthMatrix, ymd,
+  dateOnly, monthMatrix, monthName, ymd,
 } from "@/lib/analytics-pro";
 import { fmtVal, heatClass } from "./pro-format";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type CalendarFocus = {
   view: "year" | "month";
@@ -21,14 +23,8 @@ export type CalendarFocus = {
   day: string | null;
 };
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-
-function pluralTrades(n: number) {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return `${n} сделка`;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return `${n} сделки`;
-  return `${n} сделок`;
-}
+/** Calendar header Mon…Sun ("Пн"), in the UI language. */
+const weekdayHeaders = () => [1, 2, 3, 4, 5, 6, 0].map((d) => { const s = fmtWeekday(d, "short"); return s.charAt(0).toUpperCase() + s.slice(1); });
 
 function hasValue(d: DaySummary | undefined) {
   return !!d && (d.valued ?? d.trades) > 0;
@@ -61,7 +57,7 @@ export function ProCalendar({
     }
   };
 
-  const title = focus.view === "year" ? String(focus.year) : `${MONTH_NAMES[focus.month]} ${focus.year}`;
+  const title = focus.view === "year" ? String(focus.year) : `${monthName(focus.month)} ${focus.year}`;
 
   return (
     <Panel
@@ -159,7 +155,7 @@ function YearView({
         <span className="text-muted-foreground">Итог года</span>
         <span className={cn("font-semibold tabular-nums", toneText(toneOf(total)))}>{tradesTotal ? fmtVal(metric, total, { sign: true }) : "—"}</span>
         <span className="text-muted-foreground">·</span>
-        <span className="text-muted-foreground tabular-nums">{pluralTrades(tradesTotal)}</span>
+        <span className="text-muted-foreground tabular-nums">{commonI18n.t("units.trades", { count: tradesTotal })}</span>
         {(greenMonths > 0 || redMonths > 0) && (
           <>
             <Pill tone="up">{greenMonths} в плюс</Pill>
@@ -176,11 +172,11 @@ function YearView({
                 type="button"
                 onClick={() => onMonth(m)}
                 className="mb-2 flex w-full items-baseline justify-between gap-2 rounded-lg text-left hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`${MONTH_NAMES[m]} ${year}: ${trades ? fmtVal(metric, net, { sign: true }) : "нет сделок"}. Открыть месяц`}
+                aria-label={`${monthName(m)} ${year}: ${trades ? fmtVal(metric, net, { sign: true }) : "нет сделок"}. Открыть месяц`}
               >
-                <span className="text-sm font-semibold">{MONTH_NAMES[m]}</span>
+                <span className="text-sm font-semibold">{monthName(m)}</span>
                 <span className={cn("text-sm font-semibold tabular-nums", trades ? toneText(toneOf(net)) : "text-muted-foreground")}>
-                  {trades ? (valued ? fmtVal(metric, net, { compact: true, sign: true }) : pluralTrades(trades)) : "—"}
+                  {trades ? (valued ? fmtVal(metric, net, { compact: true, sign: true }) : commonI18n.t("units.trades", { count: trades })) : "—"}
                 </span>
               </button>
               <div className="grid grid-cols-7 gap-[3px]" role="presentation">
@@ -193,8 +189,8 @@ function YearView({
                       key={d}
                       type="button"
                       onClick={() => onDay(d)}
-                      title={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "—"} · ${pluralTrades(s.trades)}`}
-                      aria-label={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${pluralTrades(s.trades)}`}
+                      title={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "—"} · ${commonI18n.t("units.trades", { count: s.trades })}`}
+                      aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                       className={cn(
                         "aspect-square rounded-[4px] border border-transparent transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring motion-reduce:transition-none motion-reduce:hover:scale-100",
                         hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/25",
@@ -267,7 +263,7 @@ function MonthView({
       <MonthGrid weeks={weeks} byDate={byDate} metric={metric} today={today} selected={selected} onDay={onDay} max={max} trader={trader} />
       <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         <MiniStat label="Итог месяца" value={valued.length ? fmtVal(metric, total, { sign: true }) : "—"} className={toneText(toneOf(total))} />
-        <MiniStat label="Торговых дней" value={`${monthDays.length}`} hint={pluralTrades(tradesTotal)} />
+        <MiniStat label="Торговых дней" value={`${monthDays.length}`} hint={commonI18n.t("units.trades", { count: tradesTotal })} />
         <MiniStat label="Дни в плюс / минус" value={<><span className="text-up">{green}</span> / <span className="text-down">{red}</span></>} />
         <MiniStat label="Средний день" value={valued.length ? fmtVal(metric, total / valued.length, { sign: true }) : "—"} className={toneText(toneOf(total))} />
       </dl>
@@ -301,7 +297,7 @@ function MonthGrid({
 }) {
   return (
     <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_minmax(0,0.9fr)] sm:gap-1.5">
-      {WEEKDAYS.map((w, i) => (
+      {weekdayHeaders().map((w, i) => (
         <div key={w} className={cn("px-1 pb-1 text-center text-xs text-muted-foreground", i >= 5 && "opacity-80")}>{w}</div>
       ))}
       <div className="hidden px-1 pb-1 text-center text-xs text-muted-foreground sm:block">Неделя</div>
@@ -353,7 +349,7 @@ function MonthGrid({
                   type="button"
                   onClick={() => onDay(d)}
                   aria-pressed={isSel}
-                  aria-label={`${fmtDayLong(d)}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${pluralTrades(s.trades)}`}
+                  aria-label={`${fmtDate(d, "long")}: ${hasValue(s) ? fmtVal(metric, s.net, { sign: true }) : "без результата"}, ${commonI18n.t("units.trades", { count: s.trades })}`}
                   className={cn(
                     base,
                     hasValue(s) && s.net !== 0 ? heatClass(s.net, max) : "bg-primary/10",
@@ -370,13 +366,13 @@ function MonthGrid({
               <Link
                 href={weekHref(week.find(Boolean) as string, trader)}
                 title={PERIOD_HINT.week}
-                aria-label={`Неделя: ${wValued ? fmtVal(metric, wNet, { sign: true }) : "без результата"}, ${pluralTrades(wTrades)} — ${PERIOD_HINT.week.toLowerCase()}`}
+                aria-label={`Неделя: ${wValued ? fmtVal(metric, wNet, { sign: true }) : "без результата"}, ${commonI18n.t("units.trades", { count: wTrades })} — ${PERIOD_HINT.week.toLowerCase()}`}
                 className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right transition-colors hover:border-primary/60 hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex"
               >
                 <span className={cn("text-sm font-semibold tabular-nums", wValued ? toneText(toneOf(wNet)) : "text-muted-foreground")}>
                   {wValued ? fmtVal(metric, wNet, { sign: true, compact: Math.abs(wNet) >= 10000 }) : "—"}
                 </span>
-                <span className="text-2xs tabular-nums text-muted-foreground">{pluralTrades(wTrades)}</span>
+                <span className="text-2xs tabular-nums text-muted-foreground">{commonI18n.t("units.trades", { count: wTrades })}</span>
               </Link>
             ) : (
               <div className="hidden min-h-[84px] flex-col justify-center rounded-xl border border-dashed border-border/70 px-2 text-right sm:flex">
@@ -405,14 +401,14 @@ function DayDetail({
 }) {
   const sorted = [...trades].sort((a, b) => (a.date ?? "").localeCompare(b.date ?? "") || a.id - b.id);
   return (
-    <section aria-label={`Сделки за ${fmtDayLong(date)}`} className="mt-4 rounded-xl border border-border/70 bg-[var(--glass-bg)]">
+    <section aria-label={`Сделки за ${fmtDate(date, "long")}`} className="mt-4 rounded-xl border border-border/70 bg-[var(--glass-bg)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-3 py-2.5 sm:px-4">
         <div className="flex flex-wrap items-baseline gap-2">
-          <h4 className="text-sm font-semibold">{fmtDayLong(date)}</h4>
+          <h4 className="text-sm font-semibold">{fmtDate(date, "long")}</h4>
           {summary && hasValue(summary) && (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(summary.net)))}>{fmtVal(metric, summary.net, { sign: true })}</span>
           )}
-          <span className="text-xs text-muted-foreground">{pluralTrades(trades.length)}</span>
+          <span className="text-xs text-muted-foreground">{commonI18n.t("units.trades", { count: trades.length })}</span>
         </div>
         <span className="flex items-center gap-1">
           <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-primary">

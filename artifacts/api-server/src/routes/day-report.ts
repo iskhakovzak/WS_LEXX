@@ -18,6 +18,7 @@ import { closeDateSql, netPnlSql, resultSql } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { nyDate } from "../lib/tradingDate";
 import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -108,14 +109,14 @@ async function loadTraders(): Promise<string[]> {
 
 router.get("/day-report", asyncHandler(async (req, res) => {
   const parsed = querySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const date = q.date ?? nyDate();
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Staff без ?trader= получает null (= вся команда) — отчёт дня строится по одному трейдеру: берём себя.
   const trader = scope ?? req.authUser?.name ?? null;
-  if (!trader) { res.status(400).json({ error: "Укажите трейдера", code: "TRADER_REQUIRED" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
 
   const isGuestScope = trader === GUEST_SCOPE;
   const staff = !isGuestScope && isStaffRole(await viewerRole(req));

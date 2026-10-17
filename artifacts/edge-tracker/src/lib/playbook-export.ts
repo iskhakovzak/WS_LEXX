@@ -1,4 +1,6 @@
 import JSZip from "jszip";
+import { fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type ExportEntry = {
   id: number;
@@ -25,12 +27,6 @@ export type ExportEntry = {
   sector: string | null;
   longName: string | null;
 };
-
-function fmtDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
-  } catch { return iso; }
-}
 
 function parseScreenshots(rawUrl: string | null, rawNotes: string | null): { url: string; note: string }[] {
   if (!rawUrl) return [];
@@ -72,13 +68,6 @@ function renderScreenshots(rawUrl: string | null, rawNotes: string | null, embed
   return shots.map(s => s.note ? `- [${s.note}](${s.url})` : `- ${s.url}`).join("\n");
 }
 
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 /** Split entries into top-level parents + children map. Children whose parent is missing
  *  (e.g. parent was deleted) are treated as top-level so they are not silently dropped. */
 function splitHierarchy(entries: ExportEntry[]): { parents: ExportEntry[]; childrenMap: Map<number, ExportEntry[]> } {
@@ -118,7 +107,7 @@ function renderEntryMd(e: ExportEntry, level: number): string {
     const chips = e.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (chips.length) meta.push(`**Теги:** ${chips.map(t => `\`${t}\``).join(" ")}`);
   }
-  meta.push(`**Добавлен:** ${fmtDate(e.createdAt)}`);
+  meta.push(`**Добавлен:** ${fmtDate(e.createdAt, "long")}`);
   if (meta.length) { lines.push(meta.join("  \n")); lines.push(""); }
 
   const fund = renderFundamentalsTable(e);
@@ -157,11 +146,11 @@ export function generatePlaybookMarkdown(entries: ExportEntry[], folderOrder?: s
   const { parents, childrenMap } = splitHierarchy(entries);
   const folders = orderFolders(parents, folderOrder);
   const unfiled = parents.filter(e => !e.folder);
-  const now = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const now = fmtDate(new Date(), "long");
 
   const out: string[] = [];
   out.push("# WS_LEXX — Плейбук");
-  out.push(`> Экспортировано: ${now} · Всего: ${parents.length} ${plural(parents.length, "сетап", "сетапа", "сетапов")} · Дочерних: ${entries.length - parents.length}`);
+  out.push(`> Экспортировано: ${now} · Всего: ${commonI18n.t("units.setups", { count: parents.length })} · Дочерних: ${entries.length - parents.length}`);
   out.push("");
   out.push("---");
   out.push("");
@@ -209,7 +198,7 @@ function renderEntryNotion(e: ExportEntry, level: number, childrenMap: Map<numbe
     const chips = e.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (chips.length) meta.push(`**Теги:** ${chips.map(t => `\`${t}\``).join(" ")}`);
   }
-  meta.push(`**Добавлен:** ${fmtDate(e.createdAt)}`);
+  meta.push(`**Добавлен:** ${fmtDate(e.createdAt, "long")}`);
   if (meta.length) { lines.push(meta.join("  \n")); lines.push(""); }
 
   // Fundamentals table
@@ -274,7 +263,7 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
   const { parents, childrenMap } = splitHierarchy(entries);
   const folders = orderFolders(parents, folderOrder);
   const unfiled = parents.filter(e => !e.folder);
-  const now = new Date().toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const now = fmtDate(new Date(), "long");
   const totalChildren = entries.length - parents.length;
 
   // Index page
@@ -289,10 +278,10 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
   for (const f of folders) {
     const count = parents.filter(e => e.folder === f).length;
     const childCount = parents.filter(e => e.folder === f).reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0);
-    indexLines.push(`- **${f}** — ${count} ${plural(count, "сетап", "сетапа", "сетапов")}${childCount ? ` (+ ${childCount} дочерних)` : ""}`);
+    indexLines.push(`- **${f}** — ${commonI18n.t("units.setups", { count })}${childCount ? ` (+ ${childCount} дочерних)` : ""}`);
   }
   if (unfiled.length) {
-    indexLines.push(`- **Без папки** — ${unfiled.length} ${plural(unfiled.length, "сетап", "сетапа", "сетапов")}`);
+    indexLines.push(`- **Без папки** — ${commonI18n.t("units.setups", { count: unfiled.length })}`);
   }
   zip.file("Playbook.md", indexLines.join("\n"));
 
@@ -302,7 +291,7 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
     const lines: string[] = [];
     lines.push(`# ${title}`);
     lines.push("");
-    lines.push(`*${items.length} ${plural(items.length, "сетап", "сетапа", "сетапов")} ·${items.reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0)} дочерних*`);
+    lines.push(`*${commonI18n.t("units.setups", { count: items.length })} ·${items.reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0)} дочерних*`);
     lines.push("");
     lines.push("---");
     lines.push("");

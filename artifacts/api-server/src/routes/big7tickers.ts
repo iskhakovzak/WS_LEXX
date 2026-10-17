@@ -7,6 +7,7 @@ import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { netPnlSql, resultSql, num } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { nyDate, addDays as nyAddDays } from "../lib/tradingDate";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -100,9 +101,9 @@ router.post("/big7/tickers/bulk", asyncHandler(async (req, res): Promise<void> =
 
 router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
-  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!owned) throw notFound();
   // Reordering (position) and moving between groups touch a shared board row → same owner-or-staff rule.
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const { symbol, exchange, name, groupName, position } = req.body as Record<string, unknown>;
@@ -114,15 +115,14 @@ router.patch("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> =
     position: typeof position === "number" ? position : undefined,
   }).where(eq(big7TickersTable.id, id)).returning();
   if (!row) {
-    res.status(404).json({ error: "Not found" });
-    return;
+    throw notFound();
   }
   res.json(row);
 }));
 
 router.delete("/big7/tickers/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: big7TickersTable.createdBy }).from(big7TickersTable).where(eq(big7TickersTable.id, id));
   if (!owned) { res.status(204).send(); return; }
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
@@ -367,7 +367,7 @@ router.get("/big7/mystats", asyncHandler(async (req, res): Promise<void> => {
   const days = Number.isFinite(daysRaw) && daysRaw > 0 ? Math.min(3650, Math.round(daysRaw)) : 0;
   const requested = typeof req.query.trader === "string" && req.query.trader.trim() ? req.query.trader.trim().slice(0, 120) : req.authUser?.name ?? null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (!scope) { res.json({ trader: null, from: null, total: outAgg(emptyAgg()), tickers: [], hours: [] }); return; }
 
   // Every SQL ticker maps back to one board symbol.

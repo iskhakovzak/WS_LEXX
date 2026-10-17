@@ -6,15 +6,16 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { DESK_PRESETS, HORIZONS, HORIZON_META, LIB_BY_ID, type LibIndicator } from "./library";
 import type { IndicatorStats } from "./stats";
 import { EMPTY_STATS } from "./stats";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtDate, fmtR } from "@/lib/format";
 
 export type SetExport = { version: 1; exportedAt: string; favorites: string[]; notes: Record<string, string> };
 
 export function buildMarkdown(ids: string[], notes: Record<string, string>, stats: Record<string, IndicatorStats>): string {
-  const date = new Date().toLocaleDateString("ru-RU");
+  const date = fmtDate(new Date(), "short");
   const lines = [`# Мой набор индикаторов — WS_LEXX`, ``, `Экспорт: ${date} · ${ids.length} шт.`, ``];
   ids.forEach((id, i) => {
     const ind = LIB_BY_ID.get(id);
@@ -25,7 +26,7 @@ export function buildMarkdown(ids: string[], notes: Record<string, string>, stat
     lines.push(`Таймфрейм: ${ind.timeframe}`);
     if (ind.settings.length) lines.push(`Настройки: ${ind.settings.map((x) => `${x.label} — ${x.value}`).join("; ")}`);
     lines.push(`- Лонг: ${ind.signals.long}`, `- Шорт: ${ind.signals.short}`, `- Не торговать: ${ind.signals.avoid}`);
-    if (s.count) lines.push(`Моя статистика: ${s.count} ${pluralRu(s.count, "сделка", "сделки", "сделок")}, WR ${s.winRate}%${s.avgR != null ? `, средний ${s.avgR.toFixed(2)}R` : ""}`);
+    if (s.count) lines.push(`Моя статистика: ${commonI18n.t("units.trades", { count: s.count })}, WR ${s.winRate}%${s.avgR != null ? `, средний ${fmtR(s.avgR)}` : ""}`);
     if (notes[id]) lines.push(``, `> ${notes[id].replace(/\n/g, "\n> ")}`);
     lines.push(``);
   });
@@ -116,7 +117,7 @@ export function MySetPanel({
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{ind.name}</span>
                   {!statsLoading && s.count > 0 && (
                     <span className={cn("shrink-0 text-xs tabular-nums", s.avgR != null && toneOf(s.avgR) === "up" ? "text-up" : s.avgR != null && s.avgR < 0 ? "text-down" : "text-muted-foreground")}>
-                      {s.avgR != null ? `${s.avgR > 0 ? "+" : ""}${s.avgR.toFixed(1)}R` : `${s.count} сд.`}
+                      {s.avgR != null ? fmtR(s.avgR, 1) : `${s.count} сд.`}
                     </span>
                   )}
                 </button>

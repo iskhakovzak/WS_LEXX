@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { commonI18n } from "@/i18n/ns/common";
 
 export type Theme = "dark" | "dim" | "light";
@@ -95,11 +95,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     try { localStorage.setItem(LS_KEY, next); } catch {}
     const name = auth.user?.traderName;
     if (name) {
-      fetch(`${BASE}/api/users/theme`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, theme: next }),
-      }).catch(() => {});
+      http.patch("/api/users/theme", { name, theme: next }).catch(() => {});
     }
   }
 

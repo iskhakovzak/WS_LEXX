@@ -18,6 +18,7 @@ import { nyDate } from "../lib/tradingDate";
 import { logActivity } from "../lib/activity";
 import { audienceSql, loadAudienceViewer } from "../lib/discussionAudience";
 import { spaceSql } from "../lib/playbookAccess";
+import { notFound, unauthorized } from "../lib/http";
 
 const GetActivityQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
@@ -131,7 +132,7 @@ router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
   if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
   const { limit, before, sections, actions, trader, q } = parsed.data;
   const v = await visibility(req, trader ?? null);
-  if (!v) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!v) throw unauthorized();
 
   const where: string[] = [];
   const params: unknown[] = [];
@@ -202,7 +203,7 @@ router.get("/activity/summary", asyncHandler(async (req, res): Promise<void> => 
     return;
   }
   const v = await visibility(req, parsed.data.trader ?? null);
-  if (!v) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!v) throw unauthorized();
 
   // Feed visibility predicate ($3.. for the feed queries), trade scope for the trades block.
   const feedParams: unknown[] = [from, to];
@@ -282,7 +283,7 @@ router.get("/activity", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
   const scope = await scopeTrader(req, null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const base = db.select().from(activityLogTable);
   const logs = await (scope === null ? base : base.where(eq(activityLogTable.trader, scope)))
     .orderBy(desc(activityLogTable.createdAt))
@@ -293,7 +294,7 @@ router.get("/activity", asyncHandler(async (req, res): Promise<void> => {
 router.get("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const reactions = await db.select().from(tradeReactionsTable).where(eq(tradeReactionsTable.tradeId, params.data.id));
   res.json(reactions.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
 }));
@@ -321,10 +322,10 @@ router.post("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void
 router.get("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   // Curator reviews are personal feedback: the trade's owner and staff only.
   const ok = await canAccessTrade(req, params.data.id);
-  if (ok === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
+  if (ok === null) throw notFound("TRADE_NOT_FOUND");
   if (!ok) { res.status(403).json({ error: "Нет доступа к разбору этой сделки" }); return; }
   const reviews = await db.select().from(tradeReviewsTable)
     .where(eq(tradeReviewsTable.tradeId, params.data.id))
@@ -352,7 +353,7 @@ router.delete("/trades/:tradeId/reviews/:reviewId", asyncHandler(async (req, res
   if (!existing || existing.tradeId !== params.data.tradeId) { res.status(404).json({ error: "Разбор не найден" }); return; }
   if (existing.curator !== req.authUser!.name && !(await can(req, "trades.review.delete.any"))) { res.status(403).json({ error: "Можно удалять только свои разборы" }); return; }
   await db.delete(tradeReviewsTable).where(eq(tradeReviewsTable.id, params.data.reviewId));
-  await logActivity({ action: "deleted", section: "trades", entityId: String(params.data.tradeId), entityTitle: `разбор #${params.data.reviewId}`, trader: req.authUser!.name });
+  await logActivity({ action: "deleted", section: "trades", entityId: String(params.data.tradeId), entityTitle: `разбор #${params.data.reviewId}`, trader: req.authUser!.name, params: { titleKey: "trade_review", reviewId: params.data.reviewId } });
   res.sendStatus(204);
 }));
 

@@ -4,7 +4,8 @@ import { Gauge } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill, Segmented, toneOf, toneText } from "@/components/ds";
-import { CHART_CURSOR, CHART_TOOLTIP, OutcomeBar, fmtR, useStoredState } from "./shared";
+import { CHART_CURSOR, CHART_TOOLTIP, OutcomeBar, useStoredState } from "./shared";
+import { fmtR } from "@/lib/format";
 import { calibVerdict, calibrationOf, qualityCalibration, scoreCalibration, type EnrichedIdea, type OutcomeBasis } from "./idea-metrics";
 
 type Mode = "score" | "quality";

@@ -6,12 +6,13 @@ import { nyDate } from "../lib/tradingDate";
 import { pool } from "@workspace/db";
 import { resolveTraderParam } from "../lib/permissions";
 import { normResult, num } from "../lib/tradeMath";
-import { fetchDailyRange } from "./candles";
+import { fetchDailyRange } from "../lib/candles/market";
 import {
   barIndexOnOrAfter, barsFromCandles, filingEvents, isWksi, nextWeekday, offeringDays, PRICED_FORM_RE, reactionDayFor, reactionOn,
   rollToWeekday, splitByOfferingDays, summarize,
   type Bar, type FilingEvent, type Reaction, type Session, type TradeLite,
 } from "../lib/offeringReaction";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -1303,9 +1304,9 @@ const tickerCache = new Map<string, { data: unknown; ts: number }>();
 const DILUTIVE_FORM_RE = /^(S-1|S-3|F-1|F-3|424B[1-8]|S-8|EFFECT)/i;
 
 router.get("/offerings/ticker/:ticker", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!req.authUser) throw unauthorized();
   const ticker = String(req.params.ticker ?? "").trim().toUpperCase();
-  if (!TICKER_RE.test(ticker)) { res.status(400).json({ error: "Invalid ticker" }); return; }
+  if (!TICKER_RE.test(ticker)) throw badRequest("INVALID_TICKER");
 
   const hit = tickerCache.get(ticker);
   if (hit && Date.now() - hit.ts < INSIDER_TTL) { res.json(hit.data); return; }
@@ -1376,7 +1377,7 @@ router.get("/offerings/ticker/:ticker", asyncHandler(async (req, res): Promise<v
 
 /** GET /api/offerings/insiders?tickers=A,B,C — compact Form 4 summaries (max 8 tickers). */
 router.get("/offerings/insiders", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!req.authUser) throw unauthorized();
   const tickers = Array.from(new Set(String(req.query.tickers ?? "")
     .split(",").map((t) => t.trim().toUpperCase()).filter((t) => TICKER_RE.test(t)))).slice(0, 8);
   if (!tickers.length) { res.status(400).json({ error: "tickers required" }); return; }
@@ -1730,9 +1731,9 @@ async function buildHistory(ticker: string): Promise<HistoryPayload | { error: s
 }
 
 router.get("/offerings/history/:ticker", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!req.authUser) throw unauthorized();
   const ticker = String(req.params.ticker ?? "").trim().toUpperCase();
-  if (!TICKER_RE.test(ticker)) { res.status(400).json({ error: "Invalid ticker" }); return; }
+  if (!TICKER_RE.test(ticker)) throw badRequest("INVALID_TICKER");
 
   const mem = historyMem.get(ticker);
   if (mem && Date.now() - mem.ts < HISTORY_TTL) { res.json(mem.data); return; }
@@ -1795,7 +1796,7 @@ router.get("/offerings/my-stats", asyncHandler(async (req, res): Promise<void> =
   const scope = await resolveTraderParam(req, "trades.read.team", req.query.trader);
   if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader;
-  if (!trader) { res.status(400).json({ error: "trader required" }); return; }
+  if (!trader) throw badRequest("TRADER_REQUIRED");
   const window: 0 | 1 = req.query.window === "1" ? 1 : 0;
   const includeWksi = req.query.wksi === "1";
 
@@ -1943,7 +1944,7 @@ async function nasdaqMonth(ym: string): Promise<{ rows: IpoRow[]; ok: boolean }>
 
 let ipoCalCache: { data: unknown; ts: number } | null = null;
 router.get("/offerings/ipo-calendar", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Unauthorized" }); return; }
+  if (!req.authUser) throw unauthorized();
   if (ipoCalCache && Date.now() - ipoCalCache.ts < CACHE_TTL) { res.json(ipoCalCache.data); return; }
   const today = nyDate();
   const months: string[] = [];

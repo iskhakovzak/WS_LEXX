@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Kbd, Segmented } from "@/components/ds";
+import { chartI18n } from "@/i18n/ns/chart";
+import type { ViewMode } from "../lib/view";
 import { cn } from "@/lib/utils";
 import type { ChartMode, DrawingType, Timeframe } from "../types";
 import { TF_LABEL } from "../types";
@@ -102,7 +104,7 @@ export function HotkeysHelp({ rows, className }: { rows: HotkeyRow[]; className?
  */
 export const ChartToolbar = React.memo(function ChartToolbar({
   timeframe, timeframes, allTimeframes, baseSec, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget, lockTrade,
-  tool, onTool, drawingsCount, onClearDrawings, onScreenshot, onFit, onFullscreen, fullscreen, fetching, hotkeys, className,
+  tool, onTool, drawingsCount, onClearDrawings, onScreenshot, onFit, onFullscreen, fullscreen, fetching, hotkeys, className, view, onView,
 }: {
   timeframe: Timeframe;
   /** Timeframes the loaded bars allow. */
@@ -135,7 +137,11 @@ export const ChartToolbar = React.memo(function ChartToolbar({
   fetching?: boolean;
   hotkeys: HotkeyRow[];
   className?: string;
+  /** Zoom: the whole trading day (default) or the trade window; omitted ⇒ no switch (no trade / daily bars / replay). */
+  view?: ViewMode;
+  onView?: (v: ViewMode) => void;
 }) {
+  const { t: tc } = chartI18n.useT();
   const uid = React.useId();
   const menu = MENU.filter((k) => (k !== "events" || hasEvents) && (k !== "stopTarget" || hasStopOrTarget));
   const onCount = menu.filter((k) => overlays[k] && !(lockTrade && TRADE_OVERLAYS.includes(k))).length + (panes.pnl && hasPosition ? 1 : 0);
@@ -207,6 +213,12 @@ export const ChartToolbar = React.memo(function ChartToolbar({
             </button>
           </PopoverContent>
         </Popover>
+        {view && onView && (
+          <Segmented
+            size="sm" ariaLabel={tc("view.label")} value={view} onChange={onView} className="shrink-0"
+            options={[{ value: "day", label: tc("view.day"), title: tc("view.dayTitle") }, { value: "trade", label: tc("view.trade"), title: tc("view.tradeTitle") }]}
+          />
+        )}
         <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Показать сделку целиком (F)" title="Показать сделку целиком — F" onClick={onFit}><Scan /></Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Скриншот графика (PNG)" title="Скриншот PNG" onClick={onScreenshot}><Camera /></Button>
         <HotkeysHelp rows={hotkeys} />

@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import { UndoToast } from "@/components/undo-toast";
 import { curatorApi, curatorKeys, type QueueKind, type Scope, type TodayPayload } from "./api";
 import { useCuratorEodReview, type EodTarget } from "./eod-review";
-import { QUEUE_LABEL, QUEUE_TONE, actionTone, curatorLinks, profileHref, riskTone, shortDate, usd, waitLabel } from "./curator-math";
+import { QUEUE_LABEL, QUEUE_TONE, actionTone, curatorLinks, profileHref, riskTone, waitLabel } from "./curator-math";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
 
 /** Which limit the risk tile should show: the one that triggered the state (drawdown / week), otherwise the daily one. */
@@ -110,7 +111,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
           value={c.missingEod}
           tone={c.missingEod ? "warn" : "neutral"}
           icon={CalendarX}
-          hint={`за ${shortDate(data.prevDay)}`}
+          hint={`за ${fmtDate(data.prevDay, "dayMonth")}`}
         />
         <StatCard
           label="Нет плана"
@@ -181,7 +182,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                     <span className="text-sm font-medium text-foreground">{r.trader}</span>
                     <Pill tone={riskTone(r.state)} dot>{r.label}</Pill>
                     <span className={cn("ml-auto text-sm tabular-nums", (r.pnlNet ?? 0) < 0 ? "text-down" : "text-muted-foreground")} title="P&L сегодня">
-                      {r.pnlNet == null ? "сегодня без сделок" : usd(r.pnlNet)}
+                      {r.pnlNet == null ? "сегодня без сделок" : fmtUsd(r.pnlNet, { signed: true, decimals: 0 })}
                     </span>
                   </div>
                   <LimitBar size="sm" used={Math.min(bar.pct ?? 0, 100)} limit={100} warnAt={0.7} showValues={false} label={bar.label} hint={bar.pct != null ? `${Math.round(bar.pct)}%` : undefined} />
@@ -198,7 +199,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                     <li key={t.trader} className="flex items-center gap-2 border-b border-border/50 py-1.5 text-sm last:border-b-0">
                       <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary" onClick={() => onOpenTrader(t.trader)}>{t.trader}</button>
                       <span className="text-xs tabular-nums text-muted-foreground">{t.trades} сд.{t.openPositions ? ` · ${t.openPositions} откр.` : ""}</span>
-                      <span className={cn("w-20 text-right tabular-nums", (t.pnlNet ?? 0) > 0 ? "text-up" : (t.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground")}>{usd(t.pnlNet)}</span>
+                      <span className={cn("w-20 text-right tabular-nums", (t.pnlNet ?? 0) > 0 ? "text-up" : (t.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(t.pnlNet, { signed: true, decimals: 0 })}</span>
                     </li>
                   ))}
                 </ul>
@@ -270,7 +271,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                 <li key={q.id} className="tile grid min-w-0 grid-cols-[5.5rem_minmax(0,8rem)_minmax(0,1fr)_4.5rem_auto] items-center gap-x-3 px-3 py-1.5">
                   <Pill tone={QUEUE_TONE[q.kind]} className="w-full justify-center">{QUEUE_LABEL[q.kind]}</Pill>
                   <span className="truncate text-sm font-medium text-foreground" title={q.trader}>{q.trader}</span>
-                  <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => shortDate(d))}</span>
+                  <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
                   <span
                     className={cn("text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
                     title={q.overdue ? `Просрочено: ждёт дольше SLA ${q.slaHours} ч` : `Ждёт · SLA ${q.slaHours} ч`}
@@ -316,7 +317,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
         <Panel className="lg:col-span-5" fill title="Дисциплина" icon={ListChecks} description="Кому напомнить про план, закрытие дня и договорённости">
           <div className="flex flex-col gap-4">
             <GapList
-              title={`Не закрыт день ${shortDate(data.prevDay)}`}
+              title={`Не закрыт день ${fmtDate(data.prevDay, "dayMonth")}`}
               empty="Все, кто торговал, закрыли день."
               items={data.missingEod.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))}
             />

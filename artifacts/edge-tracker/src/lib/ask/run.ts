@@ -10,7 +10,7 @@
 // strings dictionary-encoded and clock stamps as seconds, gzipped (api-server routes/ask.ts, lib/askBook.ts). Fallback while an older API is running (404): cursor paging over /api/trades/page, scoped the same
 // way, ≤ ASK_MAX_PAGES × ASK_PAGE_LIMIT trades.
 
-import { apiUrl } from "@/lib/api";
+import { http, apiErrorFromResponse } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import {
   applyFilter, buildAnswer, buildCompare, indexBook, MAX_LINK_IDS,
@@ -168,12 +168,6 @@ export function tradesFromTuples(cols: readonly string[], encoded: ReadonlyArray
   }));
 }
 
-async function httpError(r: Response): Promise<Error> {
-  let msg = `HTTP ${r.status}`;
-  try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* not JSON */ }
-  return new Error(msg);
-}
-
 /**
  * Reads a JSON body while reporting bytes received. The body arrives decompressed, so the total is X-Raw-Length
  * (uncompressed size, set when the API gzips) and Content-Length only for an uncompressed response.
@@ -206,9 +200,7 @@ async function fetchPagedBook(scope: AskBookScope, me: string | null, signal?: A
     const p = new URLSearchParams({ sort: "date", dir: "desc", limit: String(ASK_PAGE_LIMIT) });
     if (scope === "mine" && me) p.set("trader", me);
     if (cursor) p.set("cursor", cursor);
-    const r = await fetch(apiUrl(`/api/trades/page?${p.toString()}`), { signal });
-    if (!r.ok) throw await httpError(r);
-    const j = (await r.json()) as PageResponse;
+    const j = await http.get<PageResponse>(`/api/trades/page?${p.toString()}`, { signal });
     out.push(...(j.items ?? []));
     onProgress?.({ loaded: out.length, total: null });
     if (!j.page?.hasMore || !j.page.nextCursor) return makeBook(out, false);
@@ -223,11 +215,11 @@ export async function fetchAskBook(
   opts: { me?: string | null; signal?: AbortSignal; onProgress?: (p: AskLoadProgress) => void } = {},
 ): Promise<AskBook> {
   const { me = null, signal, onProgress } = opts;
-  const r = await fetch(apiUrl(`/api/ask/book?enc=2${scope === "mine" ? "&mine=1" : ""}`), { signal });
+  const r = await http.raw(`/api/ask/book?enc=2${scope === "mine" ? "&mine=1" : ""}`, { signal, throwOnError: false });
   // Older API without the route: 404 in dev, the SPA's index.html (200, text/html) in production.
   const isJson = (r.headers.get("content-type") ?? "").includes("json");
   if (r.status === 404 || (r.ok && !isJson)) return fetchPagedBook(scope, me, signal, onProgress);
-  if (!r.ok) throw await httpError(r);
+  if (!r.ok) throw await apiErrorFromResponse(r);
   const j = await readJson<CompactResponse>(r, onProgress);
   return makeBook(tradesFromTuples(j.cols ?? [], j.rows ?? [], { dicts: j.dicts, clock: j.clock }), Boolean(j.truncated));
 }

@@ -20,6 +20,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { GUEST_SCOPE, scopeTrader } from "../lib/auth";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { askBookCompact, askBookQuery, askBookResponse, type AskBookDbRow, type AskBookResponse } from "../lib/askBook";
+import { unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 const gzipAsync = promisify(gzip);
@@ -45,7 +46,7 @@ router.get("/ask/book", asyncHandler(async (req, res) => {
   const traderParam = typeof req.query.trader === "string" ? req.query.trader.slice(0, 120) : undefined;
   const mv = await loadMoneyViewer(req);
   const scope = await scopeTrader(req, mine ? (mv.name ?? undefined) : traderParam);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   res.setHeader("Cache-Control", "private, no-store");
   // Guests read no trades; staff without a trader name asking for «mine» own none.
   if (scope === GUEST_SCOPE || (mine && !mv.name)) {

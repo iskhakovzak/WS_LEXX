@@ -8,13 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { invalidateTradeDependents } from "@/lib/query-keys";
 import { cn } from "@/lib/utils";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, fmtEtTimeSec, sessionOfEt } from "@/components/trade-chart-parts/chart-utils";
 import { ROLE_LABEL, roleOf } from "@/components/chart-engine/lib/structure";
 import type { StructureLeg, TradeRole, TradeStructureDto } from "@/components/chart-engine/types";
-import { fmtMoney, fmtPrice } from "./trade-utils";
+import { fmtCount, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 
 type Execution = {
   id: number; tradeId: number; kind: Kind; price: string; qty: string | null; executedAt: string | null; note: string | null; sortOrder: number;
@@ -34,16 +35,7 @@ const KIND = Object.fromEntries(KINDS.map((k) => [k.value, k])) as Record<Kind, 
 const isOpening = (k: Kind) => k === "entry" || k === "add";
 
 const ROLE_TONE: Record<TradeRole, Tone> = { entry: "accent", reentry: "accent", flip: "warn", add: "accent", partial_exit: "warn", exit: "up", stop: "down" };
-const fmtQ = (n: number) => n.toLocaleString("en-US", { maximumFractionDigits: 2 });
-const signedR = (r: number) => `${r >= 0 ? "+" : "−"}${Math.abs(r).toFixed(2)}R`;
 
-async function jsonOrThrow(r: Response) {
-  if (!r.ok) {
-    const b: { error?: string } = await r.json().catch(() => ({}));
-    throw new Error(b.error ?? `Статус ${r.status}`);
-  }
-  return r.status === 204 ? null : r.json();
-}
 
 /** PropReports fills carry their commissions in the note («PropReports S · fees 0.84»); there is no fees column yet. */
 export function feesFromNote(note: string | null | undefined): number | null {
@@ -83,8 +75,8 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
   const key = ["trade-executions", tradeId];
   const q = useQuery<{ tradeId: number; executions: Execution[]; structure?: TradeStructureDto | null }>({
     queryKey: key,
-    queryFn: () => fetch(`${BASE}/api/trades/${tradeId}/executions`).then(jsonOrThrow),
-    staleTime: 60_000,
+    queryFn: ({ signal }) => http.get<{ tradeId: number; executions: Execution[]; structure?: TradeStructureDto | null }>(`/api/trades/${tradeId}/executions`, { signal }),
+    staleTime: STALE.short,
   });
   const [kind, setKind] = React.useState<Kind>("entry");
   const [price, setPrice] = React.useState("");
@@ -96,11 +88,7 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
     mutationFn: () => {
       // Time is typed in New York wall clock (the trading day), never the browser's zone.
       const executedAt = time ? etWallToIso(tradeDate.substring(0, 10), time) : null;
-      return fetch(`${BASE}/api/trades/${tradeId}/executions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ kind, price: Number(price), qty: qty ? Number(qty) : null, executedAt, note: note.trim() || null, sortOrder: (q.data?.executions.length ?? 0) + 1 }),
-      }).then(jsonOrThrow);
+      return http.post(`/api/trades/${tradeId}/executions`, { kind, price: Number(price), qty: qty ? Number(qty) : null, executedAt, note: note.trim() || null, sortOrder: (q.data?.executions.length ?? 0) + 1 });
     },
     onSuccess: () => {
       // Executions feed the replay markers and the execution-quality cache → invalidate dependents too.
@@ -111,7 +99,7 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
     onError: (e: Error) => toast({ title: "Не удалось добавить исполнение", description: e.message, variant: "destructive" }),
   });
   const del = useMutation({
-    mutationFn: (id: number) => fetch(`${BASE}/api/trades/${tradeId}/executions/${id}`, { method: "DELETE" }).then(jsonOrThrow),
+    mutationFn: (id: number) => http.del(`/api/trades/${tradeId}/executions/${id}`),
     onSuccess: () => { void invalidateTradeDependents(qc, { tradeId }); },
     onError: (e: Error) => toast({ title: "Не удалось удалить исполнение", description: e.message, variant: "destructive" }),
   });
@@ -203,17 +191,17 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
                   {session && session !== "regular" && <Pill tone={session === "premarket" ? "accent" : "warn"} className="px-1.5 text-2xs">{ET_SESSION_LABEL[session]}</Pill>}
                   {closePs != null && (
                     <span className={cn("tabular-nums text-xs", toneText(toneOf(closePs)))} title="Результат на акцию относительно среднего входа">
-                      {closePs >= 0 ? "+" : "−"}${Math.abs(closePs).toFixed(2)}/акц.{leg ? (leg.realized != null ? ` · ${fmtMoney(leg.realized)}` : "") : n ? ` · ${fmtMoney(closePs * n)}` : ""}
+                      {closePs >= 0 ? "+" : "−"}${Math.abs(closePs).toFixed(2)}/акц.{leg ? (leg.realized != null ? ` · ${fmtUsd(leg.realized, { signed: true, decimals: "auto" })}` : "") : n ? ` · ${fmtUsd(closePs * n, { signed: true, decimals: "auto" })}` : ""}
                     </span>
                   )}
-                  {legEnd && leg?.r != null && !leg.opening && <span className={cn("tabular-nums text-xs font-medium", toneText(toneOf(leg.r)))}>{signedR(leg.r)}</span>}
+                  {legEnd && leg?.r != null && !leg.opening && <span className={cn("tabular-nums text-xs font-medium", toneText(toneOf(leg.r)))}>{fmtR(leg.r)}</span>}
                   {legEnd && leg && leg.pieces > 1 && <span className="text-xs text-muted-foreground" title="Один ордер исполнился несколькими кусками">{leg.pieces} куска</span>}
                   {legEnd && leg?.positionAfter != null && (
                     <span className="tabular-nums text-xs text-muted-foreground" title="Позиция после исполнения">
-                      {leg.positionAfter > 0 ? `→ в позиции ${fmtQ(leg.positionAfter)}${leg.opening && leg.avgAfter != null ? ` · ср. ${fmtPrice(leg.avgAfter)}` : ""}` : "→ позиция закрыта"}
+                      {leg.positionAfter > 0 ? `→ в позиции ${fmtCount(leg.positionAfter)}${leg.opening && leg.avgAfter != null ? ` · ср. ${fmtPrice(leg.avgAfter)}` : ""}` : "→ позиция закрыта"}
                     </span>
                   )}
-                  {fee != null && <span className="tabular-nums text-xs text-muted-foreground" title="Комиссии исполнения">комисс. {fmtMoney(-fee)}</span>}
+                  {fee != null && <span className="tabular-nums text-xs text-muted-foreground" title="Комиссии исполнения">комисс. {fmtUsd(-fee, { signed: true, decimals: "auto" })}</span>}
                   <span className="min-w-0 flex-1 truncate text-muted-foreground" title={e.note ?? undefined}>{e.note}</span>
                   {canEdit && (
                     <button
@@ -234,17 +222,17 @@ export function ExecutionsPanel({ tradeId, tradeDate, side, canEdit, fees, qty: 
             <div className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5"><p className="text-xs text-muted-foreground">Средний вход</p><p className="font-semibold tabular-nums">{fmtPrice(summary.avgIn)} <span className="text-xs font-normal text-muted-foreground">× {summary.inQty}</span></p></div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5"><p className="text-xs text-muted-foreground">Средний выход</p><p className="font-semibold tabular-nums">{fmtPrice(summary.avgOut)} <span className="text-xs font-normal text-muted-foreground">× {summary.outQty}</span></p></div>
-              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={tradePnl != null && summary.realised != null && Math.abs(tradePnl - summary.realised) >= 0.01 ? `В карточке сделки: ${fmtMoney(tradePnl)}` : undefined}>
+              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={tradePnl != null && summary.realised != null && Math.abs(tradePnl - summary.realised) >= 0.01 ? `В карточке сделки: ${fmtUsd(tradePnl, { signed: true, decimals: "auto" })}` : undefined}>
                 <p className="text-xs text-muted-foreground">По исполнениям (брутто)</p>
-                <p className={cn("font-semibold tabular-nums", toneText(toneOf(summary.realised)))}>{fmtMoney(summary.realised)}</p>
+                <p className={cn("font-semibold tabular-nums", toneText(toneOf(summary.realised)))}>{fmtUsd(summary.realised, { signed: true, decimals: "auto" })}</p>
                 {summary.perShare != null && <p className="text-2xs tabular-nums text-muted-foreground">{summary.perShare >= 0 ? "+" : "−"}${Math.abs(summary.perShare).toFixed(2)} на акцию</p>}
               </div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={summary.feesSource === "fills" ? "Сумма комиссий по исполнениям" : summary.feesSource === "trade" ? "Комиссии из карточки сделки (по исполнениям не разнесены)" : undefined}>
                 <p className="text-xs text-muted-foreground">{summary.totalFees != null ? "Нетто после комиссий" : "Удержание"}</p>
                 {summary.totalFees != null ? (
                   <>
-                    <p className={cn("font-semibold tabular-nums", toneText(toneOf(summary.net)))}>{fmtMoney(summary.net)}</p>
-                    <p className="text-2xs tabular-nums text-muted-foreground">комиссии {fmtMoney(-summary.totalFees)}{summary.feesPerShare != null ? ` · $${summary.feesPerShare.toFixed(3)}/акц.` : ""}</p>
+                    <p className={cn("font-semibold tabular-nums", toneText(toneOf(summary.net)))}>{fmtUsd(summary.net, { signed: true, decimals: "auto" })}</p>
+                    <p className="text-2xs tabular-nums text-muted-foreground">комиссии {fmtUsd(-summary.totalFees, { signed: true, decimals: "auto" })}{summary.feesPerShare != null ? ` · $${summary.feesPerShare.toFixed(3)}/акц.` : ""}</p>
                   </>
                 ) : (
                   <p className="font-semibold tabular-nums">{fmtDuration(summary.holdSeconds)}</p>
@@ -324,7 +312,7 @@ function StructureHeader({ structure, tradeId, onOpenTradeId }: { structure: Tra
         <span className="micro-label mr-1">Структура</span>
         {chips.map((c) => <span key={c.text} title={c.title}><Pill tone={c.tone}>{c.text}</Pill></span>)}
         {!chips.length && <span className="text-xs text-muted-foreground">вход → выход</span>}
-        {st.rTotal != null && <span className={cn("ml-auto text-sm font-semibold tabular-nums", toneText(toneOf(st.rTotal)))}>{signedR(st.rTotal)}</span>}
+        {st.rTotal != null && <span className={cn("ml-auto text-sm font-semibold tabular-nums", toneText(toneOf(st.rTotal)))}>{fmtR(st.rTotal)}</span>}
       </div>
       {chain && (
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">

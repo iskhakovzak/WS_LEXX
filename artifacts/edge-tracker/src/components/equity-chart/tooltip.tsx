@@ -3,21 +3,18 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateRu, fmtValue, rangeRu, weekdayRu, type EquityCandle, type EquityUnit } from "@/components/equity-candles/lib";
 import type { EquityAgg } from "./model";
-import { MONTHS_LONG } from "./time";
+import { fmtMonth, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
 
 const TIP_W = 272;
 
 const tone = (v: number | null | undefined) => (v == null ? "text-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
-const plural = (n: number, f: [string, string, string]) => {
-  const a = Math.abs(n) % 100, b = a % 10;
-  return a > 10 && a < 20 ? f[2] : b > 1 && b < 5 ? f[1] : b === 1 ? f[0] : f[2];
-};
 
 /** «Пятница, 15 октября» / «Неделя 13–17 окт.» / «Октябрь 2026». */
 export function candleTitle(c: EquityCandle, agg: EquityAgg): string {
   if (agg === "week") return `Неделя ${rangeRu(c.from, c.to)}`;
   if (agg === "month") {
-    const m = MONTHS_LONG[Number(c.key.slice(5, 7)) - 1] ?? "";
+    const mi = Number(c.key.slice(5, 7)) - 1;
+    const m = mi >= 0 && mi < 12 ? fmtMonth(mi, "long") : "";
     return `${m.charAt(0).toUpperCase()}${m.slice(1)} ${c.key.slice(0, 4)}`;
   }
   const wd = weekdayRu(c.key);
@@ -64,7 +61,7 @@ export function EquityTooltip({
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate font-semibold text-foreground">{candleTitle(c, agg)}</span>
           {agg !== "day" && (
-            <span className="shrink-0 text-2xs text-muted-foreground">{c.days} {plural(c.days, ["торг. день", "торг. дня", "торг. дней"])}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">{c.days} {pluralRu(c.days, "торг. день", "торг. дня", "торг. дней")}</span>
           )}
         </div>
         <div className="flex items-baseline justify-between gap-2">
@@ -75,14 +72,14 @@ export function EquityTooltip({
 
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-border/60 pt-2">
         {usd && c.gross != null && unit !== "gross" && c.fees > 0 && <Row k="Брутто" cls={tone(c.gross)}>{fmtValue(c.gross, "net")}</Row>}
-        {usd && c.fees > 0 && <Row k="Комиссии" cls="text-down">−${c.fees.toFixed(2)}</Row>}
+        {usd && c.fees > 0 && <Row k="Комиссии" cls="text-down">{fmtUsd(-c.fees)}</Row>}
         {c.trades > 0 && (
           <Row k="Сделок">
             {c.trades}
             {c.wins + c.losses > 0 && (
               <> · <span className="text-up">{c.wins}W</span>/<span className="text-down">{c.losses}L</span></>
             )}
-            {c.winRate != null && <span className="text-muted-foreground"> · {Math.round(c.winRate * 100)}%</span>}
+            {c.winRate != null && <span className="text-muted-foreground"> · {fmtRate(c.winRate)}</span>}
           </Row>
         )}
         {hasWicks && <Row k={`Хай / лой ${span}`}><span className={tone(c.peakIn)}>{fmtValue(c.peakIn, unit)}</span> <span className="text-muted-foreground">/</span> <span className={tone(c.troughIn)}>{fmtValue(c.troughIn, unit)}</span></Row>}

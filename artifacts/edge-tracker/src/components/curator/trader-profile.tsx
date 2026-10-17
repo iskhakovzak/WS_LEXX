@@ -10,12 +10,12 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { useCuratorProfile, type ProfilePayload } from "./api";
 import { BreachReviewPanel } from "./breach-review";
-import { actionTone, curatorLinks, dateTime, disciplineTone, riskTone, shortDate, usd, waitLabel } from "./curator-math";
+import { actionTone, curatorLinks, disciplineTone, riskTone, waitLabel } from "./curator-math";
 import { useCuratorEodReview, type EodTarget } from "./eod-review";
 import { GoalDialog } from "./goal-dialog";
 import { NotesPanel } from "./notes-panel";
 import { TemplateDialog } from "./template-dialog";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtUsd, pluralRu } from "@/lib/format";
 
 export type ProfileTab = "overview" | "risk" | "journal" | "weekly" | "academy" | "notes";
 export const PROFILE_TABS: ProfileTab[] = ["overview", "risk", "journal", "weekly", "academy", "notes"];
@@ -113,7 +113,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
             {s.tierName && <Pill tone="neutral">тир {s.tierName}</Pill>}
             <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : "Без лимитов"}</Pill>
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={people || undefined}>{people || "куратор не закреплён"}{s.lastTradeDate ? ` · посл. сделка ${shortDate(s.lastTradeDate)}` : ""}</p>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={people || undefined}>{people || "куратор не закреплён"}{s.lastTradeDate ? ` · посл. сделка ${fmtDate(s.lastTradeDate, "dayMonth")}` : ""}</p>
         </div>
         <div className="flex shrink-0 flex-wrap items-center gap-2">
           {p.canEditLimits && <Button type="button" size="sm" variant="outline" onClick={onTemplate}><Layers className="h-3.5 w-3.5" /> Шаблон лимитов</Button>}
@@ -145,9 +145,9 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGrid cols={4}>
-        <StatCard label="Сегодня, нетто" value={s.risk.todayTrades ? usd(s.risk.todayPnl) : "—"} tone={(s.risk.todayPnl ?? 0) > 0 ? "up" : (s.risk.todayPnl ?? 0) < 0 ? "down" : "neutral"} hint={`${s.risk.todayTrades} ${pluralRu(s.risk.todayTrades, "сделка", "сделки", "сделок")}`} term="net" />
-        <StatCard label="Неделя, нетто" value={usd(s.risk.weekPnl)} tone={(s.risk.weekPnl ?? 0) > 0 ? "up" : (s.risk.weekPnl ?? 0) < 0 ? "down" : "neutral"} hint={p.metrics?.week.limitUsedPct != null ? `${Math.round(p.metrics.week.limitUsedPct)}% недельного лимита` : undefined} />
-        <StatCard label="4 недели" value={usd(fourWeekNet)} tone={fourWeekNet > 0 ? "up" : fourWeekNet < 0 ? "down" : "neutral"} spark={s.trend.map((w) => w.net)} hint={s.trend.map((w) => w.trades).reduce((a, b) => a + b, 0) + " сделок"} />
+        <StatCard label="Сегодня, нетто" value={s.risk.todayTrades ? fmtUsd(s.risk.todayPnl, { signed: true, decimals: 0 }) : "—"} tone={(s.risk.todayPnl ?? 0) > 0 ? "up" : (s.risk.todayPnl ?? 0) < 0 ? "down" : "neutral"} hint={`${s.risk.todayTrades} ${pluralRu(s.risk.todayTrades, "сделка", "сделки", "сделок")}`} term="net" />
+        <StatCard label="Неделя, нетто" value={fmtUsd(s.risk.weekPnl, { signed: true, decimals: 0 })} tone={(s.risk.weekPnl ?? 0) > 0 ? "up" : (s.risk.weekPnl ?? 0) < 0 ? "down" : "neutral"} hint={p.metrics?.week.limitUsedPct != null ? `${Math.round(p.metrics.week.limitUsedPct)}% недельного лимита` : undefined} />
+        <StatCard label="4 недели" value={fmtUsd(fourWeekNet, { signed: true, decimals: 0 })} tone={fourWeekNet > 0 ? "up" : fourWeekNet < 0 ? "down" : "neutral"} spark={s.trend.map((w) => w.net)} hint={s.trend.map((w) => w.trades).reduce((a, b) => a + b, 0) + " сделок"} />
         <StatCard
           label="Дисциплина, 0–10"
           value={s.discipline.value != null ? s.discipline.value.toFixed(1) : "—"}
@@ -179,16 +179,16 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
           <Panel title="Последние отчёты" icon={BookOpen}>
             <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">Последний закрытый день</dt>
-              <dd className="text-right tabular-nums text-foreground">{shortDate(s.eod.lastClosed)}</dd>
+              <dd className="text-right tabular-nums text-foreground">{fmtDate(s.eod.lastClosed, "dayMonth")}</dd>
               <dt className="text-muted-foreground">Ждут разбора дней</dt>
               <dd className={cn("text-right tabular-nums", s.eod.pending ? "text-primary" : "text-foreground")}>{s.eod.pending}</dd>
               <dt className="text-muted-foreground">Последний разбор дня</dt>
-              <dd className="text-right tabular-nums text-foreground">{s.eod.lastReviewedAt ? shortDate(s.eod.lastReviewedAt.slice(0, 10)) : "не было"}{s.eod.lastScore != null ? ` · ${s.eod.lastScore}/5` : ""}</dd>
+              <dd className="text-right tabular-nums text-foreground">{s.eod.lastReviewedAt ? fmtDate(s.eod.lastReviewedAt.slice(0, 10), "dayMonth") : "не было"}{s.eod.lastScore != null ? ` · ${s.eod.lastScore}/5` : ""}</dd>
               <dt className="text-muted-foreground">Недельный отчёт</dt>
               <dd className="text-right text-foreground">{s.weekly.currentStatus ? WEEK_STATUS[s.weekly.currentStatus]?.label ?? s.weekly.currentStatus : "не начат"}</dd>
               <dt className="text-muted-foreground">1:1</dt>
               <dd className={cn("text-right tabular-nums", (s.academy.daysSinceOneOnOne ?? 99) > 14 ? "text-warn" : "text-foreground")}>
-                {s.academy.lastOneOnOne ? `${shortDate(s.academy.lastOneOnOne.slice(0, 10))} (${s.academy.daysSinceOneOnOne} дн.)` : "не было"}
+                {s.academy.lastOneOnOne ? `${fmtDate(s.academy.lastOneOnOne.slice(0, 10), "dayMonth")} (${s.academy.daysSinceOneOnOne} дн.)` : "не было"}
               </dd>
             </dl>
           </Panel>
@@ -205,9 +205,9 @@ function RiskBars({ p }: { p: ProfilePayload }) {
   if (!l) return <p className="text-sm text-warn">Лимиты не заданы — стоп по дневному убытку не сработает. Примените шаблон тира.</p>;
   return (
     <div className="flex flex-col gap-3">
-      <LimitBar label="Дневной убыток" used={m ? Math.min(0, m.today.pnlNet ?? 0) : 0} limit={l.dailyLossLimit} warnAt={0.7} format={(n) => usd(n, false)} />
-      <LimitBar label="Недельный убыток" used={m ? Math.min(0, m.week.pnlNet ?? 0) : 0} limit={l.weeklyLossLimit} warnAt={0.7} format={(n) => usd(n, false)} />
-      <LimitBar label="Просадка от пика" used={m?.drawdown.currentUsd ?? 0} limit={l.maxDrawdown} warnAt={0.7} format={(n) => usd(n, false)} hint={m?.drawdown.redDayStreak ? `красных дней подряд: ${m.drawdown.redDayStreak}` : undefined} />
+      <LimitBar label="Дневной убыток" used={m ? Math.min(0, m.today.pnlNet ?? 0) : 0} limit={l.dailyLossLimit} warnAt={0.7} format={(n) => fmtUsd(Math.abs(n), { decimals: 0 })} />
+      <LimitBar label="Недельный убыток" used={m ? Math.min(0, m.week.pnlNet ?? 0) : 0} limit={l.weeklyLossLimit} warnAt={0.7} format={(n) => fmtUsd(Math.abs(n), { decimals: 0 })} />
+      <LimitBar label="Просадка от пика" used={m?.drawdown.currentUsd ?? 0} limit={l.maxDrawdown} warnAt={0.7} format={(n) => fmtUsd(Math.abs(n), { decimals: 0 })} hint={m?.drawdown.redDayStreak ? `красных дней подряд: ${m.drawdown.redDayStreak}` : undefined} />
     </div>
   );
 }
@@ -216,13 +216,13 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
   const l = p.limits;
   const drift = p.signal.risk.templateDrift;
   const rows: [string, React.ReactNode][] = l ? [
-    ["Дневной лимит", usd(l.dailyLossLimit, false)],
-    ["Недельный лимит", usd(l.weeklyLossLimit, false)],
-    ["Макс. просадка", usd(l.maxDrawdown, false)],
-    ["Риск на сделку", usd(l.maxRiskPerTrade, false)],
-    ["Макс. позиция", usd(l.maxPositionUsd, false)],
+    ["Дневной лимит", fmtUsd(l.dailyLossLimit, { decimals: 0 })],
+    ["Недельный лимит", fmtUsd(l.weeklyLossLimit, { decimals: 0 })],
+    ["Макс. просадка", fmtUsd(l.maxDrawdown, { decimals: 0 })],
+    ["Риск на сделку", fmtUsd(l.maxRiskPerTrade, { decimals: 0 })],
+    ["Макс. позиция", fmtUsd(l.maxPositionUsd, { decimals: 0 })],
     ["Открытых позиций", l.maxOpenPositions ?? "—"],
-    ["Овернайт", l.allowOvernight ? `да, до ${usd(l.maxOvernightExposure, false)}` : "нет"],
+    ["Овернайт", l.allowOvernight ? `да, до ${fmtUsd(l.maxOvernightExposure, { decimals: 0 })}` : "нет"],
     ["Свинг", l.allowSwing ? "да" : "нет"],
   ] : [];
   return (
@@ -267,7 +267,7 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
               <span className="micro-label">Последние изменения</span>
               {p.limitEvents.map((e) => (
                 <p key={e.id} className="break-words text-xs text-muted-foreground">
-                  <span className="tabular-nums">{dateTime(e.changedAt)}</span> · {e.changedBy ?? "—"}{e.reason ? ` · ${e.reason}` : ""}
+                  <span className="tabular-nums">{fmtDate(e.changedAt, "dateTime")}</span> · {e.changedBy ?? "—"}{e.reason ? ` · ${e.reason}` : ""}
                 </p>
               ))}
             </div>
@@ -307,9 +307,9 @@ function JournalTab({ p }: { p: ProfilePayload }) {
                   type="button"
                   onClick={() => review.open(d)}
                   className={cn("chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium tabular-nums", (d.hoursWaiting ?? 0) > 24 && "text-warn")}
-                  title={`Закрыт ${dateTime(d.closedAt)} · ждёт ${waitLabel(d.hoursWaiting)}`}
+                  title={`Закрыт ${fmtDate(d.closedAt, "dateTime")} · ждёт ${waitLabel(d.hoursWaiting)}`}
                 >
-                  {shortDate(d.date)}{d.date.slice(0, 4) !== thisYear ? ` ${d.date.slice(0, 4)}` : ""}
+                  {fmtDate(d.date, "dayMonth")}{d.date.slice(0, 4) !== thisYear ? ` ${d.date.slice(0, 4)}` : ""}
                 </button>
               </li>
             ))}
@@ -347,7 +347,7 @@ function JournalTab({ p }: { p: ProfilePayload }) {
               <tbody>
                 {rows.map((d) => (
                   <tr key={d.id}>
-                    <td className="whitespace-nowrap">{shortDate(d.date)}</td>
+                    <td className="whitespace-nowrap">{fmtDate(d.date, "dayMonth")}</td>
                     <td>
                       {d.reviewedAt ? <Pill tone="up">Разобран · {d.reviewedBy}</Pill> : d.closedAt ? <Pill tone="accent" dot>Ждёт разбора</Pill> : <Pill tone="neutral">Не закрыт</Pill>}
                     </td>
@@ -410,10 +410,10 @@ function WeeklyTab({ p }: { p: ProfilePayload }) {
                 const st = WEEK_STATUS[w.status] ?? { label: w.status, tone: "neutral" as const };
                 return (
                   <tr key={w.id}>
-                    <td className="whitespace-nowrap">с {shortDate(w.weekStart)}</td>
+                    <td className="whitespace-nowrap">с {fmtDate(w.weekStart, "dayMonth")}</td>
                     <td><Pill tone={st.tone} dot={w.status === "submitted"}>{st.label}</Pill></td>
-                    <td className="text-muted-foreground">{dateTime(w.submittedAt)}</td>
-                    <td className="text-muted-foreground">{dateTime(w.reviewedAt)}</td>
+                    <td className="text-muted-foreground">{fmtDate(w.submittedAt, "dateTime")}</td>
+                    <td className="text-muted-foreground">{fmtDate(w.reviewedAt, "dateTime")}</td>
                     <td className={cn("text-right", w.score != null && toneText(disciplineTone(w.score)))}>{w.score != null ? `${w.score}/10` : "—"}</td>
                     <td className="text-right"><Link href={curatorLinks.weeklyCurator(p.trader, w.week)} className="text-xs text-primary hover:underline">Открыть</Link></td>
                   </tr>
@@ -440,7 +440,7 @@ function GoalsList({ goals }: { goals: ProfilePayload["goals"] }) {
               <span className="line-clamp-2 min-w-0 flex-1 break-words font-medium text-foreground" title={g.title}>{g.title}</span>
               <Pill tone={st.tone}>{st.label}</Pill>
             </div>
-            <LimitBar size="sm" used={pctDone ?? 0} limit={100} warnAt={0} tone="ok" showValues={false} hint={`${pctDone != null ? `${pctDone}%` : "ещё не считалось"}${g.dueOn ? ` · срок ${shortDate(g.dueOn)}` : ""}`} />
+            <LimitBar size="sm" used={pctDone ?? 0} limit={100} warnAt={0} tone="ok" showValues={false} hint={`${pctDone != null ? `${pctDone}%` : "ещё не считалось"}${g.dueOn ? ` · срок ${fmtDate(g.dueOn, "dayMonth")}` : ""}`} />
           </li>
         );
       })}
@@ -465,7 +465,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
                   <StatusDot tone={a.status !== "open" ? "up" : a.overdue ? "down" : "accent"}><span className="sr-only">{ACTION_STATUS[a.status] ?? a.status}</span></StatusDot>
                   <span className={cn("line-clamp-2 min-w-0 flex-1 break-words", a.status !== "open" ? "text-muted-foreground line-through" : "text-foreground")} title={a.title}>{a.title}</span>
                   <span className="shrink-0 text-xs text-muted-foreground">{a.owner === "student" || a.owner === p.trader ? "трейдер" : a.owner === "mentor" ? "ментор" : a.owner}</span>
-                  <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", a.overdue ? "text-down" : "text-muted-foreground")}>{a.dueOn ? shortDate(a.dueOn) : "—"}</span>
+                  <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", a.overdue ? "text-down" : "text-muted-foreground")}>{a.dueOn ? fmtDate(a.dueOn, "dayMonth") : "—"}</span>
                 </li>
               ))}
             </ul>
@@ -481,7 +481,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
             <dt className="text-muted-foreground">Ступень</dt>
             <dd className="text-right text-foreground">{s.stage.label ?? "не задана"}</dd>
             <dt className="text-muted-foreground">С</dt>
-            <dd className="text-right tabular-nums text-foreground">{s.stage.since ? shortDate(s.stage.since.slice(0, 10)) : "—"}</dd>
+            <dd className="text-right tabular-nums text-foreground">{s.stage.since ? fmtDate(s.stage.since.slice(0, 10), "dayMonth") : "—"}</dd>
             <dt className="text-muted-foreground">Тир лимитов</dt>
             <dd className="text-right text-foreground">{s.tierName ?? "не назначен"}</dd>
             <dt className="text-muted-foreground">Задания на проверке</dt>
@@ -496,7 +496,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
             <ul className="flex flex-col gap-2">
               {p.meetings.map((m) => (
                 <li key={m.id} className="flex flex-col gap-0.5 text-sm">
-                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{dateTime(m.metAt)}</span><span className="text-xs text-muted-foreground">{MEETING_FORMAT[m.format] ?? m.format} · {m.mentor}</span></span>
+                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{fmtDate(m.metAt, "dateTime")}</span><span className="text-xs text-muted-foreground">{MEETING_FORMAT[m.format] ?? m.format} · {m.mentor}</span></span>
                   {m.agenda && <span className="line-clamp-2 text-xs text-muted-foreground">{m.agenda}</span>}
                 </li>
               ))}

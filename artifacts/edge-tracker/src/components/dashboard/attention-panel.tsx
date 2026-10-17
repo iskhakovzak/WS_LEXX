@@ -26,8 +26,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { prevWeekday } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
-import { fmtMoney, plural, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtUsd, pluralRu } from "@/lib/format";
 import type { DashboardToday, EodStatus, EventsToday, MiniTrade, RecentTrade, RiskDesk, RiskMe } from "./use-dashboard";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** One actionable line. Lower `rank` = more urgent; the first item becomes «Следующий шаг». */
 type Item = {
@@ -278,8 +280,8 @@ export function AttentionPanel({
         tone: "warn",
         title: isToday ? "Закрыть сегодняшний день" : isYesterday ? "Заполнить разбор вчерашнего дня" : `Заполнить разбор дня ${shortDate(lastDay)}`,
         detail: [
-          `${row.trades} ${plural(row.trades, ["сделка", "сделки", "сделок"])}`,
-          dayNet != null ? `${fmtMoney(dayNet)} нетто` : null,
+          `${commonI18n.t("units.trades", { count: row.trades })}`,
+          dayNet != null ? `${fmtUsd(dayNet, { signed: true })} нетто` : null,
           missing > 0 ? `${missing} без сетапа или оценки` : "итог дня не записан",
         ]
           .filter(Boolean)
@@ -297,7 +299,7 @@ export function AttentionPanel({
         rank: 2,
         icon: ClipboardCheck,
         tone: "warn",
-        title: `${open.length} ${plural(open.length, ["трейдер не закрыл", "трейдера не закрыли", "трейдеров не закрыли"])} день`,
+        title: `${open.length} ${pluralRu(open.length, "трейдер не закрыл", "трейдера не закрыли", "трейдеров не закрыли")} день`,
         detail: open.map((x) => x.trader).slice(0, 5).join(", "),
         href: links.journalDay(today),
         cta: "К журналу",
@@ -314,7 +316,7 @@ export function AttentionPanel({
       icon: BookOpenCheck,
       tone: "accent",
       title: "Прочитать план на день",
-      detail: `${p.bias ? `${p.bias} · ` : ""}${p.inPlayCount} ${plural(p.inPlayCount, ["тикер в фокусе", "тикера в фокусе", "тикеров в фокусе"])}`,
+      detail: `${p.bias ? `${p.bias} · ` : ""}${p.inPlayCount} ${pluralRu(p.inPlayCount, "тикер в фокусе", "тикера в фокусе", "тикеров в фокусе")}`,
       href: links.gamePlan(today),
       cta: "Открыть план",
     });
@@ -375,7 +377,7 @@ export function AttentionPanel({
       rank: carried.length > 0 && afterClose ? 2 : 6,
       icon: Moon,
       tone: carried.length > 0 ? "purple" : "accent",
-      title: carried.length > 0 ? `${carried.length} ${plural(carried.length, ["позиция", "позиции", "позиций"])} на ночь / свинг` : `${a.openTrades.count} ${plural(a.openTrades.count, ["открытая сделка", "открытые сделки", "открытых сделок"])}`,
+      title: carried.length > 0 ? `${carried.length} ${pluralRu(carried.length, "позиция", "позиции", "позиций")} на ночь / свинг` : `${a.openTrades.count} ${pluralRu(a.openTrades.count, "открытая сделка", "открытые сделки", "открытых сделок")}`,
       detail: a.openTrades.items.map((t) => t.ticker).slice(0, 5).join(", "),
       href: links.trades(),
       cta: "К сделкам",
@@ -389,7 +391,7 @@ export function AttentionPanel({
       rank: unread.critical > 0 ? 1 : 7,
       icon: Bell,
       tone: unread.critical > 0 ? "down" : unread.warn > 0 ? "warn" : "neutral",
-      title: `${unread.unread} ${plural(unread.unread, ["непрочитанное уведомление", "непрочитанных уведомления", "непрочитанных уведомлений"])}`,
+      title: `${unread.unread} ${pluralRu(unread.unread, "непрочитанное уведомление", "непрочитанных уведомления", "непрочитанных уведомлений")}`,
       detail: unread.critical > 0 ? `${unread.critical} критичных` : unread.warn > 0 ? `${unread.warn} с предупреждением` : undefined,
       href: "/notifications",
       cta: "Открыть",
@@ -401,7 +403,7 @@ export function AttentionPanel({
       rank: 3,
       icon: AlertTriangle,
       tone: "down",
-      title: `${a.violations.count} ${plural(a.violations.count, ["нарушение правил", "нарушения правил", "нарушений правил"])} за сутки`,
+      title: `${a.violations.count} ${pluralRu(a.violations.count, "нарушение правил", "нарушения правил", "нарушений правил")} за сутки`,
       detail: a.violations.items[0]?.message,
       href: "/error-tracker",
       cta: "Подробнее",
@@ -414,7 +416,7 @@ export function AttentionPanel({
       rank: 5,
       icon: UserCheck,
       tone: "purple",
-      title: `${q.count} ${plural(q.count, ["вывод ждёт", "вывода ждут", "выводов ждут"])} вашего ревью`,
+      title: `${q.count} ${pluralRu(q.count, "вывод ждёт", "вывода ждут", "выводов ждут")} вашего ревью`,
       detail: q.items.map((t) => `${t.ticker}${t.trader ? ` (${t.trader})` : ""}`).slice(0, 3).join(", "),
       href: links.trades({ ids: q.items.map((t) => t.id) }),
       cta: "Рецензировать",
@@ -426,7 +428,7 @@ export function AttentionPanel({
       rank: 8,
       icon: ClipboardPen,
       tone: "neutral",
-      title: `${a.unreviewed.count} ${plural(a.unreviewed.count, ["сделка", "сделки", "сделок"])} без выводов за 30 дней`,
+      title: `${commonI18n.t("units.trades", { count: a.unreviewed.count })} без выводов за 30 дней`,
       detail: a.unreviewed.items.map((t) => t.ticker).slice(0, 5).join(", "),
       href: a.unreviewed.items[0] ? links.trade(a.unreviewed.items[0].id) : links.trades(),
       cta: "Разобрать",
@@ -439,7 +441,7 @@ export function AttentionPanel({
       rank: 9,
       icon: Lightbulb,
       tone: "accent",
-      title: `${a.ideasToReview.count} ${plural(a.ideasToReview.count, ["идея команды", "идеи команды", "идей команды"])} без вашей оценки`,
+      title: `${a.ideasToReview.count} ${pluralRu(a.ideasToReview.count, "идея команды", "идеи команды", "идей команды")} без вашей оценки`,
       detail: a.ideasToReview.items.map((i) => i.ticker).slice(0, 5).join(", "),
       href: a.ideasToReview.items[0] ? links.idea(a.ideasToReview.items[0].id) : "/trade-ideas",
       cta: "Оценить",
@@ -451,7 +453,7 @@ export function AttentionPanel({
       rank: 10,
       icon: FileEdit,
       tone: "neutral",
-      title: `${a.draftIdeas.count} ${plural(a.draftIdeas.count, ["черновик идеи", "черновика идей", "черновиков идей"])}`,
+      title: `${a.draftIdeas.count} ${pluralRu(a.draftIdeas.count, "черновик идеи", "черновика идей", "черновиков идей")}`,
       detail: "Опубликуйте или удалите",
       href: "/trade-ideas?status=draft&mine=1",
       cta: "К идеям",
@@ -487,7 +489,7 @@ export function AttentionPanel({
       actions={
         pending > 0 ? (
           <Pill tone="warn">
-            {pending} {plural(pending, ["задача", "задачи", "задач"])}
+            {pending} {pluralRu(pending, "задача", "задачи", "задач")}
           </Pill>
         ) : (
           <Pill tone="up" dot>

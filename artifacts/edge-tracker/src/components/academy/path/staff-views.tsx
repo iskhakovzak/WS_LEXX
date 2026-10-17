@@ -6,13 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import {
   type Criterion, type PathConfig, type StageKey, OP_LABEL, OPS,
-  fmtInstant, sendJson, stageName, usd, useFunnel, usePathMutation, useRequests,
+  fmtInstant, stageName, useFunnel, usePathMutation, useRequests,
 } from "./api";
+import { http } from "@/lib/api/http";
 import { StageLadder, selectCls } from "./bits";
 import { PendingRequest } from "./person-view";
+import { fmtUsd, pluralRu } from "@/lib/format";
 
 // ─── funnel ─────────────────────────────────────────────────────────────────
 
@@ -55,7 +56,7 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                           <div className={cn("h-full rounded-full", p.ready ? "bg-up" : pct >= 0.7 ? "bg-[hsl(var(--chart-3))]" : "bg-primary")} style={{ width: `${pct * 100}%` }} />
                         </div>
                       )}
-                      <span className="text-xs tabular-nums text-muted-foreground">{p.total > 0 ? `${p.passed} из ${p.total} · ` : ""}P&amp;L {usd(p.summary.net)} за {p.summary.windowDays} дн.</span>
+                      <span className="text-xs tabular-nums text-muted-foreground">{p.total > 0 ? `${p.passed} из ${p.total} · ` : ""}P&amp;L {fmtUsd(p.summary.net, { decimals: 0 })} за {p.summary.windowDays} дн.</span>
                       {p.failing.length > 0 && <span className="line-clamp-2 text-[11px] text-muted-foreground">Не хватает: {p.failing.join(", ")}</span>}
                     </>
                   )}
@@ -118,7 +119,7 @@ export function CriteriaEditor({ config }: { config: PathConfig }) {
   const { toast } = useToast();
   const [rows, setRows] = React.useState<Draft[]>(() => config.criteria.map(toDraft));
   React.useEffect(() => setRows(config.criteria.map(toDraft)), [config.criteria]);
-  const save = usePathMutation((body: unknown) => sendJson<{ criteria: Criterion[] }>("/academy/path/criteria", "PUT", body));
+  const save = usePathMutation((body: unknown) => http.put<{ criteria: Criterion[] }>("/api/academy/path/criteria", body));
   const metrics = config.meta.metrics;
   const from = config.stages.slice(0, -1);
   const upd = (k: string, patch: Partial<Draft>) => setRows((rs) => rs.map((r) => (r._k === k ? { ...r, ...patch } : r)));

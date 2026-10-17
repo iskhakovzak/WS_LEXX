@@ -6,7 +6,8 @@
  * (fill times of all rows in one request; falls back to GET /api/trades/:id/executions).
  */
 import * as React from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import type { Candle, Execution, SparkData, TradeLike } from "./types";
 import { buildSparkData } from "./lib/sparkline";
@@ -28,6 +29,8 @@ export type TradeSparklineProps = {
   tone?: "pnl" | "neutral";
   className?: string;
   title?: string;
+  /** "trade" (default): the trade with ~2 h around it; "day": the whole trading day 4:00–20:00 ET, the trade highlighted. */
+  span?: "trade" | "day";
 };
 
 const cache = new Map<string, Promise<SparkData | null>>();
@@ -36,16 +39,9 @@ const MAX_CACHE = 400;
 /** Drop the in-memory cache (e.g. after a trade is edited). */
 export function invalidateSparkline(tradeId?: number): void {
   if (tradeId == null) cache.clear();
-  else cache.delete(`id:${tradeId}`);
+  else { cache.delete(`id:${tradeId}`); cache.delete(`day:${tradeId}`); }
 }
 
-async function getJson<T>(url: string): Promise<T | null> {
-  try {
-    const r = await fetch(url);
-    if (!r.ok) return null;
-    return (await r.json()) as T;
-  } catch { return null; }
-}
 
 /** Candles are shared by URL: two trades on the same ticker / day draw from one request. */
 const candleCache = new Map<string, Promise<{ candles: Candle[] } | null>>();
@@ -53,7 +49,7 @@ function getCandles(url: string): Promise<{ candles: Candle[] } | null> {
   const hit = candleCache.get(url);
   if (hit) return hit;
   if (candleCache.size >= MAX_CACHE) { const first = candleCache.keys().next().value; if (first !== undefined) candleCache.delete(first); }
-  const p = getJson<{ candles: Candle[] }>(url).then((r) => { if (!r) candleCache.delete(url); return r; });
+  const p = http.get<{ candles: Candle[] }>(url).catch(() => null).then((r) => { if (!r) candleCache.delete(url); return r; });
   candleCache.set(url, p);
   return p;
 }
@@ -67,7 +63,8 @@ type FillLite = Pick<Execution, "kind" | "price" | "executedAt">;
 let batchSupported = true;
 let pending: { id: number; resolve: (v: FillLite[] | null) => void }[] = [];
 let flushTimer: ReturnType<typeof setTimeout> | null = null;
-const single = (id: number) => getJson<{ executions: Execution[] }>(`${BASE}/api/trades/${id}/executions`).then((r) => r?.executions ?? null);
+const single = (id: number) =>
+  http.get<{ executions: Execution[] }>(`/api/trades/${id}/executions`).catch(() => null).then((r) => r?.executions ?? null);
 async function flushFills() {
   flushTimer = null;
   const queue = pending;
@@ -77,10 +74,12 @@ async function flushFills() {
     let items: Record<string, FillLite[]> | null = null;
     if (batchSupported) {
       try {
-        const r = await fetch(`${BASE}/api/trade-executions/batch?ids=${[...new Set(chunk.map((q) => q.id))].join(",")}`);
-        if (r.status === 404) batchSupported = false;
-        else if (r.ok) items = ((await r.json()) as { items?: Record<string, FillLite[]> }).items ?? {};
-      } catch { /* network — per-trade fallback below */ }
+        const r = await http.get<{ items?: Record<string, FillLite[]> }>(`/api/trade-executions/batch?ids=${[...new Set(chunk.map((q) => q.id))].join(",")}`);
+        items = r?.items ?? {};
+      } catch (e) {
+        if (isNotFound(e)) batchSupported = false;
+        /* else network / other — per-trade fallback below */
+      }
     }
     for (const q of chunk) {
       const hit = items?.[String(q.id)];
@@ -96,10 +95,10 @@ function getFills(id: number): Promise<FillLite[] | null> {
   });
 }
 
-async function loadForTrade(trade: TradeLike): Promise<SparkData | null> {
+async function loadForTrade(trade: TradeLike, span: "trade" | "day" = "trade"): Promise<SparkData | null> {
   const { fromKey, toKey, dateKey } = tradeWindow(trade, 0);
   const [range, fills] = await Promise.all([
-    getCandles(`${BASE}/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
+    getCandles(`/api/candles/${encodeURIComponent(trade.ticker)}/range?from=${fromKey}&to=${toKey}&interval=5m&extended=1`),
     trade.id > 0 ? getFills(trade.id) : Promise.resolve(null),
   ]);
   const ex = fills ? { executions: fills } : null;
@@ -119,7 +118,7 @@ async function loadForTrade(trade: TradeLike): Promise<SparkData | null> {
     exitTime: Number.isFinite(exitTime as number) ? exitTime : null,
     entryPrice: toNum(trade.entry) ?? (opening.length ? toNum(opening[0].price) : null),
     exitPrice: toNum(trade.exit) ?? (closing.length ? toNum(closing[closing.length - 1].price) : null),
-    points: 120, padBars: 24,
+    points: span === "day" ? 160 : 120, padBars: span === "day" ? null : 24,
   });
 }
 
@@ -148,21 +147,22 @@ function useNearViewport<T extends Element>(): [React.RefObject<T | null>, boole
   return [ref, near];
 }
 
-export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, height = 36, tone = "pnl", className, title }: TradeSparklineProps) {
+export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, height = 36, tone = "pnl", className, title, span = "trade" }: TradeSparklineProps) {
   const [ref, near] = useNearViewport<HTMLCanvasElement>();
   const [data, setData] = React.useState<SparkData | null | undefined>(dataProp);
-  const key = dataProp !== undefined ? null : trade ? `id:${trade.id}` : tradeId != null ? `id:${tradeId}` : null;
+  const id = trade ? trade.id : tradeId;
+  const key = dataProp !== undefined || id == null ? null : span === "day" ? `day:${id}` : `id:${id}`;
 
   React.useEffect(() => {
     if (dataProp !== undefined) { setData(dataProp); return; }
     if (!near || !key) return;
     let alive = true;
     const loader = trade
-      ? () => loadForTrade(trade)
-      : async () => { const t = await getJson<TradeLike>(`${BASE}/api/trades/${tradeId}`); return t ? loadForTrade(t) : null; };
+      ? () => loadForTrade(trade, span)
+      : async () => { const t = await http.get<TradeLike>(`/api/trades/${tradeId}`).catch(() => null); return t ? loadForTrade(t, span) : null; };
     loadCached(key, loader).then((d) => { if (alive) setData(d); });
     return () => { alive = false; };
-  }, [near, key, dataProp, trade, tradeId]);
+  }, [near, key, dataProp, trade, tradeId, span]);
 
   React.useEffect(() => {
     const canvas = ref.current;

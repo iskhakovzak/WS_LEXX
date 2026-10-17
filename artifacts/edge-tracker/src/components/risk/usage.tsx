@@ -1,14 +1,14 @@
-import * as React from "react";
+
 import { AlertOctagon, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RiskAlert } from "./use-risk";
-import { fmtPct, fmtUsd } from "./primitives";
+import { fmtPct, fmtUsd } from "@/lib/format";
 
 const isCount = (kind: string) => kind === "positions" || kind === "overnight_not_allowed" || kind === "swing_not_allowed";
 
 export function alertValue(a: RiskAlert): string {
   if (a.kind === "overnight_not_allowed" || a.kind === "swing_not_allowed") return `${a.used} поз.${a.detail ? ` · ${a.detail}` : ""}`;
-  const f = (v: number) => (isCount(a.kind) ? String(v) : fmtUsd(v, { compact: true }));
+  const f = (v: number) => (isCount(a.kind) ? String(v) : fmtUsd(v, { decimals: 0, compact: 10_000 }));
   return `${f(a.used)}${a.limit != null ? ` / ${f(a.limit)}` : ""}${a.detail ? ` · ${a.detail}` : ""}`;
 }
 
@@ -32,7 +32,7 @@ export function AlertList({ alerts, className }: { alerts: RiskAlert[]; classNam
             <span className="sr-only">{breach ? "нарушение" : "внимание"}</span>
             <span className="ml-auto truncate text-right text-xs text-muted-foreground tabular-nums">{alertValue(a)}</span>
             {a.pct != null && (
-              <span className={cn("shrink-0 text-xs font-semibold tabular-nums", breach ? "text-down" : "text-warn")}>{fmtPct(a.pct)}</span>
+              <span className={cn("shrink-0 text-xs font-semibold tabular-nums", breach ? "text-down" : "text-warn")}>{fmtPct(a.pct, { decimals: 0, signed: false })}</span>
             )}
           </li>
         );

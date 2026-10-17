@@ -2,9 +2,10 @@
  * Preferences panel: per-type in-app on/off (grouped), per-type mute presets and a global
  * «не беспокоить» mute. Saves the whole set with PUT /notifications/prefs.
  */
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { BellOff, BellRing, Check, Loader2, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { Panel, Pill } from "@/components/ds";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -40,7 +41,7 @@ function muteLabel(iso: string | null): string | null {
   if (iso === "forever") return "выключено";
   const t = Date.parse(iso);
   if (!Number.isFinite(t) || t <= Date.now()) return null;
-  return `тихо до ${new Date(t).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`;
+  return `тихо до ${fmtDate(t, "dateTime")}`;
 }
 
 type Draft = { byType: Record<string, Pref>; muteAll: string | null };

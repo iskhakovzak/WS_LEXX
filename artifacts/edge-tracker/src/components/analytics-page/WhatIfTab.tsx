@@ -4,7 +4,9 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { FlaskConical, Check } from "lucide-react";
 import { Panel, EmptyState, Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { type Unit, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { type Unit, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { toSimTrades } from "./edge-api";
 import { applyWhatIf, kpisOf, equityCurve, WHAT_IF_RULES, type WhatIfRuleId, type ValueKpis } from "./edge-stats";
 
@@ -28,7 +30,7 @@ export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null
     return Array.from({ length: n + 1 }, (_, i) => ({ i, Факт: i === 0 ? 0 : a[i - 1] ?? a[a.length - 1] ?? 0, "Что если": i === 0 ? 0 : b[i - 1] ?? b[b.length - 1] ?? 0 }));
   }, [base.values, alt.values]);
 
-  const fmt = (v: number | null | undefined, digits = 2) => (u === "r" ? fmtR(v, digits) : fmtUsd(v));
+  const fmt = (v: number | null | undefined, digits = 2) => (u === "r" ? fmtR(v, digits) : fmtUsd(v, { signed: true, decimals: "auto" }));
   const toggle = (id: WhatIfRuleId) => setRules((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
   if (base.values.length === 0) {
@@ -40,9 +42,9 @@ export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null
   const rows: { label: string; a: number | null; b: number | null; fmt: (v: number | null) => string; invert?: boolean; pct?: boolean }[] = [
     { label: `Итог, ${u === "r" ? "R" : "$ нетто"}`, a: base.kpis.total, b: alt.kpis.total, fmt: (v) => fmt(v, 1) },
     { label: "Сделок", a: base.kpis.n, b: alt.kpis.n, fmt: (v) => String(v ?? "—") },
-    { label: "Win rate", a: base.kpis.winRate, b: alt.kpis.winRate, fmt: (v) => fmtPct(v), pct: true },
+    { label: "Win rate", a: base.kpis.winRate, b: alt.kpis.winRate, fmt: (v) => fmtRate(v), pct: true },
     { label: "Ожидание на сделку", a: base.kpis.expectancy, b: alt.kpis.expectancy, fmt: (v) => fmt(v) },
-    { label: "Profit factor", a: base.kpis.profitFactor, b: alt.kpis.profitFactor, fmt: (v) => fmtPf(v) },
+    { label: "Profit factor", a: base.kpis.profitFactor, b: alt.kpis.profitFactor, fmt: (v) => fmtRatio(v) },
     { label: "Средний плюс", a: base.kpis.avgWin, b: alt.kpis.avgWin, fmt: (v) => fmt(v) },
     { label: "Средний минус", a: base.kpis.avgLoss, b: alt.kpis.avgLoss, fmt: (v) => fmt(v) },
     { label: "Макс. просадка", a: base.kpis.maxDrawdown, b: alt.kpis.maxDrawdown, fmt: (v) => fmt(v, 1) },
@@ -79,21 +81,21 @@ export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null
         </ul>
         {rules.size > 0 && (
           <div className="mt-3 flex flex-wrap gap-1.5">
-            {alt.removed > 0 && <Pill tone="neutral">убрано {sdeal(alt.removed)}</Pill>}
-            {alt.modified > 0 && <Pill tone="neutral">обрезано {sdeal(alt.modified)}</Pill>}
+            {alt.removed > 0 && <Pill tone="neutral">убрано {commonI18n.t("units.trades", { count: alt.removed })}</Pill>}
+            {alt.modified > 0 && <Pill tone="neutral">обрезано {commonI18n.t("units.trades", { count: alt.modified })}</Pill>}
             {alt.removed === 0 && alt.modified === 0 && <Pill tone="neutral">правила ничего не изменили</Pill>}
           </div>
         )}
       </Panel>
 
       <div className="flex flex-col gap-4 lg:col-span-2">
-        <Panel title="Кривая капитала: факт против «что если»" description={`${sdeal(base.kpis.n)} закрытых в хронологии закрытия · ${u === "r" ? "в R" : "в $ нетто"}`}>
+        <Panel title="Кривая капитала: факт против «что если»" description={`${commonI18n.t("units.trades", { count: base.kpis.n })} закрытых в хронологии закрытия · ${u === "r" ? "в R" : "в $ нетто"}`}>
           <div className="h-[260px]">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                 <CartesianGrid stroke={GRID} vertical={false} />
                 <XAxis dataKey="i" {...AXIS} />
-                <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v))} width={64} />
+                <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v, { signed: true, decimals: "auto" }))} width={64} />
                 <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmt(v, 1)} labelFormatter={(i) => `Сделка ${i}`} />
                 <Legend />
                 <ReferenceLine y={0} stroke={GRID} />
@@ -124,7 +126,7 @@ export function WhatIfTab({ trades, unit }: { trades: Trade[]; unit: Unit | null
                     <td className="py-1.5 text-right text-muted-foreground">{r.fmt(r.a)}</td>
                     <td className="py-1.5 text-right font-medium">{r.fmt(r.b)}</td>
                     <td className={cn("py-1.5 text-right", tone === "up" ? "text-up" : tone === "down" ? "text-down" : "text-muted-foreground")}>
-                      {d == null ? "—" : r.pct ? `${fmtSigned(d * 100, 0)} п.п.` : r.label === "Сделок" || r.label.startsWith("Макс. серия") ? fmtSigned(d, 0) : r.label === "Profit factor" ? fmtSigned(d, 2) : fmt(d, 2)}
+                      {d == null ? "—" : r.pct ? `${fmtNum(d * 100, { decimals: 0, signed: true })} п.п.` : r.label === "Сделок" || r.label.startsWith("Макс. серия") ? fmtNum(d, { decimals: 0, signed: true }) : r.label === "Profit factor" ? fmtNum(d, { decimals: 2, signed: true }) : fmt(d, 2)}
                     </td>
                   </tr>
                 );

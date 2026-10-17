@@ -1,16 +1,12 @@
-/**
- * Curator desk table: one row per trader, sorted by risk (stop → near → ok → no limits, then worst usage).
- * Limit usage as bars (day / week / drawdown), today's net P&L, open book (long / short / gross), overnight,
- * ticker concentration; row → trader card.
- */
-import * as React from "react";
+
 import { Moon, PanelRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DataTable, SortableTh, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import type { DeskRow } from "./use-risk";
 import { rankLevel, riskScore, worstUsage, type RankInput, type RankLevel, type TraderExposure } from "./risk-math";
-import { LevelBadge, UsageCell, fmtSignedUsd, fmtUsd, tierLabel } from "./primitives";
+import { LevelBadge, UsageCell, tierLabel } from "./primitives";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
 export type DeskTableRow = {
   row: DeskRow;
@@ -48,7 +44,7 @@ function statusDetail(t: DeskTableRow): string | null {
   if (r.halted) return r.stop.label.toLowerCase();
   const top = r.alerts[0];
   if (top) return `${top.label.toLowerCase()}${top.pct != null ? ` ${Math.round(top.pct)}%` : ""}`;
-  if (r.stop.dailyRemainingUsd != null) return `ещё ${fmtUsd(r.stop.dailyRemainingUsd)} до стопа`;
+  if (r.stop.dailyRemainingUsd != null) return `ещё ${fmtUsd(r.stop.dailyRemainingUsd, { decimals: 0 })} до стопа`;
   return null;
 }
 
@@ -63,7 +59,7 @@ const ACCESSORS = {
   overnight: (t: DeskTableRow) => t.exposure?.overnightUsd ?? (t.row.today.overnightExposureUsd || null),
 };
 
-const ddmm = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+const ddmm = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 
 export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (trader: string) => void }) {
   const { rows: sorted, thProps } = useTableSort(rows, ACCESSORS, "risk");
@@ -125,7 +121,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 <td><UsageCell label={`${r.trader}, макс. просадка`} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
                 <td className="text-right">
                   <div className={cn("font-semibold", pnl == null ? "text-muted-foreground" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "")}>
-                    {pnl != null ? fmtSignedUsd(pnl) : "—"}
+                    {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : "—"}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {r.today.trades ? `${r.today.trades} сд.` : r.lastTradeDate ? `посл. ${ddmm(r.lastTradeDate)}` : "нет сделок"}
@@ -134,9 +130,9 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 <td className="text-right">
                   {e && e.count > 0 ? (
                     <>
-                      <div className="font-medium">{e.count} · {fmtUsd(e.grossUsd, { compact: true })}</div>
+                      <div className="font-medium">{e.count} · {fmtUsd(e.grossUsd, { decimals: 0, compact: 10_000 })}</div>
                       <div className="text-xs text-muted-foreground">
-                        лонг {fmtUsd(e.longUsd, { compact: true })} / шорт {fmtUsd(e.shortUsd, { compact: true })}
+                        лонг {fmtUsd(e.longUsd, { decimals: 0, compact: 10_000 })} / шорт {fmtUsd(e.shortUsd, { decimals: 0, compact: 10_000 })}
                       </div>
                     </>
                   ) : (
@@ -147,7 +143,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                   {e && e.overnightCount > 0 ? (
                     <span className={cn("inline-flex items-center gap-1 font-medium", overnightBad && "text-down")} title={overnightBad ? "Овернайт запрещён лимитами" : undefined}>
                       <Moon className="h-3 w-3" aria-hidden="true" />
-                      {e.overnightCount} · {fmtUsd(e.overnightUsd, { compact: true })}
+                      {e.overnightCount} · {fmtUsd(e.overnightUsd, { decimals: 0, compact: 10_000 })}
                       {overnightBad && <span className="sr-only">овернайт запрещён</span>}
                     </span>
                   ) : (

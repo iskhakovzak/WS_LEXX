@@ -24,7 +24,7 @@
  *   PUT  /settings                     [curator] { groupId?, fees?: { columns, confirm }, unmatched? }
  *   PUT  /accounts also accepts aliases: string[] — raw account names that map to this account
  */
-import { Router, type IRouter, type Request, type Response, type NextFunction, type RequestHandler } from "express";
+import { Router, type IRouter, type Request, type Response, type RequestHandler } from "express";
 import { z } from "zod";
 import multer from "multer";
 import { pool } from "@workspace/db";
@@ -37,7 +37,7 @@ import { addDays, nyDate } from "../lib/tradingDate";
 import {
   parseFillsCsv, isFillsCsv, parseTradesReportBuffer, reportTradesToRoundTrips,
   buildRoundTrips, summarizeTrips, planSync, applySync, listPending, mergePending, keepPendingSeparate, dismissPending,
-  loadAccountMappings, getClient, getConfiguredClient, effectiveGroupId, isConfigured, statusConfig, startScheduler, schedulerStatus, PropReportsError,
+  loadAccountMappings, getConfiguredClient, effectiveGroupId, isConfigured, statusConfig, schedulerStatus, PropReportsError,
   getSettings, setSetting, feeLabel, orderedFeeKeys, type DetectedFeeColumn, type IntegrationSettings, type TradesReportDiagnostics,
   performanceSheetRows, isPerformanceReport, parsePerformanceRows, performanceFileMeta,
   savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount,
@@ -47,6 +47,7 @@ import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { syncNotice, unmatchedNotice, type SyncCounts } from "../lib/notifyEventsCore";
+import { AppError, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -339,7 +340,7 @@ router.delete("/propreports/accounts/:id", requireAuth, asyncHandler(async (req,
   const v = await viewer(req);
   if (!(await requireCap(req, res, "propreports.configure", null, "Только куратор"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "bad id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const { rowCount } = await pool.query(`DELETE FROM propreports_accounts WHERE id = $1`, [id]);
   if (!rowCount) { res.status(404).json({ error: "Счёт не найден" }); return; }
   await logAudit({ actor: v.name, action: "propreports.accounts.delete", targetType: "propreports_accounts", targetId: String(id) });
@@ -553,7 +554,7 @@ router.post("/propreports/reconcile/pending/:id/keep", requireAuth, asyncHandler
   const v = await viewer(req);
   if (!(await requireCap(req, res, "propreports.sync", null, "Только куратор"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "bad id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const out = await keepPendingSeparate(id, v.name);
   if (!out.ok) { res.status(out.status).json({ error: out.error }); return; }
   res.json({ ok: true, tradeId: out.tradeId });
@@ -563,9 +564,9 @@ router.delete("/propreports/reconcile/pending/:id", requireAuth, asyncHandler(as
   const v = await viewer(req);
   if (!(await requireCap(req, res, "propreports.sync", null, "Только куратор"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "bad id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const ok = await dismissPending(id, v.name);
-  if (!ok) { res.status(404).json({ error: "Запись не найдена" }); return; }
+  if (!ok) throw notFound();
   res.json({ ok: true });
 }));
 
@@ -719,7 +720,7 @@ router.get("/propreports/performance", requireAuth, asyncHandler(async (req, res
 router.get("/propreports/performance/:id", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Некорректный id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw new AppError("INVALID_ID");
   const row = await getPerformanceReport(id);
   if (!row || (!v.staff && row.traderName !== v.name)) { res.status(404).json({ error: "Отчёт не найден" }); return; }
   res.json(row);
@@ -729,13 +730,12 @@ router.delete("/propreports/performance/:id", requireAuth, asyncHandler(async (r
   const v = await viewer(req);
   if (!(await requireCap(req, res, "propreports.sync", null, "Удаление доступно только куратору"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Некорректный id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw new AppError("INVALID_ID");
   const ok = await deletePerformanceReport(id, v.name);
   if (!ok) { res.status(404).json({ error: "Отчёт не найден" }); return; }
   res.json({ ok: true });
 }));
 
-// Scheduled sync is opt-in: no-op unless PROPREPORTS_SYNC_MINUTES and the API env vars are set.
-startScheduler();
+// Scheduled sync: job "propreports.sync" (src/jobs/definitions.ts), opt-in via PROPREPORTS_SYNC_MINUTES + the API env vars.
 
 export default router;

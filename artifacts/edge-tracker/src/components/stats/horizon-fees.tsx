@@ -3,9 +3,10 @@ import { Hourglass, Receipt } from "lucide-react";
 import { Panel, Pill, StatRow, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
-  HORIZON_LABEL, feesOf, fmtPct, fmtValue, groupBy, horizonOf, valueOf, isClosed,
+  HORIZON_LABEL, feesOf, fmtValue, groupBy, horizonOf, valueOf, isClosed,
   type FeeStats, type Horizon, type HorizonFilter, type Metric,
 } from "./metrics";
+import { fmtRate } from "@/lib/format";
 
 const ORDER: Horizon[] = ["intraday", "overnight", "swing"];
 const toneCls = (v: number | null) => (v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
@@ -68,10 +69,10 @@ export function HorizonPanel({
                   </td>
                   <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">
                     {count}
-                    <span className="ml-1 text-2xs">({Math.round((count / total) * 100)}%)</span>
+                    <span className="ml-1 text-2xs">({fmtRate(count / total)})</span>
                   </td>
                   <td className={cn("px-2 py-2 text-right tabular-nums", g?.winRate == null ? "text-muted-foreground" : g.winRate >= 0.5 ? "text-up" : "text-down")}>
-                    {fmtPct(g?.winRate)}
+                    {fmtRate(g?.winRate)}
                   </td>
                   <td className="hidden px-2 py-2 text-right tabular-nums text-muted-foreground sm:table-cell">{fmtValue(g?.avg, metric)}</td>
                   <td className={cn("px-2 py-2 text-right font-semibold tabular-nums", toneCls(g?.value ?? null))}>{fmtValue(g?.value, metric)}</td>
@@ -124,14 +125,14 @@ export function FeesPanel({ fees, prev, trades }: { fees: FeeStats; prev: FeeSta
             ))}
           </div>
           {fees.gross != null && fees.gross > 0 && (
-            <div className="mt-3" aria-label={`Комиссии съедают ${fmtPct(share)} брутто P&L`}>
+            <div className="mt-3" aria-label={`Комиссии съедают ${fmtRate(share)} брутто P&L`}>
               <div className="h-2 overflow-hidden rounded-full bg-up/30">
                 <div className="h-full rounded-full bg-down" style={{ width: `${bar}%` }} />
               </div>
             </div>
           )}
           <div className="mt-3 divide-y divide-[hsl(var(--border)/0.5)]">
-            <StatRow label="Комиссии от брутто" value={fmtPct(share)} tone={share != null && share > 0.2 ? "down" : "neutral"} />
+            <StatRow label="Комиссии от брутто" value={fmtRate(share)} tone={share != null && share > 0.2 ? "down" : "neutral"} />
             <StatRow label="Средняя комиссия на сделку" value={avgFee != null ? fmtValue(avgFee, "usd", { sign: false }) : "—"} />
             <StatRow label="Сделок с комиссией" value={`${fees.withFees} из ${closed}`} />
           </div>

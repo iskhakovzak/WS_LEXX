@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Award, Download, HelpCircle, ListFilter, Loader2, MoreHorizontal, RefreshCw, SearchX, Sunrise, UserRound, Zap } from "lucide-react";
 import {
@@ -13,6 +13,7 @@ import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { fmtCount, fmtRate } from "@/lib/format";
 import {
   runSourceScan, useAddToPlan, useAddToWatchlist, useAnalystFeed, useFirmStats, useFirmWeight, useMyDays, useMyPlanTickers,
   useOpenPositions, useQuotes, useReactionSummaries, useWatchlistTickers,
@@ -473,7 +474,7 @@ export default function AnalystActionsPage() {
           tone={kpi.pUp - kpi.pDown > 0 ? "up" : kpi.pUp - kpi.pDown < 0 ? "down" : "neutral"}
           loading={feed.isLoading}
           value={`${kpi.pUp - kpi.pDown > 0 ? "+" : kpi.pUp - kpi.pDown < 0 ? "−" : ""}${Math.abs(kpi.pUp - kpi.pDown)}`}
-          hint={`▲${kpi.pUp} ▼${kpi.pDown}${kpi.raisedShare != null ? ` · PT повышают ${Math.round(kpi.raisedShare * 100)}%` : ""}`}
+          hint={`▲${kpi.pUp} ▼${kpi.pDown}${kpi.raisedShare != null ? ` · PT повышают ${fmtRate(kpi.raisedShare)}` : ""}`}
           spark={kpi.spark.length > 1 ? kpi.spark : undefined}
           onClick={() => setFilters({ type: "moves" })}
         />
@@ -521,7 +522,7 @@ export default function AnalystActionsPage() {
       </div>
 
       {/* ── feed ── */}
-      <Panel icon={ListFilter} title="Лента действий" description={`${periodLabel} · ${typeCounts.all.toLocaleString("ru-RU")} действий в выборке`}>
+      <Panel icon={ListFilter} title="Лента действий" description={`${periodLabel} · ${fmtCount(typeCounts.all)} действий в выборке`}>
         <div className="flex flex-col gap-3">
           <FiltersBar
             filters={filters}

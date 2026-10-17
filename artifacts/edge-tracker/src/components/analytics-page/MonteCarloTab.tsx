@@ -5,7 +5,9 @@ import { Dices, RefreshCw } from "lucide-react";
 import { Panel, StatCard, StatGrid, Segmented, EmptyState, Pill, toneOf } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { type Unit, type AnalyticsFilters, fmtR, fmtUsd, fmtPct, sdeal, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { type Unit, type AnalyticsFilters, CHART_TOOLTIP_STYLE, AXIS, GRID } from "./metrics";
+import { fmtCount, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { toSimTrades, useRiskLimits } from "./edge-api";
 import { monteCarlo, hashSeed, type MonteCarloInput, type MonteCarloResult } from "./edge-stats";
 import type { McRequest, McResponse } from "./mc.worker";
@@ -94,7 +96,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
   }, [values, horizon, runs, tradesPerDay, dailyLimit, weeklyLimit, ruinLevel, filters.trader, filters.period, u, seedBump]);
 
   const { result, busy, mode } = useMonteCarlo(input);
-  const fmt = (v: number | null | undefined, digits = 1) => (u === "r" ? fmtR(v, digits) : fmtUsd(v));
+  const fmt = (v: number | null | undefined, digits = 1) => (u === "r" ? fmtR(v, digits) : fmtUsd(v, { signed: true, decimals: "auto" }));
 
   if (values.length < 2) {
     return <Panel><EmptyState icon={Dices} title="Мало данных для симуляции" description={`Нужно хотя бы 2 закрытые сделки с ${u === "r" ? "R" : "P&L"}. Сейчас — ${values.length}.`} /></Panel>;
@@ -106,7 +108,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
     <div className="flex flex-col gap-4">
       <Panel
         title="Монте-Карло: следующие N сделок"
-        description={`Перемешиваем ${sdeal(values.length)} закрытых (${u === "r" ? "R" : "$ нетто"}) с возвратом — ${runs.toLocaleString("ru-RU")} прогонов, фиксированное зерно${mode === "main" ? " · без Web Worker" : ""}`}
+        description={`Перемешиваем ${commonI18n.t("units.trades", { count: values.length })} закрытых (${u === "r" ? "R" : "$ нетто"}) с возвратом — ${fmtCount(runs)} прогонов, фиксированное зерно${mode === "main" ? " · без Web Worker" : ""}`}
         icon={Dices}
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -126,7 +128,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
           ) : limitsLoading ? (
             <Skeleton className="h-6 w-40 rounded-full" />
           ) : usdLimits && (usdLimits.dailyLossLimit || usdLimits.weeklyLossLimit || usdLimits.maxDrawdown || usdLimits.accountSize) ? (
-            <Pill tone="accent">лимиты из риск-деска: день {usdLimits.dailyLossLimit ? fmtUsd(-usdLimits.dailyLossLimit) : "—"} · неделя {usdLimits.weeklyLossLimit ? fmtUsd(-usdLimits.weeklyLossLimit) : "—"} · просадка {usdLimits.maxDrawdown ? fmtUsd(-usdLimits.maxDrawdown) : usdLimits.accountSize ? fmtUsd(-usdLimits.accountSize) : "—"}</Pill>
+            <Pill tone="accent">лимиты из риск-деска: день {usdLimits.dailyLossLimit ? fmtUsd(-usdLimits.dailyLossLimit, { signed: true, decimals: "auto" }) : "—"} · неделя {usdLimits.weeklyLossLimit ? fmtUsd(-usdLimits.weeklyLossLimit, { signed: true, decimals: "auto" }) : "—"} · просадка {usdLimits.maxDrawdown ? fmtUsd(-usdLimits.maxDrawdown, { signed: true, decimals: "auto" }) : usdLimits.accountSize ? fmtUsd(-usdLimits.accountSize, { signed: true, decimals: "auto" }) : "—"}</Pill>
           ) : (
             <Pill tone="neutral">лимиты не заданы — вероятности лимитов недоступны в $; переключитесь на R</Pill>
           )}
@@ -142,7 +144,7 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
                 <ComposedChart data={chart} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
                   <CartesianGrid stroke={GRID} vertical={false} />
                   <XAxis dataKey="i" {...AXIS} />
-                  <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v))} width={64} />
+                  <YAxis {...AXIS} tickFormatter={(v: number) => (u === "r" ? `${v}R` : fmtUsd(v, { signed: true, decimals: "auto" }))} width={64} />
                   <Tooltip
                     contentStyle={CHART_TOOLTIP_STYLE}
                     labelFormatter={(i) => `Через ${i} сделок`}
@@ -158,15 +160,15 @@ export function MonteCarloTab({ trades, unit, filters }: { trades: Trade[]; unit
             </div>
             <StatGrid className="mt-4">
               <StatCard label={`Медиана через ${horizon}`} value={fmt(result.final.p50)} tone={toneOf(result.final.p50)} hint={`5%: ${fmt(result.final.p5)} · 95%: ${fmt(result.final.p95)}`} />
-              <StatCard label="Шанс быть в плюсе" value={fmtPct(result.probProfit)} tone={result.probProfit >= 0.7 ? "up" : result.probProfit >= 0.5 ? "warn" : "down"} hint={`исторически: ожидание ${fmt(result.input.mean, 2)}, WR ${fmtPct(result.input.winRate)}`} />
-              <StatCard label="Дневной лимит" value={result.probDailyLimit == null ? "—" : fmtPct(result.probDailyLimit)} tone={result.probDailyLimit == null ? "neutral" : result.probDailyLimit > 0.5 ? "down" : result.probDailyLimit > 0.2 ? "warn" : "up"} hint={result.probDailyLimit == null ? "лимит не задан" : `хотя бы раз за ${Math.ceil(horizon / result.tradesPerDay)} дн. · в среднем ${result.limitDaysPerRun?.toFixed(1)} дн. на прогон`} />
-              <StatCard label="Недельный лимит" value={result.probWeeklyLimit == null ? "—" : fmtPct(result.probWeeklyLimit)} tone={result.probWeeklyLimit == null ? "neutral" : result.probWeeklyLimit > 0.3 ? "down" : result.probWeeklyLimit > 0.1 ? "warn" : "up"} hint={result.probWeeklyLimit == null ? "лимит не задан" : u === "r" ? `лимит −${(weeklyLimit ?? 0).toFixed(1)}R (2.5 × дневного)` : "по риск-деску"} />
-              <StatCard label="Риск разорения" value={result.probRuin == null ? "—" : fmtPct(result.probRuin, 1)} tone={result.probRuin == null ? "neutral" : result.probRuin > 0.1 ? "down" : result.probRuin > 0.02 ? "warn" : "up"} hint={ruinLevel != null ? `капитал опустится ниже ${fmt(-ruinLevel, 0)}` : "уровень не задан"} />
+              <StatCard label="Шанс быть в плюсе" value={fmtRate(result.probProfit)} tone={result.probProfit >= 0.7 ? "up" : result.probProfit >= 0.5 ? "warn" : "down"} hint={`исторически: ожидание ${fmt(result.input.mean, 2)}, WR ${fmtRate(result.input.winRate)}`} />
+              <StatCard label="Дневной лимит" value={result.probDailyLimit == null ? "—" : fmtRate(result.probDailyLimit)} tone={result.probDailyLimit == null ? "neutral" : result.probDailyLimit > 0.5 ? "down" : result.probDailyLimit > 0.2 ? "warn" : "up"} hint={result.probDailyLimit == null ? "лимит не задан" : `хотя бы раз за ${Math.ceil(horizon / result.tradesPerDay)} дн. · в среднем ${result.limitDaysPerRun?.toFixed(1)} дн. на прогон`} />
+              <StatCard label="Недельный лимит" value={result.probWeeklyLimit == null ? "—" : fmtRate(result.probWeeklyLimit)} tone={result.probWeeklyLimit == null ? "neutral" : result.probWeeklyLimit > 0.3 ? "down" : result.probWeeklyLimit > 0.1 ? "warn" : "up"} hint={result.probWeeklyLimit == null ? "лимит не задан" : u === "r" ? `лимит ${fmtR(-(weeklyLimit ?? 0), 1)} (2.5 × дневного)` : "по риск-деску"} />
+              <StatCard label="Риск разорения" value={result.probRuin == null ? "—" : fmtRate(result.probRuin, 1)} tone={result.probRuin == null ? "neutral" : result.probRuin > 0.1 ? "down" : result.probRuin > 0.02 ? "warn" : "up"} hint={ruinLevel != null ? `капитал опустится ниже ${fmt(-ruinLevel, 0)}` : "уровень не задан"} />
               <StatCard label="Макс. просадка" value={fmt(result.maxDrawdown.p50)} tone="down" hint={`медиана · худшие 5%: ${fmt(result.maxDrawdown.p95)} · худший: ${fmt(result.maxDrawdown.worst)}`} />
               <StatCard label="Серия убытков" value={`${result.maxLossStreak.p50}`} hint={`медиана · 95%: ${result.maxLossStreak.p95} · худшая: ${result.maxLossStreak.worst}`} />
             </StatGrid>
             <p className="mt-3 text-2xs text-muted-foreground">
-              Бутстрэп по прошлым сделкам: считаем их независимыми и одинаково распределёнными, поэтому реальные хвосты обычно тяжелее. Лента — 5–95% и 25–75% по {runs.toLocaleString("ru-RU")} прогонам. День = {result.tradesPerDay} сд. подряд, неделя = 5 дней.
+              Бутстрэп по прошлым сделкам: считаем их независимыми и одинаково распределёнными, поэтому реальные хвосты обычно тяжелее. Лента — 5–95% и 25–75% по {fmtCount(runs)} прогонам. День = {result.tradesPerDay} сд. подряд, неделя = 5 дней.
             </p>
           </div>
         ) : null}

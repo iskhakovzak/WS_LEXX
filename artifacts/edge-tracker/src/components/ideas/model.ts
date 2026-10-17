@@ -1,5 +1,6 @@
 /** Trade ideas — shared types and pure helpers (levels parsing, R:R, pipeline stage). */
-import type { Tone } from "@/components/ds";
+import type { Tone } from "@/components/ds";
+import { fmtDate } from "@/lib/format";
 
 export type Reaction = { id: number; tradeIdeaId: number; trader: string; reaction: string; comment: string | null; createdAt: string };
 /** Trade linked to an idea. `r`/`net`/`outcome` are computed server-side with the shared trade math (R signed, net = gross − |fees|). */
@@ -113,19 +114,6 @@ export function rrTone(rr: number | null | undefined): Tone {
   return "down";
 }
 
-export function fmtPrice(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  // Same notation as the levels traders type and the trade tables («920.74»), not «920,74» next to them.
-  return n.toLocaleString("en-US", { useGrouping: false, minimumFractionDigits: abs < 10 ? 2 : abs < 1000 ? 2 : 0, maximumFractionDigits: abs < 10 ? 3 : 2 });
-}
-
-export function fmtR(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toFixed(digits);
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${s}R`;
-}
-
 // ─── Pipeline stage ────────────────────────────────────────────────────────
 
 export type Stage = "draft" | "review" | "active" | "won" | "lost" | "rejected";
@@ -194,12 +182,6 @@ export function ideaHorizon(i: Pick<TradeIdea, "horizon" | "tags">): Horizon | n
   return i.horizon ?? horizonOf(i.tags);
 }
 
-export function fmtValidUntil(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(`${iso}T12:00:00Z`);
-  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
-}
-
 export const SIDE_TONE = (side: string | null | undefined): Tone => (side === "Short" ? "down" : side === "Long" ? "up" : "neutral");
 
 export const QUALITY_TONE: Record<string, Tone> = { "A+": "up", A: "up", "B+": "accent", B: "accent", C: "warn", D: "down" };
@@ -224,7 +206,7 @@ export function relTime(iso: string | null | undefined): string {
   if (h < 24) return `${h} ч назад`;
   const days = Math.round(h / 24);
   if (days < 7) return `${days} дн назад`;
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return fmtDate(d, "dayMonth");
 }
 
 export function initials(name: string | null | undefined): string {

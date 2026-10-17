@@ -1,4 +1,4 @@
-import * as React from "react";
+
 import { cn } from "@/lib/utils";
 import type { Limits, Tier } from "./use-scaling";
 import { TIER_FIELDS, fmtTierField } from "./format";

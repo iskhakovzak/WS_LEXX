@@ -3,7 +3,7 @@
  * POC / VAH / VAL. Drawn below the candles.
  */
 import type { VolumeProfile } from "../types";
-import { fmtPrice } from "../lib/format";
+import { fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label } from "./canvas";
 
 export class VolumeProfilePrimitive extends SeriesPrimitiveBase {

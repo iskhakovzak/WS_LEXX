@@ -19,16 +19,20 @@ import {
   Plus, CornerDownLeft, History, Hash, Eye, MessageSquare, SunMoon, ArrowRight, Loader2,
   UserRound, UsersRound, ClipboardList, NotebookPen, BookText, Languages,
 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { tradeIdeasQuery } from "@/lib/api/queries";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
-import { ALL_NAV_ITEMS, GO_KEYS, type NavItem } from "@/components/shell/nav";
+import { ALL_NAV_ITEMS, GO_KEYS, GO_KEYS_RU_LAYOUT, GO_MODE_EVENT, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
+import { useVisibleNav } from "@/components/shell/sidebar-nav";
 import { rankPeople, usePeopleDirectory, type DirectoryPerson } from "@/components/people/search";
 import { Highlight } from "@/components/people/highlight";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
+import { fmtUsd } from "@/lib/format";
 import { LANGS, LANG_META, setLang, useLang } from "@/i18n";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -109,10 +113,8 @@ const BADGE_TONE: Record<NonNullable<ResultItem["badgeTone"]>, string> = {
   neutral: "bg-[var(--glass-bg)] text-muted-foreground",
 };
 
-async function fetchList(url: string): Promise<any[]> {
-  const r = await fetch(url);
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const data = await r.json();
+async function fetchList(path: string, signal?: AbortSignal): Promise<any[]> {
+  const data = await http.get<unknown>(path, { signal });
   return Array.isArray(data) ? data : [];
 }
 
@@ -151,7 +153,7 @@ function tradeResult(t: any): Pick<ResultItem, "badge" | "badgeTone"> {
   const pnl = typeof t.pnl === "number" ? t.pnl - (typeof t.fees === "number" ? t.fees : 0) : null;
   if (pnl != null && Number.isFinite(pnl) && pnl !== 0) {
     // Money keeps the trading format in every language ($1,234).
-    const s = `${pnl > 0 ? "+" : "−"}$${Math.abs(pnl).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+    const s = fmtUsd(pnl, { signed: true, decimals: 0 });
     return { badge: s, badgeTone: pnl > 0 ? "up" : "down" };
   }
   if (t.result === "win") return { badge: commonI18n.t("trading.win"), badgeTone: "up" };
@@ -249,16 +251,12 @@ export function GlobalSearch() {
   const { data: feedsRaw, isLoading: l4 } = useListDailyFeed({ query: { queryKey: getListDailyFeedQueryKey(), enabled: open } });
   const { data: playbookRaw, isLoading: l5 } = useQuery<any[]>({
     queryKey: ["playbook"],
-    queryFn: () => fetchList(`${BASE}/api/playbook`),
+    queryFn: ({ signal }) => fetchList("/api/playbook", signal),
     enabled: open,
-    staleTime: 30_000,
+    staleTime: STALE.default,
   });
-  const { data: tradeIdeasRaw, isLoading: l6 } = useQuery<any[]>({
-    queryKey: ["trade-ideas-search"],
-    queryFn: () => fetchList(`${BASE}/api/trade-ideas`),
-    enabled: open,
-    staleTime: 30_000,
-  });
+  // Same cache entry as the ideas board / stats / ratings (one request).
+  const { data: tradeIdeasRaw, isLoading: l6 } = useQuery({ ...tradeIdeasQuery<any>(), enabled: open });
   const trades = asArray<any>(tradesRaw);
   const events = asArray<any>(eventsRaw);
   const research = asArray<any>(researchRaw);
@@ -281,11 +279,16 @@ export function GlobalSearch() {
       if (e.metaKey || e.ctrlKey || e.altKey || e.defaultPrevented || isTypingTarget(e.target)) return;
       if (document.querySelector("[role='dialog'][data-state='open'], [role='alertdialog']")) return;
       const k = e.key.toLowerCase();
-      if (k === "g" || k === "п") { gAt = Date.now(); return; } // i18n-ignore (RU layout key)
+      if (k === "g" || k === "п") { // i18n-ignore (RU layout key)
+        gAt = Date.now();
+        // The sidebar shows every letter while it waits for the second key.
+        window.dispatchEvent(new CustomEvent(GO_MODE_EVENT, { detail: true }));
+        return;
+      }
       if (gAt && Date.now() - gAt < 1200) {
         gAt = 0;
-        const LAYOUT: Record<string, string> = { в: "d", з: "p", к: "r", е: "t", о: "j", с: "c", ф: "a", ы: "s", и: "b", ц: "w", у: "e", ш: "i" }; // i18n-ignore (RU layout keys)
-        const href = GO_KEYS[k] ?? GO_KEYS[LAYOUT[k] ?? ""];
+        window.dispatchEvent(new CustomEvent(GO_MODE_EVENT, { detail: false }));
+        const href = GO_KEYS[k] ?? GO_KEYS[GO_KEYS_RU_LAYOUT[k] ?? ""];
         if (href) { e.preventDefault(); navigate(href); }
       }
     }
@@ -478,12 +481,21 @@ export function GlobalSearch() {
   }, [q, notesOnly, tickerIndex]);
 
   // ── Pages ──
+  // Empty query: the sidebar rows under the sidebar's own group headings (same IA, ~15 rows). With a query: every page,
+  // second-level ones included, each with where it lives in the sidebar («Разбор и рост · Аналитика»).
+  const navGroups = useVisibleNav();
   const pages = useMemo(() => {
+    if (!q) return [];
     const visible = ALL_NAV_ITEMS.filter((i) => !i.staff || isCurator);
-    if (!q) return visible.filter((i) => !i.hidden);
     // Current-language name, the Russian name and the RU/EN keywords: a section is found whatever language you type in.
-    return visible.filter((i) => i.name.toLowerCase().includes(q) || i.ruName.toLowerCase().includes(q) || (i.keywords ?? "").toLowerCase().includes(q)).slice(0, 6);
+    const hit = (s?: string) => !!s && s.toLowerCase().includes(q);
+    return visible.filter((i) => hit(i.name) || hit(i.ruName) || hit(i.hubLabel) || hit(i.ruHubLabel) || hit(i.keywords)).slice(0, 8);
   }, [q, isCurator, lang]);
+  const pagePath = (p: NavItem) => {
+    const owner = parentOf(p) ?? (p.hubLabel ? p : undefined);
+    return [groupOf(p)?.label, owner ? rowLabel(owner) : null].filter(Boolean).join(" · ") || undefined;
+  };
+  const goKeyHint = (p: NavItem) => (p.goKey ? <Kbd keys={["G", p.goKey.toUpperCase()]} className="hidden sm:inline-flex" /> : undefined);
 
   const go = useCallback(
     (path: string, rec?: Omit<RecentItem, "path">, highlight?: number) => {
@@ -729,12 +741,29 @@ export function GlobalSearch() {
                       value={`page-${p.href}`}
                       icon={p.icon}
                       title={p.name}
+                      subtitle={pagePath(p)}
                       onSelect={() => goPage(p)}
-                      right={p.goKey ? <Kbd keys={["G", p.goKey.toUpperCase()]} className="hidden sm:inline-flex" /> : undefined}
+                      right={goKeyHint(p)}
                     />
                   ))}
                 </CommandPrimitive.Group>
               )}
+
+              {!q && navGroups.map((g) => (
+                <CommandPrimitive.Group key={g.id} heading={g.label} className={groupCls}>
+                  {g.rows.map((row) => (
+                    <Item
+                      key={row.href}
+                      value={`page-${row.href}`}
+                      icon={row.hubIcon ?? row.icon}
+                      title={rowLabel(row)}
+                      subtitle={rowChildren(row).map((c) => c.name).join(" · ") || undefined}
+                      onSelect={() => goPage(row)}
+                      right={goKeyHint(row)}
+                    />
+                  ))}
+                </CommandPrimitive.Group>
+              ))}
             </CommandPrimitive.List>
 
             <div aria-hidden="true" className="hidden items-center gap-4 border-t border-[var(--glass-border)] px-4 py-2 text-2xs text-muted-foreground sm:flex">

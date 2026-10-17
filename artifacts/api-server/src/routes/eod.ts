@@ -17,6 +17,7 @@ import { logActivity } from "../lib/activity";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { eodOverdueKey, fmtSignedUsd, plural, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 /**
  * «Закрытие дня» (end-of-day close) + curator review queue.
@@ -372,7 +373,7 @@ router.get("/eod/day", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
   if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
-  if (!isIsoDate(date)) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   await ensureTables();
   res.json(await buildDay(scope.trader, date));
 }));
@@ -407,9 +408,9 @@ router.get("/eod/days", asyncHandler(async (req, res): Promise<void> => {
 
 router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "invalid trade id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = TradeReviewBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
   await ensureTables();
@@ -417,7 +418,7 @@ router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void
     `SELECT t.trader, LEFT(t.date, 10) AS date, ${closeDateSql()} AS "closeDate" FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`,
     [id],
   );
-  if (!tr[0]) { res.status(404).json({ error: "Trade not found" }); return; }
+  if (!tr[0]) throw notFound("TRADE_NOT_FOUND");
   if (tr[0].trader !== me.name) { res.status(403).json({ error: "Можно разбирать только свои сделки" }); return; }
   // The trade's review belongs to the day it is realised on (or entered, for still-open trades).
   for (const d of new Set([tr[0].date, tr[0].closeDate])) {
@@ -456,9 +457,9 @@ async function upsertDay(trader: string, date: string, b: z.infer<typeof DayBody
 
 router.put("/eod/day/:date", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const date = req.params.date;
-  if (!isIsoDate(date)) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = DayBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
   await ensureTables();
@@ -505,9 +506,9 @@ async function prefillJournal(trader: string, date: string, day: DayRow, trades:
 
 router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const date = req.params.date;
-  if (!isIsoDate(date)) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = DayBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
   await ensureTables();
@@ -552,9 +553,9 @@ router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void>
 
 router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   const date = req.params.date;
-  if (!isIsoDate(date)) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   await ensureTables();
   const { rows } = await pool.query<DayRow>(
     `UPDATE eod_days d SET closed_at = NULL, updated_at = NOW() WHERE d.trader = $1 AND d.date = $2 RETURNING ${DAY_COLS}`,
@@ -568,9 +569,9 @@ router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void
 // ── Status (dashboard / admin contract) ───────────────────────────────────────
 router.get("/eod/status", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) throw unauthorized();
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
-  if (!isIsoDate(date)) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   await ensureTables();
   const qTrader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   let traders: string[];
@@ -687,7 +688,7 @@ function sweepOverdue(): void {
 }
 
 router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   const limitRaw = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 50;
@@ -704,7 +705,7 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   await ensureTables();
   await ensureCuratorTables();
@@ -719,10 +720,10 @@ router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
-  if (!me) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!me) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = CuratorReviewBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
   await ensureTables();

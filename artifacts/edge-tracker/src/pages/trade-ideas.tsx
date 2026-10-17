@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import {
@@ -19,9 +19,10 @@ import { IdeaCard } from "@/components/ideas/IdeaCard";
 import { IdeaDetailSheet } from "@/components/ideas/IdeaDetailSheet";
 import { IDEAS_KEY, useIdeaMutations, useIdeas, useTracking } from "@/components/ideas/hooks";
 import {
-  HORIZONS, STAGES, fmtR, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
+  HORIZONS, STAGES, ideaHorizon, ideaOutcome, ideaPlan, readPref, stageOf, writePref,
   type Horizon, type IdeaTracking, type Stage, type TradeIdea,
 } from "@/components/ideas/model";
+import { fmtDate, fmtR } from "@/lib/format";
 import { nyDate, addDays } from "@/lib/trading-date";
 import { useQueryClient } from "@tanstack/react-query";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
@@ -298,7 +299,7 @@ export default function TradeIdeas() {
       const d = new Date(i.publishedAt ?? i.createdAt);
       const key = i.ideaDate ?? nyDate(d);
       const label = key === today ? "Сегодня" : key === yesterday ? "Вчера"
-        : new Date(`${key}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+        : fmtDate(key, "long");
       const last = out[out.length - 1];
       if (last && last.key === key) last.items.push(i); else out.push({ key, label, items: [i] });
     }
@@ -358,7 +359,7 @@ export default function TradeIdeas() {
           value={kpi.avgRR != null ? kpi.avgRR.toFixed(2) : "—"}
           icon={Scale}
           tone={kpi.avgRR == null ? "neutral" : kpi.avgRR >= 2 ? "up" : kpi.avgRR >= 1 ? "warn" : "down"}
-          hint={kpi.avgMfe != null ? `ср. макс. ход ${fmtR(kpi.avgMfe)}` : "по опубликованным идеям"}
+          hint={kpi.avgMfe != null ? `ср. макс. ход ${fmtR(kpi.avgMfe, 1)}` : "по опубликованным идеям"}
         />
       </StatGrid>
 

@@ -11,7 +11,8 @@ import {
 } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { buildDeskConclusions, type DeskRow } from "@/lib/weeklyInsights";
-import { STATUS_LABEL, fmtPct, fmtUsd, fmtX, useWeeklyOverview, weekLabel, type OverviewRow, type RiskStatus } from "./api";
+import { STATUS_LABEL, useWeeklyOverview, weekLabel, type OverviewRow, type RiskStatus } from "./api";
+import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
 import { ReviewStatusPill } from "./collab";
 import { VERDICT_LABEL, VERDICT_TONE } from "./insight-panels";
 import { useRiskDeskNow, useWeekBenchmark, type BenchTrend } from "./insights-api";
@@ -101,20 +102,20 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
     <div className="flex flex-col gap-[var(--grid-gap)]" data-partners-report>
       <p data-print-title className="hidden text-lg font-semibold">Деск · отчёт недели {weekLabel(ov.week.key)}</p>
       <StatGrid cols={4}>
-        <StatCard label="Нетто деска" term="net" value={fmtUsd(s.netPnl, { signed: true })} tone={toneOf(s.netPnl)} hint={`${s.trades} сделок за неделю`} />
+        <StatCard label="Нетто деска" term="net" value={fmtUsd(s.netPnl, { signed: true, decimals: "auto" })} tone={toneOf(s.netPnl)} hint={`${s.trades} сделок за неделю`} />
         <StatCard label="Активные трейдеры" value={`${s.active} из ${s.traders}`} hint={s.active ? `в плюсе ${green} из ${s.active}` : "никто не торговал"} />
         <StatCard
           label="Комиссии"
           term="fees"
-          value={fmtUsd(fees)}
+          value={fmtUsd(fees, { decimals: "auto" })}
           tone={feeShare != null && feeShare > 0.4 ? "down" : "neutral"}
-          hint={feeShare != null ? `${fmtPct(feeShare)} брутто` : gross != null ? "брутто ≤ 0 — доля не считается" : "доля брутто — после обновления API"}
+          hint={feeShare != null ? `${fmtRate(feeShare)} брутто` : gross != null ? "брутто ≤ 0 — доля не считается" : "доля брутто — после обновления API"}
         />
         <StatCard
           label="Нетто на сделку"
-          value={fmtUsd(perTrade, { signed: true })}
+          value={fmtUsd(perTrade, { signed: true, decimals: "auto" })}
           tone={toneOf(perTrade)}
-          hint={deskPf != null ? `PF деска ${fmtX(deskPf)}` : "PF деска: —"}
+          hint={deskPf != null ? `PF деска ${fmtNum(deskPf, { suffix: "×" })}` : "PF деска: —"}
         />
       </StatGrid>
 
@@ -183,9 +184,9 @@ function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string)
             <tr key={r.trader}>
               <td>
                 <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{r.trader}</button>
-                <div className="text-xs text-muted-foreground">{r.trades} сд. · WR {fmtPct(r.winRate)} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
+                <div className="text-xs text-muted-foreground">{r.trades} сд. · WR {fmtRate(r.winRate)} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
               </td>
-              <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true })}</td>
+              <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true, decimals: "auto" })}</td>
               <td>
                 {r.trend ? (
                   <div className="flex items-center gap-2">
@@ -217,7 +218,7 @@ function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string)
 function TraderTile({ row, kind, onOpen }: { row: Row; kind: "top" | "problem"; onOpen: (t: string) => void }) {
   const why =
     kind === "top"
-      ? [row.trend?.verdict === "better" ? "растёт 4 недели" : null, row.riskStatus === "ok" ? "в лимитах" : null, row.winRate != null ? `WR ${fmtPct(row.winRate)}` : null]
+      ? [row.trend?.verdict === "better" ? "растёт 4 недели" : null, row.riskStatus === "ok" ? "в лимитах" : null, row.winRate != null ? `WR ${fmtRate(row.winRate)}` : null]
       : [row.riskStatus === "breach" ? `нарушение лимитов${row.risk?.events[0] ? `: ${row.risk.events[0].label}` : ""}` : null, row.trend?.verdict === "worse" ? "хуже своих 4 недель" : null, row.violations ? `${row.violations} наруш. правил` : null];
   return (
     <Tile onClick={() => onOpen(row.trader)} className="flex items-center gap-3">
@@ -230,7 +231,7 @@ function TraderTile({ row, kind, onOpen }: { row: Row; kind: "top" | "problem"; 
         <p className="truncate text-xs text-muted-foreground">{why.filter(Boolean).join(" · ") || `${row.trades} сделок`}</p>
       </div>
       <div className="flex shrink-0 flex-col items-end gap-1">
-        <span className={cn("text-base font-semibold tabular-nums", (row.netPnl ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtUsd(row.netPnl, { signed: true })}</span>
+        <span className={cn("text-base font-semibold tabular-nums", (row.netPnl ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtUsd(row.netPnl, { signed: true, decimals: "auto" })}</span>
         <ReviewStatusPill status={row.status} />
       </div>
     </Tile>

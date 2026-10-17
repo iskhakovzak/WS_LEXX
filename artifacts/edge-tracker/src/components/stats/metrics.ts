@@ -7,6 +7,7 @@ import {
   signedR, grossPnl, netPnl, feesOf as feesOfTrade, isOpen, isClosed as isClosedTrade, resultOf, closeDate,
   horizonOf as horizonOfTrade,
 } from "@/lib/trade-math";
+import { fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -45,7 +46,11 @@ export const PERIOD_OPTIONS: { value: PeriodKey; label: string; long: string }[]
   { value: "all", label: "Всё время", long: "всё время" },
 ];
 
-export const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] as const;
+/** Short weekday for a Monday-first index 0–6 (weekdayIdx): «Пн» / «Mon» / «Du». Language read at call time. */
+export function weekdayLabel(i: number): string {
+  const s = fmtWeekday((i + 1) % 7, "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
 
 /* ───────────── dates ───────────── */
 
@@ -380,46 +385,17 @@ export function sessionLabel(k: string): string {
 
 /* ───────────── formatting ───────────── */
 
-const MINUS = "−";
-
+/** Value of the selected metric: +0.21R or +$1,234 / −$12.50 (no cents from $1,000). */
 export function fmtValue(v: number | null | undefined, metric: Metric, opts: { sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const sign = opts.sign === false ? (v < 0 ? MINUS : "") : v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (metric === "r") return `${sign}${a.toFixed(2)}R`;
-  const digits = a >= 1000 ? 0 : 2;
-  return `${sign}$${a.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
+  const signed = opts.sign !== false;
+  return metric === "r" ? fmtR(v, { signed }) : fmtUsd(v, { signed, decimals: "auto" });
 }
 
-/** Compact value for tiny cells: +1.2R / +$1.2k. */
-export function fmtCompact(v: number | null | undefined, metric: Metric): string {
-  if (v == null || !Number.isFinite(v)) return "";
-  const sign = v > 0 ? "+" : v < 0 ? MINUS : "";
-  const a = Math.abs(v);
-  if (metric === "r") return `${sign}${a >= 10 ? a.toFixed(0) : a.toFixed(1)}R`;
-  if (a >= 1000) return `${sign}$${(a / 1000).toFixed(a >= 10000 ? 0 : 1)}k`;
-  return `${sign}$${a.toFixed(0)}`;
+/** Compact value for tiny cells and axes: +1.2R / +$1.2K; "" when missing. */
+export function fmtMetricCompact(v: number | null | undefined, metric: Metric): string {
+  if (metric === "r") return fmtR(v, { decimals: v != null && Math.abs(v) >= 10 ? 0 : 1, fallback: "" });
+  return fmtUsd(v, { signed: true, compact: true, fallback: "" });
 }
-
-export function fmtPct(v: number | null | undefined): string {
-  return v == null || !Number.isFinite(v) ? "—" : `${Math.round(v * 100)}%`;
-}
-
-export function fmtRatio(v: number | null | undefined): string {
-  if (v == null) return "—";
-  if (v === Infinity) return "∞";
-  return Number.isFinite(v) ? v.toFixed(2) : "—";
-}
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const pluralTrades = (n: number) => pluralRu(n, "сделка", "сделки", "сделок");
 
 /** Background colour for a heat cell: intensity ∝ |v| / max. Uses theme tokens only. */
 export function heatBg(v: number | null | undefined, max: number): string | undefined {

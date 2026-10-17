@@ -8,7 +8,8 @@ import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { UndoToast } from "@/components/undo-toast";
 import { curatorApi, useCuratorMutation, type CuratorNote, type NoteKind } from "./api";
-import { NOTE_KIND_LABEL, NOTE_KIND_TONE, dateTime } from "./curator-math";
+import { NOTE_KIND_LABEL, NOTE_KIND_TONE } from "./curator-math";
+import { fmtDate } from "@/lib/format";
 
 const KIND_OPTIONS = (Object.keys(NOTE_KIND_LABEL) as NoteKind[]).map((k) => ({ value: k, label: NOTE_KIND_LABEL[k] }));
 
@@ -94,7 +95,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Pill tone={NOTE_KIND_TONE[n.kind] ?? "neutral"}>{NOTE_KIND_LABEL[n.kind] ?? n.kind}</Pill>
                 <span className="font-medium text-foreground">{n.author}</span>
-                <span className="tabular-nums">{dateTime(n.createdAt)}</span>
+                <span className="tabular-nums">{fmtDate(n.createdAt, "dateTime")}</span>
                 {n.pinned && <span className="inline-flex items-center gap-1 text-primary"><Pin className="h-3 w-3" aria-hidden="true" />закреплено</span>}
                 {!compact && (
                   <span className="ml-auto flex items-center gap-1">

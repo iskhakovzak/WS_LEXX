@@ -3,7 +3,7 @@
  * of the open position, its stop and target, and after the reveal the «ideal» round trip (dashed) for comparison.
  * Deliberately different from the real fills' arrows so the two never get confused.
  */
-import { fmtPrice } from "../lib/format";
+import { fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, line } from "./canvas";
 
 export type SimDrawFill = { idx: number; price: number; qty: number; reason: "buy" | "sell" | "flat" | "half" | "stop" | "target" };

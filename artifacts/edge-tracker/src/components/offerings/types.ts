@@ -1,4 +1,5 @@
 import type { Tone } from "@/components/ds";
+import { fmtDate, fmtDateCustom, fmtPct, fmtPrice, fmtUsd, type DateStyle } from "@/lib/format";
 
 export type OfferingType = "IPO" | "Follow-on" | "ATM" | "Bought Deal" | "SPAC" | "Shelf" | "Other";
 export type SellerType = "company" | "insiders" | "mixed" | "unknown";
@@ -367,50 +368,14 @@ export const HORIZON_LABEL: Record<string, string> = { intraday: "интраде
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
+/** Amount given in millions of dollars → "$12.3M" / "$1.2B". */
 export function fmtM(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (Math.abs(n) >= 1000) return `$${(n / 1000).toFixed(1)}B`;
-  if (Math.abs(n) >= 10) return `$${n.toFixed(0)}M`;
-  return `$${n.toFixed(1)}M`;
-}
-export function fmtUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const a = Math.abs(n);
-  const s = n < 0 ? "−" : "";
-  if (a >= 1e9) return `${s}$${(a / 1e9).toFixed(1)}B`;
-  if (a >= 1e6) return `${s}$${(a / 1e6).toFixed(1)}M`;
-  if (a >= 1e3) return `${s}$${(a / 1e3).toFixed(0)}K`;
-  return `${s}$${a.toFixed(0)}`;
-}
-export function fmtSignedUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n > 0 ? `+${fmtUsd(n)}` : fmtUsd(n);
-}
-export function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const v = n.toFixed(digits);
-  return n > 0 ? `+${v}%` : n < 0 ? `−${v.slice(1)}%` : `${v}%`;
-}
-export function fmtPlainPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n.toFixed(digits)}%`;
-}
-export function fmtShares(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (n >= 1e9) return `${(n / 1e9).toFixed(2)}B`;
-  if (n >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (n >= 1e3) return `${(n / 1e3).toFixed(0)}K`;
-  return String(Math.round(n));
+  return fmtUsd(n == null ? null : n * 1e6, { compact: true });
 }
 /** Percent that can be absurd (tiny caps, stale share counts): capped at «>1000%». */
 export function fmtPctCap(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  if (n > 1000) return ">1000%";
-  return `${n.toFixed(n >= 100 ? 0 : digits)}%`;
-}
-export function fmtPrice(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n < 1 ? n.toFixed(4) : n.toFixed(2)}`;
+  if (n != null && n > 1000) return ">1000%";
+  return fmtPct(n, { decimals: n != null && n >= 100 ? 0 : digits, signed: false });
 }
 
 // Market day is defined in New York time.
@@ -436,14 +401,16 @@ export function addBusinessDays(d: string, dir: 1 | -1): string {
   }
   return x;
 }
-export function fmtDay(d: string | null | undefined, opts: Intl.DateTimeFormatOptions = { day: "numeric", month: "short" }): string {
+/** Market day (API date, possibly with a time part) in the UI language; non-dates pass through. */
+export function fmtDay(d: string | null | undefined, style: DateStyle | Intl.DateTimeFormatOptions = "dayMonth"): string {
   if (!d || !/^\d{4}-\d{2}-\d{2}/.test(d)) return d || "—";
-  return new Date(d.slice(0, 10) + "T12:00:00Z").toLocaleDateString("ru-RU", { ...opts, timeZone: "UTC" });
+  const ymd = d.slice(0, 10);
+  return typeof style === "string" ? fmtDate(ymd, style) : fmtDateCustom(ymd, style);
 }
 export function dayTitle(d: string): string {
   const isToday = d === todayNY();
   const weekday = fmtDay(d, { weekday: "short" });
-  const date = fmtDay(d, { day: "numeric", month: "long" });
+  const date = fmtDay(d, "dayMonthLong");
   return isToday ? `Сегодня, ${date}` : `${weekday}, ${date}`;
 }
 export function fmtAgo(ts: number, now = Date.now()): string {
@@ -468,6 +435,6 @@ export function watchCatalyst(o: Offering): string {
   const pct = pctOfMcap(o);
   if (pct != null) parts.push(`${fmtPctCap(pct, 0)} мкап`);
   if (o.discountPct != null) parts.push(`дисконт ${Math.abs(o.discountPct).toFixed(1)}%`);
-  if (o.offerPrice != null) parts.push(`оффер ${fmtPrice(o.offerPrice)}`);
+  if (o.offerPrice != null) parts.push(`оффер ${fmtPrice(o.offerPrice, { dollar: true })}`);
   return parts.join(" · ");
 }

@@ -6,7 +6,6 @@ import { Loader2, Plus, RefreshCw, Save, Trash2, Users } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, useTableSort } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";

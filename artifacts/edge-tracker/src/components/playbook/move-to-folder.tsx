@@ -8,7 +8,8 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, pbRequest } from "./api";
+import { invalidatePlaybook } from "./api";
+import { http } from "@/lib/api/http";
 import { folderSwatch, type PlaybookEntry } from "./model";
 
 export function useMoveToFolder() {
@@ -18,7 +19,7 @@ export function useMoveToFolder() {
     const prev = entry.folder ?? null;
     if ((folder ?? null) === prev) return true;
     // No `trader` here: on PATCH the API treats a staff-sent `trader` as re-assigning the owner of a personal setup.
-    const apply = (f: string | null) => pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { folder: f } });
+    const apply = (f: string | null) => http.patch(`/api/playbook/${entry.id}`, { folder: f });
     try {
       await apply(folder);
       invalidatePlaybook(qc, entry.id);

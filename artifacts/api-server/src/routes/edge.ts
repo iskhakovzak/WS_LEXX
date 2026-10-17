@@ -21,6 +21,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { scopeTrader } from "../lib/auth";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql, resultSql, num } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -255,10 +256,10 @@ export function parseMatrixQuery(query: Record<string, unknown>): { ok: true; q:
 
 router.get("/edge/matrix", asyncHandler(async (req, res) => {
   const parsed = parseMatrixQuery(req.query);
-  if (!parsed.ok) { res.status(400).json({ error: "Неверные параметры", details: parsed.details }); return; }
+  if (!parsed.ok) throw badRequest("BAD_REQUEST", parsed.details);
   const q = parsed.q;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const hasJournal = (q.rows === "plan" || q.cols === "plan") ? await hasJournalDays() : false;
   const tod = q.tod ?? 30;
   const { sql, params } = buildMatrixQuery(q, scope, hasJournal);
@@ -332,10 +333,10 @@ export function parseCostsQuery(query: Record<string, unknown>): { ok: true; q: 
 
 router.get("/edge/costs", asyncHandler(async (req, res) => {
   const parsed = parseCostsQuery(req.query);
-  if (!parsed.ok) { res.status(400).json({ error: "Неверные параметры", details: parsed.details }); return; }
+  if (!parsed.ok) throw badRequest("BAD_REQUEST", parsed.details);
   const q = parsed.q;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const { sql, params } = buildCostsQuery(q, scope);
   const { rows } = await pool.query<any>(sql, params);
   const items: EdgeCostRow[] = rows.map((r) => ({

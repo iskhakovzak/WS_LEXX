@@ -16,7 +16,9 @@ import { toast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { TIP_SOURCE_LABEL, pfOf, type CheckItem, type CheckStatus, type Positive, type Tip } from "@/lib/weeklyInsights";
-import { fmtDay, fmtPct, fmtR, fmtUsd, fmtValue, fmtX, useSaveSelf, weekLabel, weekdayShort, type WeeklyReview } from "./api";
+import { fmtDay, fmtValue, useSaveSelf, weekLabel, weekdayShort, type WeeklyReview } from "./api";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import type { BenchRow, Benchmark, BenchTrend } from "./insights-api";
 import type { WeekInsights } from "./use-week-insights";
 
@@ -58,9 +60,9 @@ export function WeekKpiStrip({ doc, ins }: { doc: WeeklyReview; ins: WeekInsight
       <StatCard
         label={money ? "Нетто за неделю" : "Результат, R"}
         term={money ? "net" : "r"}
-        value={money ? fmtUsd(k.netPnl, { signed: true }) : fmtR(k.totalR)}
+        value={money ? fmtUsd(k.netPnl, { signed: true, decimals: "auto" }) : fmtR(k.totalR)}
         tone={toneOf(net)}
-        delta={signedDelta(netDelta, (d) => (money ? fmtUsd(d) : fmtR(d, false)))}
+        delta={signedDelta(netDelta, (d) => (money ? fmtUsd(d, { decimals: "auto" }) : fmtR(d, { signed: false })))}
         deltaTone={toneOf(netDelta)}
         hint={`${avgLabel}: ${has4 ? fmtValue(netAvg, k.unit) : "—"}`}
         spark={spark && spark.filter((v) => v != null).length > 1 ? spark : undefined}
@@ -68,29 +70,29 @@ export function WeekKpiStrip({ doc, ins }: { doc: WeeklyReview; ins: WeekInsight
       <StatCard
         label="Win rate"
         term="winrate"
-        value={fmtPct(k.winRate)}
+        value={fmtRate(k.winRate)}
         tone={k.winRate == null ? "neutral" : k.winRate >= 0.5 ? "up" : "down"}
         delta={signedDelta(wrDelta, (d) => `${Math.round(d * 100)} п.п.`)}
         deltaTone={toneOf(wrDelta)}
-        hint={`${k.wins}W · ${k.losses}L · ${avgLabel} ${has4 ? fmtPct(avg4.winRate) : ""}`.trim()}
+        hint={`${k.wins}W · ${k.losses}L · ${avgLabel} ${has4 ? fmtRate(avg4.winRate) : ""}`.trim()}
       />
       <StatCard
         label="Profit factor"
         term="pf"
-        value={fmtX(pf)}
+        value={fmtNum(pf, { suffix: "×" })}
         tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
         delta={signedDelta(pfDelta, (d) => d.toFixed(2))}
         deltaTone={toneOf(pfDelta)}
-        hint={pf == null ? "нет убыточных или прибыльных сделок" : `${avgLabel}: ${fmtX(pfAvg)}`}
+        hint={pf == null ? "нет убыточных или прибыльных сделок" : `${avgLabel}: ${fmtNum(pfAvg, { suffix: "×" })}`}
       />
       <StatCard
         label="Комиссии / брутто"
         term="fees"
-        value={fs != null ? fmtPct(fs) : fmtUsd(k.fees)}
+        value={fs != null ? fmtRate(fs) : fmtUsd(k.fees, { decimals: "auto" })}
         tone={fs == null ? "neutral" : fs > 0.4 ? "down" : fs > 0.25 ? "warn" : "neutral"}
         delta={signedDelta(fsDelta, (d) => `${Math.round(d * 100)} п.п.`)}
         deltaTone={fsDelta == null ? undefined : fsDelta > 0 ? "down" : "up"}
-        hint={fs != null ? `${fmtUsd(k.fees)} комиссий` : k.trades ? "брутто ≤ 0 — доля не считается" : "сделок не было"}
+        hint={fs != null ? `${fmtUsd(k.fees, { decimals: "auto" })} комиссий` : k.trades ? "брутто ≤ 0 — доля не считается" : "сделок не было"}
       />
       <StatCard
         label="Дисциплина"
@@ -268,7 +270,7 @@ export function DayStrip({ doc, ins, className }: { doc: WeeklyReview; ins: Week
                 {traded ? fmtValue(v, u) : "—"}
               </p>
               <p className="text-xs text-muted-foreground tabular-nums">{traded ? `${d.trades} сд. · ${d.wins}W/${d.losses}L` : "без сделок"}</p>
-              {leak != null && <p className="mt-1 text-xs text-down tabular-nums">утечки {fmtUsd(-leak)}</p>}
+              {leak != null && <p className="mt-1 text-xs text-down tabular-nums">утечки {fmtUsd(-leak, { decimals: "auto" })}</p>}
               {traded && (
                 <p className={cn("mt-1 flex items-center gap-1 text-xs", j?.hasReview ? "text-up" : "text-muted-foreground")}>
                   <NotebookPen className="h-3 w-3" aria-hidden="true" /> {j?.hasReview ? "разобран" : j ? "без разбора" : "нет записи"}
@@ -323,7 +325,7 @@ export function ChecklistPanel({ items, className }: { items: CheckItem[]; class
                 <p className="text-sm font-medium text-foreground">{it.label}</p>
                 <p className="text-xs text-muted-foreground">{it.detail}</p>
               </div>
-              {it.amount != null && it.amount !== 0 && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", it.amount < 0 ? "text-down" : "text-up")}>{fmtUsd(it.amount, { signed: true })}</span>}
+              {it.amount != null && it.amount !== 0 && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", it.amount < 0 ? "text-down" : "text-up")}>{fmtUsd(it.amount, { signed: true, decimals: "auto" })}</span>}
               {it.href && <ArrowUpRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
             </>
           );
@@ -345,14 +347,14 @@ export function ChecklistPanel({ items, className }: { items: CheckItem[]; class
 // ── Desk comparison (benchmark row vs desk median) ───────────────────────────
 type CmpMetric = { key: keyof BenchRow & string; label: string; better: "higher" | "lower"; fmt: (v: number) => string };
 const CMP_METRICS: CmpMetric[] = [
-  { key: "net", label: "Нетто", better: "higher", fmt: (v) => fmtUsd(v, { signed: true }) },
-  { key: "winRate", label: "Win rate", better: "higher", fmt: (v) => fmtPct(v) },
-  { key: "profitFactor", label: "Profit factor", better: "higher", fmt: (v) => fmtX(v) },
-  { key: "expectancy", label: "Ожидание, $ / сделка", better: "higher", fmt: (v) => fmtUsd(v, { signed: true }) },
-  { key: "feeShare", label: "Комиссии / брутто", better: "lower", fmt: (v) => fmtPct(v) },
+  { key: "net", label: "Нетто", better: "higher", fmt: (v) => fmtUsd(v, { signed: true, decimals: "auto" }) },
+  { key: "winRate", label: "Win rate", better: "higher", fmt: (v) => fmtRate(v) },
+  { key: "profitFactor", label: "Profit factor", better: "higher", fmt: (v) => fmtNum(v, { suffix: "×" }) },
+  { key: "expectancy", label: "Ожидание, $ / сделка", better: "higher", fmt: (v) => fmtUsd(v, { signed: true, decimals: "auto" }) },
+  { key: "feeShare", label: "Комиссии / брутто", better: "lower", fmt: (v) => fmtRate(v) },
   { key: "tradesPerDay", label: "Сделок в день", better: "lower", fmt: (v) => v.toFixed(1) },
   { key: "avgHoldMin", label: "Среднее удержание", better: "higher", fmt: (v) => `${v.toFixed(1)} мин` },
-  { key: "maxDd", label: "Макс. просадка", better: "lower", fmt: (v) => fmtUsd(v) },
+  { key: "maxDd", label: "Макс. просадка", better: "lower", fmt: (v) => fmtUsd(v, { decimals: "auto" }) },
 ];
 
 export function DeskComparePanel({ bench, row, trend, loading, className }: { bench: Benchmark | null; row: BenchRow | null; trend: BenchTrend | null; loading: boolean; className?: string }) {
@@ -460,7 +462,7 @@ export function JournalRiskPanel({ doc, ins, className }: { doc: WeeklyReview; i
 export function weekHeadline(doc: WeeklyReview): string {
   const k = doc.kpis.current;
   if (k.trades === 0) return `${weekLabel(doc.week.key)}: закрытых сделок нет.`;
-  const parts = [`${k.trades} сдел${k.trades % 10 === 1 && k.trades % 100 !== 11 ? "ка" : [2, 3, 4].includes(k.trades % 10) && ![12, 13, 14].includes(k.trades % 100) ? "ки" : "ок"} за ${k.tradingDays} дн.`];
+  const parts = [`${commonI18n.t("units.trades", { count: k.trades })} за ${k.tradingDays} дн.`];
   if (k.greenDays || k.redDays) parts.push(`${k.greenDays} в плюс, ${k.redDays} в минус`);
   if (doc.violations.items.length) parts.push(`${doc.violations.items.length} наруш.`);
   if (doc.openPositions.length) parts.push(`${doc.openPositions.length} поз. через выходные`);

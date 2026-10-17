@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useListDiscussions, useDeleteDiscussion, getListDiscussionsQueryKey,
 } from "@workspace/api-client-react";
@@ -15,7 +15,9 @@ import { QueryError } from "@/components/query-error";
 import { UndoToast } from "@/components/undo-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError, nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { ThreadListItem } from "@/components/discussions/ThreadList";
 import { ThreadView } from "@/components/discussions/ThreadView";
@@ -33,13 +35,6 @@ import {
 function readIntParam(name: string): number | null {
   const n = Number(readParam(name));
   return Number.isInteger(n) && n > 0 ? n : null;
-}
-
-async function fetchJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  const body = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(body?.error ?? `Ошибка загрузки (${r.status})`);
-  return body as T;
 }
 
 function readParam(name: string): string | null {
@@ -112,15 +107,15 @@ export default function Discussions() {
 
   const { data: tickerStats = [] } = useQuery<TickerStat[]>({
     queryKey: ["discussions-tickers"],
-    queryFn: () => fetchJson<TickerStat[]>(`${BASE}/api/discussions/tickers`).then((d) => (Array.isArray(d) ? d : [])),
-    staleTime: 30_000,
+    queryFn: ({ signal }) => http.get<TickerStat[]>("/api/discussions/tickers", { signal }).then((d) => (Array.isArray(d) ? d : [])),
+    staleTime: STALE.default,
   });
 
   // Viewer identity comes from the auth token — no `?trader=` / body identity.
   const votesKey = ["discussions-votes", me] as const;
   const { data: votes = {} } = useQuery<VoteMap>({
     queryKey: votesKey,
-    queryFn: () => fetchJson<VoteMap>(`${BASE}/api/discussions/votes/all`),
+    queryFn: ({ signal }) => http.get<VoteMap>("/api/discussions/votes/all", { signal }),
     staleTime: 5_000,
   });
 
@@ -128,8 +123,7 @@ export default function Discussions() {
   const serverUnread = threads.length > 0 && threads[0].unread !== undefined;
   const readMut = useMutation({
     mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/discussions/${id}/read`, { method: "POST" });
-      if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+      await http.post(`/api/discussions/${id}/read`).catch(nullIfMissing);
     },
     onMutate: (id) => {
       const now = new Date().toISOString();
@@ -140,16 +134,8 @@ export default function Discussions() {
 
   // Optimistic votes: update the map instantly, roll back on error.
   const voteMut = useMutation({
-    mutationFn: async (v: { id: number; value: number }) => {
-      const r = await fetch(`${BASE}/api/discussions/${v.id}/vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ value: v.value }),
-      });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось проголосовать");
-      return body as VoteAgg & { discussionId: number };
-    },
+    mutationFn: (v: { id: number; value: number }) =>
+      http.post<VoteAgg & { discussionId: number }>(`/api/discussions/${v.id}/vote`, { value: v.value }),
     onMutate: async ({ id, value }) => {
       await qc.cancelQueries({ queryKey: votesKey });
       const prev = qc.getQueryData<VoteMap>(votesKey);
@@ -166,7 +152,7 @@ export default function Discussions() {
     },
     onError: (e: Error, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(votesKey, ctx.prev);
-      toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось проголосовать"), variant: "destructive" });
     },
     onSuccess: (res) => {
       qc.setQueryData<VoteMap>(votesKey, (old = {}) => ({ ...old, [res.discussionId]: { upvotes: res.upvotes, downvotes: res.downvotes, score: res.score, myVote: res.myVote } }));
@@ -188,7 +174,7 @@ export default function Discussions() {
         setUndo({ id: vars.id, label: `Тема «${(t?.topic ?? "").slice(0, 40)}»` });
         if (selectedId === vars.id) selectThread(null);
       },
-      onError: (e: unknown) => toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? String(e), variant: "destructive" }),
+      onError: (e: unknown) => toast({ title: "Ошибка", description: humanizeApiError(e), variant: "destructive" }),
     },
   });
 
@@ -196,17 +182,13 @@ export default function Discussions() {
     if (!undo) return;
     setRestoring(true);
     try {
-      const r = await fetch(`${BASE}/api/discussions/${undo.id}/restore`, { method: "POST" });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        throw new Error(body?.error ?? "Не удалось восстановить");
-      }
+      await http.post(`/api/discussions/${undo.id}/restore`);
       qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
       qc.invalidateQueries({ queryKey: ["discussions-tickers"] });
       selectThread(undo.id);
       toast({ title: "Тема восстановлена" });
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось восстановить"), variant: "destructive" });
     } finally {
       setRestoring(false);
       setUndo(null);
@@ -342,13 +324,12 @@ export default function Discussions() {
   async function markAllRead() {
     if (serverUnread) {
       try {
-        const r = await fetch(`${BASE}/api/discussions/read-all`, { method: "POST" });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        await http.post("/api/discussions/read-all");
         qc.setQueryData<Thread[]>(getListDiscussionsQueryKey(), (old) => old?.map((d) => ({ ...d, unread: false, mentionsMe: false, readAt: new Date().toISOString() })));
         qc.invalidateQueries({ queryKey: getListDiscussionsQueryKey() });
         qc.invalidateQueries({ queryKey: UNREAD_BADGE_KEY });
       } catch (e) {
-        toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+        toast({ title: "Ошибка", description: humanizeApiError(e), variant: "destructive" });
         return;
       }
     } else {

@@ -6,6 +6,7 @@ import { logger } from "../lib/logger";
 import { requireMember, scopeTrader, GUEST_SCOPE } from "../lib/auth";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeTradeMoney } from "../lib/playbookPrivacy";
+import { unauthorized } from "../lib/http";
 
 /**
  * Indicator notes + favourites ("Мой набор") per user — audit P1-6 (they lived only in localStorage).
@@ -80,7 +81,7 @@ async function listFor(user: string) {
 router.get("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query.user === "string" ? req.query.user : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   await ensureIndicatorNotesTable();
   const user = scope ?? req.authUser?.name ?? null;
   if (!user || user === GUEST_SCOPE) { res.json({ user: null, items: [] }); return; }
@@ -170,7 +171,7 @@ router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
 router.get("/indicators/tagged-trades", asyncHandler(async (req, res): Promise<void> => {
   const requested = typeof req.query.trader === "string" ? req.query.trader : null;
   const scope = await scopeTrader(req, requested);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params: unknown[] = [];
   let where = `deleted_at IS NULL
     AND (NULLIF(TRIM(COALESCE(setup, '')), '') IS NOT NULL OR NULLIF(TRIM(COALESCE(tags, '')), '') IS NOT NULL)`;

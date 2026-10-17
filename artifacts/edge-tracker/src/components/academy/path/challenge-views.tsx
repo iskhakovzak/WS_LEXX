@@ -10,20 +10,22 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   type ChallengeListItem, type ChallengeRules, type ChallengeTemplate, type StageKey,
-  fmtDate, fmtWindow, sendJson, stageName, suggestedTemplate, usd, useChallenge, useFunnel, usePathMutation,
+  fmtWindow, stageName, suggestedTemplate, useChallenge, useFunnel, usePathMutation,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { http } from "@/lib/api/http";
 import { ChallengeStatusPill, ChallengeTimeline, Field, RuleBar, selectCls } from "./bits";
 import { PersonSelect } from "@/components/people/person-select";
 
 export function rulesSummary(r: ChallengeRules): string {
   const parts = [
-    `счёт ${usd(r.accountSize)}`,
-    r.profitTarget != null ? `цель +${usd(r.profitTarget)}` : null,
-    r.dailyLossLimit != null ? `дневной −${usd(r.dailyLossLimit)}` : null,
-    r.maxDrawdown != null ? `DD ${usd(r.maxDrawdown)} ${r.drawdownMode === "static" ? "стат." : r.drawdownMode === "trailing_eod" ? "трейл. EOD" : "трейл."}` : null,
+    `счёт ${fmtUsd(r.accountSize, { decimals: 0 })}`,
+    r.profitTarget != null ? `цель +${fmtUsd(r.profitTarget, { decimals: 0 })}` : null,
+    r.dailyLossLimit != null ? `дневной −${fmtUsd(r.dailyLossLimit, { decimals: 0 })}` : null,
+    r.maxDrawdown != null ? `DD ${fmtUsd(r.maxDrawdown, { decimals: 0 })} ${r.drawdownMode === "static" ? "стат." : r.drawdownMode === "trailing_eod" ? "трейл. EOD" : "трейл."}` : null,
     r.consistencyPct != null ? `лучший день ≤ ${r.consistencyPct}%` : null,
     r.minTradingDays != null ? `мин. ${r.minTradingDays} дн.` : null,
-    r.maxPositionUsd != null ? `позиция ≤ ${usd(r.maxPositionUsd)}` : null,
+    r.maxPositionUsd != null ? `позиция ≤ ${fmtUsd(r.maxPositionUsd, { decimals: 0 })}` : null,
     r.tradingWindow ? `окно ${fmtWindow(r.tradingWindow)} NY${r.tradingWindowStrict ? "" : " (мягко)"}` : null,
   ];
   return parts.filter(Boolean).join(" · ");
@@ -53,7 +55,7 @@ export function ChallengeCard({ c, active, onOpen, showUser }: { c: ChallengeLis
         </div>
       )}
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-xs tabular-nums">
-        <span className={cn("font-semibold", r.stats.net > 0 ? "text-up" : r.stats.net < 0 ? "text-down" : "text-foreground")}>{usd(r.stats.net)}</span>
+        <span className={cn("font-semibold", r.stats.net > 0 ? "text-up" : r.stats.net < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.stats.net, { decimals: 0 })}</span>
         <span className="text-muted-foreground">{r.stats.tradingDays} торг. дн. · осталось {r.tradingDaysLeft}</span>
       </div>
       <p className="line-clamp-2 text-xs text-muted-foreground">{r.reason}</p>
@@ -64,7 +66,7 @@ export function ChallengeCard({ c, active, onOpen, showUser }: { c: ChallengeLis
 export function ChallengeDetailView({ id, onArchived }: { id: number; onArchived: () => void }) {
   const q = useChallenge(id);
   const { toast } = useToast();
-  const archive = usePathMutation(() => sendJson(`/academy/challenges/${id}/archive`, "POST"));
+  const archive = usePathMutation(() => http.post(`/api/academy/challenges/${id}/archive`, {}));
   if (q.isLoading) return <Skeleton className="h-96 rounded-2xl" />;
   if (q.isError || !q.data) return <Panel><EmptyState icon={Flag} title="Экзамен не найден" description={(q.error as Error | null)?.message} /></Panel>;
   const { challenge: c, result: r, canManage } = q.data;
@@ -100,10 +102,10 @@ export function ChallengeDetailView({ id, onArchived }: { id: number; onArchived
       </Panel>
 
       <StatGrid>
-        <StatCard label="P&L нетто" value={usd(r.stats.net)} tone={r.stats.net > 0 ? "up" : r.stats.net < 0 ? "down" : "neutral"} hint={`Баланс ${usd(r.stats.balance)}`} />
+        <StatCard label="P&L нетто" value={fmtUsd(r.stats.net, { decimals: 0 })} tone={r.stats.net > 0 ? "up" : r.stats.net < 0 ? "down" : "neutral"} hint={`Баланс ${fmtUsd(r.stats.balance, { decimals: 0 })}`} />
         <StatCard label="Торговых дней" value={`${r.stats.tradingDays}`} hint={`Прошло ${r.tradingDaysElapsed} из ${r.tradingDaysTotal}, осталось ${r.tradingDaysLeft}`} />
-        <StatCard label="Лучший / худший день" value={`${usd(r.stats.bestDay)} / ${usd(r.stats.worstDay)}`} hint={r.stats.consistencyPct != null ? `Лучший день = ${Math.round(r.stats.consistencyPct)}% прибыли` : "Прибыли пока нет"} />
-        <StatCard label="Макс. просадка" value={usd(r.stats.maxDdUsed)} tone={r.stats.maxDdUsed > 0 ? "down" : "neutral"} hint={`Худший внутридневной ${usd(r.stats.worstDayLow)}`} />
+        <StatCard label="Лучший / худший день" value={`${fmtUsd(r.stats.bestDay, { decimals: 0 })} / ${fmtUsd(r.stats.worstDay, { decimals: 0 })}`} hint={r.stats.consistencyPct != null ? `Лучший день = ${Math.round(r.stats.consistencyPct)}% прибыли` : "Прибыли пока нет"} />
+        <StatCard label="Макс. просадка" value={fmtUsd(r.stats.maxDdUsed, { decimals: 0 })} tone={r.stats.maxDdUsed > 0 ? "down" : "neutral"} hint={`Худший внутридневной ${fmtUsd(r.stats.worstDayLow, { decimals: 0 })}`} />
       </StatGrid>
 
       <Panel title="Правила" icon={ListChecks} description="Прогресс к цели и использование лимитов">
@@ -150,7 +152,7 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
   const capital = templates.filter((t) => t.toStage != null);
   const tests = templates.filter((t) => t.toStage == null);
   const tpl = templates.find((t) => t.key === tplKey);
-  const create = usePathMutation((body: unknown) => sendJson<{ id: number }>("/academy/challenges", "POST", body));
+  const create = usePathMutation((body: unknown) => http.post<{ id: number }>("/api/academy/challenges", body));
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">

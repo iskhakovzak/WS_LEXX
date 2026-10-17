@@ -5,12 +5,13 @@ import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { useRiskHistory } from "./use-risk";
-import { AXIS, CHART_TOOLTIP_STYLE, fmtR, fmtSignedUsd, fmtUsd, useStoredState } from "./primitives";
+import { AXIS, CHART_TOOLTIP_STYLE, useStoredState } from "./primitives";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 
 const PERIODS = ["20", "60", "120", "250"] as const;
 type Period = (typeof PERIODS)[number];
 
-const shortDate = (d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`;
+const shortDate = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 
 /** Equity, daily P&L and drawdown-from-peak for one trader. Falls back to R when trades have no $ P&L. */
 export function HistoryCharts({ trader, compact = false }: { trader: string; compact?: boolean }) {
@@ -19,7 +20,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
   const q = useRiskHistory(trader, Number(period));
   const h = q.data;
   const usd = h?.unit === "usd";
-  const fmt = (v: number) => (usd ? fmtSignedUsd(v, true) : fmtR(v));
+  const fmt = (v: number) => (usd ? fmtUsd(v, { signed: true, decimals: 0, compact: 10_000 }) : fmtR(v));
 
   const data = React.useMemo(
     () =>
@@ -40,7 +41,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
     label: "История трейдера по дням",
     describe: (i) => `${shortDate(data[i].date)} · день ${data[i].day == null ? "—" : fmt(data[i].day)} · капитал ${fmt(data[i].equity)}`,
   });
-  const dayLabel = (l: unknown) => <>{typeof l === "string" ? `${shortDate(l)}.${l.slice(0, 4)}` : String(l)}<PeriodHint kind="day" /></>;
+  const dayLabel = (l: unknown) => <>{typeof l === "string" ? fmtDate(l.slice(0, 10), "short") : String(l)}<PeriodHint kind="day" /></>;
   const chartH = compact ? 150 : 200;
 
   return (
@@ -92,7 +93,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
                   </defs>
                   <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                   <XAxis dataKey="date" tickFormatter={shortDate} {...AXIS} minTickGap={24} />
-                  <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
+                  <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
                   <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), "Капитал"]} />
                   <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.4} />
                   <Area type="monotone" dataKey="equity" stroke="hsl(var(--chart-1))" strokeWidth={2} fill={`url(#${gid})`} isAnimationActive={false} />
@@ -108,7 +109,7 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
+                    <YAxis {...AXIS} width={56} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} cursor={{ fill: "hsl(var(--muted-foreground) / 0.08)" }} labelFormatter={dayLabel} formatter={(v: number) => [v == null ? "нет $ P&L" : fmt(v), "День"]} />
                     <ReferenceLine y={0} stroke="hsl(var(--border))" />
                     <Bar dataKey="day" radius={[3, 3, 0, 0]} isAnimationActive={false}>
@@ -127,13 +128,13 @@ export function HistoryCharts({ trader, compact = false }: { trader: string; com
             <div>
               <div className="flex items-baseline justify-between">
                 <span className="micro-label">Просадка от пика</span>
-                {ddLimit != null && <span className="text-2xs text-muted-foreground">лимит {fmtUsd(-ddLimit)}</span>}
+                {ddLimit != null && <span className="text-2xs text-muted-foreground">лимит {fmtUsd(-ddLimit, { decimals: 0 })}</span>}
               </div>
               <div className="mt-1" style={{ height: compact ? 100 : 120 }}>
                 <ResponsiveContainer width="100%" height="100%">
                   <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 0 }} {...nav.chartProps}>
                     <XAxis dataKey="date" hide />
-                    <YAxis {...AXIS} width={56} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { compact: true }) : `${v}R`)} />
+                    <YAxis {...AXIS} width={56} domain={[ddLimit != null ? Math.min(ddLimit * 1.1, 0) : "auto", 0]} tickFormatter={(v: number) => (usd ? fmtUsd(v, { decimals: 0, compact: 10_000 }) : `${v}R`)} />
                     <Tooltip contentStyle={CHART_TOOLTIP_STYLE} labelFormatter={dayLabel} formatter={(v: number) => [fmt(v), "Просадка"]} />
                     {ddLimit != null && <ReferenceLine y={ddLimit} stroke="hsl(var(--down))" strokeDasharray="4 3" />}
                     <Area type="stepAfter" dataKey="dd" stroke="hsl(var(--down))" fill="hsl(var(--down) / 0.18)" strokeWidth={1.5} isAnimationActive={false} />

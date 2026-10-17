@@ -11,7 +11,8 @@ import { toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { ExampleCard, checklistOf, exampleFigure } from "./examples-board";
 import { DocSection, EdgeMini } from "./setup-bits";
-import { ddmm, spaceTabOf, type PlaybookEntry, type SetupExample, type SetupSummary, type ViewerLike } from "./model";
+import { spaceTabOf, type PlaybookEntry, type SetupExample, type SetupSummary, type ViewerLike } from "./model";
+import { fmtDate } from "@/lib/format";
 
 /** Related setups: same space, same folder or same type; not the setup itself / its parent / its variants. Best-tested first. */
 export function relatedSetups(entry: PlaybookEntry, all: PlaybookEntry[], summary: Map<number, SetupSummary>, viewer: ViewerLike, max = 6): PlaybookEntry[] {
@@ -79,7 +80,7 @@ export function SetupHighlights({
                   >
                     <span className="w-28 shrink-0 text-sm tabular-nums">
                       <span className="font-medium text-foreground">{ex.ticker}</span>
-                      <span className="block text-xs text-muted-foreground">{ddmm(ex.closeDate ?? ex.date)}{ex.trader ? ` · ${ex.trader}` : ""}</span>
+                      <span className="block text-xs text-muted-foreground">{fmtDate(ex.closeDate ?? ex.date, "dayMonthNumeric")}{ex.trader ? ` · ${ex.trader}` : ""}</span>
                     </span>
                     <span className={cn("w-16 shrink-0 text-sm tabular-nums", toneText(fig.tone))}>{fig.text}</span>
                     <span className={cn("min-w-0 flex-1 text-sm [overflow-wrap:anywhere]", ex.note ? "text-foreground" : "italic text-muted-foreground")}>

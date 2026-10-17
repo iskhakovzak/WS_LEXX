@@ -5,8 +5,10 @@ import { Kbd, toneText } from "@/components/ds";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
-import { LISTS, LIST_LABELS, TICKER_TOKEN_RE, fmtMoney, parseTickers, type ListName } from "./lib";
+import { LISTS, LIST_LABELS, TICKER_TOKEN_RE, parseTickers, type ListName } from "./lib";
 import type { TickerHistory } from "./use-history";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Suggestion = {
   ticker: string;
@@ -64,7 +66,7 @@ export function AddTickerBar({
     const out: Suggestion[] = [];
     const seen = new Set<string>();
     const histMeta = (h: TickerHistory): Pick<Suggestion, "meta" | "metaTone"> => ({
-      meta: `${h.n} сд · ${fmtMoney(h.net)}`,
+      meta: `${h.n} сд · ${fmtUsd(h.net, { signed: true, decimals: 0 })}`,
       metaTone: h.net > 0 ? "up" : h.net < 0 ? "down" : "neutral",
     });
     const push = (t: string) => {
@@ -169,7 +171,7 @@ export function AddTickerBar({
         />
         {multiPreview && (
           <span className="hidden shrink-0 text-xs tabular-nums text-muted-foreground md:inline">
-            {parsed.tickers.length} {tickerWord(parsed.tickers.length)}{parsed.invalid.length ? ` · пропущу ${parsed.invalid.length}` : ""}
+            {commonI18n.t("units.tickers", { count: parsed.tickers.length })}{parsed.invalid.length ? ` · пропущу ${parsed.invalid.length}` : ""}
           </span>
         )}
         <DropdownMenu>
@@ -236,11 +238,4 @@ export function AddTickerBar({
       )}
     </div>
   );
-}
-
-function tickerWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "тикер";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "тикера";
-  return "тикеров";
 }

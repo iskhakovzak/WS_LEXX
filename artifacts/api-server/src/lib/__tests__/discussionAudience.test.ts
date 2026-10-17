@@ -1,7 +1,7 @@
 /**
  * Discussions audience: token parsing, the read rule (canSeeThread) and its SQL twin (audienceSql).
  * The SQL parity block runs read-only SELECTs over a VALUES(...) CTE aliased `d` and skips when the local
- * Postgres (TEST_DATABASE_URL, default postgresql://postgres:postgres@localhost:5432/edge_tracker) is down.
+ * Postgres (TEST_DATABASE_URL, default postgresql://postgres:postgres@localhost:5432/edge_tracker_test) is down.
  */
 import { afterAll, describe, expect, it } from "vitest";
 import {

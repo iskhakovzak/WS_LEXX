@@ -3,12 +3,14 @@ import * as React from "react";
 import { EyeOff, type LucideIcon } from "lucide-react";
 import { Pill, toneText, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { setupTone, splitTags, fmtPct, fmtR, fmtUsd, moneyTone, usdEdge, type SetupSummary } from "./model";
+import { setupTone, splitTags, moneyTone, usdEdge, type SetupSummary } from "./model";
+import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { winrateTone } from "@/components/playbook-sub/bits";
+import { setupTypeLabel } from "@/i18n/ns/dataCodes";
 
 export function SetupTypePill({ type, className }: { type: string | null | undefined; className?: string }) {
   if (!type) return null;
-  return <Pill tone={setupTone(type)} className={className}>{type}</Pill>;
+  return <Pill tone={setupTone(type)} className={className}>{setupTypeLabel(type)}</Pill>;
 }
 
 export function confidenceTone(level: number): Tone {
@@ -69,11 +71,11 @@ export function EdgeMini({ s, className }: { s: SetupSummary | undefined; classN
     <span className={cn("inline-flex items-center gap-1.5 text-xs tabular-nums", className)}>
       <span className="text-muted-foreground" title="Сделок">{s.tradeCount}</span>
       <span aria-hidden="true" className="text-muted-foreground">·</span>
-      <span className={toneText(wrTone)} title="Win rate">{fmtPct(s.winrate)}</span>
+      <span className={toneText(wrTone)} title="Win rate">{fmtRate(s.winrate)}</span>
       {usd != null ? (
         <>
           <span aria-hidden="true" className="text-muted-foreground">·</span>
-          <span className={toneText(moneyTone(usd))} title="Ожидание нетто на сделку">{fmtUsd(usd)}</span>
+          <span className={toneText(moneyTone(usd))} title="Ожидание нетто на сделку">{fmtUsd(usd, { signed: true, decimals: 0 })}</span>
         </>
       ) : s.expectancy != null ? (
         <>

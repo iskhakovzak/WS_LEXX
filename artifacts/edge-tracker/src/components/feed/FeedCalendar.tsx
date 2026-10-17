@@ -1,9 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "./feed-utils";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
-const WEEKDAYS = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+/** Monday-first weekday indexes (Date#getDay numbering). */
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0];
 
 /** Month mini-calendar: dots for days with feed events, ring for today, accent for the selected day. */
 export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect, today, anchor }: {
@@ -33,7 +35,8 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
     return out;
   }, [cursor]);
 
-  const monthLabel = new Date(cursor.y, cursor.m, 1).toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  const monthLabel = fmtDate(new Date(cursor.y, cursor.m, 1), "monthYear");
+  const weekdays = WEEK_ORDER.map((i) => { const s = fmtWeekday(i, "short"); return s.charAt(0).toUpperCase() + s.slice(1); });
   const monthPrefix = `${cursor.y}-${String(cursor.m + 1).padStart(2, "0")}`;
   const monthEntries = Array.from(counts.entries()).filter(([d]) => d.startsWith(monthPrefix)).reduce((s, [, n]) => s + n, 0);
   const move = (delta: number) => setCursor((c) => {
@@ -50,7 +53,7 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
         <div className="text-center">
           <div className="text-sm font-semibold capitalize text-foreground">{monthLabel}</div>
           <div className="text-xs tabular-nums text-muted-foreground">
-            {monthEntries} {pluralRu(monthEntries, "событие", "события", "событий")}
+            {commonI18n.t("units.events", { count: monthEntries })}
           </div>
         </div>
         <button type="button" aria-label="Следующий месяц" onClick={() => move(1)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
@@ -58,7 +61,7 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
         </button>
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center" role="grid" aria-label={`Календарь ленты, ${monthLabel}`}>
-        {WEEKDAYS.map((w) => (
+        {weekdays.map((w) => (
           <div key={w} className="pb-1 text-xs font-medium text-muted-foreground" role="columnheader">{w}</div>
         ))}
         {cells.map((d, i) => {
@@ -66,7 +69,7 @@ export function FeedCalendar({ counts, unreadDays, tradeDays, selected, onSelect
           const n = counts.get(d) ?? 0;
           const isSel = d === selected;
           const isToday = d === today;
-          const label = `${d}: ${n ? `${n} ${pluralRu(n, "событие", "события", "событий")}` : "пусто"}${tradeDays.has(d) ? ", были сделки" : ""}`;
+          const label = `${d}: ${n ? commonI18n.t("units.events", { count: n }) : "пусто"}${tradeDays.has(d) ? ", были сделки" : ""}`;
           return (
             <button
               key={d}

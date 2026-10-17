@@ -1,7 +1,5 @@
 import { useMemo, useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { formatDistanceToNow } from "date-fns";
-import { ru } from "date-fns/locale";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -9,10 +7,12 @@ import { Sparkles, Copy, RefreshCw, AlertTriangle, Wrench, Ban, HelpCircle, Chec
 import type { LucideIcon } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { Pill, toneText, type Tone } from "@/components/ds";
-import { IconAction, InlineMd, plural, lsGet, lsSet } from "@/components/playbook-sub/bits";
+import { IconAction, InlineMd, lsGet, lsSet } from "@/components/playbook-sub/bits";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtRelative } from "@/lib/format";
 
 type Critique = { critique: string; tradesAnalyzed: number; at: number };
 
@@ -90,15 +90,15 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
 
   const mut = useMutation({
     mutationFn: async () => {
-      const qs = userKey ? `?userKey=${encodeURIComponent(userKey)}` : "";
-      const res = await fetch(`${BASE}/api/playbook/${playbookId}/ai-critique${qs}`, { method: "POST" });
-      if (res.status === 429) {
-        const j = await res.json().catch(() => ({}));
-        const mins = Math.max(1, Math.ceil(Number(j?.retryAfterMs ?? 0) / 60000));
-        throw new Error(JSON.stringify({ error: `AI-разбор этого сетапа уже запрашивали недавно. Повторить можно через ${mins} мин.` }));
+      try {
+        return await http.post<{ critique: string; tradesAnalyzed: number }>(`/api/playbook/${playbookId}/ai-critique`, undefined, { query: { userKey } });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 429) {
+          const mins = Math.max(1, Math.ceil(Number(e.field("retryAfterMs") ?? 0) / 60000));
+          throw new ApiError({ status: 429, code: e.code, message: `AI-разбор этого сетапа уже запрашивали недавно. Повторить можно через ${mins} мин.`, method: e.method, url: e.url });
+        }
+        throw e;
       }
-      if (!res.ok) throw new Error(await res.text());
-      return res.json() as Promise<{ critique: string; tradesAnalyzed: number }>;
     },
     onMutate: () => setError(null),
     onSuccess: (d) => {
@@ -107,7 +107,7 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
       lsSet(cacheKey(playbookId, userKey), c);
     },
     onError: (e: any) => {
-      let msg = String(e?.message ?? "");
+      let msg = String((e instanceof ApiError && e.field<string>("detail")) || (e?.message ?? ""));
       try { const j = JSON.parse(msg); msg = j?.detail ?? j?.error ?? msg; } catch { /* plain text */ }
       setError(msg.slice(0, 300) || "Неизвестная ошибка");
       toast({ title: "Не удалось получить AI-разбор", description: msg.slice(0, 200) || undefined, variant: "destructive" });
@@ -160,9 +160,9 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
               {result && (
                 <>
                   <Pill tone={n < 5 ? "warn" : "neutral"}>
-                    {n} {plural(n, "сделка", "сделки", "сделок")} в анализе
+                    {commonI18n.t("units.trades", { count: n })} в анализе
                   </Pill>
-                  <span>обновлён {formatDistanceToNow(new Date(result.at), { addSuffix: true, locale: ru })}</span>
+                  <span>обновлён {fmtRelative(result.at)}</span>
                 </>
               )}
             </DialogDescription>

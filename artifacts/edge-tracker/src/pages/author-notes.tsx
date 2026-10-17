@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertCircle, AlertTriangle, BookmarkPlus, Check, ChevronLeft, ChevronRight, Copy, Eye, LayoutTemplate, Loader2,
@@ -19,7 +19,6 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { cn } from "@/lib/utils";
 import { AuthorEditor, type EditorMode, type EditorTarget } from "@/components/notes/author-editor";
 import { AuthorDayContext, heldLine, tradeLine } from "@/components/notes/author-day-context";
 import { AuthorWeeklyCard } from "@/components/notes/author-weekly";
@@ -33,10 +32,14 @@ import {
   FOLLOW_HEADER, findPrevPlan, followThroughBlock, moneyMentions, sectionForDigit, type FollowItem,
 } from "@/components/notes/author-plan";
 import {
-  AN_KEYS, BUILTIN_TEMPLATES, HttpError, MOODS, SECTIONS, addDays, api, appendText, applyTemplate,
-  fmtDayLong, isIsoDate, loadCustomTemplates, localToday, parseNote, relTime, saveCustomTemplates, serializeNote,
+  AN_KEYS, BUILTIN_TEMPLATES, MOODS, SECTIONS, addDays, appendText, applyTemplate,
+  isIsoDate, loadCustomTemplates, localToday, parseNote, relTime, saveCustomTemplates, serializeNote,
   type Audience, type AuthorNote, type DayContext, type DayTrade, type NoteTemplate, type SectionKey,
 } from "@/components/notes/author-model";
+import { fmtDate } from "@/lib/format";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 
 type View = "write" | "feed" | "history";
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -159,7 +162,7 @@ export default function AuthorNotesPage() {
   /* ── Queries ── */
   const historyQ = useQuery({
     queryKey: AN_KEYS.history(trader),
-    queryFn: () => api<AuthorNote[]>(`/author-notes/history?trader=${encodeURIComponent(trader)}&limit=366`),
+    queryFn: () => http.get<AuthorNote[]>(`/api/author-notes/history?trader=${encodeURIComponent(trader)}&limit=366`),
     enabled: !!trader && canEdit,
     staleTime: 60_000,
   });
@@ -167,16 +170,15 @@ export default function AuthorNotesPage() {
 
   const dayQ = useQuery({
     queryKey: AN_KEYS.day(date),
-    queryFn: () => api<DayContext>(`/author-notes/day-context?date=${date}`),
+    queryFn: () => http.get<DayContext>(`/api/author-notes/day-context?date=${date}`),
     enabled: !!trader && canEdit && view === "write",
-    staleTime: 60_000,
-    retry: (n, e) => !(e instanceof HttpError && e.status < 500) && n < 2,
+    staleTime: STALE.short,
   });
 
   // Reach of the open note (who read / who not yet); refreshed while the author keeps the page open.
   const audienceQ = useQuery({
     queryKey: AN_KEYS.audience(note?.id ?? 0),
-    queryFn: () => api<Audience>(`/author-notes/${note!.id}/audience`),
+    queryFn: () => http.get<Audience>(`/api/author-notes/${note!.id}/audience`),
     enabled: !!note?.id && view === "write",
     staleTime: 30_000,
     refetchInterval: 60_000,
@@ -197,7 +199,7 @@ export default function AuthorNotesPage() {
     setNote(null); setRaw(""); setMood(""); setShowAi(false);
     setStatus("idle"); setSavedAt(null); setLoadState("loading");
     try {
-      const data = await api<AuthorNote | null>(`/author-notes?trader=${encodeURIComponent(trader)}&date=${d}`);
+      const data = await http.get<AuthorNote | null>(`/api/author-notes?trader=${encodeURIComponent(trader)}&date=${d}`);
       if (seq !== loadSeq.current) return;
       if (data && data.id) {
         setNote(data);
@@ -225,10 +227,7 @@ export default function AuthorNotesPage() {
     if (!noteRef.current && !text.trim() && !m && !opts?.force) { setStatus("idle"); return null; }
     setStatus("saving");
     try {
-      const data = await api<AuthorNote>(`/author-notes`, {
-        method: "PUT",
-        body: JSON.stringify({ raw_text: text, note_date: d, mood: m || null }),
-      });
+      const data = await http.put<AuthorNote>(`/api/author-notes`, { raw_text: text, note_date: d, mood: m || null });
       if (d === dateRef.current) {
         setNote(data);
         if (rawRef.current === text && moodRef.current === m) { setStatus("saved"); setSavedAt(Date.now()); }
@@ -420,10 +419,7 @@ export default function AuthorNotesPage() {
       cancelAutosave();
       const saved = await save({ force: true });
       if (!saved) return;
-      const d = await api<{ refined_text?: string }>(`/author-notes/improve`, {
-        method: "POST",
-        body: JSON.stringify({ text: raw, note_id: saved.id, note_date: date }),
-      });
+      const d = await http.post<{ refined_text?: string }>(`/api/author-notes/improve`, { text: raw, note_id: saved.id, note_date: date });
       if (d.refined_text) {
         const updated = { ...saved, refined_text: d.refined_text };
         setNote((prev) => (prev && prev.id === saved.id ? updated : prev));
@@ -444,7 +440,7 @@ export default function AuthorNotesPage() {
     if (!target) return;
     setDeleting(true);
     try {
-      await api(`/author-notes/${target.id}`, { method: "DELETE" });
+      await http.del(`/api/author-notes/${target.id}`);
       qc.setQueryData<AuthorNote[]>(AN_KEYS.history(trader), (prev) => prev?.filter((n) => n.id !== target.id));
       void qc.invalidateQueries({ queryKey: ["author-notes", "feed"] });
       if (noteRef.current?.id === target.id) {
@@ -497,7 +493,7 @@ export default function AuthorNotesPage() {
   });
 
   /* ── Render ── */
-  const dayUnavailable = dayQ.isError && dayQ.error instanceof HttpError && dayQ.error.status === 404;
+  const dayUnavailable = dayQ.isError && isNotFound(dayQ.error);
   const editorDisabled = loadState !== "ok";
   const words = raw.trim() ? raw.trim().split(/\s+/).length : 0;
   const filled = parseNote(raw);
@@ -571,7 +567,7 @@ export default function AuthorNotesPage() {
               {/* Header: date + status */}
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2 id="author-editor-title" className="text-lg font-semibold tracking-tight first-letter:uppercase">{fmtDayLong(date)}</h2>
+                  <h2 id="author-editor-title" className="text-lg font-semibold tracking-tight first-letter:uppercase">{fmtDate(date, "weekdayDayMonthLong")}</h2>
                   <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1">
                     <SaveIndicator status={status} savedAt={savedAt} now={now} onRetry={() => void save({ force: true })} />
                     {audienceQ.data && audienceQ.data.total > 0 && (
@@ -843,7 +839,7 @@ export default function AuthorNotesPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить сводку?</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDelete ? `Запись за ${fmtDayLong(confirmDelete.note_date)} удалится вместе с AI-версией и отметками «прочитано».` : ""}
+              {confirmDelete ? `Запись за ${fmtDate(confirmDelete.note_date, "weekdayDayMonthLong")} удалится вместе с AI-версией и отметками «прочитано».` : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

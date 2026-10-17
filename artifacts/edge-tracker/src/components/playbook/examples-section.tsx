@@ -18,7 +18,7 @@ import { TickerFundamentalsBar } from "@/components/ticker-fundamentals-bar";
 import type { TickerFundamentals } from "@/lib/market-intel";
 import { localDateString } from "@/lib/local-date";
 import { useToast } from "@/hooks/use-toast";
-import { pbRequest } from "./api";
+import { http } from "@/lib/api/http";
 import { DocSection, InlineError } from "./setup-bits";
 
 type Example = {
@@ -57,7 +57,7 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
 
   const { data: ideas = [], isLoading, isError, refetch } = useQuery<Example[]>({
     queryKey: ["playbook-ideas", entryId],
-    queryFn: () => pbRequest<Example[]>(`/api/playbook/${entryId}/ideas`),
+    queryFn: () => http.get<Example[]>(`/api/playbook/${entryId}/ideas`),
   });
   const refresh = () => {
     qc.invalidateQueries({ queryKey: ["playbook-ideas", entryId] });
@@ -91,8 +91,8 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
     setSaving(true);
     const ok = await run(
       () => editingId
-        ? pbRequest(`/api/playbook/${entryId}/ideas/${editingId}`, { method: "PATCH", json })
-        : pbRequest(`/api/playbook/${entryId}/ideas`, { method: "POST", json }),
+        ? http.patch(`/api/playbook/${entryId}/ideas/${editingId}`, json)
+        : http.post(`/api/playbook/${entryId}/ideas`, json),
       editingId ? "Не удалось сохранить пример" : "Не удалось добавить пример",
     );
     setSaving(false);
@@ -106,11 +106,11 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
     const next = CYCLE[(CYCLE.indexOf(idea.status) + 1) % CYCLE.length];
     // Full idea in the body so a status change can't clear other fields on older API builds.
     const json = { status: next, ticker: idea.ticker, side: idea.side, entryZone: idea.entry_zone, target: idea.target, stop: idea.stop, notes: idea.notes, date: idea.date };
-    if (await run(() => pbRequest(`/api/playbook/${entryId}/ideas/${idea.id}`, { method: "PATCH", json }), "Не удалось изменить статус")) refresh();
+    if (await run(() => http.patch(`/api/playbook/${entryId}/ideas/${idea.id}`, json), "Не удалось изменить статус")) refresh();
   }
 
   async function remove(id: number) {
-    const ok = await run(() => pbRequest(`/api/playbook/${entryId}/ideas/${id}`, { method: "DELETE" }), "Не удалось удалить пример");
+    const ok = await run(() => http.del(`/api/playbook/${entryId}/ideas/${id}`), "Не удалось удалить пример");
     setDeleting(null);
     if (ok) { refresh(); toast({ title: "Пример удалён" }); }
   }

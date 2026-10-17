@@ -9,9 +9,11 @@ import { Kbd, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  BUILTIN_SNIPPETS, addSnippet, api, appendSnippet, clearDraft, draftDiffers, fmtDayLong, loadDraft, loadMySnippets, qk,
+  BUILTIN_SNIPPETS, addSnippet, appendSnippet, clearDraft, draftDiffers, loadDraft, loadMySnippets, qk,
   relTime, reviewKeyAction, saveDraft, saveMySnippets, sectionsOf, wordCount, type JuniorNote, type ReviewContext,
 } from "./junior-lib";
+import { fmtDate } from "@/lib/format";
+import { http } from "@/lib/api/http";
 import { FeedbackCard, MarkdownText, MoodPill, ScorePicker, SectionsView } from "./junior-ui";
 import { PrevFocusCard, ReviewContextRail } from "./junior-review-context";
 
@@ -97,7 +99,7 @@ export function JuniorNoteSheet({
 
   const ctxQ = useQuery({
     queryKey: qk.context(n?.id ?? 0),
-    queryFn: () => api<ReviewContext>(`/junior-notes/${n!.id}/context`),
+    queryFn: () => http.get<ReviewContext>(`/api/junior-notes/${n!.id}/context`),
     enabled: open && isCurator && !!n,
     staleTime: 60_000,
     retry: 1,
@@ -106,7 +108,7 @@ export function JuniorNoteSheet({
   // The owner reading an unread curator answer marks it as read.
   React.useEffect(() => {
     if (!open || mode !== "owner" || !note || !note.reviewed_at || note.feedback_seen_at) return;
-    api<JuniorNote>(`/junior-notes/${note.id}/seen`, { method: "POST", json: {} })
+    http.post<JuniorNote>(`/api/junior-notes/${note.id}/seen`, {})
       .then((u) => {
         qc.setQueryData<JuniorNote[]>(qk.history(u.trader), (prev) => prev?.map((x) => (x.id === u.id ? u : x)));
         qc.setQueryData(qk.day(u.trader, u.note_date), u);
@@ -164,10 +166,7 @@ export function JuniorNoteSheet({
     if (!n || saving) return;
     setSaving(true);
     try {
-      const updated = await api<JuniorNote>(`/junior-notes/${n.id}/review`, {
-        method: "POST",
-        json: { feedback, score },
-      });
+      const updated = await http.post<JuniorNote>(`/api/junior-notes/${n.id}/review`, { feedback, score });
       clearDraft(n.id);
       setRestored(false);
       setCurrent(updated);
@@ -185,7 +184,7 @@ export function JuniorNoteSheet({
     if (!n) return;
     setDeleting(true);
     try {
-      await api(`/junior-notes/${n.id}`, { method: "DELETE" });
+      await http.del(`/api/junior-notes/${n.id}`);
       qc.setQueryData<JuniorNote[]>(qk.history(n.trader), (prev) => prev?.filter((x) => x.id !== n.id));
       qc.setQueryData(qk.day(n.trader, n.note_date), null);
       toast({ title: "Сводка удалена" });
@@ -224,7 +223,7 @@ export function JuniorNoteSheet({
           <>
             <SheetHeader className="space-y-2 border-b border-border p-5 pr-12 text-left">
               <SheetTitle className="text-lg first-letter:uppercase">
-                {mode === "owner" ? fmtDayLong(n.note_date) : `${n.trader} · ${fmtDayLong(n.note_date)}`}
+                {mode === "owner" ? fmtDate(n.note_date, "weekdayDayMonthLong") : `${n.trader} · ${fmtDate(n.note_date, "weekdayDayMonthLong")}`}
               </SheetTitle>
               <SheetDescription asChild>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">

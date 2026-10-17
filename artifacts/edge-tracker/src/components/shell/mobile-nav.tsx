@@ -1,5 +1,5 @@
 /** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section. */
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal, Search, Star } from "lucide-react";
 import { cn } from "@/lib/utils";

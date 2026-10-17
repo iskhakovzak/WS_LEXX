@@ -116,6 +116,9 @@ globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
   });
+
+  // Versioned SQL migrations are read from disk at boot (src/db/runner.ts resolveMigrationsDir → dist/migrations).
+  await cp(path.resolve(artifactDir, "src/db/migrations"), path.resolve(distDir, "migrations"), { recursive: true });
 }
 
 buildAll()

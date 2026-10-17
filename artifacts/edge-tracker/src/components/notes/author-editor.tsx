@@ -5,7 +5,7 @@ import {
   SECTION_GROUPS, SECTIONS, parseNote, serializeNote,
   type Horizon, type SectionKey,
 } from "./author-model";
-import { pluralRu } from "@/components/rules/constants";
+import { pluralRu } from "@/lib/format";
 
 export type EditorTarget = SectionKey | "free";
 export type EditorMode = "sections" | "free";

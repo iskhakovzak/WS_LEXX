@@ -5,20 +5,18 @@ import { EmptyState, ErrorState, Panel, Segmented, StatCard, StatGrid, StatGridS
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Kbd } from "@/components/ui/kbd";
-import { HttpError, useRiskDesk, useRiskPositions } from "./use-risk";
-import { LevelBadge, fmtSignedUsd, fmtUsd, useStoredState } from "./primitives";
+import { isNotFound } from "@/lib/api/errors";
+import { useRiskDesk, useRiskPositions } from "./use-risk";
+import { LevelBadge, useStoredState } from "./primitives";
 import { exposureByTrader } from "./risk-math";
 import { DeskTable, toTableRows, type DeskTableRow } from "./desk-table";
 import { PositionsTable } from "./positions-table";
 import { TraderSheet } from "./trader-sheet";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type StatusFilter = "all" | "attention" | "no_limits";
 const STATUS_FILTERS: readonly StatusFilter[] = ["all", "attention", "no_limits"];
-
-const plural = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
 
 /** Who needs action right now: stopped / near a limit, with the exact reason. Renders nothing when the desk is clean. */
 function ActionStrip({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (t: string) => void }) {
@@ -133,7 +131,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const limitsByTrader = React.useMemo(() => new Map(rows.map((r) => [r.trader, r.limits])), [rows]);
 
   if (desk.isError) {
-    const notReady = desk.error instanceof HttpError && desk.error.status === 404;
+    const notReady = isNotFound(desk.error);
     return notReady ? (
       <Panel>
         <EmptyState icon={ShieldAlert} title="Риск-деск ещё не подключён на сервере" description="API /api/risk/desk появится после пересборки сервера." />
@@ -158,7 +156,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
         <StatGridSkeleton count={4} />
       ) : quiet ? (
         <p role="status" className="glass-panel flex flex-wrap items-center gap-x-4 gap-y-1 rounded-2xl px-[var(--panel-p)] py-3 text-sm text-muted-foreground tabular-nums">
-          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Сегодня ({desk.data!.date.slice(8, 10)}.{desk.data!.date.slice(5, 7)}) деск не торговал</span>
+          <span className="inline-flex items-center gap-2 font-medium text-foreground"><Wallet className="h-4 w-4 text-muted-foreground" aria-hidden="true" />Сегодня ({fmtDate(desk.data!.date, "dayMonthNumeric")}) деск не торговал</span>
           <span>открытых позиций и овернайта нет</span>
           <span>все в пределах лимитов</span>
         </p>
@@ -167,9 +165,9 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <StatCard
             label="P&L деска сегодня, нетто"
             icon={Wallet}
-            value={s.pnlNetToday != null ? fmtSignedUsd(s.pnlNetToday) : "—"}
+            value={s.pnlNetToday != null ? fmtUsd(s.pnlNetToday, { signed: true, decimals: 0 }) : "—"}
             tone={toneOf(s.pnlNetToday)}
-            hint={s.tradesToday ? `${s.tradesToday} ${plural(s.tradesToday, "сделка", "сделки", "сделок")} · торговали ${tradedToday} из ${s.traders}` : `сегодня (${desk.data!.date.slice(8, 10)}.${desk.data!.date.slice(5, 7)}) сделок нет`}
+            hint={s.tradesToday ? `${commonI18n.t("units.trades", { count: s.tradesToday })} · торговали ${tradedToday} из ${s.traders}` : `сегодня (${fmtDate(desk.data!.date, "dayMonthNumeric")}) сделок нет`}
           />
           <StatCard
             label="Стоп / у лимита"
@@ -181,14 +179,14 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
           <StatCard
             label="Экспозиция деска (gross)"
             icon={Briefcase}
-            value={fmtUsd(longUsd + shortUsd, { compact: true })}
-            hint={s.openPositions ? `лонг ${fmtUsd(longUsd, { compact: true })} · шорт ${fmtUsd(shortUsd, { compact: true })} · ${s.openPositions} поз.` : "открытых позиций нет"}
+            value={fmtUsd(longUsd + shortUsd, { decimals: 0, compact: 10_000 })}
+            hint={s.openPositions ? `лонг ${fmtUsd(longUsd, { decimals: 0, compact: 10_000 })} · шорт ${fmtUsd(shortUsd, { decimals: 0, compact: 10_000 })} · ${s.openPositions} поз.` : "открытых позиций нет"}
           />
           <StatCard
             label="Через закрытие"
             icon={Moon}
-            value={fmtUsd(s.overnightExposureUsd, { compact: true })}
-            hint={s.carriedTonight ? `${s.carriedTonight} поз. · риск по стопам ${fmtUsd(s.openRiskUsd, { compact: true })}` : "овернайт-книга пуста"}
+            value={fmtUsd(s.overnightExposureUsd, { decimals: 0, compact: 10_000 })}
+            hint={s.carriedTonight ? `${s.carriedTonight} поз. · риск по стопам ${fmtUsd(s.openRiskUsd, { decimals: 0, compact: 10_000 })}` : "овернайт-книга пуста"}
             onClick={onShowOvernight}
           />
         </StatGrid>

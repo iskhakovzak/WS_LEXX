@@ -1,12 +1,13 @@
 import { useMemo } from "react";
 import { useQueries, useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE, POLL } from "@/lib/api/keys";
 import { addDays, nyDate, prevWeekday } from "@/lib/trading-date";
 import type { Candle } from "@/components/chart-engine/types";
 import { dayLevels } from "@/components/chart-engine/lib/levels";
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { etParts } from "@/components/chart-engine/lib/time";
-import { apiJson, type EarningsHit, type NewsDigest, type Quote } from "./lib";
+import { type EarningsHit, type NewsDigest, type Quote } from "./lib";
 
 /** Quote refresh choices (ms). 0 = paused. The API caches each symbol for 60 s, so faster polling buys nothing. */
 export const QUOTE_INTERVALS = [
@@ -65,11 +66,11 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
       const chunks: string[][] = [];
       for (let i = 0; i < key.length; i += 50) chunks.push(key.slice(i, i + 50));
       const parts = await Promise.all(
-        chunks.map((c) => apiJson<Record<string, Quote>>(`${BASE}/api/stockdata/quote?symbols=${encodeURIComponent(c.join(","))}`)),
+        chunks.map((c) => http.get<Record<string, Quote>>("/api/stockdata/quote", { query: { symbols: c.join(",") } })),
       );
       return Object.assign({}, ...parts);
     },
-    staleTime: 30_000,
+    staleTime: STALE.default,
     refetchInterval: live ? intervalMs : false,
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
@@ -80,13 +81,13 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
     queryKey: ["watchlist-news-summary", key],
     enabled,
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/news/summary?tickers=${encodeURIComponent(key.slice(0, 100).join(","))}`);
-      if (!r.ok) return {};
-      const j = (await r.json()) as { tickers?: Record<string, NewsDigest> };
-      return j.tickers ?? {};
+      const j = await http
+        .get<{ tickers?: Record<string, NewsDigest> }>("/api/news/summary", { query: { tickers: key.slice(0, 100).join(",") } })
+        .catch(() => null);
+      return j?.tickers ?? {};
     },
-    staleTime: 5 * 60_000,
-    refetchInterval: live ? 5 * 60_000 : false,
+    staleTime: STALE.long,
+    refetchInterval: live ? POLL.fiveMinutes : false,
     refetchIntervalInBackground: false,
     placeholderData: (prev) => prev,
     retry: 0,
@@ -97,9 +98,8 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
     enabled,
     queryFn: async () => {
       type Row = { ticker: string; callType: "BMO" | "AMC" | "TNS"; epsSurprisePct: number | null; priceMoveDay: number | null };
-      const r = await fetch(`${BASE}/api/earnings/watch`);
-      if (!r.ok) return {};
-      const j = (await r.json()) as { bmo?: Row[]; amc?: Row[] };
+      const j = await http.get<{ bmo?: Row[]; amc?: Row[] }>("/api/earnings/watch").catch(() => null);
+      if (!j) return {};
       const map: Record<string, EarningsHit> = {};
       for (const e of j.amc ?? []) map[e.ticker.toUpperCase()] = { callType: e.callType, when: "recent", epsSurprisePct: e.epsSurprisePct, priceMoveDay: e.priceMoveDay };
       for (const e of j.bmo ?? []) map[e.ticker.toUpperCase()] = { callType: e.callType, when: "today", epsSurprisePct: e.epsSurprisePct, priceMoveDay: e.priceMoveDay };
@@ -114,9 +114,8 @@ export function useWatchlistMarket(tickers: string[], intervalMs: number) {
     enabled,
     queryFn: async () => {
       type Day = { date: string; items?: { ticker: string; callType: "BMO" | "AMC" | "TNS" }[] };
-      const r = await fetch(`${BASE}/api/earnings/upcoming?days=5&limit=60`);
-      if (!r.ok) return {};
-      const j = (await r.json()) as { today?: string; days?: Day[] };
+      const j = await http.get<{ today?: string; days?: Day[] }>("/api/earnings/upcoming?days=5&limit=60").catch(() => null);
+      if (!j) return {};
       const map: Record<string, UpcomingEarnings> = {};
       for (const d of j.days ?? []) {
         for (const e of d.items ?? []) {
@@ -171,10 +170,8 @@ async function withSlot<T>(fn: () => Promise<T>): Promise<T> {
 type CandlesResponse = { candles?: Candle[]; prevClose?: number | null };
 
 export async function fetchSessionBars(ticker: string, days = sessionDays(), interval: "1m" | "5m" = "5m", daysBack = 1): Promise<CandlesResponse> {
-  const url = `${BASE}/api/candles/${encodeURIComponent(ticker)}?date=${days.lastSession}&interval=${interval}&daysBack=${daysBack}&extended=1`;
-  const r = await fetch(url);
-  if (!r.ok) return { candles: [] };
-  return (await r.json()) as CandlesResponse;
+  const url = `/api/candles/${encodeURIComponent(ticker)}?date=${days.lastSession}&interval=${interval}&daysBack=${daysBack}&extended=1`;
+  return http.get<CandlesResponse>(url).catch(() => ({ candles: [] }));
 }
 
 export function levelsFromBars(bars: readonly Candle[], prevClose: number | null, days = sessionDays()): DayLevelSet {

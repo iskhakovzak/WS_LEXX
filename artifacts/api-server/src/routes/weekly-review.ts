@@ -11,6 +11,7 @@ import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { plural, preview as textPreview } from "../lib/notifyEventsCore";
 import { activeViolationSql, archiveReasonLabel, isArchiveReason, reportArchiveSql } from "../lib/violationArchive";
+import { notFound, unauthorized } from "../lib/http";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -580,7 +581,7 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
 
 // ── GET /weekly-review/overview (staff) ───────────────────────────────────────
 router.get("/weekly-review/overview", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!req.authUser) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   const week = resolveWeek(req.query.week);
   if (!week) { res.status(400).json({ error: "week must be YYYY-Www or YYYY-MM-DD" }); return; }
@@ -754,7 +755,7 @@ async function loadReview(trader: string, week: string) {
 
 router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) throw unauthorized();
   const parsed = SelfBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
   const b = parsed.data;
@@ -795,7 +796,7 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
 
 router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) throw unauthorized();
   if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
   const parsed = CuratorBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
@@ -803,7 +804,7 @@ router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void
   const bounds = weekBounds(b.week);
   if (!bounds) { res.status(400).json({ error: "Invalid week" }); return; }
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!known.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!known.length) throw notFound("TRADER_NOT_FOUND");
   await ensureTables();
   const existing = await loadReview(b.trader, b.week);
   const now = new Date().toISOString();
@@ -847,7 +848,7 @@ router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void
 
 router.patch("/weekly-review/goals", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
-  if (!auth) { res.status(401).json({ error: "Authentication required" }); return; }
+  if (!auth) throw unauthorized();
   const parsed = GoalsStatusBody.safeParse(req.body ?? {});
   if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
   const b = parsed.data;

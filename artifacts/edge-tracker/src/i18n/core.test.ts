@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { interpolate, pluralCategory, selectPlural, translate, lookup, isLang, type Dict } from "./core";
 import { createNamespace, getLang, i18nReady, setLang } from "./index";
 import { fmtCount, fmtDate, fmtMonth, fmtRelative, fmtTimeNY, fmtWeekday, localeTag } from "./format";
-import { pluralRu } from "@/components/rules/constants";
 import { commonI18n } from "./ns/common";
+import { pluralRu } from "@/lib/format";
 
 const TRADES = { one: "{count} сделка", few: "{count} сделки", many: "{count} сделок", other: "{count} сделки" };
 
@@ -47,7 +47,7 @@ describe("interpolate", () => {
     expect(interpolate("{count}", { count: 1234 }, "ru")).toBe(new Intl.NumberFormat("ru-RU").format(1234));
     expect(interpolate("{year} год", { year: 2026 }, "ru")).toBe("2026 год");
     expect(interpolate("{a} и {b}", { a: "x" })).toBe("x и {b}");
-    expect(interpolate("без параметров")).toBe("без параметров");
+    expect(interpolate("без параметров", undefined)).toBe("без параметров");
   });
 });
 

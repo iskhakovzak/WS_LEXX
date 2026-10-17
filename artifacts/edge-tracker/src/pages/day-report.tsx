@@ -9,13 +9,14 @@ import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
 import {
-  fmtDayLong, fmtDayShort, fmtUsd, isTradingDay, isYmd, lastTradingDay, pluralTrades, shiftTradingDay, useDayReport, useMarketHolidays,
+  fmtDayLong, fmtDayShort, isTradingDay, isYmd, lastTradingDay, shiftTradingDay, useDayReport, useMarketHolidays,
   type DayReport,
 } from "@/components/day-report/api";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import {
   BreakdownPanel, ComparisonPanel, EquityPanel, LeaksPanel, LinksPanel, PlanPanel, StrengthsPanel, SummaryBento, TimelinePanel,
 } from "@/components/day-report/sections";
@@ -193,11 +194,11 @@ export default function DayReportPage() {
 function headline(doc: DayReport): string {
   const s = doc.summary;
   const parts = [
-    `${s.trades} ${pluralTrades(s.trades)}`,
-    `нетто ${fmtUsd(s.net, true)}`,
+    commonI18n.t("units.trades", { count: s.trades }),
+    `нетто ${fmtUsd(s.net, { signed: true })}`,
     doc.leaks.length ? `${doc.leaks.length} утеч. ≈ ${fmtUsd(-doc.leaksTotalUsd)}` : "без утечек по правилам",
   ];
-  if (doc.comparison.betterThanPct != null) parts.push(`лучше ${Math.round(doc.comparison.betterThanPct * 100)}% из ${doc.comparison.days} дней`);
+  if (doc.comparison.betterThanPct != null) parts.push(`лучше ${fmtRate(doc.comparison.betterThanPct)} из ${doc.comparison.days} дней`);
   return parts.join(" · ");
 }
 
@@ -225,7 +226,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
       <LinksPanel doc={doc} />
       <p className="text-2xs text-muted-foreground">
         Нетто = брутто − |комиссии|. День = дата закрытия по Нью-Йорку. Время входа/выхода — по исполнениям брокера.
-        Сравнение — последние {doc.comparison.days || 20} торговых дней со сделками. Сформировано {new Date(doc.generatedAt).toLocaleString("ru-RU")}.
+        Сравнение — последние {doc.comparison.days || 20} торговых дней со сделками. Сформировано {fmtDate(doc.generatedAt, "shortDateTime")}.
       </p>
     </div>
   );

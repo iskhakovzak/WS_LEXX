@@ -3,50 +3,9 @@ import { ArrowDown, ArrowUp, Minus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toneOf, toneText, type Tone } from "@/components/ds";
 
-export async function fetchJson<T>(url: string): Promise<T> {
-  const r = await fetch(url);
-  const body = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(body?.error ?? `Ошибка загрузки (${r.status})`);
-  return body as T;
-}
-
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  const m10 = Math.abs(n) % 10, m100 = Math.abs(n) % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
 const MINUS = "−";
 
-/** "+$1,234" / "−$12" */
-export function fmtUsd(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  // A value that rounds to zero carries no sign («−$0» read like a loss).
-  if (Number(abs.replace(/,/g, "")) === 0) return `$${abs}`;
-  return `${v < 0 ? MINUS : v > 0 ? "+" : ""}$${abs}`;
-}
-
-/** "+1.25R" / "−0.5R" */
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  if (Number(s) === 0) return "0R";
-  return `${v < 0 ? MINUS : "+"}${s}R`;
-}
-
-export function fmtPct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${v.toFixed(digits)}%`;
-}
-
-export function fmtSigned(v: number | null | undefined, digits = 1): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  if (Number(s) === 0) return s;
-  return `${v < 0 ? MINUS : "+"}${s}`;
-}
+// Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
 /** Glass tooltip style for recharts. */
 export const CHART_TOOLTIP: React.CSSProperties = {

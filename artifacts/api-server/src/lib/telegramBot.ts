@@ -1,10 +1,11 @@
 import { logger } from "./logger";
+import { config } from "../config";
 
 /** Outbound request budget (a hung Telegram API call must not hold the caller forever). */
 const FETCH_TIMEOUT_MS = 15_000;
 
 function getBotToken(): string {
-  return (process.env["TELEGRAM_BOT_TOKEN"] ?? "").trim();
+  return config.telegram.botToken;
 }
 
 export type InlineButton = { text: string; callback_data: string };

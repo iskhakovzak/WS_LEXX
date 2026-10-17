@@ -19,11 +19,13 @@ import { Panel, Pill, Segmented, SortableTh, toneText, useTableSort } from "@/co
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { notLiveMessage, pbRequest, useGallery, usePlaybookInbox, type InboxTrade } from "./api";
+import { notLiveMessage, useGallery, usePlaybookInbox, type InboxTrade } from "./api";
+import { http } from "@/lib/api/http";
 import { ExampleCard, checklistOf } from "./examples-board";
 import { AddTradesToPlaybookDialog } from "./quick-add";
-import { tradesWord } from "./quick-add-logic";
-import { ddmm, fmtR, fmtUsd, moneyTone, tierMeta, type PlaybookEntry, type SpaceTab } from "./model";
+import { moneyTone, tierMeta, type PlaybookEntry, type SpaceTab } from "./model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Days = "7" | "14" | "30";
 
@@ -67,13 +69,13 @@ export function PlaybookInbox({ onNewSetup }: {
   /** «Не для плейбука»: the trade leaves the inbox (server-side mark), with an undo in the toast. */
   async function dismiss(ids: number[]) {
     if (!ids.length) return;
-    const call = (method: "POST" | "DELETE") => pbRequest("/api/playbook-tools/inbox/dismiss", { method, json: { tradeIds: ids } });
+    const call = (method: "POST" | "DELETE") => http.send(method, "/api/playbook-tools/inbox/dismiss", { tradeIds: ids });
     try {
       await call("POST");
       setSelected((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
       qc.invalidateQueries({ queryKey: ["playbook-inbox"] });
       toast({
-        title: ids.length === 1 ? "Сделка скрыта из разбора" : `Скрыто из разбора: ${ids.length} ${tradesWord(ids.length)}`,
+        title: ids.length === 1 ? "Сделка скрыта из разбора" : `Скрыто из разбора: ${commonI18n.t("units.trades", { count: ids.length })}`,
         description: "Она по-прежнему в журнале сделок; в плейбук её можно добавить из карточки сделки.",
         action: (
           <ToastAction
@@ -108,7 +110,7 @@ export function PlaybookInbox({ onNewSetup }: {
       }
       description={
         data && data.total > 0
-          ? `Ваши сделки без эталона${week > 0 && days !== "7" ? ` · за неделю ${week} ${tradesWord(week)}` : ""}. Лучшие — в Tier 1, ошибки — в Tier 3 «на разбор».`
+          ? `Ваши сделки без эталона${week > 0 && days !== "7" ? ` · за неделю ${commonI18n.t("units.trades", { count: week })}` : ""}. Лучшие — в Tier 1, ошибки — в Tier 3 «на разбор».`
           : "Ваши сделки, которые ещё не добавлены ни в один сетап."
       }
       icon={Inbox}
@@ -160,12 +162,12 @@ export function PlaybookInbox({ onNewSetup }: {
                   <tr key={t.id} className={cn("transition-colors hover:bg-[var(--tile-hover-bg)]", on && "bg-primary/5")}>
                     <td className="!pl-[var(--panel-p)]">
                       <Checkbox
-                        aria-label={`Выбрать ${t.ticker} ${ddmm(t.closeDate ?? t.date)}`}
+                        aria-label={`Выбрать ${t.ticker} ${fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}`}
                         checked={on}
                         onCheckedChange={() => setSelected((prev) => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}
                       />
                     </td>
-                    <td className="whitespace-nowrap text-muted-foreground">{ddmm(t.closeDate ?? t.date)}</td>
+                    <td className="whitespace-nowrap text-muted-foreground">{fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}</td>
                     <td className="max-w-[200px] whitespace-nowrap">
                       <button type="button" className="max-w-[160px] truncate align-bottom font-semibold text-foreground hover:underline" onClick={() => navigate(links.trade(t.id))} title={`Открыть сделку ${t.ticker}`}>
                         {t.ticker}
@@ -186,7 +188,7 @@ export function PlaybookInbox({ onNewSetup }: {
                       </span>
                     </td>
                     <td className={cn("whitespace-nowrap text-right font-medium", toneText(moneyTone(t.signedR)))}>{fmtR(t.signedR)}</td>
-                    <td className={cn("whitespace-nowrap text-right", toneText(moneyTone(t.redacted ? null : t.netPnl)))}>{t.redacted ? "—" : fmtUsd(t.netPnl)}</td>
+                    <td className={cn("whitespace-nowrap text-right", toneText(moneyTone(t.redacted ? null : t.netPnl)))}>{t.redacted ? "—" : fmtUsd(t.netPnl, { signed: true, decimals: 0 })}</td>
                     <td className="!pr-[var(--panel-p)] text-right">
                       <span className="inline-flex items-center justify-end gap-1">
                         <IconAction

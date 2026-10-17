@@ -11,7 +11,9 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { matchText, prepareQuery, searchItems, type PreparedQuery, type SearchField, type SearchHit } from "@workspace/text-search";
 import { useAuth } from "@/contexts/auth-context";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 
 export { highlightSegments, matchText, matchesAny, prepareQuery, searchItems } from "@workspace/text-search";
 export type { MatchResult, PreparedQuery, SearchHit } from "@workspace/text-search";
@@ -65,15 +67,15 @@ export function usePeopleDirectory(enabled = true) {
   const { dbUsers, user } = useAuth();
   const q = useQuery({
     queryKey: ["people-directory", user?.traderName ?? ""],
-    queryFn: async (): Promise<DirectoryPerson[] | null> => {
-      const r = await fetch(apiUrl("/api/users/directory"));
-      if (r.status === 404) return null;
-      if (!r.ok) throw new Error(`Ошибка ${r.status}`);
-      const body = (await r.json()) as { people?: DirectoryPerson[] };
-      return Array.isArray(body.people) ? body.people : null;
+    queryFn: async ({ signal }): Promise<DirectoryPerson[] | null> => {
+      const body = await http.get<{ people?: DirectoryPerson[] } | null>("/api/users/directory", { signal }).catch((e: unknown) => {
+        if (isNotFound(e)) return null;
+        throw e;
+      });
+      return Array.isArray(body?.people) ? body.people : null;
     },
     enabled: enabled && !!user && user.role !== "guest",
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: false,
   });
   const fallback = useMemo<DirectoryPerson[]>(

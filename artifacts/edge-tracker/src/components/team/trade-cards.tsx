@@ -9,7 +9,8 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS, closeDate, feesOf, grossPnl, netPnl, signedR } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
-import { allScreenshots, firstScreenshot, fmtMoney, fmtR, thumbUrl } from "./utils";
+import { allScreenshots, firstScreenshot, thumbUrl } from "./utils";
+import { fmtR, fmtUsd } from "@/lib/format";
 import { setupOf } from "./leaderboard";
 
 const RESULT_LABEL: Record<string, string> = { win: "Прибыль", loss: "Убыток", breakeven: "Безубыток", open: "Открыта" };
@@ -91,7 +92,7 @@ export function BestTradeCard({
             <span className="truncate">{trade.trader ?? "—"}</span>
           </span>
           <span className={cn("tabular-nums", toneText(toneOf(net)))} title={net != null ? `${KPI_FORMULAS.netPnl}` : undefined}>
-            {net != null ? `${fmtMoney(net)} нетто` : closeDate(trade) ?? trade.date}
+            {net != null ? `${fmtUsd(net, { signed: true })} нетто` : closeDate(trade) ?? trade.date}
           </span>
         </div>
       </div>
@@ -129,9 +130,9 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
               <Metric label="R" value={fmtR(r)} tone={toneText(toneOf(r))} title="R = результат сделки в единицах риска (знак по результату)" />
               <Metric
                 label="P&L нетто"
-                value={fmtMoney(net)}
+                value={fmtUsd(net, { signed: true })}
                 tone={toneText(toneOf(net))}
-                title={net != null ? `${KPI_FORMULAS.netPnl}. Брутто ${fmtMoney(gross)}, комиссии ${fmtMoney(-Math.abs(fees))}` : KPI_FORMULAS.netPnl}
+                title={net != null ? `${KPI_FORMULAS.netPnl}. Брутто ${fmtUsd(gross, { signed: true })}, комиссии ${fmtUsd(-Math.abs(fees), { signed: true })}` : KPI_FORMULAS.netPnl}
               />
               <Metric label="Удержание" value={trade.holdTime || "—"} />
             </div>

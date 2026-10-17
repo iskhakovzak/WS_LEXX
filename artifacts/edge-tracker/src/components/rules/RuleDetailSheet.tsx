@@ -13,8 +13,11 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { nyDate } from "@/lib/trading-date";
-import { apiJson, useSelfChecks } from "./api";
-import { ORIGIN_LABEL, fmtDay, fmtPct, fmtUsd, originOf, severityMeta } from "./constants";
+import { useSelfChecks } from "./api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { ORIGIN_LABEL, originOf, severityMeta } from "./constants";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { SelfMarkButtons } from "./RulesOverview";
 import type { RuleReport, SideStats } from "./types";
 
@@ -51,14 +54,14 @@ export function RuleDetailSheet({
   async function toggle() {
     setBusy(true);
     try {
-      await apiJson(`/rules/${r.id}`, { method: "PATCH", json: { enabled: !r.enabled } }, "Не удалось изменить правило");
+      await http.patch(`/api/rules/${r.id}`, { enabled: !r.enabled });
       toast({
         title: r.enabled ? "Правило выключено" : "Правило включено",
         description: r.enabled ? "Нарушения и комментарии сохранены в архиве" : undefined,
       });
       onChanged();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось изменить правило"), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -67,7 +70,7 @@ export function RuleDetailSheet({
   async function remove() {
     setBusy(true);
     try {
-      await apiJson(`/rules/${r.id}`, { method: "DELETE" }, "Не удалось удалить правило");
+      await http.del(`/api/rules/${r.id}`);
       onOpenChange(false);
       onChanged();
       toast({
@@ -78,10 +81,10 @@ export function RuleDetailSheet({
             altText="Вернуть правило"
             onClick={async () => {
               try {
-                await apiJson(`/rules/${r.id}/restore`, { method: "POST" }, "Не удалось вернуть правило");
+                await http.post(`/api/rules/${r.id}/restore`);
                 onChanged();
               } catch (e) {
-                toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+                toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось вернуть правило"), variant: "destructive" });
               }
             }}
           >
@@ -90,7 +93,7 @@ export function RuleDetailSheet({
         ),
       });
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось удалить правило"), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -115,7 +118,7 @@ export function RuleDetailSheet({
         {!r.auto && r.enabled && canMark && (
           <section className="tile flex flex-wrap items-center justify-between gap-3 p-3">
             <div>
-              <p className="text-sm font-medium text-foreground">Сегодня, {fmtDay(today)}</p>
+              <p className="text-sm font-medium text-foreground">Сегодня, {fmtDate(today, "dayMonth")}</p>
               <p className="text-xs text-muted-foreground">Отметка попадает в журнал дня и в статистику правила.</p>
             </div>
             <SelfMarkButtons ruleId={r.id} trader={trader} day={today} mark={mark} size="md" />
@@ -136,12 +139,12 @@ export function RuleDetailSheet({
         ) : (
           <>
             <StatGrid min="9rem">
-              <Metric label="Соблюдение" value={fmtPct(r.compliance)} hint={`${r.days - r.violatedDays} из ${r.days} дн.`} />
-              <Metric label="Нарушений" value={String(r.violations)} hint={r.lastViolation ? `последнее ${fmtDay(r.lastViolation)}` : "ни одного"} />
+              <Metric label="Соблюдение" value={fmtRate(r.compliance)} hint={`${r.days - r.violatedDays} из ${r.days} дн.`} />
+              <Metric label="Нарушений" value={String(r.violations)} hint={r.lastViolation ? `последнее ${fmtDate(r.lastViolation, "dayMonth")}` : "ни одного"} />
               {r.auto ? (
                 <Metric
                   label={r.impact != null && r.impact > 0 ? "Нарушения принесли" : "Стоит вам"}
-                  value={r.impact == null ? "—" : fmtUsd(r.impact)}
+                  value={r.impact == null ? "—" : fmtUsd(r.impact, { signed: true, decimals: "trim" })}
                   valueClass={r.impact == null || r.impact === 0 ? "" : r.impact < 0 ? "text-down" : "text-up"}
                   hint="без нарушений итог был бы другим на эту сумму"
                 />
@@ -164,7 +167,7 @@ export function RuleDetailSheet({
                   {weekly.map((w) => {
                     const c = w.compliance ?? 0;
                     return (
-                      <div key={w.week} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`Неделя с ${fmtDay(w.week)}: ${fmtPct(w.compliance)} · нарушений ${w.violations}`}>
+                      <div key={w.week} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`Неделя с ${fmtDate(w.week, "dayMonth")}: ${fmtRate(w.compliance)} · нарушений ${w.violations}`}>
                         <div className="flex h-20 w-full items-end rounded-md bg-[var(--glass-bg)]">
                           <div className={cn("w-full rounded-md", c >= 0.9 ? "bg-primary" : c >= 0.7 ? "bg-primary/60" : "bg-warn")} style={{ height: `${Math.max(4, c * 100)}%` }} />
                         </div>
@@ -173,8 +176,8 @@ export function RuleDetailSheet({
                   })}
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>{fmtDay(weekly[0].week)}</span>
-                  <span>{fmtDay(weekly[weekly.length - 1].week)}</span>
+                  <span>{fmtDate(weekly[0].week, "dayMonth")}</span>
+                  <span>{fmtDate(weekly[weekly.length - 1].week, "dayMonth")}</span>
                 </div>
               </section>
             )}
@@ -192,7 +195,7 @@ export function RuleDetailSheet({
                           {ex.message}
                         </p>
                         <p className="flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground">
-                          <span>{fmtDay(ex.day)}</span>
+                          <span>{fmtDate(ex.day, "dayMonth")}</span>
                           {ex.tradeId != null && (
                             <Link href={links.trade(ex.tradeId)} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
                               Сделка <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
@@ -204,7 +207,7 @@ export function RuleDetailSheet({
                         </p>
                       </div>
                       {ex.net != null && (
-                        <span className={cn("shrink-0 text-sm font-medium tabular-nums", ex.net < 0 ? "text-down" : ex.net > 0 ? "text-up" : "text-foreground")}>{fmtUsd(ex.net)}</span>
+                        <span className={cn("shrink-0 text-sm font-medium tabular-nums", ex.net < 0 ? "text-down" : ex.net > 0 ? "text-up" : "text-foreground")}>{fmtUsd(ex.net, { signed: true, decimals: "trim" })}</span>
                       )}
                     </li>
                   ))}
@@ -281,7 +284,7 @@ function CompareBars({ broken, clean, unit }: { broken: SideStats; clean: SideSt
             style={v < 0 ? { right: "50%", width: `${(Math.abs(v) / max) * 50}%` } : { left: "50%", width: `${(v / max) * 50}%` }}
           />
         </div>
-        <span className={cn("text-right font-medium tabular-nums", v < 0 ? "text-down" : v > 0 ? "text-up" : "text-foreground")}>{fmtUsd(s.avg)}</span>
+        <span className={cn("text-right font-medium tabular-nums", v < 0 ? "text-down" : v > 0 ? "text-up" : "text-foreground")}>{fmtUsd(s.avg, { signed: true, decimals: "trim" })}</span>
       </div>
     );
   };

@@ -9,8 +9,10 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
   type PathConfig, type PromotionRequest, type StageKey, STAGE_KEYS,
-  fmtDate, fmtInstant, sendJson, stageName, usd, usePathMutation, useReport,
+  fmtInstant, stageName, usePathMutation, useReport,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { http } from "@/lib/api/http";
 import { CriterionRow, Field, StageLadder, selectCls } from "./bits";
 
 const ACTION_LABEL: Record<string, string> = { promote: "Повышение", demote: "Понижение", assign: "Назначение", approve: "Перевод по заявке" };
@@ -50,9 +52,9 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
       </Panel>
 
       <StatGrid>
-        <StatCard label={`P&L нетто, ${s.windowDays} дн.`} value={usd(s.net)} tone={s.net == null ? "neutral" : s.net >= 0 ? "up" : "down"} hint={`${s.tradingDays} торг. дн. · ${s.trades ?? 0} сделок`} />
+        <StatCard label={`P&L нетто, ${s.windowDays} дн.`} value={fmtUsd(s.net, { decimals: 0 })} tone={s.net == null ? "neutral" : s.net >= 0 ? "up" : "down"} hint={`${s.tradingDays} торг. дн. · ${s.trades ?? 0} сделок`} />
         <StatCard label="Win rate / PF" value={`${s.winRate == null ? "—" : `${Math.round(s.winRate)}%`} · ${s.profitFactor == null ? "—" : `${s.profitFactor.toFixed(2)}×`}`} hint="WR = W/(W+L); PF без убытков не определён" />
-        <StatCard label="Макс. просадка" value={usd(s.maxDd)} tone={s.maxDd ? "down" : "neutral"} hint={`Лучший день ${s.consistency == null ? "—" : `${Math.round(s.consistency)}%`} прибыли`} />
+        <StatCard label="Макс. просадка" value={fmtUsd(s.maxDd, { decimals: 0 })} tone={s.maxDd ? "down" : "neutral"} hint={`Лучший день ${s.consistency == null ? "—" : `${Math.round(s.consistency)}%`} прибыли`} />
         <StatCard label="Комиссии / дисциплина" value={`${s.feeShare == null ? "—" : `${Math.round(s.feeShare)}%`} · ${s.disciplineIndex == null ? "—" : Math.round(s.disciplineIndex)}`} hint="Доля комиссий в брутто · индекс дисциплины 0–100" />
       </StatGrid>
 
@@ -94,7 +96,7 @@ function RequestButton({ user, ready }: { user: string; ready: boolean }) {
   const { toast } = useToast();
   const [open, setOpen] = React.useState(false);
   const [comment, setComment] = React.useState("");
-  const m = usePathMutation((v: { user: string; comment?: string }) => sendJson<{ request: PromotionRequest }>("/academy/path/requests", "POST", v));
+  const m = usePathMutation((v: { user: string; comment?: string }) => http.post<{ request: PromotionRequest }>("/api/academy/path/requests", v));
   if (!open) return <Button size="sm" variant={ready ? "default" : "outline"} onClick={() => setOpen(true)}><Send className="mr-1.5 h-4 w-4" aria-hidden="true" />Подать на перевод</Button>;
   return (
     <form
@@ -121,7 +123,7 @@ export function PendingRequest({ req, canDecide, isSelf, stages }: { req: Promot
   const { toast } = useToast();
   const [comment, setComment] = React.useState("");
   const decide = usePathMutation((v: { action: "approve" | "reject" | "withdraw"; comment?: string }) =>
-    sendJson(`/academy/path/requests/${req.id}/${v.action}`, "POST", v.action === "withdraw" ? {} : { comment: v.comment }));
+    http.post(`/api/academy/path/requests/${req.id}/${v.action}`, v.action === "withdraw" ? {} : { comment: v.comment }));
   const run = (action: "approve" | "reject" | "withdraw") =>
     decide.mutate({ action, comment: comment.trim() || undefined }, {
       onSuccess: () => toast({ title: action === "approve" ? "Перевод одобрен" : action === "reject" ? "Заявка отклонена" : "Заявка отозвана" }),
@@ -152,7 +154,7 @@ function AssignStage({ user, current, config }: { user: string; current: StageKe
   const { toast } = useToast();
   const [stage, setStage] = React.useState<StageKey>(current ?? "trainee");
   const [comment, setComment] = React.useState("");
-  const m = usePathMutation((v: { user: string; stage: StageKey; comment: string }) => sendJson("/academy/path/assign", "POST", v));
+  const m = usePathMutation((v: { user: string; stage: StageKey; comment: string }) => http.post("/api/academy/path/assign", v));
   return (
     <Panel title="Назначить ступень напрямую" icon={UserCog} description="Для первичного назначения и исключений. Пишется в историю и журнал, ученик получает уведомление.">
       <form

@@ -9,6 +9,7 @@ import { resolveActor } from "../lib/permissions";
 import { canModifyOwnedRow } from "../lib/accessRules";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { nyDate } from "../lib/tradingDate";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -171,7 +172,7 @@ async function withInPlay<T extends { id: number }>(row: T): Promise<T & Partial
 }
 
 router.get("/watchlist", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const autoTraded = await autoMarkTraded();
   const inPlayOnly = req.query.inPlay === "1" || req.query.inPlay === "today";
   const rows = await db.select().from(watchlistTable)
@@ -406,9 +407,9 @@ router.post("/watchlist", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const b = req.body as Record<string, unknown>;
   const { ticker, catalyst, targetPrice, stopPrice, status, notes, sector, tags } = b;
-  if (!ticker || !String(ticker).trim()) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker || !String(ticker).trim()) throw badRequest("TICKER_REQUIRED");
   const tickerUp = String(ticker).trim().toUpperCase();
-  if (!TICKER_RE.test(tickerUp)) { res.status(400).json({ error: "invalid ticker" }); return; }
+  if (!TICKER_RE.test(tickerUp)) throw badRequest("INVALID_TICKER");
   if (status != null && status !== "" && !normalizeStatus(status)) { res.status(400).json({ error: "invalid status" }); return; }
   // One active row per ticker: point the client at the existing one instead of creating a duplicate.
   const [dup] = await db.select({ id: watchlistTable.id }).from(watchlistTable)
@@ -466,13 +467,13 @@ router.post("/watchlist", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
-  if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  if (id == null) throw badRequest("INVALID_ID");
   const b = req.body as Record<string, unknown>;
   const { ticker, catalyst, targetPrice, stopPrice, status, notes, sector, tags } = b;
   if (status != null && status !== "" && !normalizeStatus(status)) { res.status(400).json({ error: "invalid status" }); return; }
   if (ticker && String(ticker).trim()) {
     const up = String(ticker).trim().toUpperCase();
-    if (!TICKER_RE.test(up)) { res.status(400).json({ error: "invalid ticker" }); return; }
+    if (!TICKER_RE.test(up)) throw badRequest("INVALID_TICKER");
     const [dup] = await db.select({ id: watchlistTable.id }).from(watchlistTable)
       .where(and(eq(watchlistTable.ticker, up), isNull(watchlistTable.deletedAt))).limit(1);
     if (dup && dup.id !== id) { res.status(409).json({ error: `${up} уже в вотчлисте`, id: dup.id }); return; }
@@ -509,7 +510,7 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
   if (Object.values(contentPatch).some((v) => v !== undefined)) {
     const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable)
       .where(and(eq(watchlistTable.id, id), isNull(watchlistTable.deletedAt)));
-    if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+    if (!owned) throw notFound();
     if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   }
   // A flag-only PATCH ({ inPlay }) must not hit drizzle with an empty SET.
@@ -517,7 +518,7 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
     ? await db.update(watchlistTable).set(patch)
       .where(and(eq(watchlistTable.id, id), isNull(watchlistTable.deletedAt))).returning()
     : await db.select().from(watchlistTable).where(and(eq(watchlistTable.id, id), isNull(watchlistTable.deletedAt)));
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   if (listFlag !== undefined) {
     try {
       await writeList([id], listFlag);
@@ -557,10 +558,10 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
 router.post("/watchlist/:id/score", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
-  if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  if (id == null) throw badRequest("INVALID_ID");
   const [item] = await db.select().from(watchlistTable)
     .where(and(eq(watchlistTable.id, id), isNull(watchlistTable.deletedAt)));
-  if (!item) { res.status(404).json({ error: "Not found" }); return; }
+  if (!item) throw notFound();
   const result = await calcWatchlistScore({ ticker: item.ticker, catalyst: item.catalyst, sector: item.sector });
   const [updated] = await db.update(watchlistTable)
     .set({ score: result.total, scoreBreakdown: JSON.stringify(result), scoredAt: new Date() })
@@ -609,30 +610,30 @@ router.post("/watchlist/score-all", asyncHandler(async (req, res): Promise<void>
 router.delete("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
-  if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  if (id == null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable).where(eq(watchlistTable.id, id));
-  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!owned) throw notFound();
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const [row] = await db.update(watchlistTable)
     .set({ deletedAt: new Date() })
     .where(eq(watchlistTable.id, id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   res.json({ success: true });
 }));
 
 router.post("/watchlist/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const id = parseId(String(req.params.id));
-  if (id == null) { res.status(400).json({ error: "invalid id" }); return; }
+  if (id == null) throw badRequest("INVALID_ID");
   const [owned] = await db.select({ createdBy: watchlistTable.createdBy }).from(watchlistTable).where(eq(watchlistTable.id, id));
-  if (!owned) { res.status(404).json({ error: "Not found" }); return; }
+  if (!owned) throw notFound();
   if (!(await requireRowOwnerOrStaff(req, res, owned.createdBy))) return;
   const [row] = await db.update(watchlistTable)
     .set({ deletedAt: null })
     .where(eq(watchlistTable.id, id))
     .returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   res.json({ success: true });
 }));
 

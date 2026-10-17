@@ -5,8 +5,8 @@ import { AddToPlaybookButton, type PlaybookPayload } from "@/components/add-to-p
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { FeedGallery } from "./FeedGallery";
-import { fmtTime } from "./stream-api";
-import { hasServerAcks, parseShots, parseTickers, pluralRu, splitList, type AckKind, type FeedEntry } from "./feed-utils";
+import { hasServerAcks, parseShots, parseTickers, splitList, type AckKind, type FeedEntry } from "./feed-utils";
+import { fmtTimeNY, pluralRu } from "@/lib/format";
 
 /** «Принято» / «Торгую это» — per-trader acks from the server; names on hover. */
 function AckChip({ kind, icon: Icon, label, acks, me, onAck }: {
@@ -132,7 +132,7 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
   const me = p.me ?? "";
   const readers = acks ? acks.users.read.filter((u) => u !== me && u !== feed.createdBy) : [];
   // NY time, like every other row of the feed (local time read as «21:44» next to «15:00 ET» items).
-  const time = fmtTime(feed.createdAt);
+  const time = feed.createdAt ? fmtTimeNY(feed.createdAt) : "";
 
   // Mark as read once the card has been at least half-visible for ~1.5s.
   const onMarkReadRef = useRef(p.onMarkRead);

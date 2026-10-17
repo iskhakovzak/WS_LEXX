@@ -21,9 +21,10 @@ import { useReactionDetail, useTickerHistory, type ReactionAgg, type ReactionDet
 import { GradeChange, HORIZON_LABEL, KindPill, TargetChange } from "./ActionRow";
 import { REACTION_KIND_LABEL } from "./rows";
 import {
-  fmtCap, fmtMoney, fmtPct, fmtUsd, num, nyKey, relAgo, stanceOf, WEIGHT_MIN_N,
+  num, nyKey, relAgo, stanceOf, WEIGHT_MIN_N,
   type FeedAction, type OpenPosition, type Quote, type Stance,
 } from "./lib";
+import { fmtDate, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 
 /** Latest action per firm in the last 12 months → street consensus. */
 function consensus(items: FeedAction[]) {
@@ -91,7 +92,7 @@ function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
                 <td className="truncate py-1.5 pr-2 text-foreground" title={f.firm}>{f.firm}</td>
                 <td className="py-1.5 text-right">{f.events}</td>
                 <td className="py-1.5 text-right">{agg.n >= 2 && agg.avgRatio != null ? `×${agg.avgRatio.toFixed(1)}` : "—"}</td>
-                <td className="py-1.5 text-right">{agg.n >= 2 && agg.hitRate != null ? `${Math.round(agg.hitRate * 100)}%` : "—"}</td>
+                <td className="py-1.5 text-right">{agg.n >= 2 && agg.hitRate != null ? fmtRate(agg.hitRate) : "—"}</td>
                 <td className="py-1.5 text-right text-muted-foreground">{f.lastAt ? relAgo(f.lastAt) : "—"}</td>
               </tr>
             );
@@ -151,8 +152,8 @@ function ReactionTile({ kind, agg }: { kind: ReactionKind; agg: ReactionAgg | un
         <>
           <Delta value={agg!.avgDay} suffix="%" bare showIcon={false} className="text-sm font-semibold" />
           <span className="text-2xs tabular-nums text-muted-foreground">
-            гэп {fmtPct(agg!.avgGap)}
-            {agg!.hitRate != null && <> · {Math.round(agg!.hitRate * 100)}%</>}
+            гэп {fmtPct(agg!.avgGap, 1)}
+            {agg!.hitRate != null && <> · {fmtRate(agg!.hitRate)}</>}
           </span>
           <span className="text-2xs tabular-nums text-muted-foreground">n={agg!.n}{agg!.avgRatio != null ? ` · ×${agg!.avgRatio.toFixed(1)}` : ""}</span>
         </>
@@ -168,10 +169,10 @@ function ReactionOfEvent({ e }: { e: ReactionEvent | undefined }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 text-2xs tabular-nums text-muted-foreground"
-      title={`День реакции ${e.reactionDay}: гэп ${fmtPct(e.gap)}, итог дня ${fmtPct(e.day)}, от открытия ${fmtPct(e.o2c)}${e.volRatio != null ? `, объём ×${e.volRatio.toFixed(1)}` : ""}`}
+      title={`День реакции ${e.reactionDay}: гэп ${fmtPct(e.gap, 1)}, итог дня ${fmtPct(e.day, 1)}, от открытия ${fmtPct(e.o2c, 1)}${e.volRatio != null ? `, объём ×${e.volRatio.toFixed(1)}` : ""}`}
     >
       реакция <Delta value={e.day} suffix="%" bare showIcon={false} className="text-2xs" />
-      {e.gap != null && <span>гэп {fmtPct(e.gap)}</span>}
+      {e.gap != null && <span>гэп {fmtPct(e.gap, 1)}</span>}
       {e.ratio != null && <span className={cn(e.ratio >= 2 && "font-medium text-purple")}>×{e.ratio.toFixed(1)}</span>}
     </span>
   );
@@ -180,7 +181,7 @@ function ReactionOfEvent({ e }: { e: ReactionEvent | undefined }) {
 function monthTitle(day: string): string {
   const [y, m] = day.split("-").map(Number);
   if (!y || !m) return day;
-  const s = new Date(Date.UTC(y, m - 1, 15)).toLocaleDateString("ru-RU", { month: "long", year: "numeric", timeZone: "UTC" });
+  const s = fmtDate(new Date(y, m - 1, 15), "monthYear");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -246,12 +247,12 @@ export function TickerSheet({
         <SheetHeader>
           <SheetTitle className="flex flex-wrap items-center gap-2">
             {ticker}
-            {price != null && <span className="text-base font-medium tabular-nums text-muted-foreground">{fmtUsd(price)}</span>}
+            {price != null && <span className="text-base font-medium tabular-nums text-muted-foreground">{fmtUsd(price, { decimals: "trim" })}</span>}
             {quote?.change != null && <Delta value={quote.change} suffix="%" />}
           </SheetTitle>
           <SheetDescription>
             {head?.longName ?? quote?.name ?? "История рейтингов и реакция рынка"}
-            {head?.marketCapNum != null ? ` · ${fmtCap(head.marketCapNum)}` : ""}
+            {head?.marketCapNum != null ? ` · ${fmtUsd(head.marketCapNum, { compact: true })}` : ""}
             {head?.sector ? ` · ${head.sector}` : ""}
           </SheetDescription>
         </SheetHeader>
@@ -268,7 +269,7 @@ export function TickerSheet({
             {traded && traded.trades > 0 && (
               <Pill tone="neutral" title="Мои закрытые сделки по тикеру за год (нетто)">
                 <Repeat className="h-3 w-3" aria-hidden="true" />
-                Я торговал · {traded.trades} · <span className={traded.net >= 0 ? "text-up" : "text-down"}>{fmtMoney(traded.net)}</span>
+                Я торговал · {traded.trades} · <span className={traded.net >= 0 ? "text-up" : "text-down"}>{fmtUsd(traded.net, { signed: true, decimals: "auto" })}</span>
               </Pill>
             )}
           </div>
@@ -352,20 +353,20 @@ export function TickerSheet({
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chart} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
-                      <XAxis dataKey="d" {...AXIS} minTickGap={48} tickFormatter={(d: string) => `${d.slice(8, 10)}.${d.slice(5, 7)}`} />
-                      <YAxis {...AXIS} width={48} domain={["auto", "auto"]} tickFormatter={(v: number) => `$${v >= 1000 ? Math.round(v) : v.toFixed(0)}`} />
+                      <XAxis dataKey="d" {...AXIS} minTickGap={48} tickFormatter={(d: string) => fmtDate(d, "dayMonthNumeric")} />
+                      <YAxis {...AXIS} width={48} domain={["auto", "auto"]} tickFormatter={(v: number) => fmtUsd(v, { decimals: 0 })} />
                       <Tooltip
                         contentStyle={TOOLTIP_STYLE}
-                        labelFormatter={(d) => String(d).split("-").reverse().join(".")}
+                        labelFormatter={(d) => fmtDate(String(d), "short")}
                         formatter={(v: number, name: string, p: { payload?: ChartRow }) =>
-                          name === "pt" ? [fmtUsd(v), `PT · ${p.payload?.ptFirm ?? ""}`] : [fmtUsd(v), "Цена"]}
+                          name === "pt" ? [fmtUsd(v, { decimals: "trim" }), `PT · ${p.payload?.ptFirm ?? ""}`] : [fmtUsd(v, { decimals: "trim" }), "Цена"]}
                       />
                       {c.avg != null && (
                         <ReferenceLine
                           y={c.avg}
                           stroke="hsl(var(--primary))"
                           strokeDasharray="4 4"
-                          label={{ value: `консенсус ${fmtUsd(c.avg)}`, position: "insideTopRight", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                          label={{ value: `консенсус ${fmtUsd(c.avg, { decimals: "trim" })}`, position: "insideTopRight", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                         />
                       )}
                       <Line type="monotone" dataKey="c" name="c" stroke="hsl(var(--foreground))" strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -396,10 +397,10 @@ export function TickerSheet({
                 </div>
               )}
               <div className="mt-3 grid grid-cols-2 gap-x-6">
-                <StatRow label="Средний PT" value={fmtUsd(c.avg)} />
-                <StatRow label="Медиана" value={fmtUsd(c.median)} />
-                <StatRow label="Мин / макс" value={`${fmtUsd(c.low)} / ${fmtUsd(c.high)}`} />
-                <StatRow label="Апсайд к цене" value={upside == null ? "—" : fmtPct(upside)} tone={upside == null ? "neutral" : upside >= 0 ? "up" : "down"} />
+                <StatRow label="Средний PT" value={fmtUsd(c.avg, { decimals: "trim" })} />
+                <StatRow label="Медиана" value={fmtUsd(c.median, { decimals: "trim" })} />
+                <StatRow label="Мин / макс" value={`${fmtUsd(c.low, { decimals: "trim" })} / ${fmtUsd(c.high, { decimals: "trim" })}`} />
+                <StatRow label="Апсайд к цене" value={upside == null ? "—" : fmtPct(upside, 1)} tone={upside == null ? "neutral" : upside >= 0 ? "up" : "down"} />
               </div>
             </section>
 
@@ -423,8 +424,8 @@ export function TickerSheet({
                   <ol className="flex flex-col">
                     {list.map((a) => (
                       <li key={a.id} className="flex items-start gap-3 border-b border-border/50 py-2 last:border-b-0">
-                        <div className="w-14 shrink-0 text-2xs tabular-nums text-muted-foreground" title={a.gradedAt ? new Date(a.gradedAt).toLocaleString("ru-RU") : ""}>
-                          <div className="text-foreground">{nyKey(a.gradedAt).slice(5, 10).split("-").reverse().join(".")}</div>
+                        <div className="w-14 shrink-0 text-2xs tabular-nums text-muted-foreground" title={a.gradedAt ? fmtDate(a.gradedAt, "shortDateTime") : ""}>
+                          <div className="text-foreground">{fmtDate(nyKey(a.gradedAt).slice(0, 10), "dayMonthNumeric")}</div>
                           <div>{nyKey(a.gradedAt).slice(11)}</div>
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col gap-1">

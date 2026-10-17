@@ -14,7 +14,7 @@ import { STAGE_LABELS, api, invalidateAcademy, useAcademyMeta, useAdminTree, typ
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
 import { academyLinks } from "@/components/academy/content/links";
-import { pluralRu } from "@/components/rules/constants";
+import { pluralRu } from "@/lib/format";
 
 /**
  * /academy/content-admin — «Редактор курсов» (наставники / staff).

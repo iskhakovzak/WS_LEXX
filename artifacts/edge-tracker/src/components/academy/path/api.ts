@@ -3,7 +3,8 @@
  * and response types mirrored from api-server lib/promotionEngine.ts, lib/challengeEngine.ts and routes/academy-path.ts.
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { fmtDate, fmtTimeNY } from "@/lib/format";
 
 // ─── ladder / readiness ─────────────────────────────────────────────────────
 
@@ -119,25 +120,6 @@ export type ChallengeDetail = { challenge: ChallengeRow; result: ChallengeResult
 
 // ─── fetch ──────────────────────────────────────────────────────────────────
 
-export class ApiError extends Error {
-  constructor(message: string, public status: number) { super(message); }
-}
-
-async function parseError(r: Response): Promise<never> {
-  let msg = `HTTP ${r.status}`;
-  try { const j = (await r.json()) as { error?: string }; if (j?.error) msg = j.error; } catch { /* no body */ }
-  throw new ApiError(msg, r.status);
-}
-export async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(`/api${path}`));
-  if (!r.ok) await parseError(r);
-  return r.json() as Promise<T>;
-}
-export async function sendJson<T>(path: string, method: "POST" | "PUT", body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(`/api${path}`), { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}) });
-  if (!r.ok) await parseError(r);
-  return r.json() as Promise<T>;
-}
 const qs = (p: Record<string, string | null | undefined>) => {
   const s = new URLSearchParams();
   for (const [k, v] of Object.entries(p)) if (v != null && v !== "") s.set(k, v);
@@ -155,16 +137,16 @@ export const pathKeys = {
   challenge: (id: number) => ["academy-challenges", "one", id] as const,
 };
 
-export const usePathConfig = () => useQuery({ queryKey: pathKeys.config(), queryFn: () => getJson<PathConfig>("/academy/path/config"), staleTime: 60_000 });
+export const usePathConfig = () => useQuery({ queryKey: pathKeys.config(), queryFn: () => http.get<PathConfig>("/api/academy/path/config"), staleTime: 60_000 });
 export const useReport = (user: string | null, enabled = true) =>
-  useQuery({ queryKey: pathKeys.report(user), queryFn: () => getJson<ReportResponse>(`/academy/path/report${qs({ user })}`), enabled });
-export const useFunnel = (enabled: boolean) => useQuery({ queryKey: pathKeys.funnel(), queryFn: () => getJson<Funnel>("/academy/path/funnel"), enabled });
+  useQuery({ queryKey: pathKeys.report(user), queryFn: () => http.get<ReportResponse>(`/api/academy/path/report${qs({ user })}`), enabled });
+export const useFunnel = (enabled: boolean) => useQuery({ queryKey: pathKeys.funnel(), queryFn: () => http.get<Funnel>("/api/academy/path/funnel"), enabled });
 export const useRequests = (status: RequestStatus | null, enabled: boolean) =>
-  useQuery({ queryKey: pathKeys.requests(status), queryFn: () => getJson<{ requests: PromotionRequest[] }>(`/academy/path/requests${qs({ status })}`), enabled });
+  useQuery({ queryKey: pathKeys.requests(status), queryFn: () => http.get<{ requests: PromotionRequest[] }>(`/api/academy/path/requests${qs({ status })}`), enabled });
 export const useChallenges = (user: string | null, archived: boolean) =>
-  useQuery({ queryKey: pathKeys.challenges(user, archived), queryFn: () => getJson<ChallengeList>(`/academy/challenges${qs({ user, archived: archived ? "1" : null })}`) });
+  useQuery({ queryKey: pathKeys.challenges(user, archived), queryFn: () => http.get<ChallengeList>(`/api/academy/challenges${qs({ user, archived: archived ? "1" : null })}`) });
 export const useChallenge = (id: number | null) =>
-  useQuery({ queryKey: pathKeys.challenge(id ?? 0), queryFn: () => getJson<ChallengeDetail>(`/academy/challenges/${id}`), enabled: id != null });
+  useQuery({ queryKey: pathKeys.challenge(id ?? 0), queryFn: () => http.get<ChallengeDetail>(`/api/academy/challenges/${id}`), enabled: id != null });
 
 /** Mutation that invalidates everything academy-path related on success. */
 export function usePathMutation<TVars, TOut = unknown>(fn: (v: TVars) => Promise<TOut>) {
@@ -180,11 +162,6 @@ export function usePathMutation<TVars, TOut = unknown>(fn: (v: TVars) => Promise
 
 // ─── formatting ─────────────────────────────────────────────────────────────
 
-export function usd(n: number | null | undefined, digits = 0): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("ru-RU", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${n < 0 ? "−" : ""}$${s}`;
-}
 export function hhmm(min: number): string {
   const h = Math.floor(min / 60), m = Math.round(min % 60);
   return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
@@ -193,20 +170,12 @@ export function hhmm(min: number): string {
 export function fmtWindow(w: { start: number; end: number }): string {
   return `${hhmm(w.start)}–${hhmm(Math.max(w.start, w.end - 1))}`;
 }
-export function fmtDate(ymd: string | null | undefined): string {
-  if (!ymd) return "—";
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(Date.UTC(y, m - 1, d)).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
-}
 /** Instant → "15 окт., 10:12 (NY 03:12)" — local time first, NY in brackets. */
 export function fmtInstant(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
-  const local = d.toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
-  const ny = d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" });
-  return `${local} (NY ${ny})`;
+  return `${fmtDate(d, "dateTime")} (NY ${fmtTimeNY(d)})`;
 }
 export const stageName = (stages: StageMeta[] | undefined, key: StageKey | null | undefined): string =>
   key ? stages?.find((s) => s.key === key)?.name ?? STAGE_FALLBACK_NAMES[key] ?? key : "не назначена";

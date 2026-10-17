@@ -28,6 +28,7 @@ import {
   type SimTrade, type Rule, type Side, type Horizon,
   computeMetrics, dailyResults, equityByDay, runScenario, findSuggestions, feeReport, describeRule, PRESETS, RULE_TYPES, GRADES,
 } from "../lib/whatIf";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -268,10 +269,10 @@ async function sendJsonGz(req: Request, res: Response, body: unknown): Promise<v
 
 router.get("/whatif/base", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const daily = dailyResults(trades);
   await sendJsonGz(req, res, {
@@ -288,10 +289,10 @@ router.get("/whatif/base", asyncHandler(async (req, res) => {
 
 router.post("/whatif/run", asyncHandler(async (req, res) => {
   const parsed = runSchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const result = runScenario(trades, q.rules, { iters: q.iters ?? 1000 });
   res.json({
@@ -304,10 +305,10 @@ router.post("/whatif/run", asyncHandler(async (req, res) => {
 
 router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   const baseline = computeMetrics(trades);
   const suggestions = findSuggestions(trades);
@@ -322,10 +323,10 @@ router.get("/whatif/suggestions", asyncHandler(async (req, res) => {
 
 router.get("/whatif/fees", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await resolveScope(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const trades = await loadSimTrades(scope, q.from, q.to);
   res.json({ scope, period: periodMeta(trades, q.from, q.to), ...feeReport(trades), generatedAt: new Date().toISOString() });
 }));
@@ -363,9 +364,9 @@ function scenarioJson(r: ScenarioRow) {
 
 router.get("/whatif/scenarios", asyncHandler(async (req, res) => {
   const parsed = rangeSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры" }); return; }
+  if (!parsed.success) throw badRequest();
   const scope = await resolveScope(req, parsed.data.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (isGuest(req)) { res.json([]); return; }
   try { await ensureTables(); } catch (err) { logger.warn({ err }, "whatif: ensure tables failed"); res.json([]); return; }
   const params: unknown[] = [];
@@ -377,10 +378,10 @@ router.get("/whatif/scenarios", asyncHandler(async (req, res) => {
 
 router.post("/whatif/scenarios", asyncHandler(async (req, res) => {
   const parsed = scenarioBodySchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   if (!req.authUser || isGuest(req)) { res.status(403).json({ error: "Только для участников" }); return; }
   const scope = await resolveScope(req, parsed.data.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Staff without an explicit trader save under their own name.
   const trader = scope ?? req.authUser.name;
   await ensureTables();
@@ -394,13 +395,13 @@ router.post("/whatif/scenarios", asyncHandler(async (req, res) => {
 
 router.delete("/whatif/scenarios/:id", asyncHandler(async (req, res) => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!req.authUser || isGuest(req)) { res.status(403).json({ error: "Только для участников" }); return; }
   await ensureTables();
   const { rows } = await pool.query<{ trader: string }>(`SELECT trader FROM whatif_scenarios WHERE id = $1 AND archived_at IS NULL`, [id]);
   if (!rows[0]) { res.status(404).json({ error: "Сценарий не найден" }); return; }
   const scope = await resolveScope(req, rows[0].trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (scope != null && scope !== rows[0].trader) { res.status(403).json({ error: "Чужой сценарий" }); return; }
   await pool.query(`UPDATE whatif_scenarios SET archived_at = NOW(), updated_at = NOW() WHERE id = $1`, [id]);
   res.json({ ok: true, id });

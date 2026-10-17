@@ -1,5 +1,6 @@
 import type { Trade as ApiTrade } from "@workspace/api-client-react";
 import { nyDate } from "@/lib/trading-date";
+import { fmtDate, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 import {
   closeDate, computeKpis, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type Kpis,
 } from "@/lib/trade-math";
@@ -97,66 +98,16 @@ export function shiftMonth(mk: string, n: number): string {
   return localDateStr(d).slice(0, 7);
 }
 
-const MONTHS_NOM = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
-const WEEKDAYS_LONG = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
-export const WEEKDAYS_SHORT = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+const capFirst = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
+/** Calendar header «Пн» … «Вс» (Monday first) in the UI language. */
+export function weekdaysShortMonFirst(): string[] {
+  return [1, 2, 3, 4, 5, 6, 0].map((d) => capFirst(fmtWeekday(d, "short")));
+}
+
+/** Month key "2026-10" → «Октябрь 2026 г.» (heading, capitalised). */
 export function fmtMonthTitle(mk: string): string {
-  const [y, m] = mk.split("-").map(Number);
-  return `${MONTHS_NOM[m - 1]} ${y}`;
-}
-
-export function fmtDayLong(s: string): string {
-  const d = parseDate(s);
-  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()]} ${d.getFullYear()}`;
-}
-
-export function fmtWeekday(s: string): string {
-  return WEEKDAYS_LONG[parseDate(s).getDay()];
-}
-
-export function fmtDayShort(s: string): string {
-  const d = parseDate(s);
-  return `${d.getDate()} ${MONTHS_GEN[d.getMonth()].slice(0, 3)}`;
-}
-
-export function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-// ── Numbers ───────────────────────────────────────────────────────────────────
-
-export function fmtMoney(v: number | null | undefined, signed = true): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v);
-  const txt = abs >= 1000
-    ? abs.toLocaleString("en-US", { maximumFractionDigits: 0 })
-    : abs.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 2 });
-  if (!signed) return `$${txt}`;
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${txt}`;
-}
-
-/** Short money for narrow cells (calendar, week totals): «+$54», «−$1.2k», «+$12k». */
-export function fmtMoneyCompact(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const abs = Math.abs(v);
-  const txt = abs >= 10_000 ? `${Math.round(abs / 1000)}k` : abs >= 1000 ? `${(abs / 1000).toFixed(1).replace(/\.0$/, "")}k` : String(Math.round(abs));
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${txt}`;
-}
-
-export function fmtR(v: number | null | undefined, digits = 2): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits).replace(/\.?0+$/, "") || "0";
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}R`;
-}
-
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v * 100)}%`;
+  return capFirst(fmtDate(`${mk.slice(0, 7)}-01`, "monthYear"));
 }
 
 // ── Trade metrics (all R / P&L math comes from @/lib/trade-math — never redefine it here) ──
@@ -291,7 +242,7 @@ export function dayValue(s: DayStats | undefined, unit: "pnl" | "r"): number | n
 }
 
 export function fmtUnit(v: number | null | undefined, unit: "pnl" | "r", digits = 1): string {
-  return unit === "pnl" ? fmtMoney(v) : fmtR(v, digits);
+  return unit === "pnl" ? fmtUsd(v, { signed: true, decimals: "auto" }) : fmtR(v, digits);
 }
 
 export function splitTags(s: string | null | undefined): string[] {

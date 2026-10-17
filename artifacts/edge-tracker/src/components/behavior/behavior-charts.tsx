@@ -6,7 +6,9 @@ import { Bar, BarChart, Cell, ReferenceLine, ResponsiveContainer, Tooltip, XAxis
 import { Segmented } from "@/components/ds";
 import * as React from "react";
 import { CHART_CURSOR, CHART_TOOLTIP } from "@/components/stats/equity-panel";
-import { fmtPct, fmtUsd, fmtUsdCompact, pluralTrades, type Bucket } from "./api";
+import { type Bucket } from "./api";
+import { fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 12, tickLine: false, axisLine: false } as const;
 
@@ -33,14 +35,14 @@ export const BucketBars = React.memo(function BucketBars({ data, ariaLabel, heig
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={rows} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <XAxis dataKey="label" {...AXIS} interval={0} />
-              <YAxis {...AXIS} width={52} tickFormatter={(v: number) => fmtUsdCompact(v) === "—" ? "0" : fmtUsdCompact(v)} />
+              <YAxis {...AXIS} width={52} tickFormatter={(v: number) => fmtUsd(v, { signed: true, compact: true }) === "—" ? "0" : fmtUsd(v, { signed: true, compact: true })} />
               <ReferenceLine y={0} stroke="hsl(var(--muted-foreground) / 0.5)" />
               <Tooltip
                 contentStyle={CHART_TOOLTIP}
                 cursor={CHART_CURSOR}
                 formatter={(v: number, _n, item) => {
                   const b = item.payload as Bucket;
-                  return [`${fmtUsd(v)} · ${pluralTrades(b.n)} · WR ${fmtPct(b.winRate)}`, mode === "avg" ? "ср. нетто" : "Σ нетто"];
+                  return [`${fmtUsd(v, { signed: true, decimals: "auto" })} · ${commonI18n.t("units.trades", { count: b.n })} · WR ${fmtRate(b.winRate)}`, mode === "avg" ? "ср. нетто" : "Σ нетто"];
                 }}
               />
               <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={40} isAnimationActive={!reduce}>

@@ -7,6 +7,10 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "test": "pnpm --filter @workspace/edge-tracker exec vitest run --root ../../lib/text-search"
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.test.json --noEmit"
+  },
+  "devDependencies": {
+    "vitest": "catalog:"
   }
 }

@@ -19,8 +19,8 @@ import {
   TrendingUp,
   Zap,
 } from "lucide-react";
-import { format, isToday, isYesterday } from "date-fns";
-import { ru } from "date-fns/locale";
+import { isToday, isYesterday } from "date-fns";
+import { fmtDate, fmtWeekday, pluralRu } from "@/lib/format";
 import type { Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 
@@ -162,13 +162,6 @@ const NOUNS: Record<string, { nom: string; g: Gender; forms: Forms }> = {
 };
 const NOUN_FALLBACK: { nom: string; g: Gender; forms: Forms } = { nom: "запись", g: "f", forms: ["запись", "записи", "записей"] };
 
-export function plural(n: number, forms: Forms): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return forms[0];
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return forms[1];
-  return forms[2];
-}
-
 /** Short passive participles [м, ж, ср]; the neuter form also serves counts («добавлено 12 сделок»). */
 const PARTICIPLES: Record<string, [string, string, string]> = {
   created: ["добавлен", "добавлена", "добавлено"],
@@ -280,16 +273,16 @@ export function describeBurst(action: string, section: string, n: number, exampl
   if (examples && action === "created") return `добавлено эталонов: ${n}`;
   if (examples && action === "deleted") return `убрано эталонов: ${n}`;
   switch (action) {
-    case "reviewed": return section === "trades" ? `${n} ревью на сделки` : `разобрано: ${n} ${plural(n, forms)}`;
+    case "reviewed": return section === "trades" ? `${n} ревью на сделки` : `разобрано: ${n} ${pluralRu(n, ...forms)}`;
     case "rated": return `поставлено оценок: ${n}`;
     case "liked":
-    case "reacted": return `${n} ${plural(n, ["реакция", "реакции", "реакций"])}`;
-    case "commented": return `${n} ${plural(n, ["комментарий", "комментария", "комментариев"])}`;
+    case "reacted": return `${n} ${pluralRu(n, "реакция", "реакции", "реакций")}`;
+    case "commented": return `${n} ${pluralRu(n, "комментарий", "комментария", "комментариев")}`;
     case "synced": return `синхронизировано сделок: ${n}`;
-    case "violation": return `${n} ${plural(n, ["нарушение правил", "нарушения правил", "нарушений правил"])}`;
+    case "violation": return `${n} ${pluralRu(n, "нарушение правил", "нарушения правил", "нарушений правил")}`;
     default: {
       const v = PARTICIPLES[action]?.[2];
-      return v ? `${v}: ${n} ${plural(n, forms)}` : `${action}: ${n} ${plural(n, forms)}`;
+      return v ? `${v}: ${n} ${pluralRu(n, ...forms)}` : `${action}: ${n} ${pluralRu(n, ...forms)}`;
     }
   }
 }
@@ -352,7 +345,7 @@ export function dayLabel(iso: string): string {
   if (isToday(d)) return "Сегодня";
   if (isYesterday(d)) return "Вчера";
   const sameYear = d.getFullYear() === new Date().getFullYear();
-  return format(d, sameYear ? "d MMMM, EEEE" : "d MMMM yyyy, EEEE", { locale: ru });
+  return `${fmtDate(d, sameYear ? "dayMonthLong" : "long")}, ${fmtWeekday(d, "long")}`;
 }
 
 export function capFirst(s: string): string {
@@ -361,7 +354,7 @@ export function capFirst(s: string): string {
 
 export function timeLabel(iso: string): string {
   const d = new Date(iso);
-  return Number.isNaN(d.getTime()) ? "—" : format(d, "HH:mm");
+  return Number.isNaN(d.getTime()) ? "—" : fmtDate(d, "time");
 }
 
 export function relTime(iso: string): string {
@@ -371,7 +364,7 @@ export function relTime(iso: string): string {
   if (diff < 60) return "только что";
   if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
   if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-  return format(d, "d MMM, HH:mm", { locale: ru });
+  return fmtDate(d, "dateTime");
 }
 
 export type Burst = { key: string; items: FeedItem[] };

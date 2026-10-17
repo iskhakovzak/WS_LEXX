@@ -12,8 +12,10 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { Callout, InlineError, fmtDate, readApiError } from "./shared";
+import { ApiError, http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { Callout, InlineError } from "./shared";
+import { fmtDate } from "@/lib/format";
 import { useTeam } from "./team-api";
 import { PROFILE_QUERY_KEY } from "./ProfileSection";
 
@@ -38,9 +40,7 @@ function TelegramConnect() {
   const loadStatus = useCallback(async (): Promise<TgStatus | null> => {
     if (!user?.traderName) return null;
     try {
-      const r = await fetch(`${BASE}/api/telegram/status?trader=${encodeURIComponent(user.traderName)}`);
-      if (!r.ok) throw new Error(String(r.status));
-      const d = (await r.json()) as TgStatus;
+      const d = await http.get<TgStatus>("/api/telegram/status", { query: { trader: user.traderName } });
       setStatus(d);
       setStatusError(false);
       return d;
@@ -75,13 +75,11 @@ function TelegramConnect() {
   async function handleConnect() {
     setLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/telegram/link-token`, { method: "POST", headers: { "Content-Type": "application/json" } });
-      if (!r.ok) throw new Error(await readApiError(r, "Не удалось получить код"));
-      setLinkData((await r.json()) as LinkData);
+      setLinkData(await http.post<LinkData>("/api/telegram/link-token"));
       setIssuedAt(Date.now());
       setNow(Date.now());
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось получить код"), variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -90,8 +88,13 @@ function TelegramConnect() {
   async function handleDisconnect() {
     setDisconnecting(true);
     try {
-      const r = await fetch(`${BASE}/api/telegram/disconnect`, { method: "DELETE" });
-      if (!r.ok) { toast({ title: "Не удалось отвязать Telegram", description: await readApiError(r), variant: "destructive" }); return; }
+      try {
+        await http.del("/api/telegram/disconnect");
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        toast({ title: "Не удалось отвязать Telegram", description: humanizeApiError(e), variant: "destructive" });
+        return;
+      }
       setStatus({ connected: false, linked_at: null });
       setLinkData(null);
       qc.invalidateQueries({ queryKey: PROFILE_QUERY_KEY });
@@ -243,16 +246,22 @@ function TelegramBroadcast() {
     setSending(true);
     setLastResult(null);
     try {
-      const r = await fetch(`${BASE}/api/telegram/broadcast`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: message.trim() }),
-      });
-      const d = (await r.json().catch(() => ({}))) as { ok?: boolean; sent?: number; failed?: number; total?: number; error?: string };
-      if (r.ok && d.ok) {
+      type BroadcastResp = { ok?: boolean; sent?: number; failed?: number; total?: number; error?: string };
+      let status = 200;
+      let d: BroadcastResp;
+      try {
+        d = (await http.post<BroadcastResp | null>("/api/telegram/broadcast", { message: message.trim() })) ?? {};
+      } catch (e) {
+        if (!(e instanceof ApiError) || e.isNetwork) throw e;
+        status = e.status;
+        d = { error: e.field<string>("error") };
+      }
+      if (status < 300 && d.ok) {
         setLastResult({ sent: d.sent ?? 0, failed: d.failed ?? 0, total: d.total ?? 0 });
         toast({ title: `Отправлено: ${d.sent} из ${d.total}` });
         setMessage("");
       } else {
-        toast({ title: d.error ?? `Ошибка рассылки (HTTP ${r.status})`, variant: "destructive" });
+        toast({ title: d.error ?? `Ошибка рассылки (HTTP ${status})`, variant: "destructive" });
       }
     } catch {
       toast({ title: "Сетевая ошибка", variant: "destructive" });

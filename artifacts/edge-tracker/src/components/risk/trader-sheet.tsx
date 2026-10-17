@@ -12,13 +12,14 @@ import { HistoryCharts } from "./history-charts";
 import { LimitsForm } from "./limits-form";
 import { PositionsTable } from "./positions-table";
 import { AlertList } from "./usage";
-import { LevelBadge, TierPill, fmtR, fmtSignedUsd, fmtUsd } from "./primitives";
+import { LevelBadge, TierPill } from "./primitives";
 import { rankLevel } from "./risk-math";
 import { rankInput } from "./desk-table";
 import { StopRemaining } from "./remaining";
 import { DayTradesList, DaySkeleton, TraderDayBlock } from "./intraday";
 import { BreachHistory, useBreaches } from "./breaches";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 
 type Tab = "overview" | "trades" | "breaches" | "limits";
 
@@ -30,9 +31,9 @@ function TradesTab({ trader }: { trader: string }) {
   return (
     <div className="flex flex-col gap-3">
       <p className="text-xs text-muted-foreground tabular-nums">
-        {day.isToday ? "Сегодня" : `Последний торговый день · ${day.date.slice(8, 10)}.${day.date.slice(5, 7)}`} · {day.trades.length} сд. · нетто{" "}
-        <span className={cn("font-semibold", (day.net ?? 0) > 0 ? "text-up" : (day.net ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtSignedUsd(day.net)}</span>
-        {day.fees > 0 && <> · комиссии {fmtUsd(day.fees, { cents: true })}</>}
+        {day.isToday ? "Сегодня" : `Последний торговый день · ${fmtDate(day.date, "dayMonthNumeric")}`} · {day.trades.length} сд. · нетто{" "}
+        <span className={cn("font-semibold", (day.net ?? 0) > 0 ? "text-up" : (day.net ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(day.net, { signed: true, decimals: 0 })}</span>
+        {day.fees > 0 && <> · комиссии {fmtUsd(day.fees, { decimals: 0 })}</>}
       </p>
       <DayTradesList day={day} />
       <div className="flex flex-wrap gap-2">
@@ -61,7 +62,7 @@ const FIELD_LABEL: Record<string, string> = {
 function fmtVal(k: string, v: unknown): string {
   if (v == null || v === "") return "—";
   if (typeof v === "boolean") return v ? "да" : "нет";
-  if (typeof v === "number") return k === "maxOpenPositions" ? String(v) : fmtUsd(v);
+  if (typeof v === "number") return k === "maxOpenPositions" ? String(v) : fmtUsd(v, { decimals: 0 });
   return String(v);
 }
 
@@ -91,7 +92,7 @@ function LimitsHistory({ trader }: { trader: string }) {
         return (
           <li key={e.id} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs ring-1 ring-inset ring-[var(--field-border)]">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
-              <span className="tabular-nums">{new Date(e.changedAt).toLocaleString("ru-RU", { dateStyle: "short", timeStyle: "short" })}</span>
+              <span className="tabular-nums">{fmtDate(e.changedAt, "shortDateTime")}</span>
               {e.changedBy && <span>· {e.changedBy}</span>}
               {!e.before && <Pill tone="accent">первые лимиты</Pill>}
             </div>
@@ -151,10 +152,10 @@ export function TraderSheet({
                 <span>
                   Сегодня{" "}
                   <span className={cn("font-medium", (pnl ?? row.today.r) > 0 ? "text-up" : (pnl ?? row.today.r) < 0 ? "text-down" : "text-foreground")}>
-                    {pnl != null ? fmtSignedUsd(pnl) : row.today.trades ? fmtR(row.today.r) : "сделок нет"}
+                    {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : row.today.trades ? fmtR(row.today.r) : "сделок нет"}
                   </span>
                 </span>
-                <span>Неделя <span className="font-medium text-foreground">{row.week.pnlNet != null ? fmtSignedUsd(row.week.pnlNet) : row.week.trades ? fmtR(row.week.r) : "сделок нет"}</span></span>
+                <span>Неделя <span className="font-medium text-foreground">{row.week.pnlNet != null ? fmtUsd(row.week.pnlNet, { signed: true, decimals: 0 }) : row.week.trades ? fmtR(row.week.r) : "сделок нет"}</span></span>
                 <span>Сделок сегодня <span className="font-medium text-foreground">{row.today.trades}</span></span>
                 {row.today.carriedTonight > 0 && (
                   <span className={cn("inline-flex items-center gap-1", row.limits && !row.limits.allowOvernight && "text-down")}>

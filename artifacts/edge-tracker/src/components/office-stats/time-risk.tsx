@@ -8,10 +8,10 @@ import { EmptyState, Panel } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { fmtAxis, fmtDay, fmtShare, fmtV, type DayPoint, type PeriodView, type TickerRow, type Unit } from "./api";
-import { LineCanvas, MONTH_TICKS, downloadCanvasPng } from "./line-canvas";
+import { LineCanvas, monthTicks, downloadCanvasPng } from "./line-canvas";
 import { strategyColor, tokenColor, useDark } from "./palette";
 import type { Ctx } from "./overview";
-import { pluralRu } from "@/components/rules/constants";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Vertical diverging bars around a zero line (DOM, so every bar has a native hover + aria). */
 function DivergingBars({ items, unit, height = 150, labelEvery = 1 }: {
@@ -67,7 +67,7 @@ export function TimeOfDay({ period, unit }: { period: PeriodView; unit: Unit }) 
     label: b.key === "pre" ? "пре" : b.key === "post" ? "пост" : b.label.split("–")[0],
     v: b.v,
     muted: b.key === "pre" || b.key === "post",
-    title: `${b.label}: ${fmtV(b.v, unit)} · ${b.trades} ${pluralRu(b.trades, "сделка", "сделки", "сделок")} · WR ${fmtShare(b.winRate)}`,
+    title: `${b.label}: ${fmtV(b.v, unit)} · ${commonI18n.t("units.trades", { count: b.trades })} · WR ${fmtShare(b.winRate)}`,
   }));
   const best = [...period.timeOfDay].sort((a, b) => b.v - a.v)[0];
   const worst = [...period.timeOfDay].sort((a, b) => a.v - b.v)[0];
@@ -201,7 +201,7 @@ export function Underwater({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (d: string
             series={series}
             xMin={0}
             xMax={366}
-            xTicks={MONTH_TICKS}
+            xTicks={monthTicks()}
             fmtY={fmtY}
             height={190}
             ariaLabel="Просадка от максимума по дням"

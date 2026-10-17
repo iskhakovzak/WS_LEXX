@@ -6,14 +6,14 @@ import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { KEYS } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { nyDate, prevWeekday } from "@/lib/trading-date";
-import { pluralRu } from "@/components/rules/constants";
 import { cn } from "@/lib/utils";
 import { EmptyState, Kbd, Page, PageHeader, Panel, TableSkeleton, usePersistentState, type SortDir } from "@/components/ds";
 import {
-  LISTS, LIST_LABELS, apiJson, computePlan, copyText, isListName, isStaleToday, jsonInit, keyLevels, normStatus, readLS, writeLS, num,
+  LISTS, LIST_LABELS, computePlan, copyText, isListName, isStaleToday, keyLevels, normStatus, readLS, writeLS, num,
   type ListName, type WatchlistItem,
 } from "@/components/watchlist/lib";
 import { useWatchlistLevels, useWatchlistMarket, sessionDays } from "@/components/watchlist/use-market";
@@ -31,6 +31,7 @@ import {
 import { canModifyOwned } from "@/lib/ownership";
 import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc } from "@/components/game-plan/plan-draft";
+import { commonI18n } from "@/i18n/ns/common";
 
 const LS_LISTS = "wl:lists";
 const LS_PINS = "wl:pins";
@@ -42,6 +43,19 @@ class DuplicateTickerError extends Error {
 }
 class NotDeployedError extends Error {}
 
+/** POST /api/watchlist; 409 → DuplicateTickerError (the server sends the existing row id). */
+async function createWatchRow(body: Record<string, unknown>, dupFallback: string): Promise<WatchlistItem> {
+  try {
+    return await http.post<WatchlistItem>("/api/watchlist", body);
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 409) {
+      const id = e.field<number>("id");
+      throw new DuplicateTickerError(e.field<string>("error") ?? dupFallback, typeof id === "number" ? id : null);
+    }
+    throw e;
+  }
+}
+
 function isTypingTarget(t: EventTarget | null) {
   const el = t instanceof HTMLElement ? t : null;
   if (!el) return false;
@@ -52,7 +66,6 @@ function csvCell(v: unknown) {
   return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 const round2 = (v: number) => Math.round(v * 100) / 100;
-const tickersWord = (n: number) => pluralRu(n, "тикер", "тикера", "тикеров");
 /** «AVGO, COIN, MSTR и ещё 3» */
 const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : `${ts.slice(0, max).join(", ")} и ещё ${ts.length - max}`);
 
@@ -120,8 +133,8 @@ export default function Watchlist() {
 
   // ── data ────────────────────────────────────────────────────────────
   const { data: rawItems, isLoading, isError, error, refetch, isFetching } = useQuery<WatchlistItem[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => apiJson<WatchlistItem[]>(`${BASE}/api/watchlist`),
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { signal }),
   });
   const items = useMemo<WatchlistItem[]>(
     () => (Array.isArray(rawItems) ? rawItems.map((i) => ({ ...i, status: normStatus(i.status) })) : []),
@@ -238,22 +251,22 @@ export default function Watchlist() {
   }, [visible]);
 
   // ── mutations ───────────────────────────────────────────────────────
-  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: ["watchlist"] }), [qc]);
+  const invalidate = useCallback(() => qc.invalidateQueries({ queryKey: KEYS.watchlist() }), [qc]);
   const patchCache = useCallback((fn: (i: WatchlistItem) => WatchlistItem) => {
-    qc.setQueryData<WatchlistItem[]>(["watchlist"], (old) => old?.map(fn));
+    qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => old?.map(fn));
   }, [qc]);
 
   const bulk = useCallback(async (body: { ids: number[]; action: "status" | "delete" | "restore" | "inplay" | "list"; status?: string; inPlay?: boolean; list?: ListName }) => {
     try {
-      return await apiJson<{ count: number }>(`${BASE}/api/watchlist/bulk`, jsonInit("POST", body));
+      return await http.post<{ count: number }>("/api/watchlist/bulk", body);
     } catch {
       // Older API builds (no /bulk or no «list» action): apply per item.
       const res = await Promise.allSettled(body.ids.map((id) =>
-        body.action === "status" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { status: body.status }))
-          : body.action === "inplay" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { inPlay: body.inPlay }))
-          : body.action === "list" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", { list: body.list }))
-          : body.action === "delete" ? apiJson(`${BASE}/api/watchlist/${id}`, jsonInit("DELETE"))
-          : apiJson(`${BASE}/api/watchlist/${id}/restore`, jsonInit("POST"))));
+        body.action === "status" ? http.patch(`/api/watchlist/${id}`, { status: body.status })
+          : body.action === "inplay" ? http.patch(`/api/watchlist/${id}`, { inPlay: body.inPlay })
+          : body.action === "list" ? http.patch(`/api/watchlist/${id}`, { list: body.list })
+          : body.action === "delete" ? http.del(`/api/watchlist/${id}`)
+          : http.post(`/api/watchlist/${id}/restore`)));
       const count = res.filter((r) => r.status === "fulfilled").length;
       if (!count) throw new Error("Не удалось применить действие");
       return { count };
@@ -299,7 +312,7 @@ export default function Watchlist() {
     try {
       await applyLists(moving.map((item) => ({ item, list })));
       if (!opts.silent) {
-        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${moving.length} ${tickersWord(moving.length)} → «${LIST_LABELS[list]}»`;
+        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${commonI18n.t("units.tickers", { count: moving.length })} → «${LIST_LABELS[list]}»`;
         toast({
           title: label,
           action: <ToastAction altText="Отменить перенос" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>Отменить</ToastAction>,
@@ -341,14 +354,14 @@ export default function Watchlist() {
   }, [applyLists, toast]);
 
   const notePatch = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiJson<WatchlistItem>(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", data)),
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
     onMutate: async ({ id, data }) => {
-      await qc.cancelQueries({ queryKey: ["watchlist"] });
-      const prev = qc.getQueryData<WatchlistItem[]>(["watchlist"]);
+      await qc.cancelQueries({ queryKey: KEYS.watchlist() });
+      const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
       patchCache((i) => (i.id === id ? { ...i, ...data } as WatchlistItem : i));
       return { prev };
     },
-    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(["watchlist"], ctx.prev); toast({ title: "Заметка не сохранена", description: errMsg(e), variant: "destructive" }); },
+    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev); toast({ title: "Заметка не сохранена", description: errMsg(e), variant: "destructive" }); },
     onSettled: invalidate,
   });
 
@@ -361,25 +374,22 @@ export default function Watchlist() {
     if (tickers.length > 30) { toast({ title: "Не больше 30 тикеров за раз", variant: "destructive" }); return false; }
     setAdding(true);
     // Optimistic rows for the new tickers.
-    const prev = qc.getQueryData<WatchlistItem[]>(["watchlist"]);
+    const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
     const stamp = Date.now();
     if (fresh.length) {
       const temps: WatchlistItem[] = fresh.map((ticker, k) => ({
         id: -(stamp + k), ticker, catalyst: null, targetPrice: null, stopPrice: null, status: "watching", notes: null, sector: null, tags: null,
         createdAt: new Date().toISOString(), score: null, scoreBreakdown: null, scoredAt: null, inPlay: list === "today", list,
       }));
-      qc.setQueryData<WatchlistItem[]>(["watchlist"], (old) => [...(old ?? []), ...temps]);
+      qc.setQueryData<WatchlistItem[]>(KEYS.watchlist(), (old) => [...(old ?? []), ...temps]);
     }
     try {
       let createdCount = 0;
       try {
-        const r = await fetch(`${BASE}/api/watchlist/quick`, jsonInit("POST", { tickers, list }));
-        if (r.status === 404 || r.status === 405) throw new NotDeployedError();
-        if (!r.ok) {
-          const j = (await r.json().catch(() => ({}))) as { error?: string };
-          throw new Error(j.error ?? `HTTP ${r.status}`);
-        }
-        const j = (await r.json()) as { created?: WatchlistItem[] };
+        const j = await http.post<{ created?: WatchlistItem[] }>("/api/watchlist/quick", { tickers, list }).catch((err: unknown) => {
+          if (err instanceof ApiError && (err.status === 404 || err.status === 405)) throw new NotDeployedError();
+          throw err;
+        });
         createdCount = j.created?.length ?? 0;
         // A server without list support still accepted the rows: keep the local override.
         if (!serverLists && list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
@@ -389,13 +399,7 @@ export default function Watchlist() {
         // Fallback for API builds without /quick: one POST per ticker (2 at a time) + move the existing ones.
         if (list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
         const res = await pool(fresh, 2, async (ticker) => {
-          const r = await fetch(`${BASE}/api/watchlist`, jsonInit("POST", { ticker, status: "watching", inPlay: list === "today", list }));
-          if (r.status === 409) {
-            const j = (await r.json().catch(() => ({}))) as { error?: string; id?: number };
-            throw new DuplicateTickerError(j.error ?? `${ticker} уже в вотчлисте`, typeof j.id === "number" ? j.id : null);
-          }
-          if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
-          return (await r.json()) as WatchlistItem;
+          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list }, `${ticker} уже в вотчлисте`);
         });
         createdCount = res.filter((x) => x.status === "fulfilled").length;
         const failed = res.map((x, k) => (x.status === "rejected" ? `${fresh[k]}: ${errMsg(x.reason)}` : null)).filter(Boolean);
@@ -415,7 +419,7 @@ export default function Watchlist() {
       if (isListName(view) && view !== list) setView(list);
       return true;
     } catch (e) {
-      if (prev) qc.setQueryData(["watchlist"], prev);
+      if (prev) qc.setQueryData(KEYS.watchlist(), prev);
       toast({ title: "Не удалось добавить", description: errMsg(e), variant: "destructive" });
       return false;
     } finally {
@@ -425,20 +429,13 @@ export default function Watchlist() {
   }, [adding, realItems, qc, toast, serverLists, moveTo, patchCache, listOf, view, setView, invalidate]);
 
   const updateMut = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => apiJson<WatchlistItem>(`${BASE}/api/watchlist/${id}`, jsonInit("PATCH", data)),
+    mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
     onSuccess: (row) => { void invalidate(); setFormOpen(false); toast({ title: `${row?.ticker ?? "Тикер"} сохранён` }); },
     onError: (e) => toast({ title: "Ошибка сохранения", description: errMsg(e), variant: "destructive" }),
   });
   const createMut = useMutation({
-    mutationFn: async (data: Record<string, unknown>) => {
-      const r = await fetch(`${BASE}/api/watchlist`, jsonInit("POST", { ...data, list: addTarget, inPlay: addTarget === "today" }));
-      if (r.status === 409) {
-        const j = (await r.json().catch(() => ({}))) as { error?: string; id?: number };
-        throw new DuplicateTickerError(j.error ?? "Тикер уже в вотчлисте", typeof j.id === "number" ? j.id : null);
-      }
-      if (!r.ok) { const j = (await r.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${r.status}`); }
-      return (await r.json()) as WatchlistItem;
-    },
+    mutationFn: (data: Record<string, unknown>) =>
+      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today" }, "Тикер уже в вотчлисте"),
     onSuccess: (row) => {
       if (!serverLists && addTarget !== "watch") setLocalLists((cur) => ({ ...cur, [row.ticker]: addTarget }));
       void invalidate(); setFormOpen(false);
@@ -458,7 +455,7 @@ export default function Watchlist() {
     const label = ids.length === 1 ? `${list_items[0].ticker} удалён` : `Удалено тикеров: ${ids.length}`;
     const undo = async () => {
       try {
-        if (ids.length === 1) await apiJson(`${BASE}/api/watchlist/${ids[0]}/restore`, jsonInit("POST"));
+        if (ids.length === 1) await http.post(`/api/watchlist/${ids[0]}/restore`);
         else await bulk({ ids, action: "restore" });
         void invalidate();
         toast({ title: "Восстановлено" });
@@ -466,7 +463,7 @@ export default function Watchlist() {
     };
     try {
       // Soft delete on the server (restorable).
-      if (ids.length === 1) await apiJson(`${BASE}/api/watchlist/${ids[0]}`, jsonInit("DELETE"));
+      if (ids.length === 1) await http.del(`/api/watchlist/${ids[0]}`);
       else await bulk({ ids, action: "delete" });
       void invalidate();
       setDeleting(null);
@@ -479,19 +476,19 @@ export default function Watchlist() {
   };
 
   const scoreMut = useMutation({
-    mutationFn: (id: number) => apiJson<{ row: WatchlistItem }>(`${BASE}/api/watchlist/${id}/score`, jsonInit("POST")),
+    mutationFn: (id: number) => http.post<{ row: WatchlistItem }>(`/api/watchlist/${id}/score`),
     onMutate: (id) => setScoringIds((cur) => new Set(cur).add(id)),
     onSettled: (_d, _e, id) => setScoringIds((cur) => { const n = new Set(cur); n.delete(id); return n; }),
     onSuccess: (data) => { void invalidate(); toast({ title: `${data.row.ticker} · Score: ${data.row.score}/100` }); },
     onError: (e) => toast({ title: "Ошибка расчёта", description: errMsg(e), variant: "destructive" }),
   });
   const scoreAllMut = useMutation({
-    mutationFn: () => apiJson<{ count: number; failed?: number; failures?: { ticker: string }[] }>(`${BASE}/api/watchlist/score-all`, jsonInit("POST")),
+    mutationFn: () => http.post<{ count: number; failed?: number; failures?: { ticker: string }[] }>("/api/watchlist/score-all"),
     onSuccess: (data) => {
       void invalidate();
       const failed = data.failed ?? 0;
       toast({
-        title: `Пересчитано: ${data.count} ${tickersWord(data.count)}`,
+        title: `Пересчитано: ${commonI18n.t("units.tickers", { count: data.count })}`,
         description: failed > 0 ? `Ошибка у ${failed}: ${(data.failures ?? []).map((f) => f.ticker).join(", ")}` : undefined,
         variant: failed > 0 && data.count === 0 ? "destructive" : undefined,
       });
@@ -565,7 +562,7 @@ export default function Watchlist() {
     if (!ts.length) return;
     const ok = await copyText(ts.join(", "));
     toast(ok
-      ? { title: `Скопировано: ${ts.length} ${tickersWord(ts.length)}`, description: tickerList(ts) }
+      ? { title: `Скопировано: ${commonI18n.t("units.tickers", { count: ts.length })}`, description: tickerList(ts) }
       : { title: "Не удалось скопировать", description: "Браузер не дал доступ к буферу обмена", variant: "destructive" });
   }, [toast]);
 
@@ -844,7 +841,7 @@ export default function Watchlist() {
         <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[var(--glass-bg)] px-3 py-2 text-sm">
           <History className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-muted-foreground">
-            <span className="font-medium text-foreground">{staleToday.length} {tickersWord(staleToday.length)}</span> в «Сегодня» с прошлых сессий: {tickerList(staleToday.map((i) => i.ticker), 8)}
+            <span className="font-medium text-foreground">{commonI18n.t("units.tickers", { count: staleToday.length })}</span> в «Сегодня» с прошлых сессий: {tickerList(staleToday.map((i) => i.ticker), 8)}
           </span>
           <Button size="sm" variant="outline" onClick={() => void moveTo(staleToday, "watch")}>В «Наблюдаю»</Button>
           <Button size="sm" variant="outline" onClick={() => void archive(staleToday)}><Archive className="h-4 w-4" />В архив</Button>

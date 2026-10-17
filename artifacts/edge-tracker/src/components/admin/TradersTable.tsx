@@ -20,6 +20,9 @@ import { ActivityStrip } from "./ActivityStrip";
 import { ROLE_LABEL, downloadCsv, isTypingTarget, timeAgo, type DeskPulse, type PulseUser } from "./api";
 import { useUserActions } from "./useUserActions";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
+import { fmtDate } from "@/lib/format";
+
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 export type TraderFilter = "all" | "traders" | "staff" | "nojournal" | "violations" | "stale" | "banned";
 
@@ -319,7 +322,7 @@ export function TradersTable({
                         </div>
                       </td>
                       <td>
-                        <span className={cn("whitespace-nowrap", u.activeToday ? "text-foreground" : isStale(u) && !u.banned ? "text-[hsl(var(--chart-3))]" : "text-muted-foreground")} title={u.lastSeen ? new Date(u.lastSeen).toLocaleString("ru-RU") : undefined}>
+                        <span className={cn("whitespace-nowrap", u.activeToday ? "text-foreground" : isStale(u) && !u.banned ? "text-[hsl(var(--chart-3))]" : "text-muted-foreground")} title={u.lastSeen ? fmtDate(u.lastSeen, "shortDateTimeSeconds") : undefined}>
                           {u.activeToday && <span className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-up align-middle" aria-hidden="true" />}
                           {timeAgo(u.lastSeen)}
                         </span>
@@ -419,7 +422,7 @@ function TraderSheet({
                 <StatusPill u={u} />
               </div>
               <SheetDescription>
-                Последний визит: {timeAgo(u.lastSeen)}{u.lastSeen ? ` · ${new Date(u.lastSeen).toLocaleString("ru-RU")}` : ""}
+                Последний визит: {timeAgo(u.lastSeen)}{u.lastSeen ? ` · ${fmtDate(u.lastSeen, "shortDateTimeSeconds")}` : ""}
               </SheetDescription>
             </SheetHeader>
 
@@ -466,7 +469,7 @@ function TraderSheet({
                     <StatRow label="Нарушений всего" value={u.violationsTotal} />
                   </>
                 )}
-                <StatRow label="В команде с" value={u.createdAt ? new Date(u.createdAt).toLocaleDateString("ru-RU") : "—"} />
+                <StatRow label="В команде с" value={u.createdAt ? fmtDate(u.createdAt, "short") : "—"} />
               </section>
 
               <section className="flex flex-wrap gap-2">

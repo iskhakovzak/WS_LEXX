@@ -20,7 +20,7 @@ import { SameTickerView } from "@/components/benchmark/same-ticker";
 import { CompareView } from "@/components/benchmark/compare";
 import { TrendView } from "@/components/benchmark/trend";
 import { SelfView } from "@/components/benchmark/self-view";
-import { fmtDay, fmtPct, fmtUsd } from "@/components/benchmark/format";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 
 type Tab = "table" | "heatmap" | "same" | "compare" | "trend";
 const TABS: Tab[] = ["table", "heatmap", "same", "compare", "trend"];
@@ -140,7 +140,7 @@ export default function BenchmarkPage() {
           : "Сравнение трейдеров: нетто, стабильность, исполнение и тренд — для кураторов и head of desk"}
         actions={data && (
           <span className="text-xs tabular-nums text-muted-foreground">
-            {fmtDay(data.period.from)} – {fmtDay(data.period.to)} · NY
+            {fmtDate(data.period.from, "shortYY")} – {fmtDate(data.period.to, "shortYY")} · NY
           </span>
         )}
       />
@@ -185,8 +185,8 @@ export default function BenchmarkPage() {
         <>
           <StatGrid>
             <StatCard label="Трейдеров / сделок" value={`${desk.traders} / ${desk.trades}`} hint={`в перцентилях: ${data.deskSize} (≥ ${data.minTrades} сд.)`} />
-            <StatCard label="Нетто деска" value={desk.net != null ? fmtUsd(desk.net) : "—"} tone={toneOf(desk.net)} hint="Σ pnl − |комиссии|" />
-            <StatCard label="Комиссии / брутто" value={fmtPct(desk.feeShare)} tone={(desk.feeShare ?? 0) > 0.3 ? "down" : "neutral"} hint="доля брутто, ушедшая в комиссии" />
+            <StatCard label="Нетто деска" value={desk.net != null ? fmtUsd(desk.net, { signed: true, decimals: "auto" }) : "—"} tone={toneOf(desk.net)} hint="Σ pnl − |комиссии|" />
+            <StatCard label="Комиссии / брутто" value={fmtRate(desk.feeShare)} tone={(desk.feeShare ?? 0) > 0.3 ? "down" : "neutral"} hint="доля брутто, ушедшая в комиссии" />
             <StatCard label="Требуют внимания" value={String(desk.breaches + desk.weaker)}
               tone={desk.breaches + desk.weaker > 0 ? "warn" : "neutral"}
               hint={`консистентность: ${desk.breaches} · хуже за 4 нед.: ${desk.weaker}`} />

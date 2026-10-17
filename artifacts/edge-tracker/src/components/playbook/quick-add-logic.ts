@@ -88,10 +88,3 @@ export function undoSteps(r: AddResponse): UndoStep[] {
   return steps;
 }
 
-/** Russian plural for «сделка». */
-export function tradesWord(n: number): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return "сделка";
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return "сделки";
-  return "сделок";
-}

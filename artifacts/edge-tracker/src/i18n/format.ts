@@ -1,7 +1,8 @@
 /**
  * Locale-aware formatting for counts, dates, months, weekdays and relative time. Use these instead of
- * hard-coded "ru-RU". Money and prices are NOT localized: keep lib/format.ts (formatCurrency etc., en-US style
- * `$1,234.56`, `+0.21R`) in every language.
+ * hard-coded "ru-RU". Money, prices, R and percent are NOT localized: they live in lib/format (fmtUsd, fmtPrice,
+ * fmtR, fmtPct — `$1,234.56`, `+0.21R` in every language). lib/format re-exports everything here, so feature code
+ * imports both from "@/lib/format".
  *
  * All helpers read the current language at call time (call them during render, not at module scope).
  */
@@ -39,11 +40,20 @@ export function toDate(d: DateInput | null | undefined): Date | null {
   return Number.isNaN(r.getTime()) ? null : r;
 }
 
-/** 1234 → "1 234" (ru, uz) / "1,234" (en). Non-finite → "—". */
+const nfCache = new Map<string, Intl.NumberFormat>();
+/** 1234 → "1 234" (ru, uz) / "1,234" (en). Non-finite → "—". `opts` (e.g. maximumFractionDigits) are cached per language. */
 export function fmtCount(n: number | null | undefined, opts?: Intl.NumberFormatOptions): string {
   if (n == null || !Number.isFinite(Number(n))) return "—";
-  if (!opts) return formatCountFor(getLang(), Number(n));
-  return new Intl.NumberFormat(localeTag(), opts).format(Number(n));
+  const v = Number(n) + 0; // -0 → 0 (Intl prints "-0")
+  const lang = getLang();
+  if (!opts) return formatCountFor(lang, v);
+  const k = `${lang}|${JSON.stringify(opts)}`;
+  let f = nfCache.get(k);
+  if (!f) {
+    f = new Intl.NumberFormat(localeTagFor(lang), opts);
+    nfCache.set(k, f);
+  }
+  return f.format(v);
 }
 
 export type DateStyle =
@@ -55,7 +65,16 @@ export type DateStyle =
   | "dayMonthLong" // 17 октября / October 17 / 17-oktabr
   | "monthYear" // октябрь 2026 г. / October 2026 / oktabr, 2026
   | "time" //      14:05 (24h in every language: trading desk format)
-  | "dateTime"; // 17 окт., 14:05 / Oct 17, 14:05
+  | "timeSeconds" // 14:05:09
+  | "dateTime" // 17 окт., 14:05 / Oct 17, 14:05
+  | "shortYY" //   17.10.26 / 10/17/26 / 17/10/26
+  | "dayMonthNumeric" // 17.10 / 10/17 / 17/10
+  | "weekdayDayMonth" // пт, 17 окт. / Fri, Oct 17 / Ju, 17-okt
+  | "weekdayDayMonthLong" // пятница, 17 октября / Friday, October 17 / juma, 17-oktabr
+  | "numericDateTime" // 17.10, 14:05 / 10/17, 14:05
+  | "shortDateTime" // 17.10.2026, 14:05 / 10/17/2026, 14:05
+  | "shortDateTimeSeconds" // 17.10.2026, 14:05:09 (audit / "updated at" tooltips)
+  | "fullShortWeekday"; // сб, 17 октября 2026 г. / Sat, October 17, 2026
 
 const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   short: { day: "2-digit", month: "2-digit", year: "numeric" },
@@ -66,7 +85,16 @@ const STYLES: Record<DateStyle, Intl.DateTimeFormatOptions> = {
   dayMonthLong: { day: "numeric", month: "long" },
   monthYear: { month: "long", year: "numeric" },
   time: { hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+  timeSeconds: { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" },
   dateTime: { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+  shortYY: { day: "2-digit", month: "2-digit", year: "2-digit" },
+  dayMonthNumeric: { day: "2-digit", month: "2-digit" },
+  weekdayDayMonth: { weekday: "short", day: "numeric", month: "short" },
+  weekdayDayMonthLong: { weekday: "long", day: "numeric", month: "long" },
+  numericDateTime: { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+  shortDateTime: { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" },
+  shortDateTimeSeconds: { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" },
+  fullShortWeekday: { weekday: "short", day: "numeric", month: "long", year: "numeric" },
 };
 
 /** Format a date in the UI language. Invalid/empty → "—". Pass `timeZone` to pin a zone. */
@@ -74,6 +102,16 @@ export function fmtDate(d: DateInput | null | undefined, style: DateStyle = "med
   const date = toDate(d);
   if (!date) return "—";
   return dtf(opts?.timeZone ? { ...STYLES[style], timeZone: opts.timeZone } : STYLES[style]).format(date);
+}
+
+/**
+ * Rare date shapes that no style covers (prefer a style: add one above when a shape repeats). Same caching,
+ * language and "—" for invalid input as fmtDate.
+ */
+export function fmtDateCustom(d: DateInput | null | undefined, opts: Intl.DateTimeFormatOptions): string {
+  const date = toDate(d);
+  if (!date) return "—";
+  return dtf(opts).format(date);
 }
 
 /**

@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, type Unit, wilson, fmtR, fmtUsd, fmtPct, fmtPf, fmtSigned, sdeal } from "./metrics";
+import { type AnalyticsFilters, type Unit, wilson } from "./metrics";
+import { fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import {
   type EdgeCell, type EdgeDimension, EDGE_DIMENSIONS, EDGE_DIMENSION_LABEL, useEdgeMatrix, edgeKeyLabel, sortEdgeKeys,
 } from "./edge-api";
@@ -53,9 +55,9 @@ function metricValue(s: CellStats, m: Metric): number | null {
 
 function fmtMetric(v: number | null, m: Metric, unit: Unit): string {
   if (v == null) return "—";
-  if (m === "winRate") return fmtPct(v);
-  if (m === "pf") return fmtPf(v);
-  return unit === "r" ? fmtR(v, m === "total" ? 1 : 2) : fmtUsd(v);
+  if (m === "winRate") return fmtRate(v);
+  if (m === "pf") return fmtRatio(v);
+  return unit === "r" ? fmtR(v, m === "total" ? 1 : 2) : fmtUsd(v, { signed: true, decimals: "auto" });
 }
 
 function intensity(v: number | null, m: Metric, scale: number): { cls: string; tone: "up" | "down" | "neutral" } {
@@ -171,13 +173,13 @@ export function EdgeMatrixTab({
                       const v = guarded ? null : metricValue(s, metric);
                       const { cls } = intensity(v, metric, grid.scale);
                       const active = selected?.row === rk && selected?.col === ck;
-                      const ciText = s.ci ? ` · ДИ ${fmtSigned(s.ci.lo, 2)}…${fmtSigned(s.ci.hi, 2)}` : "";
+                      const ciText = s.ci ? ` · ДИ ${fmtNum(s.ci.lo, { decimals: 2, signed: true })}…${fmtNum(s.ci.hi, { decimals: 2, signed: true })}` : "";
                       return (
                         <td key={ck} className="p-0.5">
                           <button
                             type="button"
                             onClick={() => setSelected(active ? null : { row: rk, col: ck })}
-                            title={`${sdeal(s.cell.n)} · WR ${fmtPct(s.winRate)} · ожидание ${fmtMetric(s.expectancy, "expectancy", u)}${ciText}`}
+                            title={`${commonI18n.t("units.trades", { count: s.cell.n })} · WR ${fmtRate(s.winRate)} · ожидание ${fmtMetric(s.expectancy, "expectancy", u)}${ciText}`}
                             className={cn(
                               "flex w-full min-w-[64px] flex-col items-center rounded-md px-2 py-1 tabular-nums transition-colors",
                               cls, guarded && "opacity-50", active && "ring-2 ring-primary",
@@ -212,12 +214,12 @@ export function EdgeMatrixTab({
       </Panel>
 
       {sel && (
-        <Panel title={`${edgeKeyLabel(rows, sel.cell.row, tod)} × ${edgeKeyLabel(cols, sel.cell.col, tod)}`} description={`${sdeal(sel.cell.n)} · закрытых ${sel.cell.closed} · W ${sel.cell.wins} / L ${sel.cell.losses} / б/у ${sel.cell.be}`}>
+        <Panel title={`${edgeKeyLabel(rows, sel.cell.row, tod)} × ${edgeKeyLabel(cols, sel.cell.col, tod)}`} description={`${commonI18n.t("units.trades", { count: sel.cell.n })} · закрытых ${sel.cell.closed} · W ${sel.cell.wins} / L ${sel.cell.losses} / б/у ${sel.cell.be}`}>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <Stat label="Win rate" value={fmtPct(sel.winRate)} hint={sel.winRate != null ? `95% ДИ ${fmtPct(sel.wrLo)}–${fmtPct(sel.wrHi)}` : "нет решённых сделок"} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
-            <Stat label={`Ожидание, ${u === "r" ? "R" : "$ нетто"}`} value={fmtMetric(sel.expectancy, "expectancy", u)} hint={sel.ci ? `95% бутстрэп-ДИ ${fmtSigned(sel.ci.lo)}…${fmtSigned(sel.ci.hi)}${sel.ci.significant ? " · значимо > 0" : ""}` : "ДИ — от 5 значений"} tone={toneOf(sel.expectancy)} />
-            <Stat label="Итог" value={fmtMetric(sel.n ? sel.total : null, "total", u)} hint={u === "usd" ? `брутто ${fmtUsd(sel.cell.gross)} · комиссии −$${sel.cell.fees.toFixed(0)}` : `${sel.n} с R`} tone={toneOf(sel.total)} />
-            <Stat label="Profit factor" value={fmtPf(sel.pf)} hint={sel.pf == null ? "нет убыточных — PF не определён" : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
+            <Stat label="Win rate" value={fmtRate(sel.winRate)} hint={sel.winRate != null ? `95% ДИ ${fmtRate(sel.wrLo)}–${fmtRate(sel.wrHi)}` : "нет решённых сделок"} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
+            <Stat label={`Ожидание, ${u === "r" ? "R" : "$ нетто"}`} value={fmtMetric(sel.expectancy, "expectancy", u)} hint={sel.ci ? `95% бутстрэп-ДИ ${fmtNum(sel.ci.lo, { signed: true })}…${fmtNum(sel.ci.hi, { signed: true })}${sel.ci.significant ? " · значимо > 0" : ""}` : "ДИ — от 5 значений"} tone={toneOf(sel.expectancy)} />
+            <Stat label="Итог" value={fmtMetric(sel.n ? sel.total : null, "total", u)} hint={u === "usd" ? `брутто ${fmtUsd(sel.cell.gross, { signed: true, decimals: "auto" })} · комиссии ${fmtUsd(-Math.abs(sel.cell.fees), { decimals: 0 })}` : `${sel.n} с R`} tone={toneOf(sel.total)} />
+            <Stat label="Profit factor" value={fmtRatio(sel.pf)} hint={sel.pf == null ? "нет убыточных — PF не определён" : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
           </div>
           {sel.cell.n < minN && <Pill tone="warn" className="mt-3">Меньше {minN} сделок — вывод ненадёжен</Pill>}
         </Panel>

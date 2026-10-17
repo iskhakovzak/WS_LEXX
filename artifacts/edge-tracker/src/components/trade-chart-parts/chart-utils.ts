@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from "react";
 import type { UTCTimestamp, Time } from "lightweight-charts";
+import { fmtDate } from "@/lib/format";
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 
@@ -53,28 +54,35 @@ const ET_FMT = new Intl.DateTimeFormat("en-US", {
   year: "numeric", month: "2-digit", day: "2-digit",
   hour: "2-digit", minute: "2-digit",
 });
-export const ET_TIME_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", hour12: false });
-/** HH:MM:SS New York — fills carry seconds (PropReports), bars do not. */
-export const ET_TIME_SEC_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-export const ET_DAY_FMT = new Intl.DateTimeFormat("ru-RU", { timeZone: "America/New_York", day: "numeric", month: "short" });
+// Display labels follow the UI language (resolved at call time); the zone is always New York.
+const NY = { timeZone: "America/New_York" };
+/** "15:55" (ET). */
+export function fmtEtTime(d: Date): string {
+  return fmtDate(d, "time", NY);
+}
+/** "15 окт." (ET). */
+export function fmtEtDay(d: Date): string {
+  return fmtDate(d, "dayMonth", NY);
+}
 
 export function timeToDate(time: Time): Date | null {
   return typeof time === "number" ? new Date(time * 1000) : null;
 }
 export function fmtEtDateTime(d: Date): string {
-  return `${ET_DAY_FMT.format(d)} ${ET_TIME_FMT.format(d)} ET`;
+  return `${fmtEtDay(d)} ${fmtEtTime(d)} ET`;
 }
 /** "15:55:35" (ET). Accepts a Date, an ISO string or epoch seconds. */
 export function fmtEtTimeSec(v: Date | string | number | null | undefined): string {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);
   if (!d || Number.isNaN(d.getTime())) return "—";
-  return ET_TIME_SEC_FMT.format(d);
+  // HH:MM:SS New York — fills carry seconds (PropReports), bars do not.
+  return fmtDate(d, "timeSeconds", NY);
 }
 /** "15 окт. 15:55:35 ET". */
 export function fmtEtDateTimeSec(v: Date | string | number | null | undefined): string {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);
   if (!d || Number.isNaN(d.getTime())) return "—";
-  return `${ET_DAY_FMT.format(d)} ${ET_TIME_SEC_FMT.format(d)} ET`;
+  return `${fmtEtDay(d)} ${fmtDate(d, "timeSeconds", NY)} ET`;
 }
 
 /**
@@ -457,15 +465,22 @@ export type ChartPrefs = {
   tall: boolean;
 };
 
+/** The whole trading day by default: premarket 4:00 → after-hours 20:00 ET (pre/post on). */
 export const DEFAULT_PREFS: ChartPrefs = {
-  vwap: true, levels: true, rLevels: true, volume: true, adds: false, extended: false, daysBack: 0, tall: false,
+  vwap: true, levels: true, rLevels: true, volume: true, adds: false, extended: true, daysBack: 0, tall: false,
 };
-const PREFS_KEY = "trade-chart-prefs-v2";
+const PREFS_KEY = "trade-chart-prefs-v3";
+/** v2 saved `extended: false` for everyone (the old default); v3 keeps the other choices and starts on the full day. */
+const PREFS_KEY_V2 = "trade-chart-prefs-v2";
 
 export function loadPrefs(): ChartPrefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    if (!raw) return DEFAULT_PREFS;
+    if (!raw) {
+      const old = localStorage.getItem(PREFS_KEY_V2);
+      const p = old ? JSON.parse(old) : null;
+      return { ...DEFAULT_PREFS, ...(p && typeof p === "object" ? p : {}), extended: true };
+    }
     const p = JSON.parse(raw);
     return { ...DEFAULT_PREFS, ...(p && typeof p === "object" ? p : {}) };
   } catch {
@@ -476,15 +491,3 @@ export function savePrefs(p: ChartPrefs) {
   try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* storage unavailable */ }
 }
 
-export function fmtPrice(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n >= 1000 ? n.toFixed(0) : n >= 10 ? n.toFixed(2) : n.toFixed(n < 1 ? 4 : 2);
-}
-
-export function fmtVol(v: number): string {
-  if (!Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(2)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(1)}K`;
-  return String(Math.round(v));
-}

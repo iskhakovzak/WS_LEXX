@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildQuickRows, defaultTier, matchesSearch, tradesWord, undoSteps, type QuickSetup } from "./quick-add-logic";
+import { buildQuickRows, defaultTier, matchesSearch, undoSteps, type QuickSetup } from "./quick-add-logic";
 
 const S = (id: number, name: string, extra: Partial<QuickSetup> = {}): QuickSetup => ({
   id, name, folder: null, space: "office", mine: false, shared: false, owner: null, canAddExamples: true, setupType: null, tags: null, ...extra,
@@ -63,11 +63,5 @@ describe("quick add: undo", () => {
   });
   it("offers nothing on an older API that does not report what it did", () => {
     expect(undoSteps({ examples: [{ id: 1, tradeId: 2 }], linked: 1 })).toEqual([]);
-  });
-});
-
-describe("plural", () => {
-  it("сделка / сделки / сделок", () => {
-    expect([1, 2, 5, 11, 21, 22, 25, 112].map(tradesWord)).toEqual(["сделка", "сделки", "сделок", "сделок", "сделка", "сделки", "сделок", "сделок"]);
   });
 });

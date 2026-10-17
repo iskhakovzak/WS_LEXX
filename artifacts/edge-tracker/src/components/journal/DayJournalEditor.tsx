@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { useDayReport } from "@/components/day-report/api";
@@ -21,7 +21,9 @@ import {
   type JournalEntry, type StorageMode, JournalConflict, emptyEntry, hasReview, isEntryEmpty, useJournalRange, useSaveJournalDay,
 } from "./use-journal-days";
 import type { RuleViolation } from "./DayTrades";
-import { fmtDayShort, plural, stepWeekday } from "./utils";
+import { stepWeekday } from "./utils";
+import { fmtDate, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export const MOOD_LABELS = ["Тильт", "Плохо", "Ровно", "Хорошо", "В потоке"] as const;
 export const DISCIPLINE_LABELS = ["Хаос", "Слабо", "Средне", "Хорошо", "Идеально"] as const;
@@ -129,7 +131,7 @@ export function DayJournalEditor({
             setStatus({ kind: "saved", at: new Date() });
             setFromLegacy(false);
           }
-          if (!quiet) toast({ title: "Дневник сохранён", description: fmtDayShort(e.date) });
+          if (!quiet) toast({ title: "Дневник сохранён", description: fmtDate(e.date, "dayMonth") });
         },
         onError: (err) => {
           if (err instanceof JournalConflict) {
@@ -215,8 +217,8 @@ export function DayJournalEditor({
     (out) => {
       const s = out.streaks;
       toast({
-        title: `День ${fmtDayShort(date)} закрыт`,
-        description: `Разбор отправлен куратору.${s.closedStreak > 1 ? ` Серия: ${s.closedStreak} ${plural(s.closedStreak, "день", "дня", "дней")} подряд.` : ""}`,
+        title: `День ${fmtDate(date, "dayMonth")} закрыт`,
+        description: `Разбор отправлен куратору.${s.closedStreak > 1 ? ` Серия: ${commonI18n.t("units.days", { count: s.closedStreak })} подряд.` : ""}`,
       });
     },
   );
@@ -247,7 +249,7 @@ export function DayJournalEditor({
           const n = err.body?.missing?.length ?? 0;
           toast({
             title: "День не закрыт",
-            description: err.status === 422 && n ? `У ${n} ${plural(n, "сделки", "сделок", "сделок")} нет сетапа или грейда — отметьте их в разборе по сделкам.` : err.message,
+            description: err.status === 422 && n ? `У ${n} ${pluralRu(n, "сделки", "сделок", "сделок")} нет сетапа или грейда — отметьте их в разборе по сделкам.` : err.message,
             variant: "destructive",
           });
         },
@@ -375,7 +377,7 @@ export function DayJournalEditor({
                 )}
               </Step>
 
-              <Step n={4} title={`Фокус на завтра · ${fmtDayShort(nextDate)}`}>
+              <Step n={4} title={`Фокус на завтра · ${fmtDate(nextDate, "dayMonth")}`}>
                 <TomorrowFocus
                   key={`${trader}|${nextDate}`}
                   trader={trader}
@@ -561,7 +563,7 @@ function TomorrowFocus({
           </ul>
         </div>
       )}
-      <p className="text-2xs text-muted-foreground">Сохранится как план на {fmtDayShort(nextDate)} — утром он будет первым в дневнике.</p>
+      <p className="text-2xs text-muted-foreground">Сохранится как план на {fmtDate(nextDate, "dayMonth")} — утром он будет первым в дневнике.</p>
     </div>
   );
 }
@@ -573,7 +575,7 @@ function CuratorFeedback({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
         <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
         <span className="font-semibold">Отзыв куратора · {day.reviewedBy}</span>
         <Pill tone="accent">оценка {day.curatorScore ?? "—"}/5</Pill>
-        {day.reviewedAt && <span className="text-muted-foreground">{new Date(day.reviewedAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>}
+        {day.reviewedAt && <span className="text-muted-foreground">{fmtDate(day.reviewedAt, "dateTime")}</span>}
       </div>
       {day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{day.curatorComment}</p>}
     </section>
@@ -619,7 +621,7 @@ function CloseBar({
       {blocking.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs">
           <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden="true" />
-          У {blocking.length} {plural(blocking.length, "сделки", "сделок", "сделок")} нет сетапа или грейда:
+          У {blocking.length} {pluralRu(blocking.length, "сделки", "сделок", "сделок")} нет сетапа или грейда:
           {blocking.map((m) => <span key={m.tradeId} className="font-medium">{m.ticker}</span>)}
         </p>
       )}
@@ -627,7 +629,7 @@ function CloseBar({
         <span className="text-xs text-muted-foreground tabular-nums">Заполнено {progress}/5</span>
         {untaggedIds.length > 0 && (
           <Link href={links.trades({ ids: untaggedIds })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            у {untaggedIds.length} {plural(untaggedIds.length, "сделки", "сделок", "сделок")} нет сетапа — отметить<ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+            у {untaggedIds.length} {pluralRu(untaggedIds.length, "сделки", "сделок", "сделок")} нет сетапа — отметить<ArrowUpRight className="h-3 w-3" aria-hidden="true" />
           </Link>
         )}
         <span className="ml-auto flex flex-wrap items-center gap-2">
@@ -777,7 +779,7 @@ function SaveIndicator({ status, mode, editable, onRetry }: { status: SaveState;
       {status.kind === "saved" && (
         <span className="inline-flex items-center gap-1 text-up">
           <Check className="h-3.5 w-3.5" aria-hidden="true" />
-          Сохранено {status.at.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}
+          Сохранено {fmtDate(status.at, "time")}
         </span>
       )}
       {status.kind === "error" && (
@@ -808,11 +810,8 @@ function MorningCheckin({ trader, date }: { trader: string; date: string }) {
     queryKey: ["journal-checkin", trader, date],
     enabled: !!trader,
     staleTime: 60_000,
-    queryFn: async (): Promise<CheckinRow> => {
-      const res = await fetch(apiUrl(`/api/emotional-state/by-date?userId=${encodeURIComponent(trader)}&date=${date}`));
-      if (!res.ok) return null;
-      return (await res.json()) as CheckinRow;
-    },
+    queryFn: ({ signal }): Promise<CheckinRow> =>
+      http.get<CheckinRow>("/api/emotional-state/by-date", { query: { userId: trader, date }, signal }).catch(() => null),
   });
   if (!data) return null;
   const flags = CHECKIN_FLAGS.filter((f) => data[f.key] === true);

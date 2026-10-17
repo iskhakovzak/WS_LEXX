@@ -29,6 +29,8 @@ import { round2 } from "./csv";
 import { applyFeeSettings, type DetectedFeeColumn } from "./fees";
 import { getSettings, setSetting } from "./settings";
 import type { RoundTrip } from "./types";
+import { normResult } from "../tradeMath";
+import { emitJobEvent } from "../../jobs/registry";
 
 export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict" | "skip";
 
@@ -161,7 +163,8 @@ function brokerFields(t: RoundTrip) {
     qty: t.qty,
     fees: t.totalFees,
     pnl: t.grossPnl,
-    result: t.result,
+    // canonical code on write (win / loss / be / open): the parsers say "breakeven", the DB stores "be"
+    result: normResult(t.result) ?? t.result,
     session: t.session,
     horizon: t.horizon,
     exitDate: t.exitDate,
@@ -559,6 +562,14 @@ export async function applySync(plan: SyncPlan, opts: ApplyOptions): Promise<Syn
       void import("../../routes/academy-path").then(({ refreshChallenges }) => refreshChallenges([...traders]))
         .catch((e) => logger.warn({ err: e instanceof Error ? e.message : String(e) }, "propreports: challenge refresh failed"));
     }
+  }
+  // Jobs listening to "propreports.synced" (src/jobs/registry.ts) run after every recorded sync that did not fail outright.
+  if (runId && (!res.errors || res.inserted + res.updated > 0)) {
+    const changedTraders = [...new Set(plan.items.filter((it) => (it.action === "insert" || it.action === "update" || it.action === "adopt") && it.trader).map((it) => it.trader as string))];
+    emitJobEvent("propreports.synced", {
+      runId, source: opts.source, dateFrom: opts.dateFrom ?? plan.dateFrom ?? null, dateTo: opts.dateTo ?? plan.dateTo ?? null,
+      traders: changedTraders, inserted: res.inserted, updated: res.updated, changed: res.inserted + res.updated > 0,
+    });
   }
   return res;
 }

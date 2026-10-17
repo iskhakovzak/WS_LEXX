@@ -40,14 +40,14 @@ import { useToast } from "@/hooks/use-toast";
 import { addDays } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { curatorKeys, reassignCurator, useTopPatterns, type TraderSignal } from "./api";
-import { riskTone, shortDate, sortTraders, usd, type TraderSort } from "./curator-math";
+import { riskTone, sortTraders, type TraderSort } from "./curator-math";
 import {
   ALL_GROUPS, CSV_HEAD, DEFAULT_FILTERS, GROUP_SORT, NO_CURATOR, activeFilterCount, applyFilters, breachesWeek, buildGroups, csvRow,
   daysSinceTrade, groupTotals, isIdle, isRiskNow, pendingReviews, searchTraders, tradersOf,
   type GroupFilters, type GroupKey, type GroupTotals, type SearchMark,
 } from "./group-model";
 import { TraderCard } from "./trader-card";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtUsd, pluralRu } from "@/lib/format";
 
 // ── copy (one place, for the i18n extraction) ────────────────────────────────
 const T = {
@@ -395,7 +395,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
 // ── totals ──────────────────────────────────────────────────────────────────
 
 function money(v: number | null) {
-  return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground")}>{usd(v)}</span>;
+  return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground")}>{fmtUsd(v, { signed: true, decimals: 0 })}</span>;
 }
 
 function TotalsInline({ t, idleDays }: { t: GroupTotals; idleDays: number }) {
@@ -585,9 +585,9 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
       <td className="whitespace-nowrap text-right tabular-nums">
         {pend ? <Link href={s.nextAction.kind === "eod_review" || s.nextAction.kind === "weekly_review" ? s.nextAction.href : `/curator?trader=${enc}&tab=journal`} className="text-primary hover:underline">{pend}</Link> : <span className="text-muted-foreground">0</span>}
       </td>
-      <td className="whitespace-nowrap text-right text-xs" title={[s.lastActivityAt ? `Активность: ${shortDate(s.lastActivityAt.slice(0, 10))}` : null, s.lastTradeDate ? `Последняя сделка: ${shortDate(s.lastTradeDate)}` : null].filter(Boolean).join(" · ") || undefined}>
+      <td className="whitespace-nowrap text-right text-xs" title={[s.lastActivityAt ? `Активность: ${fmtDate(s.lastActivityAt.slice(0, 10), "dayMonth")}` : null, s.lastTradeDate ? `Последняя сделка: ${fmtDate(s.lastTradeDate, "dayMonth")}` : null].filter(Boolean).join(" · ") || undefined}>
         <span className={cn("tabular-nums", actDays == null ? "text-muted-foreground" : actDays >= 5 ? "text-warn" : "text-foreground")}>{actDays == null ? T.never : T.daysAgo(actDays)}</span>
-        {days != null && days !== actDays && <div className="text-2xs tabular-nums text-muted-foreground">сделка {shortDate(s.lastTradeDate)}</div>}
+        {days != null && days !== actDays && <div className="text-2xs tabular-nums text-muted-foreground">сделка {fmtDate(s.lastTradeDate, "dayMonth")}</div>}
       </td>
       <td className="whitespace-nowrap">
         <span title={s.risk.message || undefined}><Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : T.noLimits}</Pill></span>

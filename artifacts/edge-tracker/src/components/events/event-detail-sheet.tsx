@@ -9,12 +9,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, StatRow, TermLabel, toneOf, toneText } from "@/components/ds";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { fmtCompact, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import {
-  dayOf, displayTags, fmtDay, fmtPct, getSession, eventTone, splitTickers, typeMeta,
+  dayOf, displayTags, fmtDay, getSession, eventTone, splitTickers, typeMeta,
 } from "./event-meta";
 import { MoveValue, ReactionPill, SessionPill, TagChips, TypePill } from "./event-pills";
 
@@ -24,14 +27,18 @@ type ReactionResult =
   | { kind: "none"; reason: string };
 
 async function fetchReaction(ticker: string, date: string): Promise<ReactionResult> {
-  const r = await fetch(`${BASE}/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(date)}&interval=1d`);
-  if (r.status === 422) {
-    const j = await r.json().catch(() => ({}));
-    return { kind: "none", reason: j?.reason === "future" ? "Событие ещё впереди — данных нет" : j?.reason === "weekend" ? "Выходной — торгов не было" : "Нет торгов в этот день" };
+  let j: { candles: Candle[]; prevClose: number | null };
+  try {
+    j = await http.get<{ candles: Candle[]; prevClose: number | null }>(`/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(date)}&interval=1d`);
+  } catch (e) {
+    if (!(e instanceof ApiError)) throw e;
+    if (e.status === 422) {
+      const reason = e.field<string>("reason");
+      return { kind: "none", reason: reason === "future" ? "Событие ещё впереди — данных нет" : reason === "weekend" ? "Выходной — торгов не было" : "Нет торгов в этот день" };
+    }
+    if (e.status === 404 || e.status === 400) return { kind: "none", reason: "Нет рыночных данных по тикеру" };
+    throw e;
   }
-  if (r.status === 404 || r.status === 400) return { kind: "none", reason: "Нет рыночных данных по тикеру" };
-  if (!r.ok) throw new Error(`HTTP ${r.status}`);
-  const j = (await r.json()) as { candles: Candle[]; prevClose: number | null };
   const cs = j.candles ?? [];
   if (!cs.length) return { kind: "none", reason: "Нет рыночных данных по тикеру" };
   const o = cs[0].o, c = cs[cs.length - 1].c;
@@ -58,19 +65,6 @@ type LinkedTrade = {
 type TradeStats = { n: number; wins: number; losses: number; be: number; open: number; winRate: number | null; sumR: number; grossPnl: number; fees: number; netPnl: number; byAccount: { account: string; n: number; grossPnl: number; fees: number; netPnl: number }[] };
 type TradesPayload = { scope: string | null; trades: LinkedTrade[]; stats: TradeStats };
 
-function fmtUsd(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
-  return n < 0 ? `−$${s}` : `$${s}`;
-}
-
-function fmtVol(v: number) {
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
-}
-
 function Section({ icon: Icon, title, actions, children }: { icon: React.ElementType; title: string; actions?: React.ReactNode; children: React.ReactNode }) {
   return (
     <section className="glass-panel rounded-2xl p-4">
@@ -88,7 +82,7 @@ function Metric({ label, value }: { label: string; value: number | null }) {
   return (
     <div className="rounded-xl bg-[var(--glass-bg)] p-3">
       <div className="micro-label">{label}</div>
-      <div className={cn("mt-1 text-lg font-semibold tabular-nums", toneText(toneOf(value)))}>{fmtPct(value)}</div>
+      <div className={cn("mt-1 text-lg font-semibold tabular-nums", toneText(toneOf(value)))}>{fmtPct(value, 1)}</div>
     </div>
   );
 }
@@ -150,7 +144,7 @@ function ReactionBlock({ event, onFill, filling }: { event: MarketEvent; onFill:
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             <span className="tabular-nums">{ticker} · закрытие {q.data.close.toFixed(2)}{q.data.prevClose ? ` · вчера ${q.data.prevClose.toFixed(2)}` : ""}</span>
-            {q.data.volume > 0 && <span className="tabular-nums">объём {fmtVol(q.data.volume)}</span>}
+            {q.data.volume > 0 && <span className="tabular-nums">объём {fmtCompact(q.data.volume)}</span>}
             {logged == null && q.data.day != null && (
               <Button size="sm" variant="outline" className="ml-auto" disabled={filling} onClick={() => { const d = q.data; if (d?.kind === "ok" && d.day != null) onFill(d.day, d.gap); }}>
                 <Wand2 /> {filling ? "Сохраняем…" : "Записать итог из котировок"}
@@ -207,21 +201,14 @@ function TradesBlock({ event }: { event: MarketEvent }) {
   const { toast } = useToast();
   const q = useQuery({
     queryKey: ["event-trades", event.id],
-    queryFn: async (): Promise<TradesPayload | null> => {
-      const r = await fetch(`${BASE}/api/events/${event.id}/trades`);
-      if (r.status === 404) return null;
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return (await r.json()) as TradesPayload;
-    },
-    staleTime: 60 * 1000,
+    queryFn: ({ signal }): Promise<TradesPayload | null> =>
+      http.get<TradesPayload>(`/api/events/${event.id}/trades`, { signal }).catch(nullIfMissing),
+    staleTime: STALE.short,
     retry: false,
   });
   const link = useMutation({
     mutationFn: async ({ tradeId, unlink }: { tradeId: number; unlink: boolean }) => {
-      const r = await fetch(`${BASE}/api/events/${event.id}/link-trade`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tradeId, unlink }),
-      });
-      if (!r.ok) { const j = await r.json().catch(() => ({})); throw new Error(j?.error ?? `HTTP ${r.status}`); }
+      await http.post(`/api/events/${event.id}/link-trade`, { tradeId, unlink });
     },
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["event-trades", event.id] }); void qc.invalidateQueries({ queryKey: ["events-today"] }); },
     onError: (e) => toast({ title: "Не удалось изменить привязку", description: String((e as Error).message), variant: "destructive" }),
@@ -245,8 +232,8 @@ function TradesBlock({ event }: { event: MarketEvent }) {
           {t.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.setup}</span> : <span className="flex-1" />}
           {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{t.trader}</span>}
           {t.brokerAccount && <span className="hidden text-2xs text-muted-foreground lg:inline">{t.brokerAccount}</span>}
-          {r != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(r)))}>{r > 0 ? "+" : ""}{r.toFixed(1)}R</span>}
-          {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl)} · комиссии ${fmtUsd(t.fees)}`}>{fmtUsd(t.netPnl)}</span>}
+          {r != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(r)))}>{fmtR(r, 1)}</span>}
+          {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl, { decimals: 0 })} · комиссии ${fmtUsd(t.fees, { decimals: 0 })}`}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}
           <Pill tone={tone} className="text-2xs">{t.result ?? "open"}</Pill>
           <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         </Link>
@@ -297,19 +284,19 @@ function TradesBlock({ event }: { event: MarketEvent }) {
               </div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5">
                 <div className="micro-label">ΣR</div>
-                <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.sumR)))}>{stats.sumR > 0 ? "+" : ""}{stats.sumR.toFixed(1)}R</div>
+                <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.sumR)))}>{fmtR(stats.sumR, 1)}</div>
               </div>
-              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={`брутто ${fmtUsd(stats.grossPnl)} · комиссии ${fmtUsd(stats.fees)}`}>
+              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={`брутто ${fmtUsd(stats.grossPnl, { decimals: 0 })} · комиссии ${fmtUsd(stats.fees, { decimals: 0 })}`}>
                 <div className="micro-label">P&L нетто</div>
-                <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.netPnl)))}>{fmtUsd(stats.netPnl)}</div>
-                <div className="text-2xs text-muted-foreground">брутто {fmtUsd(stats.grossPnl)}</div>
+                <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.netPnl)))}>{fmtUsd(stats.netPnl, { decimals: 0 })}</div>
+                <div className="text-2xs text-muted-foreground">брутто {fmtUsd(stats.grossPnl, { decimals: 0 })}</div>
               </div>
             </div>
           )}
           {stats && stats.byAccount.length > 1 && (
             <div className="mb-2 flex flex-wrap gap-1.5">
               {stats.byAccount.map((a) => (
-                <Pill key={a.account} tone={toneOf(a.netPnl)} className="text-2xs">{a.account}: {fmtUsd(a.netPnl)} · {a.n}</Pill>
+                <Pill key={a.account} tone={toneOf(a.netPnl)} className="text-2xs">{a.account}: {fmtUsd(a.netPnl, { decimals: 0 })} · {a.n}</Pill>
               ))}
             </div>
           )}
@@ -377,7 +364,7 @@ export function EventDetailSheet({
                     name: `${e.ticker} ${typeMeta(e.eventType).label} (${dayOf(e)})`,
                     setupType: /earn/i.test(e.eventType) ? "Earnings Gap Up" : /momentum/i.test(e.eventType) ? "Intraday Momentum" : /ipo/i.test(e.eventType) ? "IPO Day Trade" : undefined,
                     conditions: e.headline || undefined,
-                    notes: [e.summary, e.reaction ? `Реакция: ${e.reaction}` : "", e.percentMove != null ? `Движение: ${fmtPct(e.percentMove)}` : "", e.volume ? `Объём: ${e.volume}` : ""].filter(Boolean).join("\n") || undefined,
+                    notes: [e.summary, e.reaction ? `Реакция: ${e.reaction}` : "", e.percentMove != null ? `Движение: ${fmtPct(e.percentMove, 1)}` : "", e.volume ? `Объём: ${e.volume}` : ""].filter(Boolean).join("\n") || undefined,
                     screenshotUrl: e.screenshotUrl || undefined,
                     screenshotNotes: e.screenshotNotes || undefined,
                     tags: displayTags(e.tags).join(", ") || undefined,

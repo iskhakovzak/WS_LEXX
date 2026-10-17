@@ -13,8 +13,8 @@ import { winrateTone } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { notLiveMessage, useSetupStats } from "./api";
 import { DocSection, REDACTED_AGG_HINT, RedactedHint } from "./setup-bits";
-import { HORIZON_LABEL, ddmm, fmtPct, fmtR, fmtUsd, moneyTone, type SetupSummary, type SlotStat, type UsdStats } from "./model";
-import { pluralRu } from "@/components/rules/constants";
+import { HORIZON_LABEL, moneyTone, type SetupSummary, type SlotStat, type UsdStats } from "./model";
+import { fmtDate, fmtR, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
 
 const slotLabel = (s: string) => (s === "pre" ? "Премаркет" : s === "post" ? "После закрытия" : `${s}–${endOf(s)}`);
 function endOf(s: string) {
@@ -44,9 +44,9 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         <div className="flex flex-col gap-[var(--grid-gap)]">
           <StatGrid cols={4}>
             <StatCard label="Сделок" value={summary.tradeCount} hint={`${summary.wins}W · ${summary.losses}L`} />
-            <StatCard label="Win rate" value={fmtPct(summary.winrate)} hint="W / (W + L)" />
-            <StatCard label="P&L нетто" value={fmtUsd(summary.netPnl)} tone={moneyTone(summary.netPnl)} />
-            <StatCard label="Ожидание, $" value={fmtUsd(summary.netPnl != null && summary.tradeCount ? summary.netPnl / summary.tradeCount : null)} tone={moneyTone(summary.netPnl)} hint="на сделку" />
+            <StatCard label="Win rate" value={fmtRate(summary.winrate)} hint="W / (W + L)" />
+            <StatCard label="P&L нетто" value={fmtUsd(summary.netPnl, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} />
+            <StatCard label="Ожидание, $" value={fmtUsd(summary.netPnl != null && summary.tradeCount ? summary.netPnl / summary.tradeCount : null, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} hint="на сделку" />
           </StatGrid>
           {summary.redacted && <RedactedHint text={REDACTED_AGG_HINT} />}
           <p className="text-xs text-muted-foreground">Лучшие часы, кривая и разбивка по тикерам появятся после перезапуска API.</p>
@@ -101,26 +101,26 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
       {redacted ? (
         <StatGrid cols={4}>
           <StatCard label="Средний R" value={fmtR(s.edge?.avgR)} tone={curveTone} hint={`${s.count} ${s.count < 10 ? "· мало для выводов" : "сделок"}`} spark={curve.length > 1 ? curve : undefined} term="avgR" />
-          <StatCard label="Win rate" value={fmtPct(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
+          <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
           <StatCard label="Ожидание" value={fmtR(expR)} tone={moneyTone(expR)} hint={hasR ? `R на сделку · R есть у ${s.edge.rCount}` : "нет R — нужен стоп"} term="expectancy" />
           <StatCard label="PF (R)" value={s.edge?.profitFactor == null ? "—" : s.edge.profitFactor.toFixed(2)} hint="ΣR⁺ / |ΣR⁻|" term="pf" />
         </StatGrid>
       ) : (
       <StatGrid cols={4}>
-        <StatCard label="P&L нетто" value={fmtUsd(u.net)} tone={moneyTone(u.net)} hint={`${u.n} ${small ? "· мало для выводов" : "сделок"}`} spark={curve.length > 1 ? curve : undefined} />
-        <StatCard label="Win rate" value={fmtPct(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
-        <StatCard label="Ожидание" value={fmtUsd(u.expectancy, 2)} tone={moneyTone(u.expectancy)} hint="$ на сделку" term="expectancy" />
+        <StatCard label="P&L нетто" value={fmtUsd(u.net, { signed: true, decimals: 0 })} tone={moneyTone(u.net)} hint={`${u.n} ${small ? "· мало для выводов" : "сделок"}`} spark={curve.length > 1 ? curve : undefined} />
+        <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
+        <StatCard label="Ожидание" value={fmtUsd(u.expectancy, { signed: true, decimals: 2 })} tone={moneyTone(u.expectancy)} hint="$ на сделку" term="expectancy" />
         <StatCard
           label="Payoff"
           value={u.payoff == null ? "—" : u.payoff.toFixed(2)}
-          hint={`ср. плюс ${fmtUsd(u.avgWin)} · минус ${fmtUsd(u.avgLoss)}`}
+          hint={`ср. плюс ${fmtUsd(u.avgWin, { signed: true, decimals: 0 })} · минус ${fmtUsd(u.avgLoss, { signed: true, decimals: 0 })}`}
         />
       </StatGrid>
       )}
 
       {s.recent.n >= 5 && u.n >= 25 && s.recent.expectancy != null && u.expectancy != null && s.recent.expectancy < u.expectancy - Math.abs(u.expectancy) && (
         <p className="rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-sm text-[hsl(var(--chart-3))]">
-          Edge проседает: последние {s.recent.n} {pluralRu(s.recent.n, "сделка", "сделки", "сделок")} дают {fmtUsd(s.recent.expectancy, 2)} на сделку против {fmtUsd(u.expectancy, 2)} за всю историю.
+          Edge проседает: последние {s.recent.n} {pluralRu(s.recent.n, "сделка", "сделки", "сделок")} дают {fmtUsd(s.recent.expectancy, { signed: true, decimals: 2 })} на сделку против {fmtUsd(u.expectancy, { signed: true, decimals: 2 })} за всю историю.
         </p>
       )}
 
@@ -145,7 +145,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
           )}
         </DocSection>
 
-        <DocSection title={redacted ? "Кривая R по дням" : "Кривая P&L по дням"} icon={BarChart3} actions={s.firstDate ? <span className="text-xs tabular-nums text-muted-foreground">{ddmm(s.firstDate)} — {ddmm(s.lastDate)}</span> : undefined}>
+        <DocSection title={redacted ? "Кривая R по дням" : "Кривая P&L по дням"} icon={BarChart3} actions={s.firstDate ? <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(s.firstDate, "dayMonthNumeric")} — {fmtDate(s.lastDate, "dayMonthNumeric")}</span> : undefined}>
           {curve.length > 1 ? (
             <Sparkline data={curve} width={560} height={140} tone={curveTone} baseline={0} className="h-36 w-full" ariaLabel={redacted ? "Накопленный R" : "Накопленный P&L нетто"} />
           ) : (
@@ -153,9 +153,9 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
           )}
           {!redacted && (
           <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-            <Mini label="Лучшая" value={fmtUsd(u.best)} tone={moneyTone(u.best)} />
-            <Mini label="Худшая" value={fmtUsd(u.worst)} tone={moneyTone(u.worst)} />
-            <Mini label="Просадка" value={s.edge?.maxDrawdown != null ? fmtUsd(-Math.abs(s.edge.maxDrawdown)) : "—"} tone={s.edge?.maxDrawdown ? "down" : "neutral"} />
+            <Mini label="Лучшая" value={fmtUsd(u.best, { signed: true, decimals: 0 })} tone={moneyTone(u.best)} />
+            <Mini label="Худшая" value={fmtUsd(u.worst, { signed: true, decimals: 0 })} tone={moneyTone(u.worst)} />
+            <Mini label="Просадка" value={s.edge?.maxDrawdown != null ? fmtUsd(-Math.abs(s.edge.maxDrawdown), { signed: true, decimals: 0 }) : "—"} tone={s.edge?.maxDrawdown ? "down" : "neutral"} />
           </dl>
           )}
         </DocSection>
@@ -197,8 +197,8 @@ function SlotRow({ sl, maxN, best }: { sl: SlotStat; maxN: number; best: boolean
       <span className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--border))]" aria-hidden="true">
         <span className={cn("block h-full rounded-full", sl.net == null ? "bg-[hsl(var(--muted-foreground)/0.45)]" : sl.net >= 0 ? "bg-up" : "bg-down")} style={{ width: `${(sl.n / maxN) * 100}%` }} />
       </span>
-      <span className="text-right text-xs tabular-nums text-muted-foreground" title="Сделок · win rate">{sl.n} · {fmtPct(sl.winrate)}</span>
-      <span className={cn("text-right tabular-nums", toneText(moneyTone(sl.net)))}>{fmtUsd(sl.net)}</span>
+      <span className="text-right text-xs tabular-nums text-muted-foreground" title="Сделок · win rate">{sl.n} · {fmtRate(sl.winrate)}</span>
+      <span className={cn("text-right tabular-nums", toneText(moneyTone(sl.net)))}>{fmtUsd(sl.net, { signed: true, decimals: 0 })}</span>
     </li>
   );
 }
@@ -234,9 +234,9 @@ function UsdTable({ rows: data, head }: { rows: UsdRow[]; head: string }) {
             <tr key={key} className="border-t border-border/40">
               <td className="py-1.5 font-medium text-foreground">{label}</td>
               <td className="py-1.5 text-right tabular-nums text-muted-foreground">{u.n}</td>
-              <td className="py-1.5 text-right tabular-nums">{fmtPct(u.winrate)}</td>
-              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.expectancy)))}>{fmtUsd(u.expectancy, 2)}</td>
-              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.net)))}>{fmtUsd(u.net)}</td>
+              <td className="py-1.5 text-right tabular-nums">{fmtRate(u.winrate)}</td>
+              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.expectancy)))}>{fmtUsd(u.expectancy, { signed: true, decimals: 2 })}</td>
+              <td className={cn("py-1.5 text-right tabular-nums", toneText(moneyTone(u.net)))}>{fmtUsd(u.net, { signed: true, decimals: 0 })}</td>
             </tr>
           ))}
         </tbody>

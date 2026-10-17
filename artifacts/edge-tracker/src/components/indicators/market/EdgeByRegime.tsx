@@ -3,9 +3,10 @@ import { Info, ShieldCheck, TrendingDown, TrendingUp } from "lucide-react";
 import { EmptyState, Panel, Pill, Segmented, usePersistentState } from "@/components/ds";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { MIN_DAYS, type BucketStats, type Dimension, type IndicatorDef } from "./engine";
-import { daysWord, pctText, toneOfMoney, usd } from "./format";
+import { toneOfMoney, usd } from "./format";
+import { fmtRate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type DimResult = { dim: Pick<Dimension, "id" | "label" | "explain" | "when">; buckets: BucketStats[]; today: string | null; todayNote?: string };
 
@@ -81,7 +82,7 @@ function DimTable({ r, max }: { r: DimResult; max: number }) {
               <span role="cell" className="text-right text-muted-foreground">{b.days}</span>
               <span role="cell">{b.days ? <NetBar v={b.netPerDay} max={max} dim={small} /> : null}</span>
               <span role="cell" className={cn("text-right font-medium", b.days ? toneText(b.netPerDay) : "text-muted-foreground")}>{b.days ? usd(b.netPerDay) : "—"}</span>
-              <span role="cell" className="text-right text-muted-foreground">{pctText(b.winRate)}</span>
+              <span role="cell" className="text-right text-muted-foreground">{fmtRate(b.winRate)}</span>
               <span role="cell" className="text-right text-muted-foreground">{b.perTrade != null ? usd(b.perTrade) : "—"}</span>
             </div>
           );
@@ -120,7 +121,7 @@ function FindingRow({ f, kind }: { f: Finding; kind: "good" | "bad" }) {
         </p>
         <p className="text-xs text-muted-foreground tabular-nums">
           <span className={cn("font-medium", kind === "good" ? "text-up" : "text-down")}>{usd(f.b.netPerDay)} в день</span>
-          {" · "}{daysWord(f.b.days)} · WR {pctText(f.b.winRate)} · {rel}
+          {" · "}{commonI18n.t("units.days", { count: f.b.days })} · WR {fmtRate(f.b.winRate)} · {rel}
         </p>
       </div>
     </li>
@@ -146,7 +147,7 @@ export function EdgeByRegime({
   return (
     <Panel
       title="Где ты зарабатываешь"
-      description={`Твой нетто-результат по дням с разным рынком · ${daysWord(totalDays)}, ${totalTrades} ${pluralRu(totalTrades, "сделка", "сделки", "сделок")} · в среднем ${usd(base.netPerDay)} в день`}
+      description={`Твой нетто-результат по дням с разным рынком · ${commonI18n.t("units.days", { count: totalDays })}, ${commonI18n.t("units.trades", { count: totalTrades })} · в среднем ${usd(base.netPerDay)} в день`}
       actions={
         <Segmented
           size="sm"

@@ -3,13 +3,16 @@ import { AlertTriangle, CheckCircle2, MessageSquareText } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { HORIZON_LABEL, fmtDayShort, fmtMoney, fmtR, plural } from "@/components/journal/utils";
+import { HORIZON_LABEL } from "@/components/journal/utils";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import type { JournalEntry } from "@/components/journal/use-journal-days";
 import { EMOTION_TAGS } from "@/components/journal/DayJournalEditor";
 import {
   DISCIPLINE_LABELS, MISTAKE_TAGS, MOOD_LABELS, gradeTone, type BrokerDaily, type EodDayPayload, type EodTrade, type Totals,
 } from "./eod-api";
 
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 const TRADES_PREVIEW = 12;
 const EMOTIONS = new Set(EMOTION_TAGS);
 
@@ -64,8 +67,8 @@ export function EodDayReadOnly({
       <section className="space-y-2">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
           <span className="micro-label">Сделки · {data.trades.length}</span>
-          {net != null && <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtMoney(net)}</span>}
-          {data.reconcile.journal.fees > 0 && <span className="text-xs tabular-nums text-muted-foreground">комиссии {fmtMoney(-data.reconcile.journal.fees)}</span>}
+          {net != null && <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>}
+          {data.reconcile.journal.fees > 0 && <span className="text-xs tabular-nums text-muted-foreground">комиссии {fmtUsd(-data.reconcile.journal.fees, { signed: true, decimals: "auto" })}</span>}
         </div>
         <ReconcileBlock journal={data.reconcile.journal} broker={broker ?? null} brokerFromTrades={data.reconcile.broker} manualUnmatched={data.reconcile.manualUnmatched} />
         {data.trades.length === 0 ? (
@@ -95,7 +98,7 @@ export function EodDayReadOnly({
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-semibold">{t.ticker}</span>
                     <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>
-                    {t.date !== data.date && <Pill>с {fmtDayShort(t.date)}</Pill>}
+                    {t.date !== data.date && <Pill>с {fmtDate(t.date, "dayMonth")}</Pill>}
                     {p?.thesisValid === true && <Pill tone="up">тезис в силе</Pill>}
                     {p?.thesisValid === false && <Pill tone="down">тезис сломан</Pill>}
                     <span className="ml-auto tabular-nums text-muted-foreground">
@@ -116,7 +119,7 @@ export function EodDayReadOnly({
             <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
             <span className="font-semibold">Куратор {data.day.reviewedBy}</span>
             <Pill tone="accent">оценка {data.day.curatorScore ?? "—"}/5</Pill>
-            <span className="text-muted-foreground">{new Date(data.day.reviewedAt).toLocaleString("ru-RU")}</span>
+            <span className="text-muted-foreground">{fmtDate(data.day.reviewedAt, "shortDateTimeSeconds")}</span>
           </div>
           {data.day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{data.day.curatorComment}</p>}
         </section>
@@ -147,10 +150,10 @@ export function ReconcileBlock({
   return (
     <p className="flex flex-wrap items-center gap-1.5 rounded-xl bg-warn/10 px-3 py-2 text-xs">
       <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden="true" />
-      {!matches && <span>Расхождение с выпиской брокера: <span className="font-semibold tabular-nums">{fmtMoney(diff)}</span> (у брокера {fmtMoney(bNet)}{bTrades != null ? `, ${bTrades} сд.` : ""})</span>}
+      {!matches && <span>Расхождение с выпиской брокера: <span className="font-semibold tabular-nums">{fmtUsd(diff, { signed: true, decimals: "auto" })}</span> (у брокера {fmtUsd(bNet, { signed: true, decimals: "auto" })}{bTrades != null ? `, ${bTrades} сд.` : ""})</span>}
       {manualUnmatched > 0 && (
         <span className="text-muted-foreground">
-          {manualUnmatched} {plural(manualUnmatched, "сделка", "сделки", "сделок")} без пары в выписке брокера — возможен дубль.
+          {commonI18n.t("units.trades", { count: manualUnmatched })} без пары в выписке брокера — возможен дубль.
         </span>
       )}
     </p>
@@ -172,7 +175,7 @@ export function TradeReviewLine({ t, compact }: { t: EodTrade; compact?: boolean
         {t.followedPlan === false && <Pill tone="down">не по плану</Pill>}
         <span className="ml-auto flex items-center gap-2 tabular-nums">
           {t.net != null ? (
-            <span className={cn("font-semibold", toneText(toneOf(t.net)))}>{fmtMoney(t.net)}</span>
+            <span className={cn("font-semibold", toneText(toneOf(t.net)))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</span>
           ) : (
             <span className="text-muted-foreground">{t.resultNorm === "open" ? "открыта" : "—"}</span>
           )}

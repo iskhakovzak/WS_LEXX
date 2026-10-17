@@ -4,7 +4,8 @@ import { EmptyState, Panel, Pill, Segmented, toneOf, toneText } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fmtDayShort, fmtMoney, plural } from "@/components/journal/utils";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
 import { PersonSelect } from "@/components/people/person-select";
@@ -143,9 +144,9 @@ function QueueRow({ it, sla, mode, onOpen }: { it: QueueItem; sla: number; mode:
       >
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-semibold">{it.trader}</span>
-          <span className="tabular-nums text-muted-foreground">{fmtDayShort(it.date)}</span>
-          <span className="tabular-nums">{it.trades} {plural(it.trades, "сделка", "сделки", "сделок")}</span>
-          {it.net != null && <span className={cn("tabular-nums font-medium", toneText(toneOf(it.net)))}>{fmtMoney(it.net)}</span>}
+          <span className="tabular-nums text-muted-foreground">{fmtDate(it.date, "dayMonth")}</span>
+          <span className="tabular-nums">{commonI18n.t("units.trades", { count: it.trades })}</span>
+          {it.net != null && <span className={cn("tabular-nums font-medium", toneText(toneOf(it.net)))}>{fmtUsd(it.net, { signed: true, decimals: "auto" })}</span>}
           {it.discipline != null && (
             <Pill tone={it.discipline >= 4 ? "up" : it.discipline <= 2 ? "down" : "neutral"} title={DISCIPLINE_LABELS[it.discipline - 1]}>дисц. {it.discipline}/5</Pill>
           )}

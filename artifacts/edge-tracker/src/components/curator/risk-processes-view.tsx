@@ -10,9 +10,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import { curatorApi, curatorKeys, useRiskSummary, useRiskTemplates, type RiskSummary, type TemplatesPayload } from "./api";
 import { BreachReviewPanel } from "./breach-review";
-import { shortDate, usd } from "./curator-math";
 import { TemplateDialog } from "./template-dialog";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtUsd, pluralRu } from "@/lib/format";
 
 /**
  * «Риск-процессы»: daily risk summary (GET /api/risk/summary), tier limit templates with bulk apply
@@ -53,12 +52,12 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
   return (
     <>
       <StatGrid cols={6}>
-        <StatCard label="Нетто деска" value={usd(t.pnlNetToday)} tone={toneOf(t.pnlNetToday)} hint={`торгуют ${t.trading} из ${t.traders}`} term="net" />
+        <StatCard label="Нетто деска" value={fmtUsd(t.pnlNetToday, { signed: true, decimals: 0 })} tone={toneOf(t.pnlNetToday)} hint={`торгуют ${t.trading} из ${t.traders}`} term="net" />
         <StatCard label="На стопе" value={s.halted.length} tone={s.halted.length ? "down" : "neutral"} icon={ShieldAlert} hint={s.nearStop.length ? `близко к стопу: ${s.nearStop.length}` : "никто не близко"} />
         <StatCard label="Нарушения" value={s.breachesToday.length} tone={s.breachesToday.length ? "down" : "neutral"} icon={AlertTriangle} hint={`сегодня · ${s.unreviewedBreaches.length ? `без разбора ${s.unreviewedBreaches.length}` : "все разобраны"}`} />
         <StatCard label="Повторные, 7 дн." value={s.repeatBreachers.length} tone={s.repeatBreachers.length ? "warn" : "neutral"} icon={Repeat} hint="→ руководителю" />
-        <StatCard label="Открытый риск" value={usd(t.openRiskUsd, false)} icon={ShieldCheck} hint={`${t.openPositions} ${pluralRu(t.openPositions, "позиция", "позиции", "позиций")}`} term="openRisk" />
-        <StatCard label="Овернайт" value={t.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={t.overnightExposureUsd ? usd(t.overnightExposureUsd, false) : "нет экспозиции"} />
+        <StatCard label="Открытый риск" value={fmtUsd(t.openRiskUsd, { decimals: 0 })} icon={ShieldCheck} hint={`${t.openPositions} ${pluralRu(t.openPositions, "позиция", "позиции", "позиций")}`} term="openRisk" />
+        <StatCard label="Овернайт" value={t.carriedTonight} tone={s.overnight.some((o) => o.allowed === false) ? "down" : "neutral"} icon={Moon} hint={t.overnightExposureUsd ? fmtUsd(t.overnightExposureUsd, { decimals: 0 }) : "нет экспозиции"} />
       </StatGrid>
       {(s.repeatBreachers.length > 0 || s.overnight.length > 0 || s.unreviewedBreaches.length > 0) && (
         <BentoGrid>
@@ -68,14 +67,14 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
                 <li key={`rep-${r.trader}`} className="flex items-center gap-2 text-sm">
                   <Pill tone="warn">Повторное</Pill>
                   <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button>
-                  <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{r.days7} дн. с нарушением за 7 дней: {r.dates.map(shortDate).join(", ")}</span>
+                  <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{r.days7} дн. с нарушением за 7 дней: {r.dates.map((d) => fmtDate(d, "dayMonth")).join(", ")}</span>
                 </li>
               ))}
               {s.unreviewedBreaches.slice(0, 8).map((b) => (
                 <li key={`b-${b.id}`} className="flex items-center gap-2 text-sm">
                   <Pill tone="down" dot>{b.kindLabel}</Pill>
                   <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(b.trader, "risk")}>{b.trader}</button>
-                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{shortDate(b.date)} · нужен разбор</span>
+                  <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(b.date, "dayMonth")} · нужен разбор</span>
                 </li>
               ))}
               {s.repeatBreachers.length === 0 && s.unreviewedBreaches.length === 0 && <li className="text-sm text-muted-foreground">Всё разобрано.</li>}
@@ -89,7 +88,7 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
                 {s.overnight.map((o) => (
                   <li key={o.trader} className="flex items-center gap-2 text-sm">
                     <button type="button" className="w-28 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(o.trader, "risk")}>{o.trader}</button>
-                    <span className="text-xs tabular-nums text-muted-foreground">{o.positions} поз. · {usd(o.exposureUsd, false)}{o.limitUsd != null ? ` из ${usd(o.limitUsd, false)}` : ""}</span>
+                    <span className="text-xs tabular-nums text-muted-foreground">{o.positions} поз. · {fmtUsd(o.exposureUsd, { decimals: 0 })}{o.limitUsd != null ? ` из ${fmtUsd(o.limitUsd, { decimals: 0 })}` : ""}</span>
                     <span className="ml-auto">{o.allowed === false ? <Pill tone="down">Не разрешено</Pill> : o.allowed ? <Pill tone="up">Разрешено</Pill> : <Pill tone="neutral">Лимитов нет</Pill>}</span>
                   </li>
                 ))}
@@ -177,9 +176,9 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                     )}
                     <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button></td>
                     <td className="text-muted-foreground">{r.tierName ?? "—"}</td>
-                    <td className="text-right">{usd(r.limits?.dailyLossLimit, false)}</td>
-                    <td className="text-right">{usd(r.limits?.weeklyLossLimit, false)}</td>
-                    <td className="text-right">{usd(r.limits?.maxDrawdown, false)}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.dailyLossLimit, { decimals: 0 })}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.weeklyLossLimit, { decimals: 0 })}</td>
+                    <td className="text-right">{fmtUsd(r.limits?.maxDrawdown, { decimals: 0 })}</td>
                     <td className="min-w-[10rem] max-w-[20rem]">
                       {!r.hasLimits ? <Pill tone="warn">Лимитов нет</Pill>
                         : !r.tier ? <Pill tone="neutral">Тир не назначен</Pill>
@@ -207,7 +206,7 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                 <span className="ml-auto text-xs tabular-nums text-muted-foreground">{t.traders.filter((r) => r.tier === x.key).length} чел.</span>
               </div>
               <p className="text-xs tabular-nums text-muted-foreground">
-                день {usd(x.dailyLossLimit, false)} · неделя {usd(x.weeklyLossLimit, false)} · просадка {usd(x.maxDrawdown, false)} · {x.allowOvernight ? "овернайт да" : "без овернайта"}
+                день {fmtUsd(x.dailyLossLimit, { decimals: 0 })} · неделя {fmtUsd(x.weeklyLossLimit, { decimals: 0 })} · просадка {fmtUsd(x.maxDrawdown, { decimals: 0 })} · {x.allowOvernight ? "овернайт да" : "без овернайта"}
               </p>
             </li>
           ))}

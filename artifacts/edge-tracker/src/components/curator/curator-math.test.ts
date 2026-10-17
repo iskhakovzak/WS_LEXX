@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { TraderSignal } from "./api";
-import { matchesQuery, profileHref, shortDate, sortTraders, usd, waitLabel, worstUsage } from "./curator-math";
+import { matchesQuery, profileHref, sortTraders, waitLabel, worstUsage } from "./curator-math";
 
 function sig(trader: string, over: Partial<{ priority: number; daily: number | null; weekPnl: number | null; disc: number | null }> = {}): TraderSignal {
   return {
@@ -25,21 +25,11 @@ function sig(trader: string, over: Partial<{ priority: number; daily: number | n
 }
 
 describe("curator-math", () => {
-  it("formats usd with a real minus", () => {
-    expect(usd(1240.4)).toBe("+$1,240");
-    expect(usd(-85)).toBe("−$85");
-    expect(usd(null)).toBe("—");
-    expect(usd(-85, false)).toBe("$85");
-  });
   it("wait labels", () => {
     expect(waitLabel(0.4)).toBe("<1 ч");
     expect(waitLabel(5)).toBe("5 ч");
     expect(waitLabel(28)).toBe("1 д 4 ч");
     expect(waitLabel(48)).toBe("2 д");
-  });
-  it("short date", () => {
-    expect(shortDate("2026-10-16")).toBe("16 окт");
-    expect(shortDate(null)).toBe("—");
   });
   it("sorts by attention, then usage", () => {
     const list = [sig("Б", { priority: 20 }), sig("А", { priority: 100 }), sig("В", { priority: 20, daily: 90 })];

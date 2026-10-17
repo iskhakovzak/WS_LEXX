@@ -9,7 +9,9 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { useDayReport, type DayReport } from "@/components/day-report/api";
 import { dayHints, type DayHint, type HintTone } from "./day-hints";
-import { fmtMoney, fmtPct, fmtR, netPnl, plural, type DayStats } from "./utils";
+import { netPnl, type DayStats } from "./utils";
+import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { dayHref } from "@/lib/period-links";
 
 const TOOLTIP_STYLE: CSSProperties = {
@@ -94,26 +96,26 @@ export function DaySummary({
               <div>
                 <div className="text-xs text-muted-foreground">P&L нетто</div>
                 <div className={cn("text-3xl font-semibold tabular-nums tracking-tight", toneText(toneOf(net)))}>
-                  {net != null ? fmtMoney(net) : stats.r != null ? fmtR(stats.r) : "—"}
+                  {net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : stats.r != null ? fmtR(stats.r) : "—"}
                 </div>
                 {stats.gross != null && (
                   <div className="text-xs text-muted-foreground tabular-nums">
-                    брутто {fmtMoney(stats.gross)} · комиссии {stats.fees != null ? fmtMoney(-stats.fees) : "—"}
+                    брутто {fmtUsd(stats.gross, { signed: true, decimals: "auto" })} · комиссии {stats.fees != null ? fmtUsd(-stats.fees, { signed: true, decimals: "auto" }) : "—"}
                   </div>
                 )}
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
                 <Mini label="Сделки" value={stats.trades} hint={`${stats.wins} в плюс · ${stats.losses} в минус${stats.open ? ` · ${stats.open} откр.` : ""}`} />
-                <Mini label="Винрейт" value={decided ? fmtPct(stats.wins / decided) : "—"} hint={decided ? `${stats.wins} из ${decided}` : undefined} />
+                <Mini label="Винрейт" value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? `${stats.wins} из ${decided}` : undefined} />
                 <Mini
                   label="Лучшая"
-                  value={best != null ? fmtMoney(best) : "—"}
+                  value={best != null ? fmtUsd(best, { signed: true, decimals: "auto" }) : "—"}
                   tone={toneOf(best)}
                   hint={stats.best?.ticker}
                 />
                 <Mini
                   label="Худшая"
-                  value={worst != null ? fmtMoney(worst) : "—"}
+                  value={worst != null ? fmtUsd(worst, { signed: true, decimals: "auto" }) : "—"}
                   tone={toneOf(worst)}
                   hint={worst != null ? stats.worst?.ticker : undefined}
                 />
@@ -215,15 +217,15 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
       <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground">
         <span>Кривая дня, нетто{timed ? ", ET" : ""}</span>
         <span className="tabular-nums">
-          пик <span className="text-up">{fmtMoney(e.peak.value)}</span>
-          {e.maxDrawdown.value > 0 && <> · просадка <span className="text-down">{fmtMoney(-e.maxDrawdown.value)}</span></>}
-          {e.giveback > 0 && <> · отдано {fmtMoney(e.giveback, false)}</>}
+          пик <span className="text-up">{fmtUsd(e.peak.value, { signed: true, decimals: "auto" })}</span>
+          {e.maxDrawdown.value > 0 && <> · просадка <span className="text-down">{fmtUsd(-e.maxDrawdown.value, { signed: true, decimals: "auto" })}</span></>}
+          {e.giveback > 0 && <> · отдано {fmtUsd(Math.abs(e.giveback), { decimals: "auto" })}</>}
         </span>
       </div>
       <div
         className="mt-1 h-24 w-full"
         role="img"
-        aria-label={`Кривая нетто за день: пик ${fmtMoney(e.peak.value)}, закрытие ${fmtMoney(e.final)}, максимальная просадка ${fmtMoney(e.maxDrawdown.value, false)}`}
+        aria-label={`Кривая нетто за день: пик ${fmtUsd(e.peak.value, { signed: true, decimals: "auto" })}, закрытие ${fmtUsd(e.final, { signed: true, decimals: "auto" })}, максимальная просадка ${fmtUsd(Math.abs(e.maxDrawdown.value), { decimals: "auto" })}`}
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
@@ -242,7 +244,7 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
                 const p = data.find((d) => d.x === x);
                 return p ? `${p.time?.slice(0, 5) ?? ""}${p.ticker ? ` · ${p.ticker}` : " · старт"}` : "";
               }}
-              formatter={(v: number) => [fmtMoney(v), "Нетто нарастающим"]}
+              formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), "Нетто нарастающим"]}
             />
             <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#jn-eq)" isAnimationActive={false} />
           </AreaChart>
@@ -259,5 +261,5 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
 }
 
 export function untaggedCount(n: number): string {
-  return `${n} ${plural(n, "сделка", "сделки", "сделок")} без сетапа`;
+  return `${commonI18n.t("units.trades", { count: n })} без сетапа`;
 }

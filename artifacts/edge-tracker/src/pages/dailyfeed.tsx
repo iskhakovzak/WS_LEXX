@@ -27,7 +27,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useUndoDelete } from "@/hooks/use-undo-delete";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
-import { BASE, apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { FeedEntryCard } from "@/components/feed/FeedEntryCard";
 import { FeedCalendar } from "@/components/feed/FeedCalendar";
@@ -38,10 +38,11 @@ import {
   STREAM_KEY, fmtValue, groupDay, isNewItem, useFeedStream, useFeedStreamDay, useSeenBaseline,
   type FeedCategory, type StreamItem,
 } from "@/components/feed/stream-api";
-import {
-  dayOf, entryIsUnread, entryToText, formatDayLong, formatDayShort, hasServerAcks, pluralRu, splitList,
-  useFeedAck, useFeedViewerState, type AckKind, type FeedEntry,
-} from "@/components/feed/feed-utils";
+import { dayOf, entryIsUnread, entryToText, formatDayLong, hasServerAcks, splitList, useFeedAck, useFeedViewerState, type AckKind, type FeedEntry } from "@/components/feed/feed-utils";
+import { fmtDate, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 /**
  * «Лента» — assembles itself from what happens in the system (day results, streaks and records, academy,
@@ -325,12 +326,7 @@ export default function DailyFeedPage() {
   async function handleRegen(force: boolean) {
     setRegenLoading(true);
     try {
-      const resp = await fetch(apiUrl(`/api/market-brief/generate-feed${force ? "?force=1" : ""}`), {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(user?.token ? { Authorization: `Bearer ${user.token}` } : {}) },
-      });
-      const data = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(data?.error ?? "Ошибка генерации");
+      const data = (await http.post<{ skipped?: boolean } | null>(`/api/market-brief/generate-feed${force ? "?force=1" : ""}`)) ?? {};
       toast({
         title: data.skipped ? "Брифинг за сегодня уже есть" : "AI-брифинг готов",
         description: data.skipped ? "Чтобы обновить его, выбери «Перегенерировать»." : "Брифинг добавлен в объявления на сегодня.",
@@ -366,19 +362,14 @@ export default function DailyFeedPage() {
     deleteMut.mutate({ id: f.id }, {
       onSuccess: () => {
         invalidate();
-        undo.scheduleUndo(f.id, "dailyfeed", `Объявление (${formatDayShort(dayOf(f))})`);
+        undo.scheduleUndo(f.id, "dailyfeed", `Объявление (${fmtDate(dayOf(f), "dayMonth")})`);
       },
     });
   }
 
   async function saveShotNotes(f: DailyFeed, notes: string[]) {
     try {
-      const r = await fetch(`${BASE}/api/dailyfeed/${f.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ screenshotNotes: JSON.stringify(notes) }),
-      });
-      if (!r.ok) throw new Error(String(r.status));
+      await http.patch(`/api/dailyfeed/${f.id}`, { screenshotNotes: JSON.stringify(notes) });
       invalidate();
     } catch {
       toast({ title: "Не удалось сохранить подпись", variant: "destructive" });
@@ -413,14 +404,17 @@ export default function DailyFeedPage() {
     const date = selectedDay ?? today;
     setEodLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/dailyfeed/eod?date=${date}${force ? "&force=1" : ""}`, { method: "POST" });
-      const j = (await r.json().catch(() => ({}))) as { error?: string; code?: string; lastSyncedAt?: string | null; updated?: boolean };
-      if (r.status === 409 && j.code === "SYNC_PENDING") { setEodPending({ date, lastSyncedAt: j.lastSyncedAt ?? null }); return; }
-      if (r.status === 409 && j.code === "SYNC_RUNNING") { toast({ title: "Сделки ещё загружаются", description: "Подожди пару минут и закрой день ещё раз." }); return; }
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      let j: { updated?: boolean } | null;
+      try {
+        j = await http.post<{ updated?: boolean } | null>(`/api/dailyfeed/eod?date=${date}${force ? "&force=1" : ""}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409 && e.code === "SYNC_PENDING") { setEodPending({ date, lastSyncedAt: e.field<string | null>("lastSyncedAt") ?? null }); return; }
+        if (e instanceof ApiError && e.status === 409 && e.code === "SYNC_RUNNING") { toast({ title: "Сделки ещё загружаются", description: "Подожди пару минут и закрой день ещё раз." }); return; }
+        throw e;
+      }
       invalidate();
       setSelectedDay(date);
-      toast({ title: j.updated ? "Итог дня обновлён" : "Итог дня записан", description: formatDayLong(date) });
+      toast({ title: j?.updated ? "Итог дня обновлён" : "Итог дня записан", description: formatDayLong(date) });
     } catch (e) {
       toast({ title: "Не удалось закрыть день", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
@@ -477,7 +471,7 @@ export default function DailyFeedPage() {
               </DropdownMenuItem>
               {isStaff && (
                 <DropdownMenuItem disabled={eodLoading} onSelect={() => closeDay(false)}>
-                  <ClipboardCheck aria-hidden="true" /> Закрыть день · {formatDayShort(selectedDay ?? today)}
+                  <ClipboardCheck aria-hidden="true" /> Закрыть день · {fmtDate(selectedDay ?? today, "dayMonth")}
                 </DropdownMenuItem>
               )}
               {isStaff && (
@@ -583,7 +577,7 @@ export default function DailyFeedPage() {
           <EmptyState
             compact
             icon={CalendarDays}
-            title={`За ${formatDayShort(selectedDay)} событий нет`}
+            title={`За ${fmtDate(selectedDay, "dayMonth")} событий нет`}
             description="Выходной или день без сделок. Выбери другой день в календаре."
             action={<Button variant="outline" size="sm" onClick={() => setSelectedDay(null)}>Все дни</Button>}
           />
@@ -672,7 +666,7 @@ export default function DailyFeedPage() {
               {summary.lastDay ? (
                 <Link href={summary.lastDay.href ?? links.dayReport(summary.lastDay.date)} className="inline-flex flex-col items-end hover:underline">
                   <span className={cn("font-semibold tabular-nums", toneText(toneOf(summary.lastDay.value)))}>{fmtValue(summary.lastDay.value, "usd") ?? "—"}</span>
-                  <span className="text-xs text-muted-foreground">{formatDayShort(summary.lastDay.date)}</span>
+                  <span className="text-xs text-muted-foreground">{fmtDate(summary.lastDay.date, "dayMonth")}</span>
                 </Link>
               ) : <span className="text-muted-foreground">—</span>}
             </dd>
@@ -700,7 +694,7 @@ export default function DailyFeedPage() {
             <dt className="inline-flex items-center gap-1.5 text-muted-foreground"><Zap className="h-3.5 w-3.5" aria-hidden="true" />Мои тикеры сегодня</dt>
             <dd>
               <button type="button" className="font-semibold tabular-nums text-foreground hover:underline" onClick={() => { setSelectedDay(null); setCat("market"); }}>
-                {summary.myMarket ? `${summary.myMarket} ${pluralRu(summary.myMarket, "событие", "события", "событий")}` : "тихо"}
+                {summary.myMarket ? commonI18n.t("units.events", { count: summary.myMarket }) : "тихо"}
               </button>
             </dd>
           </div>
@@ -752,10 +746,10 @@ export default function DailyFeedPage() {
       <AlertDialog open={!!eodPending} onOpenChange={(v) => { if (!v) setEodPending(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Сделки за {eodPending ? formatDayShort(eodPending.date) : ""} ещё загружаются</AlertDialogTitle>
+            <AlertDialogTitle>Сделки за {eodPending ? fmtDate(eodPending.date, "dayMonth") : ""} ещё загружаются</AlertDialogTitle>
             <AlertDialogDescription>
               {eodPending?.lastSyncedAt
-                ? `Последняя загрузка: ${new Date(eodPending.lastSyncedAt).toLocaleString("ru-RU")}. `
+                ? `Последняя загрузка: ${fmtDate(eodPending.lastSyncedAt, "shortDateTimeSeconds")}. `
                 : "За этот день сделки ещё не загружались. "}
               Итог дня соберётся по тем сделкам, что уже есть, — цифры могут быть неполными. Закрыть день сейчас?
             </AlertDialogDescription>

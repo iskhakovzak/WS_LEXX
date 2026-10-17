@@ -1,12 +1,9 @@
-/**
- * "How much is left to the stop": day / week / drawdown, in $ and % of the limit, with a usage bar.
- * Shared by the trader's own view and the curator's trader card. Net P&L (gross − |fees|) comes from the server.
- */
-import * as React from "react";
+
 import { cn } from "@/lib/utils";
 import { useReducedMotion } from "framer-motion";
 import type { RiskLimits, RiskMetrics } from "./use-risk";
-import { fmtSignedUsd, fmtUsd, usageColor, usageText } from "./primitives";
+import { usageColor, usageText } from "./primitives";
+import { fmtUsd } from "@/lib/format";
 
 type Item = { key: string; label: string; used: number; limit: number | null; pnl: number | null; pnlLabel: string };
 
@@ -25,7 +22,7 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
       <div className="flex flex-col gap-1 rounded-xl bg-[var(--glass-bg)] p-3 ring-1 ring-inset ring-[var(--field-border)]">
         <span className="text-xs text-muted-foreground">{it.label}</span>
         <span className="text-sm text-muted-foreground">лимит не задан</span>
-        <span className="text-xs text-muted-foreground tabular-nums">{it.pnlLabel}: {fmtSignedUsd(it.pnl)}</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{it.pnlLabel}: {fmtUsd(it.pnl, { signed: true, decimals: 0 })}</span>
       </div>
     );
   }
@@ -38,9 +35,9 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
       <span className="text-xs text-muted-foreground">{it.label}</span>
       <div className="flex items-baseline gap-2 tabular-nums">
         <span className={cn("font-semibold", big ? "text-2xl" : "text-lg", over ? "text-down" : usageText(pct))}>
-          {over ? "стоп" : fmtUsd(remaining)}
+          {over ? "стоп" : fmtUsd(remaining, { decimals: 0 })}
         </span>
-        <span className="text-xs text-muted-foreground">{over ? `превышен на ${fmtUsd(it.used - it.limit)}` : `${Math.round(remainingPct)}% лимита`}</span>
+        <span className="text-xs text-muted-foreground">{over ? `превышен на ${fmtUsd(it.used - it.limit, { decimals: 0 })}` : `${Math.round(remainingPct)}% лимита`}</span>
       </div>
       <div
         className="relative h-1.5 overflow-hidden rounded-full bg-muted"
@@ -57,7 +54,7 @@ function Cell({ it, big }: { it: Item; big: boolean }) {
         <span className="absolute inset-y-0 w-px bg-foreground/30" style={{ left: "70%" }} aria-hidden="true" />
       </div>
       <span className="text-xs text-muted-foreground tabular-nums">
-        {it.pnlLabel}: {fmtSignedUsd(it.pnl)} · лимит {fmtUsd(it.limit)}
+        {it.pnlLabel}: {fmtUsd(it.pnl, { signed: true, decimals: 0 })} · лимит {fmtUsd(it.limit, { decimals: 0 })}
       </span>
     </div>
   );

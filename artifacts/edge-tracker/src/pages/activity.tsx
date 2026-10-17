@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Activity, CheckCheck, Loader2, RefreshCw, Search, X } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { links } from "@/lib/links";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { useAuth } from "@/contexts/auth-context";
@@ -9,7 +10,6 @@ import { QueryError } from "@/components/query-error";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, FilterChip, Page, PageHeader, Panel, Pill, Segmented, Toolbar } from "@/components/ds";
 import { BurstRow, DigestCard, FeedRow } from "@/components/team/activity-feed";
 import {
@@ -25,8 +25,8 @@ import {
   type FeedPage,
 } from "@/components/team/activity-model";
 import { isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { PersonSelect } from "@/components/people/person-select";
+import { pluralRu } from "@/lib/format";
 
 const FILTER_KEY = "ws_activity_filters";
 const SEEN_KEY = "ws_activity_seen_at";
@@ -68,9 +68,7 @@ function nyDayStart(ymd: string): Date {
 /** Fallback for API builds without /activity/feed: plain activity_log, filtered client-side, single page. */
 async function legacyFeed(params: string): Promise<FeedPage> {
   const p = new URLSearchParams(params);
-  const r = await fetch(`${BASE}/api/activity?limit=500`);
-  if (!r.ok) throw new Error(`Не удалось загрузить ленту (HTTP ${r.status})`);
-  const raw: unknown = await r.json();
+  const raw = await http.get<unknown>("/api/activity?limit=500");
   const rows = Array.isArray(raw) ? (raw as Record<string, unknown>[]) : [];
   const sections = p.get("sections")?.split(",") ?? null;
   const actions = p.get("actions")?.split(",") ?? null;
@@ -145,12 +143,15 @@ export default function ActivityPage() {
   const feed = useInfiniteQuery<FeedPage>({
     queryKey: ["activity-feed", params],
     initialPageParam: null as string | null,
-    queryFn: async ({ pageParam }) => {
-      const url = `${BASE}/api/activity/feed?${params}${pageParam ? `&before=${encodeURIComponent(String(pageParam))}` : ""}`;
-      const r = await fetch(url);
-      if (r.status === 404) return legacyFeed(params);
-      if (!r.ok) throw new Error(`Не удалось загрузить ленту (HTTP ${r.status})`);
-      const data = await r.json();
+    queryFn: async ({ pageParam, signal }) => {
+      const url = `/api/activity/feed?${params}${pageParam ? `&before=${encodeURIComponent(String(pageParam))}` : ""}`;
+      let data: { items?: FeedItem[]; nextCursor?: string | null } | null;
+      try {
+        data = await http.get<{ items?: FeedItem[]; nextCursor?: string | null } | null>(url, { signal });
+      } catch (e) {
+        if (isNotFound(e)) return legacyFeed(params);
+        throw e;
+      }
       return { items: Array.isArray(data?.items) ? data.items : [], nextCursor: data?.nextCursor ?? null };
     },
     getNextPageParam: (last) => last.nextCursor,
@@ -172,10 +173,12 @@ export default function ActivityPage() {
   const firstUnfiltered = useQuery<FeedPage>({
     queryKey: ["activity-feed", "digest-anchor"],
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/activity/feed?limit=20`);
-      if (r.status === 404) return legacyFeed("limit=20");
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
+      try {
+        return await http.get<FeedPage>("/api/activity/feed?limit=20");
+      } catch (e) {
+        if (isNotFound(e)) return legacyFeed("limit=20");
+        throw e;
+      }
     },
     enabled: digestDay == null,
     staleTime: 60_000,
@@ -199,11 +202,8 @@ export default function ActivityPage() {
       const day = digestDay!;
       const p = new URLSearchParams({ from: nyDayStart(day).toISOString(), to: nyDayStart(addDays(day, 1)).toISOString(), date: day });
       if (staff && filters.trader) p.set("trader", filters.trader);
-      const r = await fetch(`${BASE}/api/activity/summary?${p}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
+      return http.get<ActivitySummary>(`/api/activity/summary?${p}`);
     },
-    retry: (count, err) => !String((err as Error)?.message).includes("404") && count < 2,
     staleTime: 60_000,
   });
 

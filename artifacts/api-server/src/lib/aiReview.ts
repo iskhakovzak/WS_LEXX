@@ -4,6 +4,7 @@ import { eq, and, desc, gte, isNull, sql } from "drizzle-orm";
 import { anthropic, AnthropicNotConfiguredError, isAnthropicConfigured } from "@workspace/integrations-anthropic-ai";
 import { isAiNotConfigured } from "./aiErrors";
 import { logger } from "./logger";
+import { config } from "../config";
 import { nyDate } from "./tradingDate";
 import type { ContextSnapshot } from "./marketContext";
 
@@ -20,7 +21,7 @@ const AI_TIMEOUT_MS = 60_000;
 const AI_MAX_RETRIES = 2;
 const AI_RETRY_BASE_MS = 3_000;
 
-const DAILY_COST_BUDGET_USD = Number(process.env.AI_DAILY_COST_BUDGET_USD ?? "5.0");
+const DAILY_COST_BUDGET_USD = config.ai.dailyCostBudgetUsd;
 
 interface DailyBudget {
   date: string;

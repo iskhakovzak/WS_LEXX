@@ -34,6 +34,9 @@ import {
   ALL_TYPES_KEY, GROUP_LABELS, NOTIFICATION_TYPES, clampLimit, decodeCursor, deriveLink, encodeCursor,
   expandTypeFilter, isSeverity, normalizeType, parseList, sanitizePrefs, stripInlineLink, typeMeta,
 } from "../lib/notificationCore";
+import { AppError, badRequest, sendError } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { renderNotification, type NotificationParams } from "../lib/notificationText";
 
 const router: IRouter = Router();
 
@@ -54,9 +57,10 @@ type Row = {
   actor: string | null;
   read_at: Date | null;
   archived_at: Date | null;
+  params?: Record<string, unknown> | null;
 };
 
-const COLS = `id, user_name, type, idea_id, message, is_read, source, created_at, severity, title, link, entity_type, entity_id, actor, read_at, archived_at`;
+const COLS = `id, user_name, type, idea_id, message, is_read, source, created_at, severity, title, link, entity_type, entity_id, actor, read_at, archived_at, params`;
 
 function iso(d: Date | string | null | undefined): string | null {
   if (!d) return null;
@@ -65,10 +69,12 @@ function iso(d: Date | string | null | undefined): string | null {
 }
 
 /** API shape (camelCase). `message` is kept as an alias of `body` for older clients. */
-export function presentNotification(r: Row) {
+export function presentNotification(r: Row, lang: Lang = "ru") {
   const meta = typeMeta(r.type);
   const legacy = !r.title;
-  const body = legacy ? stripInlineLink(r.message) : r.message;
+  // Text as data: rows with params are rendered in the reader's language; older rows keep their stored Russian text.
+  const rendered = r.params ? renderNotification(meta.type, r.params as NotificationParams, lang) : null;
+  const body = rendered ? rendered.body : legacy ? stripInlineLink(r.message) : r.message;
   return {
     id: r.id,
     userName: r.user_name,
@@ -76,7 +82,7 @@ export function presentNotification(r: Row) {
     typeLabel: meta.label,
     group: meta.group,
     severity: isSeverity(r.severity) ? r.severity : meta.severity,
-    title: r.title ?? meta.label,
+    title: rendered?.title ?? r.title ?? meta.label,
     body,
     message: body,
     link: deriveLink(r),
@@ -89,6 +95,7 @@ export function presentNotification(r: Row) {
     readAt: iso(r.read_at),
     archivedAt: iso(r.archived_at),
     createdAt: iso(r.created_at) ?? new Date(0).toISOString(),
+    params: r.params ?? null,
   };
 }
 
@@ -107,7 +114,7 @@ async function resolveTarget(req: Request): Promise<string | null> {
 /** Identity for mutations: the signed-in member only (guests cannot mutate; the gate already 403s them). */
 function me(req: Request, res: Response): string | null {
   const name = req.authUser?.name;
-  if (!name || isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр", code: "GUEST_READ_ONLY" }); return null; }
+  if (!name || isGuest(req)) { sendError(res, new AppError("GUEST_READ_ONLY")); return null; }
   return name;
 }
 
@@ -229,7 +236,7 @@ router.get("/notifications", asyncHandler(async (req, res): Promise<void> => {
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
   res.json({
-    items: page.map(presentNotification),
+    items: page.map((r) => presentNotification(r, langOf(req))),
     nextCursor: hasMore && last ? encodeCursor(last.created_at, last.id) : null,
   });
 }));
@@ -251,7 +258,7 @@ router.patch("/notifications/read-all", asyncHandler(async (req, res): Promise<v
 /** Mark every unread notification about one trade idea as read (opening the idea counts as reading them). */
 router.patch("/notifications/read-idea/:ideaId", asyncHandler(async (req, res): Promise<void> => {
   const ideaId = parseId(String(req.params.ideaId));
-  if (!ideaId) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!ideaId) throw badRequest("INVALID_ID");
   const name = me(req, res);
   if (!name) return;
   await ensureNotificationSchema();
@@ -329,13 +336,13 @@ router.post("/notifications/unarchive", asyncHandler(async (req, res): Promise<v
 
 async function setOne(req: Request, res: Response, sql: string): Promise<void> {
   const id = parseId(String(req.params.id));
-  if (!id) { res.status(400).json({ error: "invalid id" }); return; }
+  if (!id) { sendError(res, badRequest("INVALID_ID")); return; }
   const name = me(req, res);
   if (!name) return;
   await ensureNotificationSchema();
   const { rows } = await pool.query<Row>(`${sql} WHERE id = $1 AND user_name = $2 RETURNING ${COLS}`, [id, name]);
   if (!rows[0]) { res.status(404).json({ error: "Уведомление не найдено" }); return; }
-  res.json({ ok: true, notification: presentNotification(rows[0]) });
+  res.json({ ok: true, notification: presentNotification(rows[0], langOf(req)) });
 }
 
 router.patch("/notifications/:id/read", asyncHandler((req, res) =>

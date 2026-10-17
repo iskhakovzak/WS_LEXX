@@ -9,9 +9,11 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AuthorMarkdown } from "./author-reader";
 import {
-  AN_KEYS, addDays, api, fmtDayShort, fmtWeekday, localToday, moodOf, weekStartOf,
+  AN_KEYS, addDays, localToday, moodOf, weekStartOf,
   type AuthorNote, type WeeklySummary,
 } from "./author-model";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { http } from "@/lib/api/http";
 
 export function AuthorWeeklyCard({
   trader,
@@ -43,7 +45,7 @@ export function AuthorWeeklyCard({
   const q = useQuery({
     queryKey: AN_KEYS.weekly(trader, week),
     queryFn: async () => {
-      const d = await api<WeeklySummary | null>(`/author-notes/weekly-summary?trader=${encodeURIComponent(trader)}&week_start=${week}`);
+      const d = await http.get<WeeklySummary | null>(`/api/author-notes/weekly-summary?trader=${encodeURIComponent(trader)}&week_start=${week}`);
       return d && typeof d.summary === "string" ? d : null;
     },
     enabled: !!trader,
@@ -51,7 +53,7 @@ export function AuthorWeeklyCard({
   });
 
   const gen = useMutation({
-    mutationFn: () => api<WeeklySummary>(`/author-notes/weekly-summary`, { method: "POST", body: JSON.stringify({ week_start: week }) }),
+    mutationFn: () => http.post<WeeklySummary>(`/api/author-notes/weekly-summary`, { week_start: week }),
     onSuccess: (data) => {
       qc.setQueryData(AN_KEYS.weekly(trader, week), data);
       toast({ title: "Сводка недели готова" });
@@ -69,7 +71,7 @@ export function AuthorWeeklyCard({
   return (
     <Panel
       title="Неделя"
-      description={`${fmtDayShort(week)} — ${fmtDayShort(addDays(week, 6))}`}
+      description={`${fmtDate(week, "dayMonth")} — ${fmtDate(addDays(week, 6), "dayMonth")}`}
       icon={BarChart3}
     >
       <div className="flex flex-col gap-3">
@@ -86,7 +88,7 @@ export function AuthorWeeklyCard({
                 disabled={future}
                 onClick={() => onPickDate(d)}
                 aria-pressed={d === selectedDate}
-                aria-label={`${fmtDayShort(d)}${has ? ", есть запись" : ", нет записи"}${mood ? `, ${mood.label}` : ""}`}
+                aria-label={`${fmtDate(d, "dayMonth")}${has ? ", есть запись" : ", нет записи"}${mood ? `, ${mood.label}` : ""}`}
                 className={cn(
                   "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-xs transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
@@ -158,8 +160,8 @@ export function AuthorWeeklyCard({
           <SheetHeader>
             <SheetTitle>Разбор недели</SheetTitle>
             <SheetDescription>
-              {fmtDayShort(week)} — {fmtDayShort(addDays(week, 6))}
-              {summary ? ` · собран ${new Date(summary.created_at).toLocaleDateString("ru-RU")}` : ""}
+              {fmtDate(week, "dayMonth")} — {fmtDate(addDays(week, 6), "dayMonth")}
+              {summary ? ` · собран ${fmtDate(summary.created_at, "short")}` : ""}
             </SheetDescription>
           </SheetHeader>
           {summary && (

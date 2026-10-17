@@ -11,6 +11,7 @@
  *   - "day" dimensions classify D by how D itself traded (known only after the fact).
  */
 import { netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
+import { fmtNum, fmtPct } from "@/lib/format";
 
 export type Bar = { d: string; o: number; h: number; l: number; c: number };
 export type SymbolKey = "spy" | "qqq" | "iwm" | "rsp" | "vix" | "vix3m" | "tnx" | "dxy";
@@ -167,8 +168,6 @@ export type Regime = {
   headline: string;
 };
 
-const f1 = (v: number) => v.toFixed(1);
-const sg = (v: number, digits = 1) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`;
 const ordinal = (p: number) => `${Math.round(p * 100)}-й перцентиль`;
 
 function weighted(ds: Driver[]): number {
@@ -183,16 +182,16 @@ export function regimeAt(rows: Row[], i: number): Regime | null {
   const drivers: Driver[] = [];
 
   // Trend: where SPY sits vs its 20/50-day averages and where the 20-day is heading.
-  drivers.push({ id: "dist50", axis: "trend", label: "SPY к 50-дневной средней", reading: `${sg(r.dist50)}%`, impact: clamp(r.dist50 / 3), weight: 1 });
-  drivers.push({ id: "dist20", axis: "trend", label: "SPY к 20-дневной средней", reading: `${sg(r.dist20)}%`, impact: clamp(r.dist20 / 2), weight: 1 });
-  if (r.slope20 != null) drivers.push({ id: "slope20", axis: "trend", label: "Наклон 20-дневной за неделю", reading: `${sg(r.slope20, 2)}%`, impact: clamp(r.slope20 / 1), weight: 1 });
+  drivers.push({ id: "dist50", axis: "trend", label: "SPY к 50-дневной средней", reading: fmtPct(r.dist50, 1), impact: clamp(r.dist50 / 3), weight: 1 });
+  drivers.push({ id: "dist20", axis: "trend", label: "SPY к 20-дневной средней", reading: fmtPct(r.dist20, 1), impact: clamp(r.dist20 / 2), weight: 1 });
+  if (r.slope20 != null) drivers.push({ id: "slope20", axis: "trend", label: "Наклон 20-дневной за неделю", reading: fmtPct(r.slope20, 2), impact: clamp(r.slope20 / 1), weight: 1 });
 
   // Volatility: VIX level vs the last year + how much SPY actually moves (ATR%).
   const vixP = percentileAt(rows.map((x) => x.vix), i);
   const atrP = percentileAt(rows.map((x) => x.atrPct), i);
   if (r.vix != null) {
     drivers.push({
-      id: "vix", axis: "vol", label: "VIX", reading: `${f1(r.vix)}${vixP != null ? ` · ${ordinal(vixP)}` : ""}`,
+      id: "vix", axis: "vol", label: "VIX", reading: `${fmtNum(r.vix, 1)}${vixP != null ? ` · ${ordinal(vixP)}` : ""}`,
       impact: vixP != null ? clamp((vixP - 0.5) * 2) : clamp((r.vix - 18) / 8), weight: 1.5,
     });
   }
@@ -205,10 +204,10 @@ export function regimeAt(rows: Row[], i: number): Regime | null {
 
   // Risk appetite: VIX curve, small caps and equal-weight vs the index, VIX momentum, dollar.
   if (r.vixTerm != null) drivers.push({ id: "vixTerm", axis: "risk", label: "Структура VIX (VIX / VIX3M)", reading: r.vixTerm.toFixed(2), impact: clamp((0.95 - r.vixTerm) / 0.08), weight: 1.5 });
-  if (r.iwmRel20 != null) drivers.push({ id: "iwm", axis: "risk", label: "Малые компании к SPY, 20 дн.", reading: `${sg(r.iwmRel20)} п.п.`, impact: clamp(r.iwmRel20 / 3), weight: 1 });
-  if (r.rspRel20 != null) drivers.push({ id: "rsp", axis: "risk", label: "Широта: равновзвешенный к SPY, 20 дн.", reading: `${sg(r.rspRel20)} п.п.`, impact: clamp(r.rspRel20 / 2), weight: 1 });
-  if (r.vixChg5 != null) drivers.push({ id: "vixChg5", axis: "risk", label: "VIX за неделю", reading: `${sg(r.vixChg5)}%`, impact: clamp(-r.vixChg5 / 15), weight: 1 });
-  if (r.dxyChg20 != null) drivers.push({ id: "dxy", axis: "risk", label: "Доллар (DXY) за 20 дн.", reading: `${sg(r.dxyChg20)}%`, impact: clamp(-r.dxyChg20 / 2), weight: 0.5 });
+  if (r.iwmRel20 != null) drivers.push({ id: "iwm", axis: "risk", label: "Малые компании к SPY, 20 дн.", reading: `${fmtNum(r.iwmRel20, { decimals: 1, signed: true })} п.п.`, impact: clamp(r.iwmRel20 / 3), weight: 1 });
+  if (r.rspRel20 != null) drivers.push({ id: "rsp", axis: "risk", label: "Широта: равновзвешенный к SPY, 20 дн.", reading: `${fmtNum(r.rspRel20, { decimals: 1, signed: true })} п.п.`, impact: clamp(r.rspRel20 / 2), weight: 1 });
+  if (r.vixChg5 != null) drivers.push({ id: "vixChg5", axis: "risk", label: "VIX за неделю", reading: fmtPct(r.vixChg5, 1), impact: clamp(-r.vixChg5 / 15), weight: 1 });
+  if (r.dxyChg20 != null) drivers.push({ id: "dxy", axis: "risk", label: "Доллар (DXY) за 20 дн.", reading: fmtPct(r.dxyChg20, 1), impact: clamp(-r.dxyChg20 / 2), weight: 0.5 });
 
   const trendScore = weighted(drivers.filter((d) => d.axis === "trend"));
   const volScore = weighted(drivers.filter((d) => d.axis === "vol"));
@@ -453,64 +452,63 @@ export type IndicatorDef = {
   alertHint: { op: "above" | "below"; value: number };
 };
 
-const usd2 = (v: number) => v.toFixed(2);
-const pp = (v: number) => `${sg(v)} п.п.`;
+const pp = (v: number) => `${fmtNum(v, { decimals: 1, signed: true })} п.п.`;
 
 export const INDICATORS: IndicatorDef[] = [
   {
     id: "vix", label: "VIX", sub: "Индекс страха",
     explain: "Ожидаемая волатильность S&P 500 на 30 дней вперёд. Ниже 15 — спокойный рынок и узкие диапазоны, 15–20 — норма, выше 25 — нервная лента, большие свечи и резкие развороты.",
     read: (v) => (v < 15 ? "спокойно" : v < 20 ? "норма" : v < 25 ? "повышенная" : "нервный рынок"),
-    value: (r) => r.vix, format: (v) => v.toFixed(1), delta: (v) => sg(v), polarity: -1,
+    value: (r) => r.vix, format: (v) => v.toFixed(1), delta: (v) => fmtNum(v, { decimals: 1, signed: true }), polarity: -1,
     alertHint: { op: "above", value: 20 },
   },
   {
     id: "vixTerm", label: "VIX / VIX3M", sub: "Структура волатильности",
     explain: "Отношение VIX (30 дней) к VIX3M (3 месяца). Ниже 1 — рынок спокоен, страх отнесён в будущее. Выше 1 — страх «здесь и сейчас»: так бывает в распродажи и панику.",
     read: (v) => (v < 0.9 ? "спокойно" : v < 1 ? "насторожённо" : "стресс"),
-    value: (r) => r.vixTerm, format: usd2, delta: (v) => sg(v, 2), polarity: -1,
+    value: (r) => r.vixTerm, format: (v) => fmtNum(v), delta: (v) => fmtNum(v, { decimals: 2, signed: true }), polarity: -1,
     alertHint: { op: "above", value: 1 },
   },
   {
     id: "spyTrend", label: "SPY к 50-дн.", sub: "Тренд рынка",
     explain: "На сколько процентов SPY выше или ниже своей 50-дневной средней. Плюс — рынок в аптренде, минус — под давлением. Больше +5% — рынок растянут вверх.",
     read: (v) => (v > 5 ? "растянут вверх" : v > 0 ? "аптренд" : v > -5 ? "под давлением" : "даунтренд"),
-    value: (r) => r.dist50, format: (v) => `${sg(v)}%`, delta: pp, polarity: 1,
+    value: (r) => r.dist50, format: (v) => fmtPct(v, 1), delta: pp, polarity: 1,
     alertHint: { op: "below", value: 0 },
   },
   {
     id: "breadth", label: "Широта", sub: "RSP к SPY, 20 дн.",
     explain: "Равновзвешенный S&P 500 (RSP) против обычного SPY за 20 дней. Плюс — растёт широкий рынок, это хорошо для малых и средних бумаг. Минус — рост держится на нескольких мегакапах.",
     read: (v) => (v >= 0.5 ? "широкий рост" : v <= -0.5 ? "узкий рынок" : "нейтрально"),
-    value: (r) => r.rspRel20, format: (v) => `${sg(v)} п.п.`, delta: pp, polarity: 1,
+    value: (r) => r.rspRel20, format: (v) => `${fmtNum(v, { decimals: 1, signed: true })} п.п.`, delta: pp, polarity: 1,
     alertHint: { op: "below", value: -1 },
   },
   {
     id: "smallCaps", label: "Малые компании", sub: "IWM к SPY, 20 дн.",
     explain: "Доходность Russell 2000 (IWM) минус доходность SPY за 20 дней. Малые компании сильнее рынка — у инвесторов есть аппетит к риску. Слабее — деньги уходят в крупные и защитные бумаги.",
     read: (v) => (v >= 1 ? "аппетит к риску" : v <= -1 ? "осторожность" : "нейтрально"),
-    value: (r) => r.iwmRel20, format: (v) => `${sg(v)} п.п.`, delta: pp, polarity: 1,
+    value: (r) => r.iwmRel20, format: (v) => `${fmtNum(v, { decimals: 1, signed: true })} п.п.`, delta: pp, polarity: 1,
     alertHint: { op: "below", value: -2 },
   },
   {
     id: "atr", label: "Ход SPY", sub: "ATR 14 дн., % цены",
     explain: "Средний дневной диапазон SPY за 14 дней в процентах от цены. Показывает, сколько рынок реально проходит за день: больше — шире стопы и больше возможностей, меньше — тесный рынок.",
     read: (v) => (v < 0.8 ? "тесный рынок" : v < 1.4 ? "обычный ход" : "широкий ход"),
-    value: (r) => r.atrPct, format: (v) => `${v.toFixed(2)}%`, delta: (v) => `${sg(v, 2)} п.п.`, polarity: 0,
+    value: (r) => r.atrPct, format: (v) => `${v.toFixed(2)}%`, delta: (v) => `${fmtNum(v, { decimals: 2, signed: true })} п.п.`, polarity: 0,
     alertHint: { op: "above", value: 1.5 },
   },
   {
     id: "tnx", label: "Доходность 10Y", sub: "Казначейские облигации США",
     explain: "Доходность 10-летних облигаций США. Резкий рост бьёт по дорогим ростовым бумагам и технологиям; падение обычно поддерживает рост.",
     read: (v) => (v >= 4.75 ? "высокая" : v <= 3.75 ? "низкая" : "средняя"),
-    value: (r) => r.tnx, format: (v) => `${v.toFixed(2)}%`, delta: (v) => `${sg(v * 100, 0)} б.п.`, polarity: -1,
+    value: (r) => r.tnx, format: (v) => `${v.toFixed(2)}%`, delta: (v) => `${fmtNum(v * 100, { decimals: 0, signed: true })} б.п.`, polarity: -1,
     alertHint: { op: "above", value: 4.75 },
   },
   {
     id: "dxy", label: "Доллар (DXY)", sub: "Индекс доллара США",
     explain: "Сила доллара к корзине валют. Быстрый рост доллара — признак бегства в защиту и давление на рисковые активы.",
     read: () => "",
-    value: (r) => r.dxy, format: (v) => v.toFixed(2), delta: (v) => sg(v, 2), polarity: -1,
+    value: (r) => r.dxy, format: (v) => v.toFixed(2), delta: (v) => fmtNum(v, { decimals: 2, signed: true }), polarity: -1,
     alertHint: { op: "above", value: 105 },
   },
 ];

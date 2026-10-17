@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { fmtCount, fmtPct, fmtUsd } from "@/lib/format";
 
 /**
  * Auto feed (`GET /api/dailyfeed/stream`): items the server assembles from trades, academy, rules/risk, reviews,
@@ -57,17 +59,15 @@ export class StreamUnavailableError extends Error {
 }
 
 async function fetchStream(to: string | null, days: number): Promise<StreamPage> {
-  const qs = new URLSearchParams({ days: String(days) });
-  if (to) qs.set("to", to);
-  const r = await fetch(`${BASE}/api/dailyfeed/stream?${qs.toString()}`);
-  if (r.status === 404) throw new StreamUnavailableError();
-  if (!r.ok) {
-    const j = (await r.json().catch(() => ({}))) as { error?: string };
+  let data: StreamPage | null;
+  try {
+    data = await http.get<StreamPage | null>("/api/dailyfeed/stream", { query: { days, to } });
+  } catch (e) {
+    if (isNotFound(e)) throw new StreamUnavailableError();
     // An API build without the stream route matches /dailyfeed/:id and rejects "stream" as an id (400).
-    if (r.status === 400 && !/^to must be/.test(j.error ?? "")) throw new StreamUnavailableError();
-    throw new Error(j.error ?? `HTTP ${r.status}`);
+    if (e instanceof ApiError && e.status === 400 && !/^to must be/.test(e.field<string>("error") ?? "")) throw new StreamUnavailableError();
+    throw e;
   }
-  const data = (await r.json()) as StreamPage;
   // An old API might answer /dailyfeed/stream with /dailyfeed/:id semantics — guard the shape.
   if (!data || !Array.isArray(data.items)) throw new StreamUnavailableError();
   return data;
@@ -132,7 +132,7 @@ export function useSeenBaseline(first: StreamPage | null, canMark: boolean) {
     if (!first || !canMark || marked.current) return;
     const t = setTimeout(() => {
       marked.current = true;
-      fetch(`${BASE}/api/dailyfeed/stream/seen`, { method: "POST" }).catch(() => { /* old API / offline: markers just stay */ });
+      http.post("/api/dailyfeed/stream/seen").catch(() => { /* old API / offline: markers just stay */ });
     }, 5000);
     return () => clearTimeout(t);
   }, [first, canMark]);
@@ -147,17 +147,10 @@ export function isNewItem(it: StreamItem, baseline: string | null): boolean {
 
 export function fmtValue(v: number | null, fmt: StreamItem["valueFmt"]): string | null {
   if (v == null || !Number.isFinite(v) || !fmt) return null;
-  if (fmt === "pct") return `${Math.round(v)}%`;
-  if (fmt === "int") return v.toLocaleString("ru-RU");
+  if (fmt === "pct") return fmtPct(v, { decimals: 0, signed: false });
+  if (fmt === "int") return fmtCount(v);
   // Money as everywhere on the desk ($1,234.56 — formatCurrency, trade tables, the server-written subtitles).
-  const abs = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return v > 0 ? `+$${abs}` : v < 0 ? `−$${abs}` : `$${abs}`;
-}
-
-const TIME_FMT = new Intl.DateTimeFormat("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" });
-export function fmtTime(at: string): string {
-  const d = new Date(at);
-  return Number.isFinite(d.getTime()) ? TIME_FMT.format(d) : "";
+  return fmtUsd(v, { signed: true });
 }
 
 /* ─────────────── grouping ─────────────── */

@@ -3,7 +3,8 @@ import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Check, Crosshair, Flame, Lightbulb, MessageSquareQuote, Star, Trophy, UserRound } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { links } from "@/lib/links";
 import { PeriodHint, usePeriodNav } from "@/lib/period-links";
 import { cn } from "@/lib/utils";
@@ -11,23 +12,21 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { EmptyState, Panel, Pill, StatCard, StatGrid, StatRow, toneOf, toneText } from "@/components/ds";
-import { CHART_TOOLTIP, OutcomeBar, RankDelta, fetchJson, fmtPct, fmtR, fmtUsd, pluralRu } from "./shared";
+import { CHART_TOOLTIP, OutcomeBar, RankDelta } from "./shared";
 import { useLeaderboard, winPctOf } from "./leaderboard-tab";
 import { ScorecardCard } from "./scorecards-tab";
 import { CRITERIA, buildScorecards, criterionLabel, tierLabel, weekLabel, type Rating } from "./scorecard-model";
 import { bucketOf, calibVerdict, calibrationOf, enrichIdea, type TradeIdea } from "./idea-metrics";
-import { IDEAS_KEY, useTracking } from "@/components/ideas/hooks";
+import { useTracking } from "@/components/ideas/hooks";
+import { tradeIdeasQuery } from "@/lib/api/queries";
+import { fmtPct, fmtR, fmtUsd, pluralRu } from "@/lib/format";
 
 export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | null; ratings: Rating[]; ratingsLoading: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
   const month = useLeaderboard("30", "auto");
-  const ideasQ = useQuery<TradeIdea[]>({
-    queryKey: IDEAS_KEY, // shared with /trade-ideas and the stats page
-    queryFn: () => fetchJson<TradeIdea[]>(`${BASE}/api/trade-ideas`),
-    staleTime: 30_000,
-    enabled: !!me,
-  });
+  // Shared with /trade-ideas, the stats page and global search (one request).
+  const ideasQ = useQuery({ ...tradeIdeasQuery<TradeIdea>(), enabled: !!me });
 
   const mine = month.ranked.find((l) => l.trader === me) ?? null;
   // Traders read only their own leaderboard row; rank and «команда …%» need the whole desk.
@@ -56,14 +55,9 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
 
   // Feedback loop: the trader confirms they have read the curator's focus → curator sees it on the scorecard.
   const ack = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/ratings/${id}/ack`, { method: "POST" });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось отметить");
-      return body as Rating;
-    },
+    mutationFn: (id: number) => http.post<Rating>(`/api/ratings/${id}/ack`),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["ratings"] }); toast({ title: "Фокус принят", description: "Куратор увидит отметку на карточке" }); },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось отметить"), variant: "destructive" }),
   });
 
   const chartData = card?.series.map((s) => ({ date: s.week, week: weekLabel(s.week).split(" – ")[0], composite: s.composite, overall: s.overall })) ?? [];
@@ -106,7 +100,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
             <StatCard
               label="P&L за месяц · нетто"
               icon={Trophy}
-              value={mine ? fmtUsd(mine.totalPnl) : "—"}
+              value={mine ? fmtUsd(mine.totalPnl, { signed: true, decimals: 0 }) : "—"}
               tone={toneOf(mine?.totalPnl)}
               hint={mine
                 ? `${mine.totalTrades} ${pluralRu(mine.totalTrades, "сделка", "сделки", "сделок")}${mine.tradingDays ? ` · ${mine.tradingDays} ${pluralRu(mine.tradingDays, "торговый день", "торговых дня", "торговых дней")}` : ""}`
@@ -124,9 +118,9 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
             // R unknown (no stop on the trades, e.g. broker imports) → show net $ instead of a fake 0R.
             <StatCard
               label="P&L за месяц · нетто"
-              value={fmtUsd(mine.totalPnl)}
+              value={fmtUsd(mine.totalPnl, { signed: true, decimals: 0 })}
               tone={toneOf(mine.totalPnl)}
-              hint={mine.prev ? `прошлый месяц ${fmtUsd(mine.prev.totalPnl)} · R неизвестен` : "R неизвестен — нет стопа"}
+              hint={mine.prev ? `прошлый месяц ${fmtUsd(mine.prev.totalPnl, { signed: true, decimals: 0 })} · R неизвестен` : "R неизвестен — нет стопа"}
             />
           ) : (
             <StatCard
@@ -138,15 +132,15 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
           )}
           <StatCard
             label="Винрейт за месяц"
-            value={mine ? fmtPct(winPctOf(mine)) : "—"}
+            value={mine ? fmtPct(winPctOf(mine), { decimals: 0, signed: false }) : "—"}
             tone={(() => {
               const base = deskVisible ? team.winrate : mine?.prev ? winPctOf(mine.prev) : null;
               const cur = mine ? winPctOf(mine) : null;
               return base != null && cur != null ? toneOf(cur - base) : "neutral";
             })()}
             hint={deskVisible
-              ? (team.winrate != null ? `команда ${fmtPct(team.winrate)}` : undefined)
-              : mine?.prev ? `прошлый месяц ${fmtPct(winPctOf(mine.prev))}` : undefined}
+              ? (team.winrate != null ? `команда ${fmtPct(team.winrate, { decimals: 0, signed: false })}` : undefined)
+              : mine?.prev ? `прошлый месяц ${fmtPct(winPctOf(mine.prev), { decimals: 0, signed: false })}` : undefined}
           />
         </StatGrid>
       )}

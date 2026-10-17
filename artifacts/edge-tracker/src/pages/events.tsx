@@ -2,7 +2,7 @@
 // macro (CPI / NFP / FOMC / PPI / expirations), short days and closures, earnings of the trader's watchlist
 // and most traded tickers — all pulled automatically, plus «как я торгую в такие дни» from the trader's own
 // trades. The only manual input is a short day note (market_events), which keeps its sheet and «В плейбук».
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useCreateEvent, useUpdateEvent, useDeleteEvent, getListEventsQueryKey,
@@ -11,14 +11,12 @@ import {
 import { CalendarClock, CalendarDays, Plus, Scale, Sun, AlertTriangle, RefreshCw } from "lucide-react";
 import { Page, PageHeader, Panel, Segmented, EmptyState, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UndoToast } from "@/components/undo-toast";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction } from "@/components/ui/toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
-import { pluralRu } from "@/components/rules/constants";
 import { dayOf, fmtDay, weekStartOf } from "@/components/events/event-meta";
 import { EventDetailSheet } from "@/components/events/event-detail-sheet";
 import { EventFormDialog, blankEvent, eventToForm, formToBody, type EventFormData } from "@/components/events/event-form-dialog";
@@ -30,6 +28,7 @@ import { WeekGrid } from "@/components/events/catalyst-week";
 import { EdgeView } from "@/components/events/catalyst-edge";
 import { nextTradingDay, prevTradingDay } from "@/components/events/catalyst-math";
 import { PersonSelect } from "@/components/people/person-select";
+import { pluralRu } from "@/lib/format";
 
 type View = "today" | "week" | "edge";
 const VIEWS: View[] = ["today", "week", "edge"];
@@ -164,8 +163,7 @@ export default function Events() {
     setUndo(null);
     if (!u) return;
     try {
-      const r = await fetch(`${BASE}/api/events/${u.id}/restore`, { method: "POST" });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      await http.post(`/api/events/${u.id}/restore`, undefined, { responseType: "auto" });
       await invalidate();
       toast({ title: "Заметка восстановлена" });
     } catch (err) {
@@ -222,7 +220,7 @@ export default function Events() {
         description="Макро, отчёты ваших тикеров и короткие дни — и как вы торгуете в такие дни"
         meta={
           <span>
-            {focus === data.today ? "Сегодня" : `Следующая сессия — ${fmtDay(focus, { weekday: "long", day: "numeric", month: "long" })}`}
+            {focus === data.today ? "Сегодня" : `Следующая сессия — ${fmtDay(focus, "weekdayDayMonthLong")}`}
             {data.myTickers.length > 0 && ` · следим за ${data.myTickers.length} ${pluralRu(data.myTickers.length, "тикером", "тикерами", "тикерами")}`}
             {isStaff && ` · ${scopeLabel}`}
           </span>

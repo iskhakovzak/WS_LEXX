@@ -14,9 +14,10 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { weekKeyOf } from "@/components/weekly-review/api";
 import {
-  SIDE_LABEL, fmtDayShort, fmtHold, fmtPct, fmtUsd, pluralTrades,
-  type Bucket, type DayReport, type Leak, type LeakKind, type TimelineRow, type TradeRef,
+  SIDE_LABEL, fmtDayShort, fmtHold, type Bucket, type DayReport, type Leak, type LeakKind, type TimelineRow, type TradeRef,
 } from "./api";
+import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -38,7 +39,7 @@ export const LEAK_SHORT: Record<LeakKind, string> = {
 };
 
 function Money({ v, signed = true, className }: { v: number | null | undefined; signed?: boolean; className?: string }) {
-  return <span className={cn("tabular-nums", toneText(toneOf(v)), className)}>{fmtUsd(v, signed)}</span>;
+  return <span className={cn("tabular-nums", toneText(toneOf(v)), className)}>{fmtUsd(v, { signed })}</span>;
 }
 
 function TradeLink({ t }: { t: Pick<TradeRef, "id" | "ticker"> }) {
@@ -59,20 +60,20 @@ export function SummaryBento({ doc }: { doc: DayReport }) {
     <StatGrid className="xl:grid-cols-5">
       <StatCard
         label="Нетто за день"
-        value={fmtUsd(s.net, true)}
+        value={fmtUsd(s.net, { signed: true })}
         tone={toneOf(s.net)}
-        hint={`брутто ${fmtUsd(s.gross, true)} · комиссии ${fmtUsd(s.fees)}${feeShare != null ? ` (${fmtPct(feeShare, 1)} брутто)` : ""}`}
+        hint={`брутто ${fmtUsd(s.gross, { signed: true })} · комиссии ${fmtUsd(s.fees)}${feeShare != null ? ` (${fmtRate(feeShare, 1)} брутто)` : ""}`}
       />
       <StatCard
         label="Сделки · win rate"
-        value={`${s.closed}${s.open ? ` +${s.open} откр.` : ""} · ${fmtPct(s.winRate)}`}
-        hint={`${s.wins}W / ${s.losses}L${s.be ? ` / ${s.be} BE` : ""} · средняя ${fmtUsd(s.expectancy, true)}`}
+        value={`${s.closed}${s.open ? ` +${s.open} откр.` : ""} · ${fmtRate(s.winRate)}`}
+        hint={`${s.wins}W / ${s.losses}L${s.be ? ` / ${s.be} BE` : ""} · средняя ${fmtUsd(s.expectancy, { signed: true })}`}
       />
       <StatCard
         label="Profit factor ($ нетто)"
-        value={s.profitFactor != null ? s.profitFactor.toFixed(2) : s.wins > 0 ? "без убытков" : "—"}
+        value={s.profitFactor != null ? fmtNum(s.profitFactor) : s.wins > 0 ? "без убытков" : "—"}
         tone={s.profitFactor == null ? (s.wins > 0 ? "up" : "neutral") : s.profitFactor >= 1 ? "up" : "down"}
-        hint={`ср. плюс ${fmtUsd(s.avgWin, true)} · ср. минус ${fmtUsd(s.avgLoss, true)}`}
+        hint={`ср. плюс ${fmtUsd(s.avgWin, { signed: true })} · ср. минус ${fmtUsd(s.avgLoss, { signed: true })}`}
       />
       <StatCard
         label="Лучшая / худшая"
@@ -87,9 +88,9 @@ export function SummaryBento({ doc }: { doc: DayReport }) {
       />
       <StatCard
         label={`vs ${c.days || 20} торговых дней`}
-        value={c.betterThanPct != null && s.closed > 0 ? `лучше ${Math.round(c.betterThanPct * 100)}%` : "—"}
+        value={c.betterThanPct != null && s.closed > 0 ? `лучше ${fmtRate(c.betterThanPct)}` : "—"}
         tone={cmpTone}
-        hint={c.avg != null ? `среднее ${fmtUsd(c.avg, true)}${c.z != null ? ` · z ${c.z > 0 ? "+" : ""}${c.z.toFixed(2)}` : ""}` : c.label}
+        hint={c.avg != null ? `среднее ${fmtUsd(c.avg, { signed: true })}${c.z != null ? ` · z ${fmtNum(c.z, { signed: true })}` : ""}` : c.label}
       />
     </StatGrid>
   );
@@ -117,7 +118,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
       className="min-w-0"
       actions={
         <div className="flex flex-wrap gap-1.5">
-          <Pill tone="up" title="Максимум нарастающего нетто">пик {fmtUsd(e.peak.value, true)}{e.peak.time ? ` · ${e.peak.time.slice(0, 5)}` : ""}</Pill>
+          <Pill tone="up" title="Максимум нарастающего нетто">пик {fmtUsd(e.peak.value, { signed: true })}{e.peak.time ? ` · ${e.peak.time.slice(0, 5)}` : ""}</Pill>
           <Pill tone={e.maxDrawdown.value > 0 ? "down" : "neutral"} title="Максимальная просадка от пика внутри дня">
             max DD {fmtUsd(-e.maxDrawdown.value)}{e.maxDrawdown.fromTime && e.maxDrawdown.toTime ? ` · ${e.maxDrawdown.fromTime.slice(0, 5)}→${e.maxDrawdown.toTime.slice(0, 5)}` : ""}
           </Pill>
@@ -128,7 +129,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
       {data.length < 2 ? (
         <EmptyState icon={LineChart} title="Нет закрытых сделок" description="Кривая строится по закрытым сделкам дня." className="py-8" />
       ) : (
-        <div className="h-56 w-full" role="img" aria-label={`Кривая нетто за день: пик ${fmtUsd(e.peak.value, true)}, закрытие ${fmtUsd(e.final, true)}, максимальная просадка ${fmtUsd(e.maxDrawdown.value)}`}>
+        <div className="h-56 w-full" role="img" aria-label={`Кривая нетто за день: пик ${fmtUsd(e.peak.value, { signed: true })}, закрытие ${fmtUsd(e.final, { signed: true })}, максимальная просадка ${fmtUsd(e.maxDrawdown.value)}`}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
               <defs>
@@ -159,7 +160,7 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
                   const p = data.find((d) => d.x === x);
                   return p ? `${p.time ?? ""}${p.ticker ? ` · ${p.ticker}` : " · старт"}` : "";
                 }}
-                formatter={(v: number, _n, item) => [`${fmtUsd(v, true)}${item?.payload?.tradeId ? ` (сделка ${fmtUsd(item.payload.net, true)})` : ""}`, "Нетто нарастающим"]}
+                formatter={(v: number, _n, item) => [`${fmtUsd(v, { signed: true })}${item?.payload?.tradeId ? ` (сделка ${fmtUsd(item.payload.net, { signed: true })})` : ""}`, "Нетто нарастающим"]}
               />
               <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#dr-eq)" isAnimationActive={false} dot={{ r: 2.5, fill: color }} />
               {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill="hsl(var(--up))" stroke="hsl(var(--background))" />}
@@ -200,7 +201,7 @@ export function TimelinePanel({ doc }: { doc: DayReport }) {
   return (
     <Panel
       title="Хронология сделок"
-      description={`${rows.length} ${pluralTrades(rows.length)} по времени входа, ET${doc.firstEntry && doc.lastExit ? ` · ${doc.firstEntry.slice(0, 5)}–${doc.lastExit.slice(0, 5)}` : ""}${doc.activeMinutes != null ? ` · в рынке ${fmtHold(doc.activeMinutes)}` : ""}`}
+      description={`${commonI18n.t("units.trades", { count: rows.length })} по времени входа, ET${doc.firstEntry && doc.lastExit ? ` · ${doc.firstEntry.slice(0, 5)}–${doc.lastExit.slice(0, 5)}` : ""}${doc.activeMinutes != null ? ` · в рынке ${fmtHold(doc.activeMinutes)}` : ""}`}
       icon={ListOrdered}
       className="min-w-0"
       padded={false}
@@ -367,7 +368,7 @@ export function LeaksPanel({ doc }: { doc: DayReport }) {
               </div>
               <div className="text-right">
                 <div className={cn("text-sm font-semibold tabular-nums", l.costUsd > 0 ? "text-down" : "text-muted-foreground")}>{l.costUsd > 0 ? fmtUsd(-l.costUsd) : "$0.00"}</div>
-                <div className="text-2xs text-muted-foreground">нетто сделок {fmtUsd(l.netUsd, true)}</div>
+                <div className="text-2xs text-muted-foreground">нетто сделок {fmtUsd(l.netUsd, { signed: true })}</div>
               </div>
             </li>
           ))}
@@ -399,10 +400,10 @@ export function StrengthsPanel({ doc }: { doc: DayReport }) {
             ))}
           </ol>
           <div className="flex flex-col gap-1">
-            {s.tickers.length > 0 && <EdgeRow label="Тикеры с преимуществом" items={s.tickers.map((x) => `${x.label} ${fmtUsd(x.net, true)}`)} />}
-            {s.setups.length > 0 && <EdgeRow label="Сетапы" items={s.setups.map((x) => `${x.label} ${fmtUsd(x.net, true)} (${x.wins}/${x.trades})`)} />}
-            {s.sides.length > 0 && <EdgeRow label="Сторона" items={s.sides.map((x) => `${x.label} ${fmtUsd(x.net, true)}`)} />}
-            {s.bestHour && <EdgeRow label="Лучший час (ET)" items={[`${s.bestHour.label} ${fmtUsd(s.bestHour.net, true)}`]} />}
+            {s.tickers.length > 0 && <EdgeRow label="Тикеры с преимуществом" items={s.tickers.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
+            {s.setups.length > 0 && <EdgeRow label="Сетапы" items={s.setups.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })} (${x.wins}/${x.trades})`)} />}
+            {s.sides.length > 0 && <EdgeRow label="Сторона" items={s.sides.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
+            {s.bestHour && <EdgeRow label="Лучший час (ET)" items={[`${s.bestHour.label} ${fmtUsd(s.bestHour.net, { signed: true })}`]} />}
             {s.setups.length === 0 && <p className="text-xs text-muted-foreground">Сетапы у сделок не указаны — разметьте их в журнале, чтобы видеть преимущество по сетапам.</p>}
           </div>
         </div>
@@ -448,13 +449,13 @@ export function ComparisonPanel({ doc }: { doc: DayReport }) {
   const c = doc.comparison;
   return (
     <Panel title="На фоне последних дней" description={c.label} icon={CalendarDays} className="min-w-0">
-      <StatRow label="Сегодня (нетто)" value={fmtUsd(doc.summary.net, true)} tone={toneOf(doc.summary.net)} />
-      <StatRow label={`Среднее за ${c.days} дн.`} value={fmtUsd(c.avg, true)} tone={toneOf(c.avg)} />
+      <StatRow label="Сегодня (нетто)" value={fmtUsd(doc.summary.net, { signed: true })} tone={toneOf(doc.summary.net)} />
+      <StatRow label={`Среднее за ${c.days} дн.`} value={fmtUsd(c.avg, { signed: true })} tone={toneOf(c.avg)} />
       <StatRow label="Ст. отклонение" value={c.std != null ? fmtUsd(c.std) : "—"} />
-      <StatRow label="z-score" value={c.z != null ? `${c.z > 0 ? "+" : ""}${c.z.toFixed(2)}` : "—"} tone={toneOf(c.z)} />
+      <StatRow label="z-score" value={fmtNum(c.z, { signed: true })} tone={toneOf(c.z)} />
       <StatRow label="Место в окне" value={c.rank != null && c.days ? `${c.rank} из ${c.days + 1}` : "—"} />
-      <StatRow label="Лучший день окна" value={c.bestDay ? `${fmtUsd(c.bestDay.net, true)} · ${fmtDayShort(c.bestDay.date)}` : "—"} />
-      <StatRow label="Худший день окна" value={c.worstDay ? `${fmtUsd(c.worstDay.net, true)} · ${fmtDayShort(c.worstDay.date)}` : "—"} />
+      <StatRow label="Лучший день окна" value={c.bestDay ? `${fmtUsd(c.bestDay.net, { signed: true })} · ${fmtDayShort(c.bestDay.date)}` : "—"} />
+      <StatRow label="Худший день окна" value={c.worstDay ? `${fmtUsd(c.worstDay.net, { signed: true })} · ${fmtDayShort(c.worstDay.date)}` : "—"} />
     </Panel>
   );
 }

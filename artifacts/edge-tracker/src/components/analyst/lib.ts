@@ -2,6 +2,7 @@
  * Analyst actions — pure helpers (formatting, NY-time session logic, scoring, persisted view state).
  */
 import type { Tone } from "@/components/ds";
+import { fmtDate, fmtPct, fmtUsd, fmtWeekday } from "@/lib/format";
 
 export type ActionKind = "upgrade" | "downgrade" | "initiated" | "maintain" | "reiterated" | "other";
 
@@ -86,19 +87,6 @@ export function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export function fmtUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `$${n >= 1000 ? n.toLocaleString("en-US", { maximumFractionDigits: 0 }) : n % 1 === 0 ? n.toFixed(0) : n.toFixed(2)}`;
-}
-
-export function fmtCap(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "кап. н/д";
-  if (n >= 1e12) return `$${(n / 1e12).toFixed(2)}T`;
-  if (n >= 1e9) return `$${(n / 1e9).toFixed(1)}B`;
-  if (n >= 1e6) return `$${(n / 1e6).toFixed(0)}M`;
-  return `$${n}`;
-}
-
 /** % change of the price target (from → to). */
 export function ptChangePct(a: FeedAction): number | null {
   const to = num(a.priceTarget);
@@ -169,7 +157,7 @@ export function sessionWindow(now = new Date()): { startKey: string; sessionDay:
   }
   let prev = shiftDay(target.day, -1);
   while (prev.weekday === 0 || prev.weekday === 6) prev = shiftDay(prev.day, -1);
-  const wd = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"][prev.weekday];
+  const wd = fmtWeekday(prev.weekday, "short");
   return { startKey: `${prev.day} 16:00`, sessionDay: target.day, label: `с закрытия ${wd} 16:00 ET` };
 }
 
@@ -190,9 +178,7 @@ export function nyTime(iso: string | null): string {
 export function dayTitle(day: string, today: string): string {
   if (day === today) return "Сегодня";
   if (day === shiftDay(today, -1).day) return "Вчера";
-  const [y, m, d] = day.split("-").map(Number);
-  const dt = new Date(Date.UTC(y, m - 1, d, 12));
-  const s = dt.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+  const s = fmtDate(day, "weekdayDayMonth");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -270,7 +256,7 @@ export function scoreAction(a: FeedAction, ctx: ScoreCtx): { score: number; reas
   const pt = ptChangePct(a);
   if (pt != null) {
     s += Math.min(60, Math.abs(pt) * 2);
-    if (Math.abs(pt) >= 10) reasons.push({ key: "pt", label: `PT ${pt > 0 ? "+" : "−"}${Math.abs(pt).toFixed(0)}%`, tone: pt > 0 ? "up" : "down" });
+    if (Math.abs(pt) >= 10) reasons.push({ key: "pt", label: `PT ${fmtPct(pt, 0)}`, tone: pt > 0 ? "up" : "down" });
   }
   if (ctx.watched) { s += 50; reasons.push({ key: "watch", label: "в вотчлисте", tone: "accent" }); }
   if (ctx.traded > 0) {
@@ -279,7 +265,7 @@ export function scoreAction(a: FeedAction, ctx: ScoreCtx): { score: number; reas
   }
   if (ctx.gapPct != null && Math.abs(ctx.gapPct) >= 2) {
     s += 20;
-    reasons.push({ key: "gap", label: `гэп ${ctx.gapPct > 0 ? "+" : "−"}${Math.abs(ctx.gapPct).toFixed(1)}%`, tone: ctx.gapPct > 0 ? "up" : "down" });
+    reasons.push({ key: "gap", label: `гэп ${fmtPct(ctx.gapPct, 1)}`, tone: ctx.gapPct > 0 ? "up" : "down" });
   }
   return { score: Math.round(s), reasons: reasons.slice(0, 4) };
 }
@@ -392,19 +378,7 @@ export function previousSessionDay(items: FeedAction[], windowStart: string): st
 export function shortDay(day: string): string {
   const [y, m, d] = day.split("-").map(Number);
   if (!y || !m || !d) return day;
-  return new Date(Date.UTC(y, m - 1, d, 12)).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "");
-}
-
-export function fmtPct(n: number | null | undefined, digits = 1): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-export function fmtMoney(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  const s = abs >= 1000 ? abs.toLocaleString("en-US", { maximumFractionDigits: 0 }) : abs.toFixed(2);
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
+  return fmtDate(day, "dayMonth").replace(".", "");
 }
 
 export function watchlistCatalyst(a: FeedAction): string {
@@ -412,6 +386,6 @@ export function watchlistCatalyst(a: FeedAction): string {
   const grade = a.fromGrade && a.toGrade && a.fromGrade !== a.toGrade ? `${a.fromGrade} → ${a.toGrade}` : a.toGrade ?? "";
   const to = num(a.priceTarget);
   const from = num(a.priceTargetFrom);
-  const pt = to != null ? ` · PT ${from != null ? `${fmtUsd(from)} → ` : ""}${fmtUsd(to)}` : "";
+  const pt = to != null ? ` · PT ${from != null ? `${fmtUsd(from, { decimals: "trim" })} → ` : ""}${fmtUsd(to, { decimals: "trim" })}` : "";
   return `${kind}: ${a.firm}${grade ? ` ${grade}` : ""}${pt}`.slice(0, 240);
 }

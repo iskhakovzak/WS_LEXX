@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
-import { fmtMoney, fmtPct, fmtR } from "./utils";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import {
   actionTone,
   describe,
@@ -85,7 +85,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
           {item.rating && <Pill tone="purple" className="text-2xs">Оценка: {ratingLabel(item.rating)}</Pill>}
           <time
             dateTime={item.createdAt}
-            title={new Date(item.createdAt).toLocaleString("ru-RU")}
+            title={fmtDate(item.createdAt, "shortDateTime")}
             className="text-xs tabular-nums text-muted-foreground sm:hidden"
           >
             {timeLabel(item.createdAt)}
@@ -94,7 +94,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
       </div>
       <time
         dateTime={item.createdAt}
-        title={`${new Date(item.createdAt).toLocaleString("ru-RU")} · ${relTime(item.createdAt)}`}
+        title={`${fmtDate(item.createdAt, "shortDateTime")} · ${relTime(item.createdAt)}`}
         className="hidden shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground sm:block"
       >
         {timeLabel(item.createdAt)}
@@ -235,11 +235,11 @@ export function DigestCard({
           <DigestStat
             label="Сделок за день"
             value={t?.count ?? 0}
-            hint={t?.count ? `WR ${fmtPct(wr)} · ${t.traders} трейд.` : "никто не торговал"}
+            hint={t?.count ? `WR ${fmtRate(wr)} · ${t.traders} трейд.` : "никто не торговал"}
           />
           <DigestStat
             label={t?.net != null ? "P&L нетто · Σ R" : "Сумма R"}
-            value={t?.net != null ? fmtMoney(t.net) : t?.sumR != null ? fmtR(t.sumR) : "—"}
+            value={t?.net != null ? fmtUsd(t.net, { signed: true }) : t?.sumR != null ? fmtR(t.sumR) : "—"}
             valueClass={toneText(toneOf(t?.net ?? t?.sumR))}
             hint={t?.net != null ? `${fmtR(t.sumR)}${t.avgR != null ? ` · в среднем ${fmtR(t.avgR)}` : ""}` : t?.avgR != null ? `в среднем ${fmtR(t.avgR)}` : undefined}
             title={t?.net != null ? KPI_FORMULAS.netPnl : KPI_FORMULAS.expectancyR}

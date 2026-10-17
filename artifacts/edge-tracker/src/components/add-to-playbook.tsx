@@ -10,18 +10,15 @@ import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ToastAction } from "@/components/ui/toast";
 import { Pill } from "@/components/ds";
-import { BookOpen, FolderPlus, Folder, Inbox, AlertTriangle, Loader2, X, GitBranch, Search } from "lucide-react";
+import { BookOpen, FolderPlus, Folder, Inbox, AlertTriangle, Loader2, X, GitBranch, } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { toneText } from "@/components/ds";
 import { TradeQuickAdd } from "@/components/playbook/quick-add";
 import { useToast } from "@/hooks/use-toast";
 import { safeHttpUrl } from "@/lib/url";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
-
-const tok = () => { try { return localStorage.getItem("ws_lexx_token") ?? ""; } catch { return ""; } };
-const authHdr = () => tok() ? { Authorization: `Bearer ${tok()}` } : {} as Record<string, string>;
 
 const LAST_FOLDER_KEY = "ws_lexx_playbook_last_folder";
 function readLastFolder(): string {
@@ -180,7 +177,7 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
 
   const { data: foldersRaw, isLoading: foldersLoading } = useQuery<string[]>({
     queryKey: ["playbook-folders"],
-    queryFn: () => fetch(`${BASE}/api/playbook/folders`).then(r => r.json()),
+    queryFn: ({ signal }) => http.get<string[]>("/api/playbook/folders", { signal }),
     enabled: open,
   });
   const folders = Array.isArray(foldersRaw) ? foldersRaw.filter((f) => typeof f === "string" && f) : [];
@@ -193,9 +190,9 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
 
   const { data: allEntriesRaw } = useQuery<PlaybookEntry[]>({
     queryKey: ["playbook-all-light"],
-    queryFn: () =>
-      fetch(`${BASE}/api/playbook?lite=1`)
-        .then(r => r.json())
+    queryFn: ({ signal }) =>
+      http
+        .get<unknown>("/api/playbook", { query: { lite: 1 }, signal })
         .then((rows: unknown) => (Array.isArray(rows) ? rows : []).map((r: any) => ({
           id: r.id,
           name: r.name,
@@ -263,24 +260,10 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
         longName: payload.longName ?? null,
         parentId: parentSetupId ? Number(parentSetupId) : null,
       };
-      const res = await fetch(`${BASE}/api/playbook`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...authHdr() },
-        body: JSON.stringify(body),
-      });
-      if (!res.ok) {
-        let msg = `Ошибка сервера (${res.status})`;
-        try { const d = await res.json(); if (d && typeof d.error === "string") msg = d.error; } catch { /* not JSON */ }
-        throw new Error(msg);
-      }
-      const created = (await res.json()) as { id?: number } | null;
+      const created = await http.post<{ id?: number } | null>("/api/playbook", body);
       // «Новый сетап из сделки»: the trade becomes the new setup's first example (Tier 2 — the trader can re-tier it).
       if (payload.sourceType === "trade" && typeof created?.id === "number") {
-        await fetch(`${BASE}/api/playbook/${created.id}/examples`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", ...authHdr() },
-          body: JSON.stringify({ tradeIds: [payload.sourceId], tier: 2 }),
-        }).catch(() => null);
+        await http.post(`/api/playbook/${created.id}/examples`, { tradeIds: [payload.sourceId], tier: 2 }).catch(() => null);
       }
       return created;
     },
@@ -303,7 +286,7 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
       });
     },
     onError: (e) => {
-      toast({ title: "Не удалось добавить в плейбук", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: "Не удалось добавить в плейбук", description: humanizeApiError(e), variant: "destructive" });
     },
   });
 

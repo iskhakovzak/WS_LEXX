@@ -10,6 +10,7 @@ import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
+import { AppError, badRequest, unauthorized } from "../lib/http";
 
 // ─── Additive schema (gameplan pattern) ─────────────────────────────────────
 // trader_ratings is created by migrate.ts; here we only add the rubric/feedback-loop columns.
@@ -106,7 +107,7 @@ function notifyRating(r: { id: number; trader: string; week: string; overall: nu
 router.get("/ratings", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const curator = req.query.curator as string | undefined;
   const week = typeof req.query.week === "string" ? mondayOf(req.query.week) : null;
   let sqlText = `SELECT ${SELECT_COLS} FROM trader_ratings`;
@@ -133,7 +134,7 @@ router.get("/ratings/rubric", asyncHandler(async (_req, res): Promise<void> => {
 router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params: unknown[] = [];
   const where = scope ? (params.push(scope), `WHERE trader = $1`) : "";
   const { rows } = await pool.query<any>(`
@@ -172,8 +173,8 @@ router.get("/ratings/summary", asyncHandler(async (req, res): Promise<void> => {
 router.get("/ratings/evidence", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null, "ratings.read.team");
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (!scope) { res.status(400).json({ error: "trader required" }); return; }
+  if (scope === undefined) throw unauthorized();
+  if (!scope) throw badRequest("TRADER_REQUIRED");
   const weekRaw = typeof req.query.week === "string" ? req.query.week : nyDate();
   const monday = mondayOf(weekRaw);
   if (!monday) { res.status(400).json({ error: "week must be YYYY-MM-DD" }); return; }
@@ -331,7 +332,7 @@ router.post("/ratings", asyncHandler(async (req, res): Promise<void> => {
   if (!monday) { res.status(400).json({ error: "week must be YYYY-MM-DD" }); return; }
   if (monday > nyDate()) { res.status(400).json({ error: "Нельзя оценить будущую неделю" }); return; }
   const { rows: known } = await pool.query("SELECT 1 FROM users WHERE name = $1 AND active = true", [traderName]);
-  if (known.length === 0) { res.status(400).json({ error: "Трейдер не найден" }); return; }
+  if (known.length === 0) throw new AppError("TRADER_NOT_FOUND", 400);
 
   const scores: Record<string, number> = {};
   for (const k of [...CRITERIA, "overall"] as const) {
@@ -378,7 +379,7 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
   if (!(await requireCap(req, res, "ratings.write"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: found } = await pool.query<any>(`SELECT curator FROM trader_ratings WHERE id = $1`, [id]);
   if (!found[0]) { res.status(404).json({ error: "Rating not found" }); return; }
   const actor = req.authUser!.name;
@@ -403,7 +404,7 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
     if (tier === "invalid") { res.status(400).json({ error: "invalid tier" }); return; }
     params.push(tier); sets.push(`tier = $${params.length}`);
   }
-  if (sets.length === 0) { res.status(400).json({ error: "Нечего обновлять" }); return; }
+  if (sets.length === 0) throw badRequest("NO_FIELDS");
   sets.push(`updated_at = NOW()`);
   params.push(id);
   const { rows } = await pool.query<any>(
@@ -417,10 +418,10 @@ router.patch("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
 /** POST /ratings/:id/ack — the rated trader confirms they read the feedback (closes the loop). */
 router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => {
   await ensureColumns();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!req.authUser) throw unauthorized();
+  if (isGuest(req)) throw new AppError("GUEST_READ_ONLY");
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: found } = await pool.query<any>(`SELECT trader, acknowledged_at FROM trader_ratings WHERE id = $1`, [id]);
   if (!found[0]) { res.status(404).json({ error: "Rating not found" }); return; }
   if (found[0].trader !== req.authUser.name && !(await can(req, "ratings.write", { trader: found[0].trader }))) {
@@ -446,7 +447,7 @@ router.post("/ratings/:id/ack", asyncHandler(async (req, res): Promise<void> => 
 router.delete("/ratings/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "ratings.write"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(`SELECT curator FROM trader_ratings WHERE id = $1`, [id]);
   if (!rows[0]) { res.status(404).json({ error: "Rating not found" }); return; }
   if (rows[0].curator !== req.authUser!.name && !(await can(req, "ratings.manage.any"))) {

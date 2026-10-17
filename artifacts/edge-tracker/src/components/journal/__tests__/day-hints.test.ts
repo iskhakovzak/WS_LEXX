@@ -30,7 +30,7 @@ describe("dayHints", () => {
       { id: 3, entryTime: "09:40:00", net: -20 },
     ] }));
     expect(h[0].id).toBe("opening");
-    expect(h[0].text).toBe("3 сделки в первые 15 минут, −$120");
+    expect(h[0].text).toBe("3 сделки в первые 15 минут, −$120.00");
     expect(h[0].tone).toBe("down");
   });
 

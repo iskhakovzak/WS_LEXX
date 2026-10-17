@@ -6,6 +6,7 @@ import * as React from "react";
 import type { LucideIcon } from "lucide-react";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { fmtDate } from "@/lib/format";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { Tone } from "@/components/ds";
 
@@ -293,31 +294,6 @@ export function num(v: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/** "+1.23%" / "−0.40%" with a real minus sign. */
-export function fmtPct(v: unknown, digits = 2): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-export function fmtR(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(2)}R`;
-}
-
-export function fmtMoney(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
-export function fmtPrice(v: unknown): string {
-  const n = num(v);
-  if (n == null) return "—";
-  return n >= 1000 ? n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : n.toFixed(2);
-}
-
 /** "только что" / "5 мин назад" / "2 ч назад" / date. */
 export function relTime(iso: string | number | Date | null | undefined, now = Date.now()): string {
   if (iso == null) return "—";
@@ -329,14 +305,7 @@ export function relTime(iso: string | number | Date | null | undefined, now = Da
   if (m < 60) return `${m} мин назад`;
   const h = Math.round(m / 60);
   if (h < 24) return `${h} ч назад`;
-  return new Date(t).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-export function clockTime(iso: string | number | Date | null | undefined): string {
-  if (iso == null) return "—";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return "—";
-  return d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
+  return fmtDate(t, "dayMonth");
 }
 
 /** Re-render every `ms` (for relative timestamps / clocks). */

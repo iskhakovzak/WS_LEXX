@@ -26,9 +26,10 @@ import { can, readScope } from "../lib/permissions";
 import { resultSql, netPnlSql, horizonSql, num } from "../lib/tradeMath";
 import { execSpanJoin } from "../lib/execSpan";
 import { nyMinutes, nyDate } from "../lib/tradingDate";
-import { etWallToUtcSeconds, parseDateStrict } from "./candles";
+import { etWallToUtcSeconds, parseDateStrict } from "../lib/candles/market";
 import { analyzeBehavior, dayTimeline, groupByDay, parseHoldText, shiftDate, type BehaviorTrade } from "../lib/behaviorEngine";
 import { TRIGGER_KINDS, TRIGGER_KIND_SET, describeTrigger, evaluateTrigger, validateTriggerParams } from "../lib/behaviorTriggers";
+import { AppError, badRequest, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -195,11 +196,11 @@ async function withAutoSetups(trades: BehaviorTrade[]): Promise<BehaviorTrade[]>
 
 router.get("/behavior", asyncHandler(async (req, res) => {
   const parsed = querySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   if (q.from && q.to && q.from > q.to) { res.status(400).json({ error: "from позже to" }); return; }
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
 
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
@@ -226,10 +227,10 @@ const topSchema = z.object({
 });
 router.get("/behavior/top-patterns", asyncHandler(async (req, res) => {
   const parsed = topSchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   if (q.from > q.to) { res.status(400).json({ error: "from позже to" }); return; }
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   if (isGuestUser(req.authUser)) { res.json({ from: q.from, to: q.to, traders: {} }); return; }
   const wanted = [...new Set(q.traders.split(",").map((t) => t.trim()).filter((t) => t && t.length <= 120))].slice(0, 300);
   const allowed = await readScope(req, "team.read");
@@ -256,10 +257,10 @@ const daySchema = querySchema.extend({ date: z.string().regex(YMD_RE) });
 
 router.get("/behavior/day", asyncHandler(async (req, res) => {
   const parsed = daySchema.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   // Нормы (медиана сделок/день, паузы) — по периоду отчёта, если день в нём; иначе 90 дней до дня включительно.
   const inPeriod = (!q.from || q.date >= q.from) && (!q.to || q.date <= q.to);
   const from = inPeriod ? q.from : shiftDate(q.date, -89);
@@ -330,10 +331,10 @@ const triggersQuery = z.object({
 
 router.get("/behavior/triggers", asyncHandler(async (req, res) => {
   const parsed = triggersQuery.safeParse(normQuery(req.query));
-  if (!parsed.success) { res.status(400).json({ error: "Неверные параметры", details: parsed.error.flatten() }); return; }
+  if (!parsed.success) throw badRequest("BAD_REQUEST", parsed.error.flatten());
   const q = parsed.data;
   const scoped = await scopeTrader(req, q.trader);
-  if (scoped === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scoped === undefined) throw unauthorized();
   const base = { kinds: TRIGGER_KINDS, today: nyDate(), from: q.from ?? null, to: q.to ?? null };
   if (scoped === GUEST_SCOPE || (scoped == null && !req.authUser?.name)) {
     res.json({ ...base, trader: null, canEdit: false, lastTradingDate: null, tradingDays: 0, items: [] });
@@ -373,7 +374,7 @@ router.post("/behavior/triggers", asyncHandler(async (req, res) => {
   if (!body.success) { res.status(400).json({ error: body.error.issues[0]?.message ?? "Неверные данные" }); return; }
   const b = body.data;
   const me = req.authUser;
-  if (!me || isGuestUser(me)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return; }
+  if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
   const trader = b.trader ?? me.name;
   if (!(await canWriteTriggers(req, trader))) { res.status(403).json({ error: "Можно создавать только свои триггеры" }); return; }
   const params = validateTriggerParams(b.kind, b.params ?? {});
@@ -412,8 +413,8 @@ const idParam = z.coerce.number().int().positive();
 
 async function loadWritableTrigger(req: Request, res: import("express").Response): Promise<TriggerRow | null> {
   const id = idParam.safeParse(req.params.id);
-  if (!id.success) { res.status(400).json({ error: "Неверный id" }); return null; }
-  if (!req.authUser || isGuestUser(req.authUser)) { res.status(403).json({ error: "Гостевой режим: только просмотр" }); return null; }
+  if (!id.success) { sendError(res, badRequest("INVALID_ID")); return null; }
+  if (!req.authUser || isGuestUser(req.authUser)) { sendError(res, new AppError("GUEST_READ_ONLY")); return null; }
   await ensureTriggersTable();
   const { rows } = await pool.query<TriggerRow>(`SELECT * FROM behavior_triggers WHERE id = $1 AND deleted_at IS NULL`, [id.data]);
   if (!rows[0]) { res.status(404).json({ error: "Триггер не найден" }); return null; }

@@ -1,5 +1,6 @@
 /** Watchlist domain types, derived metrics and small fetch helpers. */
 import type { Tone } from "@/components/ds";
+import { fmtPct } from "@/lib/format";
 
 export const STATUSES = ["watching", "passed", "traded"] as const;
 export type Status = (typeof STATUSES)[number];
@@ -106,22 +107,6 @@ export function num(v: string | number | null | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export function fmtPrice(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return v >= 1000 ? v.toLocaleString("en-US", { maximumFractionDigits: 0 }) : v.toFixed(2);
-}
-export function fmtPct(v: number | null | undefined, digits = 1): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toFixed(digits);
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}${s}%`;
-}
-export function fmtVol(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v >= 1e9) return `${(v / 1e9).toFixed(1)}B`;
-  if (v >= 1e6) return `${(v / 1e6).toFixed(1)}M`;
-  if (v >= 1e3) return `${(v / 1e3).toFixed(0)}K`;
-  return String(v);
-}
 
 export function scoreTone(score: number | null | undefined): Tone {
   if (score == null) return "neutral";
@@ -177,7 +162,7 @@ export function inPlayReasons(item: WatchlistItem, q: Quote | undefined, news: N
   if (earn?.when === "today") out.push({ key: "earn", label: `Отчёт ${earn.callType === "TNS" ? "сегодня" : earn.callType}`, tone: earn.callType === "AMC" ? "purple" : "warn" });
   else if (earn) out.push({ key: "earn", label: `Отчёт ${earn.callType} вчера`, tone: "purple" });
   const gap = q?.gapPct ?? null;
-  if (gap != null && Math.abs(gap) >= 3) out.push({ key: "gap", label: `Гэп ${fmtPct(gap)}`, tone: gap > 0 ? "up" : "down" });
+  if (gap != null && Math.abs(gap) >= 3) out.push({ key: "gap", label: `Гэп ${fmtPct(gap, 1)}`, tone: gap > 0 ? "up" : "down" });
   const rv = q?.relativeVolume ?? null;
   if (rv != null && rv >= 1.5) out.push({ key: "rvol", label: `rVol ${rv.toFixed(1)}×`, tone: "accent" });
   if (news && news.count24h > 0) out.push({ key: "news", label: `Новости ${news.count24h}`, tone: "neutral" });
@@ -190,22 +175,6 @@ export function inPlayReasons(item: WatchlistItem, q: Quote | undefined, news: N
 export function splitTags(tags?: string | null): string[] {
   return tags ? tags.split(",").map((t) => t.trim()).filter(Boolean) : [];
 }
-
-/** fetch → JSON, throwing a readable error on non-2xx (API returns { error }). */
-export async function apiJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const r = await fetch(url, init);
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* non-JSON body */ }
-    throw new Error(msg);
-  }
-  return r.json() as Promise<T>;
-}
-export const jsonInit = (method: string, body?: unknown): RequestInit => ({
-  method,
-  headers: body !== undefined ? { "Content-Type": "application/json" } : undefined,
-  body: body !== undefined ? JSON.stringify(body) : undefined,
-});
 
 export function readLS<T>(key: string, fallback: T): T {
   try {
@@ -232,12 +201,6 @@ export function timeAgoRu(iso: string | null | undefined): string {
   return `${d} дн`;
 }
 
-/** Signed money with thin formatting: +$1,240 / −$300. */
-export function fmtMoney(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = Math.abs(v).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-  return `${v > 0 ? "+" : v < 0 ? "−" : ""}$${s}`;
-}
 
 export type KeyLevelKey = "pdh" | "pdl" | "vwap" | "pmh" | "pml" | "stop" | "target";
 export const KEY_LEVEL_LABEL: Record<KeyLevelKey, string> = {

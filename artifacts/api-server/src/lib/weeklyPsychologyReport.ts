@@ -431,37 +431,18 @@ export async function getAllUserIds(): Promise<string[]> {
   return rows.map((r) => r.trader);
 }
 
-export function startWeeklyReportCron() {
-  const INTERVAL_MS = 60 * 1000;
-  let lastRunDate: string | null = null;
-
-  const check = async () => {
-    const now = new Date();
-    const isFriday = now.getDay() === 5;
-    const hour = now.getHours();
-
-    if (!isFriday || hour < 17) return;
-
-    const todayStr = ymdLocal(now);
-    if (lastRunDate === todayStr) return;
-
-    lastRunDate = todayStr;
-    logger.info({ date: todayStr }, "Running weekly psychology report generation (Friday)");
+/** Weekly psychology reports for every trader with trades. Job registry: "psychology.weekly-report" (Fridays 17:00 NY). */
+export async function runWeeklyReports(): Promise<Record<string, unknown>> {
+  const userIds = await getAllUserIds();
+  let ok = 0, failed = 0;
+  for (const userId of userIds) {
     try {
-      const userIds = await getAllUserIds();
-      for (const userId of userIds) {
-        try {
-          await generateWeeklyReport(userId);
-        } catch (e: any) {
-          logger.warn({ userId, error: e.message }, "Failed to generate weekly report for user");
-        }
-      }
+      await generateWeeklyReport(userId);
+      ok++;
     } catch (e: any) {
-      logger.error({ error: e.message }, "Weekly report cron failed");
-      lastRunDate = null;
+      failed++;
+      logger.warn({ userId, error: e.message }, "Failed to generate weekly report for user");
     }
-  };
-
-  setInterval(check, INTERVAL_MS);
-  logger.info("Weekly psychology report cron started (runs Fridays at 17:xx)");
+  }
+  return { users: userIds.length, ok, failed };
 }

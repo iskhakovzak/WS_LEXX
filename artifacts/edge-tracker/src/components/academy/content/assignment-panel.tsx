@@ -13,11 +13,11 @@ import { EmptyState, Panel, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { api, invalidateAcademy, useMyTrades, type AssignmentResponse, type RubricCriterion, type Submission, type TradeRef } from "./api";
-import { fmtMoney, fmtR, SubmissionPill, toneOfNum } from "./bits";
+import { SubmissionPill, toneOfNum } from "./bits";
 import { Markdown } from "./markdown";
 import { DualTime } from "./time";
+import { fmtR, fmtUsd, pluralRu } from "@/lib/format";
 
 export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; scores?: Record<string, number> | null }) {
   const max = rubric.reduce((s, c) => s + c.maxPoints, 0);
@@ -61,7 +61,7 @@ export function TradeChips({ trades }: { trades: TradeRef[] }) {
             <a href={links.trade(t.id)} className="chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs tabular-nums" title={t.setup ?? undefined}>
               <b className="font-semibold">{t.ticker}</b>
               <span className="text-muted-foreground">{t.date}</span>
-              <span className={cn(toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtMoney(t.net)}</span>
+              <span className={cn(toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "text-muted-foreground")}>{fmtUsd(t.net, { signed: true })}</span>
               {t.r != null && <span className="text-muted-foreground">{fmtR(t.r)}</span>}
             </a>
           )}
@@ -101,7 +101,7 @@ function TradePicker({ selected, onChange, user }: { selected: number[]; onChang
                   <span className="w-24 shrink-0 tabular-nums text-muted-foreground">{t.date}</span>
                   <b className="w-16 shrink-0">{t.ticker}</b>
                   <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.setup || "без сетапа"}</span>
-                  <span className={cn("tabular-nums", toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "")}>{fmtMoney(t.net)}</span>
+                  <span className={cn("tabular-nums", toneOfNum(t.net) === "up" ? "text-up" : toneOfNum(t.net) === "down" ? "text-down" : "")}>{fmtUsd(t.net, { signed: true })}</span>
                   <span className="w-16 text-right tabular-nums text-muted-foreground">{fmtR(t.r)}</span>
                 </label>
               </li>

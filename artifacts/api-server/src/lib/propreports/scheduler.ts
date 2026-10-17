@@ -1,5 +1,6 @@
 /**
  * Optional scheduled sync. OFF unless PROPREPORTS_SYNC_MINUTES (≥ 5) is set together with the API env vars.
+ * Scheduled by the job registry ("propreports.sync", src/jobs/definitions.ts) with the cron from syncCron().
  * Pulls the last `lookbackDays` of fills (default 3, so overnight/swing exits are re-matched to their entries)
  * — or further back, to the oldest still-open broker position — and applies them with the normal idempotent engine;
  * overlapping runs are skipped.
@@ -9,11 +10,26 @@ import { logger } from "../logger";
 import { getConfiguredClient, isConfigured, syncMinutes } from "./client";
 import { buildRoundTrips } from "./round-trips";
 import { applySync, planSync } from "./sync";
+import { nextCronRun, parseCron } from "../../jobs/cron";
 
-let timer: NodeJS.Timeout | null = null;
 let running = false;
-let nextRunAt: number | null = null;
 let lastError: string | null = null;
+
+/** Cron for an interval in minutes: divisors of 60 → every N minutes; ≥ 60 → every round(N/60) hours. */
+export function intervalCron(minutes: number): string {
+  if (minutes >= 60) {
+    const h = Math.max(1, Math.min(23, Math.round(minutes / 60)));
+    return h === 1 ? "0 * * * *" : `0 */${h} * * *`;
+  }
+  const step = [5, 6, 10, 12, 15, 20, 30].reduce((best, d) => (Math.abs(d - minutes) < Math.abs(best - minutes) ? d : best), 5);
+  return `*/${step} * * * *`;
+}
+
+/** The registry cron for the scheduled sync, or null when it is off in this environment. */
+export function syncCron(): string | null {
+  const minutes = syncMinutes();
+  return minutes && isConfigured() ? intervalCron(minutes) : null;
+}
 
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
@@ -61,17 +77,8 @@ export async function runScheduledSync(lookbackDays = 3): Promise<void> {
   }
 }
 
-export function startScheduler(): void {
-  const minutes = syncMinutes();
-  if (timer || !minutes || !isConfigured()) return;
-  const ms = minutes * 60_000;
-  const tick = () => { nextRunAt = Date.now() + ms; void runScheduledSync(); };
-  timer = setInterval(tick, ms);
-  timer.unref?.();
-  nextRunAt = Date.now() + ms;
-  logger.info({ minutes }, "propreports: scheduled sync enabled");
-}
-
 export function schedulerStatus(): { enabled: boolean; minutes: number | null; nextRunAt: string | null; running: boolean; lastError: string | null } {
-  return { enabled: !!timer, minutes: syncMinutes(), nextRunAt: timer && nextRunAt ? new Date(nextRunAt).toISOString() : null, running, lastError };
+  const cron = syncCron();
+  const next = cron ? nextCronRun(parseCron(cron), new Date()) : null;
+  return { enabled: !!cron, minutes: syncMinutes(), nextRunAt: next ? next.toISOString() : null, running, lastError };
 }

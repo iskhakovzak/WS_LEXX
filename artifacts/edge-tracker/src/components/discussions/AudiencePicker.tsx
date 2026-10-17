@@ -1,7 +1,8 @@
 import { Lock, Users } from "lucide-react";
 import { FilterChip } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { type AudienceOptions, audienceReach, isRestricted, peopleWord, sortTokens, tokenLabel } from "./audience";
+import { pluralRu } from "@/lib/format";
+import { type AudienceOptions, audienceReach, isRestricted, sortTokens, tokenLabel } from "./audience";
 
 /**
  * «Кому видна тема»: «Всем» or any union of stages / curators / cohorts, with a live «увидят N человек» hint.
@@ -54,14 +55,14 @@ export function AudiencePicker({ value, onChange, options, me, loading }: {
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {loading && !options ? "Считаем, кто увидит…" : !reach ? (restricted ? "Тему увидят только выбранные группы, вы и кураторы." : "Тему увидят все участники деска.") : restricted ? (
           <>
-            Увидят <span className="font-semibold text-foreground tabular-nums">{reach.count}</span> {peopleWord(reach.count)}
+            Увидят <span className="font-semibold text-foreground tabular-nums">{reach.count}</span> {pluralRu(reach.count, "человек", "человека", "человек")}
             {shown.length > 0 && <>: {shown.join(", ")}{more > 0 ? ` и ещё ${more}` : ""}</>}
             {reach.moderators.length > 0 && <>{shown.length > 0 ? " + " : ": "}кураторы (модерация)</>}
             . Остальные тему не увидят; группа получит уведомление.
           </>
         ) : (
           <>
-            Увидят все — <span className="font-semibold text-foreground tabular-nums">{reach.count}</span> {peopleWord(reach.count)}; каждый получит уведомление о новой теме.
+            Увидят все — <span className="font-semibold text-foreground tabular-nums">{reach.count}</span> {pluralRu(reach.count, "человек", "человека", "человек")}; каждый получит уведомление о новой теме.
           </>
         )}
       </p>

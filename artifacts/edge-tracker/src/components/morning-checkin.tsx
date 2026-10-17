@@ -8,9 +8,11 @@ import { Pill } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
-import { WidgetShell, IconAction, WidgetError, Sparkline, MiniStat, fmtR } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, Sparkline, MiniStat } from "@/components/widgets/widget-kit";
+import { fmtR } from "@/lib/format";
 import {
   type CheckinFlags,
   type CheckinRow,
@@ -211,25 +213,18 @@ export function MorningCheckin() {
   const todayQ = useQuery<CheckinRow | null>({
     queryKey: ["emotional-state-today", userId, today],
     // Pass the NY trading date explicitly: the server's default (UTC) day differs around midnight.
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/emotional-state/today?userId=${encodeURIComponent(userId!)}&date=${today}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
+    queryFn: ({ signal }) => http.get<CheckinRow | null>("/api/emotional-state/today", { query: { userId: userId!, date: today }, signal }),
     enabled: !!userId,
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: 1,
   });
 
   const insightsQ = useQuery<CheckinInsights>({
     queryKey: ["emotional-insights", userId, today],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/emotional-state/insights?userId=${encodeURIComponent(userId!)}&to=${today}&days=30`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return res.json();
-    },
+    queryFn: ({ signal }) =>
+      http.get<CheckinInsights>("/api/emotional-state/insights", { query: { userId: userId!, to: today, days: 30 }, signal }),
     enabled: !!userId,
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     retry: 1,
   });
 
@@ -269,16 +264,7 @@ export function MorningCheckin() {
     if (!userId || !ready || submitting) return;
     setSubmitting(true);
     try {
-      const res = await fetch(`${BASE}/api/emotional-state`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, date: today, ...flags, freeText: draft.plan.trim() || null }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => null);
-        throw new Error(j?.error || `HTTP ${res.status}`);
-      }
-      const row = (await res.json()) as CheckinRow;
+      const row = await http.post<CheckinRow>("/api/emotional-state", { userId, date: today, ...flags, freeText: draft.plan.trim() || null });
       qc.setQueryData(["emotional-state-today", userId, today], row);
       qc.invalidateQueries({ queryKey: ["emotional-insights", userId] });
       setEditing(false);

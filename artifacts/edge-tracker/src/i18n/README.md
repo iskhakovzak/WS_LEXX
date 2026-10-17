@@ -50,9 +50,13 @@ shellI18n.t("nav.playbook");                // section names
 - Server queries: language switches re-fetch active queries (server texts follow `X-Lang`). A heavy language-independent query can opt out: `meta: { i18n: false }`.
 - Component-local state below `<I18nProvider>` resets on a language switch (the tree re-mounts); URL state, query cache, auth and theme survive.
 
-## Formatting (`i18n/format.ts`)
+## Formatting and plurals (`@/lib/format`)
 
-`localeTag()` (ru-RU / en-US / uz-Latn-UZ) · `fmtCount(n)` · `fmtDate(d, "short"|"medium"|"long"|"full"|"dayMonth"|"dayMonthLong"|"monthYear"|"time"|"dateTime")` · `fmtMonth(0..11 | Date, "long"|"short")` · `fmtWeekday(0..6 | Date, "long"|"short"|"narrow")` · `fmtRelative(d)` («5 минут назад» / «5 minutes ago» / «5 daqiqa oldin») · `fmtTimeNY(d)` (24h). Replace every hard-coded `"ru-RU"` with these. **Money and prices are not localized**: keep `lib/format.ts` (`$1,234.56`, `+0.21R`).
+One module for every number, date and plural: `import { … } from "@/lib/format"` (it re-exports `i18n/format.ts`). No local `fmtUsd`/`fmtPct`/`plural` copies, no `"ru-RU"`, no module-level `new Intl.*` with the UI locale (ratchet: `lib/format/ratchet.json`).
+
+- **Trading format, identical in RU/EN/UZ** (en-US digits, U+2212 minus, never "−0"): `fmtUsd(v, { signed?, decimals?: 2 | n | "auto" | "trim", compact?: true | 10_000 })` → `$1,234.56`, `+$1,234.56`, `$12.3K` · `fmtPct(v)` (value in %, signed) → `+1.23%` · `fmtRate(x)` (share 0…1) → `57%` · `fmtR(v)` → `+0.21R` · `fmtPrice(v)` → `920.74` / `0.4521` · `fmtNum(v)` / `fmtRatio(pf)` → `1.86` / `∞` · `fmtCompact(v)` → `3.4M`. All take `fallback` (default "—").
+- **Follow the language** (read at call time; call in render, never at module scope): `fmtCount(n)` · `fmtDate(d, style, { timeZone? })` with styles `short` `shortYY` `medium` `long` `full` `dayMonth` `dayMonthLong` `dayMonthNumeric` `weekdayDayMonth` `weekdayDayMonthLong` `monthYear` `time` `timeSeconds` `dateTime` `numericDateTime` `shortDateTime` · `fmtDateCustom(d, Intl options)` for a rare shape (add a style when it repeats) · `fmtMonth(0..11 | Date, "long"|"short")` · `fmtWeekday(0..6 | Date, "long"|"short"|"narrow")` · `fmtRelative(d)` · `fmtTimeNY(d)` · `localeTag()`.
+- **Plurals.** Common units: `commonI18n.t("units.trades", { count })` (also days, tradingDays, weeks, months, minutes, hours, tickers, setups, ideas, events, violations, traders, points, lessons, items, entries, wins, losses; `units.tradesWord` = the word alone). Every other noun still goes through `pluralRu(n, one, few, many)` from `@/lib/format` — the single RU rule left for the wave: **when you translate an area, replace each `pluralRu(` call in it with a plural entry in the area namespace** (`t("articles", { count })`), in the same edit that translates the noun. `grep -rn "pluralRu(" <area>` lists them. Don't add new local plural helpers or new `pluralRu` calls.
 
 ## Do not translate
 
@@ -80,7 +84,7 @@ Skipped: comments, tests, dictionaries, `keywords:` search synonyms, lines with 
 
 - [ ] `i18n:report -- --check <your paths>` → 0 (frontend and, if touched, API).
 - [ ] RU text unchanged on screen; EN and UZ written by hand from the glossary (no machine-literal UZ; `ʻ` = U+02BB).
-- [ ] Plurals via plural entries (no `pluralRu` in new code), dates/counts via `format.ts`, no `"ru-RU"` left.
+- [ ] Plurals via plural entries (every `pluralRu(` in the area converted), numbers/dates via `@/lib/format`, no `"ru-RU"` left.
 - [ ] Switched RU → EN → UZ → RU on every page of the area at 1280–1920 and 390: no overflow/clipping (long labels get `title`), no flashes of RU, toasts and empty/error states translated.
 - [ ] Server texts your area returns use `langOf(req)`; stored/sent texts use the recipient's locale.
 - [ ] `npx tsc -p tsconfig.json --noEmit` clean; tests updated (RU expectations still pass with the default language).

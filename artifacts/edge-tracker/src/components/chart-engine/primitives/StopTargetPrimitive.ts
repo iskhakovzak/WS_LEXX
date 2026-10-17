@@ -1,7 +1,7 @@
 /**
  * Series primitive: stop / target lines with R labels (+1R / +2R guides when a stop exists).
  */
-import { fmtPrice, fmtR } from "../lib/format";
+import { fmtPrice, fmtR } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label } from "./canvas";
 
 export type StopTargetData = {

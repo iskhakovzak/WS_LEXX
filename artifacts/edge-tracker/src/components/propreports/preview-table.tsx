@@ -8,8 +8,9 @@ import { DataTable, Pill, Segmented, SortableTh, StatCard, StatGrid, useTableSor
 import { cn } from "@/lib/utils";
 import {
   ACTION_LABEL, FIELD_LABEL, feeLabel, orderedFeeKeys, HORIZON_LABEL, REASON_LABEL, SESSION_LABEL,
-  fmtPrice, fmtSigned, fmtUsd, type PlanAction, type PlanItemView, type Preview, type TripView,
+  fmtPrice, type PlanAction, type PlanItemView, type Preview, type TripView,
 } from "./api";
+import { fmtUsd } from "@/lib/format";
 
 const ACTION_TONE: Record<PlanAction, Tone> = { insert: "up", update: "accent", unchanged: "neutral", adopt: "purple", conflict: "warn", skip: "down" };
 type Filter = "all" | PlanAction;
@@ -94,7 +95,7 @@ export function PreviewSummary({ preview }: { preview: Preview }) {
     <div className="grid gap-3">
       <StatGrid>
         <StatCard label="Раунд-трипов" value={s.trips} hint={`${s.closed} закрытых · ${s.open} открытых · ${s.tradingDays} дн.`} />
-        <StatCard label="Net P&L (по брокеру)" value={fmtSigned(s.net)} tone={s.net > 0 ? "up" : s.net < 0 ? "down" : "neutral"} hint={`gross ${fmtSigned(s.gross)} · комиссии ${fmtUsd(s.fees)}`} />
+        <StatCard label="Net P&L (по брокеру)" value={fmtUsd(s.net, { signed: true })} tone={s.net > 0 ? "up" : s.net < 0 ? "down" : "neutral"} hint={`gross ${fmtUsd(s.gross, { signed: true })} · комиссии ${fmtUsd(s.fees)}`} />
         <StatCard label="Новых / обновится" value={`${c.insert} / ${c.update}`} tone={c.insert ? "up" : "neutral"} hint={`${c.unchanged} без изменений · ${c.adopt} привяжется`} />
         <StatCard label="На сверку / пропуск" value={`${c.conflict} / ${c.skip}`} tone={c.conflict ? "warn" : c.skip ? "down" : "neutral"} hint={`${s.byHorizon.intraday} интрадей · ${s.byHorizon.overnight} овернайт · ${s.byHorizon.swing} свинг`} />
       </StatGrid>
@@ -178,9 +179,9 @@ export function PreviewTable({ preview }: { preview: Preview }) {
                     <td className="text-right">{t.qty}{t.open && t.openQty ? <span className="text-muted-foreground"> ({t.openQty} откр.)</span> : null}</td>
                     <td className="text-right">{fmtPrice(t.avgEntry)}</td>
                     <td className="text-right">{fmtPrice(t.avgExit)}</td>
-                    <td className={cn("text-right", t.grossPnl > 0 ? "text-up" : t.grossPnl < 0 ? "text-down" : "")}>{fmtSigned(t.grossPnl)}</td>
+                    <td className={cn("text-right", t.grossPnl > 0 ? "text-up" : t.grossPnl < 0 ? "text-down" : "")}>{fmtUsd(t.grossPnl, { signed: true })}</td>
                     <td className="text-right"><FeesBreakdown fees={t.fees} total={t.totalFees} /></td>
-                    <td className={cn("text-right font-medium", t.netPnl > 0 ? "text-up" : t.netPnl < 0 ? "text-down" : "")}>{fmtSigned(t.netPnl)}</td>
+                    <td className={cn("text-right font-medium", t.netPnl > 0 ? "text-up" : t.netPnl < 0 ? "text-down" : "")}>{fmtUsd(t.netPnl, { signed: true })}</td>
                     <td className="whitespace-nowrap text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-muted-foreground">· {SESSION_LABEL[t.session]}</span></td>
                     <td className="whitespace-nowrap text-xs">{t.holdTime ?? "—"}</td>
                     <td><Pill tone={resultTone(t.result)}>{t.result === "open" ? "Открыта" : t.result === "win" ? "Прибыль" : t.result === "loss" ? "Убыток" : "В ноль"}</Pill></td>
@@ -194,7 +195,7 @@ export function PreviewTable({ preview }: { preview: Preview }) {
                           {it.candidates.length > 0 && (
                             <div className="text-xs">
                               <span className="text-[hsl(var(--chart-3))]">Совпадает с ручной записью:</span>{" "}
-                              {it.candidates.map((c) => `#${c.id} ${c.ticker} ${c.side ?? ""} ${c.date}${c.pnl != null ? ` (${fmtSigned(c.pnl)})` : ""}`).join("; ")}
+                              {it.candidates.map((c) => `#${c.id} ${c.ticker} ${c.side ?? ""} ${c.date}${c.pnl != null ? ` (${fmtUsd(c.pnl, { signed: true })})` : ""}`).join("; ")}
                               <span className="text-muted-foreground"> — после импорта появится во «Входящих на сверку»</span>
                             </div>
                           )}

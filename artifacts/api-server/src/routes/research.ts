@@ -19,6 +19,7 @@ import {
   GetResearchResponse,
   UpdateResearchResponse,
 } from "@workspace/api-zod";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Research notes ("Ресёрч") — patterns the desk keeps studying.
@@ -156,7 +157,7 @@ async function canModify(req: Request, r: ResearchRow): Promise<boolean> {
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -178,7 +179,7 @@ const ListQuery = z.object({
 router.get("/research", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const q = ListQuery.safeParse({
     ticker: req.query.ticker || undefined, q: req.query.q || undefined, tag: req.query.tag || undefined,
     pinned: req.query.pinned || undefined, limit: req.query.limit, offset: req.query.offset,
@@ -249,12 +250,12 @@ router.post("/research", asyncHandler(async (req, res): Promise<void> => {
 router.get("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const params = GetResearchParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const viewer = req.authUser?.name ?? null;
   const entry = await loadResearch(params.data.id, viewer, scope);
-  if (!entry) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!entry) throw notFound("RESEARCH_NOT_FOUND");
   res.json(serializeResearch(entry, viewer));
 }));
 
@@ -283,7 +284,7 @@ router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   const viewer = req.authUser!.name;
   const scope = (await evidenceScope(req)) ?? null;
   const existing = await loadResearch(params.data.id, viewer, scope);
-  if (!existing) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Изменять заметку может только автор или куратор" }); return; }
   const d = parsed.data;
   const patch: Record<string, unknown> = {
@@ -307,7 +308,7 @@ router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
     await pool.query(`UPDATE research SET ${sets.join(", ")} WHERE id = $${vals.length} AND deleted_at IS NULL`, vals);
   }
   const entry = await loadResearch(existing.id, viewer, scope);
-  if (!entry) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!entry) throw notFound("RESEARCH_NOT_FOUND");
   logActivity({ action: extra.data.playbookId ? "promoted" : "updated", section: "research", entityId: String(entry.id), entityTitle: entry.pattern_name, trader: viewer, details: extra.data.playbookId ? `playbook #${extra.data.playbookId}` : undefined });
   const out = serializeResearch(entry, viewer);
   UpdateResearchResponse.parse(out);
@@ -320,7 +321,7 @@ router.delete("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   const params = DeleteResearchParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const existing = await loadResearch(params.data.id, req.authUser!.name, GUEST_SCOPE);
-  if (!existing) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!existing) throw notFound("RESEARCH_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Удалить заметку может только автор или куратор" }); return; }
   await pool.query(`UPDATE research SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "research", entityId: String(existing.id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
@@ -332,7 +333,7 @@ router.post("/research/:id/restore", asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadResearch(id, req.authUser!.name, GUEST_SCOPE, true);
-  if (!existing || !existing.deleted_at) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!existing || !existing.deleted_at) throw notFound("RESEARCH_NOT_FOUND");
   if (!(await canModify(req, existing))) { res.status(403).json({ error: "Восстановить заметку может только автор или куратор" }); return; }
   await pool.query(`UPDATE research SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "research", entityId: String(id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
@@ -349,9 +350,9 @@ router.get("/research/:id/trades", asyncHandler(async (req, res): Promise<void> 
   await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const { rows } = await pool.query<Record<string, unknown>>(
     `SELECT ${TRADE_SELECT} FROM trades t
       WHERE t.deleted_at IS NULL AND t.pattern_id = $1 AND ($2::text IS NULL OR t.trader = $2)
@@ -390,7 +391,7 @@ router.get("/research/:id/setups", asyncHandler(async (req, res): Promise<void> 
   await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const { rows: exists } = await pool.query<{ playbook_id: number | null }>(`SELECT playbook_id FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const params: unknown[] = [id, exists[0].playbook_id];
   const vis = visibleSql(await loadViewer(req), params, "p");
   const { rows } = await pool.query<{ id: number; name: string; folder: string | null; source_type: string | null; source_id: number | null }>(
@@ -411,10 +412,10 @@ router.get("/research/:id/candidates", asyncHandler(async (req, res): Promise<vo
   await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await evidenceScope(req);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (scope === GUEST_SCOPE) { res.json([]); return; }
   const { rows: exists } = await pool.query<{ ticker: string | null }>(`SELECT ticker FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const tickers = [...new Set((exists[0].ticker ?? "").toUpperCase().split(/[\s,;/]+/).map((t) => t.trim()).filter((t) => /^[A-Z][A-Z0-9.\-]{0,11}$/.test(t)))];
   if (!tickers.length) { res.json([]); return; }
   const { rows } = await pool.query<Record<string, unknown>>(
@@ -440,9 +441,9 @@ router.post("/research/:id/link-trade", asyncHandler(async (req, res): Promise<v
   const body = LinkBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "tradeId required" }); return; }
   const { rows: exists } = await pool.query<{ pattern_name: string }>(`SELECT pattern_name FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const access = await canAccessTrade(req, body.data.tradeId);
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) { res.status(403).json({ error: "Можно привязывать только свои сделки" }); return; }
   await pool.query(`UPDATE trades SET pattern_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [body.data.unlink ? null : id, body.data.tradeId]);
   logActivity({ action: body.data.unlink ? "unlinked" : "linked", section: "research", entityId: String(id), entityTitle: exists[0].pattern_name, trader: req.authUser!.name, details: `trade #${body.data.tradeId}` });
@@ -458,7 +459,7 @@ router.post("/research/:id/pin", asyncHandler(async (req, res): Promise<void> =>
   const body = PinBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "pinned (boolean) required" }); return; }
   const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
-  if (!exists.length) { res.status(404).json({ error: "Research not found" }); return; }
+  if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   if (body.data.pinned) {
     await pool.query(`INSERT INTO research_pins (user_name, research_id) VALUES ($1, $2) ON CONFLICT DO NOTHING`, [req.authUser!.name, id]);
   } else {

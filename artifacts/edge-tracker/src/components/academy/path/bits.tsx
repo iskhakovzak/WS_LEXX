@@ -5,8 +5,8 @@ import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
   type ChallengeStatus, type CriterionResult, type EventKind, type RuleProgress, type RuleState, type StageKey, type StageMeta, type TimelineDay, type Trend,
-  fmtDate, usd,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
 // ─── ladder ─────────────────────────────────────────────────────────────────
 
@@ -177,12 +177,12 @@ export function ChallengeTimeline({ days, accountSize }: { days: TimelineDay[]; 
                         style={{ width: `${(Math.abs(d.net) / maxAbs) * 50}%` }}
                       />
                     </span>
-                    <span className={cn("tabular-nums", d.net > 0 ? "text-up" : d.net < 0 ? "text-down" : "text-muted-foreground")}>{usd(d.net)}</span>
+                    <span className={cn("tabular-nums", d.net > 0 ? "text-up" : d.net < 0 ? "text-down" : "text-muted-foreground")}>{fmtUsd(d.net, { decimals: 0 })}</span>
                   </div>
                 </td>
-                <td className={cn("py-2 pr-3 text-right tabular-nums", d.cum > 0 ? "text-up" : d.cum < 0 ? "text-down" : "text-foreground")}>{usd(d.cum)}</td>
-                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{usd(d.dayLow)}</td>
-                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground" title={d.floor != null ? `Уровень ${usd(d.floor)} при счёте ${usd(accountSize)}` : undefined}>{d.ddRoom != null ? usd(d.ddRoom) : "—"}</td>
+                <td className={cn("py-2 pr-3 text-right tabular-nums", d.cum > 0 ? "text-up" : d.cum < 0 ? "text-down" : "text-foreground")}>{fmtUsd(d.cum, { decimals: 0 })}</td>
+                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{fmtUsd(d.dayLow, { decimals: 0 })}</td>
+                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground" title={d.floor != null ? `Уровень ${fmtUsd(d.floor, { decimals: 0 })} при счёте ${fmtUsd(accountSize, { decimals: 0 })}` : undefined}>{d.ddRoom != null ? fmtUsd(d.ddRoom, { decimals: 0 }) : "—"}</td>
                 <td className="py-2">
                   <div className="flex flex-wrap gap-1">
                     {d.events.map((e, i) => (

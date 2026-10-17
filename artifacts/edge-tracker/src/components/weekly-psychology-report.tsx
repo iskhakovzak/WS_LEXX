@@ -3,7 +3,9 @@ import { Link } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Brain, RefreshCw, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Lightbulb } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -11,7 +13,8 @@ import { Pill, EmptyState, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { links } from "@/lib/links";
-import { WidgetShell, IconAction, WidgetError, Sparkline, fmtMoney, fmtR, num, relTime, useStoredState } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, Sparkline, num, relTime, useStoredState } from "@/components/widgets/widget-kit";
+import { fmtDate, fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { readinessTone } from "@/components/widgets/checkin-model";
 
 type StateStats = { count: number; winRate: number; avgPnl: number; totalPnl: number; avgR?: number | null };
@@ -59,16 +62,6 @@ const STATE_TONE: Record<string, Tone> = {
   anxious: "purple",
 };
 
-// "2026-10-13" → "13 окт" (parsed as a local date, no UTC shift)
-function fmtDay(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  if (!y || !m || !d) return ymd;
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-function weekday(ymd: string): string {
-  const [y, m, d] = ymd.slice(0, 10).split("-").map(Number);
-  return new Date(y, m - 1, d).toLocaleDateString("ru-RU", { weekday: "short" });
-}
 
 /** Monday..Friday of the current trading week (New York date, same as every desk report). */
 function currentWeekBounds(): { weekStart: string; weekEnd: string } {
@@ -122,17 +115,18 @@ export function WeeklyPsychologyReport() {
 
   const historyQ = useQuery<HistoryData>({
     queryKey: ["weekly-psychology-history", userId],
-    queryFn: async () => {
-      const res = await fetch(`${BASE}/api/psychology/weekly-report/history?userId=${encodeURIComponent(userId!)}&limit=8`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
+    queryFn: async ({ signal }) => {
+      const data = await http.get<{ reports?: WeeklyReport[]; recalcWeeks?: unknown }>("/api/psychology/weekly-report/history", {
+        query: { userId: userId!, limit: 8 },
+        signal,
+      });
       return {
         reports: (data.reports ?? []) as WeeklyReport[],
         recalcWeeks: Array.isArray(data.recalcWeeks) ? (data.recalcWeeks as string[]) : null,
       };
     },
     enabled: !!userId,
-    staleTime: 5 * 60 * 1000,
+    staleTime: STALE.long,
     retry: 1,
   });
 
@@ -162,33 +156,27 @@ export function WeeklyPsychologyReport() {
     setGenerating(true);
     setError(null);
     try {
-      let res = await fetch(`${BASE}/api/psychology/weekly-report/recalculate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, ...(weekStart ? { weekStart } : {}) }),
-      });
-      if (res.status === 404 && !weekStart) {
-        res = await fetch(`${BASE}/api/psychology/weekly-report/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          // Local Monday–Friday: the server used to derive the week from UTC and land on Sunday.
-          body: JSON.stringify({ userId, ...thisWeek }),
-        });
+      try {
+        await http.post("/api/psychology/weekly-report/recalculate", { userId, ...(weekStart ? { weekStart } : {}) });
+      } catch (e) {
+        if (!(isNotFound(e) && !weekStart)) throw e;
+        // Local Monday–Friday: the server used to derive the week from UTC and land on Sunday.
+        await http.post("/api/psychology/weekly-report/generate", { userId, ...thisWeek });
       }
-      if (res.ok) {
-        const keepWeek = weekStart ?? null;
-        await qc.invalidateQueries({ queryKey: ["weekly-psychology-history", userId] });
-        await qc.invalidateQueries({ queryKey: ["weekly-psychology-report", userId] });
-        const fresh = qc.getQueryData<HistoryData>(["weekly-psychology-history", userId])?.reports ?? [];
-        const at = keepWeek ? fresh.findIndex((r) => r.weekStart === keepWeek) : -1;
-        setIdx(at >= 0 ? at : 0);
-        toast({ title: "Отчёт пересчитан" });
+      const keepWeek = weekStart ?? null;
+      await qc.invalidateQueries({ queryKey: ["weekly-psychology-history", userId] });
+      await qc.invalidateQueries({ queryKey: ["weekly-psychology-report", userId] });
+      const fresh = qc.getQueryData<HistoryData>(["weekly-psychology-history", userId])?.reports ?? [];
+      const at = keepWeek ? fresh.findIndex((r) => r.weekStart === keepWeek) : -1;
+      setIdx(at >= 0 ? at : 0);
+      toast({ title: "Отчёт пересчитан" });
+    } catch (e) {
+      if (e instanceof ApiError && !e.isNetwork) {
+        const msg = e.field<string>("error");
+        setError(`Не удалось сформировать отчёт${msg ? `: ${msg}` : ` (HTTP ${e.status})`}`);
       } else {
-        const j = await res.json().catch(() => null);
-        setError(`Не удалось сформировать отчёт${j?.error ? `: ${j.error}` : ` (HTTP ${res.status})`}`);
+        setError("Ошибка сети — проверьте подключение");
       }
-    } catch {
-      setError("Ошибка сети — проверьте подключение");
     } finally {
       setGenerating(false);
     }
@@ -217,7 +205,7 @@ export function WeeklyPsychologyReport() {
     <WidgetShell
       icon={Brain}
       title="Психология недели"
-      meta={report ? `${fmtDay(report.weekStart)} – ${fmtDay(report.weekEnd)}` : undefined}
+      meta={report ? `${fmtDate(report.weekStart, "dayMonth")} – ${fmtDate(report.weekEnd, "dayMonth")}` : undefined}
       actions={
         <>
           {reports.length > 1 && (
@@ -281,7 +269,7 @@ export function WeeklyPsychologyReport() {
           )}
           {!isCurrent && safeIdx === 0 && (
             <div className="flex flex-wrap items-center gap-2 rounded-xl bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-xs">
-              <span className="min-w-0 flex-1">Это отчёт за прошлую неделю. Текущая ({fmtDay(thisWeek.weekStart)} – {fmtDay(thisWeek.weekEnd)}) ещё не посчитана.</span>
+              <span className="min-w-0 flex-1">Это отчёт за прошлую неделю. Текущая ({fmtDate(thisWeek.weekStart, "dayMonth")} – {fmtDate(thisWeek.weekEnd, "dayMonth")}) ещё не посчитана.</span>
               <Button size="sm" variant="secondary" onClick={() => void handleGenerate()} disabled={generating}>
                 Посчитать
               </Button>
@@ -304,7 +292,7 @@ export function WeeklyPsychologyReport() {
             {pnl != null && pnl !== 0 ? (
               <Kpi
                 label="P&L"
-                value={fmtMoney(pnl)}
+                value={fmtUsd(pnl, { signed: true, decimals: 0 })}
                 tone={pnl >= 0 ? "up" : "down"}
                 delta={prev ? <Delta value={prevPnl != null ? pnl - prevPnl : null} unit="$" /> : undefined}
               />
@@ -333,7 +321,7 @@ export function WeeklyPsychologyReport() {
                   <li
                     key={d.date}
                     className="min-w-0 rounded-xl bg-foreground/[0.04] px-2 py-1.5 text-center"
-                    title={`${fmtDay(d.date)}: ${d.count} сд., винрейт ${d.count ? Math.round(d.winRate * 100) + "%" : "—"}, готовность ${d.readiness ?? "—"}`}
+                    title={`${fmtDate(d.date, "dayMonth")}: ${d.count} сд., винрейт ${d.count ? fmtRate(d.winRate) : "—"}, готовность ${d.readiness ?? "—"}`}
                   >
                     <div className="flex items-center justify-center gap-1 text-2xs text-muted-foreground">
                       <span
@@ -343,11 +331,11 @@ export function WeeklyPsychologyReport() {
                         )}
                         aria-hidden="true"
                       />
-                      {weekday(d.date)}
+                      {fmtWeekday(d.date, "short")}
                     </div>
                     <div className="text-sm font-semibold tabular-nums">{d.count || "—"}</div>
                     <div className={cn("text-2xs tabular-nums", d.count ? (d.winRate >= 0.5 ? "text-up" : "text-down") : "text-muted-foreground")}>
-                      {d.count ? `${Math.round(d.winRate * 100)}%` : "нет сделок"}
+                      {d.count ? fmtRate(d.winRate) : "нет сделок"}
                     </div>
                   </li>
                 );
@@ -403,7 +391,7 @@ export function WeeklyPsychologyReport() {
                             />
                           </span>
                           <span className={cn("text-right tabular-nums", tone === "down" && s.winRate < 0.5 ? "text-down" : "text-foreground")}>
-                            {Math.round(s.winRate * 100)}%
+                            {fmtRate(s.winRate)}
                           </span>
                           <span className="text-right tabular-nums text-muted-foreground">
                             {s.count} сд.
@@ -435,8 +423,8 @@ export function WeeklyPsychologyReport() {
           )}
 
           <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border/50 pt-2 text-2xs text-muted-foreground">
-            <span title={new Date(report.generatedAt).toLocaleString("ru-RU")}>Пересчитан {relTime(report.generatedAt)}</span>
-            {prev && <span>Сравнение с неделей {fmtDay(prev.weekStart)} – {fmtDay(prev.weekEnd)}</span>}
+            <span title={fmtDate(report.generatedAt, "shortDateTime")}>Пересчитан {relTime(report.generatedAt)}</span>
+            {prev && <span>Сравнение с неделей {fmtDate(prev.weekStart, "dayMonth")} – {fmtDate(prev.weekEnd, "dayMonth")}</span>}
           </div>
           {error && <WidgetError message={error} />}
         </div>

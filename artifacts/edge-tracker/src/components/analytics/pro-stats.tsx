@@ -5,10 +5,10 @@ import { Panel, StatCard, StatRow, Pill, EmptyState, toneOf, toneText, type Tone
 import { cn } from "@/lib/utils";
 import {
   type Metric, type EdgeStats, type OhlcTotals, type ClosureStats, type PeriodExtremes, type PeriodPoint,
-  type WeekSummary, fmtDayLong, fmtMonthKey,
+  type WeekSummary, fmtMonthKey,
 } from "@/lib/analytics-pro";
-import { fmtPct, fmtVal } from "./pro-format";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtVal } from "./pro-format";
+import { fmtDate, fmtRate, fmtRatio, pluralRu } from "@/lib/format";
 
 /* ── KPI strip ────────────────────────────────────────────────────────── */
 
@@ -38,13 +38,13 @@ export function KpiGrid({
       />
       <StatCard
         label="Доля прибыльных"
-        value={fmtPct(edge.winRate)}
+        value={fmtRate(edge.winRate)}
         tone={edge.winRate == null ? "neutral" : edge.winRate >= 0.5 ? "up" : "down"}
         hint={noVal ? undefined : `${edge.wins} / ${edge.losses}`}
       />
       <StatCard
         label="Profit factor"
-        value={pf == null ? "—" : pf === Infinity ? "∞" : pf.toFixed(2)}
+        value={fmtRatio(pf)}
         tone={pf == null ? "neutral" : pf >= 1 ? "up" : "down"}
         hint={edge.avgWin != null || edge.avgLoss != null
           ? `${fmtVal(metric, edge.avgWin, { compact: true, sign: true })} / ${fmtVal(metric, edge.avgLoss, { compact: true, sign: true })}`
@@ -52,7 +52,7 @@ export function KpiGrid({
       />
       <StatCard
         label="Дни в плюс"
-        value={fmtPct(greenRate)}
+        value={fmtRate(greenRate)}
         tone={greenRate == null ? "neutral" : greenRate >= 0.5 ? "up" : "down"}
         hint={streakText}
       />
@@ -185,7 +185,7 @@ export function TradingDaysInfo({
 }) {
   const [q, setQ] = useState("");
   const closedTotal = closure.closedPositive + closure.closedFlat + closure.closedNegative;
-  const ofClosed = (n: number) => (closedTotal ? ` · ${Math.round((n / closedTotal) * 100)}%` : "");
+  const ofClosed = (n: number) => (closedTotal ? ` · ${fmtRate(n / closedTotal)}` : "");
   const v = (x: number | null | undefined, sign = true) => fmtVal(metric, x, { sign });
   const groups: { title: string; rows: InfoRow[] }[] = useMemo(() => [
     {
@@ -203,13 +203,13 @@ export function TradingDaysInfo({
     {
       title: "Дни",
       rows: [
-        { name: "Дней в плюс", value: `${ohlc.profitDays}${ohlc.totalDays ? ` · ${fmtPct(ohlc.profitDays / ohlc.totalDays)}` : ""}`, tone: "up" },
-        { name: "Дней в минус", value: `${ohlc.lossDays}${ohlc.totalDays ? ` · ${fmtPct(ohlc.lossDays / ohlc.totalDays)}` : ""}`, tone: "down" },
+        { name: "Дней в плюс", value: `${ohlc.profitDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.profitDays / ohlc.totalDays)}` : ""}`, tone: "up" },
+        { name: "Дней в минус", value: `${ohlc.lossDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.lossDays / ohlc.totalDays)}` : ""}`, tone: "down" },
         { name: "Лучший результат дня", value: ohlc.maxDayProfit > 0 ? v(ohlc.maxDayProfit) : "—", tone: "up" },
         { name: "Худший результат дня", value: ohlc.maxDayLoss < 0 ? v(ohlc.maxDayLoss) : "—", tone: "down" },
         { name: "Средний день в плюс", value: v(ohlc.avgDayProfit), tone: toneOf(ohlc.avgDayProfit) },
         { name: "Средний день в минус", value: v(ohlc.avgDayLoss), tone: toneOf(ohlc.avgDayLoss) },
-        { name: "Доля сильных дней", value: ohlc.avgHighFixRate == null ? "—" : fmtPct(ohlc.avgHighFixRate, 1) },
+        { name: "Доля сильных дней", value: ohlc.avgHighFixRate == null ? "—" : fmtRate(ohlc.avgHighFixRate, 1) },
       ],
     },
     {
@@ -233,8 +233,8 @@ export function TradingDaysInfo({
       rows: [
         { name: "Лучший месяц", value: ohlc.bestMonth ? `${fmtMonthKey(ohlc.bestMonth.key)} · ${v(ohlc.bestMonth.value)}` : "—" },
         { name: "Лучшая неделя", value: ohlc.bestWeek ? `${fmtIsoWeek(ohlc.bestWeek.range)} · ${v(ohlc.bestWeek.value)}` : "—" },
-        { name: "Лучший день", value: ohlc.bestDay ? `${fmtDayLong(ohlc.bestDay.date)} · ${v(ohlc.bestDay.value)}` : "—" },
-        { name: "Лучшая сделка", value: ohlc.bestTrade ? `${ohlc.bestTrade.ticker} · ${fmtDayLong(ohlc.bestTrade.date)} · ${v(ohlc.bestTrade.value)}` : "—" },
+        { name: "Лучший день", value: ohlc.bestDay ? `${fmtDate(ohlc.bestDay.date, "long")} · ${v(ohlc.bestDay.value)}` : "—" },
+        { name: "Лучшая сделка", value: ohlc.bestTrade ? `${ohlc.bestTrade.ticker} · ${fmtDate(ohlc.bestTrade.date, "long")} · ${v(ohlc.bestTrade.value)}` : "—" },
       ],
     },
     {

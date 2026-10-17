@@ -20,6 +20,7 @@ import {
   GetEventResponse,
   UpdateEventResponse,
 } from "@workspace/api-zod";
+import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Market events ("События") — catalysts the desk trades around.
@@ -146,7 +147,7 @@ async function canModifyEvent(req: Request, e: EventRow): Promise<boolean> {
 
 function parseId(req: Request, res: Response): number | null {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return null; }
+  if (!Number.isInteger(id) || id <= 0) { sendError(res, badRequest("INVALID_ID")); return null; }
   return id;
 }
 
@@ -228,7 +229,7 @@ const ListExtra = z.object({
 
 router.get("/events", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const query = ListEventsQueryParams.safeParse(req.query);
   if (!query.success) { res.status(400).json({ error: query.error.message }); return; }
   const extra = ListExtra.safeParse({
@@ -295,9 +296,9 @@ router.post("/events", asyncHandler(async (req, res): Promise<void> => {
   const extra = CreateExtra.safeParse(req.body);
   if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
   const d = parsed.data;
-  if (!ISO_DATE.test(d.date.slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (!ISO_DATE.test(d.date.slice(0, 10))) throw badRequest("INVALID_DATE");
   const ticker = splitTickers(d.ticker).join(", ");
-  if (!ticker) { res.status(400).json({ error: "Тикер обязателен" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const dup = await findDuplicate(ticker, d.date, d.eventType);
   if (dup && !extra.data.force) {
     res.status(409).json({ error: "Такое событие уже есть (тикер + дата + тип)", code: "DUPLICATE", existingId: dup });
@@ -362,7 +363,7 @@ async function upcomingEarnings(days: number): Promise<EarningsLite[]> {
 router.get("/events/today", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const date = typeof req.query.date === "string" && ISO_DATE.test(req.query.date) ? req.query.date : nyDate();
   const [events, positions, tradesToday] = await Promise.all([
     pool.query<EventRow>(`SELECT ${EVENT_COLS} FROM market_events WHERE deleted_at IS NULL AND substring(date, 1, 10) = $1 ORDER BY session NULLS LAST, created_at`, [date]),
@@ -400,7 +401,7 @@ router.get("/events/today", asyncHandler(async (req, res): Promise<void> => {
 router.get("/events/holding", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const daysRaw = Number(req.query.days);
   const days = Number.isFinite(daysRaw) ? Math.min(30, Math.max(1, Math.floor(daysRaw))) : 10;
   const today = nyDate();
@@ -443,7 +444,7 @@ router.get("/events/holding", asyncHandler(async (req, res): Promise<void> => {
 router.get("/events/stats", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const ticker = typeof req.query.ticker === "string" ? req.query.ticker.trim().toUpperCase() : "";
   const type = typeof req.query.type === "string" ? req.query.type.trim().toLowerCase() : "";
   const from = typeof req.query.from === "string" && ISO_DATE.test(req.query.from) ? req.query.from : null;
@@ -536,11 +537,11 @@ router.post("/events/import-earnings", asyncHandler(async (req, res): Promise<vo
 
 router.get("/events/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const params = GetEventParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const event = await loadEvent(params.data.id);
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) throw notFound("EVENT_NOT_FOUND");
   res.json(serializeEvent(event));
 }));
 
@@ -583,12 +584,12 @@ router.patch("/events/:id", asyncHandler(async (req, res): Promise<void> => {
   const extra = PatchExtra.safeParse(req.body);
   if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
   const existing = await loadEvent(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!existing) throw notFound("EVENT_NOT_FOUND");
   if (!(await canModifyEvent(req, existing))) { res.status(403).json({ error: "Изменять событие может только автор или куратор" }); return; }
   const d = parsed.data;
-  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) { res.status(400).json({ error: "date must be YYYY-MM-DD" }); return; }
+  if (d.date !== undefined && !ISO_DATE.test(String(d.date).slice(0, 10))) throw badRequest("INVALID_DATE");
   const ticker = d.ticker !== undefined ? splitTickers(d.ticker).join(", ") : undefined;
-  if (ticker !== undefined && !ticker) { res.status(400).json({ error: "Тикер обязателен" }); return; }
+  if (ticker !== undefined && !ticker) throw badRequest("TICKER_REQUIRED");
   const dup = await findDuplicate(ticker ?? existing.ticker, d.date ?? existing.date, d.eventType ?? existing.event_type, existing.id);
   if (dup && (ticker !== undefined || d.date !== undefined || d.eventType !== undefined)) {
     res.status(409).json({ error: "Такое событие уже есть (тикер + дата + тип)", code: "DUPLICATE", existingId: dup });
@@ -605,7 +606,7 @@ router.patch("/events/:id", asyncHandler(async (req, res): Promise<void> => {
     patternId: extra.data.patternId !== undefined ? extra.data.patternId : undefined,
   };
   const event = await applyPatch(existing.id, patch);
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) throw notFound("EVENT_NOT_FOUND");
   logActivity({ action: "updated", section: "events", entityId: String(event.id), entityTitle: `${event.ticker} · ${event.headline}`, trader: req.authUser!.name });
   const out = serializeEvent(event);
   UpdateEventResponse.parse(out);
@@ -627,12 +628,12 @@ router.post("/events/:id/outcome", asyncHandler(async (req, res): Promise<void> 
   const body = OutcomeBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
   const existing = await loadEvent(id);
-  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!existing) throw notFound("EVENT_NOT_FOUND");
   const b = body.data;
   const event = await applyPatch(id, {
     reaction: b.reaction, percentMove: b.percentMove !== undefined ? numToStr(b.percentMove) : undefined, volume: b.volume, summary: b.summary,
   });
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) throw notFound("EVENT_NOT_FOUND");
   logActivity({ action: "outcome", section: "events", entityId: String(id), entityTitle: `${event.ticker} · ${event.headline}`, trader: req.authUser!.name, details: b.percentMove != null ? `${b.percentMove}%` : undefined });
   res.json(serializeEvent(event));
 }));
@@ -643,7 +644,7 @@ router.delete("/events/:id", asyncHandler(async (req, res): Promise<void> => {
   const params = DeleteEventParams.safeParse(req.params);
   if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
   const existing = await loadEvent(params.data.id);
-  if (!existing) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!existing) throw notFound("EVENT_NOT_FOUND");
   if (!(await canModifyEvent(req, existing))) { res.status(403).json({ error: "Удалить событие может только автор или куратор" }); return; }
   await pool.query(`UPDATE market_events SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "events", entityId: String(existing.id), entityTitle: `${existing.ticker} · ${existing.headline}`, trader: req.authUser!.name });
@@ -655,7 +656,7 @@ router.post("/events/:id/restore", asyncHandler(async (req, res): Promise<void> 
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadEvent(id, true);
-  if (!existing || !existing.deleted_at) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!existing || !existing.deleted_at) throw notFound("EVENT_NOT_FOUND");
   if (!(await canModifyEvent(req, existing))) { res.status(403).json({ error: "Восстановить событие может только автор или куратор" }); return; }
   await pool.query(`UPDATE market_events SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "events", entityId: String(id), entityTitle: `${existing.ticker} · ${existing.headline}`, trader: req.authUser!.name });
@@ -670,9 +671,9 @@ router.get("/events/:id/trades", asyncHandler(async (req, res): Promise<void> =>
   await ensureTables();
   const id = parseId(req, res); if (id == null) return;
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const event = await loadEvent(id);
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) throw notFound("EVENT_NOT_FOUND");
   const tickers = splitTickers(event.ticker).slice(0, 25);
   const day = event.date.slice(0, 10);
   const { rows } = await pool.query<Record<string, unknown>>(
@@ -696,9 +697,9 @@ router.post("/events/:id/link-trade", asyncHandler(async (req, res): Promise<voi
   const body = LinkBody.safeParse(req.body);
   if (!body.success) { res.status(400).json({ error: "tradeId required" }); return; }
   const event = await loadEvent(id);
-  if (!event) { res.status(404).json({ error: "Event not found" }); return; }
+  if (!event) throw notFound("EVENT_NOT_FOUND");
   const access = await canAccessTrade(req, body.data.tradeId);
-  if (access === null) { res.status(404).json({ error: "Сделка не найдена" }); return; }
+  if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) { res.status(403).json({ error: "Можно привязывать только свои сделки" }); return; }
   await pool.query(`UPDATE trades SET event_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [body.data.unlink ? null : id, body.data.tradeId]);
   logActivity({ action: body.data.unlink ? "unlinked" : "linked", section: "events", entityId: String(id), entityTitle: `${event.ticker} · ${event.headline}`, trader: req.authUser!.name, details: `trade #${body.data.tradeId}` });

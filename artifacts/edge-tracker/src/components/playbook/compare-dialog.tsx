@@ -10,7 +10,8 @@ import { deriveChecklistItems } from "@/components/playbook-checklist-marks";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { EdgeMini, SetupTypePill } from "./setup-bits";
-import { fmtPct, fmtR, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { fmtR, fmtRate } from "@/lib/format";
 
 function SetupPicker({
   value, entries, summary, onChange, exclude, label,
@@ -80,7 +81,7 @@ export function CompareDialog({
 
   const metrics: Metric[] = [
     { label: "Сделок", a: sa?.tradeCount ?? 0, b: sb?.tradeCount ?? 0, fmt: (v) => String(v ?? 0), higherIsBetter: true },
-    { label: "Win rate", a: sa?.winrate ?? null, b: sb?.winrate ?? null, fmt: fmtPct, higherIsBetter: true },
+    { label: "Win rate", a: sa?.winrate ?? null, b: sb?.winrate ?? null, fmt: fmtRate, higherIsBetter: true },
     { label: "Средний R", a: sa?.avgR ?? null, b: sb?.avgR ?? null, fmt: fmtR, higherIsBetter: true },
     { label: "Ожидание на сделку", a: sa?.expectancy ?? null, b: sb?.expectancy ?? null, fmt: fmtR, higherIsBetter: true },
     { label: "Edge score (с поправкой на выборку)", a: sa?.edgeScore ?? null, b: sb?.edgeScore ?? null, fmt: fmtR, higherIsBetter: true },

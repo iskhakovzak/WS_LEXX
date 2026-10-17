@@ -6,9 +6,9 @@ import { useEffect, useState } from "react";
 import { ExternalLink, MapPin, Video } from "lucide-react";
 import { Pill, ProgressRing, StatRow, type Tone } from "@/components/ds";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
+import { fmtDate, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 import {
   ATTENDANCE_LABELS, type AttendanceStatus, type AttendanceSummary, type EnrollmentStatus, GOAL_STATUS_LABELS, type Goal, type GoalStatus,
   MODE_LABELS, type SessionMode, STAGE_LABELS, STATUS_LABELS, type Stage,
@@ -19,19 +19,15 @@ export const NY_TZ = "America/New_York";
 export const LOCAL_TZ = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone || NY_TZ; } catch { return NY_TZ; } })();
 export const SAME_TZ = LOCAL_TZ === NY_TZ;
 
-function fmt(iso: string | Date, tz: string, opts: Intl.DateTimeFormatOptions): string {
-  try { return new Intl.DateTimeFormat("ru-RU", { timeZone: tz, ...opts }).format(new Date(iso)); } catch { return ""; }
-}
-export const timeIn = (iso: string | Date, tz: string) => fmt(iso, tz, { hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
-export const dayIn = (iso: string | Date, tz: string) => fmt(iso, tz, { weekday: "short", day: "numeric", month: "short" });
-export const dateTimeLocal = (iso: string | Date | null | undefined) => (iso ? fmt(iso, LOCAL_TZ, { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }) : "—");
+export const timeIn = (iso: string | Date, tz: string) => fmtDate(iso, "time", { timeZone: tz });
+export const dayIn = (iso: string | Date, tz: string) => fmtDate(iso, "weekdayDayMonth", { timeZone: tz });
+export const dateTimeLocal = (iso: string | Date | null | undefined) => (iso ? fmtDate(iso, "dateTime", { timeZone: LOCAL_TZ }) : "—");
 export function fmtYmd(ymd: string | null | undefined, withYear = false): string {
   if (!ymd) return "—";
   const [y, m, d] = ymd.split("-").map(Number);
   if (!y || !m || !d) return ymd;
-  return new Intl.DateTimeFormat("ru-RU", { day: "numeric", month: "short", ...(withYear ? { year: "numeric" } : {}), timeZone: "UTC" }).format(Date.UTC(y, m - 1, d));
+  return fmtDate(ymd, withYear ? "medium" : "dayMonth");
 }
-export const pct = (x: number | null | undefined, digits = 0) => (x == null || !Number.isFinite(x) ? "—" : `${(x * 100).toFixed(digits)} %`);
 
 /** Время занятия: локальное время зрителя + Нью-Йорк (если зоны различаются). */
 export function DualTime({ start, end, showDay = false, className }: { start: string; end?: string; showDay?: boolean; className?: string }) {
@@ -97,8 +93,8 @@ export function WhereLine({ mode, room, meetingUrl }: { mode: SessionMode | stri
 
 export function fmtGoalValue(v: number | null, unit: string): string {
   if (v == null || !Number.isFinite(v)) return "—";
-  if (unit === "%") return `${v.toFixed(1)} %`;
-  if (unit === "$") return `${v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
+  if (unit === "%") return fmtPct(v, { decimals: 1, signed: false });
+  if (unit === "$") return fmtUsd(v, { decimals: 0 });
   return `${Math.round(v * 10) / 10}${unit ? ` ${unit}` : ""}`;
 }
 
@@ -138,8 +134,8 @@ export function AttendanceSummaryView({ s, title }: { s: AttendanceSummary | nul
   return (
     <div>
       {title && <p className="mb-1 text-xs font-medium text-muted-foreground">{title}</p>}
-      <StatRow label="Посещаемость" value={pct(s.rate)} tone={tone} />
-      <StatRow label="Пунктуальность" value={pct(s.punctuality)} />
+      <StatRow label="Посещаемость" value={fmtRate(s.rate)} tone={tone} />
+      <StatRow label="Пунктуальность" value={fmtRate(s.punctuality)} />
       <StatRow label="Был / опоздал / пропуск" value={`${s.present} / ${s.late} / ${s.absent}`} />
       <StatRow label="Уважит. / не отмечено" value={`${s.excused} / ${s.unmarked}`} />
       {s.absentStreak > 1 && <StatRow label="Пропусков подряд" value={s.absentStreak} tone="down" />}

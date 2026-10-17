@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
-import { apiUrl } from "@/lib/api";
+import { http, ApiError } from "@/lib/api/http";
 
 /**
  * Plan screenshots: client-side compression → POST /api/plan-media (raw bytes) → { id }.
- * Images are read back with fetch() (the global fetch adds the Bearer token) and shown as blob: URLs,
+ * Images are read back with http.raw (the global fetch patch adds the Bearer token) and shown as blob: URLs,
  * so no token ever ends up in an <img src>. Blob URLs are cached for the session.
  */
 export type MediaContext = "desk" | "personal";
@@ -79,28 +79,22 @@ export async function compressImage(file: Blob): Promise<{ blob: Blob; width: nu
   }
 }
 
-async function errorText(res: Response): Promise<string> {
-  try {
-    const body = await res.json();
-    if (body && typeof body.error === "string") return body.error;
-  } catch {
-    /* not json */
-  }
-  if (res.status === 404) return "Загрузка скриншотов включится после обновления сервера";
-  return `Ошибка ${res.status}`;
-}
-
 /** Compress + upload one image. The compressed blob doubles as the instant preview (no refetch). */
 export async function uploadPlanImage(file: Blob, context: MediaContext, date: string): Promise<UploadedMedia> {
   const { blob, width, height } = await compressImage(file);
-  const qs = new URLSearchParams({ context, date, w: String(width), h: String(height) });
-  const res = await fetch(apiUrl(`/api/plan-media?${qs.toString()}`), {
-    method: "POST",
-    headers: { "Content-Type": blob.type || "image/jpeg" },
-    body: blob,
-  });
-  if (!res.ok) throw new Error(await errorText(res));
-  const out = (await res.json()) as UploadedMedia;
+  let out: UploadedMedia;
+  try {
+    out = await http.post<UploadedMedia>("/api/plan-media", blob, {
+      query: { context, date, w: width, h: height },
+      headers: { "Content-Type": blob.type || "image/jpeg" },
+    });
+  } catch (e) {
+    // An API build without the media route answers a bare 404.
+    if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
+      throw new ApiError({ status: 404, message: "Загрузка скриншотов включится после обновления сервера", body: e.body, method: e.method, url: e.url });
+    }
+    throw e;
+  }
   blobUrls.set(out.id, URL.createObjectURL(blob));
   return out;
 }
@@ -124,9 +118,9 @@ export function loadPlanImage(id: number): Promise<string> {
   if (cached) return Promise.resolve(cached);
   const pending = inflight.get(id);
   if (pending) return pending;
-  const p = fetch(apiUrl(`/api/plan-media/${id}`))
+  const p = http
+    .raw(`/api/plan-media/${id}`)
     .then(async (r) => {
-      if (!r.ok) throw new Error(String(r.status));
       const url = URL.createObjectURL(await r.blob());
       blobUrls.set(id, url);
       return url;

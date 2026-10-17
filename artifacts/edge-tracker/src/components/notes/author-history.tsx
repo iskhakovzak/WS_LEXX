@@ -13,14 +13,14 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils";
 import { AuthorMarkdown, Highlight, NoteReader } from "./author-reader";
 import {
-  CHART_TOOLTIP, MOODS, SECTIONS, filledSections, fmtDayLong, fmtDayShort, fmtWeekday, localToday,
+  CHART_TOOLTIP, MOODS, SECTIONS, filledSections, localToday,
   moodOf, notePreview, writingStreak, type AuthorNote,
 } from "./author-model";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 function monthKey(d: string) {
-  const dt = new Date(d.slice(0, 10) + "T12:00:00");
-  return dt.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return fmtDate(d.slice(0, 10), "monthYear");
 }
 
 export function AuthorHistory({
@@ -140,7 +140,7 @@ export function AuthorHistory({
         <StatCard label="Записей" value={stats.total} icon={BookOpen} hint="за всё время" />
         <StatCard
           label="Серия"
-          value={`${stats.streak} ${pluralRu(stats.streak, "день", "дня", "дней")}`}
+          value={commonI18n.t("units.days", { count: stats.streak })}
           icon={Flame}
           tone={stats.streak >= 5 ? "up" : "neutral"}
           hint="торговых дней подряд"
@@ -165,7 +165,7 @@ export function AuthorHistory({
                   </linearGradient>
                 </defs>
                 <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" tickFormatter={(d: string) => fmtDayShort(d)} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} minTickGap={24} />
+                <XAxis dataKey="date" tickFormatter={(d: string) => fmtDate(d, "dayMonth")} stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} minTickGap={24} />
                 <YAxis domain={[-2, 2]} ticks={[-2, 0, 2]} tickFormatter={(v: number) => (v === 2 ? "💪" : v === 0 ? "😐" : "😤")} stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} />
                 <ReferenceLine y={0} stroke="hsl(var(--border))" />
                 <Tooltip
@@ -174,7 +174,7 @@ export function AuthorHistory({
                     const m = MOODS.find((x) => x.score === item.payload?.score);
                     return [m ? `${m.emoji} ${m.label}` : "—", "Настроение"];
                   }}
-                  labelFormatter={(d: string) => fmtDayLong(d)}
+                  labelFormatter={(d: string) => fmtDate(d, "weekdayDayMonthLong")}
                 />
                 <Area type="monotone" dataKey="score" stroke="hsl(var(--chart-1))" strokeWidth={2} fill="url(#authorMoodFill)" dot={{ r: 2.5, fill: "hsl(var(--chart-1))" }} isAnimationActive={false} />
               </AreaChart>
@@ -259,7 +259,7 @@ export function AuthorHistory({
                         {canEdit && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label={`Действия с записью за ${fmtDayShort(d)}`}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label={`Действия с записью за ${fmtDate(d, "dayMonth")}`}>
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
@@ -289,7 +289,7 @@ export function AuthorHistory({
           {preview && (
             <>
               <SheetHeader>
-                <SheetTitle className="first-letter:uppercase">{fmtDayLong(preview.note_date)}</SheetTitle>
+                <SheetTitle className="first-letter:uppercase">{fmtDate(preview.note_date, "weekdayDayMonthLong")}</SheetTitle>
                 <SheetDescription>
                   {moodOf(preview.mood) ? `${moodOf(preview.mood)!.emoji} ${moodOf(preview.mood)!.label}` : "Настроение не отмечено"}
                 </SheetDescription>

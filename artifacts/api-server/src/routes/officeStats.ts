@@ -28,6 +28,7 @@ import {
   buildOfficeView, classifyStrategy, nyParts, parsePeriod, parseYears, shiftYear, toMemberView,
   type OfficeTrade, type Result, type YearSetting,
 } from "../lib/officeStats";
+import { sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -79,9 +80,9 @@ async function loadSettings(): Promise<Map<number, FullSetting>> {
 
 /** Admin = partner (full view); any other signed-in member gets the % view; guests / anonymous are refused. */
 async function viewerOf(req: Request, res: Response): Promise<Actor | null> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
   if (actor.guest) { res.status(403).json({ error: "Гостевой режим: статистика офиса недоступна", code: "FORBIDDEN" }); return null; }
   return actor;
 }

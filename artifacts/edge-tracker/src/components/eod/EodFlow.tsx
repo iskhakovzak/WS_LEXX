@@ -8,7 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
-import { HORIZON_LABEL, fmtDayLong, fmtDayShort, fmtMoney, fmtR, isTypingTarget, plural } from "@/components/journal/utils";
+import { HORIZON_LABEL, isTypingTarget } from "@/components/journal/utils";
+import { fmtDate, fmtR, fmtUsd, pluralRu } from "@/lib/format";
 import {
   GRADES, MISTAKE_TAGS, emptySummary, eodApi, gradeTone, splitMissing, useBrokerDaily, useEodDay,
   useEodMutation, usePlaybookNames, type EodDayPayload, type EodPosition, type EodSummary, type EodTrade, type Grade,
@@ -69,7 +70,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   const exit = () => { flush(); onExit(); };
 
   const header = (
-    <span className="inline-flex items-center gap-2"><ListChecks className="h-4 w-4" aria-hidden="true" />Разбор по сделкам · {fmtDayLong(date)}</span>
+    <span className="inline-flex items-center gap-2"><ListChecks className="h-4 w-4" aria-hidden="true" />Разбор по сделкам · {fmtDate(date, "long")}</span>
   );
   const exitBtn = <Button variant="ghost" size="sm" onClick={exit}><X aria-hidden="true" />К дневнику</Button>;
 
@@ -91,7 +92,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   if (closed) {
     return (
       <Panel
-        title={<span className="inline-flex items-center gap-2"><Lock className="h-4 w-4 text-up" aria-hidden="true" />День {fmtDayLong(date)} закрыт</span>}
+        title={<span className="inline-flex items-center gap-2"><Lock className="h-4 w-4 text-up" aria-hidden="true" />День {fmtDate(date, "long")} закрыт</span>}
         description={data.day?.reviewedAt ? `Проверен куратором ${data.day.reviewedBy}` : "Ожидает проверки куратором. Открыть заново можно в «Дневнике дня»."}
         actions={exitBtn}
       >
@@ -125,7 +126,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
         )}
         {blocking.length > 0 && (
           <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs">
-            Чтобы закрыть день, у {blocking.length} {plural(blocking.length, "сделки", "сделок", "сделок")} нужны сетап и грейд: {blocking.map((m) => m.ticker).join(", ")}.
+            Чтобы закрыть день, у {blocking.length} {pluralRu(blocking.length, "сделки", "сделок", "сделок")} нужны сетап и грейд: {blocking.map((m) => m.ticker).join(", ")}.
           </p>
         )}
         {step === "trades" ? (
@@ -294,12 +295,12 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
         {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
         {t.horizonEff !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>}
         {t.onPlan && <Pill tone="accent">в плане</Pill>}
-        {!t.enteredToday && <Pill>с {fmtDayShort(t.date)}</Pill>}
+        {!t.enteredToday && <Pill>с {fmtDate(t.date, "dayMonth")}</Pill>}
         {complete ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />размечена</Pill> : flagged ? <Pill tone="warn">нужны сетап и грейд</Pill> : null}
         <span className="ml-auto flex items-center gap-2 tabular-nums">
           <span className="text-muted-foreground">{t.entry ?? "—"} → {t.exit ?? "…"}</span>
           {t.net != null ? (
-            <span className={cn("text-sm font-semibold", toneText(toneOf(t.net)))}>{fmtMoney(t.net)}</span>
+            <span className={cn("text-sm font-semibold", toneText(toneOf(t.net)))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</span>
           ) : (
             <span className="text-muted-foreground">{t.resultNorm === "open" ? "открыта" : "—"}</span>
           )}
@@ -417,7 +418,7 @@ function PositionsStep({ positions, date, values, onChange }: { positions: EodTr
                 <span className="text-sm font-semibold">{t.ticker}</span>
                 {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
                 <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>
-                {t.date !== date && <Pill>с {fmtDayShort(t.date)}</Pill>}
+                {t.date !== date && <Pill>с {fmtDate(t.date, "dayMonth")}</Pill>}
                 <span className="ml-auto tabular-nums text-muted-foreground">вход {t.entry ?? "—"} · стоп {t.stop ?? "—"}{t.qty != null ? ` · ${t.qty} шт` : ""}</span>
               </div>
               <div className="mt-2 grid gap-2 sm:grid-cols-[auto_1fr_1fr_2fr]">

@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
-import { ROLE_LABEL, adminUrl, errorFrom, postJson } from "./api";
+import { ROLE_LABEL, adminUrl } from "./api";
+import { secretMinFor } from "@/lib/secret-policy";
+import { authI18n } from "@/i18n/ns/auth";
 
 export const BAN_PRESETS = ["Спам в обсуждениях", "Оскорбления", "Нарушение риск-правил", "Ушёл из команды"];
 
@@ -28,29 +30,28 @@ export function useUserActions(actor: string, onChange?: () => void) {
 
   const banMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
-      postJson<{ name?: string }>(adminUrl(`/admin/users/${id}/ban`, actor), { actor, reason }, "Не удалось забанить"),
+      http.post<{ name?: string }>(adminUrl(`/admin/users/${id}/ban`, actor), { actor, reason }),
     onSuccess: (u) => { invalidate(); setState(null); toast({ title: `${u?.name ?? "Пользователь"} забанен`, description: "Сессии завершены." }); },
     onError,
   });
   const unbanMut = useMutation({
     mutationFn: ({ id }: { id: number; reason: string }) =>
-      postJson<{ name?: string }>(adminUrl(`/admin/users/${id}/unban`, actor), { actor }, "Не удалось разбанить"),
+      http.post<{ name?: string }>(adminUrl(`/admin/users/${id}/unban`, actor), { actor }),
     onSuccess: (u) => { invalidate(); setState(null); toast({ title: `${u?.name ?? "Пользователь"} разбанен` }); },
     onError,
   });
   const roleMut = useMutation({
     mutationFn: async ({ id, role, reason }: { id: number; role: string; reason: string }) => {
       // New audited route (curators may switch trader <-> curator; admin role needs users.manage.admins).
-      const r = await fetch(`${BASE}/api/admin/console/people/${id}/role`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ role, reason }),
-      });
-      const ct = r.headers.get("content-type") ?? "";
-      if (r.status === 404 && !ct.includes("json")) {
-        // API not rebuilt yet: legacy route (admins only).
-        return postJson<{ name?: string; role?: string }>(adminUrl(`/admin/users/${id}/role`, actor), { actor, role }, "Не удалось сменить роль");
+      try {
+        return await http.post<{ name?: string; role?: string }>(`/api/admin/console/people/${id}/role`, { role, reason });
+      } catch (e) {
+        // API not rebuilt yet (route-missing 404: no `code`): legacy route (admins only).
+        if (e instanceof ApiError && e.status === 404 && !e.code) {
+          return http.post<{ name?: string; role?: string }>(adminUrl(`/admin/users/${id}/role`, actor), { actor, role });
+        }
+        throw e;
       }
-      if (!r.ok) throw await errorFrom(r, "Не удалось сменить роль");
-      return r.json() as Promise<{ name?: string; role?: string }>;
     },
     onSuccess: (u) => {
       invalidate();
@@ -61,12 +62,7 @@ export function useUserActions(actor: string, onChange?: () => void) {
   });
   const passwordMut = useMutation({
     mutationFn: async ({ id, password }: { id: number; name: string; password: string }) => {
-      const r = await fetch(`${BASE}/api/users/${id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
-      });
-      if (!r.ok) throw await errorFrom(r, "Не удалось сменить пароль");
-      return r.json();
+      return http.patch(`/api/users/${id}`, { password });
     },
     onSuccess: (_d, v) => { setState(null); toast({ title: `Пароль для ${v.name} обновлён`, description: "Активные сессии пользователя завершены." }); },
     onError,
@@ -102,7 +98,7 @@ export function useUserActions(actor: string, onChange?: () => void) {
       title: `Новый пароль для ${u.name}`,
       description: "Все активные сессии пользователя будут завершены.",
       confirmLabel: "Сохранить пароль",
-      input: { label: "Новый пароль", kind: "password", minLength: 4, required: true, placeholder: "Минимум 4 символа" },
+      input: { label: "Новый пароль", kind: "password", minLength: secretMinFor(u.role), required: true, placeholder: authI18n.t("forced.tooShort", { min: secretMinFor(u.role) }) },
       onConfirm: (password) => passwordMut.mutate({ id: u.id, name: u.name, password }),
     }),
   };

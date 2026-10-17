@@ -1,20 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Candle } from "@/components/chart-engine/types";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound, nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import {
   DAY_CHANGE_EVENT, big7Today, getTickerDay, updateTickerDayField, getMarketContext, saveMarketContext,
   type AutoEarning, type Catalyst, type GapRiskResponse, type MarketCtx, type RiskMeLite, type StockQuote, type TickerDay,
 } from "./lib";
-
-async function readError(res: Response) {
-  try {
-    const j = await res.json();
-    return j?.error || `HTTP ${res.status}`;
-  } catch {
-    return `HTTP ${res.status}`;
-  }
-}
 
 export const CATALYSTS_KEY = ["big7-catalysts"] as const;
 
@@ -46,9 +40,10 @@ export function useSessionBars(symbols: string[], from: string, to: string, live
     queries: symbols.map((s) => ({
       queryKey: ["big7-bars", s, from, to] as const,
       queryFn: async (): Promise<SessionBars | null> => {
-        const r = await fetch(`${BASE}/api/candles/${encodeURIComponent(s)}/range?from=${from}&to=${to}&interval=5m&extended=1`);
-        if (!r.ok) return null;
-        const j = (await r.json()) as { candles?: Candle[]; prevClose?: number | null };
+        const j = await http
+          .get<{ candles?: Candle[]; prevClose?: number | null }>(`/api/candles/${encodeURIComponent(s)}/range?from=${from}&to=${to}&interval=5m&extended=1`)
+          .catch(() => null);
+        if (!j) return null;
         return { candles: Array.isArray(j.candles) ? j.candles : [], prevClose: j.prevClose ?? null };
       },
       staleTime: live ? 120_000 : 60 * 60_000,
@@ -92,11 +87,7 @@ export function useMyStats(symbols: string[], days: number, trader: string | nul
     queryFn: async () => {
       const qs = new URLSearchParams({ symbols: key, days: String(days) });
       if (trader) qs.set("trader", trader);
-      const r = await fetch(`${BASE}/api/big7/mystats?${qs}`);
-      if (!r.ok) return null;
-      const ct = r.headers.get("content-type") ?? "";
-      if (!ct.includes("json")) return null;
-      return (await r.json()) as MyStats;
+      return http.get<MyStats>(`/api/big7/mystats?${qs}`).catch(() => null);
     },
     enabled: symbols.length > 0,
     staleTime: 10 * 60_000,
@@ -114,9 +105,7 @@ export function useQuotes(symbols: string[], live = true) {
   return useQuery<Record<string, StockQuote>>({
     queryKey: ["stockdata-quote", key],
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/stockdata/quote?symbols=${encodeURIComponent(key)}`);
-      if (!r.ok) return {};
-      const j = await r.json();
+      const j = await http.get<Record<string, StockQuote>>("/api/stockdata/quote", { query: { symbols: key } }).catch(() => null);
       return j && typeof j === "object" ? j : {};
     },
     enabled: symbols.length > 0,
@@ -133,12 +122,8 @@ export function useGapRisk(symbols: string[]) {
   const key = [...symbols].sort().join(",");
   return useQuery<GapRiskResponse | null>({
     queryKey: ["big7-gaprisk", key],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/big7/gaprisk?symbols=${encodeURIComponent(key)}`);
-      if (r.status === 404) return null; // endpoint not deployed yet → hide gracefully
-      if (!r.ok) throw new Error(await readError(r));
-      return (await r.json()) as GapRiskResponse;
-    },
+    // endpoint not deployed yet (404) → hide gracefully
+    queryFn: ({ signal }) => http.get<GapRiskResponse>("/api/big7/gaprisk", { query: { symbols: key }, signal }).catch(nullIfMissing),
     enabled: symbols.length > 0,
     staleTime: 20 * 60_000,
     gcTime: 60 * 60_000,
@@ -153,9 +138,10 @@ export function useAutoEarnings(symbols: string[]) {
   const q = useQuery<AutoEarning[]>({
     queryKey: ["big7-auto-earnings"],
     queryFn: async () => {
-      const r = await fetch(`${BASE}/api/earnings/upcoming?days=10&limit=60`);
-      if (!r.ok) return [];
-      const j = (await r.json()) as { days?: Array<{ date: string; items?: Array<{ ticker: string; callType: string; epsEstimate: number | null }> }> };
+      const j = await http
+        .get<{ days?: Array<{ date: string; items?: Array<{ ticker: string; callType: string; epsEstimate: number | null }> }> }>("/api/earnings/upcoming?days=10&limit=60")
+        .catch(() => null);
+      if (!j) return [];
       const out: AutoEarning[] = [];
       for (const d of j.days ?? []) {
         for (const it of d.items ?? []) out.push({ ticker: String(it.ticker).toUpperCase(), date: d.date, callType: it.callType, epsEstimate: it.epsEstimate ?? null });
@@ -173,13 +159,11 @@ export function useAutoEarnings(symbols: string[]) {
 export function useCatalysts() {
   return useQuery<Catalyst[]>({
     queryKey: CATALYSTS_KEY,
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/big7/catalysts`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const j = await r.json();
+    queryFn: async ({ signal }) => {
+      const j = await http.get<Catalyst[]>("/api/big7/catalysts", { signal });
       return Array.isArray(j) ? j : [];
     },
-    staleTime: 30_000,
+    staleTime: STALE.default,
   });
 }
 
@@ -189,34 +173,23 @@ export function useCatalystMutations() {
   const qc = useQueryClient();
   const invalidate = () => qc.invalidateQueries({ queryKey: CATALYSTS_KEY });
   const create = useMutation({
-    mutationFn: async (body: CatalystInput) => {
-      const r = await fetch(`${BASE}/api/big7/catalysts`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (!r.ok) throw new Error(await readError(r));
-      return (await r.json()) as Catalyst;
-    },
+    mutationFn: (body: CatalystInput) => http.post<Catalyst>("/api/big7/catalysts", body),
     onSuccess: invalidate,
   });
   const update = useMutation({
     mutationFn: async ({ id, ...body }: Partial<CatalystInput> & { id: number }) => {
-      const r = await fetch(`${BASE}/api/big7/catalysts/${id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      if (r.status === 404) throw new Error("Редактирование появится после обновления API");
-      if (!r.ok) throw new Error(await readError(r));
-      return (await r.json()) as Catalyst;
+      try {
+        return await http.patch<Catalyst>(`/api/big7/catalysts/${id}`, body);
+      } catch (e) {
+        if (isNotFound(e)) throw new Error("Редактирование появится после обновления API");
+        throw e;
+      }
     },
     onSuccess: invalidate,
   });
   const remove = useMutation({
     mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/big7/catalysts/${id}`, { method: "DELETE" });
-      if (!r.ok) throw new Error(await readError(r));
+      await http.del(`/api/big7/catalysts/${id}`);
     },
     onMutate: async (id) => {
       await qc.cancelQueries({ queryKey: CATALYSTS_KEY });
@@ -232,18 +205,11 @@ export function useCatalystMutations() {
   return { create, update, remove };
 }
 
-/** Trader's risk limits; null when the risk desk API is absent (404) or no limits set. */
+/** Trader's risk limits (shared GET /api/risk/me cache); no data when the risk desk API is absent or failed. */
 export function useRiskMe() {
-  return useQuery<RiskMeLite | null>({
-    queryKey: ["big7-risk-me"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/risk/me`);
-      if (!r.ok) return null;
-      const ct = r.headers.get("content-type") ?? "";
-      if (!ct.includes("json")) return null;
-      return (await r.json()) as RiskMeLite;
-    },
-    staleTime: 5 * 60_000,
+  return useQuery({
+    ...riskMeQuery<RiskMeLite | null>(),
+    staleTime: STALE.long,
     refetchOnWindowFocus: false,
     retry: 0,
   });

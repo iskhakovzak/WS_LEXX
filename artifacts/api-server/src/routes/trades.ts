@@ -6,8 +6,8 @@ import { logActivity } from "../lib/activity";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { scopeTrader } from "../lib/auth";
-import { can, readScope } from "../lib/permissions";
-import { num } from "../lib/tradeMath";
+import { can, } from "../lib/permissions";
+import { normResult, num } from "../lib/tradeMath";
 import { refreshTradeStructures } from "../lib/tradeStructureStore";
 import {
   PAGE_SORT_COLS,
@@ -59,6 +59,7 @@ import {
   GetTradeResponse,
   UpdateTradeResponse,
 } from "@workspace/api-zod";
+import { badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -182,7 +183,7 @@ router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   // Scope via lib/auth scopeTrader (same rule as /trades/page): staff may pass ?trader= (none = whole desk),
   // every other member lists only their own book, a guest gets the no-match sentinel (empty list).
   const scope = await scopeTrader(req, trader ?? null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход", code: "AUTH_REQUIRED" }); return; }
+  if (scope === undefined) throw unauthorized();
   if (scope !== null) conditions.push(eq(tradesTable.trader, scope));
 
   const base = db.select().from(tradesTable).where(and(...conditions));
@@ -331,7 +332,7 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   }
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
 
   // $ privacy: on a book whose $ the viewer may not see, $ sorts fall back to date and $ filters are off — the
   // order / matches would reveal amounts the rows no longer carry.
@@ -498,7 +499,7 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
   }
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const quality = await qualityTableExists();
   const showMoney = canSeeBookMoney(await loadMoneyViewer(req), scope);
   const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
@@ -611,6 +612,8 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     return;
   }
   const insertData: Record<string, unknown> = { ...parsed.data };
+  // Canonical result code on write (win / loss / be / open), never a synonym (ARCHITECTURE.md §3.5).
+  if (typeof insertData.result === "string") insertData.result = normResult(insertData.result) ?? insertData.result;
   if (insertData.screenshotUrl !== undefined) insertData.screenshotUrl = sanitizeMultiLineUrls(insertData.screenshotUrl as string | null | undefined);
   const auth = req.authUser;
   if (auth && !insertData.trader) {
@@ -648,8 +651,7 @@ router.get("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   const [trade] = await db.select().from(tradesTable).where(and(eq(tradesTable.id, params.data.id), isNull(tradesTable.deletedAt)));
   if (!trade) {
-    res.status(404).json({ error: "Trade not found" });
-    return;
+    throw notFound("TRADE_NOT_FOUND");
   }
   // Another trader's trade: via the matrix (trades.read.team), or because it is an example of a setup the viewer
   // reads (the playbook's «Открыть сделку»). Either way a non-staff viewer gets its $ redacted.
@@ -679,8 +681,7 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     .from(tradesTable)
     .where(eq(tradesTable.id, params.data.id));
   if (!existing) {
-    res.status(404).json({ error: "Trade not found" });
-    return;
+    throw notFound("TRADE_NOT_FOUND");
   }
   if (await forbiddenFor(req, "trades.write.any", existing.trader)) {
     res.status(403).json({ error: "Можно редактировать только свои трейды" });
@@ -722,6 +723,7 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     }
   }
   const updateData: Record<string, unknown> = { ...parsed.data };
+  if (typeof updateData.result === "string") updateData.result = normResult(updateData.result) ?? updateData.result;
   // Reassigning a trade to another trader needs the "write any" capability.
   if (!(await can(req, "trades.write.any", { trader: (updateData.trader as string | null | undefined) ?? existing.trader }))) delete updateData.trader;
   if (updateData.screenshotUrl !== undefined) updateData.screenshotUrl = sanitizeMultiLineUrls(updateData.screenshotUrl as string | null | undefined);
@@ -731,8 +733,7 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     .where(eq(tradesTable.id, params.data.id))
     .returning();
   if (!trade) {
-    res.status(404).json({ error: "Trade not found" });
-    return;
+    throw notFound("TRADE_NOT_FOUND");
   }
   const dateChanged = Object.prototype.hasOwnProperty.call(req.body ?? {}, "date");
   const sectorChanged = Object.prototype.hasOwnProperty.call(req.body ?? {}, "sector");
@@ -775,8 +776,7 @@ router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
     .where(eq(tradesTable.id, params.data.id))
     .returning();
   if (!trade) {
-    res.status(404).json({ error: "Trade not found" });
-    return;
+    throw notFound("TRADE_NOT_FOUND");
   }
   logActivity({ action: "deleted", section: "trades", entityId: String(trade.id), entityTitle: trade.ticker, trader: trade.trader ?? undefined });
   invalidateDashboardCache();
@@ -785,7 +785,7 @@ router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const [owner] = await db.select({ trader: tradesTable.trader }).from(tradesTable).where(eq(tradesTable.id, id));
   if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) { res.status(403).json({ error: "Можно восстанавливать только свои трейды" }); return; }
   const [trade] = await db
@@ -793,7 +793,7 @@ router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> 
     .set({ deletedAt: null })
     .where(eq(tradesTable.id, id))
     .returning();
-  if (!trade) { res.status(404).json({ error: "Trade not found" }); return; }
+  if (!trade) throw notFound("TRADE_NOT_FOUND");
   logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: `${trade.ticker} (восстановлен)`, trader: trade.trader ?? undefined });
   invalidateDashboardCache();
   res.json({ success: true });

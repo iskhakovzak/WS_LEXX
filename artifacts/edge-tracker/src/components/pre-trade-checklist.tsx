@@ -2,7 +2,8 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from "react"
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { AlertTriangle, ShieldCheck, ShieldAlert, Check, X, Minus, RotateCcw, CheckCheck, Keyboard } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { Pill, EmptyState } from "@/components/ds";
@@ -73,12 +74,8 @@ function ProgressRing({ value, tone, children, size = 64 }: { value: number; ton
 export function PreTradeChecklist({ ticker, tradeDate, trader, initialAnswers, onConfirm, onCancel, submitLabel, minScore = 0 }: Props) {
   const { data: items = [], isLoading, isError, error: loadError, refetch } = useQuery<ChecklistTemplateItem[]>({
     queryKey: ["checklist-template"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/checklist-template`);
-      if (!r.ok) throw new Error(`Не удалось загрузить чек-лист (HTTP ${r.status})`);
-      const d = await r.json();
-      return Array.isArray(d) ? d : [];
-    },
+    queryFn: ({ signal }) =>
+      http.get<ChecklistTemplateItem[]>("/api/checklist-template", { signal }).then((d) => (Array.isArray(d) ? d : [])),
   });
   const [answers, setAnswers] = useState<ChecklistAnswers>(initialAnswers ?? {});
   const [submitting, setSubmitting] = useState(false);
@@ -168,25 +165,16 @@ export function PreTradeChecklist({ ticker, tradeDate, trader, initialAnswers, o
         answer: answers[i.id] ?? "no",
       }));
       const passed = ready;
-      const r = await fetch(`${BASE}/api/checklist-responses`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ticker: ticker.toUpperCase(),
-          tradeDate,
-          trader: trader || null,
-          responses: JSON.stringify(responses),
-          passed,
-        }),
+      const created = await http.post<{ id: number }>("/api/checklist-responses", {
+        ticker: ticker.toUpperCase(),
+        tradeDate,
+        trader: trader || null,
+        responses: JSON.stringify(responses),
+        passed,
       });
-      if (!r.ok) {
-        const body: { error?: string; message?: string } = await r.json().catch(() => ({}));
-        throw new Error(body.message ?? body.error ?? `Ошибка сохранения чек-листа (HTTP ${r.status})`);
-      }
-      const created = await r.json();
       onConfirm({ responseId: created.id, passed, score: stats.score });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : String(e));
+      setError(humanizeApiError(e, "Ошибка сохранения чек-листа"));
     } finally {
       setSubmitting(false);
     }

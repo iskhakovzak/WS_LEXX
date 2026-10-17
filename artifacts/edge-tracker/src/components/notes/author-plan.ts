@@ -6,7 +6,8 @@
  *   - feed search over text, author and the day's tickers.
  * Nothing here talks to the server or to AI.
  */
-import { SECTIONS, fmtDayShort, fmtR, parseNote, type AuthorNote, type DayTrade, type SectionKey } from "./author-model";
+import { SECTIONS, parseNote, type AuthorNote, type DayTrade, type SectionKey } from "./author-model";
+import { fmtDate, fmtR } from "@/lib/format";
 
 /* ───────────────────────── Previous plan ───────────────────────── */
 
@@ -116,13 +117,13 @@ export function followThroughBlock(prevDate: string, items: FollowItem[]): strin
   const rows = items.map((it) => {
     const fact =
       it.status === "traded"
-        ? `торговал ${it.traded.map((t) => (t.r != null ? `${t.ticker} ${fmtR(t.r)}` : t.ticker)).join(", ")} — `
+        ? `торговал ${it.traded.map((t) => (t.r != null ? `${t.ticker} ${fmtR(t.r, 1)}` : t.ticker)).join(", ")} — `
         : it.status === "missed"
           ? "не торговал — "
           : "";
     return `• ${it.line} → ${fact}`;
   });
-  return `${FOLLOW_HEADER} (план от ${fmtDayShort(prevDate)}):\n${rows.join("\n")}`;
+  return `${FOLLOW_HEADER} (план от ${fmtDate(prevDate, "dayMonth")}):\n${rows.join("\n")}`;
 }
 
 /* ───────────────────────── Money in text ───────────────────────── */

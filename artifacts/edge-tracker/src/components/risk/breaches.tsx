@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import type { RiskAlertRecord, RiskLimits } from "./use-risk";
 import { useRiskAlerts, useRiskHistory } from "./use-risk";
 import { breachHistory } from "./risk-math";
-import { fmtPct, fmtUsd } from "./primitives";
+import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 
 export type BreachRow = {
   key: string;
@@ -102,7 +102,7 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
             <li key={r.key} className={cn("flex items-center gap-3 rounded-xl px-3 py-2 text-sm", breach ? "bg-down/10" : "bg-warn/10")}>
               <Icon className={cn("h-4 w-4 shrink-0", breach ? "text-down" : "text-warn")} aria-hidden="true" />
               <Link href={links.journalDay(r.date, trader)} className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground hover:text-primary" title="Журнал за этот день">
-                {r.date.slice(8, 10)}.{r.date.slice(5, 7)}.{r.date.slice(2, 4)}
+                {fmtDate(r.date.slice(0, 10), "shortYY")}
               </Link>
               <span className="min-w-0 flex-1 truncate">
                 <span className="font-medium">{KIND_LABEL[r.kind]}</span>
@@ -110,9 +110,9 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
                 {r.logged && <span className="ml-1.5 text-xs text-muted-foreground" title={r.message}>зафиксировано</span>}
               </span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {r.used != null ? `−${fmtUsd(r.used)}` : "—"}{r.limit != null ? ` / ${fmtUsd(r.limit)}` : ""}
+                {r.used != null ? `−${fmtUsd(r.used, { decimals: 0 })}` : "—"}{r.limit != null ? ` / ${fmtUsd(r.limit, { decimals: 0 })}` : ""}
               </span>
-              {r.pct != null && <span className={cn("w-11 shrink-0 text-right text-xs font-semibold tabular-nums", breach ? "text-down" : "text-warn")}>{fmtPct(r.pct)}</span>}
+              {r.pct != null && <span className={cn("w-11 shrink-0 text-right text-xs font-semibold tabular-nums", breach ? "text-down" : "text-warn")}>{fmtPct(r.pct, { decimals: 0, signed: false })}</span>}
             </li>
           );
         })}

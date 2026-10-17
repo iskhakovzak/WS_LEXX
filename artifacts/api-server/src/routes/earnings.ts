@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
+import { badRequest } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -508,8 +509,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const ticker = String(req.params.ticker ?? "").trim().toUpperCase();
     if (!/^[A-Z][A-Z0-9.\-]{0,9}$/.test(ticker)) {
-      res.status(400).json({ error: "Invalid ticker" });
-      return;
+      throw badRequest("INVALID_TICKER");
     }
     const t = String(req.query.timing ?? "").toUpperCase();
     const timing: CallType | null = t === "BMO" || t === "AMC" ? t : null;

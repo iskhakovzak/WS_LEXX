@@ -1,10 +1,11 @@
-import * as React from "react";
+
 import { ArrowDownRight, ArrowUpRight, Flag, History } from "lucide-react";
 import { EmptyState, Pill } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { HistoryEntry, Tier } from "./use-scaling";
-import { fmtDateTime, tierName } from "./format";
+import { tierName } from "./format";
+import { fmtDate } from "@/lib/format";
 
 const META = {
   promote: { icon: ArrowUpRight, cls: "bg-up/15 text-up", label: "Повышение" },
@@ -56,7 +57,7 @@ export function HistoryTimeline({
               <Pill tone="purple">{tierName(tiers, h.toTier)}</Pill>
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
-              <span>{fmtDateTime(h.createdAt)}</span>
+              <span>{fmtDate(h.createdAt, "dateTime")}</span>
               <span>{h.actor}</span>
               {h.proposalId != null && <span>предложение #{h.proposalId}</span>}
             </div>

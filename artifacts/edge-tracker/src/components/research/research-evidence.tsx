@@ -9,10 +9,13 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound, nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { splitTickers, type ResearchNote } from "./research-utils";
+import { fmtR, fmtUsd } from "@/lib/format";
 
 /* Evidence for a research note: trades linked through `trades.pattern_id`
  * (`GET /api/research/:id/trades`, scoped to the viewer) and the playbook setups promoted from it.
@@ -33,12 +36,6 @@ type Candidate = {
 
 const MIN_EVIDENCE = 5;
 
-export function fmtUsd(n: number | null | undefined) {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const s = Math.abs(n).toLocaleString("ru-RU", { maximumFractionDigits: 0 });
-  return n < 0 ? `−$${s}` : `$${s}`;
-}
-
 function Stat({ label, value, sub, tone, title }: { label: string; value: ReactNode; sub?: ReactNode; tone?: Tone; title?: string }) {
   return (
     <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={title}>
@@ -58,13 +55,9 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
 
   const q = useQuery({
     queryKey: ["research-trades", r.id],
-    queryFn: async (): Promise<TradesPayload | null> => {
-      const res = await fetch(`${BASE}/api/research/${r.id}/trades`);
-      if (res.status === 404) return null;
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      return (await res.json()) as TradesPayload;
-    },
-    staleTime: 60_000,
+    queryFn: ({ signal }): Promise<TradesPayload | null> =>
+      http.get<TradesPayload>(`/api/research/${r.id}/trades`, { signal }).catch(nullIfMissing),
+    staleTime: STALE.short,
     retry: false,
   });
 
@@ -73,15 +66,16 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
   const lineage = useQuery({
     queryKey: ["playbook", "lineage", r.id],
     queryFn: async ({ signal }): Promise<PlaybookLite[]> => {
-      const lean = await fetch(`${BASE}/api/research/${r.id}/setups`, { signal });
-      if (lean.ok) return (await lean.json()) as PlaybookLite[];
-      if (lean.status !== 404) return [];
-      const res = await fetch(`${BASE}/api/playbook`, { signal });
-      if (!res.ok) return [];
-      const data = (await res.json()) as PlaybookLite[] | { items?: PlaybookLite[] };
+      try {
+        return await http.get<PlaybookLite[]>(`/api/research/${r.id}/setups`, { signal });
+      } catch (e) {
+        if (!isNotFound(e)) return [];
+      }
+      const data = await http.get<PlaybookLite[] | { items?: PlaybookLite[] }>("/api/playbook", { signal }).catch(() => null);
+      if (!data) return [];
       return Array.isArray(data) ? data : data.items ?? [];
     },
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: false,
   });
   const promoted = (lineage.data ?? []).filter((p) => p.sourceType === "research" && p.sourceId === r.id);
@@ -95,10 +89,8 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch(`${BASE}/api/research/${r.id}`, {
-          method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ playbookId: healTarget }),
-        });
-        if (res.ok && !cancelled) void qc.invalidateQueries({ queryKey: getListResearchQueryKey() });
+        await http.patch(`/api/research/${r.id}`, { playbookId: healTarget });
+        if (!cancelled) void qc.invalidateQueries({ queryKey: getListResearchQueryKey() });
       } catch { /* lineage is best-effort */ }
     })();
     return () => { cancelled = true; };
@@ -106,10 +98,7 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
 
   const link = useMutation({
     mutationFn: async ({ id, unlink }: { id: number; unlink: boolean }) => {
-      const res = await fetch(`${BASE}/api/research/${r.id}/link-trade`, {
-        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ tradeId: id, unlink }),
-      });
-      if (!res.ok) { const j = (await res.json().catch(() => ({}))) as { error?: string }; throw new Error(j.error ?? `HTTP ${res.status}`); }
+      await http.post(`/api/research/${r.id}/link-trade`, { tradeId: id, unlink });
     },
     onSuccess: (_d, v) => {
       setTradeId("");
@@ -125,12 +114,10 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
   const candidates = useQuery({
     queryKey: ["research-candidates", r.id],
     queryFn: async ({ signal }): Promise<Candidate[]> => {
-      const res = await fetch(`${BASE}/api/research/${r.id}/candidates`, { signal });
-      if (!res.ok) return [];
-      return (await res.json()) as Candidate[];
+      return http.get<Candidate[]>(`/api/research/${r.id}/candidates`, { signal }).catch(() => []);
     },
     enabled: canEdit && !!ticker,
-    staleTime: 60_000,
+    staleTime: STALE.short,
     retry: false,
   });
   const cands = candidates.data ?? [];
@@ -169,11 +156,11 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                 sub={<>{stats.wins}W / {stats.losses}L{stats.be ? ` · BE ${stats.be}` : ""}</>}
                 tone={stats.winRate == null ? "neutral" : stats.winRate >= 50 ? "up" : "down"}
               />
-              <Stat label="ΣR" value={stats.sumR != null ? `${stats.sumR > 0 ? "+" : ""}${stats.sumR.toFixed(1)}R` : "—"} tone={stats.sumR != null ? toneOf(stats.sumR) : "neutral"} />
+              <Stat label="ΣR" value={stats.sumR != null ? fmtR(stats.sumR, 1) : "—"} tone={stats.sumR != null ? toneOf(stats.sumR) : "neutral"} />
               <Stat
                 label="P&L нетто"
-                value={fmtUsd(stats.netPnl)}
-                sub={stats.grossPnl != null ? `брутто ${fmtUsd(stats.grossPnl)} · комиссии ${fmtUsd(stats.fees)}` : undefined}
+                value={fmtUsd(stats.netPnl, { decimals: 0 })}
+                sub={stats.grossPnl != null ? `брутто ${fmtUsd(stats.grossPnl, { decimals: 0 })} · комиссии ${fmtUsd(stats.fees, { decimals: 0 })}` : undefined}
                 tone={stats.netPnl != null ? toneOf(stats.netPnl) : "neutral"}
               />
             </div>
@@ -199,8 +186,8 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                       {t.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.setup}</span> : <span className="flex-1" />}
                       {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{t.trader}</span>}
                       {t.brokerAccount && <span className="hidden text-2xs text-muted-foreground lg:inline">{t.brokerAccount}</span>}
-                      {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{rr > 0 ? "+" : ""}{rr.toFixed(1)}R</span>}
-                      {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl)} · комиссии ${fmtUsd(t.fees)}`}>{fmtUsd(t.netPnl)}</span>}
+                      {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{fmtR(rr, 1)}</span>}
+                      {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl, { decimals: 0 })} · комиссии ${fmtUsd(t.fees, { decimals: 0 })}`}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}
                       <Pill tone={tone} className="text-2xs">{t.result ?? "open"}</Pill>
                       <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
                     </Link>
@@ -236,8 +223,8 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                         {c.side && <span className="text-xs text-muted-foreground">{c.side}</span>}
                         {c.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.setup}>{c.setup}</span> : <span className="flex-1" />}
                         {c.trader && <span className="hidden text-xs text-muted-foreground xl:inline">{c.trader}</span>}
-                        {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{rr > 0 ? "+" : ""}{rr.toFixed(1)}R</span>}
-                        {c.netPnl != null && <span className={cn("w-16 text-right text-xs tabular-nums", toneText(toneOf(c.netPnl)))}>{fmtUsd(c.netPnl)}</span>}
+                        {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{fmtR(rr, 1)}</span>}
+                        {c.netPnl != null && <span className={cn("w-16 text-right text-xs tabular-nums", toneText(toneOf(c.netPnl)))}>{fmtUsd(c.netPnl, { decimals: 0 })}</span>}
                       </Link>
                       <Button
                         type="button"

@@ -8,7 +8,9 @@ import { Layers } from "lucide-react";
 import { DataTable, EmptyState, Pill, SortableTh, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtPct, fmtRatio, fmtUsd, fmtUsdCompact, pluralTrades, winRateTone, type SetupAggregate } from "./api";
+import { winRateTone, type SetupAggregate } from "./api";
+import { fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const ACCESSORS = {
   setup: (r: SetupAggregate) => r.setup,
@@ -54,7 +56,7 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
   }, [groups]);
 
   if (!groups.length) {
-    return <EmptyState icon={Layers} title="Пока нет предложений" description={pending > 0 ? `Не посчитано ${pluralTrades(pending)} — нажмите «Посчитать всё».` : "Нет закрытых сделок за период."} />;
+    return <EmptyState icon={Layers} title="Пока нет предложений" description={pending > 0 ? `Не посчитано ${commonI18n.t("units.trades", { count: pending })} — нажмите «Посчитать всё».` : "Нет закрытых сделок за период."} />;
   }
   return (
     <div className="flex flex-col gap-2">
@@ -81,7 +83,7 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
                 <tr key={g.setup}>
                   <td className="font-medium">
                     {g.accepted > 0 ? (
-                      <Link href={links.trades({ setup: g.setup })} className="underline-offset-2 hover:underline" title={`Принято в ${pluralTrades(g.accepted)} — открыть в журнале`}>{g.setup}</Link>
+                      <Link href={links.trades({ setup: g.setup })} className="underline-offset-2 hover:underline" title={`Принято в ${commonI18n.t("units.trades", { count: g.accepted })} — открыть в журнале`}>{g.setup}</Link>
                     ) : g.setup}
                     {g.accepted > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">принято {g.accepted}</span>}
                   </td>
@@ -89,17 +91,17 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
                     {g.n}
                     {small && <Pill tone="neutral" className="ml-1" title={`Меньше ${smallSample} сделок: интервалы широкие, выводы ненадёжны`}>n&lt;{smallSample}</Pill>}
                   </td>
-                  <td className="text-right tabular-nums" title={g.expectancyCI ? `95% бутстрап-интервал: ${fmtUsd(g.expectancyCI.low)} … ${fmtUsd(g.expectancyCI.high)}` : "Интервал не определён (n < 2)"}>
-                    <span className={toneText(toneOf(g.expectancy))}>{fmtUsd(g.expectancy)}</span>
-                    {g.expectancyCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtUsdCompact(g.expectancyCI.low)}; {fmtUsdCompact(g.expectancyCI.high)}]</span>}
+                  <td className="text-right tabular-nums" title={g.expectancyCI ? `95% бутстрап-интервал: ${fmtUsd(g.expectancyCI.low, { signed: true, decimals: "auto" })} … ${fmtUsd(g.expectancyCI.high, { signed: true, decimals: "auto" })}` : "Интервал не определён (n < 2)"}>
+                    <span className={toneText(toneOf(g.expectancy))}>{fmtUsd(g.expectancy, { signed: true, decimals: "auto" })}</span>
+                    {g.expectancyCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtUsd(g.expectancyCI.low, { signed: true, compact: true })}; {fmtUsd(g.expectancyCI.high, { signed: true, compact: true })}]</span>}
                     <CiBar value={g.expectancy} ci={g.expectancyCI} lo={lo} hi={hi} />
                   </td>
-                  <td className="text-right tabular-nums" title={g.winRateCI ? `Интервал Уилсона: ${fmtPct(g.winRateCI.low)} … ${fmtPct(g.winRateCI.high)} (W/(W+L), BE не считаются)` : undefined}>
-                    <span className={toneText(winRateTone(g.winRate, decided))}>{fmtPct(g.winRate)}</span>
-                    {g.winRateCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtPct(g.winRateCI.low)}–{fmtPct(g.winRateCI.high)}]</span>}
+                  <td className="text-right tabular-nums" title={g.winRateCI ? `Интервал Уилсона: ${fmtRate(g.winRateCI.low)} … ${fmtRate(g.winRateCI.high)} (W/(W+L), BE не считаются)` : undefined}>
+                    <span className={toneText(winRateTone(g.winRate, decided))}>{fmtRate(g.winRate)}</span>
+                    {g.winRateCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtRate(g.winRateCI.low)}–{fmtRate(g.winRateCI.high)}]</span>}
                     <div className="text-xs text-muted-foreground">{g.wins}/{g.losses}{g.be ? `/${g.be}` : ""}</div>
                   </td>
-                  <td className={cn("text-right tabular-nums", toneText(toneOf(g.net)))}>{fmtUsd(g.net)}</td>
+                  <td className={cn("text-right tabular-nums", toneText(toneOf(g.net)))}>{fmtUsd(g.net, { signed: true, decimals: "auto" })}</td>
                   <td className="text-right tabular-nums" title={g.profitFactor == null ? "PF не определён: нет убыточных сделок или нет P&L" : undefined}>{fmtRatio(g.profitFactor)}</td>
                   <td className="text-right tabular-nums">{g.avgConfidence == null ? "—" : `${Math.round(g.avgConfidence * 100)}%`}</td>
                   <td><Pill tone={v.tone} dot title={v.title}>{v.label}</Pill></td>
@@ -110,7 +112,7 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
         </table>
       </DataTable>
       <p className="text-xs text-muted-foreground">
-        Покрыто {pluralTrades(covered)}{pending > 0 ? `, не посчитано ${pending}` : ""}. Ожидание — средний нетто на сделку, интервал — бутстрап 2000 выборок;
+        Покрыто {commonI18n.t("units.trades", { count: covered })}{pending > 0 ? `, не посчитано ${pending}` : ""}. Ожидание — средний нетто на сделку, интервал — бутстрап 2000 выборок;
         win rate = W/(W+L) с интервалом Уилсона. «Edge»/«утечка» — только если весь интервал по одну сторону от нуля. Отклонённые предложения исключены.
       </p>
     </div>

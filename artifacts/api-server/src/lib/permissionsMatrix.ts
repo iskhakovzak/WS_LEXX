@@ -100,6 +100,7 @@ export const CAPABILITIES = [
   { key: "telegram.broadcast", group: "Администрирование", label: "Telegram-рассылка", description: "Массовая рассылка и отвязка Telegram у пользователей." },
   { key: "digest.manage.any", group: "Администрирование", label: "Дайджест за других", team: true, description: "Смотреть/менять подписку на дайджест другого участника." },
   { key: "permissions.manage", group: "Администрирование", label: "Менять права доступа", adminOnly: true, description: "PUT /permissions/matrix." },
+  { key: "admin.errors", group: "Администрирование", label: "Ошибки приложения", adminOnly: true, description: "Пульт → Ошибки: ошибки сервера и браузера, пометка «исправлено»." },
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number]["key"];

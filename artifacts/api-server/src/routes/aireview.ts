@@ -5,6 +5,7 @@ import { handleAiNotConfigured } from "../lib/aiErrors";
 import { canAccessTrade } from "../lib/auth";
 import { db, aiReviewRateLimitTable, aiTradeReviewsTable } from "@workspace/db";
 import { eq, and, gte, sql, inArray } from "drizzle-orm";
+import { badRequest, notFound, sendError } from "../lib/http";
 
 /**
  * AI reviews are personal feedback (like curator reviews): the trade's owner and whoever may read it through the
@@ -13,7 +14,7 @@ import { eq, and, gte, sql, inArray } from "drizzle-orm";
  */
 async function requireReviewAccess(req: Request, res: Response, id: number): Promise<boolean> {
   const ok = await canAccessTrade(req, id, "read");
-  if (ok === null) { res.status(404).json({ error: "Trade not found" }); return false; }
+  if (ok === null) { sendError(res, notFound("TRADE_NOT_FOUND")); return false; }
   if (!ok) { res.status(403).json({ error: "Нет доступа к AI-разбору этой сделки" }); return false; }
   return true;
 }
@@ -75,7 +76,7 @@ router.get("/ai-review/usage", asyncHandler(async (req, res): Promise<void> => {
 
 router.post("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid trade id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!(await requireReviewAccess(req, res, id))) return;
   const userKey = userKeyFor(req);
   const force = req.query.force === "true" || req.body?.force === true;
@@ -100,7 +101,7 @@ router.post("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void
 
 router.get("/trades/:id/ai-review", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid trade id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!(await requireReviewAccess(req, res, id))) return;
   const review = await getLatestReview(id);
   if (!review) { res.status(404).json({ error: "No review yet" }); return; }

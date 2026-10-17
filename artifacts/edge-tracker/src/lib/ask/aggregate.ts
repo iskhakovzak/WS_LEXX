@@ -7,6 +7,8 @@ import {
   afterPhrase, describeFilter, describeSubject, filterOf, fmtClock, fmtDuration, METRIC_WORD, targetTitle, weekdayOf, weekdayPhrase,
   type AskDim, type AskFilter, type AskMetric, type AskQuery,
 } from "./parse";
+import { fmtDate, fmtMonth, fmtNum, fmtRate, fmtUsd, fmtWeekday, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export interface AskTrade extends TradeLike {
   id: number;
@@ -245,16 +247,20 @@ export function metricValue(r: Agg, metric: AskMetric): number | null {
 export function fmtMetric(v: number | null | undefined, metric: AskMetric): string {
   if (v == null) return "—";
   switch (metric) {
-    case "winRate": return fmtPct(v);
+    case "winRate": return fmtRate(v);
     case "n": return String(v);
-    case "fees": return fmtMoney(v, false);
-    case "pf": return v.toFixed(2);
-    default: return fmtMoney(v);
+    case "fees": return fmtUsd(v);
+    case "pf": return fmtNum(v);
+    default: return fmtUsd(v, { signed: true });
   }
 }
 
-const WD = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
-const MON_SHORT = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+/** Group label for a Monday-first weekday index (0 = Mon): "Пн" in the UI language. */
+function wdLabel(wd: number): string {
+  const s = fmtWeekday((wd + 1) % 7, "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+/** Follow-up phrases go back through the Russian parser: keep these Russian. */
 const MON_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"];
 
 function mondayOf(date: string): string {
@@ -270,9 +276,9 @@ function plusDays(date: string, n: number): string {
 }
 
 /** dd.MM (tables). */
-export const dm = (date: string) => `${date.slice(8, 10)}.${date.slice(5, 7)}`;
+export const dm = (date: string) => fmtDate(date.slice(0, 10), "dayMonthNumeric");
 /** dd.MM.yyyy. */
-export const dmy = (date: string) => `${dm(date)}.${date.slice(0, 4)}`;
+export const dmy = (date: string) => fmtDate(date.slice(0, 10), "short");
 
 export const SLOTS: Array<{ key: string; from: number; to: number; label: string; ask: string }> = [
   { key: "0", from: 0, to: 570, label: "Премаркет (до 9:30)", ask: "в премаркете" },
@@ -303,16 +309,16 @@ export function groupKey(t: AskTrade, dim: AskDim, idx: BookIndex): { key: strin
   const m = metaOf(idx, t);
   switch (dim) {
     case "ticker": { const k = (t.ticker ?? "—").toUpperCase(); return { key: k, label: k, ask: k }; }
-    case "day": return m.day ? { key: m.day, label: `${WD[m.wd]}, ${dmy(m.day)}`, ask: m.day } : null;
+    case "day": return m.day ? { key: m.day, label: `${wdLabel(m.wd)}, ${dmy(m.day)}`, ask: m.day } : null;
     case "hour": {
       if (m.min == null) return null;
       const h = Math.floor(m.min / 60);
       return { key: String(h).padStart(2, "0"), label: `${fmtClock(h * 60)}–${fmtClock((h + 1) * 60)}`, ask: `с ${fmtClock(h * 60)} до ${fmtClock((h + 1) * 60)}` };
     }
-    case "weekday": return { key: String(m.wd), label: WD[m.wd], ask: weekdayPhrase([m.wd]) };
+    case "weekday": return { key: String(m.wd), label: wdLabel(m.wd), ask: weekdayPhrase([m.wd]) };
     case "month": {
       const mo = Number(m.day.slice(5, 7));
-      return { key: m.day.slice(0, 7), label: `${MON_SHORT[mo - 1]} ${m.day.slice(0, 4)}`, ask: `в ${MON_PREP[mo - 1]} ${m.day.slice(0, 4)}` };
+      return { key: m.day.slice(0, 7), label: `${fmtMonth(mo - 1, "short")} ${m.day.slice(0, 4)}`, ask: `в ${MON_PREP[mo - 1]} ${m.day.slice(0, 4)}` };
     }
     case "week": { const mon = mondayOf(m.day); return { key: mon, label: `нед. ${dm(mon)}–${dm(plusDays(mon, 4))}`, ask: `с ${mon} по ${plusDays(mon, 4)}` }; }
     case "side": { const s = t.side === "Long" ? "Long" : t.side === "Short" ? "Short" : null; return s ? { key: s, label: s === "Long" ? "лонг" : "шорт", ask: s === "Long" ? "лонги" : "шорты" } : null; }
@@ -353,33 +359,12 @@ const CHRONO: ReadonlySet<AskDim> = new Set(["day", "hour", "weekday", "month", 
 
 // ── Formatting ────────────────────────────────────────────────────────────────
 
-const usd = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** «+$12.30», «−$41.20», «$0.00». */
-export function fmtMoney(n: number | null | undefined, signed = true): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = usd.format(Math.abs(n));
-  if (!signed) return `$${abs}`;
-  return n > 0 ? `+$${abs}` : n < 0 ? `−$${abs}` : `$${abs}`;
-}
-
-export function fmtPct(x: number | null | undefined): string {
-  return x == null || !Number.isFinite(x) ? "—" : `${Math.round(x * 100)}%`;
-}
-
-export function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
-
-export const tradesWord = (n: number) => `${n} ${plural(n, "сделка", "сделки", "сделок")}`;
+// Money / percent / plurals: @/lib/format (fmtUsd, fmtRate, pluralRu) and commonI18n units.
 
 // ── Canonical text (follow-up questions round-trip through the parser) ────────
 
 function minutesText(sec: number): string {
-  if (sec % 3600 === 0) return `${sec / 3600} ${plural(sec / 3600, "часа", "часов", "часов")}`;
+  if (sec % 3600 === 0) return `${sec / 3600} ${pluralRu(sec / 3600, "часа", "часов", "часов")}`;
   if (sec % 60 === 0) return `${sec / 60} минут`;
   return `${sec} секунд`;
 }
@@ -543,7 +528,7 @@ function netHist(trades: AskTrade[]): AskChart | null {
     title: "Распределение нетто по сделкам",
     bins: counts.map((c, i) => {
       const a = lo + i * w, b = a + w;
-      return { label: `${fmtMoney(a)} … ${fmtMoney(b)}`, value: c, tone: b <= 0 ? "down" : a >= 0 ? "up" : "neutral" };
+      return { label: `${fmtUsd(a, { signed: true })} … ${fmtUsd(b, { signed: true })}`, value: c, tone: b <= 0 ? "down" : a >= 0 ? "up" : "neutral" };
     }),
   };
 }
@@ -563,12 +548,12 @@ function bucketHist(trades: AskTrade[], dim: AskDim, idx: BookIndex, title: stri
 function statsOf(a: Agg): AskStat[] {
   const s: AskStat[] = [
     { label: "Сделок", value: String(a.n) },
-    { label: "Нетто", value: fmtMoney(a.net), tone: a.net, hint: "нетто = брутто − комиссии" },
-    { label: "Винрейт", value: fmtPct(a.winRate), hint: `W/(W+L): ${a.wins}W / ${a.losses}L` },
-    { label: "Комиссии", value: fmtMoney(a.fees, false) },
-    { label: "Среднее нетто", value: fmtMoney(a.avgNet), tone: a.avgNet },
-    { label: "PF ($)", value: a.pf == null ? "—" : a.pf.toFixed(2), hint: "Σ плюсов / |Σ минусов|" },
-    { label: "Ср. плюс / минус", value: a.avgWin != null || a.avgLoss != null ? `${fmtMoney(a.avgWin)} / ${fmtMoney(a.avgLoss)}` : "—" },
+    { label: "Нетто", value: fmtUsd(a.net, { signed: true }), tone: a.net, hint: "нетто = брутто − комиссии" },
+    { label: "Винрейт", value: fmtRate(a.winRate), hint: `W/(W+L): ${a.wins}W / ${a.losses}L` },
+    { label: "Комиссии", value: fmtUsd(a.fees) },
+    { label: "Среднее нетто", value: fmtUsd(a.avgNet, { signed: true }), tone: a.avgNet },
+    { label: "PF ($)", value: a.pf == null ? "—" : fmtNum(a.pf), hint: "Σ плюсов / |Σ минусов|" },
+    { label: "Ср. плюс / минус", value: a.avgWin != null || a.avgLoss != null ? `${fmtUsd(a.avgWin, { signed: true })} / ${fmtUsd(a.avgLoss, { signed: true })}` : "—" },
     { label: "Ср. удержание", value: a.avgHold == null ? "—" : fmtDuration(a.avgHold) },
   ];
   return s.filter((x) => x.value !== "—" && x.value !== "— / —");
@@ -577,18 +562,18 @@ function statsOf(a: Agg): AskStat[] {
 /** One extra sentence worth saying about a set of trades (fees eating the edge, payoff). */
 function takeaway(a: Agg): string | null {
   if (a.n < 3) return null;
-  if (a.gross != null && a.gross > 0 && a.fees / a.gross >= 0.5) return `Комиссии съели ${fmtPct(a.fees / a.gross)} брутто.`;
-  if (a.gross != null && a.gross > 0 && (a.net ?? 0) < 0) return `В плюсе до комиссий (${fmtMoney(a.gross)}), в минусе после.`;
+  if (a.gross != null && a.gross > 0 && a.fees / a.gross >= 0.5) return `Комиссии съели ${fmtRate(a.fees / a.gross)} брутто.`;
+  if (a.gross != null && a.gross > 0 && (a.net ?? 0) < 0) return `В плюсе до комиссий (${fmtUsd(a.gross, { signed: true })}), в минусе после.`;
   if (a.avgWin != null && a.avgLoss != null && a.winRate != null) {
     const payoff = a.avgWin / Math.abs(a.avgLoss);
-    if (a.winRate >= 0.5 && payoff < 0.8) return `Выигрываете чаще, но средний минус (${fmtMoney(a.avgLoss)}) больше среднего плюса (${fmtMoney(a.avgWin)}).`;
+    if (a.winRate >= 0.5 && payoff < 0.8) return `Выигрываете чаще, но средний минус (${fmtUsd(a.avgLoss, { signed: true })}) больше среднего плюса (${fmtUsd(a.avgWin, { signed: true })}).`;
     if (a.winRate < 0.5 && payoff > 1.3) return `Винрейт ниже 50%, но средний плюс в ${payoff.toFixed(1)} раза больше минуса.`;
   }
   return null;
 }
 
 function statLine(a: Agg): string {
-  return `${tradesWord(a.n)}, нетто ${fmtMoney(a.net)}, винрейт ${fmtPct(a.winRate)}`;
+  return `${commonI18n.t("units.trades", { count: a.n })}, нетто ${fmtUsd(a.net, { signed: true })}, винрейт ${fmtRate(a.winRate)}`;
 }
 
 /** Smallest group size worth ranking (no «100% винрейт» from one trade). */
@@ -623,10 +608,10 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
   const { link, note } = baseLink(f, trades, maxIds);
   const notes: string[] = [];
   if (note) notes.push(note);
-  if (meta.noTime) notes.push(`${tradesWord(meta.noTime)} без времени входа не учтены (фильтр по времени).`);
-  if (meta.noHold) notes.push(`${tradesWord(meta.noHold)} без времени удержания не учтены.`);
-  if (meta.noPrice) notes.push(`${tradesWord(meta.noPrice)} без цены входа не учтены.`);
-  if (meta.noQty) notes.push(`${tradesWord(meta.noQty)} без размера позиции не учтены.`);
+  if (meta.noTime) notes.push(`${commonI18n.t("units.trades", { count: meta.noTime })} без времени входа не учтены (фильтр по времени).`);
+  if (meta.noHold) notes.push(`${commonI18n.t("units.trades", { count: meta.noHold })} без времени удержания не учтены.`);
+  if (meta.noPrice) notes.push(`${commonI18n.t("units.trades", { count: meta.noPrice })} без цены входа не учтены.`);
+  if (meta.noQty) notes.push(`${commonI18n.t("units.trades", { count: meta.noQty })} без размера позиции не учтены.`);
   if (meta.truncated) notes.push("Загружены не все сделки (лимит 5000) — уточните период.");
   const c: Ctx = { q, f, idx, maxIds, total, notes };
 
@@ -650,11 +635,11 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
       const n = netPnl(top)!;
       const topList = sorted.slice(0, Math.max(N, 10));
       const head = N > 1
-        ? `${best ? "Лучшие" : "Худшие"} ${N} сделок: ${sorted.slice(0, 3).map((t) => `${t.ticker} ${dm(t.date)} ${fmtMoney(netPnl(t))}`).join(", ")}${N > 3 ? "…" : ""}`
-        : `${top.ticker}, ${dmy(top.date)}, ${top.side === "Short" ? "шорт" : top.side === "Long" ? "лонг" : ""}: нетто ${fmtMoney(n)}.`;
+        ? `${best ? "Лучшие" : "Худшие"} ${N} сделок: ${sorted.slice(0, 3).map((t) => `${t.ticker} ${dm(t.date)} ${fmtUsd(netPnl(t), { signed: true })}`).join(", ")}${N > 3 ? "…" : ""}`
+        : `${top.ticker}, ${dmy(top.date)}, ${top.side === "Short" ? "шорт" : top.side === "Long" ? "лонг" : ""}: нетто ${fmtUsd(n, { signed: true })}.`;
       return {
         ...base, kind: "top", headline: head.replace(/\s+:/, ":"),
-        big: { label: `${targetTitle(q.intent, "trade")}: ${top.ticker} · ${dm(top.date)}`, value: fmtMoney(n), tone: n },
+        big: { label: `${targetTitle(q.intent, "trade")}: ${top.ticker} · ${dm(top.date)}`, value: fmtUsd(n, { signed: true }), tone: n },
         chart: { type: "bars", title: best ? "Топ сделок по нетто" : "Худшие сделки по нетто", metric: "net", rows: topList.map((t) => ({ key: String(t.id), label: `${t.ticker} ${dm(t.date)}`, value: netPnl(t)!, highlight: sorted.indexOf(t) < N })) },
         groups: null, trades: topList, tradesTitle: N > 1 ? `Топ-${topList.length}` : "Сделка и следующие за ней", tradesByPnl: true,
         link: { ...link, ids: sorted.slice(0, N).map((t) => t.id) }, linkLabel: N > 1 ? `Открыть ${N} сделок в «Сделках»` : "Открыть сделку в «Сделках»",
@@ -706,29 +691,29 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
   switch (q.intent) {
     case "count": big = { label: "Сделок", value: String(all.n), tone: null, sub: `${all.wins}W / ${all.losses}L` }; break;
     case "winrate":
-      big = { label: "Винрейт", value: fmtPct(all.winRate), tone: null, sub: `${all.wins} в плюс, ${all.losses} в минус (W/(W+L))` };
-      headline = `${subject}: винрейт ${fmtPct(all.winRate)} — ${all.wins} из ${all.wins + all.losses} закрыты в плюс.`;
+      big = { label: "Винрейт", value: fmtRate(all.winRate), tone: null, sub: `${all.wins} в плюс, ${all.losses} в минус (W/(W+L))` };
+      headline = `${subject}: винрейт ${fmtRate(all.winRate)} — ${all.wins} из ${all.wins + all.losses} закрыты в плюс.`;
       chart = netHist(trades) ?? chart;
       break;
     case "fees": {
       const share = all.gross != null && all.gross > 0 ? all.fees / all.gross : null;
-      big = { label: "Комиссии", value: fmtMoney(all.fees, false), tone: null, sub: share != null ? `${fmtPct(share)} от брутто ${fmtMoney(all.gross)}` : `брутто ${fmtMoney(all.gross)}` };
+      big = { label: "Комиссии", value: fmtUsd(all.fees), tone: null, sub: share != null ? `${fmtRate(share)} от брутто ${fmtUsd(all.gross, { signed: true })}` : `брутто ${fmtUsd(all.gross, { signed: true })}` };
       headline = share != null
-        ? `Комиссии съели ${fmtMoney(all.fees, false)} — ${fmtPct(share)} брутто (${fmtMoney(all.gross)}); на руках нетто ${fmtMoney(all.net)}. В среднем ${fmtMoney(all.n ? all.fees / all.n : null, false)} на сделку.`
-        : `${subject}: комиссии ${fmtMoney(all.fees, false)} за ${tradesWord(all.n)} (брутто ${fmtMoney(all.gross)}, нетто ${fmtMoney(all.net)}).`;
+        ? `Комиссии съели ${fmtUsd(all.fees)} — ${fmtRate(share)} брутто (${fmtUsd(all.gross, { signed: true })}); на руках нетто ${fmtUsd(all.net, { signed: true })}. В среднем ${fmtUsd(all.n ? all.fees / all.n : null)} на сделку.`
+        : `${subject}: комиссии ${fmtUsd(all.fees)} за ${commonI18n.t("units.trades", { count: all.n })} (брутто ${fmtUsd(all.gross, { signed: true })}, нетто ${fmtUsd(all.net, { signed: true })}).`;
       const span = trades.length ? new Set(trades.map((t) => metaOf(idx, t).day.slice(0, 7))).size : 0;
       const rows = groupTrades(trades, span > 1 ? "month" : "day", idx).sort((a, b) => a.key.localeCompare(b.key));
       chart = barsFrom(rows, "fees", span > 1 ? "Комиссии по месяцам" : "Комиссии по дням");
       break;
     }
     case "avg":
-      big = { label: "Среднее нетто на сделку", value: fmtMoney(all.avgNet), tone: all.avgNet, sub: `ср. плюс ${fmtMoney(all.avgWin)} · ср. минус ${fmtMoney(all.avgLoss)}` };
-      headline = `${subject}: в среднем ${fmtMoney(all.avgNet)} на сделку (${tradesWord(all.n)}, винрейт ${fmtPct(all.winRate)}).`;
+      big = { label: "Среднее нетто на сделку", value: fmtUsd(all.avgNet, { signed: true }), tone: all.avgNet, sub: `ср. плюс ${fmtUsd(all.avgWin, { signed: true })} · ср. минус ${fmtUsd(all.avgLoss, { signed: true })}` };
+      headline = `${subject}: в среднем ${fmtUsd(all.avgNet, { signed: true })} на сделку (${commonI18n.t("units.trades", { count: all.n })}, винрейт ${fmtRate(all.winRate)}).`;
       chart = netHist(trades) ?? chart;
       break;
     case "pf":
-      big = { label: "Профит-фактор ($)", value: all.pf == null ? "—" : all.pf.toFixed(2), tone: all.pf == null ? null : all.pf - 1, sub: "Σ плюсов / |Σ минусов|" };
-      headline = all.pf == null ? `${subject}: убыточных сделок нет — PF не считается.` : `${subject}: PF ${all.pf.toFixed(2)} — на каждый потерянный $1 заработано $${all.pf.toFixed(2)}.`;
+      big = { label: "Профит-фактор ($)", value: all.pf == null ? "—" : fmtNum(all.pf), tone: all.pf == null ? null : all.pf - 1, sub: "Σ плюсов / |Σ минусов|" };
+      headline = all.pf == null ? `${subject}: убыточных сделок нет — PF не считается.` : `${subject}: PF ${fmtNum(all.pf)} — на каждый потерянный $1 заработано $${fmtNum(all.pf)}.`;
       break;
     case "hold": {
       const holds = trades.map((t) => metaOf(idx, t).hold).filter((h): h is number => h != null).sort((a, b) => a - b);
@@ -744,19 +729,19 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
       const qs = trades.map((t) => metaOf(idx, t).qty).filter((x): x is number => x != null);
       const avg = qs.length ? qs.reduce((s, x) => s + x, 0) / qs.length : null;
       big = { label: "Средний размер позиции", value: avg == null ? "—" : `${Math.round(avg)} акц.`, tone: null, sub: qs.length ? `от ${Math.min(...qs)} до ${Math.max(...qs)}` : undefined };
-      headline = `${subject}: средний размер ${avg == null ? "—" : Math.round(avg)} акций за ${tradesWord(all.n)}.`;
+      headline = `${subject}: средний размер ${avg == null ? "—" : Math.round(avg)} акций за ${commonI18n.t("units.trades", { count: all.n })}.`;
       chart = bucketHist(trades, "sizeBucket", idx, "Сделки по размеру (цвет — знак нетто)") ?? chart;
       break;
     }
     case "drawdown": {
       const s = sortChrono(trades, idx, false).map((t) => netPnl(t)).filter((v): v is number => v != null);
       const dd = maxDrawdown(s);
-      big = { label: "Макс. просадка (нетто, по сделкам)", value: fmtMoney(-Math.abs(dd)), tone: dd ? -1 : null };
-      headline = `${subject}: максимальная просадка от пика ${fmtMoney(-Math.abs(dd))} при итоге ${fmtMoney(all.net)}.`;
+      big = { label: "Макс. просадка (нетто, по сделкам)", value: fmtUsd(-Math.abs(dd), { signed: true }), tone: dd ? -1 : null };
+      headline = `${subject}: максимальная просадка от пика ${fmtUsd(-Math.abs(dd), { signed: true })} при итоге ${fmtUsd(all.net, { signed: true })}.`;
       break;
     }
     default:
-      big = { label: "Нетто", value: fmtMoney(all.net), tone: all.net, sub: `${tradesWord(all.n)} · винрейт ${fmtPct(all.winRate)}` };
+      big = { label: "Нетто", value: fmtUsd(all.net, { signed: true }), tone: all.net, sub: `${commonI18n.t("units.trades", { count: all.n })} · винрейт ${fmtRate(all.winRate)}` };
   }
   const tk = takeaway(all);
   if (tk && q.intent !== "fees") headline += ` ${tk}`;
@@ -808,9 +793,9 @@ export function buildCompare(q: AskQuery, f: AskFilter, a: AskTrade[], b: AskTra
   const loser = winner === ra ? rb : ra;
   const word = METRIC_WORD[metric].replace(/^по /, "");
   const headline = winner
-    ? `Лучше — ${winner.label}: ${word} ${fmtMetric(metricValue(winner, metric), metric)} против ${fmtMetric(metricValue(loser, metric), metric)} (${tradesWord(winner.n)} vs ${tradesWord(loser.n)}; винрейт ${fmtPct(winner.winRate)} vs ${fmtPct(loser.winRate)}).`
+    ? `Лучше — ${winner.label}: ${word} ${fmtMetric(metricValue(winner, metric), metric)} против ${fmtMetric(metricValue(loser, metric), metric)} (${commonI18n.t("units.trades", { count: winner.n })} vs ${commonI18n.t("units.trades", { count: loser.n })}; винрейт ${fmtRate(winner.winRate)} vs ${fmtRate(loser.winRate)}).`
     : `${ra.label} и ${rb.label} — одинаково: ${word} ${fmtMetric(va, metric)}.`;
-  const diffFmt = diff == null ? "—" : metric === "winRate" ? `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(Math.round(diff * 100))} п.п.` : metric === "n" ? `${diff > 0 ? "+" : ""}${diff}` : metric === "pf" ? `${diff > 0 ? "+" : ""}${diff.toFixed(2)}` : fmtMoney(diff);
+  const diffFmt = diff == null ? "—" : metric === "winRate" ? `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(Math.round(diff * 100))} п.п.` : metric === "n" ? fmtNum(diff, { decimals: 0, signed: true }) : metric === "pf" ? fmtNum(diff, { signed: true }) : fmtUsd(diff, { signed: true });
   const all = aggOf(union, "all", "Все", idx);
   return {
     kind: "compare", subject, headline,
@@ -865,11 +850,11 @@ function streakAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Omit<AskAns
   const kind = q.streak?.kind ?? "win";
   const focus = kind === "loss" ? ll : lw;
   const cur = runs[runs.length - 1] ?? null;
-  const u = (n: number) => (unit === "day" ? `${n} ${plural(n, "день", "дня", "дней")}` : tradesWord(n));
+  const u = (n: number) => (unit === "day" ? commonI18n.t("units.days", { count: n }) : commonI18n.t("units.trades", { count: n }));
   if (!focus) return { ...base, kind: "empty", headline: `${describeSubject(q)}: серий нет`, big: { label: "Серия", value: "0", tone: null }, chart: null, groups: null, trades: [], tradesTitle: "Сделки", empty: true };
   const span = (r: Run) => { const s = sortChrono(r.items, c.idx, false); return s.length ? `${dm(s[0].date)}–${dm(s[s.length - 1].date)}` : ""; };
   const other = kind === "loss" ? lw : ll;
-  const headline = `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"} — ${u(len(focus))} подряд (${span(focus)}, ${fmtMoney(focus.net)}).`
+  const headline = `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"} — ${u(len(focus))} подряд (${span(focus)}, ${fmtUsd(focus.net, { signed: true })}).`
     + (other ? ` Серия ${kind === "loss" ? "побед" : "убытков"}: ${u(len(other))}.` : "")
     + (cur ? ` Сейчас: ${u(len(cur))} ${cur.kind === "win" ? "в плюс" : "в минус"} подряд.` : "");
   // Distribution of run lengths for the focused kind.
@@ -885,7 +870,7 @@ function streakAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Omit<AskAns
   ].filter((s) => s.value !== "—");
   return {
     ...base, kind: "streak", headline, stats,
-    big: { label: `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"}`, value: u(len(focus)), tone: null, sub: `${span(focus)} · ${fmtMoney(focus.net)}` },
+    big: { label: `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"}`, value: u(len(focus)), tone: null, sub: `${span(focus)} · ${fmtUsd(focus.net, { signed: true })}` },
     chart: { type: "hist", title: `Длина серий ${kind === "loss" ? "убытков" : "побед"} (${unit === "day" ? "дни" : "сделки"})`, bins },
     groups: null, trades: sortChrono(focus.items, c.idx), tradesTitle: "Сделки этой серии",
     link: focus.items.length <= c.maxIds ? { ...base.link, ids: focus.items.map((t) => t.id) } : base.link, linkLabel: "Открыть серию в «Сделках»",
@@ -928,13 +913,13 @@ function insightAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Omit<AskAn
     };
   }
   const second = findings[1];
-  const headline = `${worst ? "Больше всего теряете" : "Больше всего зарабатываете"}: ${top.label.toLowerCase()} — ${fmtMoney(top.net)} за ${tradesWord(top.n)} (винрейт ${fmtPct(top.winRate)}).`
-    + (second ? ` Дальше: ${second.label.toLowerCase()} (${fmtMoney(second.net)}).` : "");
+  const headline = `${worst ? "Больше всего теряете" : "Больше всего зарабатываете"}: ${top.label.toLowerCase()} — ${fmtUsd(top.net, { signed: true })} за ${commonI18n.t("units.trades", { count: top.n })} (винрейт ${fmtRate(top.winRate)}).`
+    + (second ? ` Дальше: ${second.label.toLowerCase()} (${fmtUsd(second.net, { signed: true })}).` : "");
   const ids = new Set(top.ids ?? []);
   c.notes.push(`Сравниваются группы от ${minN} сделок по ${INSIGHT_DIMS.length + 1} срезам; по каждому срезу берётся ${worst ? "самая убыточная" : "самая прибыльная"} группа.`);
   return {
     ...base, kind: "insight", headline,
-    big: { label: top.label, value: fmtMoney(top.net), tone: top.net, sub: `${tradesWord(top.n)} · винрейт ${fmtPct(top.winRate)} · ср. ${fmtMoney(top.avgNet)}` },
+    big: { label: top.label, value: fmtUsd(top.net, { signed: true }), tone: top.net, sub: `${commonI18n.t("units.trades", { count: top.n })} · винрейт ${fmtRate(top.winRate)} · ср. ${fmtUsd(top.avgNet, { signed: true })}` },
     chart: barsFrom(findings, "net", worst ? "Где уходят деньги" : "Где приходят деньги", [top.key]),
     groups: { dim: "insight", title: worst ? "Зоны потерь (по нетто)" : "Сильные зоны (по нетто)", rows: findings, highlight: [top.key], metric: "net" },
     trades: sortChrono(trades.filter((t) => ids.has(t.id)), c.idx), tradesTitle: `Сделки: ${top.label}`,

@@ -5,9 +5,10 @@ import { cn } from "@/lib/utils";
 import { SignedPct } from "./bits";
 import { isMissingEndpoint, useIpoCalendar } from "./use-offerings-data";
 import {
-  fmtDay, fmtM, fmtPrice, fmtShares, todayNY,
+  fmtDay, fmtM, todayNY,
   type IpoCalendarItem, type IpoCalendarResponse, type IpoQuoted, type IpoRow, type Offering,
 } from "./types";
+import { fmtCompact, fmtPrice } from "@/lib/format";
 
 type Lockup = IpoCalendarResponse["lockups"][number];
 type LockupKey = "date" | "ticker" | "pct" | "unlock" | "mcap";
@@ -83,7 +84,7 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
             <ul className="divide-y divide-border/50 text-sm">
               {upcoming.slice(0, 20).map((c) => (
                 <li key={`${c.ticker}-${c.date}`} className="flex items-center gap-3 py-1.5">
-                  <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(c.date, { weekday: "short", day: "numeric", month: "short" })}</span>
+                  <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(c.date, "weekdayDayMonth")}</span>
                   <TickerBtn t={c.ticker} onClick={() => onPick(calendarToOffering(c))} />
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.company}>{c.company}</span>
                   <span className="shrink-0 text-right text-xs tabular-nums text-foreground">{c.priceRange ? `$${c.priceRange}` : "—"}</span>
@@ -107,7 +108,7 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
                   <TickerBtn t={c.ticker} onClick={() => onPick(calendarToOffering(c))} />
                   {c.spac && <Pill tone="neutral" className="px-1.5 text-2xs">SPAC</Pill>}
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.company}>{c.company}</span>
-                  <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{fmtPrice(c.offerPrice)} → {fmtPrice(c.currentPrice)}</span>
+                  <span className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">{fmtPrice(c.offerPrice, { dollar: true })} → {fmtPrice(c.currentPrice, { dollar: true })}</span>
                   <span className="w-16 shrink-0 text-right text-xs"><SignedPct value={c.pctFromIpo} /></span>
                 </li>
               ))}
@@ -144,7 +145,7 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
                   return (
                     <tr key={`${c.ticker}-${c.lockupDate}`} className={cn(past && "text-muted-foreground")}>
                       <td className="whitespace-nowrap py-1.5 pr-2">
-                        {fmtDay(c.lockupDate, { day: "numeric", month: "short" })}
+                        {fmtDay(c.lockupDate)}
                         <span className={cn("ml-1.5 text-2xs", soon ? "font-medium text-[hsl(var(--chart-3))]" : "text-muted-foreground")}>
                           {past ? `${-c.daysLeft} дн назад` : c.daysLeft === 0 ? "сегодня" : `через ${c.daysLeft} дн`}
                         </span>
@@ -156,10 +157,10 @@ export function IpoLockupView({ fallback, onPick }: { fallback: IpoCalendarItem[
                         </span>
                       </td>
                       <td className="px-2 py-1.5 text-right text-xs">
-                        <span className="text-muted-foreground">{fmtPrice(c.offerPrice)} → {fmtPrice(c.currentPrice)} </span>
+                        <span className="text-muted-foreground">{fmtPrice(c.offerPrice, { dollar: true })} → {fmtPrice(c.currentPrice, { dollar: true })} </span>
                         <SignedPct value={c.pctFromIpo} />
                       </td>
-                      <td className="px-2 py-1.5 text-right text-xs" title={c.sharesOffered ? `IPO: ${fmtShares(c.sharesOffered)} акций` : undefined}>
+                      <td className="px-2 py-1.5 text-right text-xs" title={c.sharesOffered ? `IPO: ${fmtCompact(c.sharesOffered)} акций` : undefined}>
                         {c.unlockMultiple != null ? <span className={c.unlockMultiple >= 3 ? "text-down" : "text-foreground"}>{c.unlockMultiple}×</span> : "—"}
                       </td>
                       <td className="py-1.5 pl-2 text-right text-xs text-muted-foreground">{fmtM(c.marketCapM)}</td>

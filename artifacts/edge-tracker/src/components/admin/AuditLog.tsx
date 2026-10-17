@@ -9,9 +9,11 @@ import { addDays, nyDate } from "@/lib/trading-date";
 import { downloadCsv, type AuditEntry } from "./api";
 import { OBJECT_TYPE_LABEL, actorName, auditSentence, describeAudit, objectLabel } from "./audit-text";
 import { nyDayOf, useAuditSearch, type AuditQuery } from "./console-api";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtDate, fmtDateCustom, fmtTimeNY } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const ALL = "__all";
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 type Quick = "1" | "7" | "30" | "all" | "custom";
 
 /** Action groups for the «Что» filter («user.*» matches every user action). */
@@ -35,7 +37,7 @@ function dayHeading(ymd: string) {
   const today = nyDate();
   if (ymd === today) return "Сегодня";
   if (ymd === addDays(today, -1)) return "Вчера";
-  return new Date(`${ymd}T12:00:00Z`).toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "long", timeZone: "UTC" });
+  return fmtDateCustom(ymd, { weekday: "short", day: "numeric", month: "long" });
 }
 
 export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: Record<string, string> }) {
@@ -43,8 +45,8 @@ export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: 
   const obj = objectLabel(entry.targetType, entry.targetId);
   return (
     <li className="flex items-start gap-3 py-2.5">
-      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={`${new Date(entry.createdAt).toLocaleString("ru-RU", { timeZone: "America/New_York" })} NY · у вас ${new Date(entry.createdAt).toLocaleString("ru-RU")}`}>
-        {new Date(entry.createdAt).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit", timeZone: "America/New_York" })}
+      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={`${fmtDate(entry.createdAt, "shortDateTimeSeconds", { timeZone: "America/New_York" })} NY · у вас ${fmtDate(entry.createdAt, "shortDateTimeSeconds")}`}>
+        {fmtTimeNY(entry.createdAt)}
       </span>
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
@@ -133,7 +135,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
     ["Время", "Кто", "Что произошло", "Подробности", "Объект", "Код действия", "Тип объекта", "ID объекта", "Сырые данные"],
     entries.map((e) => {
       const t = describeAudit(e, tierNames);
-      return [new Date(e.createdAt).toLocaleString("ru-RU"), actorName(e.actor), auditSentence(e, tierNames), t.detail ?? "", objectLabel(e.targetType, e.targetId), e.action, e.targetType ?? "", e.targetId ?? "", e.details ?? ""];
+      return [fmtDate(e.createdAt, "shortDateTimeSeconds"), actorName(e.actor), auditSentence(e, tierNames), t.detail ?? "", objectLabel(e.targetType, e.targetId), e.action, e.targetType ?? "", e.targetId ?? "", e.details ?? ""];
     }),
     `audit-${nyDate()}.csv`,
   );
@@ -201,7 +203,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
           {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>Сбросить</Button>}
           {data && (
             <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-              {data.total > entries.length ? `показано ${entries.length} из ${data.total}` : `${entries.length} ${pluralRu(entries.length, "запись", "записи", "записей")}`}
+              {data.total > entries.length ? `показано ${entries.length} из ${data.total}` : commonI18n.t("units.entries", { count: entries.length })}
             </span>
           )}
         </div>

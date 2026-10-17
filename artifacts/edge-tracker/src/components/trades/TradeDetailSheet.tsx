@@ -18,24 +18,7 @@ import { links } from "@/lib/links";
 import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import {
-  EVENT_LABEL,
-  SESSION_LABEL,
-  dayOf,
-  tradePlaybookPayload,
-  daysHeld,
-  effectiveR,
-  fmtDay,
-  fmtMoney,
-  fmtPrice,
-  fmtR,
-  horizonOf,
-  isBrokerTrade,
-  isRedactedTrade,
-  netPnl,
-  parseHoldText,
-  resultKey,
-} from "./trade-utils";
+import { EVENT_LABEL, SESSION_LABEL, dayOf, tradePlaybookPayload, daysHeld, effectiveR, horizonOf, isBrokerTrade, isRedactedTrade, netPnl, parseHoldText, resultKey } from "./trade-utils";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
@@ -44,6 +27,7 @@ import { ChecklistStatus, TradeRelated, useSourceIdeaTarget } from "./TradeRelat
 import { TradeSocial } from "./TradeSocial";
 import { QualityBlock, useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession } from "@/components/trade-chart-parts/chart-utils";
+import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 
 /** Session names as the DB stores them (PropReports sync writes «postmarket»; the shared map only knows «afterhours»). */
 const SESSION_LABEL_LOCAL: Record<string, string> = { ...SESSION_LABEL, postmarket: "Постмаркет", afterhours: "Постмаркет", regular: "Основная сессия" };
@@ -265,8 +249,8 @@ export function TradeDetailSheet(p: Props) {
                   </div>
                   <SheetDescription className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm">
                     <span className="inline-flex items-center gap-1 tabular-nums">
-                      {fmtDay(dayOf(t))}
-                      {t.exitDate && horizonOf(t) !== "intraday" && <> → {fmtDay(t.exitDate.substring(0, 10))}</>}
+                      {fmtDate(dayOf(t), "shortYY")}
+                      {t.exitDate && horizonOf(t) !== "intraday" && <> → {fmtDate(t.exitDate.substring(0, 10), "shortYY")}</>}
                       <DateHolidayBadge events={p.holidayEvents} />
                     </span>
                     {timing?.openedWall && (
@@ -436,9 +420,9 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
     <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
       <Kpi
         label={t.fees ? "Нетто" : "P&L"}
-        value={fmtMoney(net)}
+        value={fmtUsd(net, { signed: true, decimals: "auto" })}
         className={net == null ? "text-muted-foreground" : toneText(toneOf(net))}
-        hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtMoney(t.pnl)} · комиссии ${fmtMoney(-Math.abs(t.fees))}` : undefined}
+        hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtUsd(t.pnl, { signed: true, decimals: "auto" })} · комиссии ${fmtUsd(-Math.abs(t.fees), { signed: true, decimals: "auto" })}` : undefined}
       />
       <Kpi label="Вход → выход" cellClassName="col-span-2 sm:col-span-1" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
       {open && t.exit == null
@@ -446,8 +430,8 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
         : <Kpi label="Удержание" value={hold != null ? fmtDuration(hold) : t.holdTime || "—"} className={hold == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
         ? <Kpi label={r.derived ? "R (по ценам)" : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
-        : <Kpi label="На акцию" value={perShare != null ? `${perShare >= 0 ? "+" : "−"}$${Math.abs(perShare).toFixed(2)}` : "—"} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}
-      <Kpi label="Объём" value={t.qty != null ? `${t.qty.toLocaleString("en-US")} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? REDACTED_HINT : undefined} />
+        : <Kpi label="На акцию" value={fmtUsd(perShare, { signed: true })} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}
+      <Kpi label="Объём" value={t.qty != null ? `${fmtCount(t.qty)} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? REDACTED_HINT : undefined} />
     </div>
   );
 }
@@ -456,7 +440,7 @@ function ContextRow({ trade: t, timing }: { trade: Trade; timing: TradeTiming | 
   const items: [string, React.ReactNode][] = [];
   // Size, gross/fees and hold are in the KPI row; the data source is not the trader's concern.
   if (t.stop != null && Number(t.stop) > 0) items.push(["Стоп", fmtPrice(t.stop)]);
-  if (t.riskUsd != null) items.push(["Риск", `$${t.riskUsd.toLocaleString("en-US")}`]);
+  if (t.riskUsd != null) items.push(["Риск", fmtUsd(t.riskUsd, { decimals: "trim" })]);
   if (timing?.entrySession && timing.exitSession && timing.entrySession !== timing.exitSession) items.push(["Сессии", `${ET_SESSION_LABEL[timing.entrySession]} → ${ET_SESSION_LABEL[timing.exitSession]}`]);
   const held = daysHeld(t);
   if (held != null && horizonOf(t) !== "intraday") items.push(["Дней", held]);

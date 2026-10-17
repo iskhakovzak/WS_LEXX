@@ -5,12 +5,10 @@ import { cn } from "@/lib/utils";
 import { CATEGORY_META, HORIZONS, HORIZON_META, type Horizon, type LibIndicator } from "./library";
 import { FitMeter, Highlight } from "./IndicatorCard";
 import { EMPTY_STATS, type IndicatorStats } from "./stats";
+import { fmtR, fmtUsd } from "@/lib/format";
 
 type Col = "name" | "count" | "winRate" | "avgR" | "netPnl" | Horizon;
 
-const fmtR = (r: number | null) => (r == null ? "—" : `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(2)}R`);
-const fmtUsd = (v: number | null) =>
-  v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
 const toneCls = (n: number | null) => ({ up: "text-up", down: "text-down" } as Record<string, string>)[toneOf(n)] ?? "";
 
 /**
@@ -121,7 +119,7 @@ export function EdgeTable({
                         {s.count ? `${s.winRate}%` : "—"}
                       </td>
                       <td className={cn("px-3 py-2.5 text-right font-medium", toneCls(s.avgR))}>{fmtR(s.avgR)}</td>
-                      <td className={cn("px-3 py-2.5 text-right", toneCls(s.netPnl))}>{fmtUsd(s.netPnl)}</td>
+                      <td className={cn("px-3 py-2.5 text-right", toneCls(s.netPnl))}>{fmtUsd(s.netPnl, { signed: true, decimals: 0 })}</td>
                     </>
                   )}
                 </tr>

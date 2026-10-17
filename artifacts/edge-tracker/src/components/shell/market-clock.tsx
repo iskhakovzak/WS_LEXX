@@ -5,7 +5,8 @@
  */
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { getSessionState, type SessionPhase } from "@/components/dashboard/market-session";
@@ -27,16 +28,14 @@ export function useMarketHolidays(): Holiday[] {
   const from = isoPlus(-1);
   const { data } = useQuery<Holiday[]>({
     queryKey: ["market-holidays", from],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/holidays?from=${from}&to=${isoPlus(30)}&types=holiday`);
-      if (!r.ok) return [];
-      const j = await r.json();
+    queryFn: async ({ signal }) => {
+      const j = await http.get<{ events?: unknown } | null>("/api/holidays", { query: { from, to: isoPlus(30), types: "holiday" }, signal }).catch(() => null);
       const rows: any[] = Array.isArray(j?.events) ? j.events : [];
       return rows
         .filter((e) => String(e?.type ?? "").toLowerCase() === "holiday")
         .map((e) => ({ date: String(e.date).slice(0, 10), name: String(e.name ?? shellI18n.t("clock.holidayFallback")) }));
     },
-    staleTime: 6 * 3600_000,
+    staleTime: STALE.day,
     gcTime: 12 * 3600_000,
     retry: false,
   });

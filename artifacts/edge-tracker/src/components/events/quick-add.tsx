@@ -39,7 +39,7 @@ export function QuickAdd({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label={`Добавить заметку на ${fmtDay(date, { day: "numeric", month: "long" })}`}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label={`Добавить заметку на ${fmtDay(date, "dayMonthLong")}`}>
           <Plus className="!size-4" />
         </Button>
       </PopoverTrigger>
@@ -52,7 +52,7 @@ export function QuickAdd({
         >
           <div className="flex items-baseline justify-between">
             <span className="text-sm font-semibold">Заметка</span>
-            <span className="text-xs text-muted-foreground">{fmtDay(date, { weekday: "short", day: "numeric", month: "short" })}</span>
+            <span className="text-xs text-muted-foreground">{fmtDay(date, "weekdayDayMonth")}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">

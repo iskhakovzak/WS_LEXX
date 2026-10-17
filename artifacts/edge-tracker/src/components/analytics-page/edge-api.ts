@@ -4,7 +4,9 @@
  */
 import { useQuery } from "@tanstack/react-query";
 import type { Trade } from "@workspace/api-client-react";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
 import { signedR, netPnl, isOpen, horizonOf } from "@/lib/trade-math";
 import { type AnalyticsFilters, periodRange, day, sortChrono } from "./metrics";
 import type { SimTrade } from "./edge-stats";
@@ -76,19 +78,13 @@ export function edgeParams(filters: AnalyticsFilters, extra: Record<string, stri
   return sp.toString();
 }
 
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
-  return r.json() as Promise<T>;
-}
-
 export function useEdgeMatrix(filters: AnalyticsFilters, rows: EdgeDimension, cols: EdgeDimension, tod: 15 | 30, enabled = true) {
   const params = edgeParams(filters, { rows, cols, tod });
   return useQuery<EdgeMatrix>({
     queryKey: ["edge-matrix", params],
     enabled,
     staleTime: 60_000,
-    queryFn: () => getJson<EdgeMatrix>(`/api/edge/matrix?${params}`),
+    queryFn: ({ signal }) => http.get<EdgeMatrix>(`/api/edge/matrix?${params}`, { signal }),
   });
 }
 
@@ -98,25 +94,18 @@ export function useEdgeCosts(filters: AnalyticsFilters, group: EdgeCostGroup, en
     queryKey: ["edge-costs", params],
     enabled,
     staleTime: 60_000,
-    queryFn: () => getJson<EdgeCosts>(`/api/edge/costs?${params}`),
+    queryFn: ({ signal }) => http.get<EdgeCosts>(`/api/edge/costs?${params}`, { signal }),
   });
 }
 
 /** Caller's risk limits; resolves to null when the risk desk is not installed (404) or the caller has no limits. */
 export function useRiskLimits() {
-  return useQuery<RiskLimits | null>({
-    queryKey: ["edge-risk-me"],
-    staleTime: 5 * 60_000,
+  // A 404 (no risk desk) is an error state here; callers read `data ?? null`, so it still means «no limits».
+  return useQuery({
+    ...riskMeQuery<RiskMe | null>(),
+    select: (me): RiskLimits | null => me?.limits ?? null,
+    staleTime: STALE.long,
     retry: false,
-    queryFn: async () => {
-      try {
-        const me = await getJson<RiskMe>("/api/risk/me");
-        return me?.limits ?? null;
-      } catch (e) {
-        if ((e as { status?: number }).status === 404) return null;
-        throw e;
-      }
-    },
   });
 }
 

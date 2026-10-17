@@ -2,7 +2,7 @@ import { useState } from "react";
 import { CheckCheck, ClipboardCheck, Flame, Lock, LockOpen } from "lucide-react";
 import { Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { plural } from "@/components/journal/utils";
+import { commonI18n } from "@/i18n/ns/common";
 import { STATUS_LABEL, queueItemFromDay, useEodDay, type EodStatus, type QueueItem } from "./eod-api";
 import { EodReviewSheet } from "./EodReviewSheet";
 
@@ -32,7 +32,7 @@ export function EodStatusBadge({
       </Pill>
       {s.closedStreak > 1 && (
         <Pill tone={s.closedStreak >= 5 ? "up" : "neutral"} title={`Дней закрыто подряд; всего закрыто ${s.closedTotal}`}>
-          <Flame className="h-3 w-3" aria-hidden="true" />{s.closedStreak} {plural(s.closedStreak, "день", "дня", "дней")} подряд
+          <Flame className="h-3 w-3" aria-hidden="true" />{commonI18n.t("units.days", { count: s.closedStreak })} подряд
         </Pill>
       )}
       {reviewItem && (

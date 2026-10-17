@@ -1,11 +1,13 @@
 import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { fetchTickerFundamentals, type TickerFundamentals } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { Pill, toneOf, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { RefreshCw, Building2, Moon, CalendarClock } from "lucide-react";
+import { fmtDate, fmtNum, fmtPct } from "@/lib/format";
 
 type Props = {
   ticker: string;
@@ -30,11 +32,6 @@ type Candle = { t: number; o: number | null; h: number | null; l: number | null;
 
 type GapStats = { avgAbsGap: number; maxAbsGap: number; bigGapDays: number; sessions: number; atrPct: number | null };
 
-async function getJson<T>(url: string): Promise<T | null> {
-  const r = await fetch(url);
-  if (!r.ok) return null;
-  return (await r.json()) as T;
-}
 
 function gapStats(candles: Candle[]): GapStats | null {
   const bars = candles.filter((c) => c.o != null && c.c != null && c.h != null && c.l != null) as Array<Required<{ [K in keyof Candle]: number }>>;
@@ -64,9 +61,9 @@ type UpcomingEarnings = { today: string; days: { date: string; items: { ticker?:
 function useNextEarnings(ticker: string, enabled: boolean) {
   const q = useQuery({
     queryKey: ["fund-bar-earnings-upcoming"],
-    queryFn: () => getJson<UpcomingEarnings>(`${BASE}/api/earnings/upcoming?days=10&limit=60`),
+    queryFn: () => http.get<UpcomingEarnings>("/api/earnings/upcoming?days=10&limit=60").catch(() => null),
     enabled,
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE.static,
     retry: false,
   });
   return useMemo(() => {
@@ -92,27 +89,10 @@ function useDebounced<T>(value: T, ms: number): T {
 
 /* ---------- formatting ---------- */
 
-/** Numbers may arrive as strings/NaN from the upstream feed — never render "NaN" or throw on toFixed. */
-function fmtNum(v: unknown, digits: number): string | null {
-  if (v == null || v === "") return null;
-  const n = typeof v === "number" ? v : Number(v);
-  return Number.isFinite(n) ? n.toFixed(digits) : null;
-}
-
 function fmtText(v: unknown): string | null {
   if (v == null) return null;
   const s = String(v).trim();
   return s && s !== "NaN" && s !== "undefined" && s !== "null" ? s : null;
-}
-
-function signed(n: number, digits = 2) {
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}${Math.abs(n).toFixed(digits)}%`;
-}
-
-function shortDate(d: string) {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d);
-  const date = m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : new Date(d);
-  return Number.isNaN(date.getTime()) ? d : date.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
 }
 
 function gapRisk(avg: number): { label: string; tone: Tone } {
@@ -197,19 +177,19 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
   const symOk = showRisk && autoFetch && /^[A-Z][A-Z0-9.\-]{0,9}$/.test(sym) && sym === ticker.trim().toUpperCase();
   const quoteQ = useQuery({
     queryKey: ["fund-bar-quote", sym],
-    queryFn: () => getJson<Quote>(`${BASE}/api/stockdata/quote?symbol=${encodeURIComponent(sym)}`),
+    queryFn: () => http.get<Quote>(`/api/stockdata/quote?symbol=${encodeURIComponent(sym)}`).catch(() => null),
     enabled: symOk,
-    staleTime: 60 * 1000,
+    staleTime: STALE.short,
     retry: false,
   });
   const barsQ = useQuery({
     queryKey: ["fund-bar-daily", sym],
     queryFn: async () => {
-      const r = await getJson<{ candles: Candle[] }>(`${BASE}/api/stockdata/chart?symbol=${encodeURIComponent(sym)}&range=3mo&interval=1d`);
+      const r = await http.get<{ candles: Candle[] }>(`/api/stockdata/chart?symbol=${encodeURIComponent(sym)}&range=3mo&interval=1d`).catch(() => null);
       return r?.candles ? gapStats(r.candles) : null;
     },
     enabled: symOk,
-    staleTime: 30 * 60 * 1000,
+    staleTime: STALE.static,
     retry: false,
   });
   const earnings = useNextEarnings(sym, symOk);
@@ -244,7 +224,7 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
         {price != null && (
           <span className="flex items-center gap-1.5 text-sm font-semibold tabular-nums text-foreground">
             ${price.toFixed(price < 10 ? 3 : 2)}
-            {quote?.change != null && <Pill tone={toneOf(quote.change)} className="text-2xs">{signed(quote.change)}</Pill>}
+            {quote?.change != null && <Pill tone={toneOf(quote.change)} className="text-2xs">{fmtPct(quote.change)}</Pill>}
           </span>
         )}
         <button
@@ -292,7 +272,7 @@ export function TickerFundamentalsBar({ ticker, onLoaded, className = "", autoFe
           />
           <Stat
             label="Отчёт"
-            value={earnings?.date ? shortDate(earnings.date) : null}
+            value={earnings?.date ? fmtDate(earnings.date, "dayMonth") : null}
             sub={earnings?.date ? [earnings.tradingDaysAway === 0 ? "сегодня" : `через ${earnings.tradingDaysAway} т.д.`, earnings.timing].filter(Boolean).join(" · ") : earnings ? "нет в календаре 10 т.д." : undefined}
             tone={earningsSoon ? "warn" : "neutral"}
           />

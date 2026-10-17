@@ -33,7 +33,8 @@ describe("candleLimits", () => {
   });
 
   it("drops old context days to keep 1m for the trade day", () => {
-    expect(pickServedInterval(days("2026-10-08", "2026-10-15"), "1m", "5m", cache([]))).toEqual({ interval: "1m", fromIndex: 1 });
+    // 1-minute bars reach back ~30 days (verified against Yahoo 2026-10-17): 09-11 is too old, 10-15 is not
+    expect(pickServedInterval(days("2026-09-11", "2026-10-15"), "1m", "5m", cache([]))).toEqual({ interval: "1m", fromIndex: 1 });
   });
 
   it("an old day with cached 5m bars is served at 5m instead of hourly (the old bug: hourly + daily only)", () => {

@@ -1,12 +1,15 @@
-import React, { useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Dna, RefreshCw, Target, Info } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Segmented, Pill, TermTooltip, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { WidgetShell, IconAction, WidgetError, fmtPct, fmtR, num, useStoredState } from "@/components/widgets/widget-kit";
+import { WidgetShell, IconAction, WidgetError, num, useStoredState } from "@/components/widgets/widget-kit";
+import { fmtPct, fmtR } from "@/lib/format";
 
 type Bucket = {
   regime?: string;
@@ -117,21 +120,8 @@ export function MarketDnaWidget() {
 
   const q = useQuery<Dna>({
     queryKey: ["market-dna", userKey],
-    queryFn: async () => {
-      const url = userKey
-        ? `${BASE}/api/market-conditions/dna?userKey=${encodeURIComponent(userKey)}`
-        : `${BASE}/api/market-conditions/dna`;
-      const r = await fetch(url);
-      const ct = r.headers.get("content-type") || "";
-      if (!r.ok) {
-        const j = ct.includes("application/json") ? await r.json().catch(() => null) : null;
-        const msg = j?.error || j?.message;
-        throw new Error(msg ? `HTTP ${r.status}: ${String(msg).slice(0, 120)}` : r.status >= 500 ? "Сервер недоступен" : `HTTP ${r.status}`);
-      }
-      if (!ct.includes("application/json")) throw new Error("Сервер недоступен");
-      return r.json();
-    },
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<Dna>("/api/market-conditions/dna", { query: { userKey }, signal }),
+    staleTime: STALE.long,
     retry: 1,
   });
 
@@ -179,7 +169,7 @@ export function MarketDnaWidget() {
           <Skeleton className="h-20 w-full rounded-xl" />
         </div>
       ) : q.isError && !dna ? (
-        <WidgetError message={q.error instanceof Error ? q.error.message : "Не удалось загрузить"} onRetry={() => q.refetch()} />
+        <WidgetError message={humanizeApiError(q.error, "Не удалось загрузить")} onRetry={() => q.refetch()} />
       ) : (
         <div className="space-y-3">
           {/* Today's context */}

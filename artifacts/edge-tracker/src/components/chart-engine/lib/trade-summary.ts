@@ -3,6 +3,7 @@
  * replay. Per-share and R figures come from prices only (safe to show for anyone's trade); $ is passed in by the
  * caller and only for trades whose money the viewer may see (the API already nulls it otherwise).
  */
+import { fmtUsd } from "@/lib/format";
 import type { ExcursionResult, Side } from "../types";
 
 export type TradeSummary = {
@@ -69,5 +70,5 @@ export function fmtPerShare(n: number | null | undefined): string {
   if (n == null || !Number.isFinite(n)) return "—";
   const sign = n > 0 ? "+" : n < 0 ? "−" : "";
   const a = Math.abs(n);
-  return a < 1 ? `${sign}${(a * 100).toFixed(a * 100 >= 10 ? 0 : 1)}¢` : `${sign}$${a.toFixed(2)}`;
+  return a < 1 ? `${sign}${(a * 100).toFixed(a * 100 >= 10 ? 0 : 1)}¢` : fmtUsd(n, { signed: true });
 }

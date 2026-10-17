@@ -10,13 +10,13 @@ import { EmptyState, Panel, Pill, Segmented } from "@/components/ds";
 import { WriteOnly, useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { canModifyOwned } from "@/lib/ownership";
 import { useBig7Today, useCatalystMutations } from "./use-big7";
 import {
-  CATALYST_TYPES, addDays, big7Today, catalystMeta, dayMonth, mondayOf, relDayLabel, weekdayShort,
+  CATALYST_TYPES, addDays, big7Today, catalystMeta, mondayOf, relDayLabel, weekdayShort,
   type MergedCatalyst,
 } from "./lib";
+import { fmtDate, pluralRu } from "@/lib/format";
 
 export type CatalystDraft = { id?: number; ticker: string; date: string; type: string; description: string; impact: string };
 export const emptyDraft = (p: Partial<CatalystDraft> = {}): CatalystDraft => ({
@@ -162,7 +162,7 @@ export function CatalystWeek({
     <Panel
       title="Катализаторы недели"
       icon={CalendarDays}
-      description={total > 0 ? `${total} ${pluralRu(total, "событие", "события", "событий")} · ${dayMonth(days[0])}–${dayMonth(days[4])}` : `${dayMonth(days[0])}–${dayMonth(days[4])}`}
+      description={total > 0 ? `${total} ${pluralRu(total, "событие", "события", "событий")} · ${fmtDate(days[0], "dayMonthNumeric")}–${fmtDate(days[4], "dayMonthNumeric")}` : `${fmtDate(days[0], "dayMonthNumeric")}–${fmtDate(days[4], "dayMonthNumeric")}`}
       actions={
         <>
           <Segmented ariaLabel="Неделя" size="sm" value={week} onChange={setWeek} options={[{ value: "this", label: weekend ? "Ближайшая" : "Эта" }, { value: "next", label: "Следующая" }]} />
@@ -192,14 +192,14 @@ export function CatalystWeek({
             >
               <div className="flex items-center justify-between gap-1">
                 <span className="text-xs font-medium">
-                  {weekdayShort(d)} <span className="tabular-nums text-muted-foreground">{dayMonth(d)}</span>
+                  {weekdayShort(d)} <span className="tabular-nums text-muted-foreground">{fmtDate(d, "dayMonthNumeric")}</span>
                 </span>
                 {isToday ? <Pill tone="accent" className="px-1.5">Сегодня</Pill> : (
                   <WriteOnly>
                     <button
                       type="button"
                       onClick={() => onAdd(d)}
-                      aria-label={`Добавить катализатор на ${dayMonth(d)}`}
+                      aria-label={`Добавить катализатор на ${fmtDate(d, "dayMonthNumeric")}`}
                       className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 md:opacity-0 md:group-hover:opacity-100"
                     >
                       <Plus className="h-3.5 w-3.5" aria-hidden="true" />
@@ -278,7 +278,7 @@ function CatalystRow({ c, showTicker, onEdit }: { c: MergedCatalyst; showTicker:
     <li className={cn("group relative flex min-w-0 items-start gap-3 py-2 pl-5", past && "opacity-60")}>
       <span className={cn("absolute left-1 top-3 h-2 w-2 rounded-full", c.date === TODAY ? "bg-primary" : past ? "bg-border" : c.impact === "high" ? "bg-down" : "bg-[hsl(var(--chart-3))]")} aria-hidden="true" />
       <div className="w-[4.5rem] shrink-0 text-xs tabular-nums">
-        <div className="font-medium">{dayMonth(c.date)} {weekdayShort(c.date)}</div>
+        <div className="font-medium">{fmtDate(c.date, "dayMonthNumeric")} {weekdayShort(c.date)}</div>
         <div className="text-2xs text-muted-foreground">{relDayLabel(c.date)}</div>
       </div>
       <div className="min-w-0 flex-1">

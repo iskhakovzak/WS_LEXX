@@ -17,9 +17,11 @@ import { toast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  fmtClock, fmtDateShort, fmtMinutes, fmtUsdCompact, pluralTrades, useAcceptBulk, useAcceptSetup, useRecomputeSetup, useRejectSetup,
+  fmtClock, fmtMinutes, useAcceptBulk, useAcceptSetup, useRecomputeSetup, useRejectSetup,
   type SetupItem, type SuggestionStatus,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9] as const;
 const BULK_CHUNK = 500;
@@ -49,7 +51,7 @@ function BulkAccept({ items }: { items: SetupItem[] }) {
         accepted += r.accepted;
         skipped += Object.values(r.skipped).reduce((s, v) => s + v, 0);
       }
-      toast({ title: `Принято ${pluralTrades(accepted)}`, description: skipped ? `Пропущено ${skipped}: устарели, уже решены или нет доступа.` : "Сетапы записаны в сделки." });
+      toast({ title: `Принято ${commonI18n.t("units.trades", { count: accepted })}`, description: skipped ? `Пропущено ${skipped}: устарели, уже решены или нет доступа.` : "Сетапы записаны в сделки." });
     } catch (e) {
       toast({ title: "Не удалось принять пачкой", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
@@ -71,7 +73,7 @@ function BulkAccept({ items }: { items: SetupItem[] }) {
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Принять {pluralTrades(eligible.length)}?</AlertDialogTitle>
+            <AlertDialogTitle>Принять {commonI18n.t("units.trades", { count: eligible.length })}?</AlertDialogTitle>
             <AlertDialogDescription>
               Сетап запишется в сделки с уверенностью ≥ {Math.round(min * 100)}%:{" "}
               {bySetup.slice(0, 6).map(([s, n]) => `${s} — ${n}`).join(", ")}{bySetup.length > 6 ? "…" : ""}. Потом сетап можно поменять в карточке сделки.
@@ -140,7 +142,7 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
   const doAccept = (r: SetupItem) => {
     if (!r.suggestion) return;
     accept.mutate({ tradeId: r.tradeId }, {
-      onSuccess: () => toast({ title: `Сетап «${r.suggestion?.setup}» записан`, description: `${r.ticker} · ${fmtDateShort(r.date)}` }),
+      onSuccess: () => toast({ title: `Сетап «${r.suggestion?.setup}» записан`, description: `${r.ticker} · ${fmtDate(r.date, "dayMonthNumeric")}` }),
       onError: (e) => toast({ title: "Не удалось записать сетап", description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
     });
   };
@@ -201,14 +203,14 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
                 <React.Fragment key={r.tradeId}>
                   <tr>
                     <td className="whitespace-nowrap">
-                      <Link href={links.trade(r.tradeId)} className="underline-offset-2 hover:underline" aria-label={`Открыть сделку ${r.ticker} от ${r.date}`}>{fmtDateShort(r.date)}</Link>
+                      <Link href={links.trade(r.tradeId)} className="underline-offset-2 hover:underline" aria-label={`Открыть сделку ${r.ticker} от ${r.date}`}>{fmtDate(r.date, "dayMonthNumeric")}</Link>
                     </td>
                     <td className="whitespace-nowrap font-medium">
                       {r.ticker} <span className="text-xs text-muted-foreground">{r.side === "short" ? "S" : r.side === "long" ? "L" : ""}</span>
                     </td>
                     <td className="tabular-nums">{fmtClock(r.entryMin)}</td>
                     <td className="whitespace-nowrap tabular-nums">{fmtMinutes(r.holdMin)}</td>
-                    <td className={cn("text-right tabular-nums", toneText(toneOf(r.net)))}>{fmtUsdCompact(r.net)}</td>
+                    <td className={cn("text-right tabular-nums", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, compact: true })}</td>
                     <td>
                       {s ? (
                         <button type="button" onClick={() => toggle(r.tradeId)} aria-expanded={isOpen} className="inline-flex items-center gap-1 text-left hover:text-foreground">
@@ -275,7 +277,7 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
         </table>
       </DataTable>
       <p className="text-xs text-muted-foreground">
-        {pluralTrades(filtered.length)} в таблице. Предложения считаются по правилам (без ИИ) из времени входа, удержания и свечей дня; в сделку сетап записывается только по кнопке «Принять».
+        {commonI18n.t("units.trades", { count: filtered.length })} в таблице. Предложения считаются по правилам (без ИИ) из времени входа, удержания и свечей дня; в сделку сетап записывается только по кнопке «Принять».
       </p>
     </div>
   );

@@ -5,11 +5,11 @@ import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { addDays } from "@/lib/trading-date";
-import { catLabel, fmtUsd, isClosedRow, isShortDayRow } from "./catalyst-math";
+import { catLabel, isClosedRow, isShortDayRow } from "./catalyst-math";
 import type { CatalystData } from "./use-catalysts";
-import { fmtDay, fmtRange, fmtWeekday, macroTime } from "./event-meta";
+import { fmtDay, fmtRange, weekdayLabel, macroTime } from "./event-meta";
+import { fmtUsd, pluralRu } from "@/lib/format";
 
 const MAX_TICKERS = 4;
 
@@ -78,7 +78,7 @@ export function WeekGrid({
                 type="button"
                 onClick={() => onSelect(d)}
                 aria-pressed={isSel}
-                aria-label={`${fmtWeekday(d, "long")}, ${fmtDay(d, { day: "numeric", month: "long" })}`}
+                aria-label={`${weekdayLabel(d, "long")}, ${fmtDay(d, "dayMonthLong")}`}
                 className={cn(
                   "flex min-h-[196px] min-w-0 flex-col gap-2 rounded-xl border p-2.5 text-left transition-colors duration-[var(--dur-1)]",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -87,7 +87,7 @@ export function WeekGrid({
                 )}
               >
                 <span className="flex items-baseline justify-between gap-1">
-                  <span className={cn("text-sm font-semibold", isToday ? "text-primary" : "text-foreground")}>{fmtWeekday(d)}</span>
+                  <span className={cn("text-sm font-semibold", isToday ? "text-primary" : "text-foreground")}>{weekdayLabel(d)}</span>
                   <span className="text-xs tabular-nums text-muted-foreground">{fmtDay(d)}</span>
                 </span>
 
@@ -142,7 +142,7 @@ export function WeekGrid({
                     result ? (
                       <span className="flex items-baseline justify-between gap-1 border-t border-[var(--glass-border)] pt-1.5 text-xs">
                         <span className="text-muted-foreground">{result.n} сд.</span>
-                        <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net)}</span>
+                        <span className={cn("font-semibold tabular-nums", toneText(toneOf(result.net)))}>{fmtUsd(result.net, { signed: true })}</span>
                       </span>
                     ) : (
                       <span className="border-t border-[var(--glass-border)] pt-1.5 text-xs text-muted-foreground">без сделок</span>

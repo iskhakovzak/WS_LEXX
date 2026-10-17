@@ -13,11 +13,13 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
-import { downloadBlob } from "@/lib/format";
+import { ApiError, http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { downloadBlob } from "@/lib/download";
 import { cn } from "@/lib/utils";
-import { Callout, fmtDate } from "./shared";
-import { pluralRu } from "@/components/rules/constants";
+import { Callout } from "./shared";
+import { fmtCount, fmtDate } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Serialises an array of flat-ish JSON records to CSV (RFC 4180 quoting, UTF-8 BOM for Excel). */
 function toCsv(rows: Record<string, unknown>[]): string {
@@ -65,13 +67,16 @@ function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; p
   async function run() {
     setLoading(true);
     try {
-      const res = await fetch(`${BASE}/api${item.endpoint}`);
-      if (!res.ok) {
-        const data = (await res.json().catch(() => null)) as { error?: string } | null;
-        toast({ title: `Не удалось скачать: ${item.label}`, description: data?.error ?? `HTTP ${res.status}`, variant: "destructive" });
-        return;
+      let data: unknown;
+      try {
+        data = await http.get<unknown>(`/api${item.endpoint}`);
+      } catch (e) {
+        if (e instanceof ApiError && e.status >= 400) {
+          toast({ title: `Не удалось скачать: ${item.label}`, description: e.message, variant: "destructive" });
+          return;
+        }
+        throw e;
       }
-      const data = (await res.json()) as unknown;
       if (!Array.isArray(data)) throw new Error("bad shape");
       const cutoff = cutoffFor(period);
       const rows = (data as Record<string, unknown>[]).filter((r) => {
@@ -98,7 +103,7 @@ function ExportTile({ item, period, count }: { item: (typeof EXPORTS)[number]; p
       </span>
       <span className="min-w-0 flex-1">
         <span className="block truncate text-sm font-medium text-foreground">{item.label}</span>
-        <span className="block text-xs text-muted-foreground tabular-nums">{count != null ? `${count.toLocaleString("ru-RU")} ${pluralRu(count, "запись", "записи", "записей")}` : "CSV"}</span>
+        <span className="block text-xs text-muted-foreground tabular-nums">{count != null ? commonI18n.t("units.entries", { count }) : "CSV"}</span>
       </span>
       <Download className={cn("h-4 w-4 shrink-0 text-muted-foreground", loading && "motion-safe:animate-pulse")} aria-hidden="true" />
     </button>
@@ -226,7 +231,7 @@ function BackupInspector({ current }: { current: Record<string, number | undefin
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
             <span className="font-medium text-foreground">{result.fileName}</span>
-            <Pill>{result.sizeKb.toLocaleString("ru-RU")} КБ</Pill>
+            <Pill>{fmtCount(result.sizeKb)} КБ</Pill>
             <Pill tone={result.format === "db-export" ? "accent" : "warn"}>{result.format === "db-export" ? "Полный бэкап БД" : "Старый формат"}</Pill>
             {result.exportedAt && <span>от {fmtDate(result.exportedAt)}</span>}
             {result.database && <span>· база {result.database}</span>}
@@ -234,7 +239,7 @@ function BackupInspector({ current }: { current: Record<string, number | undefin
           <Callout tone={issues ? "warn" : "up"} icon={issues ? AlertTriangle : CheckCircle2}>
             {issues
               ? `Найдено проблем: ${issues}. Перед восстановлением проверьте таблицы, отмеченные ниже.`
-              : `Файл цел: ${result.tables.length} таблиц, ${totalRows.toLocaleString("ru-RU")} строк, id без дублей.`}
+              : `Файл цел: ${result.tables.length} таблиц, ${fmtCount(totalRows)} строк, id без дублей.`}
           </Callout>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -254,10 +259,10 @@ function BackupInspector({ current }: { current: Record<string, number | undefin
                   return (
                     <tr key={t.key} className="border-b border-border/60 last:border-0">
                       <th scope="row" className="py-2 pr-3 text-left font-medium text-foreground">{TABLE_LABELS[t.key] ?? t.key}</th>
-                      <td className="py-2 pr-3 text-right tabular-nums">{t.rows.toLocaleString("ru-RU")}</td>
+                      <td className="py-2 pr-3 text-right tabular-nums">{fmtCount(t.rows)}</td>
                       <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">
                         {now != null ? (
-                          <span className={cn(now < t.rows && "text-down")}>{now.toLocaleString("ru-RU")}</span>
+                          <span className={cn(now < t.rows && "text-down")}>{fmtCount(now)}</span>
                         ) : "—"}
                       </td>
                       <td className="whitespace-nowrap py-2 pr-3 text-xs tabular-nums text-muted-foreground">{t.minId != null ? `${t.minId}–${t.maxId}` : "—"}</td>
@@ -290,12 +295,8 @@ type ServerBackup = { name: string; createdAt: string; sizeKb: number };
 function ServerSnapshots() {
   const { data, isLoading, isError } = useQuery<ServerBackup[]>({
     queryKey: ["admin", "backups", "settings"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/admin/backups`);
-      if (!r.ok) throw new Error(String(r.status));
-      return r.json();
-    },
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }) => http.get<ServerBackup[]>("/api/admin/backups", { signal }),
+    staleTime: STALE.long,
     retry: false,
   });
   const latest = data?.[0];
@@ -308,7 +309,7 @@ function ServerSnapshots() {
           <div className="text-xs text-muted-foreground">
             {isLoading ? <Skeleton className="mt-1 h-3 w-40 rounded-full" />
               : isError ? "Недоступно"
-              : latest ? `${data!.length} шт. · последний ${fmtDate(latest.createdAt)} · ${latest.sizeKb.toLocaleString("ru-RU")} КБ`
+              : latest ? `${data!.length} шт. · последний ${fmtDate(latest.createdAt)} · ${fmtCount(latest.sizeKb)} КБ`
               : "Снапшотов пока нет (хранилище не настроено или бэкап не запускался)"}
           </div>
         </div>
@@ -349,16 +350,19 @@ export function DataSection() {
   async function fullBackup() {
     setFullLoading(true);
     try {
-      const r = await fetch(`${BASE}/api/admin/db-export`);
-      if (!r.ok) {
-        const d = (await r.json().catch(() => null)) as { error?: string } | null;
-        toast({ title: "Бэкап не скачан", description: d?.error ?? `HTTP ${r.status}`, variant: "destructive" });
-        return;
+      let text: string;
+      try {
+        text = await http.get<string>("/api/admin/db-export", { responseType: "text" });
+      } catch (e) {
+        if (e instanceof ApiError && e.status >= 400) {
+          toast({ title: "Бэкап не скачан", description: e.message, variant: "destructive" });
+          return;
+        }
+        throw e;
       }
-      const text = await r.text();
       const filename = `ws-lexx-backup-${new Date().toISOString().slice(0, 10)}.json`;
       saveText(text, "application/json;charset=utf-8", filename);
-      toast({ title: `Скачан ${filename}`, description: `${Math.round(text.length / 1024).toLocaleString("ru-RU")} КБ` });
+      toast({ title: `Скачан ${filename}`, description: `${fmtCount(Math.round(text.length / 1024))} КБ` });
     } catch {
       toast({ title: "Сетевая ошибка", variant: "destructive" });
     } finally {
@@ -371,12 +375,12 @@ export function DataSection() {
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6" aria-busy={loading}>
         {/* Each tile shows its number as soon as its own list arrives — the trade count (/trades/page summary) is
             the slow one and used to hold every tile on a skeleton. */}
-        <StatCard label="Всего записей" value={total.toLocaleString("ru-RU")} tone="accent" icon={Database} loading={loading} />
-        <StatCard label="Сделки" value={tradesCount.toLocaleString("ru-RU")} loading={l1} />
-        <StatCard label="События" value={events.length.toLocaleString("ru-RU")} loading={l2} />
-        <StatCard label="Исследования" value={research.length.toLocaleString("ru-RU")} loading={l3} />
-        <StatCard label="Дневная лента" value={feed.length.toLocaleString("ru-RU")} loading={l4} />
-        <StatCard label="Обсуждения" value={discussions.length.toLocaleString("ru-RU")} loading={l5} />
+        <StatCard label="Всего записей" value={fmtCount(total)} tone="accent" icon={Database} loading={loading} />
+        <StatCard label="Сделки" value={fmtCount(tradesCount)} loading={l1} />
+        <StatCard label="События" value={fmtCount(events.length)} loading={l2} />
+        <StatCard label="Исследования" value={fmtCount(research.length)} loading={l3} />
+        <StatCard label="Дневная лента" value={fmtCount(feed.length)} loading={l4} />
+        <StatCard label="Обсуждения" value={fmtCount(discussions.length)} loading={l5} />
       </div>
 
       <Panel title="Экспорт в CSV" description="Открывается в Excel и Google Sheets (UTF-8)" icon={Download}

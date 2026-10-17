@@ -10,10 +10,13 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  HttpError, api, byAttention, canReviewTrader, composeSections, daysSince, hasDraft, lastTradingDays, fmtDayLong, fmtDayShort,
+  byAttention, canReviewTrader, composeSections, daysSince, hasDraft, lastTradingDays,
   localToday, nextTradingDay, nextUnanswered, prevTradingDay, qk, relTime, sectionsOf,
   type JuniorNote, type OverviewRow, type ReviewerInfo, type ReviewScopeFilter,
 } from "./junior-lib";
+import { fmtDate } from "@/lib/format";
+import { http, ApiError } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 import { Initial, LoadError, MarkdownText, MoodPill, ScoreStars } from "./junior-ui";
 import { JuniorNoteSheet, type SheetNav } from "./junior-note-sheet";
 import { ScoreTrail, TrendArrow } from "./junior-review-context";
@@ -63,23 +66,23 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
 
   const teamQ = useQuery({
     queryKey: qk.team(date),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/team?date=${date}`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/team?date=${date}`),
     staleTime: 30_000,
   });
   const overviewQ = useQuery({
     queryKey: qk.overview(date, scope),
-    queryFn: () => api<{ date: string; rows: OverviewRow[] }>(`/junior-notes/overview?date=${date}${scopeQs}`),
+    queryFn: () => http.get<{ date: string; rows: OverviewRow[] }>(`/api/junior-notes/overview?date=${date}${scopeQs}`),
     enabled: isReviewer,
     staleTime: 30_000,
-    retry: (n, e) => !(e instanceof HttpError && (e.status === 404 || e.status === 403)) && n < 2,
+    retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2,
   });
 
   const queueQ = useQuery({
     queryKey: qk.queueOf(scope),
-    queryFn: () => api<JuniorNote[]>(`/junior-notes/queue?days=14${scopeQs}`),
+    queryFn: () => http.get<JuniorNote[]>(`/api/junior-notes/queue?days=14${scopeQs}`),
     enabled: isReviewer,
     staleTime: 30_000,
-    retry: (n, e) => !(e instanceof HttpError && (e.status === 404 || e.status === 403)) && n < 2,
+    retry: (n, e) => !(e instanceof ApiError && (e.status === 404 || e.status === 403)) && n < 2,
   });
   const queue = queueQ.data ?? [];
 
@@ -115,10 +118,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
     let ok = 0;
     for (const t of traders) {
       try {
-        const r = await api<{ id: number; curator: string; created_at: string }>("/junior-notes/reminders", {
-          method: "POST",
-          json: { trader: t, date },
-        });
+        const r = await http.post<{ id: number; curator: string; created_at: string }>("/api/junior-notes/reminders", { trader: t, date });
         ok++;
         qc.setQueryData<{ date: string; rows: OverviewRow[] }>(qk.overview(date, scope), (prev) =>
           prev && { ...prev, rows: prev.rows.map((x) => (x.trader === t ? { ...x, reminder: { id: r.id, curator: r.curator, created_at: r.created_at } } : x)) },
@@ -136,7 +136,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
     setSummarizing(true);
     setSummary(null);
     try {
-      const d = await api<{ summary?: string }>("/junior-notes/team-summary", { method: "POST", json: { note_ids: ids } });
+      const d = await http.post<{ summary?: string }>("/api/junior-notes/team-summary", { note_ids: ids });
       if (d.summary) setSummary(d.summary);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : "AI недоступен", variant: "destructive" });
@@ -187,7 +187,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
           <ChevronLeft />
         </Button>
         <label className="glass-field relative inline-flex h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
-          <span className="first-letter:uppercase">{fmtDayLong(date)}</span>
+          <span className="first-letter:uppercase">{fmtDate(date, "weekdayDayMonthLong")}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
           <input type="date" aria-label="Дата сводок команды" value={date} max={today} onChange={(e) => e.target.value && setDate(e.target.value)} className="absolute inset-0 cursor-pointer opacity-0" />
         </label>
@@ -225,13 +225,13 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
           <Skeleton className="h-64 w-full rounded-2xl" />
         </>
       ) : overviewQ.isError ? (
-        overviewQ.error instanceof HttpError && overviewQ.error.status === 404 ? null : (
+        isNotFound(overviewQ.error) ? null : (
           <LoadError text="Не удалось загрузить обзор команды" onRetry={() => overviewQ.refetch()} />
         )
       ) : (
         <>
           <StatGrid>
-            <StatCard label="Написали" value={`${wrote.length} / ${rows.length}`} tone={rows.length && wrote.length === rows.length ? "up" : "neutral"} hint={date === today ? "сегодня" : fmtDayShort(date)} />
+            <StatCard label="Написали" value={`${wrote.length} / ${rows.length}`} tone={rows.length && wrote.length === rows.length ? "up" : "neutral"} hint={date === today ? "сегодня" : fmtDate(date, "dayMonth")} />
             <StatCard label="Без сводки" value={missed.length} tone={missed.length ? "warn" : "up"} hint={missed.filter((r) => r.reminder).length ? `напомнили ${missed.filter((r) => r.reminder).length}` : "за этот день"} />
             <StatCard
               label="Ждут ответа"
@@ -251,7 +251,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
           </StatGrid>
 
           {/* Inbox: unanswered summaries across days */}
-          {!(queueQ.error instanceof HttpError && queueQ.error.status === 404) && (
+          {!isNotFound(queueQ.error) && (
             <Panel
               title="Ждут ответа"
               icon={Inbox}
@@ -281,7 +281,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                           onClick={() => setOpened({ id: n.id, src: "queue" })}
                           className="flex w-full flex-wrap items-center gap-x-3 gap-y-1 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:flex-nowrap"
                         >
-                          <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDayShort(n.note_date)}</span>
+                          <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDate(n.note_date, "dayMonth")}</span>
                           <Initial name={n.trader} className="h-7 w-7" />
                           <span className="shrink-0 text-sm font-medium">{n.trader}</span>
                           <span className="min-w-0 flex-1 basis-full truncate text-sm text-muted-foreground sm:basis-auto">{composeSections(sectionsOf(n)) || n.raw_text}</span>
@@ -492,7 +492,7 @@ function RosterRow({
         <p className="mt-0.5 truncate text-xs text-muted-foreground">
           {n
             ? n.preview || "Пустая сводка"
-            : r.last_note_date ? `Последняя сводка: ${fmtDayShort(r.last_note_date)}` : "Ещё ни одной сводки"}
+            : r.last_note_date ? `Последняя сводка: ${fmtDate(r.last_note_date, "dayMonth")}` : "Ещё ни одной сводки"}
           {" · "}
           {r.notes_30d} за 30 дн.
           {r.repeated && r.repeated.length > 0 && r.repeated[0]!.count < 3 && ` · чаще всего: ${r.repeated[0]!.label.toLowerCase()}`}

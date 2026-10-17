@@ -4,7 +4,8 @@
  * AI-improve endpoint stay unchanged and old free-form notes keep working.
  */
 import type { CSSProperties } from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { isNotFound } from "@/lib/api/errors";
 
 export type AuthorNote = {
   id: number;
@@ -316,21 +317,6 @@ export function weekStartOf(dateStr: string): string {
   return isoLocal(d);
 }
 
-export function fmtDayLong(dateStr: string): string {
-  const d = new Date(dateStr.slice(0, 10) + "T12:00:00");
-  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-}
-
-export function fmtDayShort(dateStr: string): string {
-  const d = new Date(dateStr.slice(0, 10) + "T12:00:00");
-  return isNaN(d.getTime()) ? dateStr : d.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-export function fmtWeekday(dateStr: string): string {
-  const d = new Date(dateStr.slice(0, 10) + "T12:00:00");
-  return isNaN(d.getTime()) ? "" : d.toLocaleDateString("ru-RU", { weekday: "short" });
-}
-
 export function relTime(ts: number, now: number): string {
   const s = Math.max(0, Math.round((now - ts) / 1000));
   if (s < 5) return "только что";
@@ -360,20 +346,6 @@ export function writingStreak(dates: Set<string>, today: string): number {
   return n;
 }
 
-/* ───────────────────────── Formatting ───────────────────────── */
-
-export function fmtUsd(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${sign}$${Math.abs(n).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
-}
-
-export function fmtR(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const sign = n > 0 ? "+" : n < 0 ? "−" : "";
-  return `${sign}${Math.abs(n).toFixed(1)}R`;
-}
-
 export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
 
 export const CHART_TOOLTIP: CSSProperties = {
@@ -387,24 +359,6 @@ export const CHART_TOOLTIP: CSSProperties = {
 };
 
 /* ───────────────────────── API ───────────────────────── */
-
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-export async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
-  });
-  if (!res.ok) {
-    const body = (await res.json().catch(() => null)) as { error?: string } | null;
-    throw new HttpError(res.status, body?.error ?? `Ошибка сервера (${res.status})`);
-  }
-  return (await res.json()) as T;
-}
 
 export const AN_KEYS = {
   all: ["author-notes"] as const,
@@ -420,10 +374,10 @@ export const AN_KEYS = {
 /** Team feed with read receipts; falls back to the per-day /team list on servers without /feed. */
 export async function fetchFeed(from: string, to: string): Promise<FeedNote[]> {
   try {
-    return await api<FeedNote[]>(`/author-notes/feed?from=${from}&to=${to}`);
+    return await http.get<FeedNote[]>(`/api/author-notes/feed?from=${from}&to=${to}`);
   } catch (e) {
-    if (!(e instanceof HttpError) || e.status !== 404) throw e;
-    const rows = await api<AuthorNote[]>(`/author-notes/team?date=${to}`);
+    if (!isNotFound(e)) throw e;
+    const rows = await http.get<AuthorNote[]>(`/api/author-notes/team?date=${to}`);
     return rows
       .filter((n) => n.raw_text?.trim() || n.refined_text)
       .map((n) => ({ ...n, reads: [], read_by_me: true, legacy: true }));

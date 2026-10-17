@@ -7,7 +7,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { TradeIdeaForm, blankIdea, type TradeIdeaFormData } from "@/components/trade-idea-form";
 import { screenshotUrlsToString } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
-import { pbRequest } from "./api";
+import { http } from "@/lib/api/http";
 import type { PlaybookEntry } from "./model";
 
 export function CreateIdeaButton({ entry, compact }: { entry: PlaybookEntry; compact?: boolean }) {
@@ -25,10 +25,7 @@ export function CreateIdeaButton({ entry, compact }: { entry: PlaybookEntry; com
   const createMut = useMutation({
     mutationFn: (data: TradeIdeaFormData) => {
       const { screenshotUrls, ...rest } = data;
-      return pbRequest("/api/trade-ideas", {
-        method: "POST",
-        json: { ...rest, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, score: data.score ? Number(data.score) : null, status: "draft" },
-      });
+      return http.post("/api/trade-ideas", { ...rest, screenshotUrl: screenshotUrlsToString(screenshotUrls) || null, score: data.score ? Number(data.score) : null, status: "draft" });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["trade-ideas"] });

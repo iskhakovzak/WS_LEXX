@@ -7,8 +7,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   type AnalyticsFilters, type DimensionKey, type GroupRow, DIMENSIONS, breakdown, drillValue, reliability,
-  fmtR, fmtUsd, fmtPct, fmtPf, sdeal, scopedTrades, downloadCsv, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
+  scopedTrades, downloadCsv, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID,
 } from "./metrics";
+import { fmtPct, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 type MetricKey = "avgR" | "totalR" | "winRate" | "totalPnl";
 type SortKey = "natural" | "key" | "n" | "winRate" | "avgR" | "totalR" | "totalPnl" | "pf";
@@ -76,7 +78,7 @@ export function EdgeTab({
   const metricVal = (r: GroupRow): number | null =>
     effMetric === "winRate" ? r.winRate * 100 : effMetric === "avgR" ? r.avgR : effMetric === "totalR" ? (r.rN ? r.totalR : null) : (r.pnlN ? r.totalPnl : null);
   const chartData = rows.slice(0, 14).map((r) => ({ key: r.key, value: metricVal(r) ?? 0, n: r.n, wr: r.winRate, has: metricVal(r) != null }));
-  const fmtMetric = (v: number) => (effMetric === "winRate" ? `${Math.round(v)}%` : effMetric === "totalPnl" ? fmtUsd(v) : fmtR(v));
+  const fmtMetric = (v: number) => (effMetric === "winRate" ? fmtPct(v, { decimals: 0, signed: false }) : effMetric === "totalPnl" ? fmtUsd(v, { signed: true, decimals: "auto" }) : fmtR(v));
   const positive = (v: number) => (effMetric === "winRate" ? v >= 50 : v >= 0);
 
   const toggleSort = (key: SortKey) =>
@@ -95,7 +97,7 @@ export function EdgeTab({
       rows.map((r) => [
         r.key, r.n, Math.round(r.winRate * 100), Math.round(r.wrLow * 100), Math.round(r.wrHigh * 100),
         r.avgR != null ? r.avgR.toFixed(2) : "", r.rN ? r.totalR.toFixed(2) : "", r.pnlN ? r.grossPnl.toFixed(2) : "", r.totalFees.toFixed(2), r.pnlN ? r.totalPnl.toFixed(2) : "",
-        fmtPf(hasR ? r.pfR : r.pfPnl), reliability(r.n).label,
+        fmtRatio(hasR ? r.pfR : r.pfPnl), reliability(r.n).label,
       ]),
     );
   };
@@ -121,7 +123,7 @@ export function EdgeTab({
       <Panel
         icon={Layers}
         title={`Результат по разрезу «${dim.label}»`}
-        description={`${dim.scopeLabel ? `${dim.scopeLabel} · ` : ""}${allRows.length} ${allRows.length === 1 ? "группа" : allRows.length < 5 ? "группы" : "групп"} · ${sdeal(scopedTrades(trades, dimension).length)}${dimension === "tag" ? " · сделка с несколькими тегами входит в каждую группу" : ""}`}
+        description={`${dim.scopeLabel ? `${dim.scopeLabel} · ` : ""}${allRows.length} ${allRows.length === 1 ? "группа" : allRows.length < 5 ? "группы" : "групп"} · ${commonI18n.t("units.trades", { count: scopedTrades(trades, dimension).length })}${dimension === "tag" ? " · сделка с несколькими тегами входит в каждую группу" : ""}`}
         actions={
           <>
             <Segmented<MetricKey> ariaLabel="Метрика графика" size="sm" options={metricOptions} value={effMetric} onChange={setMetric} />
@@ -170,7 +172,7 @@ export function EdgeTab({
                     cursor={CHART_CURSOR}
                     formatter={(v: number, _n, item) => {
                       const d = item.payload as { n: number; wr: number; has: boolean };
-                      return [d.has ? `${fmtMetric(v)} · ${sdeal(d.n)} · WR ${fmtPct(d.wr)}` : `нет данных · ${sdeal(d.n)}`, METRIC_LABEL[effMetric]];
+                      return [d.has ? `${fmtMetric(v)} · ${commonI18n.t("units.trades", { count: d.n })} · WR ${fmtRate(d.wr)}` : `нет данных · ${commonI18n.t("units.trades", { count: d.n })}`, METRIC_LABEL[effMetric]];
                     }}
                   />
                   <Bar dataKey="value" radius={[0, 6, 6, 0]} barSize={16} isAnimationActive={false}>
@@ -216,18 +218,18 @@ export function EdgeTab({
                         <td className="max-w-[220px] truncate px-2 py-2 font-medium text-foreground" title={r.key}>{r.key}</td>
                         <td className="px-2 py-2 text-right">
                           {r.n}
-                          <span className="ml-1 text-2xs text-muted-foreground">{fmtPct(r.share)}</span>
+                          <span className="ml-1 text-2xs text-muted-foreground">{fmtRate(r.share)}</span>
                         </td>
                         <td className="px-2 py-2"><WinRateCell r={r} /></td>
                         <td className={cn("px-2 py-2 text-right font-medium", toneClass(r.avgR))}>{fmtR(r.avgR)}</td>
                         <td className={cn("px-2 py-2 text-right", toneClass(r.rN ? r.totalR : null))}>{r.rN ? fmtR(r.totalR, 1) : "—"}</td>
                         {hasPnl && (
-                          <td className={cn("px-2 py-2 text-right", toneClass(r.pnlN ? r.totalPnl : null))} title={r.pnlN ? `До комиссий ${fmtUsd(r.grossPnl)}` : undefined}>
-                            {r.pnlN ? fmtUsd(r.totalPnl) : "—"}
+                          <td className={cn("px-2 py-2 text-right", toneClass(r.pnlN ? r.totalPnl : null))} title={r.pnlN ? `До комиссий ${fmtUsd(r.grossPnl, { signed: true, decimals: "auto" })}` : undefined}>
+                            {r.pnlN ? fmtUsd(r.totalPnl, { signed: true, decimals: "auto" }) : "—"}
                           </td>
                         )}
-                        {hasFees && <td className="px-2 py-2 text-right text-muted-foreground">{r.totalFees ? `−$${r.totalFees.toFixed(r.totalFees >= 100 ? 0 : 2)}` : "—"}</td>}
-                        <td className={cn("px-2 py-2 text-right", pf == null ? "text-muted-foreground" : pf >= 1 ? "text-up" : "text-down")}>{fmtPf(pf)}</td>
+                        {hasFees && <td className="px-2 py-2 text-right text-muted-foreground">{r.totalFees ? fmtUsd(-Math.abs(r.totalFees), { decimals: Math.abs(r.totalFees) >= 100 ? 0 : 2 }) : "—"}</td>}
+                        <td className={cn("px-2 py-2 text-right", pf == null ? "text-muted-foreground" : pf >= 1 ? "text-up" : "text-down")}>{fmtRatio(pf)}</td>
                         <td className="px-2 py-2" title={rel.hint}>
                           <Pill tone={rel.level === "high" ? "up" : rel.level === "medium" ? "warn" : "neutral"}>{rel.label}</Pill>
                         </td>
@@ -259,7 +261,7 @@ export function EdgeTab({
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
                       <div><div className="text-muted-foreground">Сделок</div><div className="text-sm text-foreground">{r.n}</div></div>
-                      <div><div className="text-muted-foreground">Win rate</div><div className={cn("text-sm", r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtPct(r.winRate)}</div></div>
+                      <div><div className="text-muted-foreground">Win rate</div><div className={cn("text-sm", r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(r.winRate)}</div></div>
                       <div><div className="text-muted-foreground">Ср. R</div><div className={cn("text-sm", toneClass(r.avgR))}>{fmtR(r.avgR)}</div></div>
                     </div>
                     {dim.drill && drillValue(dimension, r.key) && (
@@ -293,7 +295,7 @@ export function EdgeTab({
                     <span className="text-xs tabular-nums text-muted-foreground">{p.confidenceLevel}/{max}</span>
                   </div>
                   {Number(p.avgPnl) !== 0 && (
-                    <div className={cn("mt-1 text-xs tabular-nums", toneClass(Number(p.avgPnl)))}>ср. {fmtUsd(Number(p.avgPnl))}</div>
+                    <div className={cn("mt-1 text-xs tabular-nums", toneClass(Number(p.avgPnl)))}>ср. {fmtUsd(Number(p.avgPnl), { signed: true, decimals: "auto" })}</div>
                   )}
                 </li>
               );
@@ -338,8 +340,8 @@ function Th({
 /** Win rate with a 95% Wilson interval bar — wide bar = uncertain. */
 function WinRateCell({ r }: { r: GroupRow }) {
   return (
-    <div className="flex min-w-[150px] items-center gap-2" title={`95% доверительный интервал: ${fmtPct(r.wrLow)}–${fmtPct(r.wrHigh)}`}>
-      <span className={cn("w-10 text-right font-medium", r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtPct(r.winRate)}</span>
+    <div className="flex min-w-[150px] items-center gap-2" title={`95% доверительный интервал: ${fmtRate(r.wrLow)}–${fmtRate(r.wrHigh)}`}>
+      <span className={cn("w-10 text-right font-medium", r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(r.winRate)}</span>
       <div className="relative h-1.5 flex-1 rounded-full bg-[var(--glass-bg)]" aria-hidden="true">
         <div className="absolute inset-y-0 left-1/2 w-px bg-border" />
         <div

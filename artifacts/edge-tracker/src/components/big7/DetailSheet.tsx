@@ -13,13 +13,14 @@ import { links } from "@/lib/links";
 import { useAuth } from "@/contexts/auth-context";
 import { LIST_LABELS } from "@/components/watchlist/lib";
 import { useQuickAddToWatchlist, useWatchlistIndex } from "@/components/watchlist/use-quick-add";
-import { fmtSigned, type GapStats, type MergedCatalyst, type StockQuote } from "./lib";
+import { type GapStats, type MergedCatalyst, type StockQuote } from "./lib";
 import type { Big7Row, LevelPoint, Phase } from "./context";
 import { LevelsLadder } from "./LevelsLadder";
 import { CatalystTimeline } from "./catalysts";
 import { MyTickerStats } from "./MyStatsPanel";
 import type { MyTicker } from "./use-big7";
-import { Signed, earningsLabel, fmtPx, fmtRvol } from "./ui";
+import { Signed, earningsLabel, fmtRvol } from "./ui";
+import { fmtPct, fmtPrice } from "@/lib/format";
 
 function Metric({ label, children, title }: { label: React.ReactNode; children: React.ReactNode; title?: string }) {
   return (
@@ -50,14 +51,14 @@ function DayLadder({ row }: { row: Big7Row }) {
         {items.map((it) =>
           it === "price" ? (
             <li key="price" className="my-0.5 flex items-center justify-between rounded-md bg-primary/12 px-2 py-1 text-sm font-semibold tabular-nums text-accent-soft">
-              <span>Цена</span><span>{fmtPx(row.price)}</span>
+              <span>Цена</span><span>{fmtPrice(row.price)}</span>
             </li>
           ) : (
             <li key={it.key} className="flex items-center justify-between gap-2 px-2 py-1 text-sm tabular-nums">
               <span className={cn("min-w-0 truncate", it.key === "vwap" ? "text-primary" : "text-foreground")}>{it.label}</span>
               <span className="flex items-baseline gap-2">
-                <span>{fmtPx(it.price)}</span>
-                <span className="w-14 text-right text-xs text-muted-foreground">{fmtSigned(it.distPct, 2)}</span>
+                <span>{fmtPrice(it.price)}</span>
+                <span className="w-14 text-right text-xs text-muted-foreground">{fmtPct(it.distPct, 2)}</span>
                 <span className="w-10 text-right text-xs text-muted-foreground">{it.distAtr != null ? it.distAtr.toFixed(1) : "—"}</span>
               </span>
             </li>
@@ -107,8 +108,8 @@ export function DetailSheet({
             <SheetHeader className="space-y-0 pr-8 text-left">
               <div className="flex flex-wrap items-center gap-3">
                 <SheetTitle className="text-xl font-semibold tracking-tight">{row.symbol}</SheetTitle>
-                <span className="text-xl font-semibold tabular-nums">{fmtPx(row.price)}</span>
-                <Pill tone={toneOf(row.chg)}>{fmtSigned(row.chg)}</Pill>
+                <span className="text-xl font-semibold tabular-nums">{fmtPrice(row.price)}</span>
+                <Pill tone={toneOf(row.chg)}>{fmtPct(row.chg)}</Pill>
                 {earnings && <Pill tone="warn">{earningsLabel(earnings)}</Pill>}
                 <div className="ml-auto flex items-center gap-1">
                   {inList ? (
@@ -136,7 +137,7 @@ export function DetailSheet({
               <Metric label="RS 5 дней" title="5-дневная доходность минус QQQ"><Signed value={row.rs5} digits={1} /></Metric>
               <Metric label={<TermTooltip term="rvol" />}>{fmtRvol(row.rvol)}</Metric>
               <Metric label={<><TermTooltip term="atr" /> · пройдено</>} title="ATR(14) и диапазон дня в % от ATR">
-                {row.atr != null ? fmtPx(row.atr) : "—"}
+                {row.atr != null ? fmtPrice(row.atr) : "—"}
                 {row.atrUsed != null && <span className="ml-1 text-xs font-normal text-muted-foreground">{Math.round(row.atrUsed)}%</span>}
               </Metric>
               <Metric label="от VWAP"><Signed value={row.vwapDist} /></Metric>

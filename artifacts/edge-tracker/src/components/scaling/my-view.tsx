@@ -11,7 +11,8 @@ import { MetricsGrid } from "./metrics-grid";
 import { TierCompare } from "./tier-compare";
 import { HistoryTimeline } from "./history-timeline";
 import { ProposalCard } from "./proposal-card";
-import { ACTION_META, fmtUsd } from "./format";
+import { ACTION_META } from "./format";
+import { fmtUsd } from "@/lib/format";
 
 /** Trader's personal plan: where I am, what is missing until the next tier, what I get there, my history. */
 export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: (ts: number) => void }) {
@@ -72,7 +73,7 @@ export function MyView({ trader, onUpdatedAt }: { trader: string; onUpdatedAt?: 
         <TierLadder tiers={data.tiers} current={me.tierKey} target={me.recommendation.toTier?.key} />
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <Kpi label="Buying power" value={fmtUsd(me.limits?.accountSize ?? me.tier?.accountSize ?? null, { compact: true })} />
-          <Kpi label="Дневной лимит" value={fmtUsd(me.limits?.dailyLossLimit ?? me.tier?.dailyLossLimit ?? null)} />
+          <Kpi label="Дневной лимит" value={fmtUsd(me.limits?.dailyLossLimit ?? me.tier?.dailyLossLimit ?? null, { decimals: 0 })} />
           <Kpi label="Макс. позиция" value={fmtUsd(me.limits?.maxPositionUsd ?? me.tier?.maxPositionUsd ?? null, { compact: true })} />
           <Kpi label="Овернайт / свинг" value={`${(me.limits?.allowOvernight ?? me.tier?.allowOvernight) ? "да" : "нет"} / ${(me.limits?.allowSwing ?? me.tier?.allowSwing) ? "да" : "нет"}`} />
         </div>

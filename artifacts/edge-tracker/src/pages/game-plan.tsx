@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { CalendarDays, ChevronLeft, ChevronRight, Compass, FileText, Pencil, Plus, ShieldAlert, Users } from "lucide-react";
 import { EmptyState, Page, PageHeader, Panel, Pill, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -10,7 +8,8 @@ import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { POLL, STALE } from "@/lib/api/keys";
 import { InPlayCard, MacroStrip, PlanHero, longDate, shortDay, type DayEvent } from "@/components/game-plan/plan-briefing";
 import { MyPlan } from "@/components/game-plan/my-plan";
 import { TraderPlans } from "@/components/game-plan/trader-plans";
@@ -18,6 +17,7 @@ import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-sta
 import { HistoryPanel } from "@/components/game-plan/history-panel";
 import { PlanEditorSheet } from "@/components/game-plan/plan-editor-sheet";
 import { HORIZON, dateObj, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
+import { fmtDate, fmtUsd } from "@/lib/format";
 
 type HorizonFilter = "all" | Horizon;
 type View = "desk" | "my" | "traders";
@@ -96,17 +96,16 @@ export default function GamePlanPage() {
     queryKey: gpKeys.day(date),
     queryFn: () => gpApi.day(date),
     // Traders keep the page open before the bell — pick up the plan as soon as it's published.
-    refetchInterval: date === today ? 60_000 : false,
+    refetchInterval: date === today ? POLL.minute : false,
   });
   const eventsQ = useQuery({
     queryKey: ["game-plan", "events", date],
-    queryFn: async (): Promise<DayEvent[]> => {
-      const r = await fetch(apiUrl(`/api/events?from=${date}&to=${date}`));
-      if (!r.ok) return [];
-      const rows = (await r.json()) as DayEvent[];
-      return Array.isArray(rows) ? rows.slice(0, 12) : [];
-    },
-    staleTime: 5 * 60_000,
+    queryFn: ({ signal }): Promise<DayEvent[]> =>
+      http
+        .get<DayEvent[]>("/api/events", { query: { from: date, to: date }, signal })
+        .then((rows) => (Array.isArray(rows) ? rows.slice(0, 12) : []))
+        .catch(() => []),
+    staleTime: STALE.long,
   });
 
   const data = dayQ.data;
@@ -254,7 +253,7 @@ export default function GamePlanPage() {
             <Panel>
               <EmptyState
                 icon={FileText}
-                title={isToday ? (sessionAhead ? `План на ${format(dateObj(date), "EEEE, d MMMM", { locale: ru })} ещё не опубликован` : "План на сегодня ещё не опубликован") : date > today ? `План на ${format(dateObj(date), "d MMMM", { locale: ru })} ещё не опубликован` : `План на ${format(dateObj(date), "d MMMM", { locale: ru })} не публиковался`}
+                title={isToday ? (sessionAhead ? `План на ${fmtDate(dateObj(date), "weekdayDayMonthLong")} ещё не опубликован` : "План на сегодня ещё не опубликован") : date > today ? `План на ${fmtDate(dateObj(date), "dayMonthLong")} ещё не опубликован` : `План на ${fmtDate(dateObj(date), "dayMonthLong")} не публиковался`}
                 description={
                   isCurator
                     ? "Соберите брифинг: взгляд на рынок, уровни SPY/QQQ, тикеры в игре и риск-режим. Можно продублировать прошлый план."
@@ -350,7 +349,7 @@ export default function GamePlanPage() {
                   {plan.maxLossUsd != null && (
                     <div className="flex gap-1.5">
                       <dt className="text-muted-foreground">Макс. убыток</dt>
-                      <dd className="font-semibold tabular-nums">${Math.round(plan.maxLossUsd).toLocaleString("en-US")}</dd>
+                      <dd className="font-semibold tabular-nums">{fmtUsd(plan.maxLossUsd, { decimals: 0 })}</dd>
                     </div>
                   )}
                   {plan.maxTrades != null && (

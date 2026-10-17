@@ -5,14 +5,7 @@ import { ExternalLink, Newspaper, FileText, TrendingUp, TrendingDown, Zap, Alert
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
-
-function articlesWord(n: number): string {
-  const mod10 = n % 10;
-  const mod100 = n % 100;
-  if (mod10 === 1 && mod100 !== 11) return "статья";
-  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "статьи";
-  return "статей";
-}
+import { fmtDate, fmtDateCustom, pluralRu } from "@/lib/format";
 
 const CATEGORY_META: Record<string, { label: string; icon: React.ElementType; tone: Tone }> = {
   earnings: { label: "Отчёт", icon: TrendingUp, tone: "warn" },
@@ -39,7 +32,7 @@ function timeAgo(iso: string | null): string {
   if (hr < 24) return `${hr} ч`;
   const d = Math.floor(hr / 24);
   if (d < 7) return `${d} дн`;
-  return new Date(iso).toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
+  return fmtDate(iso, "dayMonth");
 }
 
 function isFresh(iso: string | null): boolean {
@@ -76,7 +69,7 @@ function NewsRow({ item, compact }: { item: NewsItem; compact: boolean }) {
           {fresh && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Свежая (за 24 ч)" />}
           {item.source && <span className="truncate">{item.source}</span>}
           {ago && (
-            <time dateTime={item.publishedAt ?? undefined} title={item.publishedAt ? new Date(item.publishedAt).toLocaleString("ru-RU") : undefined} className="shrink-0 tabular-nums">
+            <time dateTime={item.publishedAt ?? undefined} title={item.publishedAt ? fmtDate(item.publishedAt, "shortDateTime") : undefined} className="shrink-0 tabular-nums">
               {item.source ? "· " : ""}{ago}
             </time>
           )}
@@ -123,9 +116,7 @@ export function NewsFeed({
   const items = useMemo(() => data?.items ?? [], [data]);
   const [rawFilter, setFilter] = useState<string>("all");
   const cutoffLabel = cutoffDate
-    ? new Date(cutoffDate instanceof Date ? cutoffDate.toISOString() : cutoffDate).toLocaleString("ru-RU", {
-        day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit",
-      })
+    ? fmtDateCustom(cutoffDate, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hourCycle: "h23" })
     : null;
 
   const categories = useMemo(() => {
@@ -208,7 +199,7 @@ export function NewsFeed({
       )}
       {!isLoading && !error && items.length > 0 && items.length < 3 && (
         <Notice
-          title={`Найдено только ${items.length} напрямую релевантных ${articlesWord(items.length)} по ${ticker}`}
+          title={`Найдено только ${items.length} напрямую релевантных ${pluralRu(items.length, "статья", "статьи", "статей")} по ${ticker}`}
           body="Широкие отраслевые новости отфильтрованы, чтобы оставить только материалы, прямо упоминающие тикер."
         />
       )}

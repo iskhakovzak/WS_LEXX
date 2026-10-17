@@ -6,9 +6,10 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
   type Metric, type ValueFn, type GroupBreakdown,
-  TIME_BUCKETS, DAY_OF_WEEK_OPTIONS, buildGroupBreakdown, timeBucketFor, dayOfWeek,
+  TIME_BUCKETS, dayOfWeekOptions, buildGroupBreakdown, timeBucketFor, dayOfWeek,
 } from "@/lib/analytics-pro";
-import { fmtPct, fmtVal, loadPref, savePref } from "./pro-format";
+import { fmtVal, loadPref, savePref } from "./pro-format";
+import { fmtRate } from "@/lib/format";
 
 type Dim = "setup" | "time" | "weekday" | "ticker" | "side";
 type Mode = "net" | "profit" | "loss";
@@ -37,7 +38,7 @@ function bucketFor(dim: Dim) {
       }
       case "weekday": {
         const d = String(dayOfWeek(t));
-        return { id: d, label: DAY_OF_WEEK_OPTIONS.find((o) => o.id === d)?.label ?? "—" };
+        return { id: d, label: dayOfWeekOptions().find((o) => o.id === d)?.label ?? "—" };
       }
     }
   };
@@ -64,7 +65,7 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
     }
     const orderOf = (key: string) => {
       if (dim === "time") return TIME_BUCKETS.findIndex((b) => b.id === key);
-      if (dim === "weekday") return DAY_OF_WEEK_OPTIONS.findIndex((o) => o.id === key);
+      if (dim === "weekday") return dayOfWeekOptions().findIndex((o) => o.id === key);
       return 0;
     };
     return base.map((r) => {
@@ -144,7 +145,7 @@ export function BreakdownPanel({ trades, metric, val }: { trades: Trade[]; metri
                   {fmtVal(metric, v, { compact: true, sign: true })}
                 </span>
                 <span className="hidden w-[6.5rem] text-right text-xs tabular-nums text-muted-foreground sm:inline">
-                  {r.count} · {fmtPct(r.winRate)}
+                  {r.count} · {fmtRate(r.winRate)}
                 </span>
               </li>
             );

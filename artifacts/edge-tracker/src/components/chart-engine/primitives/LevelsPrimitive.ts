@@ -2,7 +2,7 @@
  * Series primitive: horizontal key levels (PDH/PDL/PDC, PMH/PML, ORB 5/15, POC…) as full-width
  * lines with a compact label on the left. Pass an empty list to hide.
  */
-import { fmtPrice } from "../lib/format";
+import { fmtPrice } from "@/lib/format";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, layoutLabels, leader, measureLabel } from "./canvas";
 
 export type LevelLine = {

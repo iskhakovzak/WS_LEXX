@@ -13,10 +13,8 @@ import { CATEGORY_META, HORIZONS, HORIZON_META, LIB_BY_ID, type Horizon, type Li
 import { IndicatorSpark } from "./IndicatorSpark";
 import { FitMeter } from "./IndicatorCard";
 import type { IndicatorStats } from "./stats";
+import { fmtR, fmtUsd } from "@/lib/format";
 
-const fmtR = (r: number | null) => (r == null ? "—" : `${r > 0 ? "+" : r < 0 ? "−" : ""}${Math.abs(r).toFixed(2)}R`);
-const fmtUsd = (v: number | null) =>
-  v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
 const RESULT_LABEL: Record<string, string> = { win: "Профит", loss: "Убыток", breakeven: "В ноль", be: "В ноль" };
 
 function Section({ icon: Icon, title, children }: { icon: typeof Clock; title: string; children: ReactNode }) {
@@ -247,7 +245,7 @@ export function IndicatorSheet({
                       <Tile label="Сделок" value={String(stats.count)} />
                       <Tile label="Win rate" value={`${stats.winRate}%`} tone={stats.winRate >= 50 ? "text-up" : "text-down"} />
                       <Tile label="Средний R" value={fmtR(stats.avgR)} tone={toneClass(stats.avgR)} />
-                      <Tile label="P&L net" value={fmtUsd(stats.netPnl)} tone={toneClass(stats.netPnl)} />
+                      <Tile label="P&L net" value={fmtUsd(stats.netPnl, { signed: true, decimals: 0 })} tone={toneClass(stats.netPnl)} />
                     </div>
                     <div className="overflow-hidden rounded-xl bg-[var(--glass-bg)]">
                       <table className="w-full text-sm tabular-nums">

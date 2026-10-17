@@ -5,7 +5,9 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { type AnalyticsFilters, type Unit, fmtR, fmtUsd, fmtPct, fmtPf, sdeal } from "./metrics";
+import { type AnalyticsFilters, type Unit } from "./metrics";
+import { fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { useEdgeMatrix, type EdgeCell } from "./edge-api";
 import { percentileRank, maxDrawdownOf, quantile } from "./edge-stats";
 
@@ -49,13 +51,13 @@ const TH = "px-2 py-1.5 font-medium";
 
 type MetricDef = { key: keyof Omit<TraderRow, "trader">; label: string; fmt: (v: number | null, u: Unit) => string; higherIsBetter: boolean };
 const METRICS: MetricDef[] = [
-  { key: "expectancy", label: "Ожидание на сделку", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v)), higherIsBetter: true },
-  { key: "winRate", label: "Win rate", fmt: (v) => fmtPct(v), higherIsBetter: true },
-  { key: "pf", label: "Profit factor", fmt: (v) => fmtPf(v), higherIsBetter: true },
-  { key: "total", label: "Итог за период", fmt: (v, u) => (u === "r" ? fmtR(v, 1) : fmtUsd(v)), higherIsBetter: true },
-  { key: "avgWin", label: "Средний плюс", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v)), higherIsBetter: true },
-  { key: "avgLoss", label: "Средний минус", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v)), higherIsBetter: true },
-  { key: "maxDd", label: "Макс. просадка", fmt: (v, u) => (u === "r" ? fmtR(v, 1) : fmtUsd(v)), higherIsBetter: true },
+  { key: "expectancy", label: "Ожидание на сделку", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" })), higherIsBetter: true },
+  { key: "winRate", label: "Win rate", fmt: (v) => fmtRate(v), higherIsBetter: true },
+  { key: "pf", label: "Profit factor", fmt: (v) => fmtRatio(v), higherIsBetter: true },
+  { key: "total", label: "Итог за период", fmt: (v, u) => (u === "r" ? fmtR(v, 1) : fmtUsd(v, { signed: true, decimals: "auto" })), higherIsBetter: true },
+  { key: "avgWin", label: "Средний плюс", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" })), higherIsBetter: true },
+  { key: "avgLoss", label: "Средний минус", fmt: (v, u) => (u === "r" ? fmtR(v) : fmtUsd(v, { signed: true, decimals: "auto" })), higherIsBetter: true },
+  { key: "maxDd", label: "Макс. просадка", fmt: (v, u) => (u === "r" ? fmtR(v, 1) : fmtUsd(v, { signed: true, decimals: "auto" })), higherIsBetter: true },
   { key: "closed", label: "Закрытых сделок", fmt: (v) => (v == null ? "—" : String(v)), higherIsBetter: true },
 ];
 
@@ -80,7 +82,7 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
       <Panel title="Трейдер против деска" description={`${rows.length} трейдеров · процентиль считается среди тех, у кого от ${minN} закрытых сделок`} icon={Users}>
         <Select value={focus.trader} onValueChange={setPicked}>
           <SelectTrigger aria-label="Трейдер" className="mb-3 h-9 w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>{rows.map((r) => <SelectItem key={r.trader} value={r.trader}>{r.trader} · {sdeal(r.closed)}</SelectItem>)}</SelectContent>
+          <SelectContent>{rows.map((r) => <SelectItem key={r.trader} value={r.trader}>{r.trader} · {commonI18n.t("units.trades", { count: r.closed })}</SelectItem>)}</SelectContent>
         </Select>
         <ul className="flex flex-col gap-2">
           {METRICS.map((m) => {
@@ -136,11 +138,11 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
                       {r.closed < minN && <span className="ml-1 text-2xs text-muted-foreground">мало</span>}
                     </td>
                     <td className="px-2 py-1.5 text-right">{r.closed}<span className="text-muted-foreground/60"> / {r.n}</span></td>
-                    <td className={cn("px-2 py-1.5 text-right", r.winRate == null ? "text-muted-foreground" : r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtPct(r.winRate)}</td>
-                    <td className={cn("px-2 py-1.5 text-right font-medium", tc(r.expectancy))}>{u === "r" ? fmtR(r.expectancy) : fmtUsd(r.expectancy)}</td>
-                    <td className={cn("px-2 py-1.5 text-right", r.pf == null ? "text-muted-foreground" : r.pf >= 1 ? "text-up" : "text-down")}>{fmtPf(r.pf)}</td>
-                    <td className={cn("px-2 py-1.5 text-right", tc(r.total))}>{u === "r" ? fmtR(r.total, 1) : fmtUsd(r.total)}</td>
-                    <td className="px-2 py-1.5 text-right text-muted-foreground">{u === "r" ? fmtR(r.maxDd, 1) : fmtUsd(r.maxDd)}</td>
+                    <td className={cn("px-2 py-1.5 text-right", r.winRate == null ? "text-muted-foreground" : r.winRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(r.winRate)}</td>
+                    <td className={cn("px-2 py-1.5 text-right font-medium", tc(r.expectancy))}>{u === "r" ? fmtR(r.expectancy) : fmtUsd(r.expectancy, { signed: true, decimals: "auto" })}</td>
+                    <td className={cn("px-2 py-1.5 text-right", r.pf == null ? "text-muted-foreground" : r.pf >= 1 ? "text-up" : "text-down")}>{fmtRatio(r.pf)}</td>
+                    <td className={cn("px-2 py-1.5 text-right", tc(r.total))}>{u === "r" ? fmtR(r.total, 1) : fmtUsd(r.total, { signed: true, decimals: "auto" })}</td>
+                    <td className="px-2 py-1.5 text-right text-muted-foreground">{u === "r" ? fmtR(r.maxDd, 1) : fmtUsd(r.maxDd, { signed: true, decimals: "auto" })}</td>
                   </tr>
                 );
               })}

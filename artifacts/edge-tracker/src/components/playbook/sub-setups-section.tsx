@@ -11,7 +11,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ChecklistProbabilityBadge } from "@/components/playbook-checklist-marks";
 import { IconAction } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
-import { invalidatePlaybook, pbRequest } from "./api";
+import { invalidatePlaybook } from "./api";
+import { http } from "@/lib/api/http";
 import { ConfidenceMeter, DocSection, EdgeMini, InlineError, SetupTypePill } from "./setup-bits";
 import { searchHaystack, type PlaybookEntry, type SetupSummary } from "./model";
 
@@ -33,12 +34,12 @@ export function SubSetupsSection({
 
   const { data: children = [], isLoading, isError, refetch } = useQuery<PlaybookEntry[]>({
     queryKey: ["playbook-children", entry.id],
-    queryFn: () => pbRequest<PlaybookEntry[]>(`/api/playbook/${entry.id}/children`),
+    queryFn: () => http.get<PlaybookEntry[]>(`/api/playbook/${entry.id}/children`),
   });
 
   const reviewedMut = useMutation({
     mutationFn: ({ id, reviewed }: { id: number; reviewed: boolean }) =>
-      pbRequest(`/api/playbook/${id}/reviewed`, { method: "POST", json: { reviewed, reviewer: trader } }),
+      http.post(`/api/playbook/${id}/reviewed`, { reviewed, reviewer: trader }),
     onMutate: async ({ id, reviewed }) => {
       await qc.cancelQueries({ queryKey: ["playbook-children", entry.id] });
       const prev = qc.getQueryData<PlaybookEntry[]>(["playbook-children", entry.id]);
@@ -66,7 +67,7 @@ export function SubSetupsSection({
 
   async function setParent(child: PlaybookEntry, parentId: number | null) {
     try {
-      await pbRequest(`/api/playbook/${child.id}`, { method: "PATCH", json: { parentId } });
+      await http.patch(`/api/playbook/${child.id}`, { parentId });
       invalidatePlaybook(qc, child.id);
       return true;
     } catch (e: any) {

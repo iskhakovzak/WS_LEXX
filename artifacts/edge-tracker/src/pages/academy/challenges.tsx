@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { type ChallengeStatus, useChallenges, usePathConfig } from "@/components/academy/path/api";
-import { selectCls } from "@/components/academy/path/bits";
 import { ChallengeCard, ChallengeDetailView, CreateChallengeDialog } from "@/components/academy/path/challenge-views";
 import { PersonSelect } from "@/components/people/person-select";
 

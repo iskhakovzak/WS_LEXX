@@ -5,7 +5,8 @@
  */
 import { useId, useMemo } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { fmtNum, fmtUsdCompact, fmtUsdSigned, pnlAtExpiry, pnlNow, TOOLTIP_STYLE, type Leg } from "./lib";
+import { fmtStrike, pnlAtExpiry, pnlNow, TOOLTIP_STYLE, type Leg } from "./lib";
+import { fmtNum, fmtUsd } from "@/lib/format";
 
 export function PayoffChart({
   legs,
@@ -86,14 +87,14 @@ export function PayoffChart({
               dataKey="x"
               type="number"
               domain={[lo, hi]}
-              tickFormatter={(v: number) => `$${fmtNum(v, v < 20 ? 1 : 0, 0)}`}
+              tickFormatter={(v: number) => `$${fmtStrike(v, v < 20 ? 1 : 0)}`}
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={{ stroke: "hsl(var(--border))" }}
               minTickGap={24}
             />
             <YAxis
-              tickFormatter={fmtUsdCompact}
+              tickFormatter={(v: number) => fmtUsd(v, { compact: true, decimals: Math.abs(v) < 10 ? "trim" : 0, fallback: "" })}
               tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }}
               tickLine={false}
               axisLine={false}
@@ -103,7 +104,7 @@ export function PayoffChart({
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
               labelFormatter={(v) => `Цена $${fmtNum(Number(v), 2)}`}
-              formatter={(v: number, name: string) => [fmtUsdSigned(v), name === "exp" ? "На экспирацию" : "Сегодня (B-S)"]}
+              formatter={(v: number, name: string) => [fmtUsd(v, { signed: true, decimals: 0 }), name === "exp" ? "На экспирацию" : "Сегодня (B-S)"]}
               cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }}
             />
             <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
@@ -124,7 +125,7 @@ export function PayoffChart({
         {showNow && <li className="flex items-center gap-1.5"><span className="h-0 w-4 border-t-2 border-dashed border-[hsl(var(--chart-1))]" aria-hidden="true" />Сегодня ({fmtNum(days, 0)} дн.)</li>}
         <li className="flex items-center gap-1.5"><span className="h-3 w-0.5 rounded bg-[hsl(var(--chart-1))]" aria-hidden="true" />Спот <span className="tabular-nums text-foreground">${fmtNum(spot, 2)}</span></li>
         {strikes.length > 0 && (
-          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-[hsl(var(--chart-3))]" aria-hidden="true" />Страйк <span className="tabular-nums text-foreground">{strikes.map((k) => fmtNum(k, 2, 0)).join(" / ")}</span></li>
+          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-[hsl(var(--chart-3))]" aria-hidden="true" />Страйк <span className="tabular-nums text-foreground">{strikes.map((k) => fmtStrike(k)).join(" / ")}</span></li>
         )}
         {breakevens.length > 0 && (
           <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dotted border-[hsl(var(--chart-5))]" aria-hidden="true" />Безубыток <span className="tabular-nums text-foreground">{breakevens.map((b) => `$${fmtNum(b, 2)}`).join(" / ")}</span></li>

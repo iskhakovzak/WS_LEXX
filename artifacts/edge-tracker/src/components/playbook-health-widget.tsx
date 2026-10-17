@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { HeartPulse, ChevronDown, ArrowRight, BellOff, RotateCcw } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FilterChip, Pill, type Tone } from "@/components/ds";
-import { Ring, plural, lsGet, lsSet } from "@/components/playbook-sub/bits";
+import { Ring, lsGet, lsSet } from "@/components/playbook-sub/bits";
+import { pluralRu } from "@/lib/format";
 
 type HealthRow = {
   id: number; name: string; folder: string | null; confidenceLevel: number | null;
@@ -75,20 +76,12 @@ export function PlaybookHealthWidget({ onJump, defaultOpen }: { onJump?: (id: nu
 
   const { data } = useQuery<HealthResponse>({
     queryKey: ["playbook-health", userKey],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/health`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<HealthResponse>("/api/playbook/health", { signal }),
   });
 
   const { data: entries } = useQuery<EntryLite[]>({
     queryKey: ["playbook"],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<EntryLite[]>("/api/playbook", { signal }),
   });
 
   const valid = !!data && Array.isArray(data.stale) && Array.isArray(data.lowSampleHighConf) && Array.isArray(data.underperforming);
@@ -179,8 +172,8 @@ export function PlaybookHealthWidget({ onJump, defaultOpen }: { onJump?: (id: nu
             {tasks.length === 0
               ? "Все сетапы в порядке"
               : important === 0
-                ? <>Критичных проблем нет · {minor} {plural(minor, "мелкая доработка", "мелкие доработки", "мелких доработок")}</>
-                : <>{important} {plural(important, "сетап требует", "сетапа требуют", "сетапов требуют")} внимания{totalSetups > 0 && <> · в порядке {healthy} из {totalSetups}</>}</>}
+                ? <>Критичных проблем нет · {minor} {pluralRu(minor, "мелкая доработка", "мелкие доработки", "мелких доработок")}</>
+                : <>{important} {pluralRu(important, "сетап требует", "сетапа требуют", "сетапов требуют")} внимания{totalSetups > 0 && <> · в порядке {healthy} из {totalSetups}</>}</>}
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">

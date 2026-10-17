@@ -7,7 +7,9 @@ import { EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, toneOf, toneTe
 import { Skeleton } from "@/components/ui/skeleton";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { daysWord, fmtUsd, pooledEarnings, takeaway, type CategoryEdge, type EarningsEdge } from "./catalyst-math";
+import { pooledEarnings, takeaway, type CategoryEdge, type EarningsEdge } from "./catalyst-math";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { edgesFrom, useHistories, type CatalystData, type MyEarnings } from "./use-catalysts";
 import { verdictLabel, verdictTone } from "./catalyst-today";
 import { fmtDay } from "./event-meta";
@@ -65,26 +67,26 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
       <StatGrid cols={3}>
         <StatCard
           label="Обычный день"
-          value={`${fmtUsd(edge.baseline.avgNetDay)}/день`}
+          value={`${fmtUsd(edge.baseline.avgNetDay, { signed: true })}/день`}
           tone={toneOf(edge.baseline.avgNetDay)}
-          hint={`${daysWord(edge.baseline.days)} без макро · WR ${edge.baseline.winRate ?? "—"}%`}
+          hint={`${commonI18n.t("units.days", { count: edge.baseline.days })} без макро · WR ${edge.baseline.winRate ?? "—"}%`}
         />
         <StatCard
           label="Слабее всего"
           value={worst && (worst.delta ?? 0) < 0 ? worst.label : "—"}
-          hint={worst && (worst.delta ?? 0) < 0 ? `${fmtUsd(worst.delta)}/день к обычному · ${verdictLabel(worst.verdict)}` : "нет дней хуже обычных"}
+          hint={worst && (worst.delta ?? 0) < 0 ? `${fmtUsd(worst.delta, { signed: true })}/день к обычному · ${verdictLabel(worst.verdict)}` : "нет дней хуже обычных"}
         />
         <StatCard
           label="Сильнее всего"
           value={best && (best.delta ?? 0) > 0 ? best.label : "—"}
-          hint={best && (best.delta ?? 0) > 0 ? `${fmtUsd(best.delta)}/день к обычному · ${verdictLabel(best.verdict)}` : "нет дней лучше обычных"}
+          hint={best && (best.delta ?? 0) > 0 ? `${fmtUsd(best.delta, { signed: true })}/день к обычному · ${verdictLabel(best.verdict)}` : "нет дней лучше обычных"}
         />
       </StatGrid>
 
       <Panel
         icon={Scale}
         title="Макро-дни против обычных"
-        description={`Ваши закрытые сделки ${edge.from ? fmtDay(edge.from, { day: "numeric", month: "short", year: "numeric" }) : ""} — ${edge.to ? fmtDay(edge.to, { day: "numeric", month: "short", year: "numeric" }) : ""}, net после комиссий`}
+        description={`Ваши закрытые сделки ${edge.from ? fmtDay(edge.from, "medium") : ""} — ${edge.to ? fmtDay(edge.to, "medium") : ""}, net после комиссий`}
         padded={false}
       >
         <div className="overflow-x-auto">
@@ -105,7 +107,7 @@ export function EdgeView({ data, onOpenTicker }: { data: CatalystData; onOpenTic
               <tr className="border-b border-[var(--glass-border)] bg-[var(--glass-bg)]">
                 <td className="px-[var(--panel-p)] py-2.5 font-medium text-foreground">Обычные дни</td>
                 <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{edge.baseline.days}</td>
-                <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(edge.baseline.avgNetDay)))}>{fmtUsd(edge.baseline.avgNetDay)}</td>
+                <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(edge.baseline.avgNetDay)))}>{fmtUsd(edge.baseline.avgNetDay, { signed: true })}</td>
                 <td className="px-2 py-2.5 text-right text-muted-foreground">—</td>
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.greenPct ?? "—"}%</td>
                 <td className="px-2 py-2.5 text-right tabular-nums">{edge.baseline.winRate ?? "—"}%</td>
@@ -149,8 +151,8 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
           </span>
         </td>
         <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{a.days} из {r.calendarDays}</td>
-        <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(a.avgNetDay)))}>{fmtUsd(a.avgNetDay)}</td>
-        <td className="px-2 py-2.5 text-right tabular-nums">{r.delta != null ? <span className={toneText(r.verdict === "robust" || r.verdict === "maybe" ? toneOf(r.delta) : "neutral")}>{fmtUsd(r.delta)}</span> : "—"}</td>
+        <td className={cn("px-2 py-2.5 text-right font-medium tabular-nums", toneText(toneOf(a.avgNetDay)))}>{fmtUsd(a.avgNetDay, { signed: true })}</td>
+        <td className="px-2 py-2.5 text-right tabular-nums">{r.delta != null ? <span className={toneText(r.verdict === "robust" || r.verdict === "maybe" ? toneOf(r.delta) : "neutral")}>{fmtUsd(r.delta, { signed: true })}</span> : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.greenPct != null ? `${a.greenPct}%` : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.winRate != null ? `${a.winRate}%` : "—"}</td>
         <td className="px-2 py-2.5 text-right tabular-nums">{a.avgTradesDay ?? "—"}</td>
@@ -176,7 +178,7 @@ function EdgeRow({ r, base, open, onToggle, data }: { r: CategoryEdge; base: Cat
                       title="Открыть день в журнале"
                     >
                       <span className="tabular-nums text-muted-foreground">{fmtDay(d)}</span>
-                      {s ? <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, 0)}</span> : <span className="text-muted-foreground">не торговали</span>}
+                      {s ? <span className={cn("font-medium tabular-nums", toneText(toneOf(s.net)))}>{fmtUsd(s.net, { signed: true, decimals: 0 })}</span> : <span className="text-muted-foreground">не торговали</span>}
                     </Link>
                   );
                 })}
@@ -213,10 +215,10 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
     >
       {pooled.trades > 0 && (
         <p className="px-[var(--panel-p)] pb-1 pt-3 text-sm text-foreground">
-          В дни реакции на отчёт вы сделали {pooled.trades} сд. за {daysWord(pooled.days)}:{" "}
-          <span className={cn("font-semibold tabular-nums", toneText(toneOf(pooled.net)))}>{fmtUsd(pooled.net)}</span>, в среднем{" "}
-          <span className="tabular-nums">{fmtUsd(pooled.avgNetTrade)}</span> на сделку против{" "}
-          <span className="tabular-nums">{fmtUsd(pooled.otherAvgNetTrade)}</span> в те же тикеры в обычные дни.
+          В дни реакции на отчёт вы сделали {pooled.trades} сд. за {commonI18n.t("units.days", { count: pooled.days })}:{" "}
+          <span className={cn("font-semibold tabular-nums", toneText(toneOf(pooled.net)))}>{fmtUsd(pooled.net, { signed: true })}</span>, в среднем{" "}
+          <span className="tabular-nums">{fmtUsd(pooled.avgNetTrade, { signed: true })}</span> на сделку против{" "}
+          <span className="tabular-nums">{fmtUsd(pooled.otherAvgNetTrade, { signed: true })}</span> в те же тикеры в обычные дни.
           {pooled.sample !== "ok" && <span className="text-muted-foreground"> Выборка маленькая — наблюдение, не правило.</span>}
         </p>
       )}
@@ -248,11 +250,11 @@ function EarningsEdgePanel({ data, onOpenTicker }: { data: CatalystData; onOpenT
                   <td className="px-2 py-2.5 text-right tabular-nums text-muted-foreground">{e.upShare != null ? `${e.upShare}% (${e.reactions.length} кв.)` : "—"}</td>
                   <td className="px-2 py-2.5 text-right tabular-nums">
                     {e.event.trades ? (
-                      <span><span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net)}</span> <span className="text-muted-foreground">· {e.event.trades} сд.{e.event.winRate != null ? ` · WR ${e.event.winRate}%` : ""}</span></span>
+                      <span><span className={toneText(toneOf(e.event.net))}>{fmtUsd(e.event.net, { signed: true })}</span> <span className="text-muted-foreground">· {e.event.trades} сд.{e.event.winRate != null ? ` · WR ${e.event.winRate}%` : ""}</span></span>
                     ) : <span className="text-muted-foreground">не торговали</span>}
                   </td>
                   <td className="px-2 py-2.5 text-right tabular-nums">
-                    {e.other.trades ? <span>{fmtUsd(e.other.avgNetTrade)}<span className="text-muted-foreground">/сд. · {e.other.trades} сд.</span></span> : "—"}
+                    {e.other.trades ? <span>{fmtUsd(e.other.avgNetTrade, { signed: true })}<span className="text-muted-foreground">/сд. · {e.other.trades} сд.</span></span> : "—"}
                   </td>
                   <td className="px-[var(--panel-p)] py-2.5 text-right tabular-nums text-muted-foreground">{nx ? `${fmtDay(nx.date)} · ${nx.callType === "AMC" ? "после закрытия" : nx.callType === "BMO" ? "до открытия" : "время ?"}` : "—"}</td>
                 </tr>

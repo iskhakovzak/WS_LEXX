@@ -7,15 +7,14 @@ import { Pill, QueryState, Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { curatorApi, useCuratorMutation, useRiskTemplates, type TierTemplate } from "./api";
-import { usd } from "./curator-math";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtUsd, pluralRu } from "@/lib/format";
 
 const LADDER = ["trainee", "junior", "trader", "senior"];
 
 const fmt = (v: number | boolean | null | undefined, field: string) => {
   if (v == null) return "—";
   if (typeof v === "boolean") return v ? "да" : "нет";
-  return field === "maxOpenPositions" ? String(v) : usd(v, false);
+  return field === "maxOpenPositions" ? String(v) : fmtUsd(v, { decimals: 0 });
 };
 
 const TEMPLATE_ROWS: { field: keyof TierTemplate; label: string }[] = [

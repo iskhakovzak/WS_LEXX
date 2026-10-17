@@ -20,7 +20,7 @@
  *                  Tgross, Tfees, Tnet, Bat%, W/L, TavgHold
  *   Negative numbers are "(1,234.56)", percentages "50.88%", holds "HH:MM:SS".
  */
-import XLSX from "xlsx";
+import XLSX from "./xlsx";
 import { round2, round4 } from "./csv";
 import { feeKeyFor } from "./fees";
 

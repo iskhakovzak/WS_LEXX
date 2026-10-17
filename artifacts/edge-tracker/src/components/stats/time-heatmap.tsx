@@ -4,8 +4,9 @@ import { Clock } from "lucide-react";
 import { EmptyState, Panel } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
-  WEEKDAYS, dayKey, fmtCompact, fmtPct, fmtValue, heatBg, isClosed, isLoss, isWin, sessionKey, sessionLabel, valueOf, weekdayIdx, type Metric,
+  dayKey, fmtMetricCompact, fmtValue, heatBg, isClosed, isLoss, isWin, sessionKey, sessionLabel, valueOf, weekdayIdx, weekdayLabel, type Metric,
 } from "./metrics";
+import { fmtRate } from "@/lib/format";
 
 type Cell = { n: number; closed: number; wins: number; losses: number; v: number | null };
 const empty = (): Cell => ({ n: 0, closed: 0, wins: 0, losses: 0, v: null });
@@ -63,7 +64,7 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
     };
   }, [trades, metric]);
 
-  const valText = (c: Cell) => (c.v != null ? fmtCompact(c.v, metric) : c.wins + c.losses ? fmtPct(c.wins / (c.wins + c.losses)) : "");
+  const valText = (c: Cell) => (c.v != null ? fmtMetricCompact(c.v, metric) : c.wins + c.losses ? fmtRate(c.wins / (c.wins + c.losses)) : "");
   const toneCls = (v: number | null) => (v == null ? "text-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground");
 
   return (
@@ -87,9 +88,9 @@ export function TimeHeatmap({ trades, metric }: { trades: Trade[]; metric: Metri
             <tbody>
               {rows.map((r) => (
                 <tr key={r.d}>
-                  <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">{WEEKDAYS[r.d]}</th>
+                  <th scope="row" className="pr-1 text-left font-medium text-muted-foreground">{weekdayLabel(r.d)}</th>
                   {r.cells.map((c, i) => {
-                    const label = `${WEEKDAYS[r.d]}, ${sessionLabel(cols[i])}: ${c.n} сд.${c.wins + c.losses ? `, WR ${fmtPct(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
+                    const label = `${weekdayLabel(r.d)}, ${sessionLabel(cols[i])}: ${c.n} сд.${c.wins + c.losses ? `, WR ${fmtRate(c.wins / (c.wins + c.losses))}` : ""}${c.v != null ? `, ${fmtValue(c.v, metric)}` : ""}`;
                     return (
                       <td
                         key={cols[i]}

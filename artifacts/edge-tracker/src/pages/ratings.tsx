@@ -2,7 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BarChart3, Plus, Star, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -11,7 +13,7 @@ import {
 import { Kbd } from "@/components/ui/kbd";
 import { useToast } from "@/hooks/use-toast";
 import { Page, PageHeader, Segmented } from "@/components/ds";
-import { fetchJson, useStoredState } from "@/components/ratings/shared";
+import { useStoredState } from "@/components/ratings/shared";
 import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
@@ -39,25 +41,20 @@ export default function RatingsPage() {
 
   const ratingsQ = useQuery<Rating[]>({
     queryKey: ["ratings", "all"],
-    queryFn: () => fetchJson<Rating[]>(`${BASE}/api/ratings`),
+    queryFn: ({ signal }) => http.get<Rating[]>("/api/ratings", { signal }),
     // The full history (~850 rows / 400 KB for staff) feeds trends; mutations invalidate it, so no refetch per visit.
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
   const ratings = ratingsQ.data ?? [];
 
   const deleteMut = useMutation({
-    mutationFn: async (id: number) => {
-      const r = await fetch(`${BASE}/api/ratings/${id}`, { method: "DELETE" });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось удалить оценку");
-      return body;
-    },
+    mutationFn: (id: number) => http.del(`/api/ratings/${id}`),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["ratings"] });
       setDeleting(null);
       toast({ title: "Оценка удалена" });
     },
-    onError: (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось удалить оценку"), variant: "destructive" }),
   });
 
   const openRate = (trader?: string) => setDialog({ open: true, trader, editing: null });

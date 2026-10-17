@@ -3,7 +3,9 @@
 // falls back to the full list, so the page works on both.
 import { useQuery } from "@tanstack/react-query";
 import type { Trade } from "@workspace/api-client-react";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { nullIfMissing } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 
 /** The fields the indicator stats read. */
 export type StatTrade = Pick<Trade, "id" | "ticker" | "date" | "result" | "rMultiple" | "pnl" | "fees" | "tags" | "setup" | "horizon">;
@@ -35,26 +37,16 @@ export function decodeTagged(c: Columnar): StatTrade[] {
   return out;
 }
 
-async function getJson<T>(path: string, signal?: AbortSignal): Promise<{ status: number; data: T | null }> {
-  const r = await fetch(apiUrl(path), { signal });
-  if (r.status === 404) return { status: 404, data: null };
-  if (!r.ok) {
-    let msg = `HTTP ${r.status}`;
-    try { const j = await r.json(); if (j?.error) msg = String(j.error); } catch { /* non-JSON */ }
-    throw new Error(msg);
-  }
-  return { status: r.status, data: (await r.json()) as T };
-}
 
 export function useTaggedTrades() {
   return useQuery<StatTrade[]>({
     queryKey: ["indicators", "tagged-trades"],
-    staleTime: 5 * 60_000,
+    staleTime: STALE.long,
     queryFn: async ({ signal }) => {
-      const slim = await getJson<Columnar>("/api/indicators/tagged-trades", signal);
-      if (slim.data && Array.isArray(slim.data.id)) return decodeTagged(slim.data);
-      const full = await getJson<Trade[]>("/api/trades?tagged=1", signal);
-      return Array.isArray(full.data) ? full.data : [];
+      const slim = await http.get<Columnar>("/api/indicators/tagged-trades", { signal }).catch(nullIfMissing);
+      if (slim && Array.isArray(slim.id)) return decodeTagged(slim);
+      const full = await http.get<Trade[]>("/api/trades?tagged=1", { signal }).catch(nullIfMissing);
+      return Array.isArray(full) ? full : [];
     },
   });
 }

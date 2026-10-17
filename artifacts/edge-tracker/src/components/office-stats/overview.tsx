@@ -8,12 +8,13 @@ import { EmptyState, Panel, Pill, ProgressRing, StatCard, StatGrid, toneOf, type
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  MONTHS_LONG, MONTHS_SHORT, STRATEGIES, dateOfDoy, fmtAxis, fmtDay, fmtDayLong, fmtNum, fmtParen, fmtShare, fmtV,
+  STRATEGIES, monthLong, monthShort, dateOfDoy, fmtAxis, fmtDay, fmtDayLong, fmtNum, fmtParen, fmtShare, fmtV,
   type DayPoint, type Insight, type OfficeView, type PeriodView, type Unit, type YearView,
 } from "./api";
-import { LineCanvas, MONTH_TICKS, downloadCanvasPng, type LineSeries } from "./line-canvas";
+import { LineCanvas, monthTicks, downloadCanvasPng, type LineSeries } from "./line-canvas";
 import { divergingCell, strategyColor, tokenColor, useDark, yearColor } from "./palette";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtCount, fmtRate, fmtRatio, fmtUsd, fmtWeekday, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Ctx = { unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean };
 
@@ -48,8 +49,7 @@ export function InsightsStrip({ insights }: { insights: Insight[] }) {
 /** Month tile value: $ compacted to +$16.4K so twelve tiles fit one row from 1400px (the full sum is in the title). */
 function fmtMonthTile(v: number | null | undefined, unit: Unit): string {
   if (unit !== "usd" || v == null || !Number.isFinite(v) || Math.abs(v) < 1000) return fmtV(v, unit);
-  const a = Math.abs(v);
-  return `${v < 0 ? "−" : "+"}$${a >= 100_000 ? (a / 1000).toFixed(0) : (a / 1000).toFixed(1)}K`;
+  return fmtUsd(v, { signed: true, compact: true });
 }
 
 /** Same-day value of an earlier year (cumulative at the last trading day ≤ doy). */
@@ -90,7 +90,7 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
           size={56}
           stroke={5}
           tone={pace?.status === "behind" ? "warn" : "up"}
-          label={goalShare != null ? `${Math.round(goalShare * 100)}%` : "—"}
+          label={fmtRate(goalShare)}
           ariaLabel="Выполнение годовой цели"
         />
         <div className="min-w-0">
@@ -126,11 +126,11 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
       <StatCard
         label="Сделок за период"
         value={fmtNum(period.totals.trades)}
-        valueTitle={`${period.totals.trades.toLocaleString("ru-RU")} ${pluralRu(period.totals.trades, "сделка", "сделки", "сделок")}`}
-        hint={`WR ${fmtShare(period.totals.winRate)} · PF ${period.totals.profitFactor?.toFixed(2) ?? "—"}`}
+        valueTitle={commonI18n.t("units.trades", { count: period.totals.trades })}
+        hint={`WR ${fmtShare(period.totals.winRate)} · PF ${fmtRatio(period.totals.profitFactor)}`}
       />
       {isAdmin && period.totals.volume != null ? (
-        <StatCard label="Объём офиса" value={fmtNum(period.totals.volume)} valueTitle={`${period.totals.volume.toLocaleString("ru-RU")} акций`} hint="акций за период" />
+        <StatCard label="Объём офиса" value={fmtNum(period.totals.volume)} valueTitle={`${fmtCount(period.totals.volume)} акций`} hint="акций за период" />
       ) : (
         <StatCard
           label="Средний день"
@@ -215,7 +215,7 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
             series={series}
             xMin={0}
             xMax={366}
-            xTicks={MONTH_TICKS}
+            xTicks={monthTicks()}
             goal={focus.goal != null ? { y: focus.goal, label: `Цель ${fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined })}`, pace: true } : null}
             fmtY={fmtY}
             height={h}
@@ -283,7 +283,7 @@ export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | nul
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className={cn("whitespace-nowrap text-2xl font-semibold tabular-nums", day.v >= 0 ? "text-up" : "text-down")}>{fmtV(day.v, unit)}</span>
-        <span className="text-xs text-muted-foreground">{day.trades} {pluralRu(day.trades, "сделка", "сделки", "сделок")} · с начала года {fmtV(day.cum, unit)}</span>
+        <span className="text-xs text-muted-foreground">{commonI18n.t("units.trades", { count: day.trades })} · с начала года {fmtV(day.cum, unit)}</span>
       </div>
       <ul className="mt-3 flex flex-col gap-1.5">
         {parts.map((p) => (
@@ -371,9 +371,9 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
               {weeks.map((w) => {
                 const show = w.month != null && !shownMonths.has(w.month);
                 if (show) shownMonths.add(w.month!);
-                return <span key={w.key} className="overflow-visible whitespace-nowrap text-2xs leading-4 text-muted-foreground">{show ? MONTHS_SHORT[w.month!] : ""}</span>;
+                return <span key={w.key} className="overflow-visible whitespace-nowrap text-2xs leading-4 text-muted-foreground">{show ? monthShort(w.month!) : ""}</span>;
               })}
-              {["Пн", "Вт", "Ср", "Чт", "Пт"].map((wd, row) => (
+              {[1, 2, 3, 4, 5].map((d) => { const s = fmtWeekday(d, "short"); return s.charAt(0).toUpperCase() + s.slice(1); }).map((wd, row) => (
                 <React.Fragment key={wd}>
                   <span className="self-center text-2xs text-muted-foreground">{row % 2 === 0 ? wd : ""}</span>
                   {weeks.map((w) => {
@@ -413,9 +413,9 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                 disabled={!m.days}
                 onClick={() => onPickMonth(m.month)}
                 className="tile tile-interactive press flex min-w-0 flex-col gap-0.5 p-2 text-left disabled:opacity-50"
-                title={m.days ? `${MONTHS_LONG[m.month - 1]}: ${fmtV(m.v, unit)} · ${m.green} зел. / ${m.red} красн. дней — открыть месяц` : `${MONTHS_LONG[m.month - 1]}: нет сделок`}
+                title={m.days ? `${monthLong(m.month - 1)}: ${fmtV(m.v, unit)} · ${m.green} зел. / ${m.red} красн. дней — открыть месяц` : `${monthLong(m.month - 1)}: нет сделок`}
               >
-                <span className="text-2xs uppercase tracking-wide text-muted-foreground">{MONTHS_SHORT[m.month - 1]}</span>
+                <span className="text-2xs uppercase tracking-wide text-muted-foreground">{monthShort(m.month - 1)}</span>
                 <span className={cn("truncate text-sm font-semibold tabular-nums", (m.v ?? 0) > 0 ? "text-up" : (m.v ?? 0) < 0 ? "text-down" : "text-muted-foreground")}>{m.days ? fmtMonthTile(m.v, unit) : "—"}</span>
                 <span className="h-1 rounded-full" style={{ background: divergingCell(m.v, monthMax) }} aria-hidden="true" />
               </button>

@@ -76,16 +76,15 @@ describe("replay start", () => {
 
 describe("trade window", () => {
   const trade = { id: 1, ticker: "X", date: "2026-10-15" };
-  it("keeps context days that do not cost resolution", () => {
+  it("asks for `contextDays` weekdays before the entry day (the server trims what would cost resolution)", () => {
     expect(tradeWindow(trade, 2, "2026-10-17").fromKey).toBe("2026-10-13");
-  });
-  it("drops context days that would push a fresh trade off 1-minute bars", () => {
-    // 2026-10-12 is 5 days old (1m ok); 10-09 would be 8 days old → 5m for the whole range
-    expect(tradeWindow({ ...trade, date: "2026-10-12" }, 2, "2026-10-17").fromKey).toBe("2026-10-12");
-    expect(tradeWindow({ ...trade, date: "2026-10-14" }, 2, "2026-10-17").fromKey).toBe("2026-10-12");
-  });
-  it("keeps 5-minute context for older trades and any context for very old ones", () => {
+    expect(tradeWindow({ ...trade, date: "2026-10-12" }, 2, "2026-10-17").fromKey).toBe("2026-10-08");
     expect(tradeWindow({ ...trade, date: "2026-09-01" }, 2, "2026-10-17").fromKey).toBe("2026-08-28");
     expect(tradeWindow({ ...trade, date: "2026-03-02" }, 1, "2026-10-17").fromKey).toBe("2026-02-27");
+    expect(tradeWindow(trade, 0, "2026-10-17")).toMatchObject({ fromKey: "2026-10-15", toKey: "2026-10-15", multiDay: false });
+  });
+  it("spans every day of a multi-day trade, capped at today", () => {
+    expect(tradeWindow({ ...trade, horizon: "swing", exitDate: "2026-10-20" }, 0, "2026-10-17")).toMatchObject({ toKey: "2026-10-17", multiDay: true });
+    expect(tradeWindow({ ...trade, date: "2026-10-12", horizon: "overnight", exitDate: "2026-10-13" }, 0, "2026-10-17")).toMatchObject({ fromKey: "2026-10-12", toKey: "2026-10-13" });
   });
 });

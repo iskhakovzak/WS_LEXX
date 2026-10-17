@@ -19,10 +19,12 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import {
-  BUILTIN_TEMPLATES, MOODS, SECTION_META, api, applyTemplate, composeSections, fmtDayLong, isUnread,
+  BUILTIN_TEMPLATES, MOODS, SECTION_META, applyTemplate, composeSections, isUnread,
   loadMyTemplate, localToday, nextTradingDay, prevTradingDay, qk, relTime, saveMyTemplate, sectionsOf,
   wordCount, type JuniorNote, type SectionKey, type Sections, type Template,
 } from "./junior-lib";
+import { fmtDate } from "@/lib/format";
+import { http } from "@/lib/api/http";
 import { FeedbackCard, LoadError, MarkdownText } from "./junior-ui";
 import { JuniorDayContext } from "./junior-day-context";
 
@@ -48,7 +50,7 @@ export function JuniorEditor({
 
   const dayQ = useQuery({
     queryKey: qk.day(trader, date),
-    queryFn: () => api<JuniorNote | null>(`/junior-notes?trader=${encodeURIComponent(trader)}&date=${date}`),
+    queryFn: () => http.get<JuniorNote | null>(`/api/junior-notes?trader=${encodeURIComponent(trader)}&date=${date}`),
     enabled: !!trader,
     staleTime: 30_000,
   });
@@ -105,10 +107,7 @@ export function JuniorEditor({
         }
         if (p.date === dateRef.current) setSaveState("saving");
         try {
-          const saved = await api<JuniorNote>("/junior-notes", {
-            method: "PUT",
-            json: { note_date: p.date, sections: p.sections, mood: p.mood || null },
-          });
+          const saved = await http.put<JuniorNote>("/api/junior-notes", { note_date: p.date, sections: p.sections, mood: p.mood || null });
           qc.setQueryData(qk.day(trader, p.date), saved);
           qc.setQueryData<JuniorNote[]>(qk.history(trader), (prev) => {
             if (!prev) return prev;
@@ -167,7 +166,7 @@ export function JuniorEditor({
   React.useEffect(() => {
     if (!note || note.trader !== trader || !isUnread(note)) return;
     setFreshFeedbackId(note.id);
-    api<JuniorNote>(`/junior-notes/${note.id}/seen`, { method: "POST", json: {} })
+    http.post<JuniorNote>(`/api/junior-notes/${note.id}/seen`, {})
       .then((n) => {
         qc.setQueryData(qk.day(trader, n.note_date), n);
         qc.setQueryData<JuniorNote[]>(qk.history(trader), (prev) => prev?.map((x) => (x.id === n.id ? n : x)));
@@ -302,10 +301,7 @@ export function JuniorEditor({
       pending.current = null;
       const saved = await persist({ date, sections, mood });
       if (!saved) return;
-      const data = await api<{ refined_text?: string }>("/junior-notes/improve", {
-        method: "POST",
-        json: { text, note_id: saved.id, note_date: date },
-      });
+      const data = await http.post<{ refined_text?: string }>("/api/junior-notes/improve", { text, note_id: saved.id, note_date: date });
       if (data.refined_text) {
         qc.setQueryData<JuniorNote | null>(qk.day(trader, date), (prev) => (prev ? { ...prev, refined_text: data.refined_text! } : prev));
         setShowRefined(true);
@@ -325,7 +321,7 @@ export function JuniorEditor({
     try {
       if (timer.current) { clearTimeout(timer.current); timer.current = null; }
       pending.current = null;
-      await api(`/junior-notes/${note.id}`, { method: "DELETE" });
+      await http.del(`/api/junior-notes/${note.id}`);
       qc.setQueryData(qk.day(trader, date), null);
       qc.setQueryData<JuniorNote[]>(qk.history(trader), (prev) => prev?.filter((n) => n.id !== note.id));
       setSections({});
@@ -351,7 +347,7 @@ export function JuniorEditor({
         <ChevronLeft />
       </Button>
       <label className="glass-field relative inline-flex h-9 cursor-pointer items-center gap-2 px-3.5 text-sm font-medium focus-within:ring-2 focus-within:ring-ring">
-        <span className="first-letter:uppercase">{fmtDayLong(date)}</span>
+        <span className="first-letter:uppercase">{fmtDate(date, "weekdayDayMonthLong")}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         <input
           type="date"
@@ -565,7 +561,7 @@ export function JuniorEditor({
           <AlertDialogHeader>
             <AlertDialogTitle>Удалить сводку?</AlertDialogTitle>
             <AlertDialogDescription>
-              Сводка за {fmtDayLong(date)} и ответ куратора будут удалены без возможности восстановления.
+              Сводка за {fmtDate(date, "weekdayDayMonthLong")} и ответ куратора будут удалены без возможности восстановления.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

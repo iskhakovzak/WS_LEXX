@@ -7,6 +7,7 @@ import type { LucideIcon } from "lucide-react";
 import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
+import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
 import { ScrollContainerContext } from "@/components/ds/virtual";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
 
@@ -66,11 +67,6 @@ export function tonePill(tone: Tone) {
 /** Solid background class for a tone (dots, bars). */
 export function toneBg(tone: Tone) {
   return TONE_BG[tone];
-}
-
-/** Counters in chips / segments / tabs: grouped like the rest of the app («20 343»). */
-function fmtCount(n: number): string {
-  return Number.isFinite(n) ? n.toLocaleString("ru-RU") : String(n);
 }
 
 /** `title` for truncated text: only when the content is plain text. */
@@ -807,7 +803,7 @@ export function ProgressRing({
       </svg>
       {label !== null && (
         <span className="absolute inset-0 grid place-items-center text-2xs font-semibold tabular-nums text-foreground">
-          {label ?? `${Math.round(pct * 100)}%`}
+          {label ?? fmtRate(pct)}
         </span>
       )}
     </span>
@@ -1167,7 +1163,7 @@ export function LimitBar({
   limit,
   warnAt = 0.8,
   tone,
-  format = (n) => n.toLocaleString("ru-RU", { maximumFractionDigits: 0 }),
+  format = (n) => fmtCount(n, { maximumFractionDigits: 0 }),
   hint,
   size = "md",
   showValues = true,
@@ -1209,7 +1205,7 @@ export function LimitBar({
         aria-valuemin={0}
         aria-valuemax={hasLimit ? (limit as number) : 0}
         aria-valuenow={u}
-        aria-valuetext={hasLimit ? `${Math.round(ratio * 100)}% лимита, ${LIMIT_WORD[t]}` : "лимит не задан"}
+        aria-valuetext={hasLimit ? `${fmtRate(ratio)} лимита, ${LIMIT_WORD[t]}` : "лимит не задан"}
         aria-label={typeof label === "string" ? label : undefined}
         className={cn(
           "relative w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]",
@@ -1292,7 +1288,7 @@ export function UpdatedAgo({
   const ts = at == null ? NaN : at instanceof Date ? at.getTime() : typeof at === "number" ? at : Date.parse(at);
   if (!Number.isFinite(ts) || ts <= 0) return null;
   return (
-    <span className={cn("inline-flex items-center gap-1.5 text-2xs text-muted-foreground tabular-nums", className)} title={new Date(ts).toLocaleString("ru-RU")}>
+    <span className={cn("inline-flex items-center gap-1.5 text-2xs text-muted-foreground tabular-nums", className)} title={fmtDate(ts, "shortDateTimeSeconds")}>
       <span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />
       {prefix} {agoText(Date.now() - ts)}
     </span>

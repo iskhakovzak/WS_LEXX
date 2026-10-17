@@ -55,10 +55,3 @@ export function resultLabelRu(result: string | null | undefined): string {
   return "Без результата";
 }
 
-/** Signed R-multiple text with a real minus sign: +2.5R / −1R / —. */
-export function formatR(r: number | null | undefined, digits = 1): string {
-  if (r == null || !Number.isFinite(r)) return "—";
-  const v = Number(r.toFixed(digits));
-  if (v === 0) return "0R";
-  return `${v > 0 ? "+" : "−"}${Math.abs(v)}R`;
-}

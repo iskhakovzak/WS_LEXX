@@ -11,7 +11,7 @@ import {
   getDynamicAnalystTickers,
   ANALYST_WATCHLIST,
 } from "../lib/marketDataService";
-import { fetchDailyRange } from "./candles";
+import { fetchDailyRange } from "../lib/candles/market";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { scopeTrader, GUEST_SCOPE } from "../lib/auth";
 import { closedSql, netPnlSql, resultSql } from "../lib/tradeMath";
@@ -20,6 +20,7 @@ import {
   aggregate, barsFromCandles, classifyAction, reactionDay, reactionOn,
   type Bar, type EventKind, type Reaction, type ReactionAgg,
 } from "../lib/analystReaction";
+import { badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -669,7 +670,7 @@ const DETAIL_TTL = 10 * 60_000;
 
 router.get("/analyst-actions/reaction", asyncHandler(async (req, res): Promise<void> => {
   const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!SYMBOL_RE.test(ticker)) { res.status(400).json({ error: "Некорректный тикер" }); return; }
+  if (!SYMBOL_RE.test(ticker)) throw badRequest("INVALID_TICKER");
   const hit = reactionDetailCache.get(ticker);
   if (hit && Date.now() - hit.ts < DETAIL_TTL) { res.json(hit.body); return; }
 
@@ -864,7 +865,7 @@ type DayAgg = { trades: number; days: number; net: number; wins: number; losses:
 
 router.get("/analyst-actions/my-days", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, typeof req.query.trader === "string" ? req.query.trader : null);
-  if (scope === undefined) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (scope === undefined) throw unauthorized();
   const days = Math.max(30, Math.min(730, Math.round(Number(req.query.days) || 365)));
   const since = addDays(nyDate(), -days);
   const empty = (): DayAgg => ({ trades: 0, days: 0, net: 0, wins: 0, losses: 0, winRate: null, avgNet: null });

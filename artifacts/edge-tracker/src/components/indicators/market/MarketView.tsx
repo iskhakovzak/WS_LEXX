@@ -2,7 +2,6 @@ import { useCallback, useMemo } from "react";
 import { CalendarX, RefreshCw } from "lucide-react";
 import { BentoGrid, EmptyState, ErrorState, PanelSkeleton, StatGridSkeleton, UpdatedAgo, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/auth-context";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { useToast } from "@/hooks/use-toast";
@@ -19,8 +18,9 @@ import { MarketCard } from "./MarketCard";
 import { RegimePanel } from "./RegimePanel";
 import { EdgeByRegime, type DimResult } from "./EdgeByRegime";
 import { AnaloguesPanel, TodayForYou } from "./TodayForYou";
-import { dayLabel, daysWord, nextWeekday, nyMinutes, sessionInProgress } from "./format";
+import { dayLabel, nextWeekday, nyMinutes, sessionInProgress } from "./format";
 import { PersonSelect } from "@/components/people/person-select";
+import { commonI18n } from "@/i18n/ns/common";
 
 const SYMBOL_NAME: Record<string, string> = { qqq: "QQQ", iwm: "IWM", rsp: "RSP", vix: "VIX", vix3m: "VIX3M", tnx: "доходность 10-летних", dxy: "доллар" };
 
@@ -173,7 +173,7 @@ export function MarketView() {
           {tradesQ.isLoading ? (
             <PanelSkeleton height={260} className="h-full" />
           ) : (
-            <TodayForYou sessionLabel={trader ? `${trader} · ${daysWord(joined.length)} с данными` : ""} analogues={analogues} pre={pre} base={base} fired={fired} alertsCount={Object.keys(alerts).length} sectors={sectors} />
+            <TodayForYou sessionLabel={trader ? `${trader} · ${commonI18n.t("units.days", { count: joined.length })} с данными` : ""} analogues={analogues} pre={pre} base={base} fired={fired} alertsCount={Object.keys(alerts).length} sectors={sectors} />
           )}
         </div>
       </BentoGrid>

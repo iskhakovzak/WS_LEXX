@@ -34,6 +34,7 @@ import {
 } from "../lib/curatorLogic";
 import { BREACH_KIND_LABELS, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
 import { ensureNameLatin } from "../lib/peopleDirectory";
+import { badRequest, forbidden, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -394,7 +395,7 @@ const archiveOldSchema = z.object({
 router.post("/curator/queue/archive-old", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const parsed = archiveOldSchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Некорректные параметры" }); return; }
+  if (!parsed.success) throw badRequest();
   const days = parsed.data.olderThanDays ?? QUEUE_DEFAULT_DAYS;
   const roster = await loadRoster(req, parsed.data.scope);
   const b = await loadBulk(roster.traders, nyDate());
@@ -421,7 +422,7 @@ const restoreSchema = z.object({ ids: z.array(z.string().regex(/^(eod|weekly|aca
 router.post("/curator/queue/restore", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const parsed = restoreSchema.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Некорректные параметры" }); return; }
+  if (!parsed.success) throw badRequest();
   await ensureCuratorTables();
   const readable = await readScope(req, "journal.review");
   const { rowCount } = await pool.query(
@@ -445,10 +446,10 @@ router.get("/curator/traders", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void> => {
   const name = String(req.params.name ?? "").trim();
-  if (!name || name.length > 100) { res.status(400).json({ error: "Invalid trader" }); return; }
+  if (!name || name.length > 100) throw badRequest("INVALID_TRADER");
   if (!(await requireCap(req, res, "journal.review", { trader: name }))) return;
   const { rows: u } = await pool.query(`SELECT name, role, assigned_curator, assigned_mentor, assigned_risk_manager FROM users WHERE name = $1 LIMIT 1`, [name]);
-  if (!u[0]) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!u[0]) throw notFound("TRADER_NOT_FOUND");
   const today = clientDate(req.query.date);
   const b = await loadBulk([name], today);
   const signal = buildSignal(name, b);
@@ -508,7 +509,7 @@ const NOTE_KINDS = ["note", "call", "concern", "praise"] as const;
 
 router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const trader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (!trader || trader.length > 100) { res.status(400).json({ error: "Укажите трейдера" }); return; }
+  if (!trader || trader.length > 100) throw badRequest("TRADER_REQUIRED");
   if (!(await requireCap(req, res, "journal.review", { trader }))) return;
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 200`, [trader]);
@@ -528,7 +529,7 @@ router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const b = parsed.data;
   if (!(await requireCap(req, res, "journal.review", { trader: b.trader }))) return;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
-  if (!exists.length) { res.status(404).json({ error: "Трейдер не найден" }); return; }
+  if (!exists.length) throw notFound("TRADER_NOT_FOUND");
   await ensureCuratorTables();
   const { rows } = await pool.query(
     `INSERT INTO curator_notes (trader, author, body, kind, pinned) VALUES ($1,$2,$3,$4,$5) RETURNING *`,
@@ -555,9 +556,9 @@ async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; ro
 
 router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = NotePatch.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Проверьте поля" }); return; }
+  if (!parsed.success) throw badRequest("VALIDATION");
   const found = await loadNoteForEdit(req, id);
   if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   const p = parsed.data;
@@ -571,7 +572,7 @@ router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> 
 
 router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const found = await loadNoteForEdit(req, id);
   if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   await pool.query(`UPDATE curator_notes SET archived_at = NOW(), archived_by = $2 WHERE id = $1`, [id, req.authUser!.name]);
@@ -582,12 +583,12 @@ router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise
 /** «Отменить» после архивации заметки: вернуть её (только недавно архивированную — за последние сутки). */
 router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
   const row = rows[0];
   if (!row) { res.status(404).json({ error: "Заметка не найдена" }); return; }
-  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) { res.status(403).json({ error: "Нет доступа" }); return; }
+  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden();
   const { rows: out } = await pool.query(`UPDATE curator_notes SET archived_at = NULL, archived_by = NULL WHERE id = $1 RETURNING *`, [id]);
   await logAudit({ actor: req.authUser!.name, action: "curator.note.restore", targetType: "curator_notes", targetId: String(id), details: { trader: row.trader } });
   res.json(rowToNote(out[0]));

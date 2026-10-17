@@ -13,7 +13,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { BASE, fetchDeskLimits, fetchErrorMessage, fmtNum, fmtPct, fmtUsd, fmtUsdSigned, impliedVolPct, num, usePersistedState } from "./lib";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { riskMeQuery } from "@/lib/api/queries";
+import { fetchErrorMessage, fmtStrike, impliedVolPct, num, toDeskLimits, usePersistedState, type RiskMeRaw } from "./lib";
+import { fmtNum, fmtPct, fmtUsd } from "@/lib/format";
 import { Hint, MetricTile, NumField } from "./fields";
 import {
   buildStrategies, fsFind, type AdvisorGoal, type ChainData, type ChainOption, type Expiration, type IvOutlook, type Strategy,
@@ -88,7 +92,7 @@ export default function ChainAdvisor({
   const [maxRisk, setMaxRisk] = usePersistedState<string>("advisor_maxrisk", "500");
   // The trader's own 1R (Settings → Торговля) seeds the per-contract cap once, never above the desk's
   // max risk per trade (/risk/me = hard cap). The trader can still type their own number.
-  const deskQ = useQuery({ queryKey: ["calculator", "risk-me"], queryFn: fetchDeskLimits, retry: false, staleTime: 60_000 });
+  const deskQ = useQuery({ ...riskMeQuery<RiskMeRaw>(), select: toDeskLimits, retry: false, staleTime: STALE.short });
   const tradingDefaults = useTradingDefaults();
   const personalRisk = tradingDefaults.updatedAt ? riskPerTradeUsd(tradingDefaults) : null;
   const deskMaxRisk = deskQ.data?.maxRisk ?? null;
@@ -116,9 +120,9 @@ export default function ChainAdvisor({
     const reqId = ++chainReq.current;
     setChainLoading(true); setError(null);
     try {
-      const r = await fetch(`${BASE}/api/options/chain?symbol=${encodeURIComponent(sym.toUpperCase())}&expiration=${encodeURIComponent(exp)}`);
-      if (!r.ok) throw new Error(await fetchErrorMessage(r, "Ошибка загрузки цепочки"));
-      const j = await r.json() as ChainData;
+      const j = await http
+        .get<ChainData>("/api/options/chain", { query: { symbol: sym.toUpperCase(), expiration: exp } })
+        .catch((err: unknown) => { throw new Error(fetchErrorMessage(err, "Ошибка загрузки цепочки")); });
       if (reqId !== chainReq.current) return; // a newer request superseded this one
       if (!(j.spot > 0)) throw new Error("Не удалось определить цену базового актива");
       setChain(j);
@@ -138,9 +142,9 @@ export default function ChainAdvisor({
     chainReq.current++; // invalidate in-flight chain requests for the previous symbol
     setLoading(true); setChainLoading(false); setError(null); setChain(null); setExpirations([]); setLoadedSymbol("");
     try {
-      const r = await fetch(`${BASE}/api/options/chain?symbol=${encodeURIComponent(sym)}`);
-      if (!r.ok) throw new Error(await fetchErrorMessage(r, "Ошибка загрузки"));
-      const j = await r.json() as { spot: number; changePct: number | null; name: string; expirations: Expiration[] };
+      const j = await http
+        .get<{ spot: number; changePct: number | null; name: string; expirations: Expiration[] }>("/api/options/chain", { query: { symbol: sym } })
+        .catch((err: unknown) => { throw new Error(fetchErrorMessage(err, "Ошибка загрузки")); });
       const exps = Array.isArray(j.expirations) ? j.expirations : [];
       setExpirations(exps);
       setSpotInfo({ price: j.spot, changePct: j.changePct, name: j.name });
@@ -190,8 +194,8 @@ export default function ChainAdvisor({
   const tradeRisk = (num(maxRisk) > 0 ? num(maxRisk) : 500) * contractsN;
   const overDesk = deskMaxRisk != null && tradeRisk > deskMaxRisk + 0.005;
   const maxRiskHint = [
-    personalRisk != null ? `Ваш 1R: ${fmtUsd(personalRisk, 0)}` : null,
-    deskMaxRisk != null ? `лимит деска на сделку: ${fmtUsd(deskMaxRisk, 0)}` : null,
+    personalRisk != null ? `Ваш 1R: ${fmtUsd(personalRisk, { decimals: 0 })}` : null,
+    deskMaxRisk != null ? `лимит деска на сделку: ${fmtUsd(deskMaxRisk, { decimals: 0 })}` : null,
   ].filter(Boolean).join(" · ");
 
   const atmIv = useMemo(() => {
@@ -232,23 +236,17 @@ export default function ChainAdvisor({
       symbol: chain.symbol, spot: chain.spot, days: chain.daysToExpiry, iv: atmIv, append: true,
       legs: [{ side: "buy", kind: type, strike: o.strike, premium: o.mid, qty: 1 }],
     });
-    toast({ title: `Buy ${type === "call" ? "Call" : "Put"} ${fmtNum(o.strike, 2, 0)} добавлен в конструктор`, description: `Ног в конструкторе: ${builderLegCount + 1}` });
+    toast({ title: `Buy ${type === "call" ? "Call" : "Put"} ${fmtStrike(o.strike)} добавлен в конструктор`, description: `Ног в конструкторе: ${builderLegCount + 1}` });
   }
 
   const analyzeWithAI = useCallback(async () => {
     if (!chain || !aiPrompt.trim()) return;
     setAiLoading(true); setAiError(null); setAiResult(null);
     try {
-      const r = await fetch(`${BASE}/api/options/ai-analyze`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          symbol: chain.symbol, spot: chain.spot, daysToExpiry: chain.daysToExpiry,
-          calls: chain.calls, puts: chain.puts, strikes: chain.strikes, userPrompt: aiPrompt,
-        }),
-      });
-      if (!r.ok) { const j = await r.json().catch(() => ({})) as { error?: string }; throw new Error(j.error || `HTTP ${r.status}`); }
-      setAiResult(await r.json() as AiAnalysisResult);
+      setAiResult(await http.post<AiAnalysisResult>("/api/options/ai-analyze", {
+        symbol: chain.symbol, spot: chain.spot, daysToExpiry: chain.daysToExpiry,
+        calls: chain.calls, puts: chain.puts, strikes: chain.strikes, userPrompt: aiPrompt,
+      }));
     } catch (e: unknown) {
       setAiError(e instanceof Error ? e.message : "Ошибка AI-анализа");
     } finally {
@@ -292,7 +290,7 @@ export default function ChainAdvisor({
               {spot && (
                 <>
                   <span className="font-semibold tabular-nums">{fmtUsd(spot.price)}</span>
-                  {spot.changePct != null && <Pill tone={spot.changePct >= 0 ? "up" : "down"}>{fmtPct(spot.changePct, 2, true)}</Pill>}
+                  {spot.changePct != null && <Pill tone={spot.changePct >= 0 ? "up" : "down"}>{fmtPct(spot.changePct, 2)}</Pill>}
                 </>
               )}
               {chainLoading && <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" />Загружаем цепочку…</span>}
@@ -340,7 +338,7 @@ export default function ChainAdvisor({
                   <Segmented<IvOutlook> ariaLabel="Прогноз волатильности" value={ivOutlook} onChange={setIvOutlook} options={IV_OUTLOOKS} />
                 </div>
                 <NumField label="Макс. риск на контракт" prefix="$" value={maxRisk} onChange={setMaxRisk} placeholder="500"
-                  error={overDesk ? `Риск сделки ${fmtUsd(tradeRisk, 0)} выше лимита деска ${fmtUsd(deskMaxRisk ?? 0, 0)} — подбор по лимиту` : undefined}
+                  error={overDesk ? `Риск сделки ${fmtUsd(tradeRisk, { decimals: 0 })} выше лимита деска ${fmtUsd(deskMaxRisk ?? 0, { decimals: 0 })} — подбор по лимиту` : undefined}
                   hint={maxRiskHint ? maxRiskHint.charAt(0).toUpperCase() + maxRiskHint.slice(1) : undefined} />
                 <NumField label="Контрактов" value={nContracts} onChange={setNContracts} integer placeholder="1" />
                 <NumField label="Ставка" suffix="%" value={rateStr} onChange={setRateStr} placeholder="4.5" />
@@ -427,7 +425,7 @@ export default function ChainAdvisor({
                             <td className="px-2 py-1 text-right text-[hsl(var(--chart-5))]">{c?.iv != null ? fmtNum(c.iv, 0) : "—"}</td>
                             <td className="px-2 py-1 text-right text-muted-foreground">{c ? oi(c.openInterest) : "—"}</td>
                           </>}
-                          <td className={cn("px-2 py-1 text-center font-semibold", isAtm ? "text-primary" : "text-foreground")}>{fmtNum(strike, 2, 0)}</td>
+                          <td className={cn("px-2 py-1 text-center font-semibold", isAtm ? "text-primary" : "text-foreground")}>{fmtStrike(strike)}</td>
                           {chainView !== "calls" && <>
                             <td className={cn("px-2 py-1 text-left", p?.inTheMoney ? "text-down" : "text-muted-foreground")}>{p ? fmtNum(p.bid, 2) : "—"}</td>
                             <td className="px-1 py-0.5 text-left">
@@ -505,17 +503,17 @@ export default function ChainAdvisor({
                     <li key={i} className="flex items-center gap-2 text-sm tabular-nums">
                       <Pill tone={leg.action === "buy" ? "up" : "down"}>{leg.action === "buy" ? "Buy" : "Sell"}</Pill>
                       <Pill tone={leg.type === "call" ? "accent" : "warn"}>{leg.type === "call" ? "Call" : "Put"}</Pill>
-                      <span className="font-medium">{fmtUsd(leg.strike, 2)}</span>
+                      <span className="font-medium">{fmtUsd(leg.strike)}</span>
                       <span className="text-muted-foreground">×{leg.contracts}</span>
-                      <span className="ml-auto text-xs text-muted-foreground">~{fmtUsd(leg.premium, 2)}/акц.</span>
+                      <span className="ml-auto text-xs text-muted-foreground">~{fmtUsd(leg.premium)}/акц.</span>
                     </li>
                   ))}
                 </ul>
               )}
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-                <MetricTile label="Макс. риск" value={aiResult.maxRisk != null ? fmtUsd(aiResult.maxRisk, 0) : "не ограничен"} tone="text-down" />
-                <MetricTile label="Макс. прибыль" value={aiResult.maxProfit != null ? fmtUsd(aiResult.maxProfit, 0) : "без лимита"} tone="text-up" />
-                <MetricTile label="Безубыток" value={aiResult.breakevens.length ? aiResult.breakevens.map((b) => fmtUsd(b, 2)).join(" / ") : "—"} />
+                <MetricTile label="Макс. риск" value={aiResult.maxRisk != null ? fmtUsd(aiResult.maxRisk, { decimals: 0 }) : "не ограничен"} tone="text-down" />
+                <MetricTile label="Макс. прибыль" value={aiResult.maxProfit != null ? fmtUsd(aiResult.maxProfit, { decimals: 0 }) : "без лимита"} tone="text-up" />
+                <MetricTile label="Безубыток" value={aiResult.breakevens.length ? aiResult.breakevens.map((b) => fmtUsd(b)).join(" / ") : "—"} />
               </div>
               <p className="border-l-2 border-primary/40 pl-3 text-sm text-muted-foreground">{aiResult.reasoning}</p>
               <p className="text-sm"><span className="text-muted-foreground">Почему: </span>{aiResult.whyBest}</p>
@@ -554,7 +552,7 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
               {top && <Pill tone="accent">Лучшее</Pill>}
             </div>
             <div className="mt-1 flex flex-wrap gap-1.5">
-              <Pill tone={isDebit ? "neutral" : "up"}>{isDebit ? `Дебет ${fmtUsd(s.netDebit * 100, 0)}` : `Кредит ${fmtUsd(Math.abs(s.netDebit) * 100, 0)}`}/контр.</Pill>
+              <Pill tone={isDebit ? "neutral" : "up"}>{isDebit ? `Дебет ${fmtUsd(s.netDebit * 100, { decimals: 0 })}` : `Кредит ${fmtUsd(Math.abs(s.netDebit) * 100, { decimals: 0 })}`}/контр.</Pill>
               <Pill tone={s.ivSensitivity === "positive" ? "purple" : s.ivSensitivity === "negative" ? "warn" : "neutral"}>
                 Vega {s.ivSensitivity === "positive" ? "+" : s.ivSensitivity === "negative" ? "−" : "≈0"}
               </Pill>
@@ -566,8 +564,8 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
           </div>
         </div>
         <div className="grid grid-cols-3 gap-2 text-center">
-          <div><div className="text-2xs text-muted-foreground">Макс. прибыль</div><div className="text-sm font-semibold tabular-nums text-up">{s.maxProfit === null ? "∞" : fmtUsd(s.maxProfit, 0)}</div></div>
-          <div><div className="text-2xs text-muted-foreground">Макс. убыток</div><div className="text-sm font-semibold tabular-nums text-down">{s.maxLoss === null ? "∞" : fmtUsdSigned(-s.maxLoss)}</div></div>
+          <div><div className="text-2xs text-muted-foreground">Макс. прибыль</div><div className="text-sm font-semibold tabular-nums text-up">{s.maxProfit === null ? "∞" : fmtUsd(s.maxProfit, { decimals: 0 })}</div></div>
+          <div><div className="text-2xs text-muted-foreground">Макс. убыток</div><div className="text-sm font-semibold tabular-nums text-down">{s.maxLoss === null ? "∞" : fmtUsd(-s.maxLoss, { signed: true, decimals: 0 })}</div></div>
           <div><div className="text-2xs text-muted-foreground">P(прибыль)</div><div className="text-sm font-semibold tabular-nums text-primary">{s.probProfit !== null ? `${fmtNum(s.probProfit, 0)}%` : "—"}</div></div>
         </div>
       </button>
@@ -578,8 +576,8 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
               <li key={i} className="flex items-center gap-2 text-sm tabular-nums">
                 <Pill tone={l.action === "buy" ? "up" : "down"}>{l.action === "buy" ? "Buy" : "Sell"}</Pill>
                 <span className={l.optType === "call" ? "text-up" : "text-down"}>{l.optType === "call" ? "Call" : "Put"}</span>
-                <span className="font-semibold">{fmtNum(l.strike, 2, 0)}</span>
-                <span className="ml-auto text-xs text-muted-foreground">{fmtUsd(l.premium, 2)}/акц.</span>
+                <span className="font-semibold">{fmtStrike(l.strike)}</span>
+                <span className="ml-auto text-xs text-muted-foreground">{fmtUsd(l.premium)}/акц.</span>
               </li>
             ))}
           </ul>
@@ -587,8 +585,8 @@ function StrategyCard({ s, spot, top, onUseInBs, onToBuilder }: {
             <span className="text-xs text-muted-foreground">Безубыток{s.breakevens.length > 1 ? "и" : ""}:</span>
             {s.breakevens.map((be, i) => (
               <span key={i} className="tabular-nums">
-                <span className="font-medium text-primary">{fmtUsd(be, 2)}</span>
-                <span className="text-xs text-muted-foreground"> ({fmtPct(((be - spot) / spot) * 100, 1, true)})</span>
+                <span className="font-medium text-primary">{fmtUsd(be)}</span>
+                <span className="text-xs text-muted-foreground"> ({fmtPct(((be - spot) / spot) * 100, 1)})</span>
               </span>
             ))}
             {s.riskReward !== null && <span className="ml-auto text-xs text-muted-foreground">R:R <span className="font-medium text-foreground">{fmtNum(s.riskReward, 2)}</span></span>}
@@ -617,8 +615,8 @@ function ScenarioTable({ chain, goal }: { chain: ChainData; goal: AdvisorGoal })
           <tr className="border-b border-border/60 text-xs text-muted-foreground">
             <th scope="col" className="py-2 pr-2 text-left font-normal">Ход</th>
             <th scope="col" className="px-2 py-2 text-right font-normal">Цена</th>
-            <th scope="col" className="px-2 py-2 text-right font-normal">Call {atmC ? fmtNum(atmC.strike, 2, 0) : ""}</th>
-            <th scope="col" className="py-2 pl-2 text-right font-normal">Put {atmP ? fmtNum(atmP.strike, 2, 0) : ""}</th>
+            <th scope="col" className="px-2 py-2 text-right font-normal">Call {atmC ? fmtStrike(atmC.strike) : ""}</th>
+            <th scope="col" className="py-2 pl-2 text-right font-normal">Put {atmP ? fmtStrike(atmP.strike) : ""}</th>
           </tr>
         </thead>
         <tbody>
@@ -629,10 +627,10 @@ function ScenarioTable({ chain, goal }: { chain: ChainData; goal: AdvisorGoal })
             const highlight = (goal === "bullish" && pct > 0) || (goal === "bearish" && pct < 0) || (goal === "big_move" && Math.abs(pct) >= 10);
             return (
               <tr key={pct} className={cn("border-b border-border/40 last:border-0", highlight && "bg-primary/5")}>
-                <td className={cn("py-1.5 pr-2", pct > 0 ? "text-up" : pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(pct, 0, true)}</td>
-                <td className="px-2 py-1.5 text-right">{fmtUsd(x, 2)}</td>
-                <td className={cn("px-2 py-1.5 text-right font-medium", callPnl >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(callPnl)}</td>
-                <td className={cn("py-1.5 pl-2 text-right font-medium", putPnl >= 0 ? "text-up" : "text-down")}>{fmtUsdSigned(putPnl)}</td>
+                <td className={cn("py-1.5 pr-2", pct > 0 ? "text-up" : pct < 0 ? "text-down" : "text-muted-foreground")}>{fmtPct(pct, 0)}</td>
+                <td className="px-2 py-1.5 text-right">{fmtUsd(x)}</td>
+                <td className={cn("px-2 py-1.5 text-right font-medium", callPnl >= 0 ? "text-up" : "text-down")}>{fmtUsd(callPnl, { signed: true, decimals: 0 })}</td>
+                <td className={cn("py-1.5 pl-2 text-right font-medium", putPnl >= 0 ? "text-up" : "text-down")}>{fmtUsd(putPnl, { signed: true, decimals: 0 })}</td>
               </tr>
             );
           })}

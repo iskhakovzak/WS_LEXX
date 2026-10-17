@@ -9,9 +9,10 @@ import { Kbd } from "@/components/ui/kbd";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import {
-  SECTION_META, TOOLTIP_STYLE, composeSections, filledKeys, fmtDayShort, fmtWeekday, isUnread, moodMeta,
+  SECTION_META, TOOLTIP_STYLE, composeSections, filledKeys, isUnread, moodMeta,
   sectionsOf, type JuniorNote,
 } from "./junior-lib";
+import { fmtDate, fmtWeekday } from "@/lib/format";
 import { Highlight, LoadError, MoodPill, ScoreStars } from "./junior-ui";
 import { JuniorNoteSheet } from "./junior-note-sheet";
 
@@ -100,7 +101,7 @@ export function JuniorHistory({
         .reverse()
         .map((n) => ({
           date: n.note_date,
-          label: fmtDayShort(n.note_date),
+          label: fmtDate(n.note_date, "dayMonth"),
           mood: moodMeta(n.mood)?.score ?? null,
           score: n.curator_score ?? null,
         })),
@@ -224,7 +225,7 @@ export function JuniorHistory({
                   </div>
                   <div className="min-w-0 flex-1 space-y-1.5">
                     <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-sm font-medium">{fmtDayShort(n.note_date)}</span>
+                      <span className="text-sm font-medium">{fmtDate(n.note_date, "dayMonth")}</span>
                       <MoodPill mood={n.mood} />
                       {n.reviewed_at && (
                         <Pill tone={unread ? "accent" : "neutral"} dot={unread}>

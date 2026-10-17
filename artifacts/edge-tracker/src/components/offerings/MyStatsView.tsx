@@ -3,10 +3,10 @@ import { BarChart3, ServerCog } from "lucide-react";
 import { DataTable, EmptyState, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, TermTooltip, UpdatedAgo, toneOf, usePersistentState, useTableSort } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { MiniBar } from "./bits";
 import { isMissingEndpoint, useMyOfferingStats } from "./use-offerings-data";
-import { fmtDay, fmtSignedUsd, type DayBucket } from "./types";
+import { fmtDay, type DayBucket } from "./types";
+import { fmtUsd, pluralRu } from "@/lib/format";
 
 const wr = (b: DayBucket | undefined) => (b?.winRate != null ? `${Math.round(b.winRate)}%` : "—");
 
@@ -15,9 +15,9 @@ function BucketRow({ label, b, onClick }: { label: React.ReactNode; b: DayBucket
     <tr onClick={onClick} className={cn(onClick && "cursor-pointer")}>
       <td className="font-medium text-foreground">{label}</td>
       <td className="text-right">{b.trades}</td>
-      <td className={cn("text-right", b.net > 0 ? "text-up" : b.net < 0 ? "text-down" : "")}>{fmtSignedUsd(b.net)}</td>
+      <td className={cn("text-right", b.net > 0 ? "text-up" : b.net < 0 ? "text-down" : "")}>{fmtUsd(b.net, { signed: true, compact: true })}</td>
       <td className="text-right">{wr(b)}</td>
-      <td className="text-right text-muted-foreground">{fmtSignedUsd(b.avgNet)}</td>
+      <td className="text-right text-muted-foreground">{fmtUsd(b.avgNet, { signed: true, compact: true })}</td>
     </tr>
   );
 }
@@ -106,15 +106,15 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
       ) : (
         <>
           <StatGrid min="12rem">
-            <StatCard loading={!s} label="Net в дни размещений" value={off ? fmtSignedUsd(off.net) : "—"} tone={toneOf(off?.net)}
+            <StatCard loading={!s} label="Net в дни размещений" value={off ? fmtUsd(off.net, { signed: true, compact: true }) : "—"} tone={toneOf(off?.net)}
               hint={off ? `${off.trades} ${pluralRu(off.trades, "сделка", "сделки", "сделок")} · ${off.tickers} ${pluralRu(off.tickers, "тикер", "тикера", "тикеров")}` : undefined} />
             <StatCard loading={!s} label="Win rate в дни размещений" value={wr(off)}
               delta={diffWr != null ? `${diffWr > 0 ? "+" : ""}${Math.round(diffWr)} п.п. к обычным` : undefined}
               deltaTone={diffWr == null ? "neutral" : diffWr >= 0 ? "up" : "down"} term="winrate" />
-            <StatCard loading={!s} label="Net в обычные дни" value={norm ? fmtSignedUsd(norm.net) : "—"} tone={toneOf(norm?.net)}
+            <StatCard loading={!s} label="Net в обычные дни" value={norm ? fmtUsd(norm.net, { signed: true, compact: true }) : "—"} tone={toneOf(norm?.net)}
               hint={norm ? `${norm.trades} ${pluralRu(norm.trades, "сделка", "сделки", "сделок")} · WR ${wr(norm)}` : undefined} />
             <StatCard loading={!s} label="Средняя сделка: размещение / обычный"
-              value={off && norm ? <span className="text-xl">{fmtSignedUsd(off.avgNet)} <span className="text-muted-foreground">/</span> {fmtSignedUsd(norm.avgNet)}</span> : "—"}
+              value={off && norm ? <span className="text-xl">{fmtUsd(off.avgNet, { signed: true, compact: true })} <span className="text-muted-foreground">/</span> {fmtUsd(norm.avgNet, { signed: true, compact: true })}</span> : "—"}
               hint="net на сделку" />
           </StatGrid>
 
@@ -163,7 +163,7 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
                           <span className="font-medium text-foreground">{t.ticker}</span>
                           {t.form && <Pill tone="purple" className="px-1.5 text-2xs">{t.form}</Pill>}
                           {t.offeringDay !== t.date && <span className="text-2xs text-muted-foreground">день после</span>}
-                          <span className={cn("ml-auto tabular-nums", t.net == null ? "text-muted-foreground" : t.net >= 0 ? "text-up" : "text-down")}>{fmtSignedUsd(t.net)}</span>
+                          <span className={cn("ml-auto tabular-nums", t.net == null ? "text-muted-foreground" : t.net >= 0 ? "text-up" : "text-down")}>{fmtUsd(t.net, { signed: true, compact: true })}</span>
                         </Link>
                       </li>
                     ))}

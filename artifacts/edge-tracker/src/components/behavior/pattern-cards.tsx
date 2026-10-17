@@ -11,9 +11,10 @@ import { Pill, Sparkline, toneOf, toneText, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  SEVERITY_LABEL, SEVERITY_TONE, dayReportHref, fmtClock, fmtDateShort, fmtMinutes, fmtPct, fmtUsd, fmtUsdCompact,
-  pluralDays, pluralTrades, type PatternReport, type PatternTrend,
+  SEVERITY_LABEL, SEVERITY_TONE, dayReportHref, fmtClock, fmtMinutes, type PatternReport, type PatternTrend,
 } from "./api";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 import { MakeRuleButton } from "./make-rule";
 
 const EXTRA_LABEL: Record<string, string> = {
@@ -56,15 +57,15 @@ function trendView(t: PatternTrend | undefined): { tone: Tone; label: string; Ic
 }
 
 function perDay(v: number | null | undefined): string {
-  return v == null ? "—" : `${fmtUsdCompact(v)}/день`;
+  return v == null ? "—" : `${fmtUsd(v, { signed: true, compact: true })}/день`;
 }
 
 function TrendLine({ t }: { t: PatternTrend | undefined }) {
   const v = trendView(t);
   if (!t) return null;
   const title =
-    `Последние 30 дней (${t.recent.from ?? "…"} — ${t.recent.to ?? "…"}): ${pluralTrades(t.recent.n)}, стоимость ${fmtUsd(t.recent.cost)} за ${pluralDays(t.recent.days)}.\n` +
-    `До этого: ${pluralTrades(t.prior.n)}, ${fmtUsd(t.prior.cost)} за ${pluralDays(t.prior.days)}.\n` +
+    `Последние 30 дней (${t.recent.from ?? "…"} — ${t.recent.to ?? "…"}): ${commonI18n.t("units.trades", { count: t.recent.n })}, стоимость ${fmtUsd(t.recent.cost, { signed: true, decimals: "auto" })} за ${commonI18n.t("units.days", { count: t.recent.days })}.\n` +
+    `До этого: ${commonI18n.t("units.trades", { count: t.prior.n })}, ${fmtUsd(t.prior.cost, { signed: true, decimals: "auto" })} за ${commonI18n.t("units.days", { count: t.prior.days })}.\n` +
     "Сравнение по стоимости в день; при малом числе дней — по частоте паттерна.";
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs" title={title}>
@@ -109,9 +110,9 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
 
       <div className="flex items-end justify-between gap-3">
         <div className="min-w-0">
-          <div className={cn("text-[28px] font-semibold leading-tight tabular-nums tracking-tight", toneText(costTone))}>{fmtUsd(p.cost)}</div>
+          <div className={cn("text-[28px] font-semibold leading-tight tabular-nums tracking-tight", toneText(costTone))}>{fmtUsd(p.cost, { signed: true, decimals: "auto" })}</div>
           <div className="flex items-center gap-1 text-xs text-muted-foreground">
-            стоимость за период · {pluralTrades(p.n)} за {pluralDays(p.days)}
+            стоимость за период · {commonI18n.t("units.trades", { count: p.n })} за {commonI18n.t("units.days", { count: p.days })}
           </div>
         </div>
         {weekly.length > 1 && (
@@ -151,10 +152,10 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
                 aria-label={`Открыть сделку ${e.ticker} от ${e.date}`}
                 title={`${e.date}${e.entryMin != null ? " " + fmtClock(e.entryMin) : ""} · ${e.note}`}
               >
-                <span className="w-11 shrink-0 tabular-nums text-muted-foreground">{fmtDateShort(e.date)}</span>
+                <span className="w-11 shrink-0 tabular-nums text-muted-foreground">{fmtDate(e.date, "dayMonthNumeric")}</span>
                 <span className="w-10 shrink-0 tabular-nums text-muted-foreground">{e.entryMin != null ? fmtClock(e.entryMin) : ""}</span>
                 <span className="w-12 shrink-0 truncate font-medium text-foreground">{e.ticker}</span>
-                <span className={cn("w-14 shrink-0 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsdCompact(e.net)}</span>
+                <span className={cn("w-14 shrink-0 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsd(e.net, { signed: true, compact: true })}</span>
                 <span className="min-w-0 flex-1 truncate text-muted-foreground">{e.note}</span>
               </Link>
               <Link
@@ -173,7 +174,7 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
       <div className="mt-auto flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[var(--glass-border)] pt-2 text-xs">
         {p.tradeIds.length > 0 && (
           <Link href={links.trades({ ids: p.tradeIds })} className="inline-flex items-center gap-1 text-primary underline-offset-2 hover:underline">
-            Все {pluralTrades(p.n)} в журнале <ExternalLink className="h-3 w-3" aria-hidden="true" />
+            Все {commonI18n.t("units.trades", { count: p.n })} в журнале <ExternalLink className="h-3 w-3" aria-hidden="true" />
           </Link>
         )}
         <button
@@ -190,8 +191,8 @@ export const PatternCard = React.memo(function PatternCard({ p, trader, canEdit 
       {details && (
         <div id={detailsId} className="flex flex-col gap-2 text-xs text-muted-foreground">
           <p>
-            Стоимость = Σ нетто сделок паттерна ({fmtUsd(p.net)}) − {p.n} × средний нетто группы «{p.baselineLabel}» ({fmtUsd(p.baselineAvg)}).
-            Средний нетто паттерна {fmtUsd(p.avgNet)}, win rate {fmtPct(p.winRate)}, доля сделок {fmtPct(p.share)}.
+            Стоимость = Σ нетто сделок паттерна ({fmtUsd(p.net, { signed: true, decimals: "auto" })}) − {p.n} × средний нетто группы «{p.baselineLabel}» ({fmtUsd(p.baselineAvg, { signed: true, decimals: "auto" })}).
+            Средний нетто паттерна {fmtUsd(p.avgNet, { signed: true, decimals: "auto" })}, win rate {fmtRate(p.winRate)}, доля сделок {fmtRate(p.share)}.
           </p>
           {extras.length > 0 && (
             <div className="flex flex-wrap gap-1.5">
@@ -246,7 +247,7 @@ export const PatternCards = React.memo(function PatternCards({
             <span>Не стоят денег за период: {free.length}</span>
             {!showFree && (
               <span className="min-w-0 flex-1 truncate">
-                {free.map((p) => `${p.title.toLowerCase()} ${p.n ? `(${p.n}, ${fmtUsdCompact(p.cost)})` : "(0)"}`).join(" · ")}
+                {free.map((p) => `${p.title.toLowerCase()} ${p.n ? `(${p.n}, ${fmtUsd(p.cost, { signed: true, compact: true })})` : "(0)"}`).join(" · ")}
               </span>
             )}
           </button>

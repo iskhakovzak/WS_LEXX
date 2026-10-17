@@ -1,34 +1,26 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { apiErrorStatus } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { qualityKeys } from "@/lib/query-keys";
 import type { TradeQualityLite, QualityMap } from "@/components/trades/trade-utils";
 import { DEFAULT_AFTER_EXIT, type QualityBatchResponse, type QualityRecord } from "./types";
 
-async function getJson<T>(url: string): Promise<T> {
-  const resp = await fetch(url);
-  if (!resp.ok) {
-    const body: { error?: string } = await resp.json().catch(() => ({}));
-    const err = new Error(body.error || `HTTP ${resp.status}`) as Error & { status?: number };
-    err.status = resp.status;
-    throw err;
-  }
-  return resp.json();
-}
 
 /** Quality of one trade (detail sheet). `refresh` forces a recompute on the server. */
 export function useTradeQuality(tradeId: number | null | undefined, afterExit = DEFAULT_AFTER_EXIT) {
   const qc = useQueryClient();
   const query = useQuery<QualityRecord>({
     queryKey: qualityKeys.one(tradeId ?? 0, afterExit),
-    queryFn: () => getJson<QualityRecord>(`${BASE}/api/trades/${tradeId}/quality?afterExit=${afterExit}`),
+    queryFn: ({ signal }) => http.get<QualityRecord>(`/api/trades/${tradeId}/quality?afterExit=${afterExit}`, { signal }),
     enabled: Boolean(tradeId),
-    staleTime: 60 * 1000,
-    retry: (count, err) => (err as Error & { status?: number }).status === 503 && count < 2,
+    staleTime: STALE.short,
+    retry: (count, err) => apiErrorStatus(err) === 503 && count < 2,
   });
   const refresh = async () => {
     if (!tradeId) return;
-    const rec = await getJson<QualityRecord>(`${BASE}/api/trades/${tradeId}/quality?afterExit=${afterExit}&refresh=1`);
+    const rec = await http.get<QualityRecord>(`/api/trades/${tradeId}/quality?afterExit=${afterExit}&refresh=1`);
     qc.setQueryData(qualityKeys.one(tradeId, afterExit), rec);
     void qc.invalidateQueries({ queryKey: ["trades-quality"] });
   };
@@ -80,7 +72,7 @@ export function useTradesQuality(ids: number[], opts: { enabled?: boolean; after
         for (let i = 0; i < todo.length; i += CHUNK) {
           const chunk = todo.slice(i, i + CHUNK);
           try {
-            const res = await getJson<QualityBatchResponse>(`${BASE}/api/trade-quality?ids=${chunk.join(",")}&afterExit=${afterExit}`);
+            const res = await http.get<QualityBatchResponse>(`/api/trade-quality?ids=${chunk.join(",")}&afterExit=${afterExit}`);
             if (cancelled || runRef.current !== run) return;
             setMap((m) => {
               const out = { ...m };

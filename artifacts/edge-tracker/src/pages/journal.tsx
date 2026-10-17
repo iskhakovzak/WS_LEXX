@@ -1,16 +1,14 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
-import { ru } from "date-fns/locale";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
 import { BookOpenCheck, CalendarDays, ChevronLeft, ChevronRight, CloudUpload, History, Users } from "lucide-react";
 import { Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
 import { useAuth } from "@/contexts/auth-context";
-import { apiUrl } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { links } from "@/lib/links";
 import { prevWeekday } from "@/lib/trading-date";
 import { MonthCalendar, type CalMetric, type ReviewMark } from "@/components/journal/MonthCalendar";
@@ -23,10 +21,11 @@ import {
   type JournalEntry, hasReview, readLegacyNote, useJournalRange, useSyncLocalJournal,
 } from "@/components/journal/use-journal-days";
 import {
-  addDays, carriedInto, computeStats, fmtDayLong, fmtDayShort, fmtWeekday, groupByDate, isIsoDate, isTypingTarget,
-  isoWeekKey, localDateStr, monthBounds, monthKey, openedCountByDate, openedOn, parseDate, pickUnit, plural, shiftMonth,
+  addDays, carriedInto, computeStats, groupByDate, isIsoDate, isTypingTarget,
+  isoWeekKey, localDateStr, monthBounds, monthKey, openedCountByDate, openedOn, parseDate, pickUnit, shiftMonth,
   stepWeekday, todayStr, weekStart, type DayStats,
 } from "@/components/journal/utils";
+import { fmtDate, fmtWeekday, pluralRu } from "@/lib/format";
 import { EodFlow } from "@/components/eod/EodFlow";
 import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
@@ -231,15 +230,14 @@ export default function JournalPage() {
     enabled: !!user && !!violSpan,
     staleTime: 60_000,
     placeholderData: keepPreviousData,
-    queryFn: async (): Promise<RuleViolation[]> => {
-      const qs = new URLSearchParams({ limit: "500" });
-      if (effectiveAccount) qs.set("trader", effectiveAccount);
-      if (violSpan) { qs.set("from", violSpan.from); qs.set("to", violSpan.to); }
-      const res = await fetch(apiUrl(`/api/rule-violations?${qs.toString()}`));
-      if (!res.ok) return [];
-      const rows = await res.json();
-      return Array.isArray(rows) ? (rows as RuleViolation[]) : [];
-    },
+    queryFn: ({ signal }): Promise<RuleViolation[]> =>
+      http
+        .get<RuleViolation[]>("/api/rule-violations", {
+          query: { limit: 500, trader: effectiveAccount, from: violSpan?.from, to: violSpan?.to },
+          signal,
+        })
+        .then((rows) => (Array.isArray(rows) ? rows : []))
+        .catch(() => []),
   });
   const dayViolations = useMemo(() => {
     const ids = new Set([...dayTrades, ...carried].map((t) => t.id));
@@ -279,14 +277,14 @@ export default function JournalPage() {
   const jumpLatest =
     latestTradeDay && latestTradeDay !== activeDate ? (
       <Button variant="outline" size="sm" onClick={() => selectDate(latestTradeDay)}>
-        <History aria-hidden="true" />Последний торговый день · {fmtDayShort(latestTradeDay)}
+        <History aria-hidden="true" />Последний торговый день · {fmtDate(latestTradeDay, "dayMonth")}
       </Button>
     ) : undefined;
 
   const emptyDay = (
     <p className="py-1 text-sm text-muted-foreground">
       {isFuture ? "День ещё впереди — запишите план в дневнике ниже."
-        : dayStats.opened ? `${dayStats.opened} ${plural(dayStats.opened, "позиция открыта", "позиции открыты", "позиций открыто")}, результат — в день закрытия.`
+        : dayStats.opened ? `${dayStats.opened} ${pluralRu(dayStats.opened, "позиция открыта", "позиции открыты", "позиций открыто")}, результат — в день закрытия.`
         : isToday ? "Сделок пока нет. Начните с плана на день."
         : "В этот день сделок не было."}
     </p>
@@ -344,13 +342,13 @@ export default function JournalPage() {
                   <button
                     type="button"
                     className="min-w-0 rounded-xl px-2 py-1 text-center transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:min-w-[210px]"
-                    aria-label={`Выбрать дату, сейчас ${fmtDayLong(activeDate)}`}
+                    aria-label={`Выбрать дату, сейчас ${fmtDate(activeDate, "long")}`}
                   >
                     <span className="flex items-center justify-center gap-1.5 truncate text-base font-semibold tabular-nums sm:text-lg">
-                      <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{fmtDayLong(activeDate)}
+                      <CalendarDays className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{fmtDate(activeDate, "long")}
                     </span>
                     <span className="block text-xs capitalize text-muted-foreground">
-                      {fmtWeekday(activeDate)}
+                      {fmtWeekday(activeDate, "long")}
                       {isToday && <span className="ml-1.5 normal-case text-primary">· сегодня</span>}
                     </span>
                   </button>
@@ -358,7 +356,6 @@ export default function JournalPage() {
                 <PopoverContent className="w-auto p-2" align="start">
                   <Calendar
                     mode="single"
-                    locale={ru}
                     weekStartsOn={1}
                     selected={parseDate(activeDate)}
                     defaultMonth={parseDate(activeDate)}
@@ -398,8 +395,8 @@ export default function JournalPage() {
         <div className="glass-panel flex flex-wrap items-center gap-2 rounded-2xl px-4 py-2.5 text-xs" role="status">
           <CloudUpload className="h-4 w-4 text-warn" aria-hidden="true" />
           <span>
-            {sync.pending.length} {plural(sync.pending.length, "запись дневника сохранена", "записи дневника сохранены", "записей дневника сохранены")} только в этом браузере
-            ({sync.pending.map((e) => fmtDayShort(e.date)).slice(0, 4).join(", ")}{sync.pending.length > 4 ? "…" : ""}).
+            {sync.pending.length} {pluralRu(sync.pending.length, "запись дневника сохранена", "записи дневника сохранены", "записей дневника сохранены")} только в этом браузере
+            ({sync.pending.map((e) => fmtDate(e.date, "dayMonth")).slice(0, 4).join(", ")}{sync.pending.length > 4 ? "…" : ""}).
           </span>
           <Button size="sm" variant="outline" className="ml-auto" disabled={journal.mode === "local" || sync.flush.isPending} onClick={() => sync.flush.mutate()}>
             {sync.flush.isPending ? "Отправляю…" : journal.mode === "local" ? "Сервер недоступен" : "Отправить на сервер"}
@@ -489,7 +486,7 @@ export default function JournalPage() {
               footer={
                 monthStats.length === 0 && latestTradeDay && monthKey(latestTradeDay) !== viewMonth ? (
                   <button type="button" className="text-primary hover:underline" onClick={() => selectDate(latestTradeDay)}>
-                    Последние сделки: {fmtDayShort(latestTradeDay)}
+                    Последние сделки: {fmtDate(latestTradeDay, "dayMonth")}
                   </button>
                 ) : null
               }

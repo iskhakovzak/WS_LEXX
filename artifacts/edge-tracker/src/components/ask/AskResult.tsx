@@ -12,7 +12,9 @@ import { netPnl } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { ASK_HINTS, fmtClock, fmtDuration, type AskQuery, type AskToken } from "@/lib/ask/parse";
 import { chipAlternatives, suggestFor } from "@/lib/ask/examples";
-import { dm, fmtMoney, fmtPct, tradesWord, type Agg, type AskAnswer, type AskTrade, type BookIndex } from "@/lib/ask/aggregate";
+import { fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { dm, type Agg, type AskAnswer, type AskTrade, type BookIndex } from "@/lib/ask/aggregate";
 import { AskChart } from "./AskChart";
 
 // ── «Не понял» ────────────────────────────────────────────────────────────────
@@ -136,7 +138,7 @@ function WhyAnswer({ query, answer, defaultTrader, isStaff, tickers, setups, onR
         )}
       </div>
       <ul className="space-y-0.5 text-xs text-muted-foreground">
-        {answer && !answer.empty && <li>Найдено {tradesWord(answer.matched)} из {answer.total} в выборке.</li>}
+        {answer && !answer.empty && <li>Найдено {commonI18n.t("units.trades", { count: answer.matched })} из {answer.total} в выборке.</li>}
         {query.corrections.length > 0 && (
           <li>Исправил: {query.corrections.map((c) => `«${c.from}» → «${c.to}»`).join(", ")}.</li>
         )}
@@ -193,10 +195,10 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
               >
                 <td className="max-w-[260px] truncate font-medium">{r.label}</td>
                 <td className="text-right">{r.n}</td>
-                <td className="text-right">{fmtPct(r.winRate)}</td>
-                <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtMoney(r.net)}</td>
-                <td className={cn("text-right", toneText(toneOf(r.avgNet)))}>{fmtMoney(r.avgNet)}</td>
-                <td className="text-right text-muted-foreground">{fmtMoney(r.fees, false)}</td>
+                <td className="text-right">{fmtRate(r.winRate)}</td>
+                <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true })}</td>
+                <td className={cn("text-right", toneText(toneOf(r.avgNet)))}>{fmtUsd(r.avgNet, { signed: true })}</td>
+                <td className="text-right text-muted-foreground">{fmtUsd(r.fees)}</td>
               </tr>
             ))}
           </tbody>
@@ -234,7 +236,7 @@ function TradeTable({ title, trades, index, showTrader }: { title: string; trade
   if (!trades.length) return null;
   return (
     <div className="min-w-0">
-      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title} · {tradesWord(trades.length)}</h3>
+      <h3 className="mb-2 text-xs font-medium text-muted-foreground">{title} · {commonI18n.t("units.trades", { count: trades.length })}</h3>
       <DataTable maxHeight="70dvh" ariaLabel={title}>
         <table>
           <thead>
@@ -274,7 +276,7 @@ function TradeTable({ title, trades, index, showTrader }: { title: string; trade
                   <td className="text-right">{m?.qty == null ? "—" : m.qty}</td>
                   <td className="text-right">{t.entry == null ? "—" : `$${Number(t.entry).toFixed(2)}`}</td>
                   <td className="text-right">{m?.hold == null ? "—" : fmtDuration(m.hold)}</td>
-                  <td className={cn("text-right font-medium", toneText(toneOf(n)))}>{fmtMoney(n)}</td>
+                  <td className={cn("text-right font-medium", toneText(toneOf(n)))}>{fmtUsd(n, { signed: true })}</td>
                 </tr>
               );
             }}

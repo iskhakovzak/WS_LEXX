@@ -1,5 +1,4 @@
 import type { CSSProperties } from "react";
-import { BASE } from "@/lib/api";
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -353,30 +352,6 @@ export function streakOf(dates: Set<string>, today = localToday()): number {
   return n;
 }
 
-export function fmtDayLong(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "long", day: "numeric", month: "long" });
-  } catch {
-    return iso;
-  }
-}
-
-export function fmtDayShort(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-  } catch {
-    return iso;
-  }
-}
-
-export function fmtWeekday(iso: string): string {
-  try {
-    return new Date(iso + "T12:00:00").toLocaleDateString("ru-RU", { weekday: "short" });
-  } catch {
-    return "";
-  }
-}
-
 export function relTime(ts: string | number | null | undefined, now = Date.now()): string {
   if (ts == null) return "";
   const t = typeof ts === "number" ? ts : Date.parse(ts);
@@ -399,27 +374,7 @@ export function isUnread(n: Pick<JuniorNote, "reviewed_at" | "feedback_seen_at">
   return !!n.reviewed_at && !n.feedback_seen_at;
 }
 
-/* ───────────────────────── API ───────────────────────── */
-
-export class HttpError extends Error {
-  constructor(public status: number, message: string) {
-    super(message);
-  }
-}
-
-export async function api<T>(path: string, init?: RequestInit & { json?: unknown }): Promise<T> {
-  const { json, ...rest } = init ?? {};
-  const res = await fetch(`${BASE}/api${path}`, {
-    ...rest,
-    headers: { ...(json !== undefined ? { "Content-Type": "application/json" } : {}), ...(rest.headers ?? {}) },
-    body: json !== undefined ? JSON.stringify(json) : rest.body,
-  });
-  if (!res.ok) {
-    const data = (await res.json().catch(() => ({}))) as { error?: string };
-    throw new HttpError(res.status, data.error ?? `HTTP ${res.status}`);
-  }
-  return (await res.json()) as T;
-}
+/* ───────────────────────── API (requests: lib/api/http) ───────────────────────── */
 
 export const qk = {
   all: ["junior-notes"] as const,

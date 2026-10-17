@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Radar, RefreshCw, ArrowUpRight, ArrowDownRight, Repeat2 } from "lucide-react";
 import { useSectors, type SectorPoint } from "@/lib/market-intel";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { Segmented, Pill, EmptyState, TermTooltip } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
@@ -11,10 +11,9 @@ import {
   IconAction,
   WidgetError,
   heatBg,
-  fmtPct,
-  clockTime,
   useStoredState,
 } from "@/components/widgets/widget-kit";
+import { fmtDate, fmtPct } from "@/lib/format";
 
 type SortKey = "day" | "week" | "alpha";
 type View = "strip" | "bars";
@@ -143,9 +142,7 @@ export function SectorRadar() {
     setForcing(true);
     setForceError(null);
     try {
-      const r = await fetch(`${BASE}/api/sectors?force=1`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      qc.setQueryData(["sectors"], await r.json());
+      qc.setQueryData(["sectors"], await http.get("/api/sectors?force=1"));
     } catch {
       setForceError("Не удалось обновить котировки");
       refetch();
@@ -161,7 +158,7 @@ export function SectorRadar() {
     <WidgetShell
       icon={Radar}
       title="Сила секторов"
-      meta={data?.fetchedAt ? `на ${clockTime(data.fetchedAt)}` : undefined}
+      meta={data?.fetchedAt ? `на ${fmtDate(data.fetchedAt, "time")}` : undefined}
       actions={
         <>
           <Segmented<View>

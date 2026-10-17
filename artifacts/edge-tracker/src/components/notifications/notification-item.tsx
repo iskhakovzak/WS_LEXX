@@ -3,7 +3,10 @@ import React from "react";
 import { Archive, ArchiveRestore, ArrowUpRight, Check, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Pill } from "@/components/ds";
-import { SEVERITY_LABEL, SEVERITY_TILE, SEVERITY_TONE, iconFor, timeAgo, timeOfDay, type Notification } from "./model";
+import { SEVERITY_LABEL, SEVERITY_TILE, SEVERITY_TONE, iconFor, timeAgo, type Notification } from "./model";
+import { fmtDate } from "@/lib/format";
+
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
 export type NotificationItemProps = {
   n: Notification;
@@ -67,8 +70,8 @@ export const NotificationItem = React.memo(function NotificationItem({
             <span title={n.title} className={cn("min-w-0 flex-1 text-sm leading-snug", full ? "line-clamp-2 break-words" : "truncate", n.isRead ? "font-normal text-muted-foreground" : "font-semibold text-foreground")}>
               {n.title}
             </span>
-            <span className="shrink-0 text-2xs tabular-nums text-muted-foreground" title={new Date(n.createdAt).toLocaleString("ru-RU")}>
-              {full ? timeOfDay(n.createdAt) : timeAgo(n.createdAt)}
+            <span className="shrink-0 text-2xs tabular-nums text-muted-foreground" title={fmtDate(n.createdAt, "shortDateTimeSeconds")}>
+              {full ? fmtDate(n.createdAt, "time") : timeAgo(n.createdAt)}
             </span>
           </span>
           {n.body && n.body !== n.title && (

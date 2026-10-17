@@ -3,9 +3,10 @@ import { cn } from "@/lib/utils";
 import { Pill } from "@/components/ds";
 import { DEAL_TYPE_LABEL, SCORE_LEVEL_TONE, dealTypeOf, dilutionScore, discountOf } from "./score";
 import {
-  HORIZON_LABEL, fmtM, fmtPctCap, fmtPrice, pctOfMcap,
+  HORIZON_LABEL, fmtM, fmtPctCap, pctOfMcap,
   type Exposure, type Offering,
 } from "./types";
+import { fmtPrice } from "@/lib/format";
 
 type Match = { o: Offering; e: Exposure };
 
@@ -27,7 +28,7 @@ function whyLine(o: Offering): string {
   if (p != null) bits.push(`${fmtPctCap(p, 0)} мкап`);
   const d = discountOf(o);
   if (d != null) bits.push(`дисконт ${Math.abs(d).toFixed(1)}%`);
-  if (o.offerPrice != null) bits.push(`оффер ${fmtPrice(o.offerPrice)}`);
+  if (o.offerPrice != null) bits.push(`оффер ${fmtPrice(o.offerPrice, { dollar: true })}`);
   return bits.join(" · ");
 }
 

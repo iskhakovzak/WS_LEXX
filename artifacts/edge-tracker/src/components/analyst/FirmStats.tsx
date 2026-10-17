@@ -7,11 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import type { FirmStat, FirmStatsResponse, FirmWeightResponse, FirmWeightRow } from "./api";
-import { fmtPct, isTopFirm, WEIGHT_MIN_N, type FirmWeightLite } from "./lib";
-
-function pct(v: number | null | undefined, digits = 0) {
-  return v == null || !Number.isFinite(v) ? "—" : `${(v * 100).toFixed(digits)}%`;
-}
+import { isTopFirm, WEIGHT_MIN_N, type FirmWeightLite } from "./lib";
+import { fmtCount, fmtPct, fmtRate } from "@/lib/format";
 
 /** Edge of a firm's confirmation rate over the street's base rate, in percentage points. */
 function edgePp(f: FirmStat, base: number | null): number | null {
@@ -57,7 +54,7 @@ export function FirmStatsPanel({
   return (
     <Panel
       title="Надёжность фирм"
-      description={data ? `Подтверждение рынком за ${data.followDays} дн · база ${pct(base)}` : "Подтверждение рынком"}
+      description={data ? `Подтверждение рынком за ${data.followDays} дн · база ${fmtRate(base)}` : "Подтверждение рынком"}
       icon={Building2}
       actions={
         data ? (
@@ -90,7 +87,7 @@ export function FirmStatsPanel({
                     active && "bg-primary/10 ring-1 ring-primary/30",
                   )}
                 >
-                  <ProgressRing value={f.confirmRate ?? 0} max={1} size={34} stroke={3} tone={confirmTone(f, base)} ariaLabel={`Подтверждаемость ${pct(f.confirmRate)}`} label={f.confirmRate == null ? "—" : Math.round(f.confirmRate * 100)} />
+                  <ProgressRing value={f.confirmRate ?? 0} max={1} size={34} stroke={3} tone={confirmTone(f, base)} ariaLabel={`Подтверждаемость ${fmtRate(f.confirmRate)}`} label={f.confirmRate == null ? "—" : Math.round(f.confirmRate * 100)} />
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium text-foreground" title={firm}>{firm}</span>
                     <span className="block truncate text-2xs text-muted-foreground tabular-nums">
@@ -208,7 +205,7 @@ export function FirmWeightPanel({
                   <span className="w-16 shrink-0 text-right tabular-nums">
                     <span className={cn("block text-sm font-semibold", r >= 1.5 ? "text-purple" : "text-foreground")}>×{r.toFixed(1)}</span>
                     <span className="block text-2xs text-muted-foreground">
-                      {f.rating.hitRate != null ? `${Math.round(f.rating.hitRate * 100)}% · ` : ""}n={f.rating.n}
+                      {f.rating.hitRate != null ? `${fmtRate(f.rating.hitRate)} · ` : ""}n={f.rating.n}
                     </span>
                   </span>
                 </button>
@@ -273,7 +270,7 @@ export function FirmStatsSheet({
         <SheetHeader>
           <SheetTitle>Надёжность аналитических фирм</SheetTitle>
           <SheetDescription>
-            {data ? `${data.days} дн · ${data.totalActions.toLocaleString("ru-RU")} действий · базовая подтверждаемость ${pct(base)}` : "Загрузка…"}
+            {data ? `${data.days} дн · ${fmtCount(data.totalActions)} действий · базовая подтверждаемость ${fmtRate(base)}` : "Загрузка…"}
           </SheetDescription>
         </SheetHeader>
         <div className="glass-panel flex items-start gap-2 rounded-xl p-3 text-xs text-muted-foreground">
@@ -331,16 +328,16 @@ export function FirmStatsSheet({
                       </td>
                       <td className="text-right">{f.total}</td>
                       <td className="text-right">
-                        <div className="font-medium">{f.evaluated >= 5 ? pct(f.confirmRate) : "—"}</div>
+                        <div className="font-medium">{f.evaluated >= 5 ? fmtRate(f.confirmRate) : "—"}</div>
                         {e != null && <Delta value={e} suffix=" п.п." precision={0} showIcon={false} bare className="text-2xs" />}
                       </td>
                       <td className="text-right">
                         {f.ratingEvaluated >= 3 ? (
-                          <span>{pct(f.ratingConfirmRate)} <span className="text-2xs text-muted-foreground">n={f.ratingEvaluated}</span></span>
+                          <span>{fmtRate(f.ratingConfirmRate)} <span className="text-2xs text-muted-foreground">n={f.ratingEvaluated}</span></span>
                         ) : <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="text-right"><Delta value={f.avgPtChange} suffix="%" bare showIcon={false} /></td>
-                      <td className="text-right">{pct(f.premarketShare)}</td>
+                      <td className="text-right">{fmtRate(f.premarketShare)}</td>
                       {hasW && (
                         <td className="text-right">
                           {wOk ? (
@@ -351,8 +348,8 @@ export function FirmStatsSheet({
                         </td>
                       )}
                       {hasW && (
-                        <td className="text-right" title={wOk ? `Средний ход в сторону рейтинга ${fmtPct(w!.rating.avgSignedDay)}` : undefined}>
-                          {wOk ? pct(w!.rating.hitRate) : <span className="text-muted-foreground">—</span>}
+                        <td className="text-right" title={wOk ? `Средний ход в сторону рейтинга ${fmtPct(w!.rating.avgSignedDay, 1)}` : undefined}>
+                          {wOk ? fmtRate(w!.rating.hitRate) : <span className="text-muted-foreground">—</span>}
                         </td>
                       )}
                     </tr>

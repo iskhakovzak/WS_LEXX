@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { useToast } from "@/hooks/use-toast";
 
 /** Default undo window. UndoToast uses the same default. */
@@ -58,11 +58,7 @@ export function useUndoDelete(onRestore?: () => void, options?: Options) {
     setRestoring(true);
     clearTimeout(cur.timer);
     try {
-      const r = await fetch(`${BASE}/api/${cur.section}/${cur.id}/restore`, { method: "POST" });
-      if (!r.ok) {
-        const body: { error?: string } = await r.json().catch(() => ({}));
-        throw new Error(body.error ?? `Статус ${r.status}`);
-      }
+      await http.post(`/api/${cur.section}/${cur.id}/restore`);
       onRestore?.();
       toast({ title: `${cur.label} восстановлено` });
     } catch (e) {

@@ -19,9 +19,11 @@ import { toast } from "@/hooks/use-toast";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  PATTERN_SHORT, fmtDateShort, fmtUsd, fmtUsdCompact, pluralDays, pluralTrades, useCreateTrigger, useDeleteTrigger,
+  PATTERN_SHORT, useCreateTrigger, useDeleteTrigger,
   useTriggers, useUpdateTrigger, type BehaviorTrigger, type PatternKey, type Range, type TriggerKind, type TriggerKindDef,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -190,18 +192,18 @@ const TriggerRow = React.memo(function TriggerRow({
           ev.fires > 0 ? (
             <div className="flex flex-col gap-1.5">
               <p className="text-xs text-muted-foreground">
-                За период сработал бы <span className="font-medium tabular-nums text-foreground">{ev.fires}</span> раз в {pluralDays(ev.days)};
-                под триггером {pluralTrades(ev.trades)} с нетто{" "}
-                <span className={cn("font-medium tabular-nums", toneText(toneOf(ev.net)))}>{fmtUsd(ev.net)}</span>
-                {ev.net != null && ev.net < 0 && <> — соблюдение сохранило бы около {fmtUsd(-ev.net, { sign: false, digits: 0 })}</>}.
+                За период сработал бы <span className="font-medium tabular-nums text-foreground">{ev.fires}</span> раз в {commonI18n.t("units.days", { count: ev.days })};
+                под триггером {commonI18n.t("units.trades", { count: ev.trades })} с нетто{" "}
+                <span className={cn("font-medium tabular-nums", toneText(toneOf(ev.net)))}>{fmtUsd(ev.net, { signed: true, decimals: "auto" })}</span>
+                {ev.net != null && ev.net < 0 && <> — соблюдение сохранило бы около {fmtUsd(-ev.net, { decimals: 0 })}</>}.
               </p>
               <div className="flex flex-wrap items-center gap-1">
                 {ev.recentDates.slice(-10).map((d) => (
                   onPickDay ? (
                     <button key={d} type="button" onClick={() => onPickDay(d)} className="rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs tabular-nums text-muted-foreground hover:text-foreground" title={`Показать ${d} на ленте сессии`}>
-                      {fmtDateShort(d)}
+                      {fmtDate(d, "dayMonthNumeric")}
                     </button>
-                  ) : <Pill key={d} tone="neutral">{fmtDateShort(d)}</Pill>
+                  ) : <Pill key={d} tone="neutral">{fmtDate(d, "dayMonthNumeric")}</Pill>
                 ))}
                 {ev.examples.length > 0 && (
                   <button type="button" onClick={() => setShowEx((v) => !v)} aria-expanded={showEx} className="ml-1 text-xs text-primary underline-offset-2 hover:underline">
@@ -217,9 +219,9 @@ const TriggerRow = React.memo(function TriggerRow({
                   {ev.examples.map((e) => (
                     <li key={e.id}>
                       <Link href={links.trade(e.id)} className="flex min-h-8 items-center gap-2 rounded-lg px-2 hover:bg-[var(--glass-hover-bg)]">
-                        <span className="w-11 tabular-nums text-muted-foreground">{fmtDateShort(e.date)}</span>
+                        <span className="w-11 tabular-nums text-muted-foreground">{fmtDate(e.date, "dayMonthNumeric")}</span>
                         <span className="w-12 font-medium">{e.ticker}</span>
-                        <span className={cn("w-14 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsdCompact(e.net)}</span>
+                        <span className={cn("w-14 text-right tabular-nums", toneText(toneOf(e.net)))}>{fmtUsd(e.net, { signed: true, compact: true })}</span>
                         <span className="min-w-0 flex-1 truncate text-muted-foreground">{e.note}</span>
                       </Link>
                     </li>
@@ -274,7 +276,7 @@ export function TriggersPanel({ trader, range, onPickDay }: { trader: string | n
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <p className="text-xs text-muted-foreground">
-          Проверка по истории сделок за период{d.tradingDays ? ` (${pluralDays(d.tradingDays)})` : ""}; уведомлений в реальном времени нет.
+          Проверка по истории сделок за период{d.tradingDays ? ` (${commonI18n.t("units.days", { count: d.tradingDays })})` : ""}; уведомлений в реальном времени нет.
         </p>
         {canEdit && !adding && (
           <Button size="sm" variant="outline" className="ml-auto" onClick={() => setAdding(true)}>

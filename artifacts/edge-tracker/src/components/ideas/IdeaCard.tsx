@@ -4,9 +4,10 @@ import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { LevelsBar } from "./LevelsBar";
 import {
-  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, fmtPrice, fmtValidUntil, ideaHorizon, horizonLabel, fmtR, ideaPlan, initials, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone,
+  QUALITY_TONE, SIDE_TONE, STAGE_BY_KEY, ideaHorizon, horizonLabel, ideaPlan, initials, linkedR, normalizeTradeResult, relTime, rrTone, scoreTone,
   type IdeaTracking, type Stage, type TradeIdea,
 } from "./model";
+import { fmtDate, fmtPrice, fmtR } from "@/lib/format";
 
 const ACCENT_BAR: Record<Tone, string> = {
   up: "bg-up",
@@ -52,13 +53,13 @@ export function OutcomeChips({ idea, tracking }: { idea: TradeIdea; tracking?: I
       <Pill key="trade" tone={o === "win" ? "up" : o === "loss" ? "down" : o === "open" ? "accent" : "neutral"}>
         <Briefcase className="h-3 w-3" aria-hidden="true" />
         {label}
-        {r != null && Number.isFinite(r) && <span className="opacity-90">{fmtR(r, 2)}</span>}
+        {r != null && Number.isFinite(r) && <span className="opacity-90">{fmtR(r)}</span>}
       </Pill>,
     );
   }
   if (tracking?.hit) {
     const isStop = tracking.hit === "stop";
-    const when = tracking.hitAt ? new Date(tracking.hitAt).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "";
+    const when = tracking.hitAt ? fmtDate(tracking.hitAt, "dayMonth") : "";
     chips.push(
       <Pill key="hit" tone={isStop ? "down" : "up"}>
         {isStop ? <ShieldAlert className="h-3 w-3" aria-hidden="true" /> : <Target className="h-3 w-3" aria-hidden="true" />}
@@ -71,13 +72,13 @@ export function OutcomeChips({ idea, tracking }: { idea: TradeIdea; tracking?: I
     chips.push(
       <Pill key="live" tone={tracking.rNow > 0 ? "up" : tracking.rNow < 0 ? "down" : "neutral"}>
         <span className="h-1.5 w-1.5 rounded-full bg-current motion-safe:animate-pulse" aria-hidden="true" />
-        {fmtPrice(tracking.price)} · {fmtR(tracking.rNow)}
+        {fmtPrice(tracking.price)} · {fmtR(tracking.rNow, 1)}
       </Pill>,
     );
   }
   if (idea.expired && !idea.linkedTrade && !tracking?.hit) {
     chips.push(
-      <span key="expired" title={idea.validUntil ? `Действовала до ${fmtValidUntil(idea.validUntil)}` : undefined}>
+      <span key="expired" title={idea.validUntil ? `Действовала до ${fmtDate(idea.validUntil, "dayMonth")}` : undefined}>
         <Pill tone="neutral"><Hourglass className="h-3 w-3" aria-hidden="true" />Истекла</Pill>
       </span>,
     );

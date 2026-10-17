@@ -5,7 +5,8 @@ import { Switch, Route, Redirect, Router as WouterRouter, useLocation, useSearch
 import { QueryClient, QueryClientProvider, MutationCache } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { toast } from "@/hooks/use-toast";
-import { humanizeApiError, isAuthError, isClientError } from "@/lib/api-errors";
+import { humanizeApiError, isAuthError, retryDelay, shouldRetryQuery } from "@/lib/api/errors";
+import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
@@ -56,6 +57,7 @@ const Scaling = lazy(L["/scaling"]);
 const WeeklyReview = lazy(L["/weekly-review"]);
 const Notifications = lazy(L["/notifications"]);
 const Simulator = lazy(L["/simulator"]);
+const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
 const Benchmark = lazy(L["/benchmark"]);
@@ -72,7 +74,7 @@ const AcademyLesson = lazy(L["/academy/lesson"]);
 const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
 
 const queryClient = new QueryClient({
-  // Any mutation without its own onError gets one Russian toast (lib/api-errors). 401s are
+  // Any mutation without its own onError gets one toast in the UI language (lib/api/errors). 401s are
   // skipped here: the auth context already shows «Сессия истекла» and returns to the login screen.
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
@@ -82,11 +84,12 @@ const queryClient = new QueryClient({
   }),
   defaultOptions: {
     queries: {
-      staleTime: 30_000,
+      staleTime: STALE.default,
       gcTime: 300_000,
       refetchOnWindowFocus: false,
-      // One retry for flaky network/5xx; a 401/403/404/422 answer will not change on retry.
-      retry: (failureCount, error) => failureCount < 1 && !isClientError(error),
+      // Network / 5xx: up to 2 retries with backoff; a 401/403/404/422 answer will not change on retry.
+      retry: shouldRetryQuery,
+      retryDelay,
     },
     mutations: {
       retry: false,
@@ -178,6 +181,7 @@ function Router() {
           <Route path="/weekly-review" component={WeeklyReview} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
+          <Route path="/what-if" component={WhatIf} />
           <Route path="/behavior" component={Behavior} />
           <Route path="/day-report" component={DayReport} />
           <Route path="/benchmark" component={Benchmark} />

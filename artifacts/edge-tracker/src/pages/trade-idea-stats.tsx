@@ -4,24 +4,25 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertTriangle, ArrowLeft, Award, BarChart3, Download, Lightbulb, MinusCircle, ThumbsDown, ThumbsUp, Users, X,
 } from "lucide-react";
-import { BASE } from "@/lib/api";
 import { links } from "@/lib/links";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Page, PageHeader, Panel, Pill, Segmented, SortableTh, StatCard, StatGrid, toneOf, toneText, useTableSort, type Tone } from "@/components/ds";
-import { OutcomeBar, Sparkline, downloadCsv, fetchJson, fmtR, pluralRu, useStoredState } from "@/components/ratings/shared";
-import { IDEAS_KEY, useTracking } from "@/components/ideas/hooks";
+import { OutcomeBar, Sparkline, downloadCsv, useStoredState } from "@/components/ratings/shared";
+import { useTracking } from "@/components/ideas/hooks";
+import { tradeIdeasQuery } from "@/lib/api/queries";
 import { IdeaCalibration } from "@/components/ratings/idea-calibration";
 import {
   authorStats, bucketOf, calibVerdict, calibrationOf, enrichIdea,
   type AuthorStats, type EnrichedIdea, type OutcomeBasis, type TradeIdea,
 } from "@/components/ratings/idea-metrics";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtDate, fmtNum, fmtR, fmtRate, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const PERIODS = [
   { value: "30", label: "30 дней" },
@@ -64,13 +65,6 @@ const AUTHOR_ACCESSORS: Record<SortKey | "trader" | "best", (a: AuthorStats) => 
   best: (a) => a.best?.r ?? null,
 };
 
-const pct = (v: number | null) => (v == null ? "—" : `${Math.round(v * 100)}%`);
-/** "2026-10-12" → "12 окт." (NY calendar date, no TZ shift). */
-const shortDate = (d: string) => {
-  const t = new Date(`${d}T12:00:00Z`);
-  return Number.isNaN(t.getTime()) ? d : t.toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" });
-};
-
 /** Period start on the NY trading calendar (idea dates are NY dates, so a local-midnight cutoff would drift by a day). */
 function cutoff(period: Period): string | null {
   if (period === "all") return null;
@@ -106,11 +100,7 @@ export default function TradeIdeaStats() {
   const byPrice = basis === "price";
 
   // Same cache entry as the ideas board (no second 90 KB download when coming from /trade-ideas).
-  const { data, isLoading, error, refetch } = useQuery<TradeIdea[]>({
-    queryKey: IDEAS_KEY,
-    queryFn: () => fetchJson<TradeIdea[]>(`${BASE}/api/trade-ideas`),
-    staleTime: 30_000,
-  });
+  const { data, isLoading, error, refetch } = useQuery(tradeIdeasQuery<TradeIdea>());
   const tracking = useTracking(byPrice && !!data?.length);
   const trackItems = tracking.data?.items;
 
@@ -228,18 +218,18 @@ export default function TradeIdeaStats() {
         <>
           <StatGrid className="xl:grid-cols-5">
             <StatCard label="Идей" value={overall.ideas} hint={`${overall.published} опубликовано · ${periodText}`} icon={Lightbulb} />
-            <StatCard label="Конверсия в сделку" value={pct(overall.conversion)} hint={`${overall.converted} ${pluralRu(overall.converted, "сделка", "сделки", "сделок")}`} />
+            <StatCard label="Конверсия в сделку" value={fmtRate(overall.conversion)} hint={`${commonI18n.t("units.trades", { count: overall.converted })}`} />
             {byPrice ? (
               <StatCard
                 label="Цель раньше стопа"
-                value={trackingPending ? "…" : pct(overall.hitRate)}
+                value={trackingPending ? "…" : fmtRate(overall.hitRate)}
                 tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
                 hint={`${overall.wins} ${pluralRu(overall.wins, "цель", "цели", "целей")} · ${overall.losses} ${pluralRu(overall.losses, "стоп", "стопа", "стопов")}${overall.open ? ` · ${overall.open} в работе` : ""}`}
               />
             ) : (
               <StatCard
                 label="Hit rate"
-                value={pct(overall.hitRate)}
+                value={fmtRate(overall.hitRate)}
                 tone={overall.hitRate == null ? "neutral" : overall.hitRate >= 0.5 ? "up" : "down"}
                 hint={`${overall.wins} / ${overall.losses} / ${overall.be}${overall.open ? ` · ${overall.open} откр.` : ""}`}
               />
@@ -252,7 +242,7 @@ export default function TradeIdeaStats() {
             />
             <StatCard
               label="Калибровка скора"
-              value={calib.r == null ? "—" : `${calib.r >= 0 ? "+" : "−"}${Math.abs(calib.r).toFixed(2)}`}
+              value={fmtNum(calib.r, { signed: true })}
               tone={verdict.tone === "warn" ? "warn" : verdict.tone}
               hint={verdict.text}
             />
@@ -308,7 +298,7 @@ export default function TradeIdeaStats() {
                               {i.setupQuality && <Pill tone="purple" className="px-1.5 py-0 text-2xs">{i.setupQuality}</Pill>}
                             </div>
                             {(() => {
-                              const meta = `${i.trader ?? "—"} · ${shortDate(i.date)}${i.score != null ? ` · скор ${i.score}` : ""}${i.setup ? ` · ${i.setup}` : ""}`;
+                              const meta = `${i.trader ?? "—"} · ${fmtDate(i.date, "dayMonth")}${i.score != null ? ` · скор ${i.score}` : ""}${i.setup ? ` · ${i.setup}` : ""}`;
                               return <div className="truncate text-xs text-muted-foreground" title={meta}>{meta}</div>;
                             })()}
                           </div>
@@ -358,10 +348,10 @@ export default function TradeIdeaStats() {
                               </button>
                             </td>
                             <td className="px-2 py-2.5 text-right tabular-nums">{a.ideas}</td>
-                            <td className="px-2 py-2.5 text-right tabular-nums">{pct(a.conversion)}</td>
+                            <td className="px-2 py-2.5 text-right tabular-nums">{fmtRate(a.conversion)}</td>
                             <td className="px-2 py-2.5">
                               <div className="ml-auto flex w-28 flex-col items-end gap-1">
-                                <span className={cn("tabular-nums", a.hitRate == null ? "text-muted-foreground" : a.hitRate >= 0.5 ? "text-up" : "text-down")}>{pct(a.hitRate)}</span>
+                                <span className={cn("tabular-nums", a.hitRate == null ? "text-muted-foreground" : a.hitRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(a.hitRate)}</span>
                                 <OutcomeBar wins={a.wins} losses={a.losses} be={a.be} open={a.open} className="w-full" />
                               </div>
                             </td>
@@ -371,7 +361,7 @@ export default function TradeIdeaStats() {
                             <td className="px-2 py-2.5 text-right" title={v.text}>
                               {a.calib.r == null
                                 ? <span className="text-xs text-muted-foreground">{a.calib.n}/5</span>
-                                : <Pill tone={v.tone}>{`${a.calib.r >= 0 ? "+" : "−"}${Math.abs(a.calib.r).toFixed(2)}`}</Pill>}
+                                : <Pill tone={v.tone}>{fmtNum(a.calib.r, { signed: true })}</Pill>}
                             </td>
                             <td className="px-2 py-2.5">
                               {a.best ? (
@@ -406,8 +396,8 @@ export default function TradeIdeaStats() {
                           <OutcomeBar wins={a.wins} losses={a.losses} be={a.be} open={a.open} />
                           <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground tabular-nums">
                             <span>{a.ideas} идей</span>
-                            <span>конв. {pct(a.conversion)}</span>
-                            <span>hit {pct(a.hitRate)}</span>
+                            <span>конв. {fmtRate(a.conversion)}</span>
+                            <span>hit {fmtRate(a.hitRate)}</span>
                             {a.best && <span>лучшая {a.best.ticker} {fmtR(a.best.r, 1)}</span>}
                           </div>
                         </button>
@@ -442,7 +432,7 @@ export default function TradeIdeaStats() {
                       </div>
                       <div>
                         <div className="text-2xs text-muted-foreground">Hit rate</div>
-                        <div className={cn("font-semibold tabular-nums", c.hitRate == null ? "text-muted-foreground" : c.hitRate >= 0.5 ? "text-up" : "text-down")}>{pct(c.hitRate)}</div>
+                        <div className={cn("font-semibold tabular-nums", c.hitRate == null ? "text-muted-foreground" : c.hitRate >= 0.5 ? "text-up" : "text-down")}>{fmtRate(c.hitRate)}</div>
                       </div>
                       <div>
                         <div className="text-2xs text-muted-foreground">Ср. R</div>

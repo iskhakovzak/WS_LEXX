@@ -2,7 +2,9 @@
  * Client for /api/propreports/* (types mirror artifacts/api-server/src/routes/propreports.ts).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { apiUrl } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
+import { fmtPrice as fmtPriceBase } from "@/lib/format";
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type Session = "premarket" | "regular" | "postmarket";
@@ -139,39 +141,11 @@ export function isPerformanceResponse(r: ImportResponse): r is PerformancePrevie
   return (r as PerformancePreview).kind === "performance";
 }
 
-export class HttpError extends Error {
-  constructor(public status: number, message: string) { super(message); }
-}
-
-async function readError(r: Response): Promise<HttpError> {
-  let msg = `HTTP ${r.status}`;
-  try {
-    const j = (await r.json()) as { error?: string; issues?: Array<{ path: string; message: string }> };
-    if (j?.error) msg = j.error;
-    if (j?.issues?.length) msg += `: ${j.issues.map((i) => `${i.path} ${i.message}`).join("; ")}`;
-  } catch { /* not json */ }
-  return new HttpError(r.status, msg);
-}
-
-export async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(apiUrl(path));
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-export async function sendJson<T>(path: string, method: "POST" | "PUT" | "DELETE", body?: unknown): Promise<T> {
-  const r = await fetch(apiUrl(path), { method, headers: body !== undefined ? { "Content-Type": "application/json" } : undefined, body: body !== undefined ? JSON.stringify(body) : undefined });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
-}
-
-export async function sendFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
+function sendFile<T>(path: string, file: File, fields: Record<string, string>): Promise<T> {
   const fd = new FormData();
   fd.append("file", file);
   for (const [k, v] of Object.entries(fields)) if (v) fd.append(k, v);
-  const r = await fetch(apiUrl(path), { method: "POST", body: fd });
-  if (!r.ok) throw await readError(r);
-  return (await r.json()) as T;
+  return http.post<T>(path, fd);
 }
 
 export const prKeys = {
@@ -186,28 +160,28 @@ export const prKeys = {
   groups: ["propreports", "groups"] as const,
 };
 
-const retry = (count: number, err: unknown) => !(err instanceof HttpError && [401, 403, 404, 503].includes(err.status)) && count < 2;
+const retry = (count: number, err: unknown) => !(err instanceof ApiError && [401, 403, 404, 503].includes(err.status)) && count < 2;
 
 export function useStatus() {
-  return useQuery({ queryKey: prKeys.status, queryFn: () => getJson<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
+  return useQuery({ queryKey: prKeys.status, queryFn: () => http.get<Status>("/api/propreports/status"), refetchInterval: 60_000, retry });
 }
 export function useAccounts() {
-  return useQuery({ queryKey: prKeys.accounts, queryFn: () => getJson<AccountMapping[]>("/api/propreports/accounts"), retry });
+  return useQuery({ queryKey: prKeys.accounts, queryFn: () => http.get<AccountMapping[]>("/api/propreports/accounts"), retry });
 }
 export function useRuns(limit = 50) {
-  return useQuery({ queryKey: [...prKeys.runs, limit], queryFn: () => getJson<SyncRun[]>(`/api/propreports/runs?limit=${limit}`), retry });
+  return useQuery({ queryKey: [...prKeys.runs, limit], queryFn: () => http.get<SyncRun[]>(`/api/propreports/runs?limit=${limit}`), retry });
 }
 export function usePending() {
-  return useQuery({ queryKey: prKeys.reconcile, queryFn: () => getJson<PendingTrade[]>("/api/propreports/reconcile"), retry });
+  return useQuery({ queryKey: prKeys.reconcile, queryFn: () => http.get<PendingTrade[]>("/api/propreports/reconcile"), retry });
 }
 export function useSettings(enabled = true) {
-  return useQuery({ queryKey: prKeys.settings, queryFn: () => getJson<SettingsView>("/api/propreports/settings"), enabled, retry });
+  return useQuery({ queryKey: prKeys.settings, queryFn: () => http.get<SettingsView>("/api/propreports/settings"), enabled, retry });
 }
 export function useSaveSettings() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: (body: { groupId?: string | null; fees?: { columns?: Record<string, { include: boolean; label?: string | null }>; confirm?: boolean }; unmatched?: string[] }) =>
-      sendJson<SettingsView>("/api/propreports/settings", "PUT", body),
+      http.put<SettingsView>("/api/propreports/settings", body),
     onSuccess: () => { qc.invalidateQueries({ queryKey: prKeys.settings }); qc.invalidateQueries({ queryKey: prKeys.status }); },
   });
 }
@@ -215,26 +189,26 @@ export function useSaveSettings() {
 export function useCheckConnection() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: () => getJson<CheckResult>("/api/propreports/check"),
+    mutationFn: () => http.get<CheckResult>("/api/propreports/check"),
     onSettled: () => { qc.invalidateQueries({ queryKey: prKeys.status }); qc.invalidateQueries({ queryKey: prKeys.settings }); },
   });
 }
 export function useGroups(enabled: boolean) {
-  return useQuery({ queryKey: prKeys.groups, queryFn: () => getJson<GroupsResponse>("/api/propreports/groups"), enabled, staleTime: 5 * 60_000, retry });
+  return useQuery({ queryKey: prKeys.groups, queryFn: () => http.get<GroupsResponse>("/api/propreports/groups"), enabled, staleTime: STALE.long, retry });
 }
 export function usePerformance(trader?: string | null, id?: number | null) {
   const qs = new URLSearchParams();
   if (trader) qs.set("trader", trader);
   if (id) qs.set("id", String(id));
   const q = qs.toString();
-  return useQuery({ queryKey: [...prKeys.performance, trader ?? "", id ?? 0], queryFn: () => getJson<PerformanceResponse>(`/api/propreports/performance${q ? `?${q}` : ""}`), retry });
+  return useQuery({ queryKey: [...prKeys.performance, trader ?? "", id ?? 0], queryFn: () => http.get<PerformanceResponse>(`/api/propreports/performance${q ? `?${q}` : ""}`), retry });
 }
 export function useDeletePerformance() {
   const qc = useQueryClient();
-  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/performance/${id}`, "DELETE"), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.performance }) });
+  return useMutation({ mutationFn: (id: number) => http.del<{ ok: true }>(`/api/propreports/performance/${id}`), onSuccess: () => qc.invalidateQueries({ queryKey: prKeys.performance }) });
 }
 export function useUsers(enabled: boolean) {
-  return useQuery({ queryKey: prKeys.users, queryFn: () => getJson<UserRow[]>("/api/users"), enabled, staleTime: 5 * 60_000, retry });
+  return useQuery({ queryKey: prKeys.users, queryFn: () => http.get<UserRow[]>("/api/users"), enabled, staleTime: STALE.long, retry });
 }
 
 /** Invalidate everything that a write to the journal can change. */
@@ -252,19 +226,19 @@ export function useSaveAccounts() {
   const invalidate = useInvalidateAll();
   return useMutation({
     mutationFn: (accounts: Array<Partial<AccountMapping> & { account: string }>) =>
-      sendJson<AccountMapping[]>("/api/propreports/accounts", "PUT", { accounts: accounts.map((a) => ({ account: a.account, trader: a.trader ?? null, active: a.active, notes: a.notes ?? null, aliases: a.aliases })) }),
+      http.put<AccountMapping[]>("/api/propreports/accounts", { accounts: accounts.map((a) => ({ account: a.account, trader: a.trader ?? null, active: a.active, notes: a.notes ?? null, aliases: a.aliases })) }),
     onSuccess: invalidate,
   });
 }
 
 export function useRefreshAccounts() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: () => sendJson<{ fetched: number; accounts: AccountMapping[] }>("/api/propreports/accounts/refresh", "POST", {}), onSuccess: invalidate });
+  return useMutation({ mutationFn: () => http.post<{ fetched: number; accounts: AccountMapping[] }>("/api/propreports/accounts/refresh", {}), onSuccess: invalidate });
 }
 
 export function useDeleteAccount() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (id: number) => sendJson<{ ok: true }>(`/api/propreports/accounts/${id}`, "DELETE"), onSuccess: invalidate });
+  return useMutation({ mutationFn: (id: number) => http.del<{ ok: true }>(`/api/propreports/accounts/${id}`), onSuccess: invalidate });
 }
 
 export function useImportFile() {
@@ -279,45 +253,30 @@ export function useImportFile() {
 export function useApiSync() {
   const invalidate = useInvalidateAll();
   return useMutation({
-    mutationFn: (body: { from: string; to: string; dryRun: boolean }) => sendJson<Preview | ApplyResult>("/api/propreports/sync", "POST", body),
+    mutationFn: (body: { from: string; to: string; dryRun: boolean }) => http.post<Preview | ApplyResult>("/api/propreports/sync", body),
     onSuccess: (_d, v) => { if (!v.dryRun) invalidate(); },
   });
 }
 
 export function useMerge() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: ({ pendingId, tradeId }: { pendingId: number; tradeId: number }) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/${tradeId}/merge`, "POST", { pendingId }), onSuccess: invalidate });
+  return useMutation({ mutationFn: ({ pendingId, tradeId }: { pendingId: number; tradeId: number }) => http.post<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/${tradeId}/merge`, { pendingId }), onSuccess: invalidate });
 }
 export function useKeepSeparate() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/pending/${pendingId}/keep`, "POST", {}), onSuccess: invalidate });
+  return useMutation({ mutationFn: (pendingId: number) => http.post<{ ok: true; tradeId: number }>(`/api/propreports/reconcile/pending/${pendingId}/keep`, {}), onSuccess: invalidate });
 }
 export function useDismissPending() {
   const invalidate = useInvalidateAll();
-  return useMutation({ mutationFn: (pendingId: number) => sendJson<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`, "DELETE"), onSuccess: invalidate });
+  return useMutation({ mutationFn: (pendingId: number) => http.del<{ ok: true }>(`/api/propreports/reconcile/pending/${pendingId}`), onSuccess: invalidate });
 }
 
 // ─── formatting helpers ───
-const usd2 = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 2 });
-export function fmtUsd(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = usd2.format(Math.abs(v));
-  return v < 0 ? `−${s}` : s;
-}
-export function fmtSigned(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (v === 0) return "$0.00";
-  return `${v > 0 ? "+" : ""}${fmtUsd(v)}`;
-}
+// Money and dates: @/lib/format (fmtUsd, fmtUsd(v, { signed: true }), fmtDate(iso, "numericDateTime")).
+/** Broker precision with trailing zeros trimmed: 2 decimals from $100, else 4 ("12.3456", "12.5"). */
+/** Broker precision: 4 decimals under $100, 2 from $100, trailing zeros dropped ("12.5", "12.3456", "150"). */
 export function fmtPrice(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return v.toFixed(v >= 100 ? 2 : 4).replace(/\.?0+$/, "");
-}
-export function fmtDateTime(iso: string | null | undefined): string {
-  if (!iso) return "—";
-  const d = new Date(iso);
-  if (!Number.isFinite(d.getTime())) return iso;
-  return d.toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+  return fmtPriceBase(v, { decimals: v != null && Math.abs(v) >= 100 ? 2 : 4, trim: true });
 }
 export function agoText(iso: string | null | undefined): string {
   if (!iso) return "ещё не было";

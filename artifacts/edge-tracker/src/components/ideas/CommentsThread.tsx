@@ -6,11 +6,13 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
-import { useIdeaComments, sendJson, IDEAS_KEY } from "./hooks";
+import { useIdeaComments, IDEAS_KEY } from "./hooks";
 import { Avatar } from "./IdeaCard";
 import { relTime, type TradeIdea } from "./model";
+import { fmtDate } from "@/lib/format";
 
 const MAX_LEN = 5000;
 
@@ -38,14 +40,14 @@ export function CommentsThread({
   };
 
   const add = useMutation({
-    mutationFn: () => sendJson(`${BASE}/api/trade-ideas/${idea.id}/comments`, "POST", { text: text.trim(), is_private: isPrivate }),
+    mutationFn: () => http.post(`/api/trade-ideas/${idea.id}/comments`, { text: text.trim(), is_private: isPrivate }),
     onSuccess: () => { setText(""); refresh(); },
-    onError: (e: Error) => toast({ title: "Комментарий не отправлен", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Комментарий не отправлен", description: humanizeApiError(e), variant: "destructive" }),
   });
   const del = useMutation({
-    mutationFn: (commentId: number) => sendJson(`${BASE}/api/trade-ideas/${idea.id}/comments/${commentId}`, "DELETE"),
+    mutationFn: (commentId: number) => http.del(`/api/trade-ideas/${idea.id}/comments/${commentId}`),
     onSuccess: refresh,
-    onError: (e: Error) => toast({ title: "Не удалось удалить", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: "Не удалось удалить", description: humanizeApiError(e), variant: "destructive" }),
   });
 
   React.useEffect(() => {
@@ -106,7 +108,7 @@ export function CommentsThread({
                     {isAuthor && <Pill tone="accent" className="px-1.5 py-0 text-2xs">автор</Pill>}
                     {c.is_private && <span className="flex items-center gap-0.5 text-[hsl(var(--chart-3))]"><Lock className="h-3 w-3" aria-hidden="true" />личный</span>}
                     {c.source === "telegram" && <span>· Telegram</span>}
-                    <time dateTime={c.created_at} title={new Date(c.created_at).toLocaleString("ru-RU")}>· {relTime(c.created_at)}</time>
+                    <time dateTime={c.created_at} title={fmtDate(c.created_at, "shortDateTime")}>· {relTime(c.created_at)}</time>
                     {canDelete && (
                       <button
                         type="button"

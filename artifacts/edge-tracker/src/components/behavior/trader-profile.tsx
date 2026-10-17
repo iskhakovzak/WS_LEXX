@@ -9,9 +9,10 @@ import { Delta, Pill, ProgressRing, Tile, toneOf, toneText, type Tone } from "@/
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  PATTERN_SHORT, PATTERN_TONE, fmtMinutes, fmtPct, fmtUsd, fmtUsdCompact, monthLabel, pluralDays, pluralTrades,
-  type BehaviorReport, type Bucket, type ProfileBucket, type TraderProfile,
+  PATTERN_SHORT, PATTERN_TONE, fmtMinutes, monthLabel, type BehaviorReport, type Bucket, type ProfileBucket, type TraderProfile,
 } from "./api";
+import { fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Метка часа из движка («10» → «10:00–11:00»). */
 export function hourLabel(label: string): string {
@@ -48,8 +49,8 @@ function BucketLine({ kind, b, label, auto }: { kind: "best" | "worst"; b: Bucke
         </div>
       </div>
       <div className="shrink-0 text-right">
-        <div className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(b.net)))}>{fmtUsd(b.net, { digits: 0 })}</div>
-        <div className="text-xs tabular-nums text-muted-foreground">{pluralTrades(b.n)} · ср. {fmtUsdCompact(b.avgNet)}</div>
+        <div className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(b.net)))}>{fmtUsd(b.net, { signed: true, decimals: 0 })}</div>
+        <div className="text-xs tabular-nums text-muted-foreground">{commonI18n.t("units.trades", { count: b.n })} · ср. {fmtUsd(b.avgNet, { signed: true, compact: true })}</div>
       </div>
     </div>
   );
@@ -64,8 +65,8 @@ function StyleTile({ s }: { s: TraderProfile["style"] }) {
       <dl className="mt-auto grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
         <div><dt className="text-muted-foreground">Медиана удержания</dt><dd className="tabular-nums text-foreground">{fmtMinutes(s.medianHoldMin)}</dd></div>
         <div><dt className="text-muted-foreground">Сделок в день</dt><dd className="tabular-nums text-foreground">{s.tradesPerDay}</dd></div>
-        <div><dt className="text-muted-foreground">Короче 5 мин</dt><dd className="tabular-nums text-foreground">{fmtPct(s.scalpShare)}</dd></div>
-        <div><dt className="text-muted-foreground">С переносом</dt><dd className="tabular-nums text-foreground">{fmtPct(s.carryShare)}</dd></div>
+        <div><dt className="text-muted-foreground">Короче 5 мин</dt><dd className="tabular-nums text-foreground">{fmtRate(s.scalpShare)}</dd></div>
+        <div><dt className="text-muted-foreground">С переносом</dt><dd className="tabular-nums text-foreground">{fmtRate(s.carryShare)}</dd></div>
       </dl>
     </Tile>
   );
@@ -77,7 +78,7 @@ function HoursTile({ h }: { h: TraderProfile["hours"] }) {
       <TileHead icon={Clock}>Часы входа (Нью-Йорк)</TileHead>
       <BucketLine kind="best" b={h.best} label={h.best ? hourLabel(h.best.label) : ""} />
       <BucketLine kind="worst" b={h.worst} label={h.worst ? hourLabel(h.worst.label) : ""} />
-      <p className="mt-auto text-xs text-muted-foreground">Учитываются часы с ≥ {pluralTrades(h.minN)}.</p>
+      <p className="mt-auto text-xs text-muted-foreground">Учитываются часы с ≥ {commonI18n.t("units.trades", { count: h.minN })}.</p>
     </Tile>
   );
 }
@@ -90,7 +91,7 @@ function SetupsTile({ st, onOpenSetups }: { st: TraderProfile["setups"]; onOpenS
       {none ? (
         <div className="flex flex-1 flex-col justify-between gap-2">
           <p className="text-xs text-muted-foreground">
-            {st.coverage > 0 ? `Размечено ${fmtPct(st.coverage)} сделок — мало для сравнения (нужно ≥ ${st.minN} на сетап).` : "Сделки без сетапа. Авто-классификатор подскажет сетап по свечам дня."}
+            {st.coverage > 0 ? `Размечено ${fmtRate(st.coverage)} сделок — мало для сравнения (нужно ≥ ${st.minN} на сетап).` : "Сделки без сетапа. Авто-классификатор подскажет сетап по свечам дня."}
           </p>
           {onOpenSetups && <Button size="sm" variant="outline" className="self-start" onClick={onOpenSetups}>Разметить сетапы</Button>}
         </div>
@@ -99,7 +100,7 @@ function SetupsTile({ st, onOpenSetups }: { st: TraderProfile["setups"]; onOpenS
           <BucketLine kind="best" b={st.best} label={st.best?.label ?? ""} auto={(st.best?.auto ?? 0) > 0} />
           <BucketLine kind="worst" b={st.worst} label={st.worst?.label ?? ""} auto={(st.worst?.auto ?? 0) > 0} />
           <p className="mt-auto text-xs text-muted-foreground">
-            Размечено {fmtPct(st.coverage)} сделок{st.autoShare > 0 ? `, из них авто ${fmtPct(st.autoShare)}` : ""}.
+            Размечено {fmtRate(st.coverage)} сделок{st.autoShare > 0 ? `, из них авто ${fmtRate(st.autoShare)}` : ""}.
           </p>
         </>
       )}
@@ -139,26 +140,26 @@ function HabitsTile({ hb, net }: { hb: TraderProfile["habits"]; net: number | nu
         <div className="min-w-0">
           <TileHead icon={Wallet}>Стоимость плохих привычек за период</TileHead>
           <div className="mt-1 flex flex-wrap items-baseline gap-x-3 gap-y-1">
-            <span className={cn("text-[32px] font-semibold leading-none tabular-nums tracking-tight", toneText(toneOf(hb.total)))}>{fmtUsd(hb.total, { digits: 0 })}</span>
+            <span className={cn("text-[32px] font-semibold leading-none tabular-nums tracking-tight", toneText(toneOf(hb.total)))}>{fmtUsd(hb.total, { signed: true, decimals: 0 })}</span>
             <span className="text-xs text-muted-foreground">
-              {pluralTrades(hb.trades)} за {pluralDays(hb.days)} против среднего «чистой» сделки {fmtUsd(hb.baselineAvg)}
+              {commonI18n.t("units.trades", { count: hb.trades })} за {commonI18n.t("units.days", { count: hb.days })} против среднего «чистой» сделки {fmtUsd(hb.baselineAvg, { signed: true, decimals: "auto" })}
             </span>
           </div>
           {without != null && hb.total != null && hb.total < 0 && (
             <p className="mt-1 text-xs text-muted-foreground">
-              Нетто периода {fmtUsd(net, { digits: 0 })}; без этих привычек было бы около <span className="font-medium tabular-nums text-foreground">{fmtUsd(without, { digits: 0 })}</span>.
+              Нетто периода {fmtUsd(net, { signed: true, decimals: 0 })}; без этих привычек было бы около <span className="font-medium tabular-nums text-foreground">{fmtUsd(without, { signed: true, decimals: 0 })}</span>.
             </p>
           )}
         </div>
         {hb.monthly.length > 1 && (
-          <div className="flex shrink-0 flex-col gap-1" role="img" aria-label={`Стоимость привычек по месяцам: ${hb.monthly.map((m) => `${monthLabel(m.month)} ${fmtUsdCompact(m.cost)}`).join(", ")}`}>
+          <div className="flex shrink-0 flex-col gap-1" role="img" aria-label={`Стоимость привычек по месяцам: ${hb.monthly.map((m) => `${monthLabel(m.month)} ${fmtUsd(m.cost, { signed: true, compact: true })}`).join(", ")}`}>
             <div className="flex h-12 items-end gap-1">
               {hb.monthly.map((m) => {
                 const v = m.cost ?? 0;
                 return (
                   <span
                     key={m.month}
-                    title={`${monthLabel(m.month)}: ${fmtUsd(m.cost)} · ${pluralTrades(m.n)}`}
+                    title={`${monthLabel(m.month)}: ${fmtUsd(m.cost, { signed: true, decimals: "auto" })} · ${commonI18n.t("units.trades", { count: m.n })}`}
                     className={cn("w-5 rounded-t-sm", v < 0 ? "bg-down/70" : "bg-up/60")}
                     style={{ height: `${Math.max(6, (Math.abs(v) / monthMax) * 100)}%` }}
                   />
@@ -182,13 +183,13 @@ function HabitsTile({ hb, net }: { hb: TraderProfile["habits"]; net: number | nu
                   style={{ width: `${(Math.abs(p.cost) / maxAbs) * 100}%` }}
                 />
               </span>
-              <span className="w-16 shrink-0 text-right tabular-nums text-down">{fmtUsdCompact(p.cost)}</span>
+              <span className="w-16 shrink-0 text-right tabular-nums text-down">{fmtUsd(p.cost, { signed: true, compact: true })}</span>
             </li>
           ))}
         </ul>
       )}
       <p className="text-xs text-muted-foreground">
-        Сделки всех паттернов со стоимостью &lt; 0 считаются один раз (сумма стоимостей отдельных паттернов — {fmtUsd(hb.sumOfCosts, { digits: 0 })} — двойной счёт пересечений).
+        Сделки всех паттернов со стоимостью &lt; 0 считаются один раз (сумма стоимостей отдельных паттернов — {fmtUsd(hb.sumOfCosts, { signed: true, decimals: 0 })} — двойной счёт пересечений).
       </p>
     </Tile>
   );

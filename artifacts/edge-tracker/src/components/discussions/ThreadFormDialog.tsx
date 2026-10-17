@@ -12,7 +12,8 @@ import { TagSelector } from "@/components/tag-selector";
 import { VoiceRecorder } from "@/components/voice-recorder";
 import { ScreenshotFields } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { RichText } from "./RichText";
 import { AudiencePicker } from "./AudiencePicker";
 import { sortTokens, useAudienceOptions } from "./audience";
@@ -105,19 +106,13 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
     const flags = [hasTag(editing.tags, TAG_PINNED) && TAG_PINNED, hasTag(editing.tags, TAG_RESOLVED) && TAG_RESOLVED].filter(Boolean) as string[];
     setPatching(true);
     try {
-      const r = await fetch(`${BASE}/api/discussions/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ topic, type: form.type, ticker, notes, tags: [...form.tags, ...flags].join(", "), audience: form.audience }),
-      });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось сохранить");
+      await http.patch(`/api/discussions/${editing.id}`, { topic, type: form.type, ticker, notes, tags: [...form.tags, ...flags].join(", "), audience: form.audience });
       invalidate();
       toast({ title: "Тема обновлена" });
       onSaved(editing.id);
       onClose();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось сохранить"), variant: "destructive" });
     } finally {
       setPatching(false);
     }

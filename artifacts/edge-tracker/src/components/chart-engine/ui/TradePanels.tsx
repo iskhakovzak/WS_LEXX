@@ -6,7 +6,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 import type { Fill, PositionState, Side } from "../types";
 import { fmtEtTime, formatDuration } from "../lib/time";
-import { fmtMoney, fmtPct, fmtPrice, fmtQty, fmtR } from "../lib/format";
+import { fmtCount, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { KIND_LABEL, isOpening } from "../lib/position";
 import { fmtPerShare, type TradeSummary } from "../lib/trade-summary";
 
@@ -49,7 +49,7 @@ export function PositionCard({ position, side, mark, risk, redacted, sinceEntry,
   const perShare = open && mark != null ? dir * (mark - (position!.avg as number)) : null;
   const r = perShare != null && risk ? perShare / risk : null;
   const usd = !redacted && position ? position.total : null;
-  const status = !entered ? "Ждём входа" : open ? `${side === "short" ? "Шорт" : "Лонг"}${!redacted && position && position.qty > 0 ? ` ${fmtQty(position.qty)} шт.` : ""}` : "Позиция закрыта";
+  const status = !entered ? "Ждём входа" : open ? `${side === "short" ? "Шорт" : "Лонг"}${!redacted && position && position.qty > 0 ? ` ${fmtCount(Math.round(position.qty))} шт.` : ""}` : "Позиция закрыта";
   return (
     <AsideCard title="Позиция">
       <div className="flex items-end justify-between gap-2">
@@ -60,7 +60,7 @@ export function PositionCard({ position, side, mark, risk, redacted, sinceEntry,
       </div>
       <Row label="Средняя">{open ? fmtPrice(position!.avg) : "—"}</Row>
       <Row label="На акцию"><span className={tone(perShare)}>{open ? fmtPerShare(perShare) : "—"}</span></Row>
-      {!redacted && <Row label="P&L, $" title="Зафиксированное + плавающее по закрытию бара"><span className={tone(usd)}>{entered && usd != null ? fmtMoney(usd) : "—"}</span></Row>}
+      {!redacted && <Row label="P&L, $" title="Зафиксированное + плавающее по закрытию бара"><span className={tone(usd)}>{entered && usd != null ? fmtUsd(usd, { signed: true, decimals: "auto" }) : "—"}</span></Row>}
       <Row label="В сделке">{sinceEntry != null && open ? formatDuration(sinceEntry) : "—"}</Row>
     </AsideCard>
   );
@@ -82,7 +82,7 @@ export function FillLog({ fills, cursor, redacted, onJump }: { fills: readonly F
                 <span className={cn("h-2.5 w-1 shrink-0 rounded-full", isOpening(f.kind) ? "bg-primary" : "bg-purple")} aria-hidden="true" />
                 <span className="font-medium">{KIND_LABEL[f.kind]}</span>
                 <span className="tabular-nums text-muted-foreground">{f.time != null ? fmtEtTime(f.time, true) : "—"}</span>
-                <span className="ml-auto tabular-nums">{fmtPrice(f.price)}{!redacted && f.qty != null ? <span className="text-muted-foreground"> × {fmtQty(f.qty)}</span> : null}</span>
+                <span className="ml-auto tabular-nums">{fmtPrice(f.price)}{!redacted && f.qty != null ? <span className="text-muted-foreground"> × {fmtCount(Math.round(f.qty))}</span> : null}</span>
               </button>
             </li>
           ))}
@@ -104,7 +104,7 @@ export function SummaryCard({ s, redacted, onJumpBest }: { s: TradeSummary; reda
         <span className={cn("text-2xl font-semibold leading-none tabular-nums", tone(s.perShare))}>{headline}</span>
       </div>
       <Row label="На акцию"><span className={tone(s.perShare)}>{fmtPerShare(s.perShare)}</span> <span className="text-muted-foreground">({fmtPct(s.pct)})</span></Row>
-      {!redacted && s.pnlUsd != null && <Row label="P&L, $"><span className={tone(s.pnlUsd)}>{fmtMoney(s.pnlUsd)}</span></Row>}
+      {!redacted && s.pnlUsd != null && <Row label="P&L, $"><span className={tone(s.pnlUsd)}>{fmtUsd(s.pnlUsd, { signed: true, decimals: "auto" })}</span></Row>}
       {s.holdSec != null && <Row label="Держал">{formatDuration(s.holdSec)}</Row>}
       <div className="my-1 h-px bg-[var(--glass-border)]" />
       <p className="text-xs font-semibold text-muted-foreground">Что было можно{s.approximate ? " (≈)" : ""}</p>

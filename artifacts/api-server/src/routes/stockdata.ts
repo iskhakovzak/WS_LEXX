@@ -2,6 +2,7 @@ import { Router, type IRouter } from "express";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { getTickerFundamentals } from "../lib/marketDataService";
+import { badRequest } from "../lib/http";
 
 type YahooStockMeta = {
   regularMarketPrice?: number;
@@ -39,7 +40,7 @@ const router: IRouter = Router();
 
 router.get("/stockdata/fundamentals", asyncHandler(async (req, res): Promise<void> => {
   const ticker = String(req.query.ticker || "").toUpperCase().trim();
-  if (!ticker) { res.status(400).json({ error: "ticker required" }); return; }
+  if (!ticker) throw badRequest("TICKER_REQUIRED");
   const force = req.query.force === "1" || req.query.force === "true";
   const data = await getTickerFundamentals(ticker, { force });
   if (!data) { res.status(404).json({ error: "No fundamentals available", ticker }); return; }

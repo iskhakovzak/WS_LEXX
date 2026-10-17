@@ -1,5 +1,6 @@
 import { BookOpen, Shield, Sparkles, Star, Target, TrendingUp, type LucideIcon } from "lucide-react";
 import { nyDate, addDays } from "@/lib/trading-date";
+import { fmtDate } from "@/lib/format";
 
 export type Rating = {
   id: number; trader: string; curator: string; week: string;
@@ -35,7 +36,7 @@ export function shiftWeek(week: string, delta: number): string {
 }
 
 export function weekLabel(week: string): string {
-  const fmt = (iso: string) => new Date(`${iso}T12:00:00Z`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", timeZone: "UTC" }).replace(".", "");
+  const fmt = (iso: string) => fmtDate(iso.slice(0, 10), "dayMonth").replace(".", "");
   return `${fmt(week)} – ${fmt(addDays(week, 4))}`;
 }
 

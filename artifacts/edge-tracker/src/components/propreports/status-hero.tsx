@@ -6,6 +6,7 @@ import { Clock, KeyRound, Plug, PlugZap, Server } from "lucide-react";
 import { Pill, StatCard, StatGrid } from "@/components/ds";
 import { Kbd } from "@/components/ds";
 import { agoText, untilText, type Status } from "./api";
+import { fmtCount } from "@/lib/format";
 
 export function StatusHero({ status, actions }: { status: Status; actions?: React.ReactNode }) {
   const { config, scheduler, accounts, trades, lastRun, connection } = status;
@@ -55,7 +56,7 @@ export function StatusHero({ status, actions }: { status: Status; actions?: Reac
         <StatCard icon={Clock} label="Последняя синхронизация" value={lastSync ? agoText(lastSync) : "ещё не было"} hint={lastRun ? `${lastRun.source === "api" ? "API" : "файл"} · ${lastRun.status === "ok" ? "успешно" : lastRun.status === "partial" ? "частично" : lastRun.status === "error" ? "ошибка" : "идёт"}` : undefined} tone={lastRun?.status === "error" ? "down" : "neutral"} />
         <StatCard icon={Server} label="Следующий авто-синк" value={scheduler.enabled ? untilText(scheduler.nextRunAt) : "выключен"} hint={scheduler.enabled ? `каждые ${scheduler.minutes} мин` : "не настроен"} />
         <StatCard label="Счета" value={`${accounts.mapped} / ${accounts.total}`} hint={accounts.unmapped.length ? `без трейдера: ${accounts.unmapped.join(", ")}` : "все привязаны"} tone={accounts.unmapped.length ? "warn" : "neutral"} />
-        <StatCard label="Сделок из брокера" value={Number(trades.imported).toLocaleString("ru-RU")} hint={trades.legacyWithoutId ? `${trades.legacyWithoutId} из старого импорта без ключа — привяжутся при следующем импорте` : status.pendingCount ? `${status.pendingCount} ждут сверки` : "всё синхронизировано"} tone={status.pendingCount ? "warn" : "neutral"} />
+        <StatCard label="Сделок из брокера" value={fmtCount(Number(trades.imported))} hint={trades.legacyWithoutId ? `${trades.legacyWithoutId} из старого импорта без ключа — привяжутся при следующем импорте` : status.pendingCount ? `${status.pendingCount} ждут сверки` : "всё синхронизировано"} tone={status.pendingCount ? "warn" : "neutral"} />
       </StatGrid>
     </section>
   );

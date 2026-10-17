@@ -14,20 +14,18 @@ import { Pill, Segmented, StatRow, toneOf, toneText } from "@/components/ds";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { gpApi, gpKeys } from "@/components/game-plan/types";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { netPnl, signedR } from "@/lib/trade-math";
 import { nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/auth-context";
 import { canModifyOwned } from "@/lib/ownership";
-import {
-  LISTS, LIST_LABELS, SCORE_LABELS, apiJson, copyText, fmtMoney, fmtPct, fmtPrice, fmtVol, inPlayReasons, keyLevels,
-  parseBreakdown, splitTags, timeAgoRu, type ListName, type WatchlistItem,
-} from "./lib";
+import { LISTS, LIST_LABELS, SCORE_LABELS, copyText, inPlayReasons, keyLevels, parseBreakdown, splitTags, timeAgoRu, type ListName, type WatchlistItem } from "./lib";
 import { ScoreRing } from "./visuals";
 import { TickerChart } from "./TickerChart";
-import { fmtDay } from "./bits";
+import { fmtCompact, fmtDate, fmtPct, fmtPrice, fmtRate, fmtUsd } from "@/lib/format";
 import type { RowActions } from "./WatchlistRow";
 import type { WlRow } from "./WatchlistTable";
 
@@ -69,7 +67,7 @@ function ScoreBreakdown({ raw, scoredAt }: { raw: string | null; scoredAt: strin
           </div>
         );
       })}
-      {scoredAt && <p className="pt-1 text-xs text-muted-foreground">Рассчитан {new Date(scoredAt).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</p>}
+      {scoredAt && <p className="pt-1 text-xs text-muted-foreground">Рассчитан {fmtDate(scoredAt, "dateTime")}</p>}
     </div>
   );
 }
@@ -135,9 +133,9 @@ export function WatchlistDetailSheet({
   }, [toast]);
   const ideas = useQuery<IdeaLite[]>({
     queryKey: ["trade-ideas", "by-ticker", ticker],
-    queryFn: () => apiJson<IdeaLite[]>(`${BASE}/api/trade-ideas?ticker=${encodeURIComponent(ticker)}`),
+    queryFn: ({ signal }) => http.get<IdeaLite[]>(`/api/trade-ideas?ticker=${encodeURIComponent(ticker)}`, { signal }),
     enabled: !!ticker,
-    staleTime: 60_000,
+    staleTime: STALE.short,
   });
   const myPlan = useQuery({
     queryKey: gpKeys.my(planDay),
@@ -222,10 +220,10 @@ export function WatchlistDetailSheet({
 
             {/* Market strip */}
             <div className="grid grid-cols-3 gap-x-5 whitespace-nowrap rounded-2xl bg-[var(--glass-bg)] px-4 py-2 sm:grid-cols-[repeat(4,auto)_minmax(0,1fr)]">
-              <StatRow label="Гэп" value={fmtPct(q?.gapPct)} tone={toneOf(q?.gapPct)} className="flex-col items-start gap-0.5" />
+              <StatRow label="Гэп" value={fmtPct(q?.gapPct, 1)} tone={toneOf(q?.gapPct)} className="flex-col items-start gap-0.5" />
               <StatRow label="rVol" value={q?.relativeVolume != null ? `${q.relativeVolume.toFixed(2)}×` : "—"} tone={q?.relativeVolume != null && q.relativeVolume >= 1.5 ? "accent" : "neutral"} className="flex-col items-start gap-0.5" />
-              <StatRow label="ATR 14д" value={q?.atr != null ? `${q.atr.toFixed(2)}${q.price ? ` · ${((q.atr / q.price) * 100).toFixed(1)}%` : ""}` : "—"} className="flex-col items-start gap-0.5" />
-              <StatRow label="Объём" value={`${fmtVol(q?.volume)} / ${fmtVol(q?.avgVolume)}`} className="flex-col items-start gap-0.5" />
+              <StatRow label="ATR 14д" value={q?.atr != null ? `${fmtPrice(q.atr)}${q.price ? ` · ${fmtPct((q.atr / q.price) * 100, { decimals: 1, signed: false })}` : ""}` : "—"} className="flex-col items-start gap-0.5" />
+              <StatRow label="Объём" value={`${fmtCompact(q?.volume)} / ${fmtCompact(q?.avgVolume)}`} className="flex-col items-start gap-0.5" />
               <StatRow label="52н" value={q?.low52w != null && q?.high52w != null ? `${fmtPrice(q.low52w)}–${fmtPrice(q.high52w)}` : "—"} className="hidden flex-col items-start gap-0.5 sm:flex" />
             </div>
             {reasons.length > 0 && (
@@ -238,8 +236,8 @@ export function WatchlistDetailSheet({
             {canEdit && (
               <div className="flex flex-wrap items-center gap-2">
                 <Button className="bg-primary-solid" onClick={() => actions.addToPlan(item)} disabled={planBusy || inPlan} title={inPlan
-                  ? `Уже в твоём плане ${planDay === today ? "на сегодня" : `на ${fmtDay(planDay)}`}`
-                  : `Добавить в «В игре» твоего плана ${planDay === today ? "дня" : `на ${fmtDay(planDay)}`}`}>
+                  ? `Уже в твоём плане ${planDay === today ? "на сегодня" : `на ${fmtDate(planDay.slice(0, 10), "dayMonthNumeric")}`}`
+                  : `Добавить в «В игре» твоего плана ${planDay === today ? "дня" : `на ${fmtDate(planDay.slice(0, 10), "dayMonthNumeric")}`}`}>
                   {inPlan ? <Check className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
                   {inPlan ? "В плане дня" : planBusy ? "Добавляем…" : "В план дня"}
                 </Button>
@@ -308,7 +306,7 @@ export function WatchlistDetailSheet({
                               {fmtPrice(l.price)}
                             </button>
                           </td>
-                          <td className={cn("py-1.5 text-right", close ? "text-primary" : "text-muted-foreground")}>{l.distPct >= 0 ? "↑" : "↓"} {Math.abs(l.distPct).toFixed(2)}%</td>
+                          <td className={cn("py-1.5 text-right", close ? "text-primary" : "text-muted-foreground")}>{l.distPct >= 0 ? "↑" : "↓"} {fmtPct(Math.abs(l.distPct), { signed: false })}</td>
                           <td className="py-1.5 text-right text-muted-foreground">{l.distAtr != null ? `${l.distAtr.toFixed(2)} ATR` : "—"}</td>
                         </tr>
                       );
@@ -331,11 +329,11 @@ export function WatchlistDetailSheet({
                     <div className="flex flex-wrap items-center gap-2 text-sm">
                       <Pill tone="purple">{row.earnings.callType}</Pill>
                       <span className="text-foreground">{row.earnings.when === "today" ? "Отчёт сегодня" : "Отчёт вчера после закрытия"}</span>
-                      {row.earnings.epsSurprisePct != null && <span className={cn("tabular-nums", toneText(toneOf(row.earnings.epsSurprisePct)))}>EPS {fmtPct(row.earnings.epsSurprisePct)}</span>}
+                      {row.earnings.epsSurprisePct != null && <span className={cn("tabular-nums", toneText(toneOf(row.earnings.epsSurprisePct)))}>EPS {fmtPct(row.earnings.epsSurprisePct, 1)}</span>}
                     </div>
                   )}
                   {!row.earnings && row.upcoming && row.upcoming.date >= today && (
-                    <p className="text-sm text-foreground"><Pill tone="purple" className="mr-2">{row.upcoming.callType}</Pill>Отчёт {fmtDay(row.upcoming.date)}</p>
+                    <p className="text-sm text-foreground"><Pill tone="purple" className="mr-2">{row.upcoming.callType}</Pill>Отчёт {fmtDate(row.upcoming.date.slice(0, 10), "dayMonthNumeric")}</p>
                   )}
                   {item.catalyst && <p className="whitespace-pre-wrap text-sm text-foreground"><span className="text-muted-foreground">Катализатор: </span>{item.catalyst}</p>}
                   {tags.length > 0 && <div className="flex flex-wrap gap-1">{tags.map((t) => <Pill key={t} tone="neutral">{t}</Pill>)}</div>}
@@ -358,14 +356,14 @@ export function WatchlistDetailSheet({
                   {losing && (
                     <div className="mb-3 flex items-start gap-2 rounded-xl border border-down/30 bg-down/10 px-3 py-2 text-sm" role="note">
                       <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />
-                      <span className="text-foreground">На этом тикере ты в минусе <span className="font-semibold text-down">{fmtMoney(h.net)}</span> за {h.n} сд. Уменьши размер или торгуй только A-сетап.</span>
+                      <span className="text-foreground">На этом тикере ты в минусе <span className="font-semibold text-down">{fmtUsd(h.net, { signed: true, decimals: 0 })}</span> за {h.n} сд. Уменьши размер или торгуй только A-сетап.</span>
                     </div>
                   )}
                   <div className="mb-2 grid grid-cols-2 gap-x-6 whitespace-nowrap">
-                    <StatRow label="Net" value={fmtMoney(h.net)} tone={toneOf(h.net)} />
-                    <StatRow label="WR" value={h.wr != null ? `${Math.round(h.wr * 100)}%` : "—"} />
+                    <StatRow label="Net" value={fmtUsd(h.net, { signed: true, decimals: 0 })} tone={toneOf(h.net)} />
+                    <StatRow label="WR" value={fmtRate(h.wr)} />
                     <StatRow label="Сделок (W/L)" value={`${h.n} (${h.wins}/${h.losses})`} />
-                    <StatRow label="Средняя" value={fmtMoney(h.avg)} tone={toneOf(h.avg)} />
+                    <StatRow label="Средняя" value={fmtUsd(h.avg, { signed: true, decimals: 0 })} tone={toneOf(h.avg)} />
                   </div>
                   <ul className="divide-y divide-border/40">
                     {h.trades.slice(0, 8).map((t) => {
@@ -375,11 +373,11 @@ export function WatchlistDetailSheet({
                       return (
                         <li key={t.id}>
                           <Link href={links.trade(t.id)} className="flex items-center gap-3 rounded-lg px-1 py-1.5 text-sm tabular-nums hover:bg-[var(--glass-hover-bg)]">
-                            <span className="w-12 text-muted-foreground">{fmtDay(t.date)}</span>
+                            <span className="w-12 text-muted-foreground">{fmtDate(t.date.slice(0, 10), "dayMonthNumeric")}</span>
                             <span className="inline-flex w-16 items-center gap-1 text-muted-foreground">{s.Icon && <s.Icon className="h-3.5 w-3.5" aria-hidden="true" />}{s.text}</span>
                             <span className="min-w-0 flex-1 truncate text-muted-foreground">{t.setup || ""}</span>
                             {r != null && <span className={cn("w-14 text-right", toneText(toneOf(r)))}>{r >= 0 ? "+" : "−"}{Math.abs(r).toFixed(1)}R</span>}
-                            <span className={cn("w-20 text-right font-medium", toneText(toneOf(n)))}>{fmtMoney(n)}</span>
+                            <span className={cn("w-20 text-right font-medium", toneText(toneOf(n)))}>{fmtUsd(n, { signed: true, decimals: 0 })}</span>
                           </Link>
                         </li>
                       );

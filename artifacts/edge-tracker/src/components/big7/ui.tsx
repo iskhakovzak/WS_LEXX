@@ -3,14 +3,13 @@
  */
 import { toneOf, toneText } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtSigned, type MergedCatalyst } from "./lib";
+import { type MergedCatalyst } from "./lib";
+import { fmtNum, fmtPct, fmtPrice } from "@/lib/format";
 import { big7Today, tradingDaysUntil } from "./lib";
 import type { LevelPoint } from "./context";
 
-export const fmtPx = (n: number | null | undefined) =>
-  n == null || !Number.isFinite(n) ? "—" : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-export const fmtRvol = (n: number | null | undefined) => (n == null || !Number.isFinite(n) ? "—" : `${n.toFixed(n >= 10 ? 0 : 1)}×`);
+/** RVOL «1.8×» / «12×» (whole from 10×). */
+export const fmtRvol = (n: number | null | undefined) => fmtNum(n, { decimals: n != null && n >= 10 ? 0 : 1, suffix: "×" });
 
 /** Signed, coloured, tabular number. `dim` keeps it neutral below |threshold|. */
 export function Signed({ value, digits = 2, suffix = "%", threshold = 0, className }: {
@@ -20,7 +19,7 @@ export function Signed({ value, digits = 2, suffix = "%", threshold = 0, classNa
   const tone = v == null || Math.abs(v) < threshold ? "neutral" : toneOf(v);
   return (
     <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : toneText(tone), className)}>
-      {fmtSigned(v, digits, suffix)}
+      {fmtNum(v, { decimals: digits, signed: true, suffix })}
     </span>
   );
 }
@@ -46,10 +45,10 @@ export function RsBar({ value, max = 2, className }: { value: number | null | un
 export function LevelChip({ level, dir }: { level: LevelPoint | null; dir: "up" | "down" }) {
   if (!level) return <span className="text-muted-foreground">—</span>;
   return (
-    <span className="inline-flex items-baseline gap-1 whitespace-nowrap tabular-nums" title={`${level.label} ${fmtPx(level.price)}`}>
+    <span className="inline-flex items-baseline gap-1 whitespace-nowrap tabular-nums" title={`${level.label} ${fmtPrice(level.price)}`}>
       <span className={cn("text-xs", dir === "up" ? "text-up" : "text-down")} aria-hidden="true">{dir === "up" ? "↑" : "↓"}</span>
       <span className="text-foreground">{level.label}</span>
-      <span className="text-xs text-muted-foreground">{fmtSigned(level.distPct, 2)}</span>
+      <span className="text-xs text-muted-foreground">{fmtPct(level.distPct, 2)}</span>
     </span>
   );
 }

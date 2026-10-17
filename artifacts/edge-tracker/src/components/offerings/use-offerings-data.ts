@@ -1,7 +1,10 @@
 import { createElement, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
+import { humanizeApiError, isNotFound } from "@/lib/api/errors";
+import { KEYS, STALE } from "@/lib/api/keys";
+import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
 import { useToast } from "@/hooks/use-toast";
 import { ToastAction, type ToastActionElement } from "@/components/ui/toast";
 import { links } from "@/lib/links";
@@ -13,26 +16,14 @@ import type {
 } from "./types";
 import { watchCatalyst } from "./types";
 
-type HttpError = Error & { status?: number };
-const statusOf = (e: unknown): number | undefined => (e as HttpError | null)?.status;
-/** New endpoints answer 404 until the API is rebuilt: never retry those. */
-const retryUnless404 = (count: number, err: unknown) => statusOf(err) !== 404 && count < 1;
-export const isMissingEndpoint = (e: unknown) => statusOf(e) === 404;
+/** New endpoints answer 404 until the API is rebuilt: never retry those (old-API fallback, phase E removes). */
+const retryUnless404 = (count: number, err: unknown) => !isNotFound(err) && count < 1;
+export const isMissingEndpoint = (e: unknown) => isNotFound(e);
 
-async function getJson<T>(path: string): Promise<T> {
-  const r = await fetch(`${BASE}${path}`);
-  if (!r.ok) {
-    const body = (await r.json().catch(() => null)) as { error?: string; message?: string } | null;
-    const err = new Error(body?.message || body?.error || `HTTP ${r.status}`) as Error & { status?: number };
-    err.status = r.status;
-    throw err;
-  }
-  return r.json() as Promise<T>;
-}
 
 const watchQuery = (day: string) => ({
   queryKey: ["offerings", day] as const,
-  queryFn: () => getJson<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),
+  queryFn: () => http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}`),
   staleTime: 5 * 60_000,
 });
 
@@ -60,7 +51,7 @@ export function useOfferingsDays(days: string[], enabled: boolean) {
 export function useTickerHistory(ticker: string | null) {
   return useQuery<TickerHistory>({
     queryKey: ["offerings", "history", ticker],
-    queryFn: () => getJson<TickerHistory>(`/api/offerings/history/${encodeURIComponent(ticker ?? "")}`),
+    queryFn: () => http.get<TickerHistory>(`/api/offerings/history/${encodeURIComponent(ticker ?? "")}`),
     enabled: !!ticker,
     staleTime: 60 * 60_000,
     retry: retryUnless404,
@@ -74,7 +65,7 @@ export function useTickerHistory(ticker: string | null) {
 export function useMyOfferingStats(win: 0 | 1, enabled: boolean) {
   return useQuery<MyOfferingStats>({
     queryKey: ["offerings", "my-stats", win],
-    queryFn: () => getJson<MyOfferingStats>(`/api/offerings/my-stats?window=${win}`),
+    queryFn: () => http.get<MyOfferingStats>(`/api/offerings/my-stats?window=${win}`),
     enabled,
     staleTime: 10 * 60_000,
     retry: retryUnless404,
@@ -86,7 +77,7 @@ export function useMyOfferingStats(win: 0 | 1, enabled: boolean) {
 export function useIpoCalendar(enabled: boolean) {
   return useQuery<IpoCalendarResponse>({
     queryKey: ["offerings", "ipo-calendar"],
-    queryFn: () => getJson<IpoCalendarResponse>("/api/offerings/ipo-calendar"),
+    queryFn: () => http.get<IpoCalendarResponse>("/api/offerings/ipo-calendar"),
     enabled,
     staleTime: 10 * 60_000,
     retry: retryUnless404,
@@ -100,7 +91,7 @@ export function useMyTickerTrades(ticker: string | null, trader: string | null |
     queryFn: async () => {
       const qs = new URLSearchParams({ ticker: ticker ?? "", limit: "50", sort: "date", dir: "desc" });
       if (trader) qs.set("trader", trader);
-      const r = await getJson<{ items: TradeRow[] }>(`/api/trades/page?${qs}`);
+      const r = await http.get<{ items: TradeRow[] }>(`/api/trades/page?${qs}`);
       return r.items ?? [];
     },
     enabled: !!ticker,
@@ -111,21 +102,19 @@ export function useMyTickerTrades(ticker: string | null, trader: string | null |
 
 /** Force-refresh bypassing the 10-min server cache (server allows it once per minute). */
 export async function fetchOfferingsFresh(day: string): Promise<OfferingsResponse> {
-  return getJson<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}&force=1`);
+  return http.get<OfferingsResponse>(`/api/offerings/watch?day=${encodeURIComponent(day)}&force=1`);
 }
+
+const toOpenTrades = (rows: OpenTradeRow[]): OpenTrade[] => (Array.isArray(rows) ? (rows as unknown as OpenTrade[]) : []);
 
 /** Open positions (own for traders, desk-wide for curators) and the shared watchlist. */
 export function useExposure() {
-  const trades = useQuery<OpenTrade[]>({
-    queryKey: ["offerings", "open-trades"],
-    queryFn: () => getJson<OpenTrade[]>("/api/trades?result=open"),
-    staleTime: 60_000,
-    retry: 1,
-  });
+  // One cache entry with the analyst page (lib/api/queries).
+  const trades = useQuery({ ...openTradesQuery(), select: toOpenTrades, retry: 1 });
   const watch = useQuery<WatchItem[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => getJson<WatchItem[]>("/api/watchlist"),
-    staleTime: 60_000,
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchItem[]>("/api/watchlist", { signal }),
+    staleTime: STALE.short,
     retry: 1,
   });
   const map = useMemo(() => {
@@ -153,7 +142,7 @@ export function useExposure() {
 export function useTickerDetail(ticker: string | null) {
   return useQuery<TickerDetail>({
     queryKey: ["offerings", "ticker", ticker],
-    queryFn: () => getJson<TickerDetail>(`/api/offerings/ticker/${encodeURIComponent(ticker ?? "")}`),
+    queryFn: () => http.get<TickerDetail>(`/api/offerings/ticker/${encodeURIComponent(ticker ?? "")}`),
     enabled: !!ticker,
     staleTime: 30 * 60_000,
     retry: retryUnless404,
@@ -164,7 +153,7 @@ export function useInsiders(tickers: string[]) {
   const key = tickers.slice(0, 8).join(",");
   return useQuery<{ fetchedAt: number; items: InsiderSummary[]; missing: string[] }>({
     queryKey: ["offerings", "insiders", key],
-    queryFn: () => getJson(`/api/offerings/insiders?tickers=${encodeURIComponent(key)}`),
+    queryFn: () => http.get(`/api/offerings/insiders?tickers=${encodeURIComponent(key)}`),
     enabled: key.length > 0,
     staleTime: 30 * 60_000,
     retry: 1,
@@ -181,35 +170,29 @@ export function useAddToWatchlist() {
   const [, navigate] = useLocation();
   return useMutation({
     mutationFn: async (o: Offering) => {
-      const post = (path: string, body: unknown) => fetch(`${BASE}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
-      });
-      let r = await post("/api/watchlist", {
-        ticker: o.ticker,
-        catalyst: watchCatalyst(o),
-        notes: o.filingUrl ? `SEC: ${o.filingUrl}` : undefined,
-        sector: o.sector ?? undefined,
-        list: "today",
-        inPlay: true,
-      });
-      if (r.status === 409) r = await post("/api/watchlist/quick", { tickers: [o.ticker], list: "today" });
-      if (!r.ok) {
-        const body = (await r.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error || `HTTP ${r.status}`);
+      try {
+        return await http.post("/api/watchlist", {
+          ticker: o.ticker,
+          catalyst: watchCatalyst(o),
+          notes: o.filingUrl ? `SEC: ${o.filingUrl}` : undefined,
+          sector: o.sector ?? undefined,
+          list: "today",
+          inPlay: true,
+        });
+      } catch (e) {
+        if (e instanceof ApiError && e.status === 409) return http.post("/api/watchlist/quick", { tickers: [o.ticker], list: "today" });
+        throw e;
       }
-      return r.json();
     },
     onMutate: async (o) => {
-      await qc.cancelQueries({ queryKey: ["watchlist"] });
-      const prev = qc.getQueryData<WatchItem[]>(["watchlist"]);
-      qc.setQueryData<WatchItem[]>(["watchlist"], (old) => [...(old ?? []), { id: -Date.now(), ticker: o.ticker, status: "watching" }]);
+      await qc.cancelQueries({ queryKey: KEYS.watchlist() });
+      const prev = qc.getQueryData<WatchItem[]>(KEYS.watchlist());
+      qc.setQueryData<WatchItem[]>(KEYS.watchlist(), (old) => [...(old ?? []), { id: -Date.now(), ticker: o.ticker, status: "watching" }]);
       return { prev };
     },
     onError: (e, o, ctx) => {
-      if (ctx?.prev) qc.setQueryData(["watchlist"], ctx.prev);
-      toast({ title: `Не удалось добавить ${o.ticker}`, description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev);
+      toast({ title: `Не удалось добавить ${o.ticker}`, description: humanizeApiError(e), variant: "destructive" });
     },
     onSuccess: (_d, o) => {
       toast({
@@ -218,7 +201,7 @@ export function useAddToWatchlist() {
         action: createElement(ToastAction, { altText: "Открыть в вотчлисте", onClick: () => navigate(links.watchlist(o.ticker)) }, "Открыть") as unknown as ToastActionElement,
       });
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["watchlist"] }),
+    onSettled: () => qc.invalidateQueries({ queryKey: KEYS.watchlist() }),
   });
 }
 

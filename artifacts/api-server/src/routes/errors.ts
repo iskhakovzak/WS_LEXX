@@ -6,6 +6,7 @@ import { can } from "../lib/permissions";
 import { ensureRulesSchema } from "../lib/rulesEngine";
 import { closeDateSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
+import { badRequest, forbidden, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -109,7 +110,7 @@ router.post("/errors", asyncHandler(async (req, res): Promise<void> => {
   let ticker = cleanTicker(body.ticker);
   if (body.tradeId !== undefined && body.tradeId !== null && body.tradeId !== "") {
     const tid = Number(body.tradeId);
-    if (!Number.isInteger(tid) || tid <= 0) { res.status(400).json({ error: "Invalid tradeId" }); return; }
+    if (!Number.isInteger(tid) || tid <= 0) throw badRequest("INVALID_ID");
     const trade = await ownedTrade(tid, trader);
     if (!trade) { res.status(400).json({ error: "Сделка не найдена у этого трейдера" }); return; }
     tradeId = tid;
@@ -124,9 +125,9 @@ router.post("/errors", asyncHandler(async (req, res): Promise<void> => {
 
 router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ trader: tradingErrorsTable.trader }).from(tradingErrorsTable).where(eq(tradingErrorsTable.id, id));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing) throw notFound();
   if (!(await canTouch(req, existing.trader))) { res.status(403).json({ error: "Можно менять только свои ошибки" }); return; }
 
   const updates: Partial<typeof tradingErrorsTable.$inferInsert> = {};
@@ -158,14 +159,14 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
       updates.tradeId = null;
     } else {
       const tid = Number(body.tradeId);
-      if (!Number.isInteger(tid) || tid <= 0) { res.status(400).json({ error: "Invalid tradeId" }); return; }
+      if (!Number.isInteger(tid) || tid <= 0) throw badRequest("INVALID_ID");
       const trade = await ownedTrade(tid, existing.trader);
       if (!trade) { res.status(400).json({ error: "Сделка не найдена у этого трейдера" }); return; }
       updates.tradeId = tid;
       if (body.ticker === undefined) updates.ticker = trade.ticker;
     }
   }
-  if (Object.keys(updates).length === 0) { res.status(400).json({ error: "No fields to update" }); return; }
+  if (Object.keys(updates).length === 0) throw badRequest("NO_FIELDS");
   await db.update(tradingErrorsTable).set(updates).where(eq(tradingErrorsTable.id, id));
   res.json(await loadOne(id));
 }));
@@ -177,9 +178,9 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT * FROM trading_errors WHERE id = $1`, [id]);
-  if (!existing[0]) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing[0]) throw notFound();
   if (!(await canTouch(req, existing[0].trader))) { res.status(403).json({ error: "Можно удалять только свои ошибки" }); return; }
   const client = await pool.connect();
   try {
@@ -203,14 +204,14 @@ router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
 router.post("/errors/:id/restore", asyncHandler(async (req, res): Promise<void> => {
   await ensureRulesSchema();
   const id = Number(req.params.id);
-  if (!Number.isInteger(id) || id <= 0) { res.status(400).json({ error: "Invalid ID" }); return; }
+  if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows } = await pool.query<any>(
     `SELECT id, trader, payload FROM trading_errors_archive WHERE original_id = $1 AND restored_at IS NULL ORDER BY archived_at DESC LIMIT 1`,
     [id],
   );
   const a = rows[0];
-  if (!a) { res.status(404).json({ error: "Not found" }); return; }
-  if (!(await canTouch(req, a.trader))) { res.status(403).json({ error: "Нет доступа" }); return; }
+  if (!a) throw notFound();
+  if (!(await canTouch(req, a.trader))) throw forbidden();
   const p = a.payload ?? {};
   await pool.query(
     `INSERT INTO trading_errors (id, trader, error_type, description, ticker, trade_id, severity, lesson, resolved, created_at)

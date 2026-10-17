@@ -7,7 +7,8 @@ import { normalizeResult } from "@/lib/trade-result";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtR, shortDate } from "./fmt";
+import { shortDate } from "./fmt";
+import { fmtR, fmtUsd } from "@/lib/format";
 import type { RecentTrade } from "./use-dashboard";
 
 const HORIZON_SHORT = { intraday: "", overnight: "овернайт", swing: "свинг" } as const;
@@ -117,9 +118,9 @@ export function RecentTradesPanel({
                   <span className="flex flex-col items-end">
                     <span
                       className={cn("text-sm font-medium tabular-nums", toneText(toneOf(t.pnlNet ?? t.rMultiple)))}
-                      title={t.pnlNet != null ? `${KPI_FORMULAS.netPnl}: брутто ${fmtMoney(t.pnlGross)} − комиссии ${fmtMoney(Math.abs(t.fees))}` : undefined}
+                      title={t.pnlNet != null ? `${KPI_FORMULAS.netPnl}: брутто ${fmtUsd(t.pnlGross, { signed: true })} − комиссии ${fmtUsd(Math.abs(t.fees), { signed: true })}` : undefined}
                     >
-                      {t.pnlNet != null ? fmtMoney(t.pnlNet) : t.rMultiple != null ? fmtR(t.rMultiple) : (t.result ?? "").toLowerCase() === "open" ? "открыта" : "—"}
+                      {t.pnlNet != null ? fmtUsd(t.pnlNet, { signed: true }) : t.rMultiple != null ? fmtR(t.rMultiple) : (t.result ?? "").toLowerCase() === "open" ? "открыта" : "—"}
                     </span>
                     {t.pnlNet != null && t.rMultiple != null && (
                       <span className={cn("text-2xs tabular-nums", toneText(toneOf(t.rMultiple)))}>{fmtR(t.rMultiple)}</span>

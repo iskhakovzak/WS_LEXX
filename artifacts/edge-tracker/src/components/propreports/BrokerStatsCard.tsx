@@ -7,10 +7,10 @@ import { Link } from "wouter";
 import { ArrowRight, Building2 } from "lucide-react";
 import { Panel, StatCard, StatGrid, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
-import { fmtSigned, fmtUsd, usePerformance } from "./api";
+import { usePerformance } from "./api";
+import { fmtCount, fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 
 const toneOf = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
-const dateRu = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: "numeric" });
 
 /** Latest broker report for a trader (null while loading / none). */
 export function useBrokerReport(trader: string | null | undefined) {
@@ -28,7 +28,7 @@ export function BrokerStatsCard({ trader, title, className }: { trader: string |
   return (
     <Panel
       title={title ?? "Брокерская статистика · PropReports"}
-      description={`Счёт ${latest.account} · ${dateRu(latest.periodFrom)} — ${dateRu(latest.periodTo)}${latest.traderName ? ` · ${latest.traderName}` : ""}`}
+      description={`Счёт ${latest.account} · ${fmtDate(latest.periodFrom, "medium")} — ${fmtDate(latest.periodTo, "medium")}${latest.traderName ? ` · ${latest.traderName}` : ""}`}
       icon={Building2}
       className={className}
       actions={
@@ -40,13 +40,13 @@ export function BrokerStatsCard({ trader, title, className }: { trader: string |
       }
     >
       <StatGrid className="md:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="P&L нетто" value={fmtSigned(s.net)} tone={toneOf(s.net)} hint={`брутто ${fmtSigned(s.gross)}`} />
+        <StatCard label="P&L нетто" value={fmtUsd(s.net, { signed: true })} tone={toneOf(s.net)} hint={`брутто ${fmtUsd(s.gross, { signed: true })}`} />
         <StatCard label="Комиссии" value={fmtUsd(s.fees)} tone={s.feesPctOfGross != null && s.feesPctOfGross > 50 ? "warn" : "neutral"}
-          hint={s.feesPctOfGross != null ? `${s.feesPctOfGross.toFixed(0)}% от брутто` : undefined} />
-        <StatCard label="Сделок" value={s.trades.toLocaleString("ru-RU")} hint={`${s.wins} W / ${s.losses} L`} />
-        <StatCard label="Win rate" value={s.winRate != null ? `${s.winRate.toFixed(1)}%` : "—"} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
-        <StatCard label="Long нетто" value={fmtSigned(longNet)} tone={toneOf(longNet)} />
-        <StatCard label="Short нетто" value={fmtSigned(shortNet)} tone={toneOf(shortNet)} />
+          hint={s.feesPctOfGross != null ? `${fmtPct(s.feesPctOfGross, { decimals: 0, signed: false })} от брутто` : undefined} />
+        <StatCard label="Сделок" value={fmtCount(s.trades)} hint={`${s.wins} W / ${s.losses} L`} />
+        <StatCard label="Win rate" value={fmtPct(s.winRate, { decimals: 1, signed: false })} tone={s.winRate != null && s.winRate >= 50 ? "up" : "neutral"} />
+        <StatCard label="Long нетто" value={fmtUsd(longNet, { signed: true })} tone={toneOf(longNet)} />
+        <StatCard label="Short нетто" value={fmtUsd(shortNet, { signed: true })} tone={toneOf(shortNet)} />
       </StatGrid>
     </Panel>
   );

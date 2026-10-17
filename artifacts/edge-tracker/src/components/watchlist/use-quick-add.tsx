@@ -6,16 +6,17 @@ import { useLocation } from "wouter";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { KEYS, STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
-import { LIST_LABELS, apiJson, isListName, jsonInit, type ListName, type WatchlistItem } from "./lib";
+import { LIST_LABELS, isListName, type ListName, type WatchlistItem } from "./lib";
 
 /** ticker → working list of the non-archived rows of the shared watchlist. */
 export function useWatchlistIndex(enabled = true) {
   const q = useQuery<WatchlistItem[]>({
-    queryKey: ["watchlist"],
-    queryFn: () => apiJson<WatchlistItem[]>(`${BASE}/api/watchlist`),
-    staleTime: 60_000,
+    queryKey: KEYS.watchlist(),
+    queryFn: ({ signal }) => http.get<WatchlistItem[]>("/api/watchlist", { signal }),
+    staleTime: STALE.short,
     enabled,
   });
   return React.useMemo(() => {
@@ -37,8 +38,8 @@ export function useQuickAddToWatchlist() {
     const t = ticker.trim().toUpperCase();
     setBusy(t);
     try {
-      await apiJson(`${BASE}/api/watchlist/quick`, jsonInit("POST", { tickers: [t], list }));
-      await qc.invalidateQueries({ queryKey: ["watchlist"] });
+      await http.post("/api/watchlist/quick", { tickers: [t], list });
+      await qc.invalidateQueries({ queryKey: KEYS.watchlist() });
       toast({
         title: `${t} → вотчлист «${LIST_LABELS[list]}»`,
         action: <ToastAction altText="Открыть в вотчлисте" onClick={() => navigate(links.watchlist(t))}>Открыть</ToastAction>,

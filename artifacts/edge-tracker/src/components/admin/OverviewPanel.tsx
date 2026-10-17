@@ -10,13 +10,16 @@ import { QueryError } from "@/components/query-error";
 import { EmptyState, Panel, Pill, StatCard, StatGrid, StatRow, type Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtDateTime, timeAgo, type DeskPulse, type Overview, type RiskDeskLite } from "./api";
+import { timeAgo, type DeskPulse, type Overview, type RiskDeskLite } from "./api";
 import { actorName, describeAudit } from "./audit-text";
 import type { DataCheck, EodStatus, HealthData } from "./console-api";
 import type { TraderFilter } from "./TradersTable";
-import { pluralRu } from "@/components/rules/constants";
+import { fmtCount, fmtDate, pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
-export type AdminTab = "overview" | "people" | "moderation" | "roles" | "data" | "audit";
+/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
+
+export type AdminTab = "overview" | "people" | "moderation" | "roles" | "data" | "audit" | "errors";
 
 function names(list: string[], max = 4) {
   if (list.length <= max) return list.join(", ");
@@ -57,7 +60,7 @@ export function KpiRow({
         icon={Users}
         value={s ? <span>{s.activeToday}<span className="text-base font-medium text-muted-foreground"> / {s.deskTraders}</span></span> : "—"}
         tone={s && s.deskTraders && s.activeToday === s.deskTraders ? "up" : "neutral"}
-        hint={s ? `${s.tradesToday} ${pluralRu(s.tradesToday, "сделка", "сделки", "сделок")} сегодня` : undefined}
+        hint={s ? `${commonI18n.t("units.trades", { count: s.tradesToday })} сегодня` : undefined}
         onClick={() => onGo("people", "traders")}
       />
       <StatCard
@@ -202,17 +205,17 @@ function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; er
             value={run ? (
               <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                 <Pill tone={runTone} dot>{runLabel}</Pill>
-                <span className="tabular-nums" title={run.startedAt ? new Date(run.startedAt).toLocaleString("ru-RU") : undefined}>{timeAgo(run.startedAt)}</span>
+                <span className="tabular-nums" title={run.startedAt ? fmtDate(run.startedAt, "shortDateTimeSeconds") : undefined}>{timeAgo(run.startedAt)}</span>
               </span>
             ) : "ещё не было"}
           />
           {run && (
             <StatRow
               label={run.source === "file" ? "Из файла" : "Через API"}
-              value={<span className="tabular-nums">+{Number(run.inserted).toLocaleString("ru-RU")} · обновлено {Number(run.updated).toLocaleString("ru-RU")}{run.conflicts ? ` · на сверку ${run.conflicts}` : ""}</span>}
+              value={<span className="tabular-nums">+{fmtCount(Number(run.inserted))} · обновлено {fmtCount(Number(run.updated))}{run.conflicts ? ` · на сверку ${run.conflicts}` : ""}</span>}
             />
           )}
-          <StatRow label="Сделок из брокера" value={<span className="tabular-nums">{Number(sy.imported).toLocaleString("ru-RU")}</span>} />
+          <StatRow label="Сделок из брокера" value={<span className="tabular-nums">{fmtCount(Number(sy.imported))}</span>} />
           <StatRow
             label="Счета"
             value={<span className="tabular-nums">{sy.accounts.mapped}/{sy.accounts.total} привязано{sy.unmatched.length ? ` · ${sy.unmatched.length} новых` : ""}</span>}
@@ -221,7 +224,7 @@ function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; er
           <StatRow
             label="Автосинк"
             value={sy.scheduler.enabled
-              ? `каждые ${sy.scheduler.minutes} мин${sy.scheduler.nextRunAt ? ` · след. ${fmtDateTime(sy.scheduler.nextRunAt)}` : ""}`
+              ? `каждые ${sy.scheduler.minutes} мин${sy.scheduler.nextRunAt ? ` · след. ${fmtDate(sy.scheduler.nextRunAt, "numericDateTime")}` : ""}`
               : sy.configured ? "выключен" : "не настроен"}
             tone={sy.scheduler.enabled ? "up" : "neutral"}
           />
@@ -294,7 +297,7 @@ export function OverviewPanel({
                 const t = describeAudit(e, tierNames);
                 return (
                   <li key={e.id} className="flex items-start gap-3 py-2.5">
-                    <span className="w-14 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={new Date(e.createdAt).toLocaleString("ru-RU")}>
+                    <span className="w-14 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={fmtDate(e.createdAt, "shortDateTimeSeconds")}>
                       {timeAgo(e.createdAt)}
                     </span>
                     <div className="min-w-0 flex-1 text-sm">

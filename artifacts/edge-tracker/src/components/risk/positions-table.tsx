@@ -6,12 +6,13 @@ import { links } from "@/lib/links";
 import { EmptyState, Pill, Segmented, TableScroll, useTableSort } from "@/components/ds";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RiskLimits, RiskPosition } from "./use-risk";
-import { HORIZON_LABEL, HORIZON_TONE, SortableTableHead, fmtUsd, useStoredState } from "./primitives";
+import { HORIZON_LABEL, HORIZON_TONE, SortableTableHead, useStoredState } from "./primitives";
+import { fmtUsd } from "@/lib/format";
 
 /** Planned vs stop-implied risk disagree by >25%: show both so the curator sees which one counts. */
 function mismatchText(p: RiskPosition): string | null {
   if (!p.riskMismatch || p.plannedRiskUsd == null || p.stopRiskUsd == null) return null;
-  return `план ${fmtUsd(p.plannedRiskUsd)} ≠ по стопу ${fmtUsd(p.stopRiskUsd)}`;
+  return `план ${fmtUsd(p.plannedRiskUsd, { decimals: 0 })} ≠ по стопу ${fmtUsd(p.stopRiskUsd, { decimals: 0 })}`;
 }
 
 export type HorizonFilter = "all" | "carried" | "intraday" | "overnight" | "swing";
@@ -110,8 +111,8 @@ export function PositionsTable({
         />
         {rows.length > 0 && (
           <div className="flex gap-3 text-xs text-muted-foreground tabular-nums">
-            <span>Риск <span className="font-medium text-foreground">{fmtUsd(totalRisk, { compact: true })}</span></span>
-            <span>Экспозиция <span className="font-medium text-foreground">{fmtUsd(totalExp, { compact: true })}</span></span>
+            <span>Риск <span className="font-medium text-foreground">{fmtUsd(totalRisk, { decimals: 0, compact: 10_000 })}</span></span>
+            <span>Экспозиция <span className="font-medium text-foreground">{fmtUsd(totalExp, { decimals: 0, compact: 10_000 })}</span></span>
           </div>
         )}
       </div>
@@ -145,8 +146,8 @@ export function PositionsTable({
                     <span className="text-xs text-muted-foreground tabular-nums">{p.daysHeld} дн.</span>
                   </div>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
-                    <div><div className="text-muted-foreground">Риск</div><div className="font-medium">{fmtUsd(p.riskUsd)}</div></div>
-                    <div><div className="text-muted-foreground">Экспозиция</div><div className="font-medium">{fmtUsd(p.exposureUsd, { compact: true })}</div></div>
+                    <div><div className="text-muted-foreground">Риск</div><div className="font-medium">{fmtUsd(p.riskUsd, { decimals: 0 })}</div></div>
+                    <div><div className="text-muted-foreground">Экспозиция</div><div className="font-medium">{fmtUsd(p.exposureUsd, { decimals: 0, compact: 10_000 })}</div></div>
                     <div><div className="text-muted-foreground">{showTrader ? "Трейдер" : "Сторона"}</div><div className="truncate font-medium">{showTrader ? traderCell(p.trader) : (p.side ?? "—")}</div></div>
                   </div>
                 </li>
@@ -204,7 +205,7 @@ export function PositionsTable({
                         {p.daysHeld === 0 ? <span className="text-muted-foreground">сегодня</span> : `${p.daysHeld} дн.`}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        <span className={cn("font-medium", p.riskMismatch && "text-warn")}>{fmtUsd(p.riskUsd)}</span>
+                        <span className={cn("font-medium", p.riskMismatch && "text-warn")}>{fmtUsd(p.riskUsd, { decimals: 0 })}</span>
                         {p.riskMismatch ? (
                           <div className="text-2xs text-warn" title="Плановый риск и риск по стопу расходятся больше чем на 25% — берём по стопу">{mismatchText(p)}</div>
                         ) : (
@@ -214,7 +215,7 @@ export function PositionsTable({
                           </>
                         )}
                       </TableCell>
-                      <TableCell className="text-right tabular-nums">{fmtUsd(p.exposureUsd, { compact: true })}</TableCell>
+                      <TableCell className="text-right tabular-nums">{fmtUsd(p.exposureUsd, { decimals: 0, compact: 10_000 })}</TableCell>
                       <TableCell>
                         <Link
                           href={links.journalDay(p.date, p.trader)}

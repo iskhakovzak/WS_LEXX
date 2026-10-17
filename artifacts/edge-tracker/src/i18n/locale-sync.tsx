@@ -10,7 +10,7 @@
  */
 import { useEffect, useRef } from "react";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { getLang, isLang, onLangChange, setLang, LANG_PENDING_KEY, type Lang } from ".";
 
 function setPending(on: boolean) {
@@ -25,12 +25,8 @@ function isPending(): boolean {
 
 async function saveProfileLang(lang: Lang): Promise<void> {
   try {
-    const r = await fetch(`${BASE}/api/users/me/locale`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locale: lang }),
-    });
-    setPending(!r.ok);
+    await http.patch("/api/users/me/locale", { locale: lang });
+    setPending(false);
   } catch {
     setPending(true);
   }
@@ -53,23 +49,18 @@ export function LocaleSync() {
     [],
   );
 
+  // A pending choice (picked before sign-in or while offline) is saved once a member session exists.
   useEffect(() => {
-    if (!member) return;
-    if (isPending()) {
-      void saveProfileLang(getLang());
-      return;
-    }
-    let cancelled = false;
-    fetch(`${BASE}/api/auth/me`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((body: { locale?: unknown } | null) => {
-        if (cancelled || isPending()) return;
-        const locale = body?.locale;
-        if (isLang(locale) && locale !== getLang()) void setLang(locale, { source: "profile" });
-      })
-      .catch(() => {});
-    return () => { cancelled = true; };
+    if (member && isPending()) void saveProfileLang(getLang());
   }, [member, token]);
+
+  // Otherwise the profile language wins. AuthProvider's session check (GET /auth/me) already carries it, so this
+  // only reacts to that answer — no second request.
+  const profileLocale = user?.profileLocale;
+  useEffect(() => {
+    if (!member || isPending()) return;
+    if (isLang(profileLocale) && profileLocale !== getLang()) void setLang(profileLocale, { source: "profile" });
+  }, [member, profileLocale]);
 
   return null;
 }

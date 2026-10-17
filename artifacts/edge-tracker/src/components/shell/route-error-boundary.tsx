@@ -1,6 +1,7 @@
 import * as React from "react";
 import { ErrorState } from "@/components/ds/states";
 import { shellI18n } from "@/i18n/ns/shell";
+import { reportClientError } from "@/lib/error-reporting";
 
 /** A lazy section chunk failed to download (new deploy replaced the hashed files, or the network dropped). */
 export function isChunkLoadError(error: unknown) {
@@ -46,6 +47,7 @@ export class RouteErrorBoundary extends React.Component<
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
     if (isChunkLoadError(error) && reloadOnceForChunkError()) return;
     console.error("[route]", error, info.componentStack);
+    if (!isChunkLoadError(error)) reportClientError({ kind: "render", error, componentStack: info.componentStack });
   }
 
   render() {

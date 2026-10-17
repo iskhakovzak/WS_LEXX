@@ -4,10 +4,10 @@ import { ArrowRight, Clock, PlayCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Panel, Pill, ProgressRing } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import { KIND_LABEL, STAGE_LABELS, type CatalogProgram, type ProgramTree, type TreeItem } from "./api";
 import { KindIcon, PctBar, StatusIcon, SubmissionPill } from "./bits";
 import { academyLinks } from "./links";
+import { pluralRu } from "@/lib/format";
 
 export function ProgramCard({ p, active, onSelect }: { p: CatalogProgram; active: boolean; onSelect: () => void }) {
   return (

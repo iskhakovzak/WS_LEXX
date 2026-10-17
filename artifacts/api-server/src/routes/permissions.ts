@@ -24,6 +24,7 @@ import {
   invalidatePermissionsCache, isEditableRole, requireCap, resolveActor,
   type Capability, type EffectiveMatrix, type Override, type Role,
 } from "../lib/permissions";
+import { unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -54,9 +55,9 @@ async function matrixPayload() {
 }
 
 router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!req.authUser) throw unauthorized();
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const state = await getMatrixState();
   res.json({
     name: actor.name,

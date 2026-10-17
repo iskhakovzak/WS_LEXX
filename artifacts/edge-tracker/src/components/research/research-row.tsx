@@ -1,9 +1,9 @@
 import { memo } from "react";
 import { CalendarClock, LineChart, Pin, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { fmtShortDate } from "./earnings-api";
 import type { UpcomingByTicker } from "./research-preview";
 import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote, type SearchHit } from "./research-utils";
+import { fmtDate } from "@/lib/format";
 
 const BAR: Record<string, string> = {
   up: "bg-up",
@@ -104,7 +104,7 @@ export const ResearchRow = memo(function ResearchRow({
             {report && (
               <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--chart-3)/0.15)] px-2 py-0.5 text-2xs font-medium text-[hsl(var(--chart-3))]">
                 <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                Отчёт {fmtShortDate(report.date)}
+                Отчёт {fmtDate(report.date, "dayMonth")}
                 {report.callType !== "TNS" ? ` · ${report.callType}` : ""}
               </span>
             )}

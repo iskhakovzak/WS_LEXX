@@ -3,7 +3,7 @@
  * notifications grouped by day, «Прочитать все» and a link to the full /notifications page.
  * Unread count polls GET /notifications/count (45 s, paused in hidden tabs); the list loads on open.
  */
-import React, { useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { Bell, Check, Inbox, Settings2 } from "lucide-react";
 import { cn } from "@/lib/utils";

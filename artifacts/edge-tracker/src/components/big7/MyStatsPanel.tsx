@@ -6,7 +6,7 @@ import * as React from "react";
 import { Link } from "wouter";
 import { ArrowUpRight } from "lucide-react";
 import { DataTable, Panel, Segmented, SortableTh, TermTooltip, toneOf, toneText, useTableSort } from "@/components/ds";
-import { fmtMoney } from "@/components/chart-engine/lib/format";
+import { fmtUsd } from "@/lib/format";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { MyHour, MyStats, MyTicker } from "./use-big7";
@@ -41,7 +41,7 @@ function HoursStrip({ hours }: { hours: MyHour[] }) {
               key={h.key}
               role="listitem"
               className="flex min-w-0 flex-col items-center gap-1"
-              title={`${h.label}: ${h.n} сд. · ${fmtMoney(h.net)} · WR ${wrText(h.wr)}`}
+              title={`${h.label}: ${h.n} сд. · ${fmtUsd(h.net, { signed: true, decimals: "auto" })} · WR ${wrText(h.wr)}`}
             >
               <div className="relative w-full flex-1 rounded-md bg-[var(--glass-bg)]">
                 <span className="absolute inset-x-0 top-1/2 h-px bg-border" aria-hidden="true" />
@@ -77,7 +77,7 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
       title="Мои сделки в мегакэпах"
       description={
         t.n > 0
-          ? <>{t.n} сд. · <span className={toneText(toneOf(t.net))}>{fmtMoney(t.net)}</span> <TermTooltip term="net">нетто</TermTooltip> · WR {wrText(t.wr)}</>
+          ? <>{t.n} сд. · <span className={toneText(toneOf(t.net))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</span> <TermTooltip term="net">нетто</TermTooltip> · WR {wrText(t.wr)}</>
           : "За этот период сделок нет"
       }
       actions={
@@ -110,16 +110,16 @@ export function MyStatsPanel({ stats, period, onPeriod, onOpen }: {
                   <tr key={r.ticker} className="cursor-pointer" onClick={() => onOpen(r.ticker)}>
                     <td className="font-semibold">{r.ticker}</td>
                     <td className="text-right">{r.n}</td>
-                    <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtMoney(r.net)}</td>
+                    <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</td>
                     <td className={cn("text-right", wrTone(r.wr))}>{wrText(r.wr)}</td>
                     <td className="text-right text-xs">
-                      <span className={toneText(toneOf(r.longNet))}>{fmtMoney(r.longNet, 0)}</span>
+                      <span className={toneText(toneOf(r.longNet))}>{fmtUsd(r.longNet, { signed: true, decimals: 0 })}</span>
                       <span className="text-muted-foreground"> / </span>
-                      <span className={toneText(toneOf(r.shortNet))}>{fmtMoney(r.shortNet, 0)}</span>
+                      <span className={toneText(toneOf(r.shortNet))}>{fmtUsd(r.shortNet, { signed: true, decimals: 0 })}</span>
                     </td>
                     <td className="text-xs">
                       {r.bestHour ? (
-                        <span className="whitespace-nowrap"><span className="text-foreground">{r.bestHour.label}</span> <span className="text-up">{fmtMoney(r.bestHour.net, 0)}</span></span>
+                        <span className="whitespace-nowrap"><span className="text-foreground">{r.bestHour.label}</span> <span className="text-up">{fmtUsd(r.bestHour.net, { signed: true, decimals: 0 })}</span></span>
                       ) : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="text-right">
@@ -149,11 +149,11 @@ export function MyTickerStats({ row }: { row: MyTicker | undefined }) {
   if (!row || row.n === 0) return null;
   const cells: Array<[string, React.ReactNode]> = [
     ["Сделок", row.n],
-    ["Нетто", <span className={toneText(toneOf(row.net))}>{fmtMoney(row.net)}</span>],
+    ["Нетто", <span className={toneText(toneOf(row.net))}>{fmtUsd(row.net, { signed: true, decimals: "auto" })}</span>],
     ["WR", <span className={wrTone(row.wr)}>{wrText(row.wr)}</span>],
-    ["Средняя", <span className={toneText(toneOf(row.avg))}>{fmtMoney(row.avg)}</span>],
-    ["Лучшее время", row.bestHour ? `${row.bestHour.label} · ${fmtMoney(row.bestHour.net, 0)}` : "—"],
-    ["Худшее время", row.worstHour ? `${row.worstHour.label} · ${fmtMoney(row.worstHour.net, 0)}` : "—"],
+    ["Средняя", <span className={toneText(toneOf(row.avg))}>{fmtUsd(row.avg, { signed: true, decimals: "auto" })}</span>],
+    ["Лучшее время", row.bestHour ? `${row.bestHour.label} · ${fmtUsd(row.bestHour.net, { signed: true, decimals: 0 })}` : "—"],
+    ["Худшее время", row.worstHour ? `${row.worstHour.label} · ${fmtUsd(row.worstHour.net, { signed: true, decimals: 0 })}` : "—"],
   ];
   return (
     <Panel

@@ -16,8 +16,9 @@ import {
 } from "@/components/academy/cohorts/api";
 import { ActionDialog, EnrollmentEditDialog, GoalDialog, MeetingDialog, RosterDialog } from "@/components/academy/cohorts/dialogs";
 import {
-  ATT_TONE, DualTime, GoalCard, StagePill, WhereLine, dateTimeLocal, fmtYmd, pct,
+  ATT_TONE, DualTime, GoalCard, StagePill, WhereLine, dateTimeLocal, fmtYmd,
 } from "@/components/academy/cohorts/shared";
+import { fmtRate } from "@/lib/format";
 
 /**
  * /academy/mentor — дашборд наставника: мои студенты и кто отстаёт (с причинами), сегодняшние занятия с отметкой,
@@ -93,7 +94,7 @@ function Kpis({ d }: { d: MentorDashboard }) {
     <StatGrid>
       <StatCard label="Студентов" icon={Users} value={new Set(d.students.map((s) => s.enrollment.userName)).size} hint={`когорт: ${d.cohorts.length}`} />
       <StatCard label="Отстают" icon={AlertTriangle} value={d.lagging} tone={d.lagging ? "warn" : "up"} hint={d.lagging ? "см. причины в таблице" : "все в графике"} />
-      <StatCard label="Посещаемость, 30 дн." icon={ClipboardCheck} value={pct(avg)} tone={avg == null ? "neutral" : avg >= 0.9 ? "up" : avg >= 0.75 ? "warn" : "down"} hint="среднее по студентам" />
+      <StatCard label="Посещаемость, 30 дн." icon={ClipboardCheck} value={fmtRate(avg)} tone={avg == null ? "neutral" : avg >= 0.9 ? "up" : avg >= 0.75 ? "warn" : "down"} hint="среднее по студентам" />
       <StatCard label="Открытые договорённости" icon={ListChecks} value={d.openActions.length} tone={overdue ? "down" : "neutral"} hint={overdue ? `просрочено: ${overdue}` : "без просрочек"} />
     </StatGrid>
   );
@@ -151,7 +152,7 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
                     </td>
                     <td><StagePill stage={s.enrollment.stage} /></td>
                     <td>
-                      <span className={cn(a.rate == null ? "text-muted-foreground" : a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down")}>{pct(a.rate)}</span>
+                      <span className={cn(a.rate == null ? "text-muted-foreground" : a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down")}>{fmtRate(a.rate)}</span>
                       {a.total > 0 && <div className="text-xs text-muted-foreground" title="был / опоздал / пропуск · не отмечено">{a.present}/{a.late}/{a.absent}{a.unmarked ? ` · ? ${a.unmarked}` : ""}</div>}
                     </td>
                     <td>
@@ -254,7 +255,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
   return (
     <div ref={boxRef} className="scroll-mt-[var(--sticky-top)]">
     <Panel title={`${u} · ${student.cohortName}`} icon={Target}
-      description={`С ${fmtYmd(student.enrollment.joinedOn, true)} · посещаемость всего ${pct(student.attendance.rate)}`}
+      description={`С ${fmtYmd(student.enrollment.joinedOn, true)} · посещаемость всего ${fmtRate(student.attendance.rate)}`}
       actions={<>
         <StagePill stage={student.enrollment.stage} />
         <Button size="sm" variant="outline" onClick={() => setStageOpen(true)}>Ступень / статус</Button>

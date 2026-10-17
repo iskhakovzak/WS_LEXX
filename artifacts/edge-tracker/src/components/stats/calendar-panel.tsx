@@ -5,11 +5,16 @@ import { Button } from "@/components/ui/button";
 import { Panel, Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
-import { fmtCompact, fmtValue, heatBg, parseKey, pluralTrades, toKey, type DayStat, type Metric } from "./metrics";
+import { fmtMetricCompact, fmtValue, heatBg, parseKey, toKey, type DayStat, type Metric } from "./metrics";
 import { TradeLinkRow } from "./trade-link-row";
+import { fmtDate, fmtMonth } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
-const MONTHS_FULL = ["Январь", "Февраль", "Март", "Апрель", "Май", "Июнь", "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь"];
-const MONTHS_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+/** «Октябрь» / «October»: stand-alone month name with a capital letter (calendar header). */
+const monthTitle = (m: number) => {
+  const s = fmtMonth(m, "long");
+  return s.charAt(0).toUpperCase() + s.slice(1);
+};
 const HEAD = ["Пн", "Вт", "Ср", "Чт", "Пт"];
 
 type Month = { y: number; m: number };
@@ -65,7 +70,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
     <Panel
       title="Календарь"
       icon={CalendarDays}
-      description={monthCount ? `${monthCount} ${pluralTrades(monthCount)} · ${monthDays.length} торг. дн.` : "Нет сделок в этом месяце"}
+      description={monthCount ? `${commonI18n.t("units.trades", { count: monthCount })} · ${monthDays.length} торг. дн.` : "Нет сделок в этом месяце"}
       actions={
         <div className="flex items-center gap-1">
           <Button
@@ -74,7 +79,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
-          <span className="min-w-[7.5rem] text-center text-sm font-medium tabular-nums">{MONTHS_FULL[month.m]} {month.y}</span>
+          <span className="min-w-[7.5rem] text-center text-sm font-medium tabular-nums">{monthTitle(month.m)} {month.y}</span>
           <Button
             variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Следующий месяц"
             disabled={cmp(month, maxMonth) >= 0} onClick={() => { setMonth((m) => addMonth(m, 1)); setSelected(null); }}
@@ -84,7 +89,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
         </div>
       }
     >
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,0.9fr)] gap-1 sm:gap-1.5" role="grid" aria-label={`Календарь: ${MONTHS_FULL[month.m]} ${month.y}`}>
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,0.9fr)] gap-1 sm:gap-1.5" role="grid" aria-label={`Календарь: ${monthTitle(month.m)} ${month.y}`}>
         {HEAD.map((h) => <div key={h} className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">{h}</div>)}
         <div className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">Неделя</div>
         {weeks.map((w, wi) => {
@@ -100,7 +105,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
                 const active = selected === k;
                 const bg = !stat ? undefined : stat.value != null ? heatBg(stat.value, max) : heatBg(stat.wins - stat.losses, Math.max(4, Math.abs(stat.wins - stat.losses)));
                 if (!inMonth) return <div key={k} className="aspect-square rounded-lg sm:aspect-[4/3]" role="gridcell" aria-hidden="true" />;
-                const label = `${d.getDate()} ${MONTHS_GEN[d.getMonth()]}: ${stat ? `${stat.count} ${pluralTrades(stat.count)}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : "нет сделок"}`;
+                const label = `${fmtDate(d, "dayMonthLong")}: ${stat ? `${commonI18n.t("units.trades", { count: stat.count })}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : "нет сделок"}`;
                 return (
                   <button
                     key={k}
@@ -124,7 +129,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
                     {stat && (
                       <span className="flex flex-col leading-tight">
                         <span className="truncate text-2xs font-semibold tabular-nums text-foreground sm:text-xs">
-                          {stat.value != null ? fmtCompact(stat.value, metric) : `${stat.wins}/${stat.losses}`}
+                          {stat.value != null ? fmtMetricCompact(stat.value, metric) : `${stat.wins}/${stat.losses}`}
                         </span>
                         <span className="hidden truncate text-2xs text-muted-foreground sm:block">{stat.count} сд.</span>
                       </span>
@@ -133,11 +138,11 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
                 );
               })}
               {(() => {
-                const weekLabel = `Неделя: ${wCnt} ${pluralTrades(wCnt)}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`;
+                const weekLabel = `Неделя: ${commonI18n.t("units.trades", { count: wCnt })}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`;
                 const body = (
                   <>
                     <span className={cn("truncate text-2xs font-semibold tabular-nums sm:text-xs", wVal == null ? "text-muted-foreground" : wVal > 0 ? "text-up" : wVal < 0 ? "text-down" : "text-foreground")}>
-                      {wCnt ? (wVal != null ? fmtCompact(wVal, metric) : "—") : ""}
+                      {wCnt ? (wVal != null ? fmtMetricCompact(wVal, metric) : "—") : ""}
                     </span>
                     {wCnt > 0 && <span className="text-2xs text-muted-foreground">{wCnt} сд.</span>}
                   </>
@@ -180,7 +185,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
         <div className="mt-3 rounded-xl border border-[hsl(var(--border))] p-2">
           <div className="flex items-center justify-between gap-2 px-2 pb-1">
             <div className="text-sm font-medium">
-              {parseKey(sel.key).getDate()} {MONTHS_GEN[parseKey(sel.key).getMonth()]}
+              {fmtDate(parseKey(sel.key), "dayMonthLong")}
               <Pill tone={toneOf(sel.value)} className="ml-2">{sel.value != null ? fmtValue(sel.value, metric) : `${sel.count} сд.`}</Pill>
             </div>
             <span className="flex items-center gap-1">

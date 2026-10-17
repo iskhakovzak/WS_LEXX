@@ -12,9 +12,10 @@ import { Button } from "@/components/ui/button";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import {
-  PATTERN_SHORT, PATTERN_TONE, dayReportHref, fmtClock, fmtDateHeading, fmtMinutes, fmtUsd, fmtUsdCompact, pluralTrades,
-  useBehaviorDay, type DayTimeline, type DisciplineDay, type PatternKey, type Range, type TimelineTrade,
+  PATTERN_SHORT, PATTERN_TONE, dayReportHref, fmtClock, fmtMinutes, useBehaviorDay, type DayTimeline, type DisciplineDay, type PatternKey, type Range, type TimelineTrade,
 } from "./api";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 const TONE_VAR: Record<Tone, string> = {
   up: "hsl(var(--up))",
@@ -122,7 +123,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
   return (
     <div ref={ref} className="relative w-full">
       {width > 0 ? (
-        <svg width={width} height={height} role="img" aria-label={`Лента сессии ${tl.date}: ${pluralTrades(tl.summary.n)}, нетто ${fmtUsd(tl.summary.net)}`} className="block">
+        <svg width={width} height={height} role="img" aria-label={`Лента сессии ${tl.date}: ${commonI18n.t("units.trades", { count: tl.summary.n })}, нетто ${fmtUsd(tl.summary.net, { signed: true, decimals: "auto" })}`} className="block">
           {/* сетка часов */}
           {ticks.map((m) => (
             <g key={m}>
@@ -137,8 +138,8 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
           <text x={PAD_L - 8} y={y(0) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--muted-foreground))">$0</text>
           <line x1={PAD_L} x2={PAD_L + innerW} y1={y(0)} y2={y(0)} stroke="hsl(var(--muted-foreground) / 0.4)" />
           <path d={path} fill="none" stroke={TONE_VAR[finalTone]} strokeWidth={2} strokeLinejoin="round" />
-          {tl.summary.peak > 0 && <text x={PAD_L - 8} y={y(tl.summary.peak) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--up))" className="tabular-nums">{fmtUsdCompact(tl.summary.peak)}</text>}
-          {tl.summary.trough < 0 && <text x={PAD_L - 8} y={y(tl.summary.trough) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--down))" className="tabular-nums">{fmtUsdCompact(tl.summary.trough)}</text>}
+          {tl.summary.peak > 0 && <text x={PAD_L - 8} y={y(tl.summary.peak) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--up))" className="tabular-nums">{fmtUsd(tl.summary.peak, { signed: true, compact: true })}</text>}
+          {tl.summary.trough < 0 && <text x={PAD_L - 8} y={y(tl.summary.trough) + 4} textAnchor="end" fontSize={12} fill="hsl(var(--down))" className="tabular-nums">{fmtUsd(tl.summary.trough, { signed: true, compact: true })}</text>}
 
           {/* момент срыва */}
           {bd && bd.entryMin != null && (
@@ -157,7 +158,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
             const w = Math.max(3, x(t.e) - x0);
             const tone = toneOf(t.net);
             const flagged = t.flags.filter((f) => MARKER_LETTER[f.key]);
-            const label = `${fmtClock(t.entryMin)}–${fmtClock(t.exitMin)} ${t.ticker} ${t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : ""} · ${fmtUsd(t.net)} · накоплено ${fmtUsd(t.cum)}` +
+            const label = `${fmtClock(t.entryMin)}–${fmtClock(t.exitMin)} ${t.ticker} ${t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : ""} · ${fmtUsd(t.net, { signed: true, decimals: "auto" })} · накоплено ${fmtUsd(t.cum, { signed: true, decimals: "auto" })}` +
               (t.flags.length ? `\n${t.flags.map((f) => `${PATTERN_SHORT[f.key]}: ${f.note}`).join("\n")}` : "");
             return (
               <g
@@ -230,8 +231,8 @@ function TradesList({ tl }: { tl: DayTimeline }) {
                 {t.ticker} <span className="text-xs font-normal text-muted-foreground">{t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : ""}</span>
               </td>
               <td className="tabular-nums">{fmtMinutes(t.holdMin)}</td>
-              <td className={cn("text-right tabular-nums", toneText(toneOf(t.net)))}>{fmtUsd(t.net)}</td>
-              <td className={cn("text-right tabular-nums", toneText(toneOf(t.cum)))}>{fmtUsd(t.cum)}</td>
+              <td className={cn("text-right tabular-nums", toneText(toneOf(t.net)))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</td>
+              <td className={cn("text-right tabular-nums", toneText(toneOf(t.cum)))}>{fmtUsd(t.cum, { signed: true, decimals: "auto" })}</td>
               <td>
                 <div className="flex flex-wrap gap-1">
                   {t.flags.map((f) => <Pill key={f.key} tone={PATTERN_TONE[f.key]} title={f.note}>{PATTERN_SHORT[f.key]}</Pill>)}
@@ -281,15 +282,15 @@ export function SessionTimeline({
           <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!prev} onClick={() => prev && onDateChange(prev)} aria-label="Предыдущий торговый день">
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
-          <span className="min-w-[8.5rem] text-center text-base font-semibold text-foreground" aria-live="polite">{fmtDateHeading(date)}</span>
+          <span className="min-w-[8.5rem] text-center text-base font-semibold text-foreground" aria-live="polite">{fmtDate(date, "weekdayDayMonth")}</span>
           <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!next} onClick={() => next && onDateChange(next)} aria-label="Следующий торговый день">
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
         {tl && (
           <>
-            <Pill tone="neutral">{pluralTrades(tl.summary.n)}</Pill>
-            <Pill tone={toneOf(tl.summary.net)}>нетто {fmtUsd(tl.summary.net)}</Pill>
+            <Pill tone="neutral">{commonI18n.t("units.trades", { count: tl.summary.n })}</Pill>
+            <Pill tone={toneOf(tl.summary.net)}>нетто {fmtUsd(tl.summary.net, { signed: true, decimals: "auto" })}</Pill>
             {tl.summary.score != null && <Pill tone={scoreTone(tl.summary.score)} title="Индекс дисциплины дня">индекс {tl.summary.score}</Pill>}
             {penalties.map(([k, v]) => <Pill key={k} tone="neutral" title="Штраф индекса дисциплины">{PATTERN_SHORT[k as PatternKey]} −{v}</Pill>)}
           </>
@@ -316,8 +317,8 @@ export function SessionTimeline({
           {tl.summary.breakdown && (
             <p className="text-sm text-foreground">
               <span className="font-semibold text-down">Срыв в {fmtClock(tl.summary.breakdown.entryMin)}</span>
-              {" — "}{tl.summary.breakdown.note}. До этого день {fmtUsd(tl.summary.breakdown.cumBefore)}
-              {tl.summary.breakdown.netAfter != null && <>, после — ещё {fmtUsd(tl.summary.breakdown.netAfter)}</>}.
+              {" — "}{tl.summary.breakdown.note}. До этого день {fmtUsd(tl.summary.breakdown.cumBefore, { signed: true, decimals: "auto" })}
+              {tl.summary.breakdown.netAfter != null && <>, после — ещё {fmtUsd(tl.summary.breakdown.netAfter, { signed: true, decimals: "auto" })}</>}.
             </p>
           )}
 

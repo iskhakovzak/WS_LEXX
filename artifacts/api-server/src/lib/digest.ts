@@ -1,5 +1,6 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
+import { config } from "../config";
 import { getLatestReview } from "./aiReview";
 import { nyDate } from "./tradingDate";
 
@@ -215,7 +216,7 @@ async function refreshBriefIfStale(): Promise<void> {
     return;
   }
 
-  const port = process.env["PORT"] ?? "8080";
+  const port = String(config.port ?? 8080);
   try {
     logger.info({ date: today, port }, "Pre-digest: triggering market brief refresh");
     const res = await fetch(`http://localhost:${port}/api/market-brief?force=1`, {
@@ -442,7 +443,7 @@ function safeMd(s: string): string {
 }
 
 export async function sendTelegram(chatId: string, text: string): Promise<void> {
-  const token = (process.env["TELEGRAM_BOT_TOKEN"] ?? "").trim();
+  const token = config.telegram.botToken;
   if (!token) {
     throw new Error("TELEGRAM_BOT_TOKEN not configured");
   }
@@ -469,7 +470,7 @@ export async function sendTelegram(chatId: string, text: string): Promise<void> 
 }
 
 export async function sendEmail(to: string, subject: string, html: string): Promise<void> {
-  const apiKey = process.env["RESEND_API_KEY"];
+  const apiKey = config.resendApiKey;
   if (!apiKey) {
     throw new Error("RESEND_API_KEY not configured");
   }
@@ -548,18 +549,12 @@ async function getLinkedTelegramUsers(): Promise<Array<{ name: string; telegram_
   return rows;
 }
 
-let digestCronRef: NodeJS.Timeout | null = null;
 let lastMorningSent: string | null = null;
 let lastEveningSent: string | null = null;
+// Schedule: src/jobs/definitions.ts ("digest.morning" 05:00 NY ≈ 14:00 Tashkent, "digest.evening" 14:00 NY ≈ 23:00 Tashkent).
 
-// 14:00 Tashkent (UTC+5) = 09:00 UTC
-const MORNING_UTC_HOUR = 9;
-const MORNING_UTC_MINUTE = 0;
-// 23:00 Tashkent (UTC+5) = 18:00 UTC
-const EVENING_UTC_HOUR = 18;
-const EVENING_UTC_MINUTE = 0;
-
-async function runDigestIfNeeded(period: "morning" | "evening"): Promise<void> {
+/** Morning / evening digest, once per NY trading date (guard: activity_log digest_<period>_sent). Job registry: "digest.morning" / "digest.evening". */
+export async function runDigestIfNeeded(period: "morning" | "evening"): Promise<void> {
   const today = nyDate(); // trading date (audit P1-12); matches the NY-day lookup in startDigestCron
   if (period === "morning" && lastMorningSent === today) return;
   if (period === "evening" && lastEveningSent === today) return;
@@ -567,7 +562,7 @@ async function runDigestIfNeeded(period: "morning" | "evening"): Promise<void> {
   // Check DB in case in-memory state was lost on restart
   const { rows: dbCheck } = await pool.query(
     `SELECT 1 FROM activity_log WHERE action = $1
-     AND DATE(created_at AT TIME ZONE 'UTC') = $2 LIMIT 1`,
+     AND (created_at AT TIME ZONE 'America/New_York')::date = $2::date LIMIT 1`,
     [`digest_${period}_sent`, today]
   ).catch(() => ({ rows: [] as any[] }));
   if (dbCheck.length > 0) {
@@ -622,63 +617,3 @@ async function runDigestIfNeeded(period: "morning" | "evening"): Promise<void> {
   }
 }
 
-export async function startDigestCron(): Promise<void> {
-  if (digestCronRef) return;
-
-  // On startup: restore in-memory state from DB so restarts don't re-send or miss today's digest
-  try {
-    const today = nyDate();
-    const { rows } = await pool.query(
-      `SELECT action FROM activity_log
-       WHERE action IN ('digest_morning_sent', 'digest_evening_sent')
-         AND DATE(created_at AT TIME ZONE 'America/New_York') = $1`,
-      [today]
-    );
-    for (const r of rows) {
-      if (r.action === "digest_morning_sent") lastMorningSent = today;
-      if (r.action === "digest_evening_sent") lastEveningSent = today;
-    }
-    if (rows.length > 0) {
-      logger.info({ today, restored: rows.map((r: any) => r.action) }, "Digest cron: restored sent state from DB");
-    }
-  } catch (e: any) {
-    logger.warn({ error: e.message }, "Digest cron: could not restore sent state from DB");
-  }
-
-  // Use a 5-minute window around the target time so a late interval tick doesn't miss the digest.
-  // runDigestIfNeeded is idempotent (guarded by date in memory + DB).
-  const WINDOW_MINUTES = 5;
-  digestCronRef = setInterval(async () => {
-    const now = new Date();
-    const h = now.getUTCHours();
-    const m = now.getUTCMinutes();
-
-    const inMorningWindow =
-      h === MORNING_UTC_HOUR &&
-      m >= MORNING_UTC_MINUTE &&
-      m < MORNING_UTC_MINUTE + WINDOW_MINUTES;
-
-    const inEveningWindow =
-      h === EVENING_UTC_HOUR &&
-      m >= EVENING_UTC_MINUTE &&
-      m < EVENING_UTC_MINUTE + WINDOW_MINUTES;
-
-    if (inMorningWindow) {
-      runDigestIfNeeded("morning").catch((e) =>
-        logger.error({ error: e.message }, "digest morning cron failed")
-      );
-    } else if (inEveningWindow) {
-      runDigestIfNeeded("evening").catch((e) =>
-        logger.error({ error: e.message }, "digest evening cron failed")
-      );
-    }
-  }, 60_000);
-
-  logger.info(
-    {
-      morningUtc: `${MORNING_UTC_HOUR}:${String(MORNING_UTC_MINUTE).padStart(2, "0")}–${String(MORNING_UTC_MINUTE + 4).padStart(2, "0")}`,
-      eveningUtc: `${EVENING_UTC_HOUR}:${String(EVENING_UTC_MINUTE).padStart(2, "0")}–${String(EVENING_UTC_MINUTE + 4).padStart(2, "0")}`,
-    },
-    "Digest cron started (5-min window)"
-  );
-}

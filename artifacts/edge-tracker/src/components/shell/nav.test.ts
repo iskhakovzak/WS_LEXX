@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { NAV_GROUPS, ALL_NAV_ITEMS, routeTitle } from "./nav";
+import { NAV_GROUPS, ALL_NAV_ITEMS, GO_KEYS, GO_KEYS_RU_LAYOUT, parentOf, rowChildren, rowLabel, routeTitle } from "./nav";
 import { setLang } from "@/i18n";
 
 afterEach(async () => {
@@ -32,10 +32,21 @@ describe("routeTitle", () => {
 });
 
 describe("nav groups", () => {
-  it("staff-only groups have a member label for what a trader still sees", () => {
-    const admin = NAV_GROUPS.find((g) => g.id === "admin")!;
-    expect(admin.items.some((i) => !i.staff)).toBe(true);
-    expect(admin.memberLabel).toBe("Аккаунт");
+  const rows = (staff: boolean) => NAV_GROUPS.flatMap((g) => g.items).filter((i) => !i.hidden && (staff || !i.staff));
+
+  it("keeps the sidebar short: ~15 rows for a trader, a few more for staff", () => {
+    expect(rows(false).length).toBeLessThanOrEqual(16);
+    expect(rows(true).length).toBeLessThanOrEqual(18);
+    // Every page but the header ones (settings, notifications) is reachable from the sidebar in one or two clicks.
+    expect(ALL_NAV_ITEMS.filter((i) => !i.hidden).every((i) => rows(true).includes(i) || !!parentOf(i))).toBe(true);
+  });
+
+  it("second-level pages know their row; a hub row lists its own page first", () => {
+    expect(rowLabel(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/stats")!)!)).toBe("Аналитика");
+    expect(parentOf(ALL_NAV_ITEMS.find((i) => i.href === "/trade-idea-stats")!)!.href).toBe("/trade-ideas");
+    const tools = ALL_NAV_ITEMS.find((i) => i.href === "/chart-lab")!;
+    expect(rowLabel(tools)).toBe("Инструменты");
+    expect(rowChildren(tools).map((i) => i.href)).toEqual(["/chart-lab", "/simulator", "/calculator"]);
   });
 
   it("every item has a label and unique href / go key", () => {
@@ -43,5 +54,10 @@ describe("nav groups", () => {
     expect(new Set(ALL_NAV_ITEMS.map((i) => i.href)).size).toBe(ALL_NAV_ITEMS.length);
     const keys = ALL_NAV_ITEMS.flatMap((i) => (i.goKey ? [i.goKey] : []));
     expect(new Set(keys).size).toBe(keys.length);
+  });
+
+  it("every quick-jump letter also works on the Russian layout", () => {
+    const mapped = new Set(Object.values(GO_KEYS_RU_LAYOUT));
+    expect(Object.keys(GO_KEYS).filter((k) => !mapped.has(k))).toEqual([]);
   });
 });

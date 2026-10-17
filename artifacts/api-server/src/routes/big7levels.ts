@@ -3,6 +3,7 @@ import { eq, desc, ne } from "drizzle-orm";
 import { db, big7LevelsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
+import { badRequest, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -51,9 +52,9 @@ router.post("/big7levels", asyncHandler(async (req, res): Promise<void> => {
 
 router.patch("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ createdBy: big7LevelsTable.createdBy }).from(big7LevelsTable).where(eq(big7LevelsTable.id, id));
-  if (!existing) { res.status(404).json({ error: "Not found" }); return; }
+  if (!existing) throw notFound();
   if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;
   const { ticker, label, price, notes } = req.body as Record<string, unknown>;
   const priceStr = price !== undefined ? parsePrice(price) : undefined;
@@ -64,13 +65,13 @@ router.patch("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => 
     price: priceStr,
     notes: notes !== undefined ? (notes != null ? String(notes) : null) : undefined,
   }).where(eq(big7LevelsTable.id, id)).returning();
-  if (!row) { res.status(404).json({ error: "Not found" }); return; }
+  if (!row) throw notFound();
   res.json(row);
 }));
 
 router.delete("/big7levels/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
-  if (id === null) { res.status(400).json({ error: "Invalid id" }); return; }
+  if (id === null) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ createdBy: big7LevelsTable.createdBy }).from(big7LevelsTable).where(eq(big7LevelsTable.id, id));
   if (!existing) { res.status(204).send(); return; }
   if (!(await requireRowOwnerOrStaff(req, res, existing.createdBy))) return;

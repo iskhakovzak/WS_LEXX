@@ -32,6 +32,7 @@ import {
   boardAgg, buildRow, buildSnap, marketTone, phaseOf, referenceSession, windowStart, type Big7Row, type SessionSnap,
 } from "@/components/big7/context";
 import { nextEarnings } from "@/components/big7/ui";
+import { fmtDate } from "@/lib/format";
 
 const BENCH = ["QQQ", "SPY"] as const;
 /** Max symbols that get intraday bars (board + hot); keeps the server/Yahoo load bounded. */
@@ -46,8 +47,7 @@ function isTypingTarget(el: EventTarget | null) {
 
 const PHASE_META = { pre: "премаркет", rth: "идут торги", post: "постмаркет", closed: "закрыта" } as const;
 
-const dayFmt = new Intl.DateTimeFormat("ru-RU", { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
-const sessionLabel = (day: string) => dayFmt.format(new Date(`${day}T12:00:00Z`)).replace(/\.$/, "");
+const sessionLabel = (day: string) => fmtDate(day, "weekdayDayMonth").replace(/\.$/, "");
 
 export default function Big7() {
   const { canEdit } = useAuth();

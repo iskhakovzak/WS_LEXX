@@ -8,11 +8,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { EmptyState, Page, PageHeader, Panel, Pill } from "@/components/ds";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { pluralRu } from "@/components/rules/constants";
 import {
-  ApiError, KIND_LABEL, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
+  KIND_LABEL, api, useAcademyMeta, useAcademyMutation, useAssignment, useLesson, useQuiz,
   type ItemKind, type Nav,
 } from "@/components/academy/content/api";
+import { ApiError } from "@/lib/api/http";
 import { Markdown } from "@/components/academy/content/markdown";
 import { outlineOf, parseMarkdown, readingMinutes } from "@/components/academy/content/markdown-parse";
 import { AttachmentList, KindIcon, VideoPlayer } from "@/components/academy/content/bits";
@@ -20,6 +20,7 @@ import { QuizRunner } from "@/components/academy/content/quiz-runner";
 import { AssignmentPanel } from "@/components/academy/content/assignment-panel";
 import { academyLinks } from "@/components/academy/content/links";
 import { DualTime } from "@/components/academy/content/time";
+import { pluralRu } from "@/lib/format";
 
 /**
  * /academy/lesson — один элемент программы: ?id=<урок> | ?quiz=<тест> | ?assignment=<задание>

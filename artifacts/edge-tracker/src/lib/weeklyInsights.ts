@@ -6,6 +6,8 @@
  * (GET /api/weekly-review, /api/behavior, /api/whatif/fees, /api/whatif/suggestions, /api/day-report,
  * /api/benchmark). Each input is optional — a missing / failed endpoint simply yields fewer insights.
  */
+import { fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 // ── Inputs (defensive subsets of the engine responses) ───────────────────────
 
@@ -74,29 +76,7 @@ export type DayReportLite = {
   plan?: DayPlanItem[];
 };
 
-// ── Formatting (local: ₽-free «−$1,234») ─────────────────────────────────────
-
-export function usd(v: number | null | undefined, signed = true): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  const body = a.toLocaleString("en-US", { maximumFractionDigits: a >= 1000 ? 0 : a >= 100 ? 0 : 2, minimumFractionDigits: 0 });
-  const sign = v < 0 ? "−" : signed && v > 0 ? "+" : "";
-  return `${sign}$${body}`;
-}
-
-export function pct(v: number | null | undefined, digits = 0): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${(v * 100).toFixed(digits)}%`;
-}
-
-const plural = (n: number, one: string, few: string, many: string) => {
-  const a = Math.abs(n) % 100, b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b > 1 && b < 5) return few;
-  if (b === 1) return one;
-  return many;
-};
-export const trades = (n: number) => `${n} ${plural(n, "сделка", "сделки", "сделок")}`;
+// ── Formatting: @/lib/format (fmtUsd, fmtRate, fmtWeekday) and commonI18n units ──
 
 // ── Derived KPIs ─────────────────────────────────────────────────────────────
 
@@ -135,7 +115,7 @@ export type Tip = {
   source: TipSource;
   /** Short headline with the $ figure. */
   title: string;
-  /** $ impact: negative = what it cost this week, positive = potential gain (simulator). */
+  /** $ impact: negative = what it cost this week, positive = potential gain (what-if). */
   amount: number | null;
   /** What the data shows. */
   evidence: string;
@@ -221,8 +201,8 @@ export function tipCandidates(input: TipInput): Tip[] {
       if (w.net == null || w.net >= -1) continue;
       out.push({
         id: "beh:firstTrade", source: "behavior", amount: w.net,
-        title: `${name}: ${usd(w.net)}`,
-        evidence: `${trades(w.n)} открыли день с итогом ${usd(w.net)}.`,
+        title: `${name}: ${fmtUsd(w.net, { signed: true, decimals: "auto" })}`,
+        evidence: `${commonI18n.t("units.trades", { count: w.n })} открыли день с итогом ${fmtUsd(w.net, { signed: true, decimals: "auto" })}.`,
         action, href: `/behavior${q({ trader })}`,
       });
       usedPatterns.add(p.key);
@@ -231,8 +211,8 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (w.cost == null || w.cost >= -1) continue;
     out.push({
       id: `beh:${p.key}`, source: "behavior", amount: w.cost,
-      title: `${name}: ${usd(w.cost)}`,
-      evidence: `${trades(w.n)}${w.net != null ? `, нетто ${usd(w.net)}` : ""} — на ${usd(Math.abs(w.cost), false)} хуже вашей нормы${p.baselineLabel ? ` (${p.baselineLabel})` : ""}.`,
+      title: `${name}: ${fmtUsd(w.cost, { signed: true, decimals: "auto" })}`,
+      evidence: `${commonI18n.t("units.trades", { count: w.n })}${w.net != null ? `, нетто ${fmtUsd(w.net, { signed: true, decimals: "auto" })}` : ""} — на ${fmtUsd(Math.abs(w.cost), { decimals: "auto" })} хуже вашей нормы${p.baselineLabel ? ` (${p.baselineLabel})` : ""}.`,
       action, href: `/behavior${q({ trader })}`,
     });
     usedPatterns.add(p.key);
@@ -249,10 +229,10 @@ export function tipCandidates(input: TipInput): Tip[] {
       const be = fees?.breakEvenCents ?? total?.breakEvenCents ?? null;
       out.push({
         id: "hold:scalps", source: "hold", amount: Math.round(net * 100) / 100,
-        title: `Скальпы < 2 мин: ${usd(net)}`,
-        evidence: `${trades(n)} короче 2 минут, комиссии ${usd(fee, false)}.`,
+        title: `Скальпы < 2 мин: ${fmtUsd(net, { signed: true, decimals: "auto" })}`,
+        evidence: `${commonI18n.t("units.trades", { count: n })} короче 2 минут, комиссии ${fmtUsd(fee, { decimals: "auto" })}.`,
         action: be != null ? `Минимальное удержание 2 мин или цель ≥ ${Math.max(3, Math.ceil(be * 3))}¢ на акцию.` : "Минимальное удержание 2 минуты — или цель минимум втрое больше комиссии.",
-        href: `/simulator${q({ trader })}`,
+        href: `/what-if${q({ trader })}`,
       });
     }
   }
@@ -265,10 +245,10 @@ export function tipCandidates(input: TipInput): Tip[] {
     const share = worstHour.feePctOfGrossWins ?? null;
     out.push({
       id: `time:${worstHour.key}`, source: "time", amount: worstHour.net,
-      title: `${worstHour.key} ET: ${usd(worstHour.net)}`,
-      evidence: `${trades(worstHour.trades)} в этом окне${share != null && share > 0 ? `, комиссии съели ${pct(share)} прибыли` : ""}.`,
+      title: `${worstHour.key} ET: ${fmtUsd(worstHour.net, { signed: true, decimals: "auto" })}`,
+      evidence: `${commonI18n.t("units.trades", { count: worstHour.trades })} в этом окне${share != null && share > 0 ? `, комиссии съели ${fmtRate(share)} прибыли` : ""}.`,
       action: `В ${worstHour.key} — только A+ сетапы, остальное пропускать.`,
-      href: `/simulator${q({ trader })}`,
+      href: `/what-if${q({ trader })}`,
     });
   }
 
@@ -280,10 +260,10 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (eaten != null && eaten >= 0.25) {
       out.push({
         id: "fees:total", source: "fees", amount: -Math.round(total.fees * 100) / 100,
-        title: `${dominant ? `${dominant.key}: к` : "К"}омиссии съели ${pct(eaten)} прибыли`,
-        evidence: `${usd(total.fees, false)} комиссий при ${usd(total.grossWins ?? null, false)} брутто прибыльных сделок.`,
+        title: `${dominant ? `${dominant.key}: к` : "К"}омиссии съели ${fmtRate(eaten)} прибыли`,
+        evidence: `${fmtUsd(total.fees, { decimals: "auto" })} комиссий при ${fmtUsd(total.grossWins ?? null, { decimals: "auto" })} брутто прибыльных сделок.`,
         action: fees?.recommendations?.[0] ?? "Цель сделки — минимум втрое больше безубытка по комиссиям.",
-        href: `/simulator${q({ trader })}`,
+        href: `/what-if${q({ trader })}`,
       });
     }
   }
@@ -307,8 +287,8 @@ export function tipCandidates(input: TipInput): Tip[] {
     if (cost >= -1) continue;
     out.push({
       id: `day:${kind}`, source: "day", amount: cost,
-      title: `${a.title}: ${usd(cost)}`,
-      evidence: `${trades(a.count)} за ${a.days} ${plural(a.days, "день", "дня", "дней")} по разбору дня.`,
+      title: `${a.title}: ${fmtUsd(cost, { signed: true, decimals: "auto" })}`,
+      evidence: `${commonI18n.t("units.trades", { count: a.count })} за ${commonI18n.t("units.days", { count: a.days })} по разбору дня.`,
       action: a.plan ?? "Разберите эти сделки в «Разборе дня» и запишите правило.",
       href: `/day-report${q({ trader, date: a.date })}`,
     });
@@ -320,10 +300,10 @@ export function tipCandidates(input: TipInput): Tip[] {
     const weeks = input.suggestionsWeeks ?? 8;
     out.push({
       id: "sim:best", source: "sim", amount: best.improvement,
-      title: `Правило «${best.label}»: ${usd(best.improvement)}`,
-      evidence: `Симулятор: за ${weeks} нед. добавило бы ${usd(best.improvement)}${best.ci ? ` (диапазон ${usd(best.ci.lo)}…${usd(best.ci.hi)})` : ""}${best.excluded ? `, убрав ${trades(best.excluded)}` : ""}.`,
+      title: `Правило «${best.label}»: ${fmtUsd(best.improvement, { signed: true, decimals: "auto" })}`,
+      evidence: `Симулятор: за ${weeks} нед. добавило бы ${fmtUsd(best.improvement, { signed: true, decimals: "auto" })}${best.ci ? ` (диапазон ${fmtUsd(best.ci.lo, { signed: true, decimals: "auto" })}…${fmtUsd(best.ci.hi, { signed: true, decimals: "auto" })})` : ""}${best.excluded ? `, убрав ${commonI18n.t("units.trades", { count: best.excluded })}` : ""}.`,
       action: `Правило на неделю: «${best.label}».`,
-      href: `/simulator${q({ trader })}`,
+      href: `/what-if${q({ trader })}`,
     });
   }
 
@@ -368,10 +348,11 @@ export type PositiveInput = {
   tradingDays?: number;
 };
 
-const WEEKDAY = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+/** "Пн" (UI language) for a YYYY-MM-DD. */
 const wd = (ymd: string) => {
-  const d = new Date(`${ymd}T00:00:00Z`);
-  return Number.isNaN(d.getTime()) ? ymd : WEEKDAY[(d.getUTCDay() + 6) % 7];
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
+  const s = fmtWeekday(ymd, "short");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 };
 
 export function buildPositives(input: PositiveInput, limit = 4): Positive[] {
@@ -380,21 +361,21 @@ export function buildPositives(input: PositiveInput, limit = 4): Positive[] {
   if (!k || k.trades === 0) return out;
   const money = k.unit === "usd";
   if (money && k.netPnl != null && avg4?.netPnl != null && (input.avg4Weeks ?? 0) > 0 && k.netPnl > avg4.netPnl + 1) {
-    out.push({ id: "net-vs-avg", text: `Нетто лучше среднего за 4 недели на ${usd(k.netPnl - avg4.netPnl, false)}`, amount: k.netPnl - avg4.netPnl });
+    out.push({ id: "net-vs-avg", text: `Нетто лучше среднего за 4 недели на ${fmtUsd(k.netPnl - avg4.netPnl, { decimals: "auto" })}`, amount: k.netPnl - avg4.netPnl });
   }
   if (k.winRate != null && avg4?.winRate != null && (input.avg4Weeks ?? 0) > 0 && k.winRate - avg4.winRate >= 0.05) {
-    out.push({ id: "wr", text: `Win rate ${pct(k.winRate)} — на ${Math.round((k.winRate - avg4.winRate) * 100)} п.п. выше среднего` });
+    out.push({ id: "wr", text: `Win rate ${fmtRate(k.winRate)} — на ${Math.round((k.winRate - avg4.winRate) * 100)} п.п. выше среднего` });
   }
   if (k.bestDay && k.bestDay.value > 0) {
-    out.push({ id: "best-day", text: `Лучший день — ${wd(k.bestDay.date)}: ${money ? usd(k.bestDay.value) : `+${k.bestDay.value}R`}`, amount: money ? k.bestDay.value : null });
+    out.push({ id: "best-day", text: `Лучший день — ${wd(k.bestDay.date)}: ${money ? fmtUsd(k.bestDay.value, { signed: true, decimals: "auto" }) : fmtR(k.bestDay.value)}`, amount: money ? k.bestDay.value : null });
   }
   if (input.bestTrade?.net != null && input.bestTrade.net > 0) {
-    out.push({ id: "best-trade", text: `Лучшая сделка — ${input.bestTrade.ticker}: ${usd(input.bestTrade.net)}`, amount: input.bestTrade.net });
+    out.push({ id: "best-trade", text: `Лучшая сделка — ${input.bestTrade.ticker}: ${fmtUsd(input.bestTrade.net, { signed: true, decimals: "auto" })}`, amount: input.bestTrade.net });
   }
   const first = behavior?.patterns?.find((p) => p.key === "firstTrade");
   const fw = first ? patternWeek(first, weekStart) : null;
   if (fw && fw.n > 0 && fw.cost != null && fw.cost > 1 && (fw.net ?? 0) >= 0) {
-    out.push({ id: "first-trade", text: `Первые сделки дня сильнее остальных: ${usd(fw.net)} за ${trades(fw.n)}`, amount: fw.net });
+    out.push({ id: "first-trade", text: `Первые сделки дня сильнее остальных: ${fmtUsd(fw.net, { signed: true, decimals: "auto" })} за ${commonI18n.t("units.trades", { count: fw.n })}`, amount: fw.net });
   }
   if ((input.violations ?? 0) === 0 && (input.mistakes ?? 0) === 0) out.push({ id: "clean", text: "Ни одного нарушения правил и записанной ошибки" });
   const disc = disciplineOf(behavior, weekStart).current;
@@ -484,10 +465,10 @@ export function buildChecklist(input: ChecklistInput): CheckItem[] {
   // Fees
   if (input.feeShare != null) {
     out.push(input.feeShare > 0.4
-      ? { id: "fees", label: "Комиссии съедают брутто", status: "fail", detail: `${pct(input.feeShare)} брутто ушло в комиссии` }
+      ? { id: "fees", label: "Комиссии съедают брутто", status: "fail", detail: `${fmtRate(input.feeShare)} брутто ушло в комиссии` }
       : input.feeShare > 0.25
-        ? { id: "fees", label: "Комиссии заметны", status: "warn", detail: `${pct(input.feeShare)} брутто ушло в комиссии` }
-        : { id: "fees", label: "Комиссии под контролем", status: "ok", detail: `${pct(input.feeShare)} брутто` });
+        ? { id: "fees", label: "Комиссии заметны", status: "warn", detail: `${fmtRate(input.feeShare)} брутто ушло в комиссии` }
+        : { id: "fees", label: "Комиссии под контролем", status: "ok", detail: `${fmtRate(input.feeShare)} брутто` });
   }
 
   // Self-review & last week's goals
@@ -532,24 +513,24 @@ export function buildDeskConclusions(s: DeskSummary, rows: DeskRow[], limit = 5)
   const active = rows.filter((r) => r.trades > 0);
   if (active.length === 0) return ["За неделю закрытых сделок на деске нет."];
   const green = active.filter((r) => (r.netPnl ?? 0) > 0);
-  out.push(`Деск: нетто ${usd(s.netPnl)} за неделю; торговали ${s.active} из ${s.traders}, в плюсе ${green.length}.`);
+  out.push(`Деск: нетто ${fmtUsd(s.netPnl, { signed: true, decimals: "auto" })} за неделю; торговали ${s.active} из ${s.traders}, в плюсе ${green.length}.`);
 
   const byNet = [...active].filter((r) => r.netPnl != null).sort((a, b) => (b.netPnl as number) - (a.netPnl as number));
   const top = byNet[0];
   const worst = byNet[byNet.length - 1];
   if (top && (top.netPnl ?? 0) > 0) {
     const share = s.netPnl != null && s.netPnl > 0 && top.netPnl != null ? top.netPnl / s.netPnl : null;
-    out.push(`Лучший результат — ${top.trader} (${usd(top.netPnl)}${share != null && share >= 0.5 && byNet.length > 1 ? `, ${pct(Math.min(share, 9.99))} нетто деска` : ""}).`);
+    out.push(`Лучший результат — ${top.trader} (${fmtUsd(top.netPnl, { signed: true, decimals: "auto" })}${share != null && share >= 0.5 && byNet.length > 1 ? `, ${fmtRate(Math.min(share, 9.99))} нетто деска` : ""}).`);
   }
   if (worst && worst !== top && (worst.netPnl ?? 0) < 0) {
     const why = worst.riskStatus === "breach" ? "нарушил лимиты" : worst.verdict === "worse" ? "хуже своих прошлых 4 недель" : worst.weakness ?? null;
-    out.push(`Проблемная зона — ${worst.trader} (${usd(worst.netPnl)}${why ? `, ${why}` : ""}).`);
+    out.push(`Проблемная зона — ${worst.trader} (${fmtUsd(worst.netPnl, { signed: true, decimals: "auto" })}${why ? `, ${why}` : ""}).`);
   }
 
   if (s.fees > 0) {
     const share = s.grossPnl != null && s.grossPnl > 0 ? s.fees / s.grossPnl : null;
     const perTrade = s.netPnl != null ? s.netPnl / Math.max(1, active.reduce((a, r) => a + r.trades, 0)) : null;
-    out.push(`Комиссии ${usd(s.fees, false)}${share != null ? ` — ${pct(share)} брутто` : s.grossPnl != null ? " при отрицательном брутто" : ""}; нетто на сделку ${usd(perTrade)}.`);
+    out.push(`Комиссии ${fmtUsd(s.fees, { decimals: "auto" })}${share != null ? ` — ${fmtRate(share)} брутто` : s.grossPnl != null ? " при отрицательном брутто" : ""}; нетто на сделку ${fmtUsd(perTrade, { signed: true, decimals: "auto" })}.`);
   }
 
   const breach = rows.filter((r) => r.riskStatus === "breach").map((r) => r.trader);

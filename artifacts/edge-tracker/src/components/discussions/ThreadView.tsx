@@ -18,7 +18,8 @@ import {
 import { Pill, Segmented, toneOf, toneText } from "@/components/ds";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { useToast } from "@/hooks/use-toast";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
 import { RichText, plainPreview } from "./RichText";
 import { TickerLink } from "./TickerContext";
@@ -31,8 +32,8 @@ import {
   buildCommentTree, buildCommentText, teamPositions, splitNotes, userTags, isPinned, isResolved, toggleTag,
   TAG_PINNED, TAG_RESOLVED, relTime, absTime,
 } from "./lib";
-import { pluralRu } from "@/components/rules/constants";
 import { rankPeople, usePeopleAliases } from "@/components/people/search";
+import { pluralRu } from "@/lib/format";
 
 type StatusChoice = PositionStatus | "none";
 
@@ -240,18 +241,12 @@ export function ThreadView({
     const prefix = orig.text.match(/^(\[(?:Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:\d+\]\s*)?/)?.[0] ?? "";
     setSavingEdit(true);
     try {
-      const r = await fetch(`${BASE}/api/discussions/${thread.id}/comments/${editing.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: `${prefix}${body}` }),
-      });
-      const resBody = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(resBody?.error ?? "Не удалось сохранить комментарий");
+      await http.patch(`/api/discussions/${thread.id}/comments/${editing.id}`, { text: `${prefix}${body}` });
       qc.invalidateQueries({ queryKey: listKey });
       setEditing(null);
       toast({ title: "Комментарий обновлён" });
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось сохранить комментарий"), variant: "destructive" });
     } finally {
       setSavingEdit(false);
     }
@@ -261,16 +256,12 @@ export function ThreadView({
     if (!deletingComment || deletingBusy) return;
     setDeletingBusy(true);
     try {
-      const r = await fetch(`${BASE}/api/discussions/${thread.id}/comments/${deletingComment.id}`, { method: "DELETE" });
-      if (!r.ok) {
-        const body = await r.json().catch(() => null);
-        throw new Error(body?.error ?? "Не удалось удалить комментарий");
-      }
+      await http.del(`/api/discussions/${thread.id}/comments/${deletingComment.id}`, undefined, { responseType: "auto" });
       qc.invalidateQueries({ queryKey: listKey });
       setDeletingComment(null);
       toast({ title: "Комментарий удалён" });
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось удалить комментарий"), variant: "destructive" });
     } finally {
       setDeletingBusy(false);
     }
@@ -285,17 +276,11 @@ export function ThreadView({
       ? { ...d, tags: nextTags, ...(tag === TAG_PINNED ? { pinned: on } : { resolved: on }) }
       : d));
     try {
-      const r = await fetch(`${BASE}/api/discussions/${thread.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tags: nextTags }),
-      });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось обновить тему");
+      await http.patch(`/api/discussions/${thread.id}`, { tags: nextTags });
       toast({ title: tag === TAG_PINNED ? (on ? "Тема закреплена" : "Тема откреплена") : (on ? "Отмечено как решённое" : "Тема снова открыта") });
     } catch (e) {
       if (prev) qc.setQueryData(listKey, prev);
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить тему"), variant: "destructive" });
     } finally {
       setFlagBusy(false);
       qc.invalidateQueries({ queryKey: listKey });
@@ -308,14 +293,10 @@ export function ThreadView({
     const next = thread.acceptedCommentId === c.id ? null : c.id;
     setAcceptBusy(true);
     try {
-      const r = await fetch(`${BASE}/api/discussions/${thread.id}`, {
-        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ acceptedCommentId: next }),
-      });
-      const body = await r.json().catch(() => null);
-      if (!r.ok) throw new Error(body?.error ?? "Не удалось обновить тему");
+      await http.patch(`/api/discussions/${thread.id}`, { acceptedCommentId: next });
       toast({ title: next ? "Ответ отмечен как принятый — тема решена" : "Отметка снята" });
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить тему"), variant: "destructive" });
     } finally {
       setAcceptBusy(false);
       qc.invalidateQueries({ queryKey: listKey });

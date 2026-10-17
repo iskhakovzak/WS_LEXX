@@ -24,6 +24,7 @@ import { signedRSql, netPnlSql, closeDateSql, horizonSql, decidedSql, closedSql,
 import { nyDate, nyMinutes, nySession, addDays, isWeekend } from "../lib/tradingDate";
 import { recentViolationWindow, violationDaySql } from "../lib/violationWindow";
 import { scopeTrader, viewerRole, isStaffRole } from "../lib/auth";
+import { unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -157,7 +158,7 @@ function streaksOf(results: ("win" | "loss" | "be")[]) {
 // ═════════════════════════════════════════════════════════════════════════════
 router.get("/dashboard/summary", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam } = sc;
   const CACHE_KEY = `dashboard:summary:${traderParam ?? "*"}`;
   const cached = dashboardCache.get(CACHE_KEY);
@@ -238,7 +239,7 @@ router.get("/dashboard/summary", asyncHandler(async (req, res): Promise<void> =>
 // ═════════════════════════════════════════════════════════════════════════════
 router.get("/dashboard/performance", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam } = sc;
   const CACHE_KEY = `dashboard:performance:${traderParam ?? "*"}`;
   const cached = dashboardCache.get(CACHE_KEY);
@@ -290,7 +291,7 @@ router.get("/dashboard/performance", asyncHandler(async (req, res): Promise<void
 // ═════════════════════════════════════════════════════════════════════════════
 router.get("/dashboard/toppatterns", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam } = sc;
   const CACHE_KEY = `dashboard:toppatterns:${traderParam ?? "*"}`;
   const cached = dashboardCache.get(CACHE_KEY);
@@ -324,7 +325,7 @@ router.get("/dashboard/toppatterns", asyncHandler(async (req, res): Promise<void
 // ═════════════════════════════════════════════════════════════════════════════
 router.get("/dashboard/recenttrades", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam } = sc;
   const rawLimit = Number(req.query.limit);
   const limit = Number.isInteger(rawLimit) && rawLimit > 0 ? Math.min(rawLimit, 50) : 10;
@@ -373,7 +374,7 @@ router.get("/dashboard/recenttrades", asyncHandler(async (req, res): Promise<voi
 // ═════════════════════════════════════════════════════════════════════════════
 router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam, scope, me, staff } = sc;
   const today = tradingDate(req.query.date);
   const nyToday = nyDate();
@@ -619,7 +620,7 @@ type Period = (typeof PERIODS)[number];
 
 router.get("/dashboard/equity", asyncHandler(async (req, res): Promise<void> => {
   const sc = await resolveScope(req);
-  if (!sc.ok) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!sc.ok) throw unauthorized();
   const { traderParam, scope } = sc;
   const today = tradingDate(req.query.date);
   const requested = String(req.query.period ?? "30d");

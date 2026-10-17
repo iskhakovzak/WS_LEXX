@@ -1,5 +1,5 @@
 import type { Trade, CreateTradeBody, CreateTradeBodyConfidenceGrade, CreateTradeBodyHorizon } from "@workspace/api-client-react";
-import { formatR, resultTone as sharedResultTone } from "@/lib/trade-result";
+import { resultTone as sharedResultTone } from "@/lib/trade-result";
 import { differenceInCalendarDays, parseISO } from "date-fns";
 import {
   screenshotUrlsToString,
@@ -342,45 +342,6 @@ export function computeStats(list: Trade[]): TradeStats {
     totalPnl: pnlCount ? pnl : null, pnlCount,
     streak, curve,
   };
-}
-
-// ── Formatting ──────────────────────────────────────────────────────────────
-
-export function fmtR(r: number | null | undefined, digits = 2): string {
-  return formatR(r, digits);
-}
-
-export function fmtPrice(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return n.toFixed(n >= 100 ? 2 : n >= 1 ? 2 : 4);
-}
-
-export function fmtMoney(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  const abs = Math.abs(n);
-  const s = abs >= 1000 ? abs.toLocaleString("en-US", { maximumFractionDigits: 0 }) : abs.toLocaleString("en-US", { maximumFractionDigits: 2 });
-  return `${n > 0 ? "+" : n < 0 ? "−" : ""}$${s}`;
-}
-
-export function fmtPct(n: number | null | undefined): string {
-  if (n == null || !Number.isFinite(n)) return "—";
-  return `${Math.round(n * 100)}%`;
-}
-
-export function fmtDay(d: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
-  if (!m) return d;
-  return `${m[3]}.${m[2]}.${m[1].slice(2)}`;
-}
-
-/** Russian plural: plural(5, ["трейд", "трейда", "трейдов"]). */
-export function plural(n: number, forms: [string, string, string]): string {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return forms[2];
-  if (b > 1 && b < 5) return forms[1];
-  if (b === 1) return forms[0];
-  return forms[2];
 }
 
 // ── Filters ─────────────────────────────────────────────────────────────────

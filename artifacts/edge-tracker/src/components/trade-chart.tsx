@@ -18,18 +18,19 @@ import {
   Loader2, AlertTriangle, CalendarX, Clock, CandlestickChart, Maximize2, ChevronsUpDown, RotateCw,
   type LucideIcon,
 } from "lucide-react";
-import { BASE } from "@/lib/api";
+import { ApiError, http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { Segmented, FilterChip, Pill, toneOf, toneText, type Tone } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
-import { formatR } from "@/lib/trade-result";
+import { chartI18n } from "@/i18n/ns/chart";
 import { roleLabel } from "@/components/chart-engine/lib/structure";
 import {
   type Candle, type CandlesResponse, type Execution, type ExecutionKind, type ExecutionsResponse, type Resolved, type ChartPrefs,
-  ET_TIME_FMT, ET_DAY_FMT, timeToDate, fmtEtDateTime, fmtEtDateTimeSec, fmtEtTimeSec, fmtDuration, sessionOfEt, ET_SESSION_LABEL, etInfo, isPreMarket, isAfterHours, toNum, ageDaysOf,
+  fmtEtDay, fmtEtTime, timeToDate, fmtEtDateTime, fmtEtDateTimeSec, fmtEtTimeSec, fmtDuration, sessionOfEt, ET_SESSION_LABEL, etInfo, isPreMarket, isAfterHours, toNum,
   computeSessionVwap, computeDayLevels, resolveExecutions, placeSimple, computeExcursion,
-  readChartTheme, useThemeVersion, loadPrefs, savePrefs, fmtPrice, fmtVol,
+  readChartTheme, useThemeVersion, loadPrefs, savePrefs,
 } from "@/components/trade-chart-parts/chart-utils";
+import { fmtCompact, fmtCount, fmtPct, fmtPrice, fmtR, fmtUsd, localeTag } from "@/lib/format";
 
 type TradeChartProps = {
   tradeId?: number | null;
@@ -66,16 +67,17 @@ function groupCandles(candles: readonly Candle[], sec: number): Candle[] {
   return out;
 }
 
-const TIMEFRAMES: { key: Interval; label: string; maxAgeDays: number }[] = [
-  { key: "1m", label: "1м", maxAgeDays: 7 },
-  { key: "2m", label: "2м", maxAgeDays: 7 },
-  { key: "3m", label: "3м", maxAgeDays: 7 },
-  { key: "5m", label: "5м", maxAgeDays: 60 },
-  { key: "15m", label: "15м", maxAgeDays: 60 },
-  { key: "30m", label: "30м", maxAgeDays: 60 },
-  { key: "60m", label: "1ч", maxAgeDays: 730 },
-  { key: "1d", label: "1Д", maxAgeDays: Infinity },
+const TIMEFRAMES: { key: Interval; label: string }[] = [
+  { key: "1m", label: "1м" },
+  { key: "2m", label: "2м" },
+  { key: "3m", label: "3м" },
+  { key: "5m", label: "5м" },
+  { key: "15m", label: "15м" },
+  { key: "30m", label: "30м" },
+  { key: "60m", label: "1ч" },
+  { key: "1d", label: "1Д" },
 ];
+const INTERVAL_SEC: Record<string, number> = { "1m": 60, "5m": 300, "15m": 900, "30m": 1800, "60m": 3600, "1d": 86400 };
 const INTERVAL_LABEL: Record<string, string> = { "1m": "1м", "5m": "5м", "15m": "15м", "30m": "30м", "60m": "1ч", "1d": "1Д" };
 
 const KIND_LABEL: Record<ExecutionKind, string> = {
@@ -129,9 +131,10 @@ function avgPrice(rows: Execution[]): number | null {
   return ps.length ? ps.reduce((s, p) => s + p, 0) / ps.length : null;
 }
 
-function errorInfo(err: Error & { reason?: string; status?: number }, date: string): { icon: LucideIcon; text: string; retry: boolean } {
-  if (err.message === "non_trading_day" && err.reason === "weekend") return { icon: CalendarX, text: `${date} — выходной, биржа закрыта`, retry: false };
-  if (err.message === "non_trading_day" && err.reason === "future") return { icon: Clock, text: `${date} ещё не наступило — данных пока нет`, retry: false };
+function errorInfo(err: Error, date: string): { icon: LucideIcon; text: string; retry: boolean } {
+  const reason = err instanceof ApiError ? err.field<string>("reason") : undefined;
+  if (err.message === "non_trading_day" && reason === "weekend") return { icon: CalendarX, text: `${date} — выходной, биржа закрыта`, retry: false };
+  if (err.message === "non_trading_day" && reason === "future") return { icon: Clock, text: `${date} ещё не наступило — данных пока нет`, retry: false };
   if (err.message === "no candles available") return { icon: AlertTriangle, text: `Нет свечей за ${date}: праздник, новый листинг или сбой Yahoo`, retry: true };
   if (err.message === "invalid date (expected calendar YYYY-MM-DD)" || err.message === "invalid ticker") return { icon: AlertTriangle, text: `Некорректные данные сделки: ${err.message}`, retry: false };
   return { icon: AlertTriangle, text: `Не удалось загрузить свечи: ${err.message}`, retry: true };
@@ -154,10 +157,12 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
   const resolvedByTimeRef = useRef(new Map<number, Resolved[]>());
   const candleByTimeRef = useRef(new Map<number, Candle>());
   const themeVersion = useThemeVersion();
+  const { t: tc } = chartI18n.useT();
 
   const dateKey = (date || "").slice(0, 10);
-  const trAge = ageDaysOf(dateKey);
-  const autoInterval: Interval = trAge <= 7 ? "1m" : trAge <= 60 ? "5m" : trAge <= 730 ? "60m" : "1d";
+  // Ask for 1-minute bars: the server answers with the finest the day has (permanent candle archive, else what the
+  // provider still serves for a day that old) and says which in `interval`.
+  const autoInterval: Interval = "1m";
 
   const [interval, setIntervalState] = useState<Interval>(autoInterval);
   const [prefs, setPrefs] = useState<ChartPrefs>(() => loadPrefs());
@@ -165,7 +170,6 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
   const [hover, setHover] = useState<Candle | null>(null);
   const [containerSize, setContainerSize] = useState<{ width: number; height: number } | null>(null);
 
-  useEffect(() => { setIntervalState(autoInterval); }, [autoInterval]);
 
   const updatePrefs = useCallback((patch: Partial<ChartPrefs>) => {
     setPrefs((p) => {
@@ -176,20 +180,12 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
   }, []);
 
   const apiInterval = apiIntervalOf(interval);
-  // Yahoo age limits per interval also cap how many context days we can request.
-  const maxDaysBack = useMemo(() => {
-    const cap = apiInterval === "1m" ? 7 : interval === "5m" || interval === "15m" || interval === "30m" ? 60 : interval === "60m" ? 730 : 3650;
-    return Math.max(0, Math.floor(cap - trAge - 1));
-  }, [apiInterval, trAge]);
-  const effectiveDaysBack = Math.min(prefs.daysBack, maxDaysBack);
+  // Context days that would cost resolution are dropped by the server (it keeps the trade day's finest bars).
+  const effectiveDaysBack = prefs.daysBack;
 
   const executionsQuery = useQuery<ExecutionsResponse>({
     queryKey: ["trade-executions", tradeId],
-    queryFn: async () => {
-      const resp = await fetch(`${BASE}/api/trades/${tradeId}/executions`);
-      if (!resp.ok) throw new Error("failed to load executions");
-      return resp.json();
-    },
+    queryFn: ({ signal }) => http.get<ExecutionsResponse>(`/api/trades/${tradeId}/executions`, { signal }),
     enabled: Boolean(tradeId),
     staleTime: 30 * 1000,
   });
@@ -201,29 +197,33 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
 
   const candlesQuery = useQuery<CandlesResponse>({
     queryKey: ["trade-candles", ticker, dateKey, extended, apiInterval, effectiveDaysBack],
-    queryFn: async () => {
-      const url = `${BASE}/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(dateKey)}&interval=${apiInterval}${extended ? "&extended=1" : ""}${effectiveDaysBack > 0 ? `&daysBack=${effectiveDaysBack}` : ""}&levels=1`;
-      const resp = await fetch(url);
-      if (!resp.ok) {
-        const body: { error?: string; reason?: string } = await resp.json().catch(() => ({}));
-        const err = new Error(body.error || `HTTP ${resp.status}`) as Error & { reason?: string; status?: number };
-        err.reason = body.reason;
-        err.status = resp.status;
-        throw err;
-      }
-      return resp.json();
+    queryFn: ({ signal }) => {
+      const url = `/api/candles/${encodeURIComponent(ticker)}?date=${encodeURIComponent(dateKey)}&interval=${apiInterval}${extended ? "&extended=1" : ""}${effectiveDaysBack > 0 ? `&daysBack=${effectiveDaysBack}` : ""}&levels=1`;
+      return http.get<CandlesResponse>(url, { signal });
     },
     enabled: Boolean(ticker && dateKey),
     staleTime: 5 * 60 * 1000,
     placeholderData: (prev) => prev,
     retry: (count, err) => {
-      const e = err as Error & { status?: number };
-      if (e.status === 422 || e.status === 400) return false;
+      const status = err instanceof ApiError ? err.status : undefined;
+      if (status === 422 || status === 400) return false;
       return count < 1;
     },
   });
 
   const data = candlesQuery.data;
+  // Finest bars this day has (learned from the 1-minute request): finer timeframes are shown disabled with the reason.
+  const [finestSec, setFinestSec] = useState<number>(60);
+  // Another trade in the same sheet: start again from the finest bars.
+  useEffect(() => { setFinestSec(60); setIntervalState(autoInterval); }, [ticker, dateKey, autoInterval]);
+  useEffect(() => {
+    // Placeholder data is the previous trade's answer — wait for this trade's own.
+    if (apiInterval !== "1m" || !data?.interval || candlesQuery.isPlaceholderData) return;
+    setFinestSec(INTERVAL_SEC[data.interval] ?? 60);
+    // The day only has coarser bars: select what is actually shown.
+    if (data.interval !== "1m" && interval === "1m") setIntervalState(data.interval as Interval);
+  }, [apiInterval, data?.interval, interval, candlesQuery.isPlaceholderData]);
+  const finestLabel = INTERVAL_LABEL[Object.keys(INTERVAL_SEC).find((k) => INTERVAL_SEC[k] === finestSec) ?? ""] ?? "";
   // Defensive: Yahoo may append the live bar of *today* to historical data — keep trade-day and earlier bars only.
   const candles = useMemo(() => {
     const day = (data?.candles ?? []).filter((c) => etInfo(c.t).dayKey <= dateKey);
@@ -336,11 +336,11 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
         tickMarkFormatter: (time: Time, tickMarkType: number) => {
           const d = timeToDate(time);
           if (!d) return "";
-          return tickMarkType >= 3 ? ET_TIME_FMT.format(d) : ET_DAY_FMT.format(d);
+          return tickMarkType >= 3 ? fmtEtTime(d) : fmtEtDay(d);
         },
       },
       localization: {
-        locale: "ru-RU",
+        locale: localeTag(),
         timeFormatter: (time: Time) => {
           const d = timeToDate(time);
           return d ? fmtEtDateTime(d) : String(time);
@@ -462,7 +462,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
       }
       if (trade.exitIdx != null && trade.exitNum != null) {
         const st = styleFor("exit", isShort, th);
-        const r = trade.realizedR != null && trade.risk ? ` ${formatR(trade.realizedR)}` : "";
+        const r = trade.realizedR != null && trade.risk ? ` ${fmtR(trade.realizedR, 1)}` : "";
         markers.push({ time: candles[trade.exitIdx].t as UTCTimestamp, position: st.position, color: st.color, shape: st.shape, text: `Выход ${fmtPrice(trade.exitNum)}${r}` });
       }
     }
@@ -507,18 +507,18 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
   const r = trade.risk;
   const exc = trade.excursion;
   // $ per share: always 2 decimals (fmtPrice gave «$0.0000» for a zero excursion); zero carries no sign.
-  const inR = (v: number | null | undefined, sign: 1 | -1 = 1) => (v == null ? null : r ? formatR((sign * v) / r) : `${v === 0 ? "" : sign > 0 ? "+" : "−"}$${Math.abs(v).toFixed(2)}`);
+  const inR = (v: number | null | undefined, sign: 1 | -1 = 1) => (v == null ? null : r ? fmtR((sign * v) / r, 1) : fmtUsd(sign * Math.abs(v), { signed: true }));
   const gapPct = levels.open != null && levels.prevClose ? ((levels.open - levels.prevClose) / levels.prevClose) * 100 : null;
   const leftOnTable = exc?.afterExit != null && r ? exc.afterExit / r : null;
 
   const stats: { label: string; value: ReactNode; tone?: Tone; hint?: ReactNode }[] = [];
   if (trade.effEntry != null) stats.push({ label: trade.openings > 1 ? `Ср. вход · ${trade.openings}` : "Вход", value: fmtPrice(trade.effEntry), hint: isShort ? "Шорт" : "Лонг" });
-  if (trade.effExit != null) stats.push({ label: trade.closings > 1 ? `Ср. выход · ${trade.closings}` : "Выход", value: fmtPrice(trade.effExit), hint: trade.move != null && trade.effEntry ? `${trade.move >= 0 ? "+" : "−"}${Math.abs((trade.move / trade.effEntry) * 100).toFixed(2)}%` : undefined });
-  if (r != null && trade.effEntry) stats.push({ label: "Риск на акцию", value: `$${fmtPrice(r)}`, hint: `${((r / trade.effEntry) * 100).toFixed(2)}% · стоп ${fmtPrice(trade.stopNum)}` });
+  if (trade.effExit != null) stats.push({ label: trade.closings > 1 ? `Ср. выход · ${trade.closings}` : "Выход", value: fmtPrice(trade.effExit), hint: trade.move != null && trade.effEntry ? fmtPct((trade.move / trade.effEntry) * 100) : undefined });
+  if (r != null && trade.effEntry) stats.push({ label: "Риск на акцию", value: fmtPrice(r, { dollar: true }), hint: `${fmtPct((r / trade.effEntry) * 100, { signed: false })} · стоп ${fmtPrice(trade.stopNum)}` });
   if (trade.realizedR != null) {
     const logged = toNum(rMultiple);
-    const hint = !r ? "из журнала" : logged != null && Math.abs(logged - trade.realizedR) >= 0.1 ? `в журнале ${formatR(logged)}` : "по ценам сделки";
-    stats.push({ label: "Результат", value: formatR(trade.realizedR), tone: toneOf(trade.realizedR), hint });
+    const hint = !r ? "из журнала" : logged != null && Math.abs(logged - trade.realizedR) >= 0.1 ? `в журнале ${fmtR(logged, 1)}` : "по ценам сделки";
+    stats.push({ label: "Результат", value: fmtR(trade.realizedR, 1), tone: toneOf(trade.realizedR), hint });
   }
   if (trade.entryAt != null) {
     const entrySession = sessionOfEt(trade.entryAt);
@@ -545,12 +545,15 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
       });
     }
   }
-  if (gapPct != null) stats.push({ label: "Гэп на открытии", value: `${gapPct >= 0 ? "+" : "−"}${Math.abs(gapPct).toFixed(2)}%`, tone: toneOf(gapPct), hint: `пред. закр. ${fmtPrice(levels.prevClose)}` });
+  if (gapPct != null) stats.push({ label: "Гэп на открытии", value: fmtPct(gapPct), tone: toneOf(gapPct), hint: `пред. закр. ${fmtPrice(levels.prevClose)}` });
   if (levels.pmHigh != null && levels.pmLow != null) stats.push({ label: "Премаркет", value: `${fmtPrice(levels.pmLow)}–${fmtPrice(levels.pmHigh)}`, hint: "PML–PMH" });
   else if (levels.high != null && levels.low != null) stats.push({ label: "Диапазон дня", value: `${fmtPrice(levels.low)}–${fmtPrice(levels.high)}` });
 
-  const tfOptions = TIMEFRAMES.map((tf) => ({ value: tf.key, label: tf.label, disabled: trAge > tf.maxAgeDays }));
-  const ctxOptions = [0, 1, 2, 3, 5].map((n) => ({ value: String(n), label: n === 0 ? "День" : `+${n}д`, disabled: n > maxDaysBack }));
+  const tfOptions = TIMEFRAMES.map((tf) => {
+    const tooFine = (GROUPED[tf.key] ? 60 : INTERVAL_SEC[tf.key] ?? 60) < finestSec;
+    return { value: tf.key, label: tf.label, disabled: tooFine, title: tooFine ? tc("bars.coarseTitle") : undefined };
+  });
+  const ctxOptions = [0, 1, 2, 3, 5].map((n) => ({ value: String(n), label: n === 0 ? "День" : `+${n}д` }));
   const kindsPresent = Array.from(new Set(allExecutions.map((e) => e.kind))).filter((k) => prefs.adds || k !== "add");
 
   return (
@@ -563,7 +566,9 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
             <h3 className="text-sm font-semibold text-foreground">{ticker}</h3>
             <span className="text-xs tabular-nums text-muted-foreground">{dateKey}</span>
             <Pill tone={isShort ? "down" : "up"}>{isShort ? "Шорт" : "Лонг"}</Pill>
-            {data?.interval && data.interval !== apiInterval && (
+            {finestSec > 60 && finestSec < 86400 ? (
+              <Pill tone="warn" title={tc("bars.coarseTitle")}>{tc("bars.coarse", { tf: finestLabel })}</Pill>
+            ) : data?.interval && data.interval !== apiInterval && (
               <Pill tone="warn">ТФ {INTERVAL_LABEL[data.interval] ?? data.interval}</Pill>
             )}
             {allExecutions.length > 0 && <Pill tone="accent">{allExecutions.length} исполн.</Pill>}
@@ -598,7 +603,7 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
             size="sm"
             ariaLabel="Дней контекста до сделки"
             options={ctxOptions}
-            value={String(Math.min(prefs.daysBack, maxDaysBack))}
+            value={String(prefs.daysBack)}
             onChange={(v) => updatePrefs({ daysBack: Number(v) })}
           />
         </div>
@@ -665,9 +670,9 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
                 <span>L <span className="text-foreground">{fmtPrice(legendCandle.l)}</span></span>
                 <span>C <span className="text-foreground">{fmtPrice(legendCandle.c)}</span></span>
                 {legendChg != null && (
-                  <span className={toneText(toneOf(legendChg))}>{legendChg >= 0 ? "+" : "−"}{Math.abs(legendChg).toFixed(2)}%</span>
+                  <span className={toneText(toneOf(legendChg))}>{fmtPct(legendChg)}</span>
                 )}
-                {prefs.volume && <span>V <span className="text-foreground">{fmtVol(legendCandle.v)}</span></span>}
+                {prefs.volume && <span>V <span className="text-foreground">{fmtCompact(legendCandle.v)}</span></span>}
               </div>
             )}
 
@@ -688,18 +693,18 @@ export function TradeChart({ tradeId, ticker, date, side, entry, exit, stop, tar
                       <div className="flex items-center gap-1.5">
                         <span className={cn("h-2 w-2 rounded-full", KIND_DOT[row.exec.kind])} aria-hidden="true" />
                         <span className="font-semibold text-foreground">{execLabel(row.exec)}</span>
-                        <span className="tabular-nums text-foreground">${fmtPrice(row.price)}</span>
-                        {row.exec.qty && <span className="tabular-nums text-muted-foreground">× {Number(row.exec.qty).toLocaleString("ru-RU")}</span>}
+                        <span className="tabular-nums text-foreground">{fmtPrice(row.price, { dollar: true })}</span>
+                        {row.exec.qty && <span className="tabular-nums text-muted-foreground">× {fmtCount(Number(row.exec.qty))}</span>}
                       </div>
                       <div className="mt-0.5 text-2xs tabular-nums text-muted-foreground">
                         {row.at != null ? fmtEtDateTimeSec(row.at) : fmtEtDateTime(new Date(row.candle.t * 1000))}
                         {row.at == null && " · по цене"}
                         {row.at != null && (() => { const s = sessionOfEt(row.at); return s && s !== "regular" ? ` · ${ET_SESSION_LABEL[s]}` : ""; })()}
-                        {row.exec.qty && <> · ${(row.price * Number(row.exec.qty)).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}</>}
+                        {row.exec.qty && <> · {fmtUsd(row.price * Number(row.exec.qty), { decimals: 0 })}</>}
                       </div>
                       {r && trade.effEntry != null && (row.exec.kind === "exit" || row.exec.kind === "trim" || row.exec.kind === "stop") && (
                         <div className={cn("text-2xs font-medium tabular-nums", toneText(toneOf(isShort ? trade.effEntry - row.price : row.price - trade.effEntry)))}>
-                          {formatR((isShort ? trade.effEntry - row.price : row.price - trade.effEntry) / r, 2)}
+                          {fmtR((isShort ? trade.effEntry - row.price : row.price - trade.effEntry) / r, 2)}
                         </div>
                       )}
                       {row.exec.note && <div className="mt-0.5 truncate text-2xs italic text-foreground/80" title={row.exec.note}>{row.exec.note}</div>}

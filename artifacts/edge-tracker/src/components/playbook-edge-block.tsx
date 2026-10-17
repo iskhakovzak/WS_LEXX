@@ -1,13 +1,15 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/auth-context";
-import { BASE } from "@/lib/api";
+import { http } from "@/lib/api/http";
 import { AlertTriangle, ChevronDown, LineChart, RefreshCw } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { Pill, Segmented, toneOf, toneText, type Tone } from "@/components/ds";
-import { Ring, Bar, plural, winrateTone, lsGet, lsSet } from "@/components/playbook-sub/bits";
+import { Ring, Bar, winrateTone, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { byCloseDate, isOpen, netPnl, resultOf, signedR } from "@/lib/trade-math";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 /** Mirror of api-server lib/playbookEdge.ts EdgeStats (shared trade math; every ratio is null without data). */
 type EdgeStats = {
@@ -52,11 +54,6 @@ type LinkedTrade = {
 /** Sample size below which stats are treated as statistically unreliable. */
 const MIN_SAMPLE = 20;
 
-const fmtPct = (x: number | null | undefined) => (x == null ? "—" : `${Math.round(x * 100)}%`);
-const fmtR = (x: number | null | undefined) => (x == null ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : ""}${Math.abs(x).toFixed(2)}R`);
-const fmtUsd = (x: number | null | undefined) => (x == null ? "—" : `${x > 0 ? "+" : x < 0 ? "−" : ""}$${Math.abs(x).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
-/** Profit factor is null (not ∞) when there are no losing trades. */
-const fmtPf = (x: number | null | undefined) => (x == null ? "—" : x.toFixed(2));
 
 const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
 const REDACTED_AGG_HINT = "Суммы скрыты — в выборке есть сделки других трейдеров";
@@ -118,7 +115,7 @@ function Breakdown({ data, labels }: { data: Record<string, EdgeStats>; labels?:
             </span>
             <span className="order-last col-span-2 flex items-center gap-2 sm:order-none sm:col-span-1">
               <Bar value={s.winrate ?? 0} tone={wrTone} />
-              <span className={cn("w-9 shrink-0 text-right text-xs tabular-nums", toneText(wrTone))}>{fmtPct(s.winrate)}</span>
+              <span className={cn("w-9 shrink-0 text-right text-xs tabular-nums", toneText(wrTone))}>{fmtRate(s.winrate)}</span>
             </span>
             <span className={cn("text-right text-xs font-medium tabular-nums", toneText(toneOf(s.expectancy)))}>{fmtR(s.expectancy)}</span>
             <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:inline">n={s.count}</span>
@@ -138,21 +135,13 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
 
   const { data, isLoading, isError, refetch } = useQuery<EdgeResponse>({
     queryKey: ["playbook-edge", playbookId, userKey],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/${playbookId}/edge`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<EdgeResponse>(`/api/playbook/${playbookId}/edge`, { signal }),
   });
 
   // Same key + endpoint as the linked-trades list on the playbook page → shared cache, no extra request.
   const { data: trades = [] } = useQuery<LinkedTrade[]>({
     queryKey: ["playbook-trades", playbookId],
-    queryFn: async () => {
-      const r = await fetch(`${BASE}/api/playbook/${playbookId}/trades`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return r.json();
-    },
+    queryFn: ({ signal }) => http.get<LinkedTrade[]>(`/api/playbook/${playbookId}/trades`, { signal }),
     enabled: !!data?.overall?.count,
   });
 
@@ -250,7 +239,7 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
     <section className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3" aria-label="Edge сетапа">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <span className="micro-label">Edge сетапа</span>
-        <span className="text-xs tabular-nums text-muted-foreground">{n} {plural(n, "сделка", "сделки", "сделок")}</span>
+        <span className="text-xs tabular-nums text-muted-foreground">{commonI18n.t("units.trades", { count: n })}</span>
         {lowSample && (
           <Pill tone="warn" className="gap-1">
             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
@@ -266,9 +255,9 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <div className="flex items-center gap-3">
-          <Ring value={o.winrate ?? 0} size={64} stroke={6} tone={wrTone} label={`Винрейт ${fmtPct(o.winrate)} (W / (W + L))`}>
+          <Ring value={o.winrate ?? 0} size={64} stroke={6} tone={wrTone} label={`Винрейт ${fmtRate(o.winrate)} (W / (W + L))`}>
             <div className="text-center leading-none">
-              <div className={cn("text-sm font-semibold tabular-nums", toneText(wrTone))}>{fmtPct(o.winrate)}</div>
+              <div className={cn("text-sm font-semibold tabular-nums", toneText(wrTone))}>{fmtRate(o.winrate)}</div>
               <div className="mt-0.5 text-xs text-muted-foreground">винрейт</div>
             </div>
           </Ring>
@@ -280,7 +269,7 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
           <Metric label="Средний R" value={hasR ? fmtR(o.avgR) : "—"} tone={toneOf(o.avgR)} hint={hasR ? `R есть у ${o.rCount} из ${n}` : "В сделках нет R (ни r_multiple, ни вход/стоп/выход)"} />
           <Metric label="Ожидание" value={hasR ? fmtR(o.expectancy) : "—"} tone={toneOf(o.expectancy)} hint="Средний знаковый R на закрытую сделку" />
-          <Metric label="Profit factor" value={fmtPf(o.profitFactor)} tone={o.profitFactor == null ? "neutral" : o.profitFactor >= 1.5 ? "up" : o.profitFactor >= 1 ? "warn" : "down"} hint={o.profitFactor == null ? "ΣR⁺ / |ΣR⁻| — нет убыточных R, фактор не определён" : "ΣR⁺ / |ΣR⁻|"} />
+          <Metric label="Profit factor" value={fmtNum(o.profitFactor)} tone={o.profitFactor == null ? "neutral" : o.profitFactor >= 1.5 ? "up" : o.profitFactor >= 1 ? "warn" : "down"} hint={o.profitFactor == null ? "ΣR⁺ / |ΣR⁻| — нет убыточных R, фактор не определён" : "ΣR⁺ / |ΣR⁻|"} />
         </div>
       </div>
 
@@ -289,16 +278,16 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         {derived.curve.length >= 3 ? (
           <div>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Кривая {derived.unit === "R" ? "в R" : "P&L нетто"} · {derived.curve.length - 1} {plural(derived.curve.length - 1, "сделка", "сделки", "сделок")}</span>
+              <span>Кривая {derived.unit === "R" ? "в R" : "P&L нетто"} · {commonI18n.t("units.trades", { count: derived.curve.length - 1 })}</span>
               <span className={cn("font-medium tabular-nums", toneText(toneOf(curveLast)))}>
-                {derived.unit === "R" ? fmtR(curveLast) : fmtUsd(curveLast)}
+                {derived.unit === "R" ? fmtR(curveLast) : fmtUsd(curveLast, { signed: true, decimals: 0 })}
               </span>
             </div>
             <Sparkline values={derived.curve} tone={toneOf(curveLast)} />
           </div>
         ) : derived.last.length > 0 ? (
           <div>
-            <div className="mb-1 text-xs text-muted-foreground">Последние {derived.last.length} {plural(derived.last.length, "сделка", "сделки", "сделок")} (старые → новые)</div>
+            <div className="mb-1 text-xs text-muted-foreground">Последние {commonI18n.t("units.trades", { count: derived.last.length })} (старые → новые)</div>
             <div className="flex flex-wrap gap-1" aria-label="Результаты последних сделок">
               {derived.last.map((t) => (
                 <span
@@ -331,9 +320,9 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <Metric label="Плюс / минус" value={`${o.wins} / ${o.losses}`} hint={be > 0 || o.open ? `${be} BE · ${o.open ?? 0} открытых` : undefined} />
-            <Metric label="P&L нетто" value={hasPnl ? fmtUsd(o.totalPnl) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? REDACTED_AGG_HINT : hasPnl ? `брутто ${fmtUsd(o.totalPnlGross)} · комиссии $${Math.round(o.fees ?? 0)} · P&L есть у ${o.pnlCount} из ${n}` : "В сделках не заполнен P&L"} />
-            <Metric label="Макс. просадка (нетто)" value={o.maxDrawdown != null ? fmtUsd(-o.maxDrawdown) : "—"} tone={(o.maxDrawdown ?? 0) > 0 ? "down" : "neutral"} />
-            <Metric label="Sharpe (R)" value={o.sharpe != null ? o.sharpe.toFixed(2) : "—"} tone={toneOf(o.sharpe)} />
+            <Metric label="P&L нетто" value={hasPnl ? fmtUsd(o.totalPnl, { signed: true, decimals: 0 }) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? REDACTED_AGG_HINT : hasPnl ? `брутто ${fmtUsd(o.totalPnlGross, { signed: true, decimals: 0 })} · комиссии ${fmtUsd(o.fees ?? 0, { decimals: 0 })} · P&L есть у ${o.pnlCount} из ${n}` : "В сделках не заполнен P&L"} />
+            <Metric label="Макс. просадка (нетто)" value={o.maxDrawdown != null ? fmtUsd(-o.maxDrawdown, { signed: true, decimals: 0 }) : "—"} tone={(o.maxDrawdown ?? 0) > 0 ? "down" : "neutral"} />
+            <Metric label="Sharpe (R)" value={fmtNum(o.sharpe)} tone={toneOf(o.sharpe)} />
           </div>
           <div>
             <Segmented

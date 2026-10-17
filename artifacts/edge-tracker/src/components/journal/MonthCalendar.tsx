@@ -3,10 +3,8 @@ import { CheckCheck, ChevronLeft, ChevronRight } from "lucide-react";
 import { Panel, Segmented } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import {
-  type DayStats, WEEKDAYS_SHORT, addDays, fmtDayLong, fmtMoney, fmtMoneyCompact, fmtMonthTitle, fmtR, localDateStr,
-  monthBounds, parseDate, weekStart,
-} from "./utils";
+import { type DayStats, addDays, fmtMonthTitle, localDateStr, monthBounds, parseDate, weekStart, weekdaysShortMonFirst } from "./utils";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 
 export type CalMetric = "r" | "pnl" | "count";
 
@@ -48,7 +46,7 @@ function metricValue(s: DayStats | undefined, metric: CalMetric): number | null 
 function fmtMetric(v: number | null, metric: CalMetric, compact = false): string {
   if (v == null) return "";
   if (metric === "r") return fmtR(v, compact ? 1 : 2);
-  if (metric === "pnl") return compact ? fmtMoneyCompact(v) : fmtMoney(v);
+  if (metric === "pnl") return compact ? fmtUsd(v, { signed: true, compact: true }) : fmtUsd(v, { signed: true, decimals: "auto" });
   return String(v);
 }
 
@@ -149,7 +147,7 @@ export function MonthCalendar({
       description={
         month$.traded > 0 ? (
           <span className="tabular-nums">
-            {hasPnl && <span className={toneClass(month$.net, "pnl")}>{fmtMoney(month$.net)}</span>}
+            {hasPnl && <span className={toneClass(month$.net, "pnl")}>{fmtUsd(month$.net, { signed: true, decimals: "auto" })}</span>}
             {hasPnl && " · "}
             {month$.trades} сд. · дней <span className="text-up">{month$.green}</span>/<span className="text-down">{month$.red}</span> · разборов {month$.reviewed}/{month$.traded}
           </span>
@@ -174,7 +172,7 @@ export function MonthCalendar({
       }
     >
       <div className="grid grid-cols-7 gap-1 sm:grid-cols-[repeat(7,minmax(0,1fr))_64px] sm:gap-1.5">
-        {WEEKDAYS_SHORT.map((w, i) => (
+        {weekdaysShortMonFirst().map((w, i) => (
           <div key={w} className={cn("pb-1 text-center text-xs text-muted-foreground", i >= 5 && "opacity-80")}>{w}</div>
         ))}
         <div className="hidden pb-1 text-center text-2xs text-muted-foreground sm:block">Неделя</div>
@@ -202,7 +200,7 @@ export function MonthCalendar({
                 const wd = parseDate(d).getDay();
                 const weekend = wd === 0 || wd === 6;
                 const label = [
-                  fmtDayLong(d),
+                  fmtDate(d, "long"),
                   s ? `${s.trades} сделок` : "нет сделок",
                   s && v != null && metric !== "count" ? fmtMetric(v, metric) : null,
                   mark ? MARK_LABEL[mark] : null,

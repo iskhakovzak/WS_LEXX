@@ -9,7 +9,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { AuthorMarkdown, NoteReader } from "./author-reader";
-import { AN_KEYS, addDays, api, fetchFeed, fmtDayLong, fmtDayShort, fmtR, fmtUsd, moodOf, type DaySnapshot, type FeedNote } from "./author-model";
+import { AN_KEYS, addDays, fetchFeed, moodOf, type DaySnapshot, type FeedNote } from "./author-model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { http } from "@/lib/api/http";
 import { matchesSearch } from "./author-plan";
 
 export type FeedRange = "day" | "week" | "month";
@@ -56,16 +59,11 @@ function ReadReceipts({ note }: { note: FeedNote }) {
         </span>
       </TooltipTrigger>
       <TooltipContent className="whitespace-pre-line">
-        {note.reads.map((r) => `${r.reader} · ${new Date(r.read_at).toLocaleString("ru-RU", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`).join("\n")}
+        {note.reads.map((r) => `${r.reader} · ${fmtDate(r.read_at, "dateTime")}`).join("\n")}
       </TooltipContent>
     </Tooltip>
   );
 }
-
-const plural = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
 
 /** The author's trading day under the card header. $ only arrives for the owner / staff (server redacts it). */
 function DayStrip({ day, onTicker }: { day: DaySnapshot; onTicker: (t: string) => void }) {
@@ -73,11 +71,11 @@ function DayStrip({ day, onTicker }: { day: DaySnapshot; onTicker: (t: string) =
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs">
       <span className="inline-flex items-center gap-1.5 text-muted-foreground">
         <CandlestickChart className="h-3.5 w-3.5" aria-hidden="true" />
-        <span className="tabular-nums text-foreground">{day.count}</span> {plural(day.count, "сделка", "сделки", "сделок")}
+        <span className="tabular-nums text-foreground">{day.count}</span> {commonI18n.t("units.tradesWord", { count: day.count })}
         {day.wins + day.losses > 0 && <span className="tabular-nums">· {day.wins}W / {day.losses}L</span>}
       </span>
-      {day.rSum != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.rSum)))}>{fmtR(day.rSum)}</span>}
-      {day.pnlNet != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.pnlNet)))}>{fmtUsd(day.pnlNet)}</span>}
+      {day.rSum != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.rSum)))}>{fmtR(day.rSum, 1)}</span>}
+      {day.pnlNet != null && <span className={cn("font-medium tabular-nums", toneText(toneOf(day.pnlNet)))}>{fmtUsd(day.pnlNet, { signed: true, decimals: 0 })}</span>}
       {day.tickers.length > 0 && (
         <span className="flex flex-wrap gap-1" role="group" aria-label="Тикеры дня: найти в ленте">
           {day.tickers.map((t) => (
@@ -135,7 +133,7 @@ function FeedCard({
         "glass-panel relative flex flex-col gap-3 rounded-2xl p-4 sm:p-5 transition-shadow",
         selected && "ring-2 ring-primary/50",
       )}
-      aria-label={`Сводка ${note.trader} за ${fmtDayShort(note.note_date)}`}
+      aria-label={`Сводка ${note.trader} за ${fmtDate(note.note_date, "dayMonth")}`}
     >
       {unread && <span className="absolute left-0 top-6 h-6 w-1 rounded-r-full bg-primary" aria-hidden="true" />}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -161,7 +159,7 @@ function FeedCard({
             {unread && <Pill tone="accent" dot>новая</Pill>}
           </span>
           <span className="inline-block text-xs text-muted-foreground first-letter:uppercase">
-            {showDate ? fmtDayLong(note.note_date) : `обновлено ${new Date(note.updated_at).toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}`}
+            {showDate ? fmtDate(note.note_date, "weekdayDayMonthLong") : `обновлено ${fmtDate(note.updated_at, "time")}`}
           </span>
         </div>
         {mood && (
@@ -272,7 +270,7 @@ export function AuthorFeed({
 
   const toggleRead = useMutation({
     mutationFn: async ({ id, read }: { id: number; read: boolean }) =>
-      api(`/author-notes/${id}/read`, { method: read ? "POST" : "DELETE" }),
+      http.send(read ? "POST" : "DELETE", `/api/author-notes/${id}/read`),
     onMutate: ({ id, read }) => { setBusyId(id); patchRead(id, read); },
     onError: (e: Error, { id, read }) => {
       patchRead(id, !read);
@@ -283,7 +281,7 @@ export function AuthorFeed({
 
   const markAll = useMutation({
     mutationFn: async (ids: number[]) => {
-      for (const id of ids) await api(`/author-notes/${id}/read`, { method: "POST" });
+      for (const id of ids) await http.post(`/api/author-notes/${id}/read`);
     },
     onMutate: (ids) => ids.forEach((id) => patchRead(id, true)),
     onError: (e: Error) => toast({ title: "Не все отметки сохранились", description: e.message, variant: "destructive" }),
@@ -291,7 +289,7 @@ export function AuthorFeed({
   });
 
   const teamSummary = useMutation({
-    mutationFn: (ids: number[]) => api<{ summary: string }>(`/author-notes/team-summary`, { method: "POST", body: JSON.stringify({ note_ids: ids }) }),
+    mutationFn: (ids: number[]) => http.post<{ summary: string }>(`/api/author-notes/team-summary`, { note_ids: ids }),
     onSuccess: (d) => { setSummary(d.summary); setSelecting(false); },
     onError: (e: Error) => toast({ title: "AI-сводка не получилась", description: e.message, variant: "destructive" }),
   });
@@ -383,7 +381,7 @@ export function AuthorFeed({
             <EmptyState
               icon={Search}
               title={`Ничего не нашлось по «${search.trim()}»`}
-              description={`Период ${fmtDayShort(from)} — ${fmtDayShort(to)}`}
+              description={`Период ${fmtDate(from, "dayMonth")} — ${fmtDate(to, "dayMonth")}`}
               action={
                 <div className="flex flex-wrap justify-center gap-2">
                   <Button variant="outline" onClick={() => setSearch("")}>Сбросить поиск</Button>
@@ -395,7 +393,7 @@ export function AuthorFeed({
           <EmptyState
             icon={Users}
             title={unreadOnly ? "Всё прочитано" : "Сводок за этот период нет"}
-            description={unreadOnly ? "Новых сводок от команды нет." : `Период ${fmtDayShort(from)} — ${fmtDayShort(to)} · попробуй расширить диапазон`}
+            description={unreadOnly ? "Новых сводок от команды нет." : `Период ${fmtDate(from, "dayMonth")} — ${fmtDate(to, "dayMonth")} · попробуй расширить диапазон`}
             action={!unreadOnly && range !== "month" ? <Button variant="outline" onClick={() => onRangeChange(range === "day" ? "week" : "month")}>Показать {range === "day" ? "7 дней" : "30 дней"}</Button> : undefined}
           />
           )}

@@ -1,6 +1,4 @@
 import { Link } from "wouter";
-import { format } from "date-fns";
-import { ru } from "date-fns/locale";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowUpRight, CalendarClock, Compass, Crosshair, Eye, ShieldAlert, ShieldX, Target, Zap } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
@@ -14,22 +12,21 @@ import {
   RISK_MODE,
   TICKER_BIAS,
   dateObj,
-  fmtLevel,
-  fmtTime,
   type GamePlan,
   type InPlayItem,
   type LevelSet,
   type MacroItem,
 } from "./types";
+import { fmtDate, fmtPrice } from "@/lib/format";
 
 export function longDate(date: string) {
-  const s = format(dateObj(date), "EEEE, d MMMM yyyy", { locale: ru });
+  const s = fmtDate(dateObj(date), "full");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 /** «пт, 16 окт» — compact day label (lower case, no trailing dot). */
 export function shortDay(date: string) {
-  return format(dateObj(date), "EEEEEE, d MMM", { locale: ru }).replace(/\.$/, "").toLowerCase();
+  return fmtDate(dateObj(date), "weekdayDayMonth").replace(/\.$/, "");
 }
 
 /** The one rule of the day — shown first, above everything else. */
@@ -73,7 +70,7 @@ export function PlanHero({ plan, readSlot }: { plan: GamePlan; readSlot?: React.
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
               {plan.author}
-              {edited ? ` · обновил ${plan.updatedBy} в ${fmtTime(plan.updatedAt)}` : ` · опубликовано в ${fmtTime(plan.createdAt)}`}
+              {edited ? ` · обновил ${plan.updatedBy} в ${fmtDate(plan.updatedAt, "time")}` : ` · опубликовано в ${fmtDate(plan.createdAt, "time")}`}
             </p>
           </div>
           {readSlot}
@@ -127,14 +124,14 @@ function IndexLevels({ symbol, set }: { symbol: string; set?: LevelSet }) {
           {res.map((v, i) => (
             <li key={`r${i}`} className="flex items-center justify-between rounded-lg px-2 py-0.5">
               <span className="text-xs text-muted-foreground">R{res.length - i}</span>
-              <span className="font-medium text-down">{fmtLevel(v)}</span>
+              <span className="font-medium text-down">{fmtPrice(v)}</span>
             </li>
           ))}
           {res.length > 0 && sup.length > 0 && <li aria-hidden="true" className="my-0.5 h-px bg-border" />}
           {sup.map((v, i) => (
             <li key={`s${i}`} className="flex items-center justify-between rounded-lg px-2 py-0.5">
               <span className="text-xs text-muted-foreground">S{i + 1}</span>
-              <span className="font-medium text-up">{fmtLevel(v)}</span>
+              <span className="font-medium text-up">{fmtPrice(v)}</span>
             </li>
           ))}
         </ol>
@@ -233,11 +230,11 @@ export function InPlayCard({ item, index }: { item: InPlayItem; index: number })
         <div className="grid grid-cols-2 gap-2 text-sm tabular-nums">
           <div className="rounded-xl bg-up/10 px-3 py-2">
             <div className="text-xs text-muted-foreground">Поддержка</div>
-            <div className="mt-0.5 font-medium text-up">{sup.length ? sup.map(fmtLevel).join(" · ") : "—"}</div>
+            <div className="mt-0.5 font-medium text-up">{sup.length ? sup.map((v) => fmtPrice(v)).join(" · ") : "—"}</div>
           </div>
           <div className="rounded-xl bg-down/10 px-3 py-2">
             <div className="text-xs text-muted-foreground">Сопротивление</div>
-            <div className="mt-0.5 font-medium text-down">{res.length ? res.map(fmtLevel).join(" · ") : "—"}</div>
+            <div className="mt-0.5 font-medium text-down">{res.length ? res.map((v) => fmtPrice(v)).join(" · ") : "—"}</div>
           </div>
         </div>
       )}

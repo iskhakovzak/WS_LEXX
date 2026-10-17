@@ -9,8 +9,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { ToastAction } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { apiJson } from "./api";
-import { fmtDay, fmtR, fmtUsd, severityMeta } from "./constants";
+import { http } from "@/lib/api/http";
+import { humanizeApiError } from "@/lib/api/errors";
+import { severityMeta } from "./constants";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { mistakeDate } from "./discipline";
 import type { Mistake } from "./types";
 
@@ -75,12 +77,12 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   async function patch(m: Mistake, body: Record<string, unknown>, okMsg: string) {
     setBusyId(m.id);
     try {
-      await apiJson(`/errors/${m.id}`, { method: "PATCH", json: body }, "Не удалось сохранить");
+      await http.patch(`/api/errors/${m.id}`, body);
       toast({ title: okMsg });
       onChanged();
       return true;
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось сохранить"), variant: "destructive" });
       return false;
     } finally {
       setBusyId(null);
@@ -91,7 +93,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
   async function remove(m: Mistake) {
     setBusyId(m.id);
     try {
-      await apiJson(`/errors/${m.id}`, { method: "DELETE" }, "Не удалось удалить");
+      await http.del(`/api/errors/${m.id}`);
       onChanged();
       toast({
         title: "Запись удалена",
@@ -101,10 +103,10 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
             altText="Вернуть запись"
             onClick={async () => {
               try {
-                await apiJson(`/errors/${m.id}/restore`, { method: "POST" }, "Не удалось вернуть запись");
+                await http.post(`/api/errors/${m.id}/restore`);
                 onChanged();
               } catch (e) {
-                toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+                toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось вернуть запись"), variant: "destructive" });
               }
             }}
           >
@@ -113,7 +115,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
         ),
       });
     } catch (e) {
-      toast({ title: "Ошибка удаления", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: "Ошибка удаления", description: humanizeApiError(e, "Не удалось удалить"), variant: "destructive" });
     } finally {
       setBusyId(null);
     }
@@ -234,15 +236,15 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
                         >
                           {m.ticker ?? `#${m.tradeId}`}
                           {m.tradeNetPnl != null ? (
-                            <span className={m.tradeNetPnl < 0 ? "text-down" : m.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(m.tradeNetPnl)}</span>
+                            <span className={m.tradeNetPnl < 0 ? "text-down" : m.tradeNetPnl > 0 ? "text-up" : ""}>{fmtUsd(m.tradeNetPnl, { signed: true, decimals: "trim" })}</span>
                           ) : m.tradeR != null ? (
-                            <span className={m.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(m.tradeR)}</span>
+                            <span className={m.tradeR < 0 ? "text-down" : "text-up"}>{fmtR(m.tradeR, 1)}</span>
                           ) : null}
                         </button>
                       ) : m.ticker ? (
                         <Pill><Highlight text={m.ticker} q={q} /></Pill>
                       ) : null}
-                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtDay(mistakeDate(m))}</span>
+                      <span className="ml-auto text-xs tabular-nums text-muted-foreground">{fmtDate(mistakeDate(m), "dayMonth")}</span>
                     </div>
                     {m.description && m.description !== m.errorType && (
                       <p className="mt-1 whitespace-pre-wrap break-words text-sm text-muted-foreground"><Highlight text={m.description} q={q} /></p>

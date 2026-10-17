@@ -1,5 +1,5 @@
 import type { SeverityMeta } from "./types";
-import { selectPlural } from "@/i18n/core";
+import { pluralRu } from "@/lib/format";
 
 export const SEVERITY: Record<string, SeverityMeta> = {
   low: { label: "Низкая", tone: "neutral", bar: "bg-muted-foreground/50" },
@@ -80,40 +80,4 @@ export function lsSet(key: string, value: string) {
   try { localStorage.setItem(key, value); } catch { /* ignore */ }
 }
 
-export function fmtR(r: number | null | undefined, digits = 1): string {
-  if (r == null || !Number.isFinite(r)) return "—";
-  const s = Math.abs(r).toFixed(digits);
-  return `${r > 0 ? "+" : r < 0 ? "−" : ""}${s}R`;
-}
-const USD = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-const USD2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
-/** Signed net $: «+$1,234» / «−$56»; under $100 — with cents. */
-export function fmtUsd(v: number | null | undefined, opts: { sign?: boolean } = {}): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const a = Math.abs(v);
-  const s = a < 100 && a !== Math.round(a) ? USD2.format(a) : USD.format(a);
-  const sign = opts.sign === false ? (v < 0 ? "−" : "") : v > 0 ? "+" : v < 0 ? "−" : "";
-  return `${sign}$${s}`;
-}
-/** 0..1 → «87%». */
-export function fmtPct(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  return `${Math.round(v * 100)}%`;
-}
-export function fmtDay(d: string | null | undefined): string {
-  if (!d) return "";
-  const dt = new Date(`${d.slice(0, 10)}T12:00:00`);
-  if (Number.isNaN(dt.getTime())) return d;
-  return dt.toLocaleDateString("ru-RU", { day: "numeric", month: "short" });
-}
-
-/**
- * Russian plural form: 1 нарушение, 2 нарушения, 5 нарушений (11–14 → many); fractions (1,5) take the `few` form.
- * @deprecated Thin wrapper over the i18n plural API, kept so old call sites compile. New code: a plural entry in
- * a dictionary (`t("units.trades", { count })`), which also works in EN/UZ.
- */
-export function pluralRu(n: number, one: string, few: string, many: string): string {
-  return selectPlural("ru", { one, few, many, other: few }, n);
-}
 export const violationsWord = (n: number) => pluralRu(n, "нарушение", "нарушения", "нарушений");

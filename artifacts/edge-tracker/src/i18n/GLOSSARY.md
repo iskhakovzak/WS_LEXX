@@ -258,3 +258,14 @@ Canonical names live in `i18n/locales/<lang>/shell.ts` → `nav.*` (use `shellI1
 <!-- ## <area> (agent name)
 | RU | EN | UZ | Note |
 |---|---|---|---| -->
+
+## Simulator (SIMULATOR agent)
+| RU | EN | UZ | Note |
+|---|---|---|---|
+| Симулятор (игра на графике) | Simulator | Simulyator | /simulator; the old «Что если» page moved to /what-if |
+| Бар (свеча в игре) | Bar | Sham | «{count} sham» |
+| Купи и держи | Buy and hold | Sotib ol va ushla | benchmark of a game |
+| Вне позиции | Flat | Pozitsiyasiz | |
+| Автоигра / авто | Autoplay / auto | Avtooʻyin / avto | |
+| Лёгкий / средний / сложный | Easy / medium / hard | Oson / oʻrtacha / qiyin | game level |
+| Таблица недели деска | Desk week | Desk haftasi | weekly leaderboard |

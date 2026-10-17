@@ -6,13 +6,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import {
-  fmtMoney,
-  fmtPct,
-  fmtShortDate,
   useEarningsHistory,
   type CallType,
   type EarningsHistory,
-} from "./earnings-api";
+} from "@/components/shared/market/earnings-api";
+import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 
 export function CallTypePill({ type, long = false, className }: { type: CallType; long?: boolean; className?: string }) {
   if (type === "BMO")
@@ -69,7 +67,7 @@ function ReactionBars({ data }: { data: EarningsHistory }) {
                 style={v >= 0 ? { bottom: "50%", height: `${h}%` } : { top: "50%", height: `${h}%` }}
               />
             </div>
-            <span className="mt-1 text-2xs tabular-nums text-muted-foreground">{fmtShortDate(q.date)}</span>
+            <span className="mt-1 text-2xs tabular-nums text-muted-foreground">{fmtDate(q.date, "dayMonth")}</span>
           </div>
         );
       })}
@@ -153,11 +151,11 @@ export function EarningsHistoryView({
           <li key={q.date} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
-                {fmtShortDate(q.date)} {q.date.slice(0, 4)}
+                {fmtDate(q.date, "dayMonth")} {q.date.slice(0, 4)}
                 {q.beat != null && <Pill tone={q.beat ? "up" : "down"}>{q.beat ? "Beat" : "Miss"}</Pill>}
               </div>
               <div className="text-xs text-muted-foreground tabular-nums">
-                {q.fiscalQuarter ? `${q.fiscalQuarter} · ` : ""}EPS {fmtMoney(q.epsActual)} / {fmtMoney(q.epsEstimate)}
+                {q.fiscalQuarter ? `${q.fiscalQuarter} · ` : ""}EPS {fmtUsd(q.epsActual)} / {fmtUsd(q.epsEstimate)}
                 {q.surprisePct != null && <span className={cn("ml-1", toneText(toneOf(q.surprisePct)))}>({fmtPct(q.surprisePct, 1)})</span>}
               </div>
             </div>
@@ -216,8 +214,8 @@ export function EarningsHistorySheet({
             </SheetHeader>
             {(target.date || target.epsEstimate != null) && (
               <div className="mt-4 rounded-xl bg-[var(--glass-bg)] px-3 py-1">
-                {target.date && <StatRow label="Ближайший отчёт" value={fmtShortDate(target.date, true)} />}
-                {target.epsEstimate != null && <StatRow label="Прогноз EPS" value={fmtMoney(target.epsEstimate)} />}
+                {target.date && <StatRow label="Ближайший отчёт" value={fmtDate(target.date, "weekdayDayMonth")} />}
+                {target.epsEstimate != null && <StatRow label="Прогноз EPS" value={fmtUsd(target.epsEstimate)} />}
               </div>
             )}
             <div className="mt-5">

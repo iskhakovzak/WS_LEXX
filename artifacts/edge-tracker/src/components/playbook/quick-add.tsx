@@ -22,10 +22,13 @@ import { ToastAction } from "@/components/ui/toast";
 import { toneText } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { ApiError, invalidateExamples, invalidateTradeLinks, notLiveMessage, pbRequest } from "./api";
+import { invalidateExamples, invalidateTradeLinks, notLiveMessage } from "./api";
+import { http, ApiError } from "@/lib/api/http";
 import { imageFilesFrom, uploadPlaybookImage } from "./media";
-import { TIERS, ddmm, fmtR, fmtUsd, moneyTone, tierMeta, type Tier } from "./model";
-import { buildQuickRows, defaultTier, tradesWord, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
+import { TIERS, moneyTone, tierMeta, type Tier } from "./model";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { buildQuickRows, defaultTier, undoSteps, type AddResponse, type QuickSetup } from "./quick-add-logic";
+import { commonI18n } from "@/i18n/ns/common";
 
 type ForTrade = {
   trade: {
@@ -48,9 +51,9 @@ export function spaceShort(s: Pick<QuickSetup, "space" | "mine" | "owner">) {
 async function runUndo(setupId: number, r: AddResponse) {
   for (const st of undoSteps(r)) {
     if (st.kind === "delete") {
-      await pbRequest(`/api/playbook/${setupId}/examples/${st.exampleId}${st.unlink ? "?unlink=1" : ""}`, { method: "DELETE" });
+      await http.del(`/api/playbook/${setupId}/examples/${st.exampleId}${st.unlink ? "?unlink=1" : ""}`);
     } else {
-      await pbRequest(`/api/playbook/${setupId}/examples/${st.exampleId}`, { method: "PATCH", json: { tier: st.tier, note: st.note } });
+      await http.patch(`/api/playbook/${setupId}/examples/${st.exampleId}`, { tier: st.tier, note: st.note });
     }
   }
 }
@@ -76,7 +79,7 @@ export function TradeQuickAdd({
   const firstId = tradeIds[0];
   const q = useQuery<ForTrade>({
     queryKey: ["playbook-for-trade", firstId],
-    queryFn: () => pbRequest<ForTrade>(`/api/playbook-tools/for-trade/${firstId}`),
+    queryFn: () => http.get<ForTrade>(`/api/playbook-tools/for-trade/${firstId}`),
     staleTime: 15_000,
     enabled: Number.isSafeInteger(firstId) && firstId > 0,
     retry: (n, e) => !(e instanceof ApiError && e.status < 500) && n < 1,
@@ -133,15 +136,12 @@ export function TradeQuickAdd({
 
   const add = useMutation({
     mutationFn: async (setupId: number) => {
-      const r = await pbRequest<AddResponse & { examples: { id: number; tradeId: number }[] }>(`/api/playbook/${setupId}/examples`, {
-        method: "POST",
-        json: { tradeIds, tier, note: note.trim() || null },
-      });
+      const r = await http.post<AddResponse & { examples: { id: number; tradeId: number }[] }>(`/api/playbook/${setupId}/examples`, { tradeIds, tier, note: note.trim() || null });
       let shotError: string | null = null;
       if (shot && r.examples?.length === 1) {
         try {
           const m = await uploadPlaybookImage(shot, setupId);
-          await pbRequest(`/api/playbook/${setupId}/examples/${r.examples[0].id}`, { method: "PATCH", json: { mediaId: m.id } });
+          await http.patch(`/api/playbook/${setupId}/examples/${r.examples[0].id}`, { mediaId: m.id });
         } catch (e) {
           shotError = (e as Error)?.message ?? "ошибка";
         }
@@ -167,7 +167,7 @@ export function TradeQuickAdd({
       toast({
         title: updatedOnly
           ? `Обновлено в «${s?.name ?? "сетап"}» · ${t.label}`
-          : `${single ? "Сделка" : `${n} ${tradesWord(n)}`} → «${s?.name ?? "сетап"}» · ${t.short}`,
+          : `${single ? "Сделка" : `${commonI18n.t("units.trades", { count: n })}`} → «${s?.name ?? "сетап"}» · ${t.short}`,
         description: (
           <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <span>{s?.space === "office" ? "Плейбук офиса" : s?.mine ? "Мой плейбук" : spaceShort(s ?? { space: "personal", mine: false, owner: null })}</span>
@@ -251,11 +251,11 @@ export function TradeQuickAdd({
         <BookOpen className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
           {single
-            ? <>В плейбук{t ? ` · ${t.ticker}` : ""}{t?.date ? ` · ${ddmm(t.date)}` : ""}</>
-            : <>В плейбук · {tradeIds.length} {tradesWord(tradeIds.length)}</>}
+            ? <>В плейбук{t ? ` · ${t.ticker}` : ""}{t?.date ? ` · ${fmtDate(t.date, "dayMonthNumeric")}` : ""}</>
+            : <>В плейбук · {commonI18n.t("units.trades", { count: tradeIds.length })}</>}
         </span>
         {single && t?.signedR != null && <span className={cn("shrink-0 text-xs font-medium tabular-nums", toneText(moneyTone(t.signedR)))}>{fmtR(t.signedR)}</span>}
-        {single && net != null && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", toneText(moneyTone(net)))}>{fmtUsd(net)}</span>}
+        {single && net != null && <span className={cn("shrink-0 text-sm font-semibold tabular-nums", toneText(moneyTone(net)))}>{fmtUsd(net, { signed: true, decimals: 0 })}</span>}
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-[var(--panel-p)]">
@@ -442,7 +442,7 @@ export function AddTradesToPlaybookDialog({
       <DialogContent className="flex max-h-[85dvh] w-[calc(100vw-1.5rem)] max-w-xl flex-col gap-0 overflow-hidden p-0">
         <DialogHeader className="sr-only">
           <DialogTitle>В плейбук</DialogTitle>
-          <DialogDescription>Выберите сетап и тир для {tradeIds.length} {tradesWord(tradeIds.length)}</DialogDescription>
+          <DialogDescription>Выберите сетап и тир для {commonI18n.t("units.trades", { count: tradeIds.length })}</DialogDescription>
         </DialogHeader>
         {open && tradeIds.length > 0 && (
           <TradeQuickAdd

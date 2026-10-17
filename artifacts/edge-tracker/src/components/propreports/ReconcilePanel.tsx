@@ -10,30 +10,20 @@ import { ChevronDown, ChevronRight, Download, RefreshCw, Scale } from "lucide-re
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, useTableSort, type Tone } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
+import { isNotFound } from "@/lib/api/errors";
 import {
-  FEE_ROUNDING_LABEL, ReconcileHttpError, discrepanciesCsv, downloadText, useReconcile,
+  FEE_ROUNDING_LABEL, discrepanciesCsv, downloadText, useReconcile,
   type Compare, type CompareStatus, type DayRow, type Issue, type ReportCheck, type Severity,
 } from "./reconcile-api";
 import { PersonSelect } from "@/components/people/person-select";
+import { fmtUsd } from "@/lib/format";
 
 const ALL = "__all__";
 
-const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
-function money(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  const s = usd.format(Math.abs(v));
-  return v < 0 ? `−${s}` : s;
-}
-function signed(v: number | null | undefined): string {
-  if (v == null || !Number.isFinite(v)) return "—";
-  if (Math.abs(v) < 0.005) return "$0.00";
-  return `${v > 0 ? "+" : ""}${money(v)}`;
-}
 const toneOfMoney = (v: number | null | undefined): Tone => (v == null || Math.abs(v) < 0.005 ? "neutral" : v > 0 ? "up" : "down");
 
 const STATUS_META: Record<Severity, { icon: string; label: string; tone: Tone; text: string }> = {
@@ -69,7 +59,7 @@ function IssueItem({ issue, trader }: { issue: Issue; trader: string | null }) {
         <div className="text-foreground">{issue.message}</div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           {issue.cause === "fee_rounding" && <Pill tone="accent" title={issue.hint}>{FEE_ROUNDING_LABEL}</Pill>}
-          {issue.diff != null && <span className="tabular-nums">разница {signed(issue.diff)}</span>}
+          {issue.diff != null && <span className="tabular-nums">разница {fmtUsd(issue.diff, { signed: true })}</span>}
           {href && (
             <Link href={href} className="text-primary underline-offset-2 hover:underline">
               {issue.tradeIds.length === 1 ? `сделка #${issue.tradeIds[0]}` : issue.tradeIds.length > 1 ? `сделки (${issue.tradeIds.length})` : issue.ticker ? `сделки ${issue.ticker}` : "сделки дня"}
@@ -101,9 +91,9 @@ function CompareTable({ rows, caption }: { rows: Compare[]; caption: string }) {
           {rows.map((c) => (
             <tr key={c.key}>
               <td>{c.label}</td>
-              <td className="text-right">{isCount(c.key) ? c.journal ?? "—" : money(c.journal)}</td>
-              <td className="text-right">{isCount(c.key) ? c.broker ?? "—" : money(c.broker)}</td>
-              <td className="text-right">{c.diff == null ? "—" : isCount(c.key) ? (c.diff > 0 ? `+${c.diff}` : c.diff) : signed(c.diff)}</td>
+              <td className="text-right">{isCount(c.key) ? c.journal ?? "—" : fmtUsd(c.journal)}</td>
+              <td className="text-right">{isCount(c.key) ? c.broker ?? "—" : fmtUsd(c.broker)}</td>
+              <td className="text-right">{c.diff == null ? "—" : isCount(c.key) ? (c.diff > 0 ? `+${c.diff}` : c.diff) : fmtUsd(c.diff, { signed: true })}</td>
               <td>
                 <span className="inline-flex items-center gap-2">
                   <StatusMark status={c.status} />
@@ -139,7 +129,7 @@ function ReportBlock({ rep }: { rep: ReportCheck }) {
         Проверено групп (сторона / день недели / символ): {rep.groups.length}, расходится: {badGroups.length}
         {rep.symbolsMissingInJournal.length > 0 && <> · нет в журнале: {rep.symbolsMissingInJournal.join(", ")}</>}
         {rep.symbolsMissingInReport.length > 0 && <> · нет у брокера: {rep.symbolsMissingInReport.join(", ")}</>}
-        {rep.manualInPeriod.trades > 0 && <> · ручных сделок в периоде: {rep.manualInPeriod.trades} ({signed(rep.manualInPeriod.net)})</>}
+        {rep.manualInPeriod.trades > 0 && <> · ручных сделок в периоде: {rep.manualInPeriod.trades} ({fmtUsd(rep.manualInPeriod.net, { signed: true })})</>}
       </div>
     </div>
   );
@@ -166,7 +156,7 @@ function DayDetails({ day, issues, trader }: { day: DayRow; issues: Issue[]; tra
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
         <span>Источник брокера: {day.brokerSource === "report-days" ? "дневные итоги отчёта" : day.brokerSource === "snapshot" ? "снимок PropReports в сделках" : "нет"}</span>
         <span>С исполнениями: {day.fills.withFills} · без: {day.fills.withoutFills}</span>
-        {day.manual.trades > 0 && <span>Ручные: {day.manual.trades} сд., нетто {signed(day.manual.net)} (не входят в сверку с брокером)</span>}
+        {day.manual.trades > 0 && <span>Ручные: {day.manual.trades} сд., нетто {fmtUsd(day.manual.net, { signed: true })} (не входят в сверку с брокером)</span>}
         <Link href={links.trades({ date: day.date })} className="text-primary hover:underline">Сделки дня</Link>
         <Link href={links.journalDay(day.date, trader ?? undefined)} className="text-primary hover:underline">Журнал дня</Link>
       </div>
@@ -270,7 +260,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
       ) : q.isError ? (
         <EmptyState
           icon={Scale}
-          title={q.error instanceof ReconcileHttpError && q.error.status === 404 ? "Сверка ещё не подключена на сервере" : "Не удалось выполнить сверку"}
+          title={isNotFound(q.error) ? "Сверка ещё не подключена на сервере" : "Не удалось выполнить сверку"}
           description={q.error instanceof Error ? q.error.message : String(q.error)}
           action={<Button type="button" variant="outline" size="sm" onClick={() => q.refetch()}>Повторить</Button>}
         />
@@ -279,9 +269,9 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
       ) : compact ? (
         <div className="grid gap-3">
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <div><div className="text-xs text-muted-foreground">Нетто журнала</div><div className={cn("font-semibold tabular-nums", toneOfMoney(s.journal.net) === "up" ? "text-up" : toneOfMoney(s.journal.net) === "down" ? "text-down" : "")}>{signed(s.journal.net)}</div></div>
-            <div><div className="text-xs text-muted-foreground">Нетто брокера</div><div className="font-semibold tabular-nums">{repNet ? signed(repNet.broker) : "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Разница</div><div className="font-semibold tabular-nums">{repNet ? signed(repNet.diff) : "—"}</div></div>
+            <div><div className="text-xs text-muted-foreground">Нетто журнала</div><div className={cn("font-semibold tabular-nums", toneOfMoney(s.journal.net) === "up" ? "text-up" : toneOfMoney(s.journal.net) === "down" ? "text-down" : "")}>{fmtUsd(s.journal.net, { signed: true })}</div></div>
+            <div><div className="text-xs text-muted-foreground">Нетто брокера</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"}</div></div>
+            <div><div className="text-xs text-muted-foreground">Разница</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.diff, { signed: true }) : "—"}</div></div>
             <div><div className="text-xs text-muted-foreground">Дней с расхождениями</div><div className="font-semibold tabular-nums">{s.daysWithIssues} / {s.days}</div></div>
           </div>
           {issues.length > 0 && <ul className="grid gap-2">{issues.slice(0, 4).map((i) => <IssueItem key={i.id} issue={i} trader={scopeName} />)}</ul>}
@@ -290,11 +280,11 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
       ) : (
         <div className="grid gap-5">
           <StatGrid>
-            <StatCard label="Нетто журнала (брокерские сделки)" value={signed(s.journal.net)} tone={toneOfMoney(s.journal.net)} hint={`брутто ${money(s.journal.gross)} · комиссии ${money(s.journal.fees)}`} />
-            <StatCard label="Нетто по отчёту брокера" value={repNet ? signed(repNet.broker) : "—"} hint={rep ? `${rep.periodFrom} — ${rep.periodTo}` : "отчёт Trade Performance не загружен"} />
+            <StatCard label="Нетто журнала (брокерские сделки)" value={fmtUsd(s.journal.net, { signed: true })} tone={toneOfMoney(s.journal.net)} hint={`брутто ${fmtUsd(s.journal.gross)} · комиссии ${fmtUsd(s.journal.fees)}`} />
+            <StatCard label="Нетто по отчёту брокера" value={repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"} hint={rep ? `${rep.periodFrom} — ${rep.periodTo}` : "отчёт Trade Performance не загружен"} />
             <StatCard
               label="Разница с брокером"
-              value={repNet ? signed(repNet.diff) : "—"}
+              value={repNet ? fmtUsd(repNet.diff, { signed: true }) : "—"}
               tone={!repNet || repNet.status === "ok" ? "neutral" : repNet.status === "error" ? "down" : "warn"}
               hint={repNet?.cause === "fee_rounding" ? FEE_ROUNDING_LABEL : repNet?.note}
             />
@@ -356,11 +346,11 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
                             <td className="whitespace-nowrap">{d.date}</td>
                             <td><span className="inline-flex items-center gap-1"><StatusMark status={d.status} />{dayIssues.length > 0 && <span className="text-xs text-muted-foreground">{dayIssues.length}</span>}</span></td>
                             <td className="text-right">{d.journal.trades}</td>
-                            <td className="text-right">{money(d.journal.gross)}</td>
-                            <td className="text-right">{money(d.journal.fees)}</td>
-                            <td className={cn("text-right font-medium", toneOfMoney(d.journal.net) === "up" ? "text-up" : toneOfMoney(d.journal.net) === "down" ? "text-down" : "")}>{signed(d.journal.net)}</td>
-                            <td className="text-right">{d.broker ? signed(d.broker.net) : "—"}</td>
-                            <td className="text-right">{diff == null ? "—" : signed(Math.round(diff * 100) / 100)}</td>
+                            <td className="text-right">{fmtUsd(d.journal.gross)}</td>
+                            <td className="text-right">{fmtUsd(d.journal.fees)}</td>
+                            <td className={cn("text-right font-medium", toneOfMoney(d.journal.net) === "up" ? "text-up" : toneOfMoney(d.journal.net) === "down" ? "text-down" : "")}>{fmtUsd(d.journal.net, { signed: true })}</td>
+                            <td className="text-right">{d.broker ? fmtUsd(d.broker.net, { signed: true }) : "—"}</td>
+                            <td className="text-right">{diff == null ? "—" : fmtUsd(Math.round(diff * 100) / 100, { signed: true })}</td>
                             <td className="text-right text-muted-foreground">{d.manual.trades || ""}</td>
                           </tr>
                           {isOpen && (

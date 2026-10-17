@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Kbd, Pill, ProgressRing, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
-import { fmtMoney, fmtPrice, fmtR } from "../lib/format";
+import { fmtNum, fmtPrice, fmtR, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
 import { fmtPerShare } from "../lib/trade-summary";
 import {
   historyStats, plannedRR, sessionSlice, simFillLabel, simLiveR, simMark, trainingVerdict,
@@ -19,10 +19,6 @@ import {
 import { AsideCard } from "./TradePanels";
 
 const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-12 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
-const pluralRu = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
-};
 const QTY_CHIPS = [100, 500, 1000] as const;
 const RR_CHIPS = [1, 2, 3] as const;
 
@@ -162,10 +158,10 @@ export function TrainingTicket({
           <div className="flex flex-col gap-0.5">
             <div className="flex items-baseline justify-between gap-2">
               <span className="font-medium">{sim.pos > 0 ? "Лонг" : "Шорт"} {Math.abs(sim.pos)} @ {fmtPrice(sim.avg)}</span>
-              <b className={tone(mark?.total)}>{fmtMoney(mark?.total)}</b>
+              <b className={tone(mark?.total)}>{fmtUsd(mark?.total, { signed: true, decimals: "auto" })}</b>
             </div>
             <div className="flex flex-wrap items-baseline justify-between gap-x-2 text-xs text-muted-foreground">
-              <span>стоп {sim.stop != null ? fmtPrice(sim.stop) : "—"} · цель {sim.target != null ? fmtPrice(sim.target) : "—"}{rr != null && <> · R:R 1:{rr.toFixed(1)}</>}</span>
+              <span>стоп {sim.stop != null ? fmtPrice(sim.stop) : "—"} · цель {sim.target != null ? fmtPrice(sim.target) : "—"}{rr != null && <> · R:R 1:{fmtNum(rr, 1)}</>}</span>
               <span className="flex gap-2">
                 <b className={tone(perShare)}>{fmtPerShare(perShare)}</b>
                 <b className={tone(liveR)} title="Весь результат попытки в R первого стопа">{liveR != null ? fmtR(liveR) : "— R"}</b>
@@ -175,7 +171,7 @@ export function TrainingTicket({
         ) : (
           <div className="flex items-baseline justify-between gap-2">
             <span className="text-muted-foreground">{sim.fills.length ? "Без позиции" : "Сделок ещё нет"}</span>
-            {sim.fills.length > 0 && <span className="flex gap-2"><b className={tone(sim.realized)}>{fmtMoney(sim.realized)}</b>{liveR != null && <b className={tone(liveR)}>{fmtR(liveR)}</b>}</span>}
+            {sim.fills.length > 0 && <span className="flex gap-2"><b className={tone(sim.realized)}>{fmtUsd(sim.realized, { signed: true, decimals: "auto" })}</b>{liveR != null && <b className={tone(liveR)}>{fmtR(liveR)}</b>}</span>}
           </div>
         )}
       </div>
@@ -217,7 +213,7 @@ export function TrainingOutcomeCard({
       </div>
       <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-sm tabular-nums">
         <dt className="text-muted-foreground">Ты</dt>
-        <dd className="flex flex-wrap justify-end gap-x-1.5 text-right">{o.trades ? <><b className={tone(o.r ?? o.perShare)}>{o.r != null ? fmtR(o.r) : fmtPerShare(o.perShare)}</b>{o.r != null && <span className={tone(o.perShare)}>{fmtPerShare(o.perShare)}</span>}<span className="text-muted-foreground">{fmtMoney(o.pnlUsd)}</span></> : "без сделок"}</dd>
+        <dd className="flex flex-wrap justify-end gap-x-1.5 text-right">{o.trades ? <><b className={tone(o.r ?? o.perShare)}>{o.r != null ? fmtR(o.r) : fmtPerShare(o.perShare)}</b>{o.r != null && <span className={tone(o.perShare)}>{fmtPerShare(o.perShare)}</span>}<span className="text-muted-foreground">{fmtUsd(o.pnlUsd, { signed: true, decimals: "auto" })}</span></> : "без сделок"}</dd>
         <dt className="text-muted-foreground">Было можно</dt>
         <dd className="text-right">{o.idealPerShare != null ? <><b className="text-up">{fmtPerShare(o.idealPerShare)}</b> <span className="text-muted-foreground">{o.idealSide === "short" ? "в шорт" : "в лонг"}</span></> : "—"}</dd>
         {traderName !== null && (
@@ -305,7 +301,7 @@ export const TrainingHistoryCard = React.memo(function TrainingHistoryCard({ lis
           <div className="grid grid-cols-3 gap-x-2 gap-y-2 text-center">
             <Stat value={st.count} label={pluralRu(st.count, "попытка", "попытки", "попыток")} />
             <Stat value={st.avgScore ?? "—"} label="ср. оценка" />
-            <Stat value={st.plusShare != null ? `${Math.round(st.plusShare * 100)}%` : "—"} label="в плюс" />
+            <Stat value={fmtRate(st.plusShare)} label="в плюс" />
             <Stat value={st.avgR != null ? fmtR(st.avgR) : "—"} label="ср. R" className={tone(st.avgR)} title={st.sumR != null ? `Всего ${fmtR(st.sumR)}` : "R считается для попыток со стопом"} />
             <Stat value={st.avgRealR != null ? fmtR(st.avgRealR) : "—"} label="R трейдеров" className={tone(st.avgRealR)} title="Средний R реальных сделок в этих задачах (где был стоп)" />
             <Stat value={st.comparable ? `${st.beatReal}/${st.comparable}` : "—"} label="лучше сделки" title="Попыток лучше реальной сделки на акцию" />

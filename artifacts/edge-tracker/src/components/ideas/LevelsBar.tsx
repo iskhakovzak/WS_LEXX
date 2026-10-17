@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { fmtPrice, type LevelPlan } from "./model";
+import type { LevelPlan } from "./model";
+import { fmtPrice } from "@/lib/format";
 
 /**
  * Risk → reward ladder: stop on the left, targets on the right (direction-agnostic), entry zone in between,

@@ -17,6 +17,12 @@ import { can, requireCap, resolveActor } from "../lib/permissions";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { getSettings, setSetting, schedulerStatus, statusConfig } from "../lib/propreports";
 import { cleanNameLatin, ensureNameLatin } from "../lib/peopleDirectory";
+import { jobsStatus, listJobs, runJobNow } from "../jobs/registry";
+import { AppError, notFound, unauthorized } from "../lib/http";
+import { checkSecret, secretPolicyFor } from "../lib/security/passwordPolicy";
+import { securityT } from "../lib/security/i18n";
+import { langOf } from "../i18n";
+import { sendSecurityError } from "../lib/security/respond";
 
 const router: IRouter = Router();
 
@@ -287,11 +293,11 @@ for (const kind of Object.keys(singleBodies) as (keyof typeof singleBodies)[]) {
   router.post(path, asyncHandler(async (req, res): Promise<void> => {
     if (!(await requireCap(req, res, "users.manage"))) return;
     const id = Number(req.params.id);
-    if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+    if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
     const parsed = singleBodies[kind].safeParse(req.body ?? {});
     if (!parsed.success) { badRequest(res, parsed.error); return; }
     const actor = await actorOf(req);
-    if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+    if (!actor) throw unauthorized();
     const r = await applyAction(req, actor, await can(req, "users.manage.admins"), id, kind, parsed.data.reason);
     if (!r.ok) { res.status(r.status).json({ error: r.error }); return; }
     res.json({ ok: true, name: r.name });
@@ -301,11 +307,11 @@ for (const kind of Object.keys(singleBodies) as (keyof typeof singleBodies)[]) {
 router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const parsed = z.object({ curator: z.string().trim().max(120).nullable(), reason: reasonSchema }).safeParse(req.body ?? {});
   if (!parsed.success) { badRequest(res, parsed.error); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const r = await applyAction(req, actor, await can(req, "users.manage.admins"), id, "curator", parsed.data.reason, { curator: parsed.data.curator || null });
   if (!r.ok) { res.status(r.status).json({ error: r.error }); return; }
   res.json({ ok: true, name: r.name });
@@ -315,14 +321,14 @@ router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): 
 router.post("/admin/console/people/:id/name-latin", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const cleaned = cleanNameLatin((req.body ?? {}).nameLatin);
   if (!cleaned.ok) { res.status(400).json({ error: cleaned.error }); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   await ensureNameLatin();
   const u = await loadUser(id);
-  if (!u) { res.status(404).json({ error: "Пользователь не найден" }); return; }
+  if (!u) throw notFound("USER_NOT_FOUND");
   if (u.role === "admin" && u.id !== actor.id && !(await can(req, "users.manage.admins"))) { res.status(403).json({ error: "Админов меняет только администратор" }); return; }
   const { rows } = await pool.query<{ prev: string | null }>(
     `UPDATE users u SET name_latin = $1 FROM (SELECT name_latin AS prev FROM users WHERE id = $2) p WHERE u.id = $2 RETURNING p.prev`, [cleaned.value, id]);
@@ -336,11 +342,11 @@ router.post("/admin/console/people/:id/name-latin", asyncHandler(async (req, res
 router.post("/admin/console/people/:id/role", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;
   const id = Number(req.params.id);
-  if (!Number.isInteger(id)) { res.status(400).json({ error: "Неверный id" }); return; }
+  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const parsed = z.object({ role: roleSchema, reason: reasonSchema }).safeParse(req.body ?? {});
   if (!parsed.success) { badRequest(res, parsed.error); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const r = await applyAction(req, actor, await can(req, "users.manage.admins"), id, "role", parsed.data.reason, { role: parsed.data.role });
   if (!r.ok) { res.status(r.status).json({ error: r.error }); return; }
   res.json({ ok: true, name: r.name, role: parsed.data.role });
@@ -356,7 +362,7 @@ router.post("/admin/console/people/bulk", asyncHandler(async (req, res): Promise
   }).safeParse(req.body ?? {});
   if (!parsed.success) { badRequest(res, parsed.error); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const adminMgr = await can(req, "users.manage.admins");
   const done: string[] = [];
   const skipped: { id: number; name?: string; error: string }[] = [];
@@ -378,8 +384,16 @@ router.post("/admin/console/people", asyncHandler(async (req, res): Promise<void
   }).safeParse(req.body ?? {});
   if (!parsed.success) { badRequest(res, parsed.error); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const { name, password, role, curator, reason } = parsed.data;
+  // Secret policy by role (lib/security/passwordPolicy): PIN ≥ 6 for traders, password ≥ 10 for curators/admins.
+  const weak = checkSecret(role, password, name);
+  if (weak) {
+    const t = securityT.tFor(langOf(req));
+    const msg = weak.code === "TOO_SHORT" ? t("password.tooShort", { min: weak.min }) : weak.code === "TOO_LONG" ? t("password.tooLong", { max: weak.max }) : t("password.sameAsName");
+    sendSecurityError(res, 400, "WEAK_PASSWORD", msg, { policy: secretPolicyFor(role) });
+    return;
+  }
   if (role === "admin" && !(await can(req, "users.manage.admins"))) { res.status(403).json({ error: "Админа создаёт только администратор" }); return; }
   if (curator) {
     const rows = await soft(`SELECT 1 FROM users WHERE name = $1 AND active = true AND role IN ('curator', 'admin')`, [curator]);
@@ -410,7 +424,7 @@ router.post("/admin/console/accounts/map", asyncHandler(async (req, res): Promis
   }).safeParse(req.body ?? {});
   if (!parsed.success) { badRequest(res, parsed.error); return; }
   const actor = await actorOf(req);
-  if (!actor) { res.status(401).json({ error: "Требуется вход" }); return; }
+  if (!actor) throw unauthorized();
   const { account, trader, reason } = parsed.data;
   const known = await soft(`SELECT 1 FROM users WHERE name = $1 AND active = true`, [trader]);
   if (!known[0]) { res.status(400).json({ error: `Неизвестный или архивный пользователь: ${trader}` }); return; }
@@ -539,6 +553,33 @@ router.get("/admin/console/data-quality", asyncHandler(async (req, res): Promise
     { key: "legacy_no_id", label: "Старый импорт без ID брокера", severity: "low", count: legacy[0]?.n ?? 0, sample: [], hint: "Получат ID при следующем импорте того же периода." },
   ];
   res.json({ generatedAt: new Date().toISOString(), today, checks });
+}));
+
+// ─── Background jobs (src/jobs/registry.ts) ─────────────────────────────────
+
+/** Registry + last run per job (job_runs). Labels are i18n keys on the client (adminJobs namespace). */
+router.get("/admin/console/jobs", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "admin.audit"))) return;
+  res.json({ generatedAt: new Date().toISOString(), timezone: "America/New_York", jobs: await jobsStatus() });
+}));
+
+/** Recent runs of one job. */
+router.get("/admin/console/jobs/:name/runs", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "admin.audit"))) return;
+  const name = String(req.params.name ?? "");
+  const rows = await soft(`SELECT id, status, trigger, started_at, finished_at, duration_ms, error, details FROM job_runs WHERE job = $1 ORDER BY started_at DESC, id DESC LIMIT 30`, [name]);
+  res.json({ name, runs: rows.map((r: any) => ({ id: Number(r.id), status: r.status, trigger: r.trigger, startedAt: iso(r.started_at), finishedAt: iso(r.finished_at), durationMs: r.duration_ms == null ? null : Number(r.duration_ms), error: r.error ?? null, details: r.details ?? null })) });
+}));
+
+/** Run a job now (admins). Fire-and-forget: the run shows up in the list with status «running». */
+router.post("/admin/console/jobs/:name/run", asyncHandler(async (req, res): Promise<void> => {
+  if (!(await requireCap(req, res, "admin.backups.run"))) return;
+  const name = String(req.params.name ?? "");
+  if (!listJobs().some((j) => j.name === name)) throw notFound();
+  const actor = (await resolveActor(req))?.name ?? "admin";
+  void runJobNow(name, { trigger: "manual" }).catch(() => undefined);
+  await logAudit({ actor, action: "jobs.run", targetType: "job", targetId: name, details: {} });
+  res.status(202).json({ ok: true, name });
 }));
 
 export default router;

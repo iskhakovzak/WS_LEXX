@@ -6,7 +6,8 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Panel, Pill } from "@/components/ds";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { fmtTime, gpApi, gpKeys, initials, type GamePlan, type GamePlanResponse } from "./types";
+import { gpApi, gpKeys, initials, type GamePlan, type GamePlanResponse } from "./types";
+import { fmtDate } from "@/lib/format";
 
 /** Trader-side: "Отметить прочитанным" / read confirmation (optimistic). */
 export function MarkReadButton({
@@ -50,7 +51,7 @@ export function MarkReadButton({
     return (
       <Pill tone="up" className="px-3 py-1.5 text-sm">
         <CheckCheck className="h-4 w-4" aria-hidden="true" />
-        Прочитано в {fmtTime(myReadAt)}
+        Прочитано в {fmtDate(myReadAt, "time")}
       </Pill>
     );
   }
@@ -113,7 +114,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               <ul className="flex flex-wrap gap-1.5">
                 {d.read.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${r.trader} · ${fmtTime(r.readAt)}${r.stale ? " · до обновления" : ""}`} />
+                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${r.trader} · ${fmtDate(r.readAt, "time")}${r.stale ? " · до обновления" : ""}`} />
                   </li>
                 ))}
               </ul>

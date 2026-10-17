@@ -6,13 +6,14 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import { SETUP_GROUPS } from "./model";
 import { SetupTypePill } from "./setup-bits";
+import { setupTypeLabel } from "@/i18n/ns/dataCodes";
 
 export function SetupTypeSelect({ value, onChange, id }: { value: string; onChange: (v: string) => void; id?: string }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
   const pick = (v: string) => { onChange(v); setOpen(false); setSearch(""); };
   const custom = search.trim();
-  const known = SETUP_GROUPS.some((g) => g.items.some((i) => i.toLowerCase() === custom.toLowerCase()));
+  const known = SETUP_GROUPS.some((g) => g.items.some((i) => i.toLowerCase() === custom.toLowerCase() || setupTypeLabel(i).toLowerCase() === custom.toLowerCase()));
 
   return (
     <Popover open={open} onOpenChange={(o) => { setOpen(o); if (!o) setSearch(""); }}>
@@ -46,9 +47,9 @@ export function SetupTypeSelect({ value, onChange, id }: { value: string; onChan
             {SETUP_GROUPS.map((g) => (
               <CommandGroup key={g.label} heading={g.label}>
                 {g.items.map((s) => (
-                  <CommandItem key={s} value={s} onSelect={() => pick(s)}>
+                  <CommandItem key={s} value={s === setupTypeLabel(s) ? s : `${s} ${setupTypeLabel(s)}`} onSelect={() => pick(s)}>
                     <Check className={cn("h-4 w-4", value === s ? "opacity-100 text-primary" : "opacity-0")} aria-hidden="true" />
-                    {s}
+                    {setupTypeLabel(s)}
                   </CommandItem>
                 ))}
               </CommandGroup>

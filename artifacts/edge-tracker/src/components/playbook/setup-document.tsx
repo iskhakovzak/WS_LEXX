@@ -23,15 +23,17 @@ import { PlaybookAICritiqueButton } from "@/components/playbook-ai-critique";
 import { PlaybookRevisionsButton } from "@/components/playbook-revisions";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { invalidatePlaybook, pbRequest } from "./api";
+import { invalidatePlaybook } from "./api";
+import { http } from "@/lib/api/http";
 import { ConfidenceMeter, DocSection, REDACTED_AGG_HINT, RedactedHint, SetupTypePill, TagChips } from "./setup-bits";
 import { ExamplesSection } from "./examples-section";
 import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
 import { MoveToFolderButton } from "./move-to-folder";
 import { CreateIdeaButton } from "./create-idea-button";
-import { SOURCE_LABELS, fmtPct, fmtR, folderSwatch, isSameLocalDay, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
-import { pluralRu } from "@/components/rules/constants";
+import { SOURCE_LABELS, folderSwatch, isSameLocalDay, timeAgo, type PlaybookEntry, type SetupSummary } from "./model";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ---------- structured thesis ---------- */
 
@@ -108,7 +110,7 @@ export function InlineTextSection({
   useEffect(() => { if (!editing) setDraft(value); }, [value, editing]);
 
   const mut = useMutation({
-    mutationFn: (text: string) => pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { [field]: text || null } }),
+    mutationFn: (text: string) => http.patch(`/api/playbook/${entry.id}`, { [field]: text || null }),
     onMutate: async (text) => {
       await qc.cancelQueries({ queryKey: ["playbook"] });
       const prev = qc.getQueryData<PlaybookEntry[]>(["playbook"]);
@@ -192,24 +194,23 @@ export function EdgeStrip({ s, onLink }: { s: SetupSummary | undefined; onLink: 
   }
   const n = s.tradeCount;
   const small = n < 10;
-  const fmtUsd = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : v < 0 ? "−" : ""}$${Math.abs(v).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`);
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-6">
         <EdgeTile label="Сделок" value={n} hint={small ? "мало для выводов" : `${s.wins}W · ${s.losses}L${s.be ? ` · ${s.be} BE` : ""}`} tone={small ? "warn" : "neutral"} />
-        <EdgeTile label="Win rate" value={fmtPct(s.winrate)} tone={winrateTone(s.winrate ?? 0, n)} hint="W / (W + L)" />
+        <EdgeTile label="Win rate" value={fmtRate(s.winrate)} tone={winrateTone(s.winrate ?? 0, n)} hint="W / (W + L)" />
         <EdgeTile label="Средний R" value={fmtR(s.avgR)} tone={s.avgR == null ? "neutral" : s.avgR > 0 ? "up" : s.avgR < 0 ? "down" : "neutral"} hint={s.rCount < n ? `R есть у ${s.rCount}` : undefined} />
         <EdgeTile label="Ожидание" value={fmtR(s.expectancy)} tone={s.expectancy == null ? "neutral" : s.expectancy > 0 ? "up" : s.expectancy < 0 ? "down" : "neutral"} hint="на сделку" />
-        <EdgeTile label="P&L нетто" value={fmtUsd(s.netPnl)} tone={s.netPnl == null ? "neutral" : s.netPnl > 0 ? "up" : s.netPnl < 0 ? "down" : "neutral"} hint={s.redacted ? "суммы скрыты" : s.netPnl == null ? "нет P&L" : s.pnlCount < n ? `P&L есть у ${s.pnlCount}` : s.grossPnl != null && s.grossPnl !== s.netPnl ? `брутто ${fmtUsd(s.grossPnl)}` : undefined} />
+        <EdgeTile label="P&L нетто" value={fmtUsd(s.netPnl, { signed: true, decimals: 0 })} tone={s.netPnl == null ? "neutral" : s.netPnl > 0 ? "up" : s.netPnl < 0 ? "down" : "neutral"} hint={s.redacted ? "суммы скрыты" : s.netPnl == null ? "нет P&L" : s.pnlCount < n ? `P&L есть у ${s.pnlCount}` : s.grossPnl != null && s.grossPnl !== s.netPnl ? `брутто ${fmtUsd(s.grossPnl, { signed: true, decimals: 0 })}` : undefined} />
         <EdgeTile
           label="Последняя"
-          value={s.lastTradeDate ? new Date(s.lastTradeDate).toLocaleDateString("ru-RU", { day: "numeric", month: "short" }) : "—"}
+          value={fmtDate(s.lastTradeDate, "dayMonth")}
           hint={isSameLocalDay(s.lastUsedAt) ? "использован сегодня" : timeAgo(s.lastUsedAt) ?? undefined}
         />
       </div>
       {s.edgeDecay && (
         <p className="rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-xs text-[hsl(var(--chart-3))]">
-          Edge угасает: последние {s.recentRCount} {pluralRu(s.recentRCount, "сделка", "сделки", "сделок")} дают {fmtR(s.recentAvgR)} против {fmtR(s.avgR)} за всю историю. Пересмотрите условия входа.
+          Edge угасает: последние {commonI18n.t("units.trades", { count: s.recentRCount })} дают {fmtR(s.recentAvgR)} против {fmtR(s.avgR)} за всю историю. Пересмотрите условия входа.
         </p>
       )}
       {s.redacted && <RedactedHint text={REDACTED_AGG_HINT} className="px-1" />}
@@ -250,7 +251,7 @@ export function SetupDocument({
 
   const reviewedMut = useMutation({
     // Reviewer identity comes from the session; the API accepts this from curators/admins only.
-    mutationFn: (reviewed: boolean) => pbRequest(`/api/playbook/${entry.id}/reviewed`, { method: "POST", json: { reviewed } }),
+    mutationFn: (reviewed: boolean) => http.post(`/api/playbook/${entry.id}/reviewed`, { reviewed }),
     onMutate: async (reviewed) => {
       await qc.cancelQueries({ queryKey: ["playbook"] });
       const prev = qc.getQueryData<PlaybookEntry[]>(["playbook"]);
@@ -263,7 +264,7 @@ export function SetupDocument({
 
   async function saveScreenshotNotes(newNotes: string) {
     try {
-      await pbRequest(`/api/playbook/${entry.id}`, { method: "PATCH", json: { screenshotNotes: newNotes } });
+      await http.patch(`/api/playbook/${entry.id}`, { screenshotNotes: newNotes });
       invalidatePlaybook(qc, entry.id);
     } catch {
       toast({ title: "Не удалось сохранить подпись к скриншоту", variant: "destructive" });
@@ -433,7 +434,7 @@ export function SetupDocument({
           )}
 
           <div className="px-1 text-xs text-muted-foreground">
-            Создан {new Date(entry.createdAt).toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" })}
+            Создан {fmtDate(entry.createdAt, "long")}
             {entry.trader ? ` · ${entry.trader}` : ""}
             {entry.reviewed && entry.reviewedBy ? ` · проверил ${entry.reviewedBy}` : ""}
           </div>
