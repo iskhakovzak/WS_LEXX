@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { BarChart3, Plus, Star, Trophy, UserRound } from "lucide-react";
+import { useSearch } from "wouter";
+import { BarChart3, CalendarClock, Plus, Star, Swords, Trophy, UserRound } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
@@ -17,14 +18,19 @@ import { useStoredState } from "@/components/ratings/shared";
 import { LeaderboardTab } from "@/components/ratings/leaderboard-tab";
 import { ScorecardsTab } from "@/components/ratings/scorecards-tab";
 import { MyProgressTab } from "@/components/ratings/my-progress-tab";
+import { QuestsProgressTab } from "@/components/quests/progress-tab";
+import { SeasonTab } from "@/components/gamification/season-tab";
+import { QuestsGamificationExtras, QuestsGamificationHeader } from "@/components/gamification/quests-blocks";
+import { gamificationI18n } from "@/i18n/ns/gamification";
 import { RatingDialog } from "@/components/ratings/rating-dialog";
 import { weekLabel, weekOf, type Rating } from "@/components/ratings/scorecard-model";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { questsI18n } from "@/i18n/ns/quests";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
-type Tab = "leaderboard" | "curator" | "me";
-const TABS: readonly Tab[] = ["leaderboard", "curator", "me"];
+type Tab = "leaderboard" | "curator" | "me" | "quests" | "season";
+const TABS: readonly Tab[] = ["leaderboard", "curator", "me", "quests", "season"];
 
 export default function RatingsPage() {
   const { user, isCurator, isAdmin, dbUsers } = useAuth();
@@ -32,9 +38,19 @@ export default function RatingsPage() {
   const { toast } = useToast();
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
+  const { t: tq } = questsI18n.useT();
+  const { t: tg } = gamificationI18n.useT();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
+  // Quests are a trader's own loop: staff see a trader's quests in the curator profile, not an empty personal tab.
+  const questsOn = !!me && !isCurator;
 
   const [tab, setTab] = useStoredState<Tab>("ratings.tab", isCurator ? "curator" : me ? "me" : "leaderboard", TABS);
+  // ?tab=quests (dashboard quest strip, rewards block, quest / achievement notifications) wins over the stored tab.
+  const search = useSearch();
+  useEffect(() => {
+    const v = new URLSearchParams(search).get("tab") as Tab | null;
+    if (v && TABS.includes(v)) setTab(v);
+  }, [search, setTab]);
   const [dialog, setDialog] = useState<{ open: boolean; trader?: string; editing?: Rating | null }>({ open: false });
   const [deleting, setDeleting] = useState<Rating | null>(null);
 
@@ -91,8 +107,14 @@ export default function RatingsPage() {
       count: isCurator && pendingCount > 0 && !ratingsQ.isLoading ? pendingCount : undefined,
     },
     ...(me ? [{ value: "me" as const, label: <span className="inline-flex items-center gap-1.5"><UserRound className="hidden h-4 w-4 sm:block" aria-hidden="true" />{t("page.tabMe")}</span> }] : []),
+    ...(questsOn ? [{
+      value: "quests" as const,
+      label: <span className="inline-flex items-center gap-1.5"><Swords className="hidden h-4 w-4 sm:block" aria-hidden="true" /><span className="sm:hidden">{tq("tab.short")}</span><span className="hidden sm:inline">{tq("tab.label")}</span></span>,
+    }] : []),
+    // Season ranking + curator league: one tab for everyone (traders see aliases, staff names).
+    { value: "season" as const, label: <span className="inline-flex items-center gap-1.5"><CalendarClock className="hidden h-4 w-4 sm:block" aria-hidden="true" />{tg("season.tab")}</span> },
   ];
-  const activeTab: Tab = tab === "me" && !me ? "leaderboard" : tab;
+  const activeTab: Tab = (tab === "me" && !me) || (tab === "quests" && !questsOn) ? (isCurator ? "curator" : "leaderboard") : tab;
 
   return (
     <Page>
@@ -135,6 +157,8 @@ export default function RatingsPage() {
         />
       )}
       {activeTab === "me" && <MyProgressTab me={me} ratings={ratings} ratingsLoading={ratingsQ.isLoading} />}
+      {activeTab === "quests" && <QuestsProgressTab header={<QuestsGamificationHeader />} extra={<QuestsGamificationExtras />} />}
+      {activeTab === "season" && <SeasonTab participant={questsOn} />}
 
       {isCurator && (
         <RatingDialog

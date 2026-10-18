@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { useAuth } from "@/contexts/auth-context";
 import { links } from "@/lib/links";
 import { fmtDate } from "@/lib/format";
@@ -68,7 +69,7 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
   const toggle = React.useCallback((name: string) => setFocus((f) => (f.includes(name) ? f.filter((x) => x !== name) : [...f, name])), []);
   const [showOfficeRaw, setShowOffice] = usePersistentState<boolean>("deskDay.office", true);
   const showOffice = showOfficeRaw !== false;
-  const lines = pickTakeaways(day.takeaways).map((tk) => takeawayText(tk, (k) => traderLabel(day, k)));
+  const lines = pickTakeaways(day.takeaways).map((tk) => takeawayText(tk, (k) => traderLabel(day, k), (k) => !!day.traders.find((x) => x.name === k)?.me));
   const office = showOffice ? officeSummary(day) : null;
   const bars = React.useMemo(() => clampEmptyWicks(candles.data?.candles ?? []), [candles.data]);
   const baseSec = candles.data?.tf === "5m" ? 300 : candles.data?.tf === "15m" ? 900 : 60;
@@ -91,7 +92,7 @@ function DayView({ day, ticker, date, alias }: { day: DeskDay; ticker: string; d
         {candles.isLoading ? (
           <Skeleton className="h-[340px] rounded-xl sm:h-[460px]" />
         ) : bars.length ? (
-          <DeskDayChart day={day} bars={bars} baseSec={baseSec} colors={colors} focus={focus} onToggle={toggle} showOffice={showOffice} onShowOffice={setShowOffice} />
+          <DeskDayChart day={day} bars={bars} baseSec={baseSec} colors={colors} focus={focus} onToggle={toggle} showOffice={showOffice} onShowOffice={setShowOffice} prevClose={candles.data?.prevClose ?? null} />
         ) : (
           <p className="py-10 text-center text-sm text-muted-foreground">{t("noCandles")}</p>
         )}
@@ -119,7 +120,7 @@ export default function DeskDayPage() {
       title={t("title")}
       icon={Users}
       description={ticker && date ? t("descFor", { ticker, date: fmtDate(date, "long") }) : t("desc")}
-      actions={<PickForm ticker={ticker} date={date} onGo={go} />}
+      actions={<><PickForm ticker={ticker} date={date} onGo={go} /><PlaybookSheetButton /></>}
     />
   );
 

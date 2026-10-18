@@ -13,19 +13,20 @@
  */
 import { pool } from "@workspace/db";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
-import { prevTradingDay, tradingPhase } from "../curatorLogic";
+import { tradingPhase } from "../curatorLogic";
 import { syncCron } from "../propreports/scheduler";
 import { loadBehaviorRows, rowToBehaviorTrade } from "../../routes/behavior";
 import {
-  analyzeWindow, contractOf, dayTotals, focusOf, focusWindow, pickFocus, tierProgressOf, tradeToReview, verdictOf,
+  NORM_HISTORY_DAYS, analyzeWindow, contractOf, dayTotals, focusOf, focusWindow, pickFocus, tierProgressOf, tradeMistakes, tradeToReview, verdictOf,
   type WindowAnalysis,
 } from "./engine";
 import { dayPath, windowDays } from "./detectors";
 import { dayFinished, planContractOf, scaleVerdict } from "./discipline";
 import { cardRewards, forgetRewards, rewardsFor } from "./rewards";
-import { deskTradersOn, inputFor, loadDailyContext, type DailyContext } from "./load";
+import { behaviorTradesOf, deskTradersOn, inputFor, loadDailyContext, type DailyContext } from "./load";
 import { buildCostQueue } from "./costQueue";
 import { settingsChangedAt } from "../settings/store";
+import { tagDays, untaggedOf } from "../playbookToday/untagged";
 import type { CostQueueItem, DailyFocus, DailyMe, EveningCard, MistakeCost, MistakeId, TierProgress } from "./types";
 
 type FocusRow = {
@@ -118,6 +119,15 @@ export async function mistakeCosts(trader: string, from: string, to: string): Pr
   return analyzeWindow(inputFor(ctx, from, to)).costs;
 }
 
+/**
+ * Every trade of [from, to] with the mistakes it took part in (costliest mistake first) — all hits of the window, not
+ * only each mistake's top examples (the simulator tags the trader's replayable losses with them).
+ */
+export async function mistakesByTrade(trader: string, from: string, to: string): Promise<Map<number, MistakeId[]>> {
+  const ctx = await loadDailyContext(trader, from, to);
+  return tradeMistakes(analyzeWindow(inputFor(ctx, from, to)));
+}
+
 /** The focus for `date` (computed and stored on first request; a curator override wins). */
 export async function focusFor(trader: string, date: string): Promise<DailyFocus | null> {
   return focusWith(trader, date);
@@ -141,13 +151,15 @@ export async function setFocusOverride(trader: string, date: string, mistake: Mi
 export async function eveningFor(trader: string, date: string): Promise<EveningCard | null> {
   const w = focusWindow(date);
   const ctx = await loadDailyContext(trader, w.from, date);
-  const [focus, review] = await Promise.all([focusWith(trader, date, ctx), reviewOf(trader, date)]);
+  const [focus, review, tags] = await Promise.all([focusWith(trader, date, ctx), reviewOf(trader, date), tagDays(trader, date, date).catch(() => null)]);
   const a = analyzeWindow(inputFor(ctx, date, date));
   const disputed = !!review?.disputed && (!review.disputed_mistake || review.disputed_mistake === focus.mistake);
   const verdict = focus.mistake ? verdictOf(a, date, focus.mistake, disputed) : null;
   const raw = contractOf(a, date, ctx.plans?.get(date));
   // The day's actual points on the progressive scale (streak bonus / penalty) — lib/daily/discipline.ts.
-  const scaled = raw ? await scaleVerdict(trader, raw, ctx.trades).catch(() => null) : null;
+  const scaled = raw
+    ? await scaleVerdict(trader, raw, ctx.trades, { tradesFrom: addDays(ctx.loadedFrom, -NORM_HISTORY_DAYS), loadTrades: behaviorTradesOf(trader) }).catch(() => null)
+    : null;
   const contract = scaled?.contract ?? raw;
   const review1 = tradeToReview(a, date, focus.mistake);
   const totals = dayTotals(a, date);
@@ -157,7 +169,7 @@ export async function eveningFor(trader: string, date: string): Promise<EveningC
   const card: EveningCard = {
     trader, date, trades: totals.trades, netPnl: totals.netPnl, focus: verdict, tradeToReview: review1,
     deskSameTicker: ticker && others > 0 ? { ticker, traders: others } : null,
-    contract, reviewed: !!review?.reviewed_at, reviewNote: review?.note ?? null,
+    contract, reviewed: !!review?.reviewed_at, reviewNote: review?.note ?? null, ...(tags ? { untagged: untaggedOf(tags) } : {}),
   };
   if (dayFinished(date)) {
     if (await saveVerdict(card).catch(() => false)) forgetRewards(trader);
@@ -186,9 +198,30 @@ async function saveVerdict(card: EveningCard): Promise<boolean> {
   return (res.rowCount ?? 0) > 0;
 }
 
-function nextWeekday(date: string): string {
+/** Full-day market holidays («Market closed…» in holiday_calendar — the rule of lib/daily/telegramJobs marketClosed)
+ *  within two weeks of `today`; one read per NY day. */
+let closedCache: { today: string; days: Set<string> } | null = null;
+async function closedDaysAround(today: string): Promise<Set<string>> {
+  if (closedCache?.today === today) return closedCache.days;
+  const { rows } = await pool
+    .query<{ d: string }>(
+      `SELECT date::text AS d FROM holiday_calendar
+        WHERE type = 'holiday' AND description ILIKE 'market closed%' AND date::text >= $1 AND date::text <= $2`,
+      [addDays(today, -14), addDays(today, 14)],
+    )
+    .catch(() => ({ rows: [] as { d: string }[] }));
+  const days = new Set(rows.map((r) => String(r.d).slice(0, 10)));
+  closedCache = { today, days };
+  return days;
+}
+
+/** The next / previous day the market is open (weekends and full-day holidays skipped). */
+function openDay(date: string, step: 1 | -1, closed: ReadonlySet<string>): string {
   let d = date;
-  do d = addDays(d, 1); while (isWeekend(d));
+  for (let i = 0; i < 30; i++) {
+    d = addDays(d, step);
+    if (!isWeekend(d) && !closed.has(d)) return d;
+  }
   return d;
 }
 
@@ -201,17 +234,34 @@ async function tierProgress(trader: string, today: string): Promise<TierProgress
   }
 }
 
+/**
+ * The days DailyMe answers for at NY `today` / `minutes`: the phase, the focus day and the evening card's day. A full-day
+ * market holiday reads like a weekend: the focus is for the next open day, the card is the last open day's (not an empty
+ * holiday card).
+ */
+export function dailyDates(today: string, minutes: number, closed: ReadonlySet<string>): { phase: DailyMe["phase"]; focusDate: string; eveningDate: string } {
+  const phase: DailyMe["phase"] = closed.has(today) ? "weekend" : tradingPhase(today, minutes);
+  return {
+    phase,
+    focusDate: phase === "weekend" ? openDay(today, 1, closed) : today,
+    eveningDate: phase === "afterclose" ? today : openDay(today, -1, closed),
+  };
+}
+
 /** Everything the dashboard / bot shows for a trader right now. */
 export async function dailyMe(trader: string): Promise<DailyMe | null> {
   const now = new Date();
   const today = nyDate(now);
-  const phase = tradingPhase(today, nyMinutes(now));
-  const focusDate = phase === "weekend" ? nextWeekday(today) : today;
-  const eveningDate = phase === "afterclose" ? today : prevTradingDay(today);
+  const { phase, focusDate, eveningDate } = dailyDates(today, nyMinutes(now), await closedDaysAround(today));
+  // The rewards evaluation (lib/quests, cached per trader) starts alongside the cards instead of after them; the evening
+  // card's rewards line awaits the same run. When the card stores a changed snapshot it drops the cache, and the run
+  // that started before is then neither reused nor cached (lib/quests/cache generations) — the answer stays the same.
+  const warm = rewardsFor(trader, now).catch(() => null);
   const [focus, evening, progress] = await Promise.all([
     focusFor(trader, focusDate),
     eveningFor(trader, eveningDate),
     tierProgress(trader, today),
+    warm,
   ]);
   const rewards = await rewardsFor(trader, now);
   return { today, phase, focus, evening, progress, intraday: syncCron() != null, discipline: rewards?.discipline ?? null, badges: rewards?.badges ?? [] };

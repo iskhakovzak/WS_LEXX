@@ -49,6 +49,19 @@ describe("validateSetting", () => {
     ] });
   });
 
+  it("ladders grow strictly: level thresholds and achievement tier targets (values in force after the batch)", () => {
+    expect(validateBatch([{ key: "rewards.level2Points", value: 10 }])).toEqual({ ok: false, problems: [
+      { key: "rewards.level2Points", kind: "order", after: "rewards.level1Points", min: 51 },
+    ] });
+    expect(validateBatch([{ key: "rewards.level1Points", value: 100 }, { key: "rewards.level2Points", value: 100 }])).toMatchObject({ ok: false, problems: [{ key: "rewards.level2Points", kind: "order", min: 101 }] });
+    expect(validateBatch([{ key: "rewards.level1Points", value: 20 }, { key: "rewards.level2Points", value: 30 }])).toMatchObject({ ok: true });
+    expect(validateBatch([{ key: "achievements.cleanMonth2", value: 1 }])).toMatchObject({ ok: false, problems: [{ key: "achievements.cleanMonth2", kind: "order", after: "achievements.cleanMonth1" }] });
+    __loadSettingsCache({ "rewards.level2Points": 60 });
+    expect(validateBatch([{ key: "rewards.level1Points", value: 60 }])).toMatchObject({ ok: false, problems: [{ key: "rewards.level2Points", kind: "order" }] });
+    expect(validateBatch([{ key: "rewards.level1Points", value: 60 }, { key: "rewards.level2Points", value: null }])).toMatchObject({ ok: true });
+    expect(validateBatch([{ key: "daily.focusMinDays", value: 3 }])).toMatchObject({ ok: true }); // a batch off the ladders
+  });
+
   it("a stored value that no longer fits reads as the default; every registry default is valid", () => {
     expect(storedOrNull("daily.focusWindowDays", 99)).toBeNull();
     expect(storedOrNull("daily.focusWindowDays", 12)).toBe(12);

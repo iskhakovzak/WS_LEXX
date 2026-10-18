@@ -1,0 +1,83 @@
+import type { Messages } from "../core";
+import type ru from "../ru/quests";
+
+export default {
+  quest: {
+    set_pin: { title: "Oʻz PIN-kodingizni oʻrnating", desc: "Berilgan parolni oʻzingiznikiga almashtiring — akkaunt faqat sizniki boʻladi." },
+    link_telegram: { title: "Telegramni ulang", desc: "Ertalabki fokus va kechki kun yakuni botga keladi." },
+    first_plan_stop: { title: "Kunlik stopli birinchi shaxsiy reja", desc: "Kunlik rejangizni oching va kunlik stopni belgilang — bu sizning kontraktingiz." },
+    first_review: { title: "Birinchi kun yakunini tahlil qiling", desc: "Bosh sahifada kun yakunini oching va «Tahlil qildim» deb belgilang." },
+    open_desk_day: { title: "«Tikerdagi desk»ni oching", desc: "Desk oʻsha kuni sizning tikeringizda qanday savdo qilganini koʻring." },
+    replay_own_day: { title: "Simulyatorda oʻz kuningizni qayta oʻynang", desc: "Savdongizni qayta boshdan kechiring va qarorlarni solishtiring." },
+    set_own_rule: { title: "Kun qoidasini belgilang", desc: "Rejada bitta oʻz qoidangizni tanlang — masalan, fokusdagi xato." },
+    plan_before_open: { title: "Ochilishdan oldin reja", desc: "Shaxsiy rejani 09:30 NY gacha tuzing." },
+    review_yesterday: { title: "Oʻtgan kunni tahlil qiling", desc: "Kun yakunini keyingi savdo kuni oxirigacha «Tahlil qildim» deb belgilang." },
+    keep_contract: { title: "Bugungi kontraktga rioya qiling", desc: "Kunlik stop, savdolar limiti va oʻz qoidangiz — buzilishsiz." },
+    tag_yesterday: { title: "Oʻtgan kun savdolarini belgilang", desc: "Kun savdolariga pleybukdan setap koʻrsating: {done} / {target}." },
+    contract_days: {
+      title: { one: "Kontraktga {count} kun rioya qiling", other: "Kontraktga {count} kun rioya qiling" },
+      desc: "Kontraktga rioya qilingan kunlar: {target} dan {done}.",
+    },
+    focus_absent_days: {
+      title: { one: "Fokusdagi xatosiz {count} kun", other: "Fokusdagi xatosiz {count} kun" },
+      desc: "Fokusdagi xatosiz kunlar: {target} dan {done}.",
+    },
+    replay_own_days: {
+      title: { one: "Oʻz kunlaringizdan {count} tasini qayta oʻynang", other: "Oʻz kunlaringizdan {count} tasini qayta oʻynang" },
+      desc: "Simulyatorda qayta oʻynalgan kunlar: {target} dan {done}.",
+    },
+    review_traded_days: { title: "Haftaning har bir savdo kunini tahlil qiling", desc: "Oʻz vaqtida tahlil qilingan: {target} dan {done}." },
+    read_game_plan: {
+      title: { one: "Desk rejasini {count} marta oʻqing", other: "Desk rejasini {count} marta oʻqing" },
+      desc: "Oʻqilgan desk rejalari: {target} dan {done}.",
+    },
+    clean_month_progress: { title: "Toza oy", desc: "Kunlik stopga bir marta ham yetilmagan. Toza savdo kunlari: {target} dan {done}." },
+    review_month: { title: "Oy tahlillari", desc: "Oʻz vaqtida tahlil qilingan savdo kunlari: kerakli {target} dan {done}." },
+    review_days: {
+      title: { one: "{count} savdo kunini oʻz vaqtida tahlil qiling", other: "{count} savdo kunini oʻz vaqtida tahlil qiling" },
+      desc: "Oʻz vaqtida tahlil qilingan: {target} dan {done}.",
+    },
+    plan_days: {
+      title: { one: "Ochilishdan oldin reja — {count} kun", other: "Ochilishdan oldin reja — {count} kun" },
+      desc: "09:30 NY gacha shaxsiy reja tuzilgan kunlar: {target} dan {done}.",
+    },
+    beat_yourself: {
+      title: { one: "Oʻzingizdan {count} marta yaxshiroq oʻynang", other: "Oʻzingizdan {count} marta yaxshiroq oʻynang" },
+      desc: "Simulyatorda real savdodan yaxshiroq: {target} dan {done}.",
+    },
+    curator_task: { title: "Kurator topshirigʻi", desc: "Topshiriq bajarilganda kurator belgilaydi." },
+  },
+  ach: {
+    contract_streak: { title: "Kontrakt seriyasi", hint: { one: "Kontraktingizga ketma-ket {count} kun rioya qiling", other: "Kontraktingizga ketma-ket {count} kun rioya qiling" } },
+    clean_month: { title: "Toza oy", hint: { one: "Kunlik stopga yetmagan {count} oy", other: "Kunlik stopga yetmagan {count} oy" } },
+    comeback: { title: "Qaytish", hint: { one: "Buzilishdan keyingi kuni kontraktga rioya qiling — {count} marta", other: "Buzilishdan keyingi kuni kontraktga rioya qiling — {count} marta" } },
+    reviews_total: { title: "Kun tahlili", hint: { one: "{count} savdo kunini tahlil qiling", other: "{count} savdo kunini tahlil qiling" } },
+    review_streak: { title: "Tahlilsiz kun yoʻq", hint: { one: "Har bir savdo kunini oʻz vaqtida tahlil qiling — ketma-ket {count} kun", other: "Har bir savdo kunini oʻz vaqtida tahlil qiling — ketma-ket {count} kun" } },
+    focus_beaten: { title: "Xatoni yengdi", hint: { one: "Fokusdagi xato ketma-ket {count} kun yoʻq", other: "Fokusdagi xato ketma-ket {count} kun yoʻq" } },
+    plan_before_open: { title: "Ochilishdan oldin reja", hint: { one: "09:30 NY gacha shaxsiy reja — {count} kun", other: "09:30 NY gacha shaxsiy reja — {count} kun" } },
+    full_loop: { title: "Toʻliq aylana", hint: { one: "Ochilishdan oldin reja, kontraktga rioya va oʻsha kuni tahlil — {count} kun", other: "Ochilishdan oldin reja, kontraktga rioya va oʻsha kuni tahlil — {count} kun" } },
+    own_replays: { title: "Kuningizni qayta oʻynang", hint: { one: "Simulyatorda oʻz kuningizni qayta oʻynang — {count} marta", other: "Simulyatorda oʻz kuningizni qayta oʻynang — {count} marta" } },
+    beat_yourself: { title: "Oʻzingizdan yaxshiroq", hint: { one: "Simulyatorda real savdodan yaxshiroq oʻynang — {count} marta", other: "Simulyatorda real savdodan yaxshiroq oʻynang — {count} marta" } },
+    lessons: { title: "Oʻquvchi", hint: { one: "Akademiyaning {count} ta darsini oʻting", other: "Akademiyaning {count} ta darsini oʻting" } },
+    exams: { title: "Imtihon topshirildi", hint: { one: "Akademiyaning {count} ta imtihonini topshiring", other: "Akademiyaning {count} ta imtihonini topshiring" } },
+    tier_up: { title: "Pogʻonalar boʻylab", hint: "Narvon boʻylab koʻtarilish: Junior → Treyder → Senior" },
+    onboarding: { title: "Birinchi qadamlar", hint: "Birinchi qadamlarning barcha topshiriqlarini bajaring" },
+    secret: { title: "Maxfiy yutuq", hint: "Munosib boʻlganingizda ochiladi" },
+  },
+  notify: {
+    doneTitle: "Kvest bajarildi: {quest}",
+    doneBody: "Intizomga +{points}. Barcha kvestlar «Kvestlar va yutuqlar» boʻlimida.",
+    doneBodyNoPoints: "Barcha kvestlar «Kvestlar va yutuqlar» boʻlimida.",
+    staffDoneTitle: "{trader}: kvest bajarildi — {quest}",
+    staffFailedTitle: "{trader}: kvest bajarilmadi — {quest}",
+    staffBody: { failed: "Shart buzildi — tahlilda muhokama qilish kerak.", expired: "Muddat tugadi, maqsadga erishilmadi.", done: "Topshiriq bajarildi." },
+    assignedTitle: "Kuratordan topshiriq: {quest}",
+    assignedBody: "{curator} · {ends} gacha · intizomga +{points}",
+    assignedBodyNote: "{curator} · {ends} gacha · intizomga +{points}\n«{note}»",
+    cancelledTitle: "Kvest bekor qilindi: {quest}",
+    cancelledBody: "{curator} topshiriqni bekor qildi — uni endi bajarish shart emas.",
+    achievementTitle: "Yutuq: {achievement} — {tier}",
+    achievementBody: "Yutuqning yangi pogʻonasi. Barcha yutuqlar «Kvestlar va yutuqlar» boʻlimida.",
+  },
+  tier: { bronze: "bronza", silver: "kumush", gold: "oltin", platinum: "platina" },
+} satisfies Messages<typeof ru>;

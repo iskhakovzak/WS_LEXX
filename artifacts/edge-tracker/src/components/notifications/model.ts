@@ -5,9 +5,9 @@
  */
 import type { LucideIcon } from "lucide-react";
 import {
-  AtSign, MessageSquareReply, MessageSquarePlus, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
+  CircleSlash, AtSign, MessageSquareReply, MessageSquarePlus, HelpCircle, Lightbulb, ClipboardCheck, MessageSquare, CalendarCheck, AlarmClock,
   CheckCircle2, CalendarRange, Star, BadgeCheck, TriangleAlert, OctagonAlert, SlidersHorizontal, TrendingUp,
-  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award,
+  Gavel, RefreshCw, Link2Off, Info, Bell, GraduationCap, Target, Trophy, ShieldAlert, Award, Swords, Medal, Gift, XCircle,
 } from "lucide-react";
 import { http } from "@/lib/api/http";
 import { fmtDate } from "@/lib/format";
@@ -96,6 +96,15 @@ export const TYPES: TypeMeta[] = [
   meta("rating", "review", "info"),
   meta("rating_ack", "review", "info"),
   meta("discipline_badge", "review", "info"),
+  meta("quest_assigned", "review", "info"),
+  meta("quest_done", "review", "info"),
+  meta("quest_failed", "review", "warn"),
+  meta("quest_cancelled", "review", "info"),
+  meta("achievement_earned", "review", "info"),
+  meta("reward_eligible", "review", "info"),
+  meta("reward_requested", "review", "info"),
+  meta("reward_granted", "review", "info"),
+  meta("reward_declined", "review", "info"),
   meta("risk_warn", "risk", "warn"),
   meta("risk_breach", "risk", "critical"),
   meta("risk_repeat_breach", "risk", "critical"),
@@ -137,6 +146,8 @@ export const TYPE_ICONS: Record<string, LucideIcon> = {
   idea_submitted: Lightbulb, idea_review: ClipboardCheck, idea_comment: MessageSquare,
   eod_review_request: CalendarCheck, eod_overdue: AlarmClock, eod_reviewed: CheckCircle2, weekly_review: CalendarRange,
   rating: Star, rating_ack: BadgeCheck, discipline_badge: Award,
+  quest_assigned: Swords, quest_done: CheckCircle2, quest_failed: TriangleAlert, quest_cancelled: CircleSlash, achievement_earned: Medal,
+  reward_eligible: Gift, reward_requested: Gift, reward_granted: Gift, reward_declined: XCircle,
   risk_warn: TriangleAlert, risk_breach: OctagonAlert, risk_repeat_breach: OctagonAlert, risk_breach_review: ClipboardCheck, limit_change: SlidersHorizontal, rule_violation: ShieldAlert,
   scaling_proposal: TrendingUp, scaling_decision: Gavel,
   academy_promotion_ready: GraduationCap, academy_promotion_request: GraduationCap, academy_promotion_decision: Gavel,
@@ -181,7 +192,9 @@ export function normalizeNotification(raw: unknown): Notification | null {
   const ideaIdRaw = r.ideaId ?? r.idea_id;
   const ideaId = ideaIdRaw == null ? null : Number(ideaIdRaw);
   const linkRaw = typeof r.link === "string" ? r.link : null;
-  const link = linkRaw ?? (ideaId != null && Number.isInteger(ideaId) ? `/trade-ideas?idea=${ideaId}` : (LINK_RE.exec(legacyMessage)?.[1] ?? null));
+  const linked = linkRaw ?? (ideaId != null && Number.isInteger(ideaId) ? `/trade-ideas?idea=${ideaId}` : (LINK_RE.exec(legacyMessage)?.[1] ?? null));
+  // Staff grant reward requests from the curator «Сегодня» list (the trader-only quests tab is not theirs).
+  const link = meta.type === "reward_requested" && (!linked || linked.startsWith("/ratings")) ? "/curator?rewards=1" : linked;
   // A row without its own title gets the server's type label as title — show ours (UI language) instead.
   const serverLabel = typeof r.typeLabel === "string" ? r.typeLabel : null;
   const ownTitle = typeof r.title === "string" && r.title && r.title !== serverLabel ? r.title : "";

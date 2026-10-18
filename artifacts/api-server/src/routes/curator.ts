@@ -32,7 +32,7 @@ import {
   QUEUE_DEFAULT_DAYS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
   trendDirection, weeklyTrend, type NextAction, type QueueKind, type WeekPoint,
 } from "../lib/curatorLogic";
-import { breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
+import { alertMessage, breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
 import { ensureNameLatin } from "../lib/peopleDirectory";
 import { AppError, badRequest, forbidden, notFound } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
@@ -41,6 +41,7 @@ import { fmtDateFor } from "../i18n/format";
 import { buildCostQueue } from "../lib/daily/costQueue";
 import { eveningFor } from "../lib/daily/service";
 import { curatorFocusFor } from "../lib/daily/curatorFocus";
+import { curatorQuestEvents } from "../lib/quests/store";
 
 const router: IRouter = Router();
 
@@ -137,7 +138,7 @@ async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   await ensureNameLatin().catch(() => undefined);
   const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
-    deskSnapshot(today, null, lang),
+    deskSnapshot(today, null, lang, traders),
     templateStatus(traders, lang),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
@@ -328,7 +329,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
   // byCost — the queue by money (lib/daily/costQueue), loaded alongside the bulk in one round.
-  const [b, byCost] = await Promise.all([loadBulk(roster.traders, today, langOf(req)), buildCostQueue(roster.traders, today, { eveningFor })]);
+  const [b, byCost, questEvents] = await Promise.all([loadBulk(roster.traders, today, langOf(req)), buildCostQueue(roster.traders, today, { eveningFor }), curatorQuestEvents(roster.traders, addDays(today, -2))]);
   const signals = roster.traders.map((t) => buildSignal(t, b));
   const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
   const now = Date.now();
@@ -393,7 +394,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     queueWindow: { days: QUEUE_DEFAULT_DAYS, includeOld, old: arranged.old.count, oldOverdue: arranged.old.overdue },
     overdueActions,
     nextActions,
-    byCost,
+    byCost, questEvents, // curator quests of the roster that finished in the last 3 NY days (lib/quests)
   });
 }));
 
@@ -493,7 +494,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
     metrics: row ? { today: row.metrics.today, week: row.metrics.week, drawdown: row.metrics.drawdown, stop: row.metrics.stop, alerts: row.metrics.alerts } : null,
     breaches: breaches.map((r: any) => ({
       id: Number(r.id), date: String(r.date), kind: String(r.kind), kindLabel: breachKindLabel(String(r.kind), b.lang),
-      used: r.used == null ? null : Number(r.used), limit: r.limit == null ? null : Number(r.limit), message: String(r.message), createdAt: iso(r.created_at),
+      used: r.used == null ? null : Number(r.used), limit: r.limit == null ? null : Number(r.limit), message: alertMessage(r, b.lang), createdAt: iso(r.created_at),
       review: r.review ? rowToBreachReview(r.review) : null,
     })),
     // Все закрытые и не разобранные дни (без архивированных) — для разбора прямо из профиля, свежие сверху (как в очереди).

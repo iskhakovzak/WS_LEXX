@@ -5,13 +5,15 @@ import type { NextAction, QueueItem, TodayPayload, CostQueueRow } from "./api";
  *   1. cost rows the curator has not looked at yet — most expensive first (server order);
  *   2. next steps of traders without such a row — by priority (the old list);
  *   3. cost rows already reviewed — at the bottom, dimmed («Разобрано»).
+ * A trader's other open days follow their most expensive day (`cont`: same trader as the row above — the view shows
+ * the name once), so one trader does not take three of the top four places as separate rows.
  * Pure: no React, no i18n — tested in cost-queue-model.test.ts.
  */
 
 export type TraderNext = NextAction & { trader: string };
 
 export type AttentionRow =
-  | { type: "cost"; key: string; trader: string; item: CostQueueRow; next: TraderNext | null; breachPending: boolean }
+  | { type: "cost"; key: string; trader: string; item: CostQueueRow; next: TraderNext | null; breachPending: boolean; cont?: boolean }
   | { type: "next"; key: string; trader: string; next: TraderNext };
 
 export function attentionRows(data: Pick<TodayPayload, "nextActions" | "queue"> & { byCost?: CostQueueRow[] }): AttentionRow[] {
@@ -21,13 +23,20 @@ export function attentionRows(data: Pick<TodayPayload, "nextActions" | "queue"> 
     type: "cost", key: `cost:${item.trader}:${item.date}`, trader: item.trader, item,
     next: nextBy.get(item.trader) ?? null, breachPending: breachBy.has(item.trader),
   }));
-  const open = cost.filter((r) => r.type === "cost" && !r.item.resolved);
+  const open = groupByTrader(cost.filter((r) => r.type === "cost" && !r.item.resolved));
   const done = cost.filter((r) => r.type === "cost" && r.item.resolved);
   const covered = new Set(open.map((r) => r.trader));
   const rest = data.nextActions
     .filter((a) => !covered.has(a.trader))
     .map((a): AttentionRow => ({ type: "next", key: `next:${a.trader}`, trader: a.trader, next: a }));
   return [...open, ...rest, ...done];
+}
+
+/** Stable grouping: traders in the order of their most expensive row, each trader's rows in server order. */
+function groupByTrader(rows: AttentionRow[]): AttentionRow[] {
+  const by = new Map<string, AttentionRow[]>();
+  for (const r of rows) by.set(r.trader, [...(by.get(r.trader) ?? []), r]);
+  return [...by.values()].flatMap((list) => list.map((r, i) => (r.type === "cost" && i > 0 ? { ...r, cont: true } : r)));
 }
 
 export type PrimaryAction =

@@ -554,6 +554,9 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
   const days = inboxDays(req.query.days);
   const limit = Math.min(Math.max(Number(req.query.limit) || 40, 1), 100);
   const sg = await suggestionJoin("t");
+  // ?untagged=1 — the evening «Разметь N сделок» step: only trades without a live setup (the same rule as
+  // lib/playbookToday/untagged, so the sheet lists exactly the trades the counter counts).
+  const onlyUntagged = req.query.untagged === "1" ? " AND pb.id IS NULL" : "";
   const base = `FROM trades t
        LEFT JOIN playbook pb ON pb.id = t.playbook_id AND pb.deleted_at IS NULL
        ${sg.join}
@@ -562,7 +565,7 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
         AND NOT EXISTS (
           SELECT 1 FROM playbook_examples e JOIN playbook p ON p.id = e.playbook_id AND p.deleted_at IS NULL
            WHERE e.trade_id = t.id AND e.deleted_at IS NULL)
-        AND NOT EXISTS (SELECT 1 FROM playbook_inbox_dismissed d WHERE d.trade_id = t.id)`;
+        AND NOT EXISTS (SELECT 1 FROM playbook_inbox_dismissed d WHERE d.trade_id = t.id)${onlyUntagged}`;
   const [{ rows }, { rows: cnt }] = await Promise.all([
     pool.query<any>(
       `SELECT t.id, t.ticker, t.date, ${closeDateSql("t")} AS "closeDate", t.side, ${resultSql("t")} AS result,

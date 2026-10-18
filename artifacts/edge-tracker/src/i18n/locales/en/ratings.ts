@@ -285,7 +285,7 @@ export default {
       violations: "Violations",
       mentorRating: "Mentor score",
     },
-    title: "Top results",
+    title: "Top for a period",
     lockedTitle: "This section is for mentors",
     lockedDescription: "Only mentors and admins see the team rating and trade reviews.",
     myRiskDesk: "My risk desk",

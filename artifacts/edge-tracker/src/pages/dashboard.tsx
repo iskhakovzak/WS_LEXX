@@ -3,29 +3,24 @@
 // «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → opt-in extras
 // (check-in, brief, sectors, macro, DNA, quote, psychology — off by default, switched on in «Настроить»).
 // Each block answers one question; trades arrive automatically, so there are no entry CTAs here.
-import { useCallback, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, type ComponentType, type ReactNode } from "react";
 import { Page } from "@/components/ds";
+import { Skeleton } from "@/components/ui/skeleton";
+import { i18nReady } from "@/i18n";
 import { useAuth } from "@/contexts/auth-context";
 import { nyDate } from "@/lib/trading-date";
 import { useTodayHolidays } from "@/lib/market-intel";
 import { normalizeResult } from "@/lib/trade-result";
 import { useUnreadCount } from "@/components/notifications/use-notifications";
-import { SectorRadar } from "@/components/sector-radar";
-import { MarketDnaWidget } from "@/components/market-dna-widget";
-import { UpcomingEventsList } from "@/components/holiday-badge";
-import { MarketOpenBrief } from "@/components/market-open-brief";
-import { MorningCheckin } from "@/components/morning-checkin";
-import { WeeklyPsychologyReport } from "@/components/weekly-psychology-report";
-import { DailyQuoteCard } from "@/components/daily-quote-card";
 import { DashboardHeader } from "@/components/dashboard/today-hero";
 import { AttentionPanel } from "@/components/dashboard/attention-panel";
-import { PositionsPanel } from "@/components/dashboard/positions-panel";
 import { EquityPanel } from "@/components/dashboard/equity-panel";
 import { StreaksPanel } from "@/components/dashboard/streaks-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
 import { DayLine } from "@/components/daily/day-line";
+import { QuestStrip } from "@/components/quests/quest-strip";
 import { dayView } from "@/components/daily/daily-model";
 import { useDailyMe } from "@/components/daily/use-daily";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
@@ -42,6 +37,24 @@ import {
   useRiskMe,
   type SectionId,
 } from "@/components/dashboard/use-dashboard";
+
+// Opt-in extras (off by default, switched on in «Настроить») and the open-positions panel: own chunks, so the first screen and every other page
+// don't download them. Resolved after i18nReady() like route chunks (no flash of RU with EN/UZ).
+function extra<P extends object>(load: () => Promise<ComponentType<P>>) {
+  return lazy(() => load().then(async (C) => { await i18nReady(); return { default: C }; }));
+}
+const SectorRadar = extra(() => import("@/components/sector-radar").then((m) => m.SectorRadar));
+const MarketDnaWidget = extra(() => import("@/components/market-dna-widget").then((m) => m.MarketDnaWidget));
+const UpcomingEventsList = extra(() => import("@/components/holiday-badge").then((m) => m.UpcomingEventsList));
+const MarketOpenBrief = extra(() => import("@/components/market-open-brief").then((m) => m.MarketOpenBrief));
+const MorningCheckin = extra(() => import("@/components/morning-checkin").then((m) => m.MorningCheckin));
+const WeeklyPsychologyReport = extra(() => import("@/components/weekly-psychology-report").then((m) => m.WeeklyPsychologyReport));
+const DailyQuoteCard = extra(() => import("@/components/daily-quote-card").then((m) => m.DailyQuoteCard));
+// Open positions show only while a trade is open; the panel brings the trades dictionary (horizon labels) with it.
+const PositionsPanel = extra(() => import("@/components/dashboard/positions-panel").then((m) => m.PositionsPanel));
+
+const ExtraFallback = () => <Skeleton className="h-40 w-full rounded-2xl" />;
+const lazyExtra = (node: ReactNode) => <Suspense fallback={<ExtraFallback />}>{node}</Suspense>;
 
 const RITUAL_ANCHOR = "dash-ritual";
 const CLOSE_MIN = 16 * 60;
@@ -183,25 +196,25 @@ export default function Dashboard() {
       case "streaks":
         return <StreaksPanel fill data={today} isLoading={todayQ.isLoading} />;
       case "positions":
-        return today?.positions && today.positions.length > 0 ? <PositionsPanel data={today} /> : null;
+        return today?.positions && today.positions.length > 0 ? lazyExtra(<PositionsPanel data={today} />) : null;
       case "checkin":
         return (
           <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label={dashboardI18n.t("sections.checkin.label")} className="scroll-mt-24 outline-none">
-            <MorningCheckin />
+            {lazyExtra(<MorningCheckin />)}
           </section>
         );
       case "brief":
-        return <MarketOpenBrief />;
+        return lazyExtra(<MarketOpenBrief />);
       case "quote":
-        return <DailyQuoteCard />;
+        return lazyExtra(<DailyQuoteCard />);
       case "sectors":
-        return <SectorRadar />;
+        return lazyExtra(<SectorRadar />);
       case "macro":
-        return <UpcomingEventsList />;
+        return lazyExtra(<UpcomingEventsList />);
       case "dna":
-        return <MarketDnaWidget />;
+        return lazyExtra(<MarketDnaWidget />);
       case "psychology":
-        return <WeeklyPsychologyReport />;
+        return lazyExtra(<WeeklyPsychologyReport />);
     }
   };
 
@@ -225,7 +238,7 @@ export default function Dashboard() {
         onScopeChange={(s) => update({ scope: s })}
         canChooseScope={staff}
         userName={userName}
-        dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} />}
+        dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} quests={<QuestStrip enabled={dailyOn} />} />}
         customize={
           authed ? <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} /> : null
         }

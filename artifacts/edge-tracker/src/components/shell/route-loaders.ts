@@ -46,6 +46,7 @@ const PAGE_IMPORTS = {
   "/weekly-review": () => import("@/pages/weekly-review"),
   "/notifications": () => import("@/pages/notifications"),
   "/simulator": () => import("@/pages/simulator"),
+  "/trainer": () => import("@/pages/trainer"),
   "/what-if": () => import("@/pages/what-if"),
   "/behavior": () => import("@/pages/behavior"),
   "/day-report": () => import("@/pages/day-report"),

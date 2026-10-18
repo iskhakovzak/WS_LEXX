@@ -37,6 +37,8 @@ export type PlaybookEntry = {
   contextText?: string | null; triggerText?: string | null; entryText?: string | null; stopText?: string | null;
   targetsText?: string | null; managementText?: string | null; invalidationText?: string | null;
   idealConditions?: string | null; timeOfDay?: string | null; horizon?: string | null;
+  /** «Сегодня»: minimum tier for the lock (trainee | junior | trader | senior | lead) and the cheat-sheet picture key. */
+  minTier?: string | null; schema?: string | null;
   media?: SetupMedia[] | null;
   updatedAt?: string | null;
   /** Server-computed permissions for the viewer (new API); read through `accessOf()`. */

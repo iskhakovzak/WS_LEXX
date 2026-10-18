@@ -20,7 +20,8 @@ export type OrderKind = "buy" | "sell" | "flat";
 export type WireBar = [number, number, number, number, number, number];
 
 export type FillReason = "buy" | "sell" | "flat" | "stop" | "target" | "end";
-export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number };
+/** `slip`: $ per share the server applied against the player (slippage + half the spread; absent on old games). */
+export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number };
 export type SimTrade = {
   n: number; side: "long" | "short"; openIdx: number; closeIdx: number | null; entryAvg: number; exitAvg: number | null; maxQty: number;
   gross: number; fees: number; net: number; riskPerShare: number; r: number; mfe: number; mae: number; mfeR: number; maeR: number;
@@ -73,10 +74,17 @@ export type Snapshot = {
   feePerShare: number; riskUnit: number; defaultQty: number; maxNotional: number; levels: Levels;
   bars: WireBar[]; state: PublicState; createdAt: string; reveal: Reveal | null;
   own: OwnPublic | null;
+  /** Execution model of this game: typical slippage and spread, $ per share (null / absent on old games). */
+  slippage?: { perShare: number; spread: number } | null;
+  /** 1R in $ used by «размер по риску» (sizeMode "risk"). */
+  oneR?: number;
+  /** Set on «Задача дня» games (the trainer). */
+  trainer?: { mode: "daily"; date: string } | null;
 };
 
 export type StepBody = {
-  order?: { kind: OrderKind; qty?: number } | null;
+  /** sizeMode "risk": the server sizes the order from 1R and the bracket stop sent with it (no qty). */
+  order?: { kind: OrderKind; qty?: number; sizeMode?: "risk" } | null;
   bracket?: { stop: number | null; target: number | null } | null;
   advance: number;
 };

@@ -1,78 +1,105 @@
 /**
- * Drawing tools: data model + localStorage persistence (best effort, never throws). Pure except
- * for the storage helpers, which guard every access.
+ * Drawings (horizontal level, trend line, zone): data model, the API mapping (ChartDrawing, lib/trainer/types.ts) and
+ * the browser fallback store. Stored per viewer per ticker-day — the same drawings follow every trade of that day.
+ * Pure except for the storage helpers, which guard every access and never throw.
  */
-import type { Drawing, DrawingPoint, DrawingType } from "../types";
+import type { ChartDrawing } from "@/lib/trainer/types";
+import type { Drawing, DrawingPoint, DrawingRole, DrawingType } from "../types";
 import { chartI18n } from "@/i18n/ns/chart";
 
-export const FIB_LEVELS: readonly number[] = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+export const DRAWING_TYPES: readonly DrawingType[] = ["hline", "trend", "rect"];
+export const DRAWING_ROLES: readonly DrawingRole[] = ["accent", "up", "down", "warn"];
+/** The server keeps at most this many per ticker-day. */
+export const MAX_DRAWINGS = 50;
 
 export const DRAWING_LABEL: Readonly<Record<DrawingType, string>> = {
   get hline() { return chartI18n.t("drawing.hline"); },
   get trend() { return chartI18n.t("drawing.trend"); },
   get rect() { return chartI18n.t("drawing.rect"); },
-  get fib() { return chartI18n.t("drawing.fib"); },
 };
 
 /** Points a tool needs before it is complete. */
-export const DRAWING_POINTS: Record<DrawingType, number> = { hline: 1, trend: 2, rect: 2, fib: 2 };
+export const DRAWING_POINTS: Record<DrawingType, number> = { hline: 1, trend: 2, rect: 2 };
 
-const KEY_PREFIX = "ws-chart:drawings:v1:";
-const VERSION = 1;
-
-type Stored = { v: number; items: Drawing[] };
+const KEY_PREFIX = "ws-chart:drawings:v2:";
 
 export function newDrawingId(): string {
   return `d${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
 }
 
-export function makeDrawing(type: DrawingType, points: DrawingPoint[], color?: string): Drawing {
-  return { id: newDrawingId(), type, points: points.map((p) => ({ time: p.time, price: p.price })), color, createdAt: Date.now() };
+export function makeDrawing(type: DrawingType, points: readonly DrawingPoint[], role: DrawingRole = "accent"): Drawing {
+  return { id: newDrawingId(), type, points: points.slice(0, DRAWING_POINTS[type]).map((p) => ({ time: p.time, price: p.price })), role, createdAt: Date.now() };
 }
+
+const isRole = (v: unknown): v is DrawingRole => typeof v === "string" && (DRAWING_ROLES as readonly string[]).includes(v);
 
 export function isValidDrawing(d: unknown): d is Drawing {
   if (!d || typeof d !== "object") return false;
   const x = d as Record<string, unknown>;
-  if (typeof x.id !== "string" || typeof x.type !== "string" || !(x.type in DRAWING_POINTS)) return false;
+  if (typeof x.id !== "string" || !x.id || x.id.length > 40 || typeof x.type !== "string" || !(x.type in DRAWING_POINTS)) return false;
   if (!Array.isArray(x.points) || x.points.length < DRAWING_POINTS[x.type as DrawingType]) return false;
-  return x.points.every((p: unknown) => p && typeof p === "object" && Number.isFinite((p as DrawingPoint).time) && Number.isFinite((p as DrawingPoint).price));
+  return x.points.every((p: unknown) => p && typeof p === "object" && Number.isFinite((p as DrawingPoint).time) && Number.isFinite((p as DrawingPoint).price) && (p as DrawingPoint).price > 0);
 }
 
-export function serializeDrawings(items: readonly Drawing[]): string {
-  const payload: Stored = { v: VERSION, items: items.filter(isValidDrawing) };
-  return JSON.stringify(payload);
+/** Web → API shape. */
+export function toApiDrawing(d: Drawing): ChartDrawing {
+  return { id: d.id, kind: d.type, points: d.points.slice(0, DRAWING_POINTS[d.type]).map((p) => ({ t: Math.round(p.time), p: p.price })), label: d.label ?? null, color: d.role ?? "accent" };
 }
 
-export function parseDrawings(raw: string | null | undefined): Drawing[] {
-  if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw) as Partial<Stored> | Drawing[];
-    const items = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.items) ? parsed.items : [];
-    return items.filter(isValidDrawing);
-  } catch {
-    return [];
-  }
+/** API → web shape; null for anything malformed. */
+export function fromApiDrawing(c: unknown): Drawing | null {
+  if (!c || typeof c !== "object") return null;
+  const x = c as Partial<ChartDrawing>;
+  const d: Drawing = {
+    id: String(x.id ?? ""),
+    type: x.kind as DrawingType,
+    points: Array.isArray(x.points) ? x.points.map((p) => ({ time: Number(p?.t), price: Number(p?.p) })) : [],
+    role: isRole(x.color) ? x.color : "accent",
+    label: typeof x.label === "string" ? x.label.slice(0, 80) : null,
+    createdAt: 0,
+  };
+  return isValidDrawing(d) ? d : null;
 }
 
-export function drawingsStorageKey(tradeId: number | string): string {
-  return `${KEY_PREFIX}${tradeId}`;
+/** GET body → drawings ({ drawings: [...] } or a bare array). */
+export function parseDrawingsResponse(body: unknown): Drawing[] {
+  const list = Array.isArray(body) ? body : body && typeof body === "object" && Array.isArray((body as { drawings?: unknown }).drawings) ? (body as { drawings: unknown[] }).drawings : [];
+  return list.map(fromApiDrawing).filter((d): d is Drawing => d != null).slice(0, MAX_DRAWINGS);
 }
 
-export function loadDrawings(tradeId: number | string): Drawing[] {
+/** Move a whole drawing by a time / price delta (a horizontal level only moves in price). */
+export function moveDrawing(d: Drawing, dTime: number, dPrice: number): Drawing {
+  const dt = d.type === "hline" ? 0 : dTime;
+  return { ...d, points: d.points.map((p) => ({ time: p.time + dt, price: Math.max(1e-6, p.price + dPrice) })) };
+}
+
+/** Replace one anchor point (dragging a handle of a trend line / zone corner). */
+export function movePoint(d: Drawing, index: number, to: DrawingPoint): Drawing {
+  if (index < 0 || index >= d.points.length) return d;
+  const points = d.points.map((p, i) => (i === index ? { time: d.type === "hline" ? p.time : to.time, price: Math.max(1e-6, to.price) } : p));
+  return { ...d, points };
+}
+
+export function drawingsStorageKey(ticker: string, day: string): string {
+  return `${KEY_PREFIX}${ticker.toUpperCase()}:${day}`;
+}
+
+export function loadDrawings(ticker: string, day: string): Drawing[] {
   try {
     if (typeof localStorage === "undefined") return [];
-    return parseDrawings(localStorage.getItem(drawingsStorageKey(tradeId)));
+    const raw = JSON.parse(localStorage.getItem(drawingsStorageKey(ticker, day)) ?? "null") as unknown;
+    return parseDrawingsResponse(raw);
   } catch {
     return [];
   }
 }
 
-export function saveDrawings(tradeId: number | string, items: readonly Drawing[]): boolean {
+export function saveDrawings(ticker: string, day: string, items: readonly Drawing[]): boolean {
   try {
     if (typeof localStorage === "undefined") return false;
-    const key = drawingsStorageKey(tradeId);
+    const key = drawingsStorageKey(ticker, day);
     if (!items.length) localStorage.removeItem(key);
-    else localStorage.setItem(key, serializeDrawings(items));
+    else localStorage.setItem(key, JSON.stringify({ drawings: items.slice(0, MAX_DRAWINGS).map(toApiDrawing) }));
     return true;
   } catch {
     return false;

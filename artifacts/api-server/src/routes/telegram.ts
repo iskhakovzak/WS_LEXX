@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
+import { forgetQuests } from "../lib/quests/cache";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import {
@@ -153,6 +154,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [chatId, userName],
     );
     await pool.query(`UPDATE telegram_link_tokens SET used = TRUE WHERE token = $1`, [token]);
+    forgetQuests(userName); // onboarding: link Telegram
     const linkedLang = await localeOfUser(userName);
     await sendMessage(chatId, tg(linkedLang)("start.linked", { name: escHtml(personNameFor(userName, linkedLang)) }));
     logger.info({ userName, chatId }, "Telegram account linked");

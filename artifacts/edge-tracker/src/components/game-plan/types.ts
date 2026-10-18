@@ -74,6 +74,10 @@ export type PlanDoc = {
   tvLinks: string[];
   /** Personal plan only: rule of the day = a daily-loop MistakeId; absent = never chosen (prefilled with the focus), null = none. */
   ownRule?: string | null;
+  /** Personal plan only: «Сегодня торгую» — playbook setup ids picked for the day (written by the playbook, read-only here). */
+  setups?: number[];
+  /** Personal plan only: 1R in $ — the playbook size calculator reads it (PlaybookToday.oneR, source «plan»). */
+  riskPerTradeUsd?: number | null;
 };
 
 export type PlanStatus = "draft" | "ready";

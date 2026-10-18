@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/api/keys";
 import { AlertCircle, Check, CheckCircle2, Cloud, Copy, Loader2, NotebookPen, Pencil, Plus } from "lucide-react";
 import { Panel, Pill } from "@/components/ds";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { fmtDate } from "@/lib/format";
 import { applyTemplate, docToDraft, draftToDoc, isDraftEmpty, sameDoc, validateDraft, type DraftErrors, type PlanDraft } from "./plan-draft";
 import { PlanEditor, type SetDraft, type TickerSuggestion } from "./plan-editor";
 import { PlanDocView } from "./plan-doc-view";
+import { PlanPicks } from "./plan-picks";
 import { TemplateMenu } from "./plan-templates";
 import { FocusBanner, shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
@@ -61,7 +63,12 @@ export function MyPlan({ date, deskPlan }: { date: string; deskPlan: GamePlan | 
       date={date}
       initial={q.data!}
       deskPlan={deskPlan}
-      onSaved={(p) => qc.setQueryData<MyPlanResponse>(gpKeys.my(date), (prev) => (prev ? { ...prev, plan: p } : prev))}
+      onSaved={(p) => {
+        qc.setQueryData<MyPlanResponse>(gpKeys.my(date), (prev) => (prev ? { ...prev, plan: p } : prev));
+        // Plan quests (plan before the open, own rule, first plan with a stop): stale, refetched where shown (autosave
+        // fires often — no refetch from here).
+        void qc.invalidateQueries({ queryKey: KEYS.questsMe(), refetchType: "none" });
+      }}
     />
   );
 }
@@ -259,6 +266,7 @@ function MyPlanEditor({
         description={editing ? t("my.autosaveHint") : undefined}
         actions={header}
       >
+        <PlanPicks date={date} />
         {editing ? (
           <PlanEditor
             mode="personal"

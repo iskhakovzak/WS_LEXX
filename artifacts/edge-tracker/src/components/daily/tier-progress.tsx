@@ -45,8 +45,9 @@ export function TierProgressChip({ progress }: { progress: TierProgress | null |
             {progress.items.map((i) => (
               <li key={i.metric} className="flex min-w-0 items-center gap-2 text-xs">
                 <StatusIcon status={i.ok ? "kept" : i.actual == null ? "unknown" : "broken"} />
-                <span className="min-w-0 flex-1 truncate">{metricLabel(i)}</span>
-                <span className="shrink-0 tabular-nums text-muted-foreground">
+                <span className={cn("min-w-0 flex-1 truncate", !i.ok && i.actual != null && "text-down")}>{metricLabel(i)}</span>
+                {/* A failed criterion (e.g. a drawdown breach recorded on the risk desk) reads red, not just a small icon. */}
+                <span className={cn("shrink-0 tabular-nums", !i.ok && i.actual != null ? "font-medium text-down" : "text-muted-foreground")}>
                   {i.target != null ? t("tier.of", { actual: fmtMetric(i.metric, i.actual), target: fmtTarget(i.metric, i.target) }) : fmtMetric(i.metric, i.actual)}
                 </span>
               </li>

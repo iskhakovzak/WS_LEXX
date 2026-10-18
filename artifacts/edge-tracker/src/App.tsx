@@ -9,16 +9,14 @@ import { humanizeApiError, isAuthError, retryDelay, shouldRetryQuery } from "@/l
 import { STALE } from "@/lib/api/keys";
 import { Skeleton } from "@/components/ui/skeleton";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 import Dashboard from "@/pages/dashboard";
-import LoginPage from "@/pages/login";
 import { AuthProvider, useAuth } from "@/contexts/auth-context";
 import { ThemeProvider } from "@/contexts/theme-context";
 import { BASE } from "@/lib/api";
 import { routeTitle } from "@/components/shell/nav";
 import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loaders";
-import { I18nProvider } from "@/i18n";
+import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
 
@@ -57,6 +55,7 @@ const Scaling = lazy(L["/scaling"]);
 const WeeklyReview = lazy(L["/weekly-review"]);
 const Notifications = lazy(L["/notifications"]);
 const Simulator = lazy(L["/simulator"]);
+const Trainer = lazy(L["/trainer"]);
 const WhatIf = lazy(L["/what-if"]);
 const Behavior = lazy(L["/behavior"]);
 const DayReport = lazy(L["/day-report"]);
@@ -73,6 +72,9 @@ const AcademyCohorts = lazy(L["/academy/cohorts"]);
 const AcademyLearn = lazy(L["/academy/learn"]);
 const AcademyLesson = lazy(L["/academy/lesson"]);
 const AcademyContentAdmin = lazy(L["/academy/content-admin"]);
+// Signed-out screen and the 404 page: own chunks too (a signed-in visit never needs the login form).
+const NotFound = lazy(() => import("@/pages/not-found").then(async (m) => { await i18nReady(); return m; }));
+const LoginPage = lazy(() => import("@/pages/login").then(async (m) => { await i18nReady(); return m; }));
 
 const queryClient = new QueryClient({
   // Any mutation without its own onError gets one toast in the UI language (lib/api/errors). 401s are
@@ -184,6 +186,7 @@ function Router() {
           <Route path="/weekly-review" component={WeeklyReview} />
           <Route path="/notifications" component={Notifications} />
           <Route path="/simulator" component={Simulator} />
+          <Route path="/trainer" component={Trainer} />
           <Route path="/what-if" component={WhatIf} />
           <Route path="/behavior" component={Behavior} />
           <Route path="/day-report" component={DayReport} />
@@ -221,7 +224,11 @@ function AppContent() {
 
   if (!isAuthenticated) {
     document.title = `${shellI18n.t("titles.login")} · ${APP_NAME}`;
-    return <LoginPage />;
+    return (
+      <Suspense fallback={null}>
+        <LoginPage />
+      </Suspense>
+    );
   }
 
   return (

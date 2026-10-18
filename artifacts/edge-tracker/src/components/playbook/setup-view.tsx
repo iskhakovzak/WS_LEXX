@@ -33,6 +33,7 @@ import { LinkedTradesSection } from "./linked-trades-section";
 import { SubSetupsSection } from "./sub-setups-section";
 import { RelatedSetupsSection, SetupHighlights } from "./highlights";
 import { MoveToFolderButton } from "./move-to-folder";
+import { MinTierSelect } from "./min-tier-select";
 import { SetupStatsPanel } from "./setup-stats";
 import { StructuredDescription } from "./structured-editor";
 import {
@@ -188,6 +189,7 @@ export function SetupView({
             </button>
           ) : entry.reviewed ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" /> {t("view.reviewed")}</Pill> : null)}
           <ConfidenceMeter level={entry.confidenceLevel} showLabel />
+          {live && access.space === "office" && isCurator && access.canEdit && <MinTierSelect entry={entry} />}
         </div>
         {entry.tags && <div className="mt-2"><TagChips tags={entry.tags} /></div>}
         {proposed && access.canPromote && entry.officeProposedNote && (
@@ -318,7 +320,7 @@ export function SetupView({
             ) : (
               <p className="rounded-xl border border-dashed border-border px-4 py-3 text-sm text-muted-foreground">{t("view.boardNotLive")}</p>
             )}
-            <ExamplesSection entryId={entry.id} />
+            <ExamplesSection entryId={entry.id} canEdit={access.canEdit} />
           </div>
         )}
         {tab === "stats" && (
@@ -485,7 +487,7 @@ function ChecklistInlineEditor({ entry, onDone }: { entry: PlaybookEntry; onDone
 
 type ActivityRow = { id: number; action: string; section: string; entityId?: string | null; entityTitle?: string; trader?: string; details?: string; createdAt: string };
 
-function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
+export function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
   const q = useQuery<ActivityRow[]>({
     queryKey: ["playbook-activity", "setup", entry.id],
     queryFn: async () => {

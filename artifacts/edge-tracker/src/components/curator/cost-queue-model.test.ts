@@ -21,6 +21,17 @@ describe("attentionRows", () => {
     expect(a.type === "cost" && a.breachPending && a.next?.kind).toBe("breach_review");
   });
 
+  it("a trader's other open days follow their most expensive day, marked as a continuation", () => {
+    const day = (r: CostQueueRow, date: string): CostQueueRow => ({ ...r, date });
+    const rows = attentionRows({
+      byCost: [day(cost("A", -900, ["stop_breach"]), "2026-10-16"), day(cost("B", -500, ["fees"]), "2026-10-16"), day(cost("A", -400, ["giveback"]), "2026-10-15"), day(cost("A", -200, ["fees"]), "2026-10-14")],
+      nextActions: [],
+      queue: [],
+    });
+    expect(rows.map((r) => `${r.trader}:${r.type === "cost" ? r.item.date : ""}:${r.type === "cost" && r.cont ? "cont" : ""}`))
+      .toEqual(["A:2026-10-16:", "A:2026-10-15:cont", "A:2026-10-14:cont", "B:2026-10-16:"]);
+  });
+
   it("works without byCost (older API): the plain next steps", () => {
     expect(attentionRows({ nextActions: [next("D", "eod_review", 50)], queue: [] }).map((r) => r.key)).toEqual(["next:D"]);
   });

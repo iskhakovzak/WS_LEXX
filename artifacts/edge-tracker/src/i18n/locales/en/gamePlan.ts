@@ -61,6 +61,7 @@ export default {
   validation: {
     levels: "Numbers separated by spaces only",
     levelsMax: "No more than 12 levels",
+    riskPerTrade: "Amount in $ above zero, e.g. 50",
     maxLoss: "Amount in $, e.g. 300",
     maxTrades: "Whole number 0–500",
     tickerRequired: "Ticker is required",
@@ -150,6 +151,7 @@ export default {
     riskHint: "Limits I won’t break today",
     sizeMode: "Size mode",
     riskModeAria: "Risk mode",
+    riskPerTrade: "1R — risk per trade, $",
     maxLoss: "Max daily loss, $",
     maxTrades: "Max trades",
     riskNotesDesk: "Risk notes for the desk",
@@ -376,6 +378,7 @@ export default {
     empty: "The plan is empty.",
     market: "Market",
     risk: "Risk for the day",
+    riskPerTrade: "1R",
     maxLoss: "Max loss",
     maxTrades: "Max trades",
     tickers: "Tickers",

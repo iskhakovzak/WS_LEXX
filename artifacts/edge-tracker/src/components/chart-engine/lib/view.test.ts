@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import { capVolumes, daySpanOf, defaultViewRange, followCursor } from "./view";
-import { pushHistory, type TrainingRecord } from "./training-sim";
 
 describe("default view", () => {
   it("frames the trade with a lead-in of at least 30 bars", () => {
@@ -49,15 +48,5 @@ describe("volume cap", () => {
   });
   it("handles junk and empty input", () => {
     expect(capVolumes([NaN, -5, 0])).toEqual({ cap: 0, values: [0, 0, 0] });
-  });
-});
-
-describe("training history push", () => {
-  it("prepends and caps", () => {
-    const rec = (at: number): TrainingRecord => ({ at, tradeId: 1, ticker: "X", day: "d", score: null, pnlUsd: 0, r: null, perShare: null, vsRealPerShare: null, trades: 0 });
-    let list: TrainingRecord[] = [];
-    for (let i = 0; i < 205; i++) list = pushHistory(list, rec(i));
-    expect(list).toHaveLength(200);
-    expect(list[0].at).toBe(204);
   });
 });

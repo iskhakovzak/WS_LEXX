@@ -49,6 +49,22 @@ function makeView(owner: { render: (rc: RenderCtx) => void; buildCtx: (scope: Bi
   return { zOrder: () => owner.zOrder, renderer: () => renderer };
 }
 
+/**
+ * Logical index → x (CSS px), fractional indices included. lightweight-charts 5 answers 0 for a fractional logical
+ * (e.g. «bar − 0.5», the left edge of a bar), which collapsed every band / zone drawn between bar edges to x = 0;
+ * interpolate between the two neighbouring whole bars instead.
+ */
+export function logicalX(ts: { logicalToCoordinate: (l: Logical) => number | null }, logical: number): number | null {
+  if (!Number.isFinite(logical)) return null;
+  const a = Math.floor(logical);
+  const xa = ts.logicalToCoordinate(a as Logical);
+  if (xa == null) return null;
+  const frac = logical - a;
+  if (frac === 0) return Number(xa);
+  const xb = ts.logicalToCoordinate((a + 1) as Logical);
+  return xb == null ? Number(xa) : Number(xa) + (Number(xb) - Number(xa)) * frac;
+}
+
 export abstract class SeriesPrimitiveBase implements ISeriesPrimitive<Time> {
   protected chart: IChartApiBase<Time> | null = null;
   protected series: ISeriesApi<SeriesType, Time> | null = null;
@@ -95,7 +111,7 @@ export abstract class SeriesPrimitiveBase implements ISeriesPrimitive<Time> {
       width: scope.mediaSize.width,
       height: scope.mediaSize.height,
       y: (price) => { const v = series.priceToCoordinate(price); return v == null ? null : Number(v); },
-      x: (logical) => { const v = ts.logicalToCoordinate(logical as Logical); return v == null ? null : Number(v); },
+      x: (logical) => logicalX(ts, logical),
       range: ts.getVisibleLogicalRange(),
       theme: this.theme,
     };
@@ -107,8 +123,8 @@ export abstract class SeriesPrimitiveBase implements ISeriesPrimitive<Time> {
     return v == null ? null : Number(v);
   }
   protected logicalX(logical: number): number | null {
-    const v = this.chart?.timeScale().logicalToCoordinate(logical as Logical);
-    return v == null ? null : Number(v);
+    const ts = this.chart?.timeScale();
+    return ts ? logicalX(ts, logical) : null;
   }
 
   abstract render(rc: RenderCtx): void;
@@ -140,7 +156,7 @@ export abstract class PanePrimitiveBase implements IPanePrimitive<Time> {
       width: scope.mediaSize.width,
       height: scope.mediaSize.height,
       y: () => null,
-      x: (logical) => { const v = ts.logicalToCoordinate(logical as Logical); return v == null ? null : Number(v); },
+      x: (logical) => logicalX(ts, logical),
       range: ts.getVisibleLogicalRange(),
       theme: this.theme,
     };

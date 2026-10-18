@@ -327,6 +327,27 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `DAILY_NOTHING_TO_DISPUTE` | 409 | POST /daily/review with `dispute: true` for a day whose focus was not broken (kept, no trades, no focus). | — |
 | `PERMISSIONS_CELLS_REJECTED` | 400 | PUT /permissions/matrix with cells for an unknown capability, a locked role (admin/guest) or an admin-only capability. | `details.problems: [{ kind: "unknown_capability" \| "locked_role" \| "admin_only", role, capability }]` |
 | `SETTINGS_INVALID` | 400 | PUT /admin/settings with an unknown key, a key twice, or a value that does not fit its registry definition (lib/settings/validate.ts); nothing is written. | `details.problems: [{ key, kind: "unknown" \| "duplicate" \| "type" \| "range" \| "integer" \| "time" \| "option", min?, max?, options? }]` |
+| `QUESTS_DISABLED` | 409 | POST /quests/assign while `quests.enabled` or `quests.curatorEnabled` is off. | — |
+| `QUEST_TEMPLATE_UNKNOWN` | 400 | POST /quests/assign with a template that is not curator-assignable (GET /quests/templates lists them). | — |
+| `QUEST_TARGET_RANGE` | 400 | POST /quests/assign: target outside the template's bounds. | `{ min, max }` params |
+| `QUEST_DEADLINE_INVALID` | 400 | POST /quests/assign: endsOn before today or more than 92 days ahead. | `{ max }` param |
+| `QUEST_POINTS_RANGE` | 400 | POST /quests/assign: rewardPoints above `quests.curatorMaxPoints`. | `{ max }` param |
+| `QUEST_LIMIT` | 409 | POST /quests/assign when the trader has `quests.curatorMaxActive` active curator quests. | `{ max }` param |
+| `QUEST_TRADER_ONLY` | 400 | POST /quests/assign for a user who is not an active trader. | — |
+| `QUEST_NOT_FOUND` | 404 | POST /quests/:id/cancel or /complete: no such quest, or not a curator quest. | — |
+| `QUEST_NOT_ACTIVE` | 409 | POST /quests/:id/cancel or /complete for a quest that is no longer active. | — |
+| `QUEST_NOT_MANUAL` | 409 | POST /quests/:id/complete for a quest other than the manual `curator_task`. | — |
+| `QUEST_NOT_YOURS` | 403 | POST /quests/:id/cancel by someone other than the assigner (admins may). | — |
+| `PLAYBOOK_SETUP_LOCKED` | 409 | PUT /playbook/today/picks with a setup above the trader's tier (`params.name`); locks never block trading. | — |
+| `GAMIFICATION_DISABLED` | 409 | PUT /gamification/title or a reward request while `gamification.enabled` is off. | — |
+| `TITLE_NOT_EARNED` | 400 | PUT /gamification/title with a key the trader has not earned (GET /gamification/me lists `titles`). | — |
+| `REWARD_ITEM_NOT_FOUND` | 404 | Rewards catalog item (PUT /gamification/rewards/items/:id, POST …/:id/request; inactive items cannot be requested). | — |
+| `REWARD_ITEM_INVALID` | 400 | POST/PUT /gamification/rewards/items with an empty title, a bad stock or a condition that does not fit its kind. | `{ field }` param: title \| stock \| kind \| ref \| tier \| rank |
+| `REWARD_NOT_ELIGIBLE` | 409 | POST /gamification/rewards/items/:id/request without an «eligible» grant of that item. | — |
+| `REWARD_GRANT_NOT_FOUND` | 404 | POST /gamification/rewards/grants/:id/grant or /decline: no such grant. | — |
+| `REWARD_GRANT_DECIDED` | 409 | Grant / decline of a grant that is already granted or declined. | — |
+| `REWARD_OUT_OF_STOCK` | 409 | Grant of an item whose stock is 0. | — |
+| `REWARD_NOT_YOUR_TRADER` | 403 | Grant / decline by a curator who is not the trader's assigned curator (admins may). | — |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.
 

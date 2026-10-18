@@ -6,6 +6,7 @@ import {
   fmtCompact,
   fmtCount,
   fmtDate,
+  fmtDayMonth,
   fmtDateCustom,
   fmtMonth,
   fmtNum,
@@ -218,6 +219,8 @@ describe("language-dependent formats", () => {
   it("dates, months, weekdays follow the language; no module-level locale", async () => {
     const d = new Date(2026, 9, 17, 14, 5, 9);
     expect(fmtDate(d, "dayMonth")).toBe("17 окт.");
+    expect(fmtDayMonth(d, new Date(2026, 0, 5))).toBe("17 окт.");
+    expect(fmtDayMonth("2025-12-01", new Date(2026, 0, 5))).toBe("1 дек. 2025 г.");
     expect(fmtDate(d, "shortYY")).toBe("17.10.26");
     expect(fmtDate(d, "dayMonthNumeric")).toBe("17.10");
     expect(fmtDate(d, "weekdayDayMonth")).toBe("сб, 17 окт.");

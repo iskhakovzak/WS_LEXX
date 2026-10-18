@@ -2,7 +2,9 @@
  * Series primitive for the simulator chart: the player's fills (B / S circles, × stop, ✓ target), the open position
  * (average line, stop and target), and after the reveal the round trips with a mistake (tinted span + «#n») and the
  * desk's real fills (small triangles, one colour for the viewer's own trades, another for everyone else). Own mode adds
- * a dashed vertical marker where the player really entered (the decision moment).
+ * a dashed vertical marker where the player really entered (the decision moment). The trainer adds a planned stop line
+ * while flat («размер по риску», draggable), and for «Найди вход» the decision window (tinted zone) and the picked /
+ * ideal entry markers.
  * Labels arrive already translated; the primitive only draws.
  */
 import { fmtPrice } from "@/lib/format";
@@ -26,17 +28,60 @@ export type OverlayData = {
   text: { position: string | null; stop: string | null; target: string | null };
   /** Own mode: the real entry moment (drawn after the close of bar `idx`). */
   marker?: { idx: number; text: string } | null;
+  /** A stop placed before the entry (flat only). */
+  plan?: { price: number; text: string } | null;
+  /** «Найди вход»: the bars where the entry should be picked. */
+  zone?: { from: number; to: number; text: string } | null;
+  /** «Найди вход»: the player's pick and (after the answer) the reference entry. */
+  picks?: readonly { idx: number; price: number; kind: "yours" | "ideal"; text: string }[];
 };
+
+export type DragLine = "stop" | "target" | "plan";
 
 export const EMPTY_OVERLAY: OverlayData = {
   fills: [], pos: 0, avg: null, stop: null, target: null, openIdx: null, cursor: 0, spans: [], desk: [], text: { position: null, stop: null, target: null },
 };
+
+/**
+ * x of a fractional logical index. The time scale maps only whole indices (a fractional one comes back as 0), so the
+ * half-bar edges of spans / zones are interpolated between neighbours (the last loaded bar uses the previous step).
+ */
+function xAt(rc: RenderCtx, v: number): number | null {
+  const i = Math.floor(v);
+  const a = rc.x(i);
+  if (a == null) return null;
+  const f = v - i;
+  if (f === 0) return a;
+  let b = rc.x(i + 1);
+  if (b == null || b === 0) {
+    const p = rc.x(i - 1);
+    b = p != null ? 2 * a - p : null;
+  }
+  return b == null ? a : a + f * (b - a);
+}
 
 export class SimOverlayPrimitive extends SeriesPrimitiveBase {
   private d: OverlayData = EMPTY_OVERLAY;
 
   constructor(theme: ChartTheme) {
     super(theme, { zOrder: "top" });
+  }
+
+  /** Lines the player can drag right now, with their prices. */
+  dragLines(): { kind: DragLine; price: number }[] {
+    const d = this.d;
+    const out: { kind: DragLine; price: number }[] = [];
+    if (d.pos !== 0 && d.stop != null) out.push({ kind: "stop", price: d.stop });
+    if (d.pos !== 0 && d.target != null) out.push({ kind: "target", price: d.target });
+    if (d.pos === 0 && d.plan) out.push({ kind: "plan", price: d.plan.price });
+    return out;
+  }
+
+  /** Live preview while a line is dragged (the next `set` from React replaces it). */
+  preview(kind: DragLine, price: number, text: string): void {
+    const d = this.d;
+    if (kind === "plan") this.set({ ...d, plan: { price, text } });
+    else this.set({ ...d, [kind]: price, text: { ...d.text, [kind]: text } });
   }
 
   set(d: OverlayData): void {
@@ -46,6 +91,7 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
     if (d.pos !== 0 && d.avg != null) labels.push({ price: d.avg, text: fmtPrice(d.avg), color: th.c1(1) });
     if (d.pos !== 0 && d.stop != null) labels.push({ price: d.stop, text: fmtPrice(d.stop), color: th.down(1) });
     if (d.pos !== 0 && d.target != null) labels.push({ price: d.target, text: fmtPrice(d.target), color: th.up(1) });
+    if (d.pos === 0 && d.plan) labels.push({ price: d.plan.price, text: fmtPrice(d.plan.price), color: th.down(1) });
     this.setAxisLabels(labels);
     this.requestUpdate();
   }
@@ -72,8 +118,25 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
       }
     }
 
+    if (d.zone) {
+      const x1 = xAt(rc, d.zone.from - 0.5), x2 = xAt(rc, d.zone.to + 0.5);
+      if (x1 != null && x2 != null && x2 >= 0 && x1 <= width) {
+        ctx.fillStyle = theme.c1(theme.dark ? 0.12 : 0.09);
+        ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
+        label(ctx, theme, d.zone.text, Math.max(4, x1 + 2), 6, { anchor: "tl", bg: theme.c1(0.85), size: 10, clamp: { width, height } });
+      }
+    }
+
+    if (d.pos === 0 && d.plan) {
+      const y = rc.y(d.plan.price);
+      if (y != null) {
+        hline(ctx, 0, width, y, theme.down(0.9), 1.5, [6, 4]);
+        label(ctx, theme, d.plan.text, 6, y + 3, { anchor: "tl", bg: theme.down(0.85), size: 10, clamp: { width, height } });
+      }
+    }
+
     for (const s of d.spans) {
-      const x1 = rc.x(s.from - 0.5), x2 = rc.x(s.to + 0.5);
+      const x1 = xAt(rc, s.from - 0.5), x2 = xAt(rc, s.to + 0.5);
       if (x1 == null || x2 == null || x2 < 0 || x1 > width) continue;
       ctx.fillStyle = theme.down(theme.dark ? 0.1 : 0.08);
       ctx.fillRect(x1, 0, Math.max(2, x2 - x1), height);
@@ -82,7 +145,7 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
 
     if (d.pos !== 0 && d.avg != null && d.openIdx != null) {
       const x0 = rc.x(d.openIdx) ?? 0;
-      const xc = rc.x(d.cursor + 0.5) ?? width;
+      const xc = xAt(rc, d.cursor + 0.5) ?? width;
       const y = rc.y(d.avg);
       if (y != null) {
         hline(ctx, x0, xc, y, theme.c1(0.95), 1.5);
@@ -144,6 +207,24 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(f.reason === "stop" ? "×" : f.reason === "target" ? "✓" : buy ? "B" : "S", x, y + 0.5);
+    }
+
+    for (const p of d.picks ?? []) {
+      const x = rc.x(p.idx), y = rc.y(p.price);
+      if (x == null || y == null) continue;
+      const col = p.kind === "ideal" ? theme.up(1) : theme.c1(1);
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y, 9, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x - 13, y); ctx.lineTo(x - 4, y);
+      ctx.moveTo(x + 4, y); ctx.lineTo(x + 13, y);
+      ctx.stroke();
+      ctx.restore();
+      label(ctx, theme, p.text, x + 12, p.kind === "ideal" ? y + 10 : y - 10, { anchor: p.kind === "ideal" ? "tl" : "bl", bg: col, size: 10, clamp: { width, height } });
     }
   }
 }

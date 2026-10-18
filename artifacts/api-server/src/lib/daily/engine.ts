@@ -119,6 +119,20 @@ export function analyzeWindow(input: DetectInput): WindowAnalysis {
   return { from: input.from, to: input.to, costs: costsOf(book.days), days: book.days, tradesByDay: days, evaluable };
 }
 
+/** Every trade of the window with the mistakes it took part in, costliest mistake first (all hits, not only examples). */
+export function tradeMistakes(a: Pick<WindowAnalysis, "costs" | "days">): Map<number, MistakeId[]> {
+  const out = new Map<number, MistakeId[]>();
+  for (const c of a.costs) {
+    for (const day of a.days.values()) {
+      for (const ref of day.get(c.id)?.refs ?? []) {
+        const list = out.get(ref.tradeId) ?? [];
+        if (!list.includes(c.id)) out.set(ref.tradeId, [...list, c.id]);
+      }
+    }
+  }
+  return out;
+}
+
 /** The costliest repeating mistake of the window, or null (nothing repeats, or only small costs). */
 export function pickFocus(costs: readonly MistakeCost[], disputed: ReadonlySet<MistakeId> = new Set()): MistakeCost | null {
   let best: MistakeCost | null = null;

@@ -1,9 +1,13 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ChevronDown, ClipboardCheck } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QueryError } from "@/components/query-error";
 import type { DailyMe } from "@/lib/daily/types";
+import { playbookTodayQuery } from "@/lib/api/queries";
 import { dailyI18n } from "@/i18n/ns/daily";
-import { contractLine, dayView, type PlanContract } from "./daily-model";
+import { contractLine, dayPlaybook, dayView, type DayPlaybook, type PlanContract } from "./daily-model";
+import { PicksLine } from "./picks-line";
 import { ContractLine } from "./contract-line";
 import { EveningCard } from "./evening-card";
 import { FocusLine, dayShort } from "./focus-line";
@@ -51,11 +55,17 @@ export function DayLineView({
   me,
   plan,
   journalOpenDate,
+  quests,
+  playbook,
 }: {
   me: DailyMe;
   plan: PlanContract | null | undefined;
   /** The journal day the viewer still has to close (dashboard EOD status), if any. */
   journalOpenDate?: string | null;
+  /** The quest strip (components/quests, composed by the page) — sits under the rewards chip. */
+  quests?: ReactNode;
+  /** Today's playbook picks + untagged trades (GET /api/playbook/today), when the playbook answers. */
+  playbook?: DayPlaybook | null;
 }) {
   const { t } = dailyI18n.useT();
   const [openPending, setOpenPending] = useState(false);
@@ -64,18 +74,19 @@ export function DayLineView({
   const tier = (
     <div className="flex min-w-0 flex-col gap-1">
       <TierProgressChip progress={me.progress} />
-      <RewardsChip discipline={me.discipline} badges={me.badges} defaultOpen={rewardsLinked()} />
+      <RewardsChip discipline={me.discipline} defaultOpen={rewardsLinked()} />
+      {quests}
     </div>
   );
   if (!view) {
-    return me.progress || me.discipline ? <div className="mt-4 border-t border-[var(--glass-border)] pt-3">{tier}</div> : null;
+    return me.progress || me.discipline || quests ? <div className="mt-4 border-t border-[var(--glass-border)] pt-3">{tier}</div> : null;
   }
   const card = view.evening;
   const journalOpen = !!card && journalOpenDate === card.date;
   if (view.primary === "evening" && card) {
     return (
       <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
-        <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} />
+        <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} untagged={playbook?.untagged ?? 0} />
         {tier}
       </section>
     );
@@ -85,7 +96,7 @@ export function DayLineView({
     <section aria-label={t("aria")} className="mt-4 flex flex-col gap-3 border-t border-[var(--glass-border)] pt-4">
       {view.pendingEvening && card && (openPending ? (
         <div className="border-b border-[var(--glass-border)] pb-3">
-          <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} onHide={() => setOpenPending(false)} />
+          <EveningCard card={card} nextFocus={me.focus} journalOpen={journalOpen} onHide={() => setOpenPending(false)} untagged={playbook?.untagged ?? 0} />
         </div>
       ) : (
         <PendingRow date={card.date} onOpen={() => setOpenPending(true)} />
@@ -94,6 +105,7 @@ export function DayLineView({
         <div className="flex min-w-0 flex-col gap-2.5">
           {view.focus && <FocusLine focus={view.focus} />}
           <ContractLine line={line} date={me.today} intraday={me.intraday} yesterday={view.pendingEvening ? null : card?.contract} />
+          {playbook && <PicksLine playbook={playbook} />}
         </div>
         {tier}
       </div>
@@ -102,10 +114,11 @@ export function DayLineView({
 }
 
 /** Dashboard slot: loads the trader's daily loop and today's plan; renders nothing for a role without one. */
-export function DayLine({ enabled, journalOpenDate }: { enabled: boolean; journalOpenDate?: string | null }) {
+export function DayLine({ enabled, journalOpenDate, quests }: { enabled: boolean; journalOpenDate?: string | null; quests?: ReactNode }) {
   const meQ = useDailyMe(enabled);
   const me = meQ.data ?? null;
   const planQ = useTodayContract(me?.today ?? null, enabled && !!me);
+  const playbook = dayPlaybook(useQuery({ ...playbookTodayQuery(), enabled: enabled && !!me, retry: false }).data);
   if (!enabled) return null;
   if (meQ.isLoading) {
     return (
@@ -118,6 +131,14 @@ export function DayLine({ enabled, journalOpenDate }: { enabled: boolean; journa
       </div>
     );
   }
+  // The day line is the dashboard's focal point: a failed load says so (with a retry) instead of silently vanishing.
+  if (meQ.isError && !me) {
+    return (
+      <div className="mt-4 border-t border-[var(--glass-border)] pt-4">
+        <QueryError compact error={meQ.error} onRetry={() => void meQ.refetch()} />
+      </div>
+    );
+  }
   if (!me) return null;
-  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} />;
+  return <DayLineView me={me} plan={planQ.data} journalOpenDate={journalOpenDate} quests={quests} playbook={playbook} />;
 }

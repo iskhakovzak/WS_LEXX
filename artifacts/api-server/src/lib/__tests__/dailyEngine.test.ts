@@ -7,7 +7,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeBehavior, type BehaviorTrade } from "../behaviorEngine";
 import {
-  DISCIPLINE_POINTS, analyzeWindow, contractOf, focusOf, focusWindow, isMistakeId, pickFocus, tierProgressOf, tradeToReview, verdictOf,
+  DISCIPLINE_POINTS, analyzeWindow, contractOf, focusOf, focusWindow, isMistakeId, pickFocus, tierProgressOf, tradeMistakes, tradeToReview, verdictOf,
   type DetectInput,
 } from "../daily/engine";
 import type { ExecRowLite, TradeRowLite } from "../tradeStructureStore";
@@ -72,6 +72,15 @@ describe("focus pick", () => {
     expect(rev.days).toBe(3);
     expect(rev.costNet!).toBeLessThan(-100); // −45 each vs a positive norm
     expect(rev.examples[0]!.net).toBe(-45);
+  });
+
+  it("tags every trade with its mistakes (all hits of the window, not only the top examples)", () => {
+    const tags = tradeMistakes(a);
+    const rev = a.costs.find((c) => c.id === "behavior:revenge")!;
+    const hit = [...a.days.values()].flatMap((d) => d.get("behavior:revenge")?.refs ?? []).map((r) => r.tradeId);
+    expect(hit.length).toBe(rev.count);
+    for (const id of hit) expect(tags.get(id)).toContain("behavior:revenge");
+    expect(tradeMistakes({ costs: [], days: new Map() }).size).toBe(0);
   });
 
   it("picks the costliest repeating mistake and writes the line", () => {

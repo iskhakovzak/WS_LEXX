@@ -1,11 +1,11 @@
 /**
  * `topDay` — «Топ дня» (/top-results, components/top-day/*): month calendar of desk results, top 10 trader-days by profit
- * and by loss, one trader-day with tickers and links to the desk-day chart. RU addresses the trader as «ты».
+ * and by loss, one trader-day with tickers and links to the desk-day chart. RU addresses the trader as «вы» (the UI tone of the dashboard, quests and daily loop).
  * Names are hidden from traders: «Трейдер {n}» is a day alias, the viewer's own row is «Я». Tickers, P&L, Long/Short stay.
  */
 export default {
   title: "Топ дня",
-  desc: "Лучшие и худшие дни трейдеров деска: открой день, посмотри тикеры и входы на графике",
+  desc: "Лучшие и худшие дни трейдеров деска (по дате закрытия сделок): откройте день, посмотрите тикеры и входы на графике",
   link: "Топ дня",
   tabs: { aria: "Вид топа", day: "День", period: "Период" },
   privacy: {
@@ -23,8 +23,8 @@ export default {
     monthNet: "Деск за месяц: {net}",
     dayAria: "{date}: деск {net}, {traders}",
     dayAriaNoNet: "{date}: {traders}",
-    mine: "Твой день: {net}",
-    legendMine: "точка — ты торговал",
+    mine: "Ваш день: {net}",
+    legendMine: "точка — ваш день: в плюсе / в минусе",
   },
   day: {
     desk: "Деск {net}",
@@ -32,11 +32,11 @@ export default {
     loss: "Топ‑10 убыток",
     emptyProfit: "В плюсе в этот день никого.",
     emptyLoss: "В минусе в этот день никого.",
-    noTrades: "В этот день сделок деска нет — выбери другой день в календаре.",
-    pick: "Выбери день в календаре.",
-    myPlaceProfit: "Ты: {place} место по прибыли · {net}",
-    myPlaceLoss: "Ты: {place} место по убытку · {net}",
-    myFlat: "Ты: день в ноль",
+    noTrades: "В этот день сделок деска нет — выберите другой день в календаре.",
+    pick: "Выберите день в календаре.",
+    myPlaceProfit: "Вы: {place} место по прибыли · {net}",
+    myPlaceLoss: "Вы: {place} место по убытку · {net}",
+    myFlat: "Вы: день в ноль",
     open: "Открыть день: {who}",
     more: "+{count}",
     wl: "{wins}W / {losses}L",
@@ -50,7 +50,7 @@ export default {
     chart: "На графике",
     chartAria: "Открыть {ticker} на графике деска",
     times: "{from}–{to} ET",
-    side: { long: "Long", short: "Short", both: "Long + Short" },
+    side: { long: "Лонг", short: "Шорт", both: "Лонг + Шорт" },
     myReport: "Разбор моего дня",
     traderReport: "Разбор дня трейдера",
     notFound: "Не удалось открыть этот день.",

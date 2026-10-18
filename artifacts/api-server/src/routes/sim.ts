@@ -5,7 +5,8 @@
  *                                                                tf = 1m | 2m | 5m (intraday; default = the level's)
  *   GET  /api/sim/games/active                                   the active game (bars up to the cursor) or null
  *   GET  /api/sim/games/:id                                      own game; finished ones carry the reveal
- *   POST /api/sim/games/:id/step       {order?, bracket?, advance} act at the current bar's close, then show N bars
+ *   POST /api/sim/games/:id/step       {order?, bracket?, advance} act at the current bar's close, then show N bars;
+ *                                                                order.sizeMode "risk" (no qty) sizes from 1R and the stop
  *   POST /api/sim/games/:id/undo                                 cancel the last order (same bar only)
  *   POST /api/sim/games/:id/finish                               close the position, play out the rest flat, reveal
  *   GET  /api/sim/me                                             history, bests, streaks, opt-in
@@ -17,6 +18,8 @@
  * Members only (guests are read-only and a game writes). Logic: lib/sim/service.ts; engine: lib/sim/engine.ts.
  */
 import { Router, type IRouter, type Request } from "express";
+import { forgetQuests } from "../lib/quests/cache";
+import { forgetTrainerHome } from "../lib/trainer/cache";
 import { z } from "zod";
 import { route, idParam, unauthorized, AppError } from "../lib/http";
 import { resolveActor } from "../lib/permissions";
@@ -52,20 +55,36 @@ router.get("/sim/games/:id", route({ params: z.object({ id: idParam }) }, async 
 router.post("/sim/games/:id/step", route({
   params: z.object({ id: idParam }),
   body: z.object({
-    order: z.object({ kind: z.enum(["buy", "sell", "flat"]), qty: z.number().int().min(1).max(1_000_000).optional() }).nullish(),
+    order: z.object({
+      kind: z.enum(["buy", "sell", "flat"]),
+      qty: z.number().int().min(1).max(1_000_000).optional(),
+      sizeMode: z.enum(["risk"]).nullish(),
+    }).nullish(),
     bracket: z.object({ stop: price.nullable(), target: price.nullable() }).nullish(),
     advance: z.number().int().min(0).max(60).default(1),
   }),
 }, async ({ req, params, body }) => {
-  return sim.step(await viewerOf(req), params.id, body);
+  const viewer = await viewerOf(req);
+  const out = await sim.step(viewer, params.id, body);
+  if (out.done) gameEnded(viewer);
+  return out;
 }));
+
+/** A game just ended (own replay / «Задача дня» / free game): quests, achievements and the trainer home read it. */
+function gameEnded(viewer: sim.Viewer): void {
+  forgetQuests(viewer.name);
+  forgetTrainerHome(viewer.id);
+}
 
 router.post("/sim/games/:id/undo", route({ params: z.object({ id: idParam }) }, async ({ req, params }) => {
   return sim.undo(await viewerOf(req), params.id);
 }));
 
 router.post("/sim/games/:id/finish", route({ params: z.object({ id: idParam }) }, async ({ req, params }) => {
-  return sim.finish(await viewerOf(req), params.id);
+  const viewer = await viewerOf(req);
+  const out = await sim.finish(viewer, params.id);
+  gameEnded(viewer); // own-day replay / daily challenge quests and achievements
+  return out;
 }));
 
 router.get("/sim/me", route({}, async ({ req }) => {

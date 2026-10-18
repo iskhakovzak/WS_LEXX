@@ -1,7 +1,8 @@
 /**
  * Own contract → discipline points, streak and level (owner 2026-10-18: «+5 / −15 правильно, и можно прогрессивную
- * шкалу при накоплении и какие-то награды»). Rewards follow the RULES, never trading activity or P&L: a day without a
- * contract (or without trades) neither grows nor breaks the streak, so nobody is pushed to trade every day.
+ * шкалу при накоплении и какие-то награды»). Rewards follow the RULES, never trading activity or P&L: a day without
+ * trades neither grows nor breaks the streak, so nobody is pushed to trade every day; a traded day without a contract
+ * («missed») breaks it unless a streak freeze covers it (lib/gamification, settings `gamification.*`).
  *
  * Progressive scale (all numbers are desk settings, lib/settings/registry `discipline.*`):
  *   item points  each contract item (daily stop / max trades / own rule): kept +contractKeptPoints (5),
@@ -11,7 +12,11 @@
  *                before it) → one item: day 1 +5, day 2 +6 … day 11 and later +15
  *   broken day   item points (the penalty), no bonus; the streak restarts from 0 (streakOnBreak «reset», default) or
  *                keeps half («halve»)
- *   none         0 points, the streak stays as it is (weekends, holidays, days off, days without a contract)
+ *   none         0 points, the streak stays as it is (weekends, holidays, days off, days without trades)
+ *   missed       a TRADED day without a contract (gamification.missedDayBreaksStreak, default on): 0 points, the streak
+ *                restarts like on a broken day — unless a streak freeze covers it:
+ *   frozen       the first missed day(s) of a running streak while the NY month still has freezes
+ *                (gamification.freezePerMonth, default 1): 0 points, the streak stays. A broken day is never covered.
  * The day's actual points are ContractVerdict.disciplineDelta (lib/daily/service eveningFor writes them into the
  * snapshot) and feed the behaviour discipline score (lib/behaviorEngine DisciplineDay.contract) through contractDeltas.
  *
@@ -73,10 +78,14 @@ export async function loadPlanContracts(trader: string, from: string, to: string
 // ─── progressive scale (pure) ───────────────────────────────────────────────
 
 export type ItemStatus = VerdictStatus | "unset";
-export type DayOutcome = "kept" | "broken" | "none";
-export type ScaleConfig = { kept: number; broken: number; step: number; cap: number; onBreak: "reset" | "halve" };
-/** One contract day: the statuses of its items (daily stop, max trades, own rule). */
-export type ContractDay = { date: string; items: readonly ItemStatus[] };
+export type DayOutcome = "kept" | "broken" | "none" | "missed" | "frozen";
+export type ScaleConfig = {
+  kept: number; broken: number; step: number; cap: number; onBreak: "reset" | "halve";
+  /** Streak freezes per NY calendar month for missed days (0 / absent = none). */
+  freezePerMonth?: number;
+};
+/** One contract day: the statuses of its items (daily stop, max trades, own rule); `missed` = traded without a contract. */
+export type ContractDay = { date: string; items: readonly ItemStatus[]; missed?: boolean };
 /** The day on the scale: its outcome, actual points (item points + bonus), the bonus part, the streak AFTER the day. */
 export type LedgerDay = { date: string; outcome: DayOutcome; points: number; bonus: number; streak: number };
 
@@ -88,7 +97,13 @@ export function scaleConfig(): ScaleConfig {
     step: setting("discipline.streakStepPoints"),
     cap: setting("discipline.streakBonusCapPoints"),
     onBreak: setting("discipline.streakOnBreak") === "halve" ? "halve" : "reset",
+    freezePerMonth: setting("gamification.enabled") ? setting("gamification.freezePerMonth") : 0,
   };
+}
+
+/** Do traded days without a contract count as missed (gamification on and the switch on)? */
+export function missedDaysBreak(): boolean {
+  return setting("gamification.enabled") && setting("gamification.missedDayBreaksStreak");
 }
 
 export function contractItems(c: Pick<ContractVerdict, "maxLoss" | "maxTrades" | "rule">): ItemStatus[] {
@@ -114,8 +129,22 @@ export function scaleLedger(days: readonly ContractDay[], cfg: ScaleConfig): Led
   const byDate = new Map(days.map((d) => [d.date, d]));
   let streak = 0;
   const out: LedgerDay[] = [];
+  const freezesUsed = new Map<string, number>();
   for (const date of [...byDate.keys()].sort()) {
-    const items = byDate.get(date)!.items;
+    const day = byDate.get(date)!;
+    if (day.missed) {
+      const month = date.slice(0, 7);
+      const used = freezesUsed.get(month) ?? 0;
+      if (streak > 0 && used < (cfg.freezePerMonth ?? 0)) {
+        freezesUsed.set(month, used + 1);
+        out.push({ date, outcome: "frozen", points: 0, bonus: 0, streak });
+      } else {
+        streak = streak > 0 && cfg.onBreak === "halve" ? Math.floor(streak / 2) : 0;
+        out.push({ date, outcome: "missed", points: 0, bonus: 0, streak });
+      }
+      continue;
+    }
+    const items = day.items;
     const outcome = outcomeOf(items);
     const base = itemPoints(items, cfg);
     if (outcome === "kept") {
@@ -170,6 +199,15 @@ export function summaryOf(ledger: readonly LedgerDay[], asOf: string, o: { cfg: 
   };
 }
 
+/**
+ * The summary with the done quests' bonus points (lib/quests): they add to the all-time total (→ the level) and to the
+ * window by the day each quest was done. `questPoints` = the all-time quest part.
+ */
+export function withQuestPoints(s: DisciplineSummary, q: { total: number; recent: number }, thresholds: readonly number[]): DisciplineSummary {
+  const total = s.pointsTotal + q.total;
+  return { ...s, pointsTotal: total, points30: s.points30 + q.recent, questPoints: q.total, ...levelOf(Math.max(0, total), thresholds) };
+}
+
 // ─── DB ─────────────────────────────────────────────────────────────────────
 
 type StoredContract = Pick<ContractVerdict, "maxLoss" | "maxTrades" | "rule">;
@@ -185,12 +223,26 @@ async function storedContracts(trader: string, to: string): Promise<Map<string, 
   return new Map(rows.filter((r) => r.c).map((r) => [String(r.date), contractItems(r.c!)]));
 }
 
+/** NY days the trader traded, up to `to`. */
+async function tradedDays(trader: string, to: string): Promise<string[]> {
+  const { rows } = await pool
+    .query<{ d: string }>(
+      `SELECT DISTINCT substring(date, 1, 10) AS d FROM trades WHERE trader = $1 AND deleted_at IS NULL AND substring(date, 1, 10) <= $2`,
+      [trader, to],
+    )
+    .catch(() => ({ rows: [] as { d: string }[] }));
+  return rows.map((r) => String(r.d));
+}
+
 export type LedgerOpts = {
   /** Last day to include (default: the last finished day). */
   to?: string;
   /** Behaviour rows covering the days that have a plan but no snapshot yet (norms included). */
   trades?: readonly BehaviorTrade[];
-  /** Loads those rows when `trades` is not given (routes/behavior loadBehaviorRows — passed in to avoid an import cycle). */
+  /** First day `trades` cover: a plan day before it (no snapshot) is judged from loadTrades, not from «no trades». */
+  tradesFrom?: string;
+  /** Loads those rows when `trades` is not given or does not reach back far enough (routes/behavior loadBehaviorRows —
+   *  passed in to avoid an import cycle). */
   loadTrades?: (from: string, to: string) => Promise<BehaviorTrade[]>;
   /** A freshly computed verdict that replaces the stored one for its day (eveningFor). */
   override?: ContractVerdict | null;
@@ -202,12 +254,15 @@ export async function contractLedger(trader: string, o: LedgerOpts = {}): Promis
   const now = o.now ?? new Date();
   const to = o.to ?? lastFinishedDay(now);
   try {
-    const [stored, plans] = await Promise.all([storedContracts(trader, to), loadPlanContracts(trader, "2000-01-01", to)]);
+    const [stored, plans, traded] = await Promise.all([
+      storedContracts(trader, to), loadPlanContracts(trader, "2000-01-01", to), missedDaysBreak() ? tradedDays(trader, to) : Promise.resolve([] as string[]),
+    ]);
     const days = new Map(stored);
     const missing = [...plans.keys()].filter((d) => !days.has(d) && d <= to && dayFinished(d, now) && d !== o.override?.date).sort();
     if (missing.length) {
       const from = missing[0]!, last = missing[missing.length - 1]!;
-      const trades = o.trades ?? (o.loadTrades ? await o.loadTrades(addDays(from, -90), last).catch(() => []) : []);
+      const covered = !!o.trades && (o.tradesFrom == null || o.tradesFrom <= from);
+      const trades = covered || !o.loadTrades ? (o.trades ?? []) : await o.loadTrades(addDays(from, -90), last).catch(() => o.trades ?? []);
       const a = analyzeWindow({ trades: trades.filter((t) => t.date <= last), plans, from, to: last });
       for (const d of missing) {
         const c = contractOf(a, d, plans.get(d));
@@ -215,15 +270,20 @@ export async function contractLedger(trader: string, o: LedgerOpts = {}): Promis
       }
     }
     if (o.override) days.set(o.override.date, contractItems(o.override));
-    return scaleLedger([...days].map(([date, items]) => ({ date, items })), scaleConfig());
+    const list: ContractDay[] = [...days].map(([date, items]) => ({ date, items }));
+    // Traded days without a contract (no plan contract, no stored one): missed — a freeze may cover them.
+    for (const d of traded) if (!days.has(d) && !plans.has(d) && dayFinished(d, now) && !isWeekend(d)) list.push({ date: d, items: [], missed: true });
+    return scaleLedger(list, scaleConfig());
   } catch {
     return [];
   }
 }
 
 /** The finished day's verdict with its actual points on the scale, and the streak after it. */
-export async function scaleVerdict(trader: string, c: ContractVerdict, trades?: readonly BehaviorTrade[]): Promise<{ contract: ContractVerdict; streak: number }> {
-  const ledger = await contractLedger(trader, { to: c.date, trades, override: c });
+export async function scaleVerdict(
+  trader: string, c: ContractVerdict, trades?: readonly BehaviorTrade[], more: Pick<LedgerOpts, "tradesFrom" | "loadTrades"> = {},
+): Promise<{ contract: ContractVerdict; streak: number }> {
+  const ledger = await contractLedger(trader, { to: c.date, trades, override: c, ...more });
   const day = ledger.find((d) => d.date === c.date);
   return day ? { contract: { ...c, disciplineDelta: day.points }, streak: day.streak } : { contract: c, streak: 0 };
 }
@@ -241,9 +301,11 @@ export async function disciplineSummary(trader: string, o: Pick<LedgerOpts, "loa
  * history, so the streak bonus is right). `trades` = the behaviour rows the caller already loaded for the same period.
  * Never throws: no data → empty map.
  */
-export async function contractDeltas(trader: string, trades: readonly BehaviorTrade[], from: string, to: string): Promise<Map<string, number>> {
+export async function contractDeltas(
+  trader: string, trades: readonly BehaviorTrade[], from: string, to: string, loadTrades?: LedgerOpts["loadTrades"],
+): Promise<Map<string, number>> {
   const out = new Map<string, number>();
-  const ledger = await contractLedger(trader, { to, trades });
+  const ledger = await contractLedger(trader, { to, trades, tradesFrom: from, loadTrades });
   for (const d of ledger) if (d.date >= from && d.date <= to && d.points !== 0) out.set(d.date, d.points);
   return out;
 }

@@ -63,6 +63,7 @@ export default {
   validation: {
     levels: "Только числа через пробел",
     levelsMax: "Не больше 12 уровней",
+    riskPerTrade: "Сумма в $ больше нуля, например 50",
     maxLoss: "Сумма в $, например 300",
     maxTrades: "Целое число 0–500",
     tickerRequired: "Тикер обязателен",
@@ -152,6 +153,7 @@ export default {
     riskHint: "Лимиты, которые я не нарушаю сегодня",
     sizeMode: "Режим размера",
     riskModeAria: "Режим риска",
+    riskPerTrade: "1R — риск на сделку, $",
     maxLoss: "Макс. убыток за день, $",
     maxTrades: "Макс. сделок",
     riskNotesDesk: "Риск-заметки для деска",
@@ -378,6 +380,7 @@ export default {
     empty: "План пустой.",
     market: "Рынок",
     risk: "Риск на день",
+    riskPerTrade: "1R",
     maxLoss: "Макс. убыток",
     maxTrades: "Макс. сделок",
     tickers: "Тикеры",

@@ -9,7 +9,7 @@
 import * as React from "react";
 import { useLocation } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
-import { BookOpen, CheckCircle2, EyeOff, Inbox, Sparkles, Trophy } from "lucide-react";
+import { BookOpen, CheckCircle2, EyeOff, Inbox, Sparkles, Trophy, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ToastAction } from "@/components/ui/toast";
@@ -41,18 +41,21 @@ const ACCESSORS = {
 };
 type SortKey = keyof typeof ACCESSORS;
 
-export function PlaybookInbox({ onNewSetup }: {
+export function PlaybookInbox({ onNewSetup, day = null }: {
   /** «Новый сетап из сделки»: the page opens its setup form; the trade is attached as an example on save. */
   onNewSetup?: (t: InboxTrade) => void;
+  /** One NY day only (the evening card's day / the `?tagDay=` quest link); a chip turns the filter off. */
+  day?: string | null;
 } = {}) {
   const { t: tr } = playbookI18n.useT();
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
-  const [days, setDays] = React.useState<Days>("14");
-  const q = usePlaybookInbox(Number(days));
+  const [onlyDay, setOnlyDay] = React.useState<string | null>(day);
+  const [days, setDays] = React.useState<Days>(() => (day && day < addDays(nyDate(), -14) ? "30" : "14"));
+  const q = usePlaybookInbox(Number(days), true, !!onlyDay);
   const data = q.data;
-  const trades = React.useMemo(() => data?.trades ?? [], [data]);
+  const trades = React.useMemo(() => (data?.trades ?? []).filter((t) => !onlyDay || (t.closeDate ?? t.date).slice(0, 10) === onlyDay), [data, onlyDay]);
   const { rows, thProps } = useTableSort<InboxTrade, SortKey>(trades, ACCESSORS, "date", "desc", { ticker: "asc", setup: "asc", suggestion: "asc" });
   const [selected, setSelected] = React.useState<Set<number>>(new Set());
   const [dialog, setDialog] = React.useState<{ ids: number[]; preset: number | null } | null>(null);
@@ -65,7 +68,7 @@ export function PlaybookInbox({ onNewSetup }: {
   // Older API (no inbox) or nobody to review for (staff without own trades): hide the block entirely.
   if (data === null || (data && !data.trader)) return null;
   // Nothing to review in the default window: stay out of the way (switching the period still shows the empty line).
-  if (data && data.total === 0 && days === "14") return null;
+  if (data && data.total === 0 && days === "14" && !day) return null;
   if (q.isError) return null;
 
   const openOne = (t: InboxTrade) => setDialog({ ids: [t.id], preset: t.suggestion?.id ?? null });
@@ -119,7 +122,11 @@ export function PlaybookInbox({ onNewSetup }: {
           : tr("inbox.descEmpty")
       }
       icon={Inbox}
-      actions={<Segmented<Days> ariaLabel={tr("inbox.periodAria")} size="sm" value={days} onChange={setDays} options={(["7", "14", "30"] as Days[]).map((d) => ({ value: d, label: tr("inbox.days", { count: d }) }))} />}
+      actions={<>{onlyDay && (
+        <button type="button" onClick={() => setOnlyDay(null)} className="chip min-h-8 gap-1 px-2.5 text-xs" title={tr("inbox.allDays")}>
+          {tr("inbox.onlyDay", { date: fmtDate(onlyDay, "dayMonthNumeric") })} <X className="h-3 w-3" aria-hidden="true" />
+        </button>
+      )}<Segmented<Days> ariaLabel={tr("inbox.periodAria")} size="sm" value={days} onChange={setDays} options={(["7", "14", "30"] as Days[]).map((d) => ({ value: d, label: tr("inbox.days", { count: d }) }))} /></>}
       footer={selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-sm tabular-nums text-muted-foreground">{tr("inbox.selected", { count: selected.size })}</span>

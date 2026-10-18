@@ -24,8 +24,10 @@ export const links = {
   deskDay: (ticker: string, date: string, alias?: number) => href("/desk-day", { ticker, date, alias }),
   /** «Топ дня» (pages/top-results, day view): a NY date and optionally one trader-day opened by its day alias. */
   topDay: (date?: string, alias?: number) => href("/top-results", { date, alias }),
-  /** Simulator «Мои худшие дни»: replay one of the viewer's own losing trades (own trades only, server-checked). */
-  simOwn: (tradeId: number) => href("/simulator", { own: tradeId }),
+  /** «Тренажёр» → «Мои дни»: replay one of the viewer's own losing trades (own trades only, server-checked). */
+  simOwn: (tradeId: number) => href("/trainer", { own: tradeId }),
+  /** «Тренажёр» → «Найди вход»: a run of drills on one playbook setup (or all setups). */
+  findEntry: (setupId?: number) => href("/trainer", { drill: setupId ?? "all" }),
   behavior: (p: { trader?: string; from?: string; to?: string } = {}) => href("/behavior", p),
   gamePlan: (date?: string) => href("/game-plan", { date }),
   /** The trader's own plan (daily stop, max trades, rule of the day). */

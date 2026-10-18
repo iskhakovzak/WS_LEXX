@@ -2,25 +2,6 @@ import type { Messages } from "../../core";
 import type ru from "../ru/simOwn";
 
 export default {
-  mode: "Eng yomon kunlarim",
-  modeHint: "Oʻsha kunning haqiqiy shamlarida zarar bilan yopilgan savdongiz. Kirish lahzasigacha borasiz va qaytadan qaror qilasiz",
-  pickLabel: "Qaysi kun",
-  pick: {
-    worst: "{days} kundagi eng yomoni",
-    worstHint: "Hali qayta oʻynalmagan eng katta zarar",
-    random: "Zararlarimdan tasodifiy",
-    randomHint: "Xatoli savdolar koʻproq chiqadi",
-  },
-  next: "Ochiladi: {ticker} · {date} · {net}",
-  ready: { one: "Qayta oʻynashga {count} ta zararli savdo tayyor", other: "Qayta oʻynashga {count} ta zararli savdo tayyor" },
-  none: "Hozircha qayta oʻynaydigan narsa yoʻq: 1 daqiqalik shamlari saqlangan kunlardagi oʻz zararli intraday savdolaringiz kerak",
-  fair: "Tiker va sana maʼlum — bu sizning savdongiz. Bu oʻyinlar haftalik jadvalga va umumiy natijaga kirmaydi",
-  how: {
-    a: "Shamlar haqiqiy kirishingiz lahzasigacha yuradi va shu yerda toʻxtaydi",
-    b: "Qaytadan qaror qiling: kirish, hajm, stop — yoki oʻtkazib yuboring (Probel)",
-    c: "Hajm, komissiya va 1R — haqiqiy savdodagidek",
-    d: "Oxirida haqiqiy savdongiz simulyatordagi qaror bilan yonma-yon",
-  },
   banner: {
     pill: "Sizning savdongiz · {ticker} · {date}",
     lead: "Shamlar kirishingiz lahzasigacha yurmoqda. Oldinroq ham kirish mumkin",
@@ -55,7 +36,6 @@ export default {
     deskTitle: "Shu kungi {ticker} savdolaringiz",
   },
   progressLabel: "Mening kunim",
-  progressSummary: "Qayta oʻynalgan kunlar: {games} · haqiqatdan yaxshiroq: {better} · {diff}",
   errors: {
     noBars: "Bu savdo uchun saqlangan 1 daqiqalik shamlar yoʻq",
     notReplayable: "Bu savdoni qayta oʻynab boʻlmaydi: oʻsha kun shamlari bor oʻz zararli intraday savdongiz boʻlishi kerak",
@@ -64,5 +44,7 @@ export default {
   sheet: {
     replay: "Bu kunni qayta oʻynash",
     replayHint: "Simulyator: kirish lahzasigacha borib, qaytadan qaror qilish",
+    continue: "{ticker} oʻyinini davom ettirish",
+    continueHint: "Bu kun boʻyicha oʻyin tugamagan — toʻxtagan joydan davom ettirish",
   },
 } satisfies Messages<typeof ru>;

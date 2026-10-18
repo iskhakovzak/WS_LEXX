@@ -27,13 +27,14 @@ export interface SettingRow {
   updatedAt: string | null;
 }
 
-export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate";
-export interface Problem { key: string; kind: ProblemKind; min?: number; max?: number; options?: readonly string[] }
+export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate" | "order";
+/** `order` (server: ladders must grow): `after` = the key of the step before, `min` = the smallest value that fits. */
+export interface Problem { key: string; kind: ProblemKind; min?: number; max?: number; options?: readonly string[]; after?: string }
 
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Groups in display order; a group the page does not know goes last, in registry order. */
-export const GROUP_ORDER = ["daily", "discipline", "rewards", "telegram", "curator", "privacy"] as const;
+export const GROUP_ORDER = ["daily", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "curator", "privacy"] as const;
 
 export function groupRows(rows: readonly SettingRow[]): { group: string; rows: SettingRow[] }[] {
   const by = new Map<string, SettingRow[]>();

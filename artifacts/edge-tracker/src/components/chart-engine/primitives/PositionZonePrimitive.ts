@@ -1,7 +1,8 @@
 /**
  * Series primitive: the position zone — a rectangle from the first entry to the last exit between
  * the average entry and the average exit, green/red by net result, with the average-entry line.
- * During replay the right edge follows the cursor and the far price edge is the current close.
+ * During replay the right edge follows the cursor and the far price edge is the current close, with the live P&L
+ * (R and, for own trades, $) labelled at the cursor.
  */
 import { fmtPrice } from "@/lib/format";
 import { chartI18n } from "@/i18n/ns/chart";
@@ -23,6 +24,7 @@ export class PositionZonePrimitive extends SeriesPrimitiveBase {
   private limit: number | null = null;
   private mark: number | null = null;
   private visible = true;
+  private liveText: string | null = null;
 
   set(data: PositionZoneData | null): void {
     this.data = data;
@@ -36,6 +38,8 @@ export class PositionZonePrimitive extends SeriesPrimitiveBase {
   /** Replay cursor (bar index) and the close at that bar. */
   setCursor(idx: number | null, mark: number | null): void { this.limit = idx; this.mark = mark; this.requestUpdate(); }
   setVisible(on: boolean): void { this.visible = on; this.syncAxis(); this.requestUpdate(); }
+  /** Replay: the live P&L of the open position at the cursor («+0.42R · +$13», R / per share only for others' trades). */
+  setLive(text: string | null): void { if (text !== this.liveText) { this.liveText = text; this.requestUpdate(); } }
 
   render(rc: RenderCtx): void {
     const d = this.data;
@@ -74,6 +78,13 @@ export class PositionZonePrimitive extends SeriesPrimitiveBase {
       const exitText = chartI18n.t("canvas.exit", { price: fmtPrice(d.avgExit) });
       const box = measureLabel(ctx, theme, exitText, opts);
       items.push({ text: exitText, x: x2 - 4 - box.w, y: yB >= yA ? yB + 4 : yB - 4 - box.h, h: box.h, w: box.w, lineY: yB, bg: color(0.9), leaderX: (bx, w) => bx + w - 6 });
+    }
+    if (!exitKnown && this.liveText) {
+      // Live P&L line: the current price across the open zone, its result at the cursor end.
+      hline(ctx, x1, x2, yB, color(0.95), 1.5);
+      const box = measureLabel(ctx, theme, this.liveText, opts);
+      const right = x2 + 6 + box.w < width - 70;
+      items.push({ text: this.liveText, x: right ? x2 + 6 : x2 - 6 - box.w, y: yB - box.h / 2, h: box.h, w: box.w, lineY: yB, bg: color(0.95), leaderX: (bx, w) => (right ? bx + 4 : bx + w - 4) });
     }
     const tops = layoutLabels(items, height);
     items.forEach((it, i) => {

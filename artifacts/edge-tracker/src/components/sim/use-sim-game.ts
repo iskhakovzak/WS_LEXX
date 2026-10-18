@@ -9,25 +9,32 @@
  */
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/api/keys";
 import { toast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { simApi, simKeys, type Difficulty, type OrderKind, type IntradayTf, type OwnPick, type PublicState, type Reveal, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
-import { entryBracket, fromWire, maxQtyFor, positionAfter, stepErrorOf, type Speed } from "./model";
+import { breakEvenStop, entryBracket, fromWire, halfQty, maxQtyFor, positionAfter, roundPrice, stepErrorOf, stopFits, type Speed } from "./model";
+import { trainerApi, trainerKeys } from "./trainer-api";
 import { BarFeed, markGameRequested } from "./sim-chart";
 
 export type GameMeta = Omit<Snapshot, "bars" | "state" | "reveal" | "cursor" | "status">;
 export type GameView = { meta: GameMeta; feed: BarFeed; cursor: number; state: PublicState; reveal: Reveal | null; done: boolean };
 
+/** Ticket actions: the server's order kinds plus «½» (H, partial exit) and break-even (E). */
+export type TicketKind = OrderKind | "half";
+
 type Item =
   | { k: "advance"; n: number }
-  | { k: "order"; kind: OrderKind }
+  | { k: "order"; kind: TicketKind }
+  | { k: "breakeven" }
   | { k: "bracket"; stop: number | null; target: number | null }
   | { k: "undo" }
   | { k: "finish" };
 
-export type TicketPrefs = { qty: number; autoStop: boolean; autoTarget: boolean };
+/** `riskSize`: size entries from 1R and the stop («размер по риску»); `planStop`: a stop placed before the entry. */
+export type TicketPrefs = { qty: number; autoStop: boolean; autoTarget: boolean; riskSize?: boolean; planStop?: number | null };
 
 function viewOf(s: Snapshot): GameView {
   const { bars, state, reveal, cursor, status, ...meta } = s;
@@ -56,6 +63,10 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     void qc.invalidateQueries({ queryKey: simKeys.board() });
     void qc.invalidateQueries({ queryKey: simKeys.active() });
     void qc.invalidateQueries({ queryKey: simKeys.own() });
+    void qc.invalidateQueries({ queryKey: trainerKeys.all });
+    // Own-day replays move quests (replay_own_days, beat_yourself) and the sim badges of the daily loop.
+    void qc.invalidateQueries({ queryKey: KEYS.questsMe(), refetchType: "none" });
+    void qc.invalidateQueries({ queryKey: ["daily", "me"], refetchType: "none" });
   }, [qc]);
 
   const load = React.useCallback((s: Snapshot) => {
@@ -90,6 +101,7 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   const showError = React.useCallback((err: unknown) => {
     const e = stepErrorOf(err);
     const msg = e.reason === "buyingPower" ? t("hud.errors.buyingPower", { count: e.maxQty ?? 0 })
+      : e.reason === "stop" && ticketRef.current.riskSize ? t("hud.errors.riskNoStop")
       : e.reason === "generic" ? humanizeApiError(err, t("hud.errors.generic")) : t(`hud.errors.${e.reason}`);
     toast({ title: msg, variant: "destructive" });
   }, [t]);
@@ -98,18 +110,43 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   const bodyFor = React.useCallback((it: Item, g: GameView): StepBody | null => {
     if (it.k === "advance") return { advance: Math.min(60, it.n) };
     if (it.k === "bracket") return { bracket: { stop: it.stop, target: it.target }, advance: 0 };
-    if (it.k !== "order") return null;
     const pos = g.state.pos;
-    if (it.kind === "flat" && pos === 0) return null;
     const price = g.feed.bars[g.cursor]?.c ?? 0;
-    const qty = Math.max(1, Math.floor(ticketRef.current.qty));
+    if (it.k === "breakeven") {
+      const be = breakEvenStop(pos, g.state.avg, price);
+      if (be == null) {
+        if (pos !== 0) toast({ title: t("hud.errors.breakEven") });
+        return null;
+      }
+      return { bracket: { stop: be, target: g.state.target }, advance: 0 };
+    }
+    if (it.k !== "order") return null;
+    if ((it.kind === "flat" || it.kind === "half") && pos === 0) return null;
+    if (it.kind === "half") {
+      const q = halfQty(pos);
+      return { order: q >= Math.abs(pos) ? { kind: "flat" } : { kind: pos > 0 ? "sell" : "buy", qty: q }, advance: 0 };
+    }
+    const tk = ticketRef.current;
+    const qty = Math.max(1, Math.floor(tk.qty));
     const next = positionAfter(pos, it.kind, qty);
+    const opens = it.kind !== "flat" && (pos === 0 || Math.sign(next) !== Math.sign(pos));
+    // «Размер по риску»: an order that opens a position is sized by the server from 1R and the stop sent with it
+    // (the planned stop when it fits the side, else the automatic 1R stop).
+    // A flip keeps the typed size.
+    if (opens && pos === 0 && it.kind !== "flat" && tk.riskSize && g.meta.oneR) {
+      const plan = tk.planStop ?? null;
+      const stop = stopFits(it.kind, price, plan) ? plan : roundPrice(price - (it.kind === "buy" ? 1 : -1) * g.meta.riskUnit);
+      const target = tk.autoTarget && stop != null ? roundPrice(price + (price - stop) * 2) : null;
+      return { order: { kind: it.kind, sizeMode: "risk" }, bracket: { stop: stop != null && stop > 0 ? stop : null, target: target != null && target > 0 ? target : null }, advance: 0 };
+    }
     const maxQty = maxQtyFor(g.meta.maxNotional, price);
     if (it.kind !== "flat" && Math.abs(next) > Math.abs(pos) && Math.abs(next) > maxQty) {
       toast({ title: t("hud.errors.buyingPower", { count: maxQty }), variant: "destructive" });
       return null;
     }
-    const bracket = entryBracket(pos, next, price, g.meta.riskUnit, ticketRef.current);
+    let bracket = entryBracket(pos, next, price, g.meta.riskUnit, tk);
+    // A planned stop (dragged / typed before the entry) replaces the automatic 1R stop when it fits the side.
+    if (pos === 0 && it.kind !== "flat" && stopFits(it.kind, price, tk.planStop ?? null)) bracket = { stop: tk.planStop ?? null, target: bracket?.target ?? null };
     return { order: it.kind === "flat" ? { kind: "flat" } : { kind: it.kind, qty }, bracket: bracket ?? null, advance: 0 };
   }, [t]);
 
@@ -152,7 +189,8 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
   }, [pump]);
 
   const next = React.useCallback((n = 1) => enqueue({ k: "advance", n }), [enqueue]);
-  const order = React.useCallback((kind: OrderKind) => enqueue({ k: "order", kind }), [enqueue]);
+  const order = React.useCallback((kind: TicketKind) => enqueue({ k: "order", kind }), [enqueue]);
+  const breakEven = React.useCallback(() => enqueue({ k: "breakeven" }), [enqueue]);
   const setBracket = React.useCallback((stop: number | null, target: number | null) => enqueue({ k: "bracket", stop, target }), [enqueue]);
   const undo = React.useCallback(() => enqueue({ k: "undo" }), [enqueue]);
   const finish = React.useCallback(() => enqueue({ k: "finish" }), [enqueue]);
@@ -202,6 +240,21 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     }
   }, [load, qc, t]);
 
+  /** «Задача дня»: the server creates (or returns) today's desk challenge game. */
+  const startDaily = React.useCallback(async () => {
+    setStarting(true);
+    markGameRequested();
+    try {
+      load(await trainerApi.dailyStart());
+      void qc.invalidateQueries({ queryKey: simKeys.active() });
+      void qc.invalidateQueries({ queryKey: trainerKeys.all });
+    } catch (err) {
+      toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" });
+    } finally {
+      setStarting(false);
+    }
+  }, [load, qc, t]);
+
   const open = React.useCallback(async (id: number) => {
     try { load(await simApi.game(id)); } catch (err) { toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" }); }
   }, [load, t]);
@@ -213,5 +266,5 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     invalidate();
   }, [invalidate]);
 
-  return { game, starting, playing, setPlaying, busy, start, startOwn, open, load, leave, next, order, setBracket, undo, finish };
+  return { game, starting, playing, setPlaying, busy, start, startOwn, startDaily, open, load, leave, next, order, breakEven, setBracket, undo, finish };
 }

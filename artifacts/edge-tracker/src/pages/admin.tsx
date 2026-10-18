@@ -15,6 +15,7 @@ import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
+import { RewardsEditorPanel } from "@/components/gamification/reward-editor";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { adminI18n } from "@/i18n/ns/admin";
@@ -225,7 +226,13 @@ function AdminConsole() {
         )}
         {tab === "moderation" && <ModerationQueue actor={actor} openCount={openReports} />}
         {tab === "roles" && <RolesPanel />}
-        {tab === "settings" && <DeskSettingsPanel canManage={showSettings} />}
+        {tab === "settings" && (
+          <div className="flex flex-col gap-[var(--grid-gap)]">
+            {/* The rewards catalog sits with the other desk settings (gamification numbers live in the registry form below). */}
+            <RewardsEditorPanel enabled={showSettings} />
+            <DeskSettingsPanel canManage={showSettings} />
+          </div>
+        )}
         {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
         {tab === "errors" && <AppErrorsPanel />}

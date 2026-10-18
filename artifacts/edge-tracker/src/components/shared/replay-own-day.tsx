@@ -14,7 +14,13 @@ import { links } from "@/lib/links";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 
 export type OwnCandidate = { tradeId: number; ticker: string; date: string; side: "long" | "short"; net: number; r: number | null; mistakes: string[]; played: boolean };
-export type OwnCandidates = { trades: OwnCandidate[]; worst: number | null; windowDays: number };
+export type OwnCandidates = {
+  trades: OwnCandidate[];
+  worst: number | null;
+  windowDays: number;
+  /** The viewer's unfinished own game (absent on older servers). */
+  active?: { gameId: number; tradeId: number | null; ticker: string; date: string } | null;
+};
 
 export const OWN_CANDIDATES_KEY = ["sim", "own"] as const;
 export const ownCandidatesQuery = () => queryOptions({
@@ -28,6 +34,15 @@ export const ownCandidatesQuery = () => queryOptions({
 export function ReplayOwnDayButton({ tradeId, own }: { tradeId: number; own: boolean }) {
   const { t } = simOwnI18n.useT();
   const q = useQuery({ ...ownCandidatesQuery(), enabled: own });
+  const active = q.data?.active;
+  // An unfinished game on this very trade: continue it (the simulator offers the resume) instead of starting over.
+  if (own && active && active.tradeId === tradeId) {
+    return (
+      <Button asChild variant="outline" size="sm" className="gap-1.5" title={t("sheet.continueHint")}>
+        <Link href="/trainer"><RotateCcw className="h-3.5 w-3.5" aria-hidden="true" /> {t("sheet.continue", { ticker: active.ticker })}</Link>
+      </Button>
+    );
+  }
   if (!own || !q.data?.trades.some((x) => x.tradeId === tradeId)) return null;
   return (
     <Button asChild variant="outline" size="sm" className="gap-1.5" title={t("sheet.replayHint")}>

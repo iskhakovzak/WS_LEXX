@@ -156,7 +156,7 @@ export function giveback(trades: readonly DayTrade[]): { peak: number; close: nu
 export function givebackReason(trades: readonly DayTrade[]): CostReason | null {
   const g = giveback(trades);
   const k = dayThresholds();
-  if (g.peak < k.givebackMinUsd || g.close > g.peak * k.givebackKeepShare) return null;
+  if (g.peak <= 0 || g.peak < k.givebackMinUsd || g.close > g.peak * k.givebackKeepShare) return null;
   return {
     kind: "giveback",
     costNet: r2(g.close - g.peak),

@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
-import { curatorI18n } from "@/i18n/ns/curator";
+import { notConnectedText } from "@/lib/api/errors";
 import type { BadgeState, CostQueueItem, DailyFocus, DisciplineSummary, FocusVerdict, MistakeCost, MistakeId } from "@/lib/daily/types";
 
 /**
@@ -11,7 +11,9 @@ import type { BadgeState, CostQueueItem, DailyFocus, DisciplineSummary, FocusVer
  */
 
 export class NotAvailableError extends Error {
-  constructor() { super(curatorI18n.t("notAvailable")); }
+  // Text from the apiErrors dictionary (already in the entry): the shell badge imports this module, and the curator
+  // dictionary would otherwise ship to every page.
+  constructor() { super(notConnectedText()); }
 }
 
 /** Route missing (404 without a `code`: Express «Cannot GET», not a handler's NOT_FOUND) / SPA HTML fallback → `NotAvailableError`. */
@@ -93,7 +95,11 @@ export type TodayPayload = {
   nextActions: (NextAction & { trader: string })[];
   /** The queue by money (lib/daily/costQueue): most negative first; `resolved` — the curator already looked. Absent on older API builds. */
   byCost?: CostQueueRow[];
+  /** Curator quests of traders in scope finished / failed in the last days (api routes/quests). Absent on older API builds. */
+  questEvents?: QuestEvent[];
 };
+
+export type QuestEvent = { trader: string; questId: number; template: string; status: "done" | "failed" | "expired"; at: string };
 
 export type CostQueueRow = CostQueueItem & { resolved: boolean };
 export type CostReasonKind = CostQueueItem["reasons"][number]["kind"];
@@ -103,7 +109,8 @@ export type CuratorFocus = {
   current: DailyFocus | null;
   date: string;
   history: { date: string; trades: number; netPnl: number | null; focus: FocusVerdict | null; reviewed: boolean }[];
-  options: MistakeCost[];
+  /** `current`: the focus in force (listed too, so it can be marked). */
+  options: (MistakeCost & { current?: boolean })[];
   window: { from: string; to: string };
   /** Contract streak, discipline points / level and badges (api lib/daily/rewards); absent on older servers. */
   rewards?: { discipline: DisciplineSummary; badges: BadgeState[] } | null;
@@ -236,7 +243,8 @@ export const curatorApi = {
   addGoal: (body: { student: string; title: string; metric: string; target?: number; window?: number | null; dueOn?: string | null; note?: string }) =>
     orNotAvailable(http.post<{ id: number }>("/api/academy/idp", body)),
   /** Curator replaces the trader's focus for a day (routes/daily.ts, contract: PUT /api/daily/focus/:trader/:date {mistake}). */
-  setFocus: (trader: string, date: string, mistake: MistakeId) =>
+  /** `null` drops the override (the automatic focus is back). */
+  setFocus: (trader: string, date: string, mistake: MistakeId | null) =>
     orNotAvailable(http.put<unknown>(`/api/daily/focus/${enc(trader)}/${enc(date)}`, { mistake })),
   behavior: (trader: string, from: string, to: string) =>
     orNotAvailable(http.get<{ patterns?: { key: string; title: string; n: number; share?: number; net?: number | null; cost?: number | null; severity?: string }[] }>(

@@ -20,6 +20,8 @@ import {
 import * as store from "./store";
 import type { GameRow } from "./store";
 import { compareOwn, publicOf, type OwnPublic, type OwnReveal } from "./own";
+import { dayVolume, marketPx, newGameExec, publicExec, riskQty, type ExecModel } from "./exec";
+import { setting } from "../settings/registry";
 
 export type Viewer = { id: number; name: string; staff: boolean };
 
@@ -70,9 +72,10 @@ async function pickIntraday(viewer: Viewer, d: Difficulty, rnd: () => number, tf
   const need1m = spec.tf !== "5m";
   const cands = await store.intradayCandidates(lastPlayableDay(), need1m);
   if (!cands.length) return null;
-  const recent = await store.recentScenarioKeys(viewer.id, "intraday");
-  const fresh = cands.filter((c) => !recent.has(`${c.ticker}:${c.day}`));
-  const base = fresh.length ? fresh : cands;
+  const [recent, daily] = await Promise.all([store.recentScenarioKeys(viewer.id, "intraday"), store.recentDailyKeys()]);
+  const open = cands.filter((c) => !daily.has(`${c.ticker}:${c.day}`));
+  const fresh = open.filter((c) => !recent.has(`${c.ticker}:${c.day}`));
+  const base = fresh.length ? fresh : open;
   // The archive already knows each day's gap and range: filter before reading any bars.
   const fits = base.filter((c) => c.rangePct != null && spec.filter({ gapPct: c.gapPct ?? 0, rangePct: c.rangePct }));
   const tried = weightedSample(fits.length ? fits : base, 8, (c) => (c.desk > 0 ? 4 + Math.log2(1 + c.desk) : 1), rnd);
@@ -127,7 +130,18 @@ async function pickSwing(viewer: Viewer, d: Difficulty, rnd: () => number): Prom
 /* ─────────────────────────── Views ─────────────────────────── */
 
 export function cfgOf(g: GameRow): SimConfig {
-  return { startIdx: g.startIdx, endIdx: g.endIdx, feePerShare: g.params.feePerShare, riskUnit: g.params.riskUnit };
+  return { startIdx: g.startIdx, endIdx: g.endIdx, feePerShare: g.params.feePerShare, riskUnit: g.params.riskUnit, exec: g.params.exec ?? null };
+}
+
+/** 1R ($) of a game for risk-sized orders: frozen at creation; older games use the desk fallback. */
+export const oneROf = (g: GameRow): number => (g.params.oneR != null && g.params.oneR > 0 ? g.params.oneR : setting("trainer.oneRUsd"));
+
+/** Execution model and 1R a new game freezes (the play day's volume drives the low-ADV spread). */
+export async function newGameExtras(viewer: Viewer, price: number, dayBars: readonly { t: number; v: number }[], day: string, oneR?: number | null) {
+  const vol = dayVolume(dayBars.filter((b) => nyDate(new Date(b.t * 1000)) === day));
+  const exec: ExecModel | null = newGameExec(price, vol > 0 ? vol : null);
+  const r = oneR != null && oneR > 0 ? oneR : (await store.oneRUsdOf(viewer.name, nyDate())) ?? setting("trainer.oneRUsd");
+  return { exec, oneR: Math.round(r * 100) / 100 };
 }
 
 export type PublicState = {
@@ -192,6 +206,12 @@ export type Snapshot = {
   reveal: Reveal | null;
   /** Own mode: the player's own trade (ticker and date are not secret there) and the bar where they really entered. */
   own: OwnPublic | null;
+  /** Spread / slippage model of this game ($ per share paid by a market order; full spread); null on older games. */
+  slippage: { perShare: number; spread: number } | null;
+  /** 1R in $ used by risk-sized orders (step order.sizeMode "risk"). */
+  oneR: number;
+  /** «Тренажёр» mode of the game when it is not a plain free game. */
+  trainer: { mode: "daily"; date: string } | null;
 };
 
 export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> {
@@ -206,6 +226,9 @@ export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> 
     createdAt: g.createdAt,
     reveal: g.status === "finished" ? await revealOf(g, viewer) : null,
     own: g.params.own ? publicOf(g.params.own) : null,
+    slippage: publicExec(g.params.exec),
+    oneR: oneROf(g),
+    trainer: g.params.daily ? { mode: "daily", date: g.params.daily.date } : null,
   };
 }
 
@@ -314,6 +337,7 @@ export async function createGame(
   const picked = mode === "intraday" ? await pickIntraday(viewer, difficulty, rnd, tf) : await pickSwing(viewer, difficulty, rnd);
   if (!picked) throw notFound("NOT_FOUND");
   const price = picked.bars[picked.startIdx].c;
+  const extras = mode === "intraday" ? await newGameExtras(viewer, price, picked.bars, picked.day) : { exec: newGameExec(price, null), oneR: (await store.oneRUsdOf(viewer.name, nyDate())) ?? setting("trainer.oneRUsd") };
   const g = await store.insertGame({
     userId: viewer.id, mode, difficulty, ticker: picked.ticker, day: picked.day, dayTo: picked.dayTo, tf: picked.tf,
     bars: picked.bars, startIdx: picked.startIdx, endIdx: picked.endIdx, cursor: picked.startIdx,
@@ -324,6 +348,7 @@ export async function createGame(
       maxNotional: maxNotionalOf(mode),
       levels: picked.levels,
       times: fakeTimes(picked.bars, mode),
+      ...extras,
     },
   });
   return snapshotOf(remember(g), viewer);
@@ -352,7 +377,8 @@ export async function gameSnapshot(viewer: Viewer, id: number): Promise<Snapshot
 }
 
 export type StepInput = {
-  order?: { kind: OrderKind; qty?: number } | null;
+  /** sizeMode "risk": qty = 1R / |expected fill − stop| (the stop of this request's bracket, else the current one). */
+  order?: { kind: OrderKind; qty?: number; sizeMode?: "risk" | null } | null;
   /** undefined = leave the bracket as is; null values clear it. */
   bracket?: { stop: number | null; target: number | null } | null;
   advance: number;
@@ -361,6 +387,19 @@ export type StepInput = {
 export type StepOutput = { cursor: number; bars: WireBar[]; state: PublicState; done: boolean; reveal: Reveal | null };
 
 const MAX_EVENTS = 800;
+
+/** Shares of a risk-sized order (capped by buying power over the current position). */
+function riskSized(g: GameRow, input: StepInput, currentStop: number | null, pos: number): number {
+  const side: 1 | -1 = input.order?.kind === "sell" ? -1 : 1;
+  const stop = input.bracket?.stop ?? currentStop;
+  if (stop == null) throw badRequest("VALIDATION", { reason: "stop" });
+  const close = g.bars[g.cursor].c;
+  const qty = riskQty(oneROf(g), marketPx(close, side, g.params.exec), stop, side);
+  if (qty < 1) throw badRequest("VALIDATION", { reason: "stop" });
+  const maxQty = Math.floor(g.params.maxNotional / close);
+  const room = Math.sign(pos) === side ? maxQty - Math.abs(pos) : maxQty + Math.abs(pos);
+  return Math.max(1, Math.min(qty, room));
+}
 
 export function step(viewer: Viewer, id: number, input: StepInput): Promise<StepOutput> {
   return withLock(id, async () => {
@@ -374,7 +413,7 @@ export function step(viewer: Viewer, id: number, input: StepInput): Promise<Step
     const added: SimEvent[] = [];
     let pos = before.pos;
     if (input.order && !(input.order.kind === "flat" && pos === 0)) {
-      const qty = input.order.kind === "flat" ? 0 : Math.floor(input.order.qty ?? 0);
+      const qty = input.order.kind === "flat" ? 0 : input.order.sizeMode === "risk" ? riskSized(g, input, before.stop, pos) : Math.floor(input.order.qty ?? 0);
       if (input.order.kind !== "flat" && qty < 1) throw badRequest("VALIDATION", { reason: "qty" });
       const next = pos + orderDelta(input.order.kind, qty, pos);
       const maxQty = Math.floor(g.params.maxNotional / price);

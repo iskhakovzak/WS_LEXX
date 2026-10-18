@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import {
-  AlertTriangle, Award, BookOpen, CalendarRange, ChevronDown, Flame, GraduationCap, Lightbulb, Map as MapIcon,
+  AlertTriangle, Award, BookOpen, CalendarRange, ChevronDown, Flame, GraduationCap, Lightbulb, Map as MapIcon, Medal,
   MessageSquareText, MessagesSquare, ShieldAlert, ShieldCheck, Star, TrendingDown, TrendingUp, Trophy, Users, Zap,
   type LucideIcon,
 } from "lucide-react";
@@ -12,6 +12,7 @@ import { formatDayLong, relativeDayLabel } from "./feed-utils";
 import { fmtCount, fmtTimeNY } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
+import { gamificationI18n } from "@/i18n/ns/gamification";
 import { personName } from "@/i18n";
 
 const KIND_ICON: Record<FeedKind, LucideIcon> = {
@@ -31,6 +32,7 @@ const KIND_ICON: Record<FeedKind, LucideIcon> = {
   game_plan: MapIcon,
   event: Zap,
   weekly_summary: CalendarRange,
+  recognition: Medal,
 };
 
 function iconFor(it: Pick<StreamItem, "kind" | "tone">): LucideIcon {
@@ -161,6 +163,11 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
       subtitle: [avg != null ? t("stream.avgScore", { value: fmtCount(avg) }) : null, curators.length ? listShort(curators, 2) : null].filter(Boolean).join(" · ") || null,
       value: null, valueFmt: null,
     };
+  }
+  if (prefix === "recognition") {
+    // «3 признания деска» — who (names only when the viewer may see them; hidden ones are already aliased in the titles).
+    const who = uniq(items.map((i) => i.trader)).map(personName);
+    return { icon: Medal, tone: "accent", title: gamificationI18n.t("recognition.group", { count: n }), subtitle: who.length ? listShort(who, 3) : items[0].title, value: null, valueFmt: null };
   }
   if (prefix === "reviews") {
     const who = uniq(items.map((i) => i.actor)).map(personName);

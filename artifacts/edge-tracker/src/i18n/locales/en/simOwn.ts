@@ -2,25 +2,6 @@ import type { Messages } from "../../core";
 import type ru from "../ru/simOwn";
 
 export default {
-  mode: "My worst days",
-  modeHint: "One of your losing trades on the real candles of that day. Play up to your entry and decide again",
-  pickLabel: "Which day",
-  pick: {
-    worst: "Worst of {days} days",
-    worstHint: "Your biggest loss you have not replayed yet",
-    random: "Random from my losses",
-    randomHint: "Trades with mistakes come up more often",
-  },
-  next: "Up next: {ticker} · {date} · {net}",
-  ready: { one: "{count} losing trade ready to replay", other: "{count} losing trades ready to replay" },
-  none: "Nothing to replay yet: you need your own losing intraday trades on days with saved 1-minute candles",
-  fair: "The ticker and the date are known — it is your trade. These games stay out of the weekly board and the overall progress",
-  how: {
-    a: "Bars play up to the moment of your real entry and stop there",
-    b: "Decide again: entry, size, stop — or skip it (Space)",
-    c: "Size, fees and 1R are those of the real trade",
-    d: "At the end your real trade sits next to the simulator decision",
-  },
   banner: {
     pill: "Your trade · {ticker} · {date}",
     lead: "Bars are playing up to your entry. You may enter earlier too",
@@ -55,7 +36,6 @@ export default {
     deskTitle: "Your {ticker} trades that day",
   },
   progressLabel: "My day",
-  progressSummary: "Days replayed: {games} · better than real: {better} · {diff}",
   errors: {
     noBars: "No saved 1-minute candles for this trade",
     notReplayable: "This trade cannot be replayed: it must be your own losing intraday trade with that day's candles",
@@ -64,5 +44,7 @@ export default {
   sheet: {
     replay: "Replay this day",
     replayHint: "Simulator: play up to your entry and decide again",
+    continue: "Continue {ticker}",
+    continueHint: "The game on this day is not finished — continue where you stopped",
   },
 } satisfies Messages<typeof ru>;

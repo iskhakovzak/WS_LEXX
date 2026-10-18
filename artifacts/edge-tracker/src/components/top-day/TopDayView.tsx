@@ -67,7 +67,9 @@ export function TopDayView({ tabs, staff }: { tabs?: React.ReactNode; staff: boo
           <TopCalendar
             month={month}
             data={cal.data && cal.data.month === month ? cal.data : undefined}
-            loading={cal.isLoading || (!!cal.data && cal.data.month !== month)}
+            loading={!cal.isError && (cal.isLoading || (!!cal.data && cal.data.month !== month))}
+            error={cal.isError ? cal.error : undefined}
+            onRetry={() => void cal.refetch()}
             selected={date}
             today={today}
             canNext={month < monthOf(today)}

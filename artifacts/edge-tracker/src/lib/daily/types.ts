@@ -82,8 +82,17 @@ export interface EveningCard {
   contract: ContractVerdict | null;
   reviewed: boolean;
   reviewNote: string | null;
-  /** Kept-contract streak after this day and the badges earned on it (lib/daily/discipline, lib/daily/rewards). */
-  rewards?: { streak: number; badges: { id: BadgeId; target: number }[] } | null;
+  /** Own closed trades of the day without a playbook setup — the evening «Разметь N сделок» step (lib/playbookToday/untagged;
+   * optional, absent on older servers). */
+  untagged?: number;
+  /** Kept-contract streak after this day and the badges earned on it (lib/daily/discipline, lib/daily/rewards);
+   * achievement tiers earned and quests done that day (lib/quests — optional, absent on older servers). */
+  rewards?: {
+    streak: number;
+    badges: { id: BadgeId; target: number }[];
+    achievements?: { line: string; tier: string; target: number }[];
+    questsDone?: number;
+  } | null;
 }
 
 export interface TierProgressItem { metric: string; label: TextItem; actual: number | null; target: number | null; ok: boolean }
@@ -114,8 +123,9 @@ export interface DailyMe {
 
 /**
  * Discipline rewards — follow the rules and review, never trade more (a streak for trading every day would push
- * overtrading). Points come only from the own contract (lib/daily/discipline.ts progressive scale); badges from stored
- * data (lib/daily/badges.ts rules, awarded once in trader_badges). All numbers are desk settings (discipline.*, rewards.*).
+ * overtrading). Points come from the own contract (lib/daily/discipline.ts progressive scale) and done quests (lib/quests);
+ * badges are tiers of the achievement lines (lib/quests/achievements.ts, awarded once in trader_achievements). All
+ * numbers are desk settings (discipline.*, rewards.*, quests.*, achievements.*).
  */
 export type BadgeId = "streak_1" | "streak_2" | "streak_3" | "reviews" | "focus" | "clean_month" | "sim_first" | "sim_beat";
 
@@ -125,9 +135,11 @@ export interface DisciplineSummary {
   bestStreak: number;
   /** Bonus points the next kept day adds on top of the item points (progressive scale). */
   nextBonus: number;
-  /** Σ contract points over the last `windowDays` trading days, and all time. */
+  /** Σ discipline points over the last `windowDays` trading days, and all time (contract points + done quests' bonus). */
   points30: number;
   pointsTotal: number;
+  /** The all-time part of pointsTotal that came from quests (lib/quests); absent on older servers. */
+  questPoints?: number;
   windowDays: number;
   /** Level index 0.. (texts `rewards.level.<n>`), from pointsTotal and the settings thresholds. */
   level: number;

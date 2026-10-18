@@ -26,12 +26,13 @@ import { fmtDateFor } from "../i18n/format";
 import type { Lang } from "../i18n";
 import { violationMessage } from "./rulesI18n";
 import { personNameFor } from "./people/latinNames";
+import { recognitionFeed } from "./gamification/recognition";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
 export type FeedKind =
   | "day_result" | "streak" | "best_day" | "best_week" | "exam" | "promotion" | "clean_streak"
-  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary";
+  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary" | "recognition";
 export type FeedVisibility = "own" | "staff" | "public";
 export type ValueFmt = "usd" | "pct" | "int";
 
@@ -765,6 +766,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     });
   }
 
+  items.push(...(await recognitionFeed(viewer, from, to, lang))); // lib/gamification/recognition (per-user hide respected)
   items.sort((a, b) => b.date.localeCompare(a.date) || b.at.localeCompare(a.at) || a.id.localeCompare(b.id));
 
   const earliestTrade = days.length ? days.reduce((m, r) => (r.d < m ? r.d : m), days[0].d) : null;

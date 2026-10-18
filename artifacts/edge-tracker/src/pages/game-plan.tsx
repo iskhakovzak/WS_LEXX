@@ -44,8 +44,9 @@ function readUrlDate(): string | null {
 }
 
 function isTypingTarget(t: EventTarget | null) {
-  const el = t as HTMLElement | null;
-  if (!el) return false;
+  // The target can be the document or the window (keys with nothing focused): those have no tagName / closest.
+  if (!(t instanceof Element)) return false;
+  const el = t as HTMLElement;
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
 }
 

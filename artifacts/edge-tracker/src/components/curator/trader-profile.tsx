@@ -20,6 +20,7 @@ import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
+import { tierDisplay } from "@/components/shared/tier-labels";
 
 export type ProfileTab = "overview" | "risk" | "journal" | "weekly" | "academy" | "notes";
 export const PROFILE_TABS: ProfileTab[] = ["overview", "risk", "journal", "weekly", "academy", "notes"];
@@ -50,8 +51,11 @@ const WEEK_ACCESSORS = {
   score: (w: WeekRow) => w.score,
 };
 
-/** Trader profile inside the cabinet: header with actions + tabs overview / risk / journal / weekly / academy / notes. */
-export function TraderProfile({ trader, tab, onTab, onBack }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void }) {
+/**
+ * Trader profile inside the cabinet: header with actions + tabs overview / risk / journal / weekly / academy / notes.
+ * `quests` — the quests & achievements block, composed by the page (components/quests is another feature).
+ */
+export function TraderProfile({ trader, tab, onTab, onBack, quests }: { trader: string; tab: ProfileTab; onTab: (t: ProfileTab) => void; onBack: () => void; quests?: React.ReactNode }) {
   const q = useCuratorProfile(trader);
   const { t } = curatorI18n.useT();
   const [goalOpen, setGoalOpen] = React.useState(false);
@@ -76,7 +80,7 @@ export function TraderProfile({ trader, tab, onTab, onBack }: { trader: string; 
                 { value: "notes", label: t("profile.tab.notes"), icon: NotebookPen, count: p.notes.length || undefined },
               ]}
             />
-            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} />}
+            {tab === "overview" && <OverviewTab p={p} onTab={onTab} onGoal={() => setGoalOpen(true)} quests={quests} />}
             {tab === "risk" && <RiskTab p={p} onTemplate={() => setTplOpen(true)} />}
             {tab === "journal" && <JournalTab p={p} />}
             {tab === "weekly" && <WeeklyTab p={p} />}
@@ -110,7 +114,8 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}>{personName(p.trader)}</h2>
             {s.stage.label && <Pill tone="purple">{s.stage.label}</Pill>}
-            {s.tierName && <Pill tone="neutral">{t("profile.tierIs", { name: s.tierName })}</Pill>}
+            {/* The limit tier in the UI language; hidden when it says the same as the academy stage («Junior» once). */}
+            {s.tierName && tierDisplay(s.tierName) !== s.stage.label && <Pill tone="neutral">{tierDisplay(s.tierName)}</Pill>}
             <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : t("noLimits")}</Pill>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted-foreground" title={people || undefined}>{people || t("profile.noCurator")}{s.lastTradeDate ? ` · ${t("profile.lastTrade", { date: fmtDate(s.lastTradeDate, "dayMonth") })}` : ""}</p>
@@ -137,7 +142,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
   );
 }
 
-function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void }) {
+function OverviewTab({ p, onTab, onGoal, quests }: { p: ProfilePayload; onTab: (t: ProfileTab) => void; onGoal: () => void; quests?: React.ReactNode }) {
   const s = p.signal;
   const fourWeekNet = s.trend.reduce((a, w) => a + (w.net ?? 0), 0);
   const unreviewed = p.breaches.filter((b) => !b.review);
@@ -179,6 +184,7 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
         </div>
         <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
           {p.focus && <FocusPanel trader={p.trader} focus={p.focus} />}
+          {quests}
           <Panel title={t("profile.lastReports")} icon={BookOpen}>
             <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">{t("profile.lastClosed")}</dt>

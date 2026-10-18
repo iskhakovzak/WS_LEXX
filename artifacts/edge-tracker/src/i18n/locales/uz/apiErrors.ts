@@ -71,6 +71,7 @@ export default {
     ai_not_configured: "AI sozlanmagan",
     NETWORK: "Server bilan aloqa yoʻq — ulanishni tekshiring",
     BAD_RESPONSE: "Server notoʻgʻri javob qaytardi",
+    NOT_CONNECTED: "Bu boʻlim hali serverga ulanmagan",
   },
   status: {
     400: "Notoʻgʻri soʻrov — maʼlumotlarni tekshiring",

@@ -18,6 +18,9 @@ import { deskDayCounts, loadDeskDay } from "../lib/deskDayStore";
 import { route } from "../lib/http";
 import type { Actor } from "../lib/permissions";
 import { setting } from "../lib/settings/registry";
+import { recordQuestEvent } from "../lib/quests/store";
+import { forgetQuests } from "../lib/quests/cache";
+import { nyDate } from "../lib/tradingDate";
 
 const router: IRouter = Router();
 
@@ -59,9 +62,12 @@ router.get("/desk-day/:ticker/:date/summary", route({
 router.get("/desk-day/:ticker/:date", route({
   cap: CAP,
   params: z.object({ ticker: tickerSchema, date: daySchema }),
-}, async ({ params, req, res }) => {
+}, async ({ params, req, res, actor }) => {
   res.setHeader("Cache-Control", "private, no-cache");
-  return loadDeskDay(params.ticker, params.date, await loadMoneyViewer(req));
+  const out = await loadDeskDay(params.ticker, params.date, await loadMoneyViewer(req));
+  // Onboarding quest «open Desk on a ticker» (lib/quests: counts only a ticker-day the viewer traded). Never throws.
+  if (await recordQuestEvent(actor.name, "desk_day_open", `${params.ticker}|${params.date}`, nyDate())) forgetQuests(actor.name);
+  return out;
 }));
 
 export default router;

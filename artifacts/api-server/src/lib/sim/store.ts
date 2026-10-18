@@ -24,6 +24,7 @@ import { addDays, nyDate } from "../tradingDate";
 import type { SimBar, SimEvent, SimResult } from "./engine";
 import type { Difficulty, Levels, SimMode, SimTf } from "./scenario";
 import type { OwnParams } from "./own";
+import type { ExecModel } from "./exec";
 
 /* ─────────────────────────── Intraday (candle archive) ─────────────────────────── */
 
@@ -163,6 +164,27 @@ export async function deskFeePerShare(today: string): Promise<number> {
   return rate;
 }
 
+/* ─────────────────────────── 1R for risk sizing ─────────────────────────── */
+
+/** The trader's 1R in $: today's personal plan (riskPerTradeUsd, as the playbook size calculator), else the risk limit
+ *  per trade, else null (the caller falls back to the trainer.oneRUsd setting). */
+export async function oneRUsdOf(trader: string, date: string): Promise<number | null> {
+  try {
+    const { rows } = await pool.query<{ plan: string | null; lim: string | null }>(
+      `SELECT (SELECT doc ->> 'riskPerTradeUsd' FROM trader_plans WHERE trader = $1 AND date = $2 AND deleted_at IS NULL LIMIT 1) AS plan,
+              (SELECT max_risk_per_trade::text FROM trader_risk_limits WHERE trader = $1 LIMIT 1) AS lim`,
+      [trader, date],
+    );
+    for (const v of [rows[0]?.plan, rows[0]?.lim]) {
+      const n = Number(v);
+      if (v != null && Number.isFinite(n) && n > 0) return Math.round(n * 100) / 100;
+    }
+  } catch (err) {
+    logger.warn({ err }, "sim: 1R lookup failed");
+  }
+  return null;
+}
+
 /* ─────────────────────────── Games ─────────────────────────── */
 
 export type GameParams = {
@@ -176,6 +198,12 @@ export type GameParams = {
   longName?: string | null;
   /** Own mode: the real trade (server only until the reveal). */
   own?: OwnParams;
+  /** Spread / slippage model frozen at creation (lib/sim/exec.ts); absent on older games. */
+  exec?: ExecModel | null;
+  /** 1R in $ for risk-sized orders (step sizeMode "risk"); absent on older games (then the 1R fallback setting). */
+  oneR?: number;
+  /** «Задача дня» game (lib/trainer/daily.ts): the challenge date. */
+  daily?: { date: string };
 };
 
 export type GameRow = {
@@ -248,6 +276,11 @@ export async function saveFinished(id: number, cursor: number, events: SimEvent[
   );
 }
 
+/** An abandoned game back to active (a daily game is resumed, never replaced: its bars were already seen). */
+export async function reactivate(id: number): Promise<void> {
+  await pool.query(`UPDATE sim_games SET status = 'active', updated_at = NOW() WHERE id = $1 AND status = 'abandoned'`, [id]);
+}
+
 export async function markAbandoned(id: number): Promise<void> {
   await pool.query(`UPDATE sim_games SET status = 'abandoned', updated_at = NOW() WHERE id = $1 AND status = 'active'`, [id]);
 }
@@ -259,6 +292,16 @@ export async function recentScenarioKeys(userId: number, mode: SimMode, limit = 
     [userId, mode, limit],
   );
   return new Set(rows.map((r) => `${r.ticker}:${r.day}`));
+}
+
+/** Ticker-days of the latest «Задача дня» challenges: never dealt as a free game (it would reveal the challenge). */
+export async function recentDailyKeys(limit = 3): Promise<Set<string>> {
+  try {
+    const { rows } = await pool.query<{ k: string }>(`SELECT ticker || ':' || bars_day AS k FROM trainer_daily_challenges ORDER BY date DESC LIMIT $1`, [limit]);
+    return new Set(rows.map((r) => r.k));
+  } catch {
+    return new Set();
+  }
 }
 
 /* ─────────────────────────── Desk trades (reveal) ─────────────────────────── */

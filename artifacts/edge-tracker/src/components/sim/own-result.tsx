@@ -8,14 +8,14 @@ import { Link } from "wouter";
 import { AlertTriangle, CandlestickChart, CheckCircle2, RotateCcw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DataTable, Kbd, toneOf, toneText, type Tone } from "@/components/ds";
-import { fmtCount, fmtDate, fmtPrice, fmtR, fmtTimeNY, fmtUsd } from "@/lib/format";
+import { fmtCount, fmtPrice, fmtR, fmtTimeNY, fmtUsd, fmtDayMonth } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { simI18n } from "@/i18n/ns/simulator";
 import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { chartI18n } from "@/i18n/ns/chart";
 import type { OwnReveal } from "./api";
-import { ownMistakeLabel } from "./own-start";
+import { mistakeLabel } from "@/components/shared/mistake-labels";
 import { useDeskDayCount } from "@/components/shared/desk-day-link";
 import type { GameView } from "./use-sim-game";
 
@@ -53,7 +53,7 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
     <div className="flex flex-col gap-3">
       <div className="tile rounded-xl p-3">
         <p className="text-2xs uppercase tracking-wide text-muted-foreground">{t("result.title")}</p>
-        <p className="mt-0.5 text-xl font-semibold tracking-tight">{o.ticker} · {fmtDate(o.date, "dayMonth")}</p>
+        <p className="mt-0.5 text-xl font-semibold tracking-tight">{o.ticker} · {fmtDayMonth(o.date)}</p>
         {r.longName && <p className="truncate text-xs text-muted-foreground" title={r.longName}>{r.longName}</p>}
         <p className={cn("mt-2 text-2xl font-semibold leading-tight tabular-nums", toneText(verdictTone(o)))}>
           {c.verdict === "same" ? t("result.diff.same", { value: fmtUsd(c.diff, { signed: true }) }) : t(`result.diff.${c.verdict === "skipped" ? "skipped" : c.diff >= 0 ? "better" : "worse"}`, { value: diffAbs })}
@@ -71,7 +71,7 @@ export function OwnResultSummary({ game, onAgain, onStart, starting }: { game: G
         {o.mistakes.length ? (
           <ul className="flex flex-col gap-1">
             {o.mistakes.map((m) => (
-              <li key={m} className="flex items-start gap-1.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />{ownMistakeLabel(m)}</li>
+              <li key={m} className="flex items-start gap-1.5 text-sm"><AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-down" aria-hidden="true" />{mistakeLabel(m)}</li>
             ))}
           </ul>
         ) : (

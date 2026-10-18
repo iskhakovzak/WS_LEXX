@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { PlaybookSheetButton } from "@/components/shared/playbook-sheet";
 import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
 import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
@@ -64,7 +65,6 @@ function tradeTiming(t: Trade): TradeTiming {
   };
 }
 
-const LazyTradeChart = React.lazy(() => import("@/components/trade-chart").then((m) => ({ default: m.TradeChart })));
 const LazyReplayChart = React.lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
 const LazyAiReviewPanel = React.lazy(() => import("@/components/ai-review-panel").then((m) => ({ default: m.AiReviewPanel })));
@@ -288,6 +288,7 @@ export function TradeDetailSheet(p: Props) {
                       <Button variant="outline" size="icon" className="h-8 w-8" aria-label={tt("sheet.next")} title={tt("sheet.next")} disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
                     </>
                   )}
+                  <PlaybookSheetButton className="h-8" />
                   <CopyTradeLink id={t.id} ticker={t.ticker} />
                 </div>
               </div>
@@ -366,10 +367,12 @@ export function TradeDetailSheet(p: Props) {
                   </section>
                 </TabsContent>
                 <TabsContent value="chart" className="space-y-4">
-                  <React.Suspense fallback={<Skeleton className="h-[360px] rounded-2xl" />}>
-                    {/* Multi-day trades: TradeChart loads every day from entry to exit (same window as the replay). */}
-                    <LazyTradeChart tradeId={t.id} ticker={t.ticker} date={t.date} side={t.side} entry={t.entry} exit={t.exit} stop={t.stop} rMultiple={t.rMultiple} target={ideaTarget} exitDate={t.exitDate} horizon={horizonOf(t)} result={t.result} />
-                  </React.Suspense>
+                  {tab === "chart" && (
+                    // One chart engine for the sheet: «График» = the whole day with the trade, «Реплей» = bar by bar.
+                    <React.Suspense fallback={<Skeleton className="h-[468px] rounded-2xl" />}>
+                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={420} mode="analysis" showModes={false} />
+                    </React.Suspense>
+                  )}
                   <React.Suspense fallback={<Skeleton className="h-32 rounded-2xl" />}>
                     <LazyNewsFeed ticker={t.ticker} limit={10} compact cutoffDate={t.createdAt ?? `${dayOf(t)}T23:59:59Z`} />
                   </React.Suspense>
@@ -377,7 +380,7 @@ export function TradeDetailSheet(p: Props) {
                 <TabsContent value="replay" className="space-y-4">
                   {tab === "replay" && (
                     <React.Suspense fallback={<Skeleton className="h-[504px] rounded-2xl" />}>
-                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} />
+                      <LazyReplayChart key={t.id} trade={t} target={parseTargetPrice(ideaTarget)} height={460} mode="replay" showModes={false} />
                     </React.Suspense>
                   )}
                   {!redacted && (

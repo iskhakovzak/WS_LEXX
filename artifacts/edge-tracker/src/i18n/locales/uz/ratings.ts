@@ -286,7 +286,7 @@ export default {
       violations: "Qoidabuzarliklar",
       mentorRating: "Mentor bahosi",
     },
-    title: "Eng yaxshi natijalar",
+    title: "Davr topi",
     lockedTitle: "Boʻlim mentorlar uchun",
     lockedDescription: "Jamoa reytingi va savdolar tahlilini faqat mentorlar va administratorlar koʻradi.",
     myRiskDesk: "Mening risk-deskim",

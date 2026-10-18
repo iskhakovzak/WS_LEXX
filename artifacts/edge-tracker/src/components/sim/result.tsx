@@ -28,7 +28,8 @@ export function mistakeText(m: Mistake): string {
   }
 }
 
-export function ResultSummary({ game, onAgain, onStart, starting }: { game: GameView; onAgain: () => void; onStart: () => void; starting: boolean }) {
+/** `noAgain`: one attempt only («Задача дня») — the main button goes back to the trainer instead. */
+export function ResultSummary({ game, onAgain, onStart, starting, noAgain = false }: { game: GameView; onAgain: () => void; onStart: () => void; starting: boolean; noAgain?: boolean }) {
   const { t } = simI18n.useT();
   const r = game.reveal;
   if (!r) return null;
@@ -63,16 +64,20 @@ export function ResultSummary({ game, onAgain, onStart, starting }: { game: Game
           </div>
         )}
       </div>
-      <Button size="lg" className="min-h-11" onClick={onAgain} disabled={starting}>
-        <RotateCcw aria-hidden="true" /> {t("result.again")} <Kbd className="border-white/30 bg-white/10 text-white/90">Enter</Kbd>
-      </Button>
+      {noAgain ? (
+        <Button size="lg" className="min-h-11" onClick={onStart}>{t("result.toStart")}</Button>
+      ) : (
+        <Button size="lg" className="min-h-11" onClick={onAgain} disabled={starting}>
+          <RotateCcw aria-hidden="true" /> {t("result.again")} <Kbd className="border-white/30 bg-white/10 text-white/90 [@media(pointer:coarse)]:hidden">Enter</Kbd>
+        </Button>
+      )}
       <div className="flex flex-wrap gap-2">
         {game.meta.mode === "intraday" && (
           <Button asChild variant="outline" size="sm">
             <Link href={`/chart-lab?ticker=${encodeURIComponent(r.ticker)}&date=${r.day}`}><CandlestickChart aria-hidden="true" /> {t("result.replay")}</Link>
           </Button>
         )}
-        <Button variant="ghost" size="sm" onClick={onStart}>{t("result.toStart")}</Button>
+        {!noAgain && <Button variant="ghost" size="sm" onClick={onStart}>{t("result.toStart")}</Button>}
       </div>
     </div>
   );
@@ -132,6 +137,11 @@ export function ResultDetails({ game, hiddenDesk, toggleDesk }: { game: GameView
               </tbody>
             </table>
           </DataTable>
+        )}
+        {trades.length > 0 && game.state.fills.some((f) => f.slip != null) && (
+          <p className="mt-2 text-2xs text-muted-foreground">
+            {t("result.slippage", { value: fmtUsd(-game.state.fills.reduce((sum, f) => sum + Math.abs(f.qty) * (f.slip ?? 0), 0)) })}
+          </p>
         )}
         <h3 className="mb-2 mt-4 text-sm font-semibold">{t("result.mistakesTitle")}</h3>
         {res.mistakes.length === 0 ? (

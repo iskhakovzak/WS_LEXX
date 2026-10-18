@@ -194,6 +194,8 @@ export default {
   },
   /** components/playbook/home.tsx — inbox «Разобрать сделки» and the Tier 1 strip. */
   inbox: {
+    onlyDay: "Только {date}",
+    allDays: "Все дни",
     title: "Разобрать сделки",
     descWithTrades: "Ваши сделки без эталона. Лучшие — в Tier 1, ошибки — в Tier 3 «на разбор».",
     descWithWeek: "Ваши сделки без эталона · за неделю {trades}. Лучшие — в Tier 1, ошибки — в Tier 3 «на разбор».",

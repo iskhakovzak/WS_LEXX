@@ -17,8 +17,11 @@ import { TodayView } from "@/components/curator/today-view";
 import { GroupView } from "@/components/curator/group-view";
 import { TraderProfile, PROFILE_TABS, type ProfileTab } from "@/components/curator/trader-profile";
 import { RiskProcessesView } from "@/components/curator/risk-processes-view";
+import { CuratorQuestsPanel } from "@/components/quests/curator-panel";
+import { RewardQueueItems } from "@/components/gamification/reward-queue";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { shellI18n } from "@/i18n/ns/shell";
+import { fmtDate } from "@/lib/format";
 
 type View = "today" | "traders" | "risk";
 const VIEWS: readonly View[] = ["today", "traders", "risk"];
@@ -47,7 +50,8 @@ function CuratorCabinet() {
   const profileTab: ProfileTab = tabParam && PROFILE_TABS.includes(tabParam) ? tabParam : "overview";
   const viewParam = params.get("view") as View | null;
   const [storedView, setStoredView] = usePersistentState<View>("curator.view", "today");
-  const view: View = trader ? "traders" : viewParam && VIEWS.includes(viewParam) ? viewParam : VIEWS.includes(storedView) ? storedView : "today";
+  // ?rewards=1 (reward_requested notification) opens «Сегодня», where reward requests sit on top of the attention list.
+  const view: View = trader ? "traders" : params.has("rewards") ? "today" : viewParam && VIEWS.includes(viewParam) ? viewParam : VIEWS.includes(storedView) ? storedView : "today";
   const [scope, setScope] = usePersistentState<Scope | "auto">("curator.scope", "auto");
 
   const today = useCuratorToday(scope);
@@ -90,7 +94,7 @@ function CuratorCabinet() {
         meta={d ? (
           <>
             <span title={PHASE_HINT[d.phase]}><Pill tone={d.phase === "session" ? "up" : d.phase === "weekend" ? "neutral" : "accent"} dot>{PHASE_LABEL[d.phase]}</Pill></span>
-            <span className="tabular-nums">{t("page.tradingDay", { date: d.date })}</span>
+            <span className="tabular-nums">{t("page.tradingDay", { date: fmtDate(d.date, "weekdayDayMonth") })}</span>
             <UpdatedAgo at={today.dataUpdatedAt} />
           </>
         ) : undefined}
@@ -138,11 +142,11 @@ function CuratorCabinet() {
         />
       ) : view === "today" ? (
         <QueryState query={today} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.todayFailed")}>
-          {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} />}
+          {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} attentionExtra={<RewardQueueItems onOpenTrader={openTrader} focus={params.has("rewards")} />} />}
         </QueryState>
       ) : view === "traders" ? (
         trader ? (
-          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} />
+          <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} quests={<CuratorQuestsPanel trader={trader} />} />
         ) : (
           <QueryState query={traders} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.tradersFailed")}>
             {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}

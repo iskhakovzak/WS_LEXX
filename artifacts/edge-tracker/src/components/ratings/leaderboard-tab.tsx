@@ -13,6 +13,9 @@ import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { comparePersonNames, personName } from "@/i18n";
+import { gamificationTitlesQuery } from "@/lib/api/queries";
+import { TitleTag } from "@/components/shared/season-bar";
+import { titleLabel } from "@/components/shared/gamification-labels";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -124,6 +127,8 @@ export function LeaderboardTab({ me }: { me: string | null }) {
   const { t } = ratingsI18n.useT();
   const { t: tc } = commonI18n.useT();
   const METRICS = metricOptions();
+  // Earned titles (discipline / review / learning achievements) next to the names; {} on an older API.
+  const titles = useQuery(gamificationTitlesQuery()).data ?? {};
 
   const team = useMemo(() => {
     if (ranked.length === 0) return null;
@@ -209,6 +214,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                        <TitleTag label={titleLabel(titles[l.trader])} />
                         {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -305,6 +311,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-medium text-foreground">{personName(l.trader)}</span>
+                                <TitleTag label={titleLabel(titles[l.trader])} />
                                 {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
@@ -355,6 +362,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-medium text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
+                      <TitleTag label={titleLabel(titles[l.trader])} />
                       {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">

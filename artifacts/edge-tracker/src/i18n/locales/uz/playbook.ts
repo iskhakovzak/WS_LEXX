@@ -184,6 +184,8 @@ export default {
     },
   },
   inbox: {
+    onlyDay: "Faqat {date}",
+    allDays: "Barcha kunlar",
     title: "Savdolarni saralash",
     descWithTrades: "Namunasiz savdolaringiz. Eng yaxshilari — Tier 1 ga, xatolar — Tier 3 «tahlilga».",
     descWithWeek: "Namunasiz savdolaringiz · haftada {trades}. Eng yaxshilari — Tier 1 ga, xatolar — Tier 3 «tahlilga».",

@@ -32,6 +32,7 @@ import { Router, type IRouter, type Request } from "express";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { isMarketClosed } from "../lib/marketDays";
 import { nyDate, nyMinutes, addDays } from "../lib/tradingDate";
 import { signedRSql, netPnlSql, closeDateSql, horizonSql } from "../lib/tradeMath";
 import { can, requireAnyCap, requireCap, resolveTraderParam } from "../lib/permissions";
@@ -209,8 +210,9 @@ export type DayRow = {
 /**
  * Daily aggregates per trader, realised on close date. Broker rows win over journal rows for a day
  * (PropReports is the source of truth); journal numbers are used only on days with no broker data.
+ * `only` = just these traders (index trades_live_trader_close_day_idx instead of a pass over the whole table).
  */
-async function loadDaily(trader: string | null, upTo: string): Promise<DayRow[]> {
+async function loadDaily(trader: string | null, upTo: string, only?: readonly string[]): Promise<DayRow[]> {
   const broker = await brokerSql();
   const net = netPnlSql("t");
   const { rows } = await pool.query(
@@ -226,11 +228,11 @@ async function loadDaily(trader: string | null, upTo: string): Promise<DayRow[]>
             COALESCE(SUM(${signedRSql("t")}), 0)::float AS r
      FROM trades t
      WHERE t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''
-       AND ($1::text IS NULL OR t.trader = $1)
+       AND ($1::text IS NULL OR t.trader = $1)${only ? " AND t.trader = ANY($3::text[])" : ""}
        AND LEFT(${closeDateSql("t")}, 10) <= $2
      GROUP BY t.trader, LEFT(${closeDateSql("t")}, 10)
      ORDER BY d ASC`,
-    [trader, upTo],
+    only ? [trader, upTo, [...only]] : [trader, upTo],
   );
   return rows.map((r: any) => resolveDay(r));
 }
@@ -612,6 +614,9 @@ function groupBy<T extends { trader: string }>(rows: T[]): Map<string, T[]> {
  * in-app notifications table (trader + assigned curator / risk manager). Fire-and-forget; never throws.
  */
 async function recordStopAlerts(m: Metrics, limits: Limits | null, date: string): Promise<void> {
+  // Breaches belong to trading days: a lasting state (drawdown, weekly) seen on a weekend or a market holiday is not a
+  // new breach — no log row, no review form in the curator queue, no critical notification.
+  if (await isMarketClosed(date)) return;
   // `m` may be rendered in the reader's language; the alert log stores the RU text (the history fallback).
   const s = computeStop({ todayLoss: Math.max(0, -(m.today.pnlNet ?? 0)), weekLoss: Math.max(0, -(m.week.pnlNet ?? 0)), currentDd: m.drawdown.currentUsd, limits }, "ru");
   if (s.state === "ok" || s.state === "no_limits") return;
@@ -1098,7 +1103,7 @@ router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const { rows } = await pool.query(
     `SELECT id, trader, date, kind, level, used::float AS used, "limit"::float AS "limit", message, created_at
-     FROM risk_alert_log WHERE ($1::text IS NULL OR trader = $1) AND date >= $2
+     FROM risk_alert_log WHERE ($1::text IS NULL OR trader = $1) AND date >= $2 AND level IN ('warn', 'breach')
      ORDER BY created_at DESC LIMIT 200`,
     [scope.trader, from],
   );
@@ -1169,10 +1174,11 @@ export type DeskSnapshotRow = {
  * Same roster and metrics as GET /risk/desk (active traders + anyone with limits, open positions or trades in the
  * last 60 days), as data for other endpoints. `trader` narrows to one person. Records stop alerts like /risk/desk.
  */
-export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru"): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
+/** `only` = rows for just these traders (the curator's roster) — the same rows the full snapshot has for them. */
+export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru", only?: readonly string[]): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
   const [limitsMap, days, positions, usersRes] = await Promise.all([
     loadLimits(trader),
-    loadDaily(trader, today),
+    loadDaily(trader, today, only),
     loadPositions(trader, today),
     pool.query(`SELECT name, role, COALESCE(banned, false) AS banned FROM users WHERE active = true AND ($1::text IS NULL OR name = $1)`, [trader]),
   ]);
@@ -1188,7 +1194,8 @@ export async function deskSnapshot(today: string, trader: string | null = null, 
   for (const name of posBy.keys()) names.add(name);
   for (const [name, rows] of daysBy) if (rows.some((d) => d.date >= recentFrom)) names.add(name);
   if (trader) names.add(trader);
-  const rows = [...names].map((name) => {
+  const keep = only ? new Set(only) : null;
+  const rows = [...names].filter((name) => !keep || keep.has(name)).map((name) => {
     const d = daysBy.get(name) ?? [];
     const limits = limitsMap.get(name) ?? null;
     const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang);
@@ -1313,7 +1320,8 @@ export function breachKindLabel(kind: string, lang: Lang = "ru"): string {
 export const BREACH_KIND_LABELS: Record<string, string> = { stop: breachKindLabel("stop"), weekly: breachKindLabel("weekly"), drawdown: breachKindLabel("drawdown") };
 
 /** Alert / breach log message in `lang`: halted kinds are re-rendered from their numbers, others keep the stored RU text. */
-function alertMessage(r: { kind: unknown; used: unknown; limit: unknown; message: unknown }, lang: Lang): string {
+/** A stored alert's text in the reader's language (the log keeps the RU text; others are rebuilt from kind / used / limit). */
+export function alertMessage(r: { kind: unknown; used: unknown; limit: unknown; message: unknown }, lang: Lang): string {
   const used = num(r.used);
   const limit = num(r.limit);
   const text = lang !== "ru" && used != null && limit != null ? haltedStopText(String(r.kind), used, limit, lang) : null;

@@ -45,6 +45,8 @@ export function useDailyReview() {
         return { ...prev, evening: { ...prev.evening, reviewed: true, reviewNote: b.note?.trim() || null, focus } };
       });
       void qc.invalidateQueries({ queryKey: KEYS.dailyMe(nyDate()) });
+      // Review quests (review_days, onboarding «first review») and the review achievement line move with it.
+      void qc.invalidateQueries({ queryKey: KEYS.questsMe() });
     },
   });
 }

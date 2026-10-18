@@ -8,7 +8,8 @@ import { ArrowDownRight, ArrowUpRight, ChevronDown, ChevronUp, ChevronsUpDown } 
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
-import { ScrollContainerContext } from "@/components/ds/virtual";
+import { ScrollContainerContext } from "@/components/ds/scroll-context";
+import { useScrollActiveIntoView } from "@/components/ds/scroll-active";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtRelative } from "@/i18n/format";
@@ -17,7 +18,7 @@ import { fmtRelative } from "@/i18n/format";
 export { GLOSSARY, glossary, TermTooltip, TermContent, TermLabel, termForLabel, type TermKey, type GlossaryEntry } from "@/components/ds/term-tooltip";
 export { ErrorState, QueryState, SkeletonBlock, StatGridSkeleton, ListSkeleton, TableSkeleton, PanelSkeleton } from "@/components/ds/states";
 export { AnimatedNumber, Reveal, MOTION, DURATION, EASE, EASE_IN_OUT, fadeRise } from "@/components/ds/motion";
-export { VirtualRows, VirtualList, ScrollContainerContext } from "@/components/ds/virtual";
+export { ScrollContainerContext } from "@/components/ds/scroll-context";
 
 export type Tone = "up" | "down" | "accent" | "warn" | "purple" | "neutral";
 
@@ -433,11 +434,14 @@ export function Segmented<T extends string>({
   size?: "sm" | "md";
   className?: string;
 }) {
+  const ref = React.useRef<HTMLDivElement>(null);
+  useScrollActiveIntoView(ref, value); // a phone-width bar scrolls sideways: keep the active option visible
   return (
     <div
+      ref={ref}
       role="group"
       aria-label={ariaLabel}
-      className={cn("glass-field inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
+      className={cn("glass-field relative inline-flex max-w-full shrink-0 items-center gap-0.5 overflow-x-auto", size === "sm" ? "h-8 p-0.5" : "h-9 p-[3px]", className)}
     >
       {options.map((o) => {
         const active = o.value === value;

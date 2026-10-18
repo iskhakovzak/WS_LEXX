@@ -65,15 +65,50 @@ export function parsePrice(s: string): number | null {
   return s.trim() !== "" && Number.isFinite(v) && v > 0 ? v : null;
 }
 
-export type KeyAction = "buy" | "sell" | "flat" | "next" | "auto" | "faster" | "slower" | "undo" | "again";
+/** Shares to close for «½» (H): half the position rounded down, at least 1 (a single share closes it). */
+export function halfQty(pos: number): number {
+  const a = Math.abs(Math.trunc(pos));
+  return a <= 1 ? a : Math.floor(a / 2);
+}
 
-/** Game keys (layout-independent: KeyboardEvent.code, so B/S/F work on a Russian layout too). */
+/**
+ * Break-even stop (E): the average price, allowed only while the trade is in profit (a long's stop must stay below the
+ * price, a short's above). Null = not possible right now.
+ */
+export function breakEvenStop(pos: number, avg: number | null, price: number): number | null {
+  if (pos === 0 || avg == null || !(price > 0)) return null;
+  const be = roundPrice(avg);
+  return pos > 0 ? (be < price ? be : null) : (be > price ? be : null);
+}
+
+/**
+ * «Размер по риску»: shares so that the stop distance costs 1R ($), capped by buying power — the same formula the
+ * server applies for `sizeMode: "risk"` (shown as a preview before the order). Null without a usable stop.
+ */
+export function riskQty(oneR: number, price: number, stop: number | null, maxQty: number): number | null {
+  if (stop == null || !(oneR > 0) || !(price > 0)) return null;
+  const dist = Math.abs(price - stop);
+  if (!(dist > 0)) return null;
+  return Math.max(0, Math.min(maxQty, Math.floor(oneR / dist)));
+}
+
+/** A planned stop that fits the order side: below the price for a buy, above it for a sell. */
+export function stopFits(kind: "buy" | "sell", price: number, stop: number | null): boolean {
+  return stop != null && stop > 0 && (kind === "buy" ? stop < price : stop > price);
+}
+
+export type KeyAction = "buy" | "sell" | "flat" | "half" | "breakeven" | "cancel" | "next" | "auto" | "faster" | "slower" | "undo" | "again";
+
+/** Game keys, DAS-like (layout-independent: KeyboardEvent.code, so B/S/F/H/E work on a Russian layout too). */
 export function keyAction(e: { code: string; key: string; ctrlKey?: boolean; metaKey?: boolean; altKey?: boolean }): KeyAction | null {
   if (e.ctrlKey || e.metaKey || e.altKey) return null;
   switch (e.code) {
     case "KeyB": return "buy";
     case "KeyS": return "sell";
     case "KeyF": case "KeyX": return "flat";
+    case "KeyH": return "half";
+    case "KeyE": return "breakeven";
+    case "Escape": return "cancel";
     case "Space": case "ArrowRight": return "next";
     case "KeyA": return "auto";
     case "BracketRight": case "Equal": case "NumpadAdd": return "faster";

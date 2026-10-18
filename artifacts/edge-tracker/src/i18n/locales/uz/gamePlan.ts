@@ -61,6 +61,7 @@ export default {
   validation: {
     levels: "Faqat boʻsh joy bilan ajratilgan sonlar",
     levelsMax: "12 tadan ortiq sath boʻlmasin",
+    riskPerTrade: "$ dagi noldan katta summa, masalan 50",
     maxLoss: "$ dagi summa, masalan 300",
     maxTrades: "0–500 oraligʻidagi butun son",
     tickerRequired: "Tiker majburiy",
@@ -150,6 +151,7 @@ export default {
     riskHint: "Bugun buzmaydigan limitlarim",
     sizeMode: "Oʻlcham rejimi",
     riskModeAria: "Risk rejimi",
+    riskPerTrade: "1R — bitimdagi risk, $",
     maxLoss: "Kunlik maks. zarar, $",
     maxTrades: "Maks. savdolar",
     riskNotesDesk: "Desk uchun risk qaydlari",
@@ -376,6 +378,7 @@ export default {
     empty: "Reja boʻsh.",
     market: "Bozor",
     risk: "Kunlik risk",
+    riskPerTrade: "1R",
     maxLoss: "Maks. zarar",
     maxTrades: "Maks. savdolar",
     tickers: "Tikerlar",

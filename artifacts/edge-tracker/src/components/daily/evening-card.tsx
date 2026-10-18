@@ -1,12 +1,14 @@
 import { useId, useState } from "react";
 import { Link } from "wouter";
-import { Check, CheckCircle2, ChevronRight, CircleSlash, Moon, NotebookPen, SearchCheck, Users } from "lucide-react";
+import { Award, Check, CheckCircle2, ChevronRight, CircleSlash, Moon, NotebookPen, SearchCheck, Tags, Users } from "lucide-react";
 import { Pill, toneOf, toneText } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { mistakeLabel } from "@/components/shared/mistake-labels";
 import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
+import { openTaggingSheet } from "@/components/shared/playbook-sheet";
+import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import type { DailyFocus, EveningCard as Card, FocusVerdict } from "@/lib/daily/types";
 import { links } from "@/lib/links";
 import { fmtUsd } from "@/lib/format";
@@ -16,6 +18,10 @@ import { dailyI18n } from "@/i18n/ns/daily";
 import { StatusIcon, ContractVerdictRow } from "./contract-line";
 import { TradeChips, dayShort } from "./focus-line";
 import { useDailyReview } from "./use-daily";
+import { eveningRewards } from "./daily-model";
+
+/** Quests tab of «Рейтинги» (same link as the dashboard quest strip and the quest notifications). */
+const QUESTS_HREF = "/ratings?tab=quests";
 
 function FocusVerdictRow({ v }: { v: FocusVerdict }) {
   const { t } = dailyI18n.useT();
@@ -74,12 +80,48 @@ function LinksRow({ card }: { card: Card }) {
         >
           <Users className="mt-0.5 h-4 w-4 shrink-0 text-purple" aria-hidden="true" />
           <span className="min-w-0 text-muted-foreground">
-            {t("evening.desk", { ticker: desk.ticker, traders: commonI18n.t("units.traders", { count: desk.traders }) })}
+            {t("evening.desk", { ticker: desk.ticker, count: desk.traders })}
           </span>
           <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
         </Link>
       )}
     </div>
+  );
+}
+
+/** «🏅 Новое достижение: Серия контракта (Бронза) · 1 квест выполнен» — one line, like the Telegram card. */
+function RewardsRow({ card }: { card: Card }) {
+  const { t } = dailyI18n.useT();
+  const line = eveningRewards(card);
+  if (!line) return null;
+  return (
+    <Link
+      href={QUESTS_HREF}
+      title={t("evening.rewardsLink")}
+      className="group inline-flex min-h-8 min-w-0 items-start gap-2 self-start rounded-lg py-1 text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Award className="mt-0.5 h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
+      <span className="min-w-0 font-medium [overflow-wrap:anywhere]">{line.text}</span>
+      <ChevronRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+    </Link>
+  );
+}
+
+/** «Разметь N сделок» — own trades without a setup; opens the playbook tagging UI in a sheet (the evening quest). */
+function TagStep({ count, day }: { count: number; day: string }) {
+  const { t } = playbookTodayI18n.useT();
+  return (
+    <button
+      type="button"
+      onClick={() => openTaggingSheet(day)}
+      aria-haspopup="dialog"
+      className="group inline-flex min-h-8 min-w-0 flex-wrap items-center gap-x-2 gap-y-0.5 self-start rounded-lg text-left text-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Tags className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
+      <span className="font-medium">{t("evening.tag", { count })}</span>
+      <span className="text-xs text-muted-foreground">· {t("evening.tagHint")}</span>
+      <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground group-hover:text-foreground" aria-hidden="true" />
+    </button>
   );
 }
 
@@ -132,7 +174,7 @@ function ReviewActions({ card }: { card: Card }) {
 }
 
 /** Closed state after «Разобрал»: one line, plus the next step (tomorrow's focus, the journal if the day is still open). */
-function ClosedDay({ card, nextFocus, journalOpen, onReopen }: { card: Card; nextFocus: DailyFocus | null; journalOpen: boolean; onReopen: () => void }) {
+function ClosedDay({ card, nextFocus, journalOpen, onReopen, untagged }: { card: Card; nextFocus: DailyFocus | null; journalOpen: boolean; onReopen: () => void; untagged: number }) {
   const { t } = dailyI18n.useT();
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5 text-sm">
@@ -153,6 +195,7 @@ function ClosedDay({ card, nextFocus, journalOpen, onReopen }: { card: Card; nex
           {t("evening.closeJournal")}
         </Link>
       )}
+      {untagged > 0 && <TagStep count={untagged} day={card.date} />}
       <button type="button" onClick={onReopen} className="text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         {t("evening.reopen")}
       </button>
@@ -169,6 +212,7 @@ export function EveningCard({
   nextFocus,
   journalOpen = false,
   onHide,
+  untagged: untaggedFallback = 0,
 }: {
   card: Card;
   /** The focus the server computed after this day (shown in the closed state). */
@@ -177,10 +221,13 @@ export function EveningCard({
   journalOpen?: boolean;
   /** Morning mode: the card was opened from the «not reviewed» row and can fold back. */
   onHide?: () => void;
+  /** Fallback count when the card has no `untagged` (older API): PlaybookToday.untagged. */
+  untagged?: number;
 }) {
   const { t } = dailyI18n.useT();
   const [reopened, setReopened] = useState(false);
-  if (card.reviewed && !reopened) return <ClosedDay card={card} nextFocus={nextFocus ?? null} journalOpen={journalOpen} onReopen={() => setReopened(true)} />;
+  const untagged = card.untagged ?? untaggedFallback; // the day's own count; older API → the playbook's
+  if (card.reviewed && !reopened) return <ClosedDay card={card} nextFocus={nextFocus ?? null} journalOpen={journalOpen} onReopen={() => setReopened(true)} untagged={untagged} />;
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
@@ -216,7 +263,9 @@ export function EveningCard({
       </div>
       {card.focus && <FocusVerdictRow v={card.focus} />}
       <LinksRow card={card} />
+      {untagged > 0 && <TagStep count={untagged} day={card.date} />}
       {card.contract && <ContractVerdictRow verdict={card.contract} />}
+      <RewardsRow card={card} />
       {!card.reviewed && <ReviewActions card={card} />}
     </div>
   );

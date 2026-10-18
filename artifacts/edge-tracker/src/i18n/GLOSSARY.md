@@ -213,7 +213,7 @@ Every agent follows this table: the same Russian term gets the same English and 
 | Обсуждение | Discussion | Muhokama | |
 | Упоминание | Mention | Eslatish | @mention |
 | Рейтинг | Rating | Reyting | |
-| Топ-результаты | Top results | Eng yaxshi natijalar | |
+| Топ (nav; tabs «День» / «Период»; page titles «Топ дня» / «Топ за период») | Top (Top of the day / Top for a period) | Top (Kun topi / Davr topi) | |
 | Активность | Activity | Faollik | |
 | План масштабирования | Scaling plan | Masshtablash rejasi | |
 

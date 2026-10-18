@@ -7,6 +7,8 @@
  *     bar index (`idx`) at whose CLOSE it happened. The state is always recomputed from the log (deterministic, so
  *     «undo the last order on the same bar» is just popping the log).
  *   - Orders fill at the close of their bar. Fees: `feePerShare` per share on every fill (the desk's real rate).
+ *     With an execution model (cfg.exec, exec.ts; games created since 2026-10-18) market orders pay half the spread +
+ *     slippage and stops slip; `SimFill.slip` is that cost per share (always ≥ 0, against the player).
  *   - A bracket set on bar i is checked from bar i+1 on, against each bar's high / low: a stop fills at the stop or,
  *     when the bar opens beyond it (gap), at the open; same for the target. Both inside one bar → the stop first
  *     (conservative: we cannot know the path inside a bar).
@@ -16,6 +18,8 @@
  *     cannot inflate R), otherwise the scenario's risk unit (ATR-based, see scenario.ts). Trade R = net $ / (risk per
  *     share × max shares held).
  */
+
+import { marketPx, stopPx, type ExecModel } from "./exec";
 
 export type SimBar = { t: number; o: number; h: number; l: number; c: number; v: number };
 
@@ -28,7 +32,8 @@ export type SimEvent =
 
 export type FillReason = "buy" | "sell" | "flat" | "stop" | "target" | "end";
 
-export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number };
+/** `slip`: spread + slippage paid on this fill, $ per share (only with an execution model). */
+export type SimFill = { idx: number; price: number; qty: number; reason: FillReason; fee: number; slip?: number };
 
 export type SimTrade = {
   n: number;
@@ -63,6 +68,8 @@ export type SimConfig = {
   feePerShare: number;
   /** Risk per share used when the player sets no stop on the entry bar. */
   riskUnit: number;
+  /** Spread / slippage model (exec.ts); absent on games created before it — fills at the close / the stop exactly. */
+  exec?: ExecModel | null;
 };
 
 export type SimState = {
@@ -143,12 +150,13 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
     t.maeR = t.riskPerShare > 0 ? r2(t.mae / t.riskPerShare) : 0;
   };
 
-  const fill = (idx: number, price: number, delta: number, reason: FillReason) => {
+  const fill = (idx: number, price: number, delta: number, reason: FillReason, nominal: number = price) => {
     if (delta === 0) return;
     const absD = Math.abs(delta);
     const fee = r4(absD * cfg.feePerShare);
     fees += fee;
-    fills.push({ idx, price: r4(price), qty: delta, reason, fee });
+    const slip = r4(Math.abs(price - nominal));
+    fills.push(slip > 0 ? { idx, price: r4(price), qty: delta, reason, fee, slip } : { idx, price: r4(price), qty: delta, reason, fee });
     if (pos === 0) {
       pos = delta;
       avg = price;
@@ -209,7 +217,7 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
       if (exitPx != null && reason) {
         const move = (exitPx - avg) * (long ? 1 : -1);
         if (move < 0) t.mae = Math.max(t.mae, -move); else t.mfe = Math.max(t.mfe, move);
-        fill(i, exitPx, -pos, reason);
+        fill(i, reason === "stop" ? stopPx(exitPx, pos, cfg.exec) : exitPx, -pos, reason, exitPx);
       } else {
         t.mfe = Math.max(t.mfe, long ? b.h - avg : avg - b.l);
         t.mae = Math.max(t.mae, long ? avg - b.l : b.h - avg);
@@ -222,7 +230,7 @@ export function simulate(bars: readonly SimBar[], cfg: SimConfig, events: readon
       if (e.type === "order") {
         const delta = orderDelta(e.kind, e.qty, pos);
         const reason: FillReason = e.auto ? "end" : e.kind === "flat" ? "flat" : e.kind;
-        fill(i, b.c, delta, reason);
+        fill(i, delta === 0 ? b.c : marketPx(b.c, delta > 0 ? 1 : -1, cfg.exec), delta, reason, b.c);
       } else if (pos !== 0) {
         stop = e.stop;
         target = e.target;

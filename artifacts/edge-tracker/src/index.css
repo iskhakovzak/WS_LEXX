@@ -114,6 +114,11 @@
   /* Semantic warn / purple text-safe tones (chart-3 / chart-5 stay for charts: chart-3 fails 4.5:1 as text in light). */
   --color-warn: hsl(var(--warn));
   --color-purple: hsl(var(--purple));
+  /* Achievement medal tiers (components/quests): text-safe tones, also used as tinted fills (bg-medal-gold/15). */
+  --color-medal-bronze: hsl(var(--medal-bronze));
+  --color-medal-silver: hsl(var(--medal-silver));
+  --color-medal-gold: hsl(var(--medal-gold));
+  --color-medal-platinum: hsl(var(--medal-platinum));
   /* Surface hierarchy: canvas < panel < tile (inner) < overlay. `surface-solid` = opaque panel colour for sticky headers. */
   --color-surface-solid: hsl(var(--surface-solid));
   --color-emerald-300: hsl(var(--up));
@@ -185,6 +190,10 @@
   --overlay: rgb(15 23 42 / .32);
   --warn: 32 95% 32%;
   --purple: 263 45% 45%;
+  --medal-bronze: 25 62% 36%;
+  --medal-silver: 215 12% 40%;
+  --medal-gold: 42 92% 31%;
+  --medal-platinum: 192 55% 32%;
   --surface-solid: 0 0% 100%;
   --tile-bg: rgb(15 23 42 / .035);
   --tile-hover-bg: rgb(15 23 42 / .06);
@@ -353,6 +362,10 @@ body {
   --overlay: rgb(0 0 0 / .6);
   --warn: 38 92% 62%;
   --purple: 263 60% 76%;
+  --medal-bronze: 27 68% 63%;
+  --medal-silver: 215 16% 76%;
+  --medal-gold: 45 88% 60%;
+  --medal-platinum: 190 62% 72%;
   --surface-solid: 225 6% 11%;
   --tile-bg: rgb(255 255 255 / .035);
   --tile-hover-bg: rgb(255 255 255 / .06);

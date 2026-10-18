@@ -17,6 +17,14 @@ export type RangeResponse = { ticker: string; from: string; to: string; interval
 /** `status` = HTTP status; the server's `reason` ("weekend" | "future") is `err.field<string>("reason")`. */
 export type ChartError = ApiError;
 
+/**
+ * Stable empty list: a fresh `[]` on every render made WsChart's `bars` memo recompute on every render, so each replay
+ * step (and every state change) rebuilt the whole chart — ~35 ms per bar on a 960-bar day. Same for the events (they
+ * feed the geometry memo).
+ */
+const NO_BARS: Candle[] = [];
+const NO_EVENTS: MarketEventLite[] = [];
+
 const noRetry = (count: number, err: unknown) => {
   const s = (err as ChartError).status;
   return s !== 422 && s !== 400 && s !== 404 && s !== 401 && count < 1;
@@ -96,8 +104,8 @@ export function useChartData(trade: TradeLike, opts: { executions?: Execution[];
     prevClose: bars.data?.prevClose ?? null,
     executions,
     structure: opts.executions === undefined ? execs.data?.structure ?? null : opts.structure ?? null,
-    events: events.data ?? [],
-    daily: { bars: daily.data?.candles ?? [], loading: daily.isLoading, requested: dailyRequested, request: requestDaily },
+    events: events.data ?? NO_EVENTS,
+    daily: { bars: daily.data?.candles ?? NO_BARS, loading: daily.isLoading, requested: dailyRequested, request: requestDaily },
     loading: bars.isLoading || (opts.executions === undefined && execs.isLoading),
     fetching: bars.isFetching,
     error: bars.error ?? null,

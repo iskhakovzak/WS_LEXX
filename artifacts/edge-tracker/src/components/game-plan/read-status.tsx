@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { KEYS } from "@/lib/api/keys";
 import { Check, CheckCheck, RefreshCw, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -46,8 +47,9 @@ export function MarkReadButton({
       toast({ title: t("reads.markFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     },
     onSettled: () => {
-      qc.invalidateQueries({ queryKey: gpKeys.day(date) });
-      qc.invalidateQueries({ queryKey: gpKeys.reads(plan.id) });
+      void qc.invalidateQueries({ queryKey: gpKeys.day(date) });
+      void qc.invalidateQueries({ queryKey: gpKeys.reads(plan.id) });
+      void qc.invalidateQueries({ queryKey: KEYS.questsMe(), refetchType: "none" }); // read_game_plan quest
     },
   });
 

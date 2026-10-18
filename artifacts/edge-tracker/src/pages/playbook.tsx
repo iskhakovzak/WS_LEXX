@@ -14,8 +14,10 @@
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { playbookTodayQuery } from "@/lib/api/queries";
 import {
-  Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, HelpCircle, LayoutGrid,
+  Activity, BookOpen, Building2, ChevronsDownUp, ChevronsUpDown, Columns2, Download, FileArchive, LayoutGrid,
   Library, MoreHorizontal, Plus, Search, Send, Share2, Tag, Trophy, User, Users, X, ZoomIn, ZoomOut, type LucideIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
@@ -28,7 +30,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ToastAction } from "@/components/ui/toast";
-import { EmptyState, Kbd, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
+import { EmptyState, Page, PageHeader, Segmented, Toolbar } from "@/components/ds";
 import { IconAction, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { useToast } from "@/hooks/use-toast";
 import { localDateString } from "@/lib/local-date";
@@ -57,6 +59,10 @@ import { ShareDialog } from "@/components/playbook/share-dialog";
 import { hasExampleDrag, patchExample, readExampleDrag } from "@/components/playbook/examples-board";
 import { ActivitySheet, DeleteFolderDialog, DeleteSetupDialog, RenameFolderDialog } from "@/components/playbook/page-dialogs";
 import { useMoveToFolder } from "@/components/playbook/move-to-folder";
+import { HotkeysHelp } from "@/components/playbook/hotkeys-help";
+import { PlaybookModeTabs, usePlaybookMode } from "@/components/playbook/today/mode-tabs";
+import { TodayView } from "@/components/playbook/today/today-view";
+import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n } from "@/i18n/ns/playbook";
 
@@ -93,23 +99,6 @@ const ALL_SCOPE = spaceRow("all", Library);
 type Scope = SpaceTab | "all";
 const isScope = (v: unknown): v is Scope => v === "all" || SPACES.some((s) => s.value === v);
 const urlParam = (k: string) => new URLSearchParams(window.location.search).get(k);
-type HotkeyKey = keyof typeof import("@/i18n/locales/ru/playbook").default.page.hotkeys;
-const HOTKEYS: [string[], HotkeyKey][] = [
-  [["Ctrl", "K"], "quickFindSetup"],
-  [["/"], "quickFind"],
-  [["J", "K"], "nextPrev"],
-  [["N"], "newSetup"],
-  [["Ctrl", "S"], "saveForm"],
-  [["E"], "edit"],
-  [["A"], "addExamples"],
-  [["C"], "compare"],
-  [["Esc"], "close"],
-  [["1", "2", "3"], "tier"],
-  [["Alt", "↑↓"], "reorder"],
-  [["M"], "moveExample"],
-  [["Ctrl", "V"], "paste"],
-];
-
 function isTypingTarget(t: EventTarget | null) {
   const el = t as HTMLElement | null;
   if (!el) return false;
@@ -122,7 +111,9 @@ function overlayOpen() {
 const isView = (v: unknown): v is View => VIEWS.includes(v as View);
 const isSetupTab = (v: unknown): v is SetupTab => SETUP_TABS.includes(v as SetupTab);
 
-export default function Playbook() {
+/** The library: «Мой плейбук» for traders (own + shared with me), «Редактировать» for staff (every space, all views). */
+function Playbook({ mode, modeTabs }: { mode: "mine" | "edit"; modeTabs: ReactNode }) {
+  const traderView = mode === "mine";
   const { t } = playbookI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -142,12 +133,13 @@ export default function Playbook() {
 
   /* ---------- persisted UI state ---------- */
   // The URL wins (shared links, back / forward), then the remembered choice.
-  const [view, setViewState] = useState<View>(() => {
+  const [viewRaw, setViewState] = useState<View>(() => {
     const u = urlParam("view"); if (isView(u)) return u;
     // A link to one setup (?id= / ?highlight=, e.g. from the feed) must show it — not a remembered grid / gallery.
     if (urlParam("id") || urlParam("highlight")) return "library";
     const v = lsGet<string>(LS.view, "library"); return isView(v) ? v : "library";
   });
+  const view: View = traderView ? "library" : viewRaw; // traders: one browse view (examples live in the card)
   const [space, setSpaceState] = useState<Scope>(() => {
     const u = urlParam("space"); if (isScope(u)) return u;
     const v = lsGet<string>(LS_SPACE, "office"); return isScope(v) ? v : "office";
@@ -210,9 +202,10 @@ export default function Playbook() {
     for (const e of entries) if (!e.parentId || !byId.has(e.parentId)) c[tabOf.get(e.id) ?? "office"]++;
     return c;
   }, [entries, byId, tabOf]);
-  const visibleSpaces = SPACES.filter((s) => s.value !== "team" || (viewer.isCurator && spaceCounts.team > 0));
-  // A remembered «Команда» tab that is no longer available falls back to «Офис»; «Все» exists only in the gallery.
-  const activeSpace: SpaceTab = visibleSpaces.some((s) => s.value === space) ? (space as SpaceTab) : "office";
+  // «Команда» only for staff with content; «Общие со мной» only when not empty; traders: «Мой» + «Общие» (office = «Сегодня»).
+  const visibleSpaces = SPACES.filter((s) => (s.value !== "team" || (viewer.isCurator && spaceCounts.team > 0)) && (s.value !== "shared" || spaceCounts.shared > 0) && (!traderView || s.value === "mine" || s.value === "shared"));
+  // A remembered tab that is no longer available falls back to «Офис» («Мой» for traders); «Все» exists only in the gallery.
+  const activeSpace: SpaceTab = visibleSpaces.some((s) => s.value === space) ? (space as SpaceTab) : traderView ? "mine" : "office";
   const galleryScope: GalleryScope = space === "all" ? "all" : activeSpace;
   const shownScope: Scope = view === "gallery" ? galleryScope : activeSpace;
   const proposed = useMemo(
@@ -752,26 +745,6 @@ export default function Playbook() {
   }, [canCreate, selected, selectedId, navOrder, openSetup, newSetup, view, viewer, setupTab, live]);
 
   /* ---------- render pieces ---------- */
-  const helpPopover = (
-    <Popover open={helpOpen} onOpenChange={setHelpOpen}>
-      <PopoverTrigger asChild>
-        <IconAction aria-label={t("page.hotkeysTitle")} title={t("page.hotkeysTitle")} aria-keyshortcuts="?" className="h-9 w-9"><HelpCircle /></IconAction>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80">
-        <p className="mb-2 text-sm font-semibold text-foreground">{t("page.hotkeysTitle")}</p>
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-sm">
-          {HOTKEYS.map(([keys, key]) => (
-            <div key={key} className="contents">
-              <dt><Kbd keys={keys} className="[&_kbd]:text-xs" /></dt>
-              <dd className="text-muted-foreground">{t(`page.hotkeys.${key}`)}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-3 text-xs text-muted-foreground">{t("page.mouseHint")}</p>
-      </PopoverContent>
-    </Popover>
-  );
-
   const header = (
     <PageHeader
       title={t("page.title")}
@@ -783,7 +756,8 @@ export default function Playbook() {
             <Search className="h-4 w-4" aria-hidden="true" />
             <span>{t("page.find")}</span>
           </Button>
-          <Segmented<View>
+          {modeTabs}
+          {!traderView && <Segmented<View>
             ariaLabel={t("page.viewAria")}
             value={view}
             onChange={setView}
@@ -792,8 +766,8 @@ export default function Playbook() {
               { value: "gallery", label: <><Trophy className="h-4 w-4" aria-hidden="true" />{t("page.view.gallery")}</> },
               { value: "grid", label: <><LayoutGrid className="h-4 w-4" aria-hidden="true" />{t("page.view.grid")}</> },
             ]}
-          />
-          {helpPopover}
+          />}
+          <HotkeysHelp open={helpOpen} onOpenChange={setHelpOpen} />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <IconAction aria-label={commonI18n.t("actions.more")} title={commonI18n.t("actions.more")} className="h-9 w-9"><MoreHorizontal /></IconAction>
@@ -1190,7 +1164,6 @@ export default function Playbook() {
               showReview={activeSpace === "office"}
               before={
                 <>
-                  <PlaybookInbox onNewSetup={newSetupFromTrade} />
                   <Tier1Strip
                     scope={activeSpace}
                     entries={entries}
@@ -1257,10 +1230,10 @@ export default function Playbook() {
         onPick={(id) => openFromElsewhere(id)}
         actions={[
           ...(canCreate ? [{ id: "new", label: newLabel, icon: Plus, hint: "N", run: () => newSetup(selected?.folder ?? null) }] : []),
-          { id: "gallery", label: t("page.action.gallery"), icon: Trophy, run: () => setView("gallery") },
+          ...(traderView ? [] : [{ id: "gallery", label: t("page.action.gallery"), icon: Trophy, run: () => setView("gallery") }]),
           { id: "compare", label: t("page.compare"), icon: Columns2, hint: "C", run: () => setCompareFor(selected ?? topLevel[0] ?? entries[0] ?? null) },
           ...visibleSpaces.map((s) => ({ id: `space-${s.value}`, label: t("page.action.space", { name: s.label }), icon: s.icon, run: () => { setView("library"); setSpace(s.value); openSetup(null); } })),
-          { id: "grid", label: view === "grid" ? t("page.action.viewLibrary") : t("page.action.viewGrid"), icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") },
+          ...(traderView ? [] : [{ id: "grid", label: view === "grid" ? t("page.action.viewLibrary") : t("page.action.viewGrid"), icon: view === "grid" ? Library : LayoutGrid, run: () => setView(view === "grid" ? "library" : "grid") }]),
           { id: "activity", label: t("page.activity"), icon: Activity, run: () => setActivityOpen(true) },
           { id: "export", label: t("page.action.exportMd"), icon: Download, run: exportMd },
         ]}
@@ -1268,6 +1241,30 @@ export default function Playbook() {
       <ActivitySheet open={activityOpen} onOpenChange={setActivityOpen} />
       {pickerFor && <TradePickerDialog open={!!pickerFor} onOpenChange={(v) => { if (!v) setPickerFor(null); }} entry={pickerFor} />}
       {shareFor && <ShareDialog open={!!shareFor} onOpenChange={(v) => { if (!v) setShareFor(null); }} entry={shareFor} />}
+    </Page>
+  );
+}
+
+/** /playbook: «Сегодня» (morning-first, the default) or the library («Мой плейбук» for traders, «Редактировать» for staff). */
+export default function PlaybookPage() {
+  const { t } = playbookTodayI18n.useT();
+  const { isCurator } = useAuth();
+  const { mode, setMode } = usePlaybookMode(isCurator);
+  const [, navigate] = useLocation();
+  const params = new URLSearchParams(useSearch());
+  const untagged = useQuery({ ...playbookTodayQuery(), enabled: !isCurator }).data?.untagged ?? null;
+  const tabs = <PlaybookModeTabs mode={mode} onMode={(m) => setMode(m)} isStaff={isCurator} untagged={untagged} />;
+  if (mode !== "today") return <Playbook mode={mode} modeTabs={tabs} />;
+  const keep = isCurator ? "mode=today" : "";
+  const selectedId = Number(params.get("id") ?? params.get("highlight")) || null;
+  return (
+    <Page>
+      <TodayView
+        header={<PageHeader className={selectedId ? "max-sm:hidden" : undefined} title={t("title")} icon={BookOpen} description={selectedId ? undefined : t("description")} actions={tabs} />}
+        selectedId={selectedId}
+        onOpen={(id) => navigate(id ? `/playbook?id=${id}${keep ? `&${keep}` : ""}` : `/playbook${keep ? `?${keep}` : ""}`)}
+        onMissing={(id) => setMode(isCurator ? "edit" : "mine", { id: String(id) })}
+      />
     </Page>
   );
 }

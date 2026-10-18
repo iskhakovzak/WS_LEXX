@@ -28,7 +28,8 @@ function Glyph({ role, inferred }: { role: TradeRole; inferred: boolean }) {
 /**
  * Key of the marker shapes present on this chart («▲ Вход · △ Фикс · ■ Стоп?») plus the trade's structure summary
  * («вход частями · перезаход №1»), with on/off switches for the average-price line and the session's other trades.
- * Hidden when the trade is a plain entry → exit with nothing to explain.
+ * A strip right under the chart (never over the candles). Hidden when the trade is a plain entry → exit with nothing
+ * to explain.
  */
 export function FillsKey({ fills, structure, layer, className }: { fills: readonly Fill[]; structure: TradeStructureDto | null; layer: StructureLayer; className?: string }) {
   const roles = React.useMemo(() => {
@@ -46,7 +47,7 @@ export function FillsKey({ fills, structure, layer, className }: { fills: readon
   return (
     <div
       className={cn(
-        "pointer-events-none absolute left-2 top-11 z-raised flex max-w-[calc(100%-1rem)] flex-wrap items-center gap-x-2.5 gap-y-1 rounded-xl border border-[var(--glass-border)] bg-background/90 px-2 py-1 text-[11px] text-muted-foreground shadow-[var(--glass-shadow-sm)]",
+        "flex min-w-0 flex-wrap items-center gap-x-2.5 gap-y-1 px-1 text-[11px] text-muted-foreground",
         className,
       )}
       title={structure?.stats.notes?.join("\n") || undefined}
@@ -73,7 +74,7 @@ function Switch({ on, onChange, title, children }: { on: boolean; onChange: (on:
       title={title}
       onClick={() => onChange(!on)}
       className={cn(
-        "pointer-events-auto rounded-full border px-1.5 py-px text-[10px] transition-colors",
+        "rounded-full border px-1.5 py-px text-[10px] transition-colors",
         on ? "border-primary/50 bg-primary/15 text-foreground" : "border-border/70 text-muted-foreground hover:text-foreground",
       )}
     >

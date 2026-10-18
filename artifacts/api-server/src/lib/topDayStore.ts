@@ -1,16 +1,20 @@
 /**
- * «Топ дня» ↔ DB. One grouped query per call over live trades of a NY date / month (indexes trades_live_date_id_idx
- * (date, id) and trades_live_ticker_date_idx); fill times via trade_executions_trade_idx. Shaping and the privacy
- * policy: lib/topDay.ts (pure).
+ * «Топ дня» ↔ DB. One grouped query per call over live trades of a NY date / month by the trade's CLOSE day — the
+ * realised P&L of the day, as the dashboard and the «Период» leaderboard count it (lead decision 2026-10-18; a swing
+ * trade counts on the day it closed). Index trades_live_close_day_idx (migration 0209); fill times via
+ * trade_executions_trade_idx. Shaping and the privacy policy: lib/topDay.ts (pure). The desk-day chart stays per
+ * execution day (lib/deskDayStore).
  */
 import { pool } from "@workspace/db";
-import { netPnlSql } from "./tradeMath";
+import { closeDateSql, netPnlSql } from "./tradeMath";
 import type { CalendarRow, TraderTickerRow, TraderTickerSideRow } from "./topDay";
 
 type Queryable = { query: (typeof pool)["query"] };
 
 const LIVE = `t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''`;
 const NET = netPnlSql("t");
+/** The trade's NY close day (exit date, else the entry date) — the expression of index trades_live_close_day_idx. */
+export const CLOSE_DAY = `LEFT(${closeDateSql("t")}, 10)`;
 
 /** First day of the month after `month` (YYYY-MM) as YYYY-MM-DD. */
 export function nextMonthStart(month: string): string {
@@ -25,10 +29,10 @@ export async function loadCalendarRows(month: string, viewerName: string | null,
   const [days, hol] = await Promise.all([
     q.query(
       `WITH td AS (
-         SELECT t.date, t.trader, SUM(${NET}) AS net, COUNT(*)::int AS n
+         SELECT ${CLOSE_DAY} AS date, t.trader, SUM(${NET}) AS net, COUNT(*)::int AS n
            FROM trades t
-          WHERE t.date >= $1 AND t.date < $2 AND ${LIVE}
-          GROUP BY t.date, t.trader
+          WHERE ${CLOSE_DAY} >= $1 AND ${CLOSE_DAY} < $2 AND ${LIVE}
+          GROUP BY 1, t.trader
        )
        SELECT date, SUM(net) AS net, SUM(n)::int AS trades, COUNT(*)::int AS traders, MAX(net) AS best, MIN(net) AS worst,
               SUM(net) FILTER (WHERE trader = $3) AS mine, COALESCE(BOOL_OR(trader = $3), FALSE) AS traded
@@ -40,13 +44,13 @@ export async function loadCalendarRows(month: string, viewerName: string | null,
   return { rows: days.rows as CalendarRow[], holidays: (hol.rows as { date: string }[]).map((r) => String(r.date)) };
 }
 
-/** Every (trader, ticker) of `date` with net, trades, wins, losses. */
+/** Every (trader, ticker) closed on `date` with net, trades, wins, losses. */
 export async function loadDayRows(date: string, q: Queryable = pool): Promise<TraderTickerRow[]> {
   const { rows } = await q.query(
     `SELECT t.trader, t.ticker, SUM(${NET}) AS net, COUNT(*)::int AS trades,
             COUNT(*) FILTER (WHERE ${NET} > 0)::int AS wins, COUNT(*) FILTER (WHERE ${NET} < 0)::int AS losses
        FROM trades t
-      WHERE t.date = $1 AND ${LIVE}
+      WHERE ${CLOSE_DAY} = $1 AND ${LIVE}
       GROUP BY t.trader, t.ticker`,
     [date],
   );
@@ -54,7 +58,7 @@ export async function loadDayRows(date: string, q: Queryable = pool): Promise<Tr
 }
 
 /**
- * Every (trader, ticker, side) of `date` with first / last fill time. The whole day is read (not one trader): the
+ * Every (trader, ticker, side) closed on `date` with first / last fill time. The whole day is read (not one trader): the
  * trader's place among the day's traders needs everyone's net; a desk day is a few hundred trades.
  */
 export async function loadDaySideRows(date: string, q: Queryable = pool): Promise<TraderTickerSideRow[]> {
@@ -66,7 +70,7 @@ export async function loadDaySideRows(date: string, q: Queryable = pool): Promis
        LEFT JOIN LATERAL (
          SELECT MIN(e.executed_at) AS first_at, MAX(e.executed_at) AS last_at FROM trade_executions e WHERE e.trade_id = t.id
        ) x ON TRUE
-      WHERE t.date = $1 AND ${LIVE}
+      WHERE ${CLOSE_DAY} = $1 AND ${LIVE}
       GROUP BY t.trader, t.ticker, t.side`,
     [date],
   );

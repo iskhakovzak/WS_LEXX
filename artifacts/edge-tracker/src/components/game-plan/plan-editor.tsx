@@ -316,13 +316,16 @@ function EditorInner({
             <span className="text-xs text-muted-foreground">{RISK_MODE[draft.riskMode].hint}</span>
           </div>
         )}
-        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+        <div className={isDesk ? "grid grid-cols-2 gap-3 sm:max-w-md" : "grid grid-cols-2 gap-3 sm:max-w-xl sm:grid-cols-3"}>
           <Field label={tr("editor.maxLoss")} htmlFor={`${uid}-ml`} error={errors.maxLoss}>
             <Input id={`${uid}-ml`} inputMode="decimal" placeholder="300" value={draft.maxLoss} onChange={(e) => patch({ maxLoss: e.target.value })} className="tabular-nums" />
           </Field>
           <Field label={tr("editor.maxTrades")} htmlFor={`${uid}-mt`} error={errors.maxTrades}>
             <Input id={`${uid}-mt`} inputMode="numeric" placeholder="10" value={draft.maxTrades} onChange={(e) => patch({ maxTrades: e.target.value })} className="tabular-nums" />
           </Field>
+          {!isDesk && <Field label={tr("editor.riskPerTrade")} htmlFor={`${uid}-rp`} error={errors.riskPerTrade}>
+            <Input id={`${uid}-rp`} inputMode="decimal" placeholder="50" value={draft.riskPerTrade} onChange={(e) => patch({ riskPerTrade: e.target.value })} className="tabular-nums" />
+          </Field>}
         </div>
         {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} />}
         <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>

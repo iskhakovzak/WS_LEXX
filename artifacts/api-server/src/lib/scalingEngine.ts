@@ -151,6 +151,12 @@ export interface TraderInput {
   /** YYYY-MM-DD of each rule violation / logged mistake. */
   violationDates: string[];
   today: string;
+  /**
+   * The risk desk's basis (routes/risk): the drawdown now from the all-time equity peak ($, ≥ 0) and the days the desk
+   * recorded a drawdown breach (risk_alert_log). A drawdown that started before the window still counts in it.
+   */
+  currentDrawdownUsd?: number | null;
+  drawdownBreachDates?: string[];
 }
 
 export interface MetricValue {
@@ -383,10 +389,14 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
       for (const [d, v] of dayNet) sumBy(wk, mondayOf(d), v);
       for (const v of wk.values()) if (-v > weeklyLimit) breaches++;
     }
-    if ((dailyLimit == null || dailyLimit <= 0) && (weeklyLimit == null || weeklyLimit <= 0)) breachNote = "noLimits";
+    // The risk desk's drawdown breach (trading stopped) is a limit breach too — one per window: it is a lasting state,
+    // recorded on every trading day it lasts.
+    if ((input.drawdownBreachDates ?? []).some((d) => d >= from && d <= today)) breaches++;
+    if ((dailyLimit == null || dailyLimit <= 0) && (weeklyLimit == null || weeklyLimit <= 0) && (ddLimit == null || ddLimit <= 0)) breachNote = "noLimits";
   }
 
-  const ddUsd = hasMoney ? maxDrawdownAbs(days.map((d) => dayNet.get(d) ?? 0)) : null;
+  // Drawdown on the risk desk's basis: the deeper of the window's peak-to-trough and the drawdown now from the all-time peak.
+  const ddUsd = hasMoney ? Math.max(maxDrawdownAbs(days.map((d) => dayNet.get(d) ?? 0)), input.currentDrawdownUsd ?? 0) : null;
   const ddPct = ddUsd != null && ddLimit != null && ddLimit > 0 ? (ddUsd / ddLimit) * 100 : null;
 
   const weekFrom = mondayOf(from);

@@ -19,6 +19,7 @@ import { QUEUE_LABEL, QUEUE_TONE, curatorLinks, profileHref, riskTone, waitLabel
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
 import { AttentionPanel } from "./attention-panel";
+import { QuestEventChips } from "./quest-events";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -37,7 +38,8 @@ function riskBar(r: TodayPayload["risk"]["halted"][number]): { label: string; pc
 }
 
 /** «Сегодня»: what needs the curator now — risk, discipline gaps, the review queue and next steps. */
-export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayPayload; scope?: Scope | "auto"; onOpenTrader: (trader: string, tab?: string) => void }) {
+/** `attentionExtra` — small items composed by the page on top of the attention list (reward requests, components/gamification). */
+export function TodayView({ data, scope = "auto", onOpenTrader, attentionExtra }: { data: TodayPayload; scope?: Scope | "auto"; onOpenTrader: (trader: string, tab?: string) => void; attentionExtra?: React.ReactNode }) {
   const [templateFor, setTemplateFor] = React.useState<string[] | null>(null);
   const [showOld, setShowOld] = React.useState(false);
   const [confirmArchive, setConfirmArchive] = React.useState(false);
@@ -137,7 +139,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
       </StatGrid>
 
       <BentoGrid>
-        <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} />
+        <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} extra={attentionExtra} />
 
         <Panel
           className="lg:col-span-5"
@@ -222,6 +224,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
               </Button>
             </div>
           )}
+          <QuestEventChips events={data.questEvents} onOpenTrader={onOpenTrader} />
           {fullQueue.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("today.kindAria")}>
               <FilterChip size="sm" active={activeKind === "all"} onClick={() => setKindFilter("all")} count={fullQueue.length}>{t("today.all")}</FilterChip>

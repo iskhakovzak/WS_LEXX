@@ -39,6 +39,8 @@ export type PlanDraft = {
   riskNotes: string;
   maxLoss: string;
   maxTrades: string;
+  /** 1R in $ (personal plans; the playbook size calculator). */
+  riskPerTrade: string;
   /** Rule of the day (MistakeId); undefined = never chosen, null = «no rule». Personal plans only. */
   ownRule?: string | null;
   focus: string;
@@ -120,6 +122,7 @@ export function docToDraft(doc: Partial<PlanDoc> | null | undefined): PlanDraft 
     riskNotes: s(d.riskNotes),
     maxLoss: d.maxLossUsd != null ? String(d.maxLossUsd) : "",
     maxTrades: d.maxTrades != null ? String(d.maxTrades) : "",
+    riskPerTrade: typeof d.riskPerTradeUsd === "number" ? String(d.riskPerTradeUsd) : "",
     ownRule: typeof d.ownRule === "string" && d.ownRule ? d.ownRule : d.ownRule === null ? null : undefined,
     focus: s(d.focus),
     media: refs(d.media),
@@ -163,6 +166,8 @@ export function validateDraft(d: PlanDraft): DraftErrors {
   if (ml !== null && (Number.isNaN(ml) || ml < 0 || ml >= 1e7)) e.maxLoss = gpI18n.t("validation.maxLoss");
   const mt = num(d.maxTrades);
   if (mt !== null && (Number.isNaN(mt) || !Number.isInteger(mt) || mt < 0 || mt > 500)) e.maxTrades = gpI18n.t("validation.maxTrades");
+  const rp = num(d.riskPerTrade);
+  if (rp !== null && (Number.isNaN(rp) || rp <= 0 || rp >= 1e6)) e.riskPerTrade = gpI18n.t("validation.riskPerTrade");
   const seen = new Set<string>();
   for (const t of d.inPlay) {
     const tk = t.ticker.trim().toUpperCase();
@@ -180,6 +185,12 @@ export function validateDraft(d: PlanDraft): DraftErrors {
     if (!TIME_RE.test(m.time.trim())) e[`macro.${m.key}.time`] = gpI18n.t("validation.time");
   }
   return e;
+}
+
+/** 1R for the doc: a positive number, else null (cleared / empty). */
+function rpOf(d: PlanDraft): number | null {
+  const rp = num(d.riskPerTrade ?? "");
+  return rp === null || Number.isNaN(rp) || rp <= 0 ? null : rp;
 }
 
 /** Draft → API document. Call only when `validateDraft` is empty (numbers are coerced defensively anyway). */
@@ -219,6 +230,7 @@ export function draftToDoc(d: PlanDraft): PlanDoc {
     media: d.media,
     tvLinks: d.tvLinks,
     ...(d.ownRule !== undefined ? { ownRule: d.ownRule } : {}),
+    riskPerTradeUsd: rpOf(d),
   };
 }
 

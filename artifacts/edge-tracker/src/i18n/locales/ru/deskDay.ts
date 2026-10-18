@@ -1,7 +1,7 @@
 /**
  * `deskDay` — «Деск на тикере» (/desk-day): one ticker-day with every desk trader's entries, adds, partial exits,
  * exits and stops; the legend of traders; deterministic takeaways; entry links from the trade sheet and the day report.
- * RU addresses the trader as «ты». Tickers, R, P&L, Long/Short stay as in GLOSSARY.md.
+ * RU addresses the trader as «вы» (the UI tone of the dashboard, quests and daily loop). Tickers, R, P&L, Long/Short stay as in GLOSSARY.md.
  */
 export default {
   title: "Деск на тикере",
@@ -11,7 +11,7 @@ export default {
     ticker: "Тикер",
     date: "Дата",
     show: "Показать",
-    hint: "Выбери тикер и торговый день — увидишь сделки всех трейдеров деска на одном графике.",
+    hint: "Выберите тикер и торговый день — увидите сделки всех трейдеров деска на одном графике.",
   },
   prevDay: "Предыдущий день",
   nextDay: "Следующий день",
@@ -21,11 +21,11 @@ export default {
   tf: "Таймфрейм",
   empty: {
     title: "На {ticker} в этот день сделок деска нет",
-    desc: "Попробуй другой день или тикер.",
+    desc: "Попробуйте другой день или тикер.",
   },
   guest: {
     title: "Только для участников деска",
-    desc: "Войди под своим аккаунтом, чтобы видеть сделки коллег.",
+    desc: "Войдите под своим аккаунтом, чтобы видеть сделки коллег.",
   },
   legend: {
     title: "Трейдеры",
@@ -45,16 +45,16 @@ export default {
   office: {
     toggle: "Позиция офиса",
     toggleAria: "Показать позицию офиса на графике",
-    build: "Офис ({side}) набрал основную позицию {time} ET по ~{price}",
+    build: "Офис ({side}) набрал основную позицию {time} ET по ~{price} (зона набора)",
     entry: "Офис ({side}) входил в среднем по ~{price}",
-    exit: "вышел {time} ET по ~{price}",
+    exit: "вышел {time} ET по ~{price} (зона выхода)",
     held: "основную позицию держал до конца дня",
     peak: "пик {qty} шт. в {time} ET",
     net: "итог офиса {net}",
     contrib: "основной вклад: {list}",
     share: "{name} — {pct} %",
-    avgEntry: "Вход офиса",
-    avgExit: "Выход офиса",
+    avgEntry: "Средний вход офиса",
+    avgExit: "Средний выход офиса",
     zoneBuild: "Набор",
     zoneExit: "Выход",
     none: "Позицию офиса не построить: у сделок этого дня нет объёмов по времени.",
@@ -69,9 +69,11 @@ export default {
   },
   takeaway: {
     label: "Вывод",
-    best: "Лучший результат — {name}: {r}, {side}, вход в {time} ET ({min} мин после открытия)",
-    bestPre: "Лучший результат — {name}: {r}, {side}, вход в {time} ET, до открытия",
-    bestOpen: "Лучший результат — {name}: {r}, {side}, вход на открытии ({time} ET)",
+    /** {name} of «Лучшая сделка — {name}: …» when it is the viewer's own trade. */
+    mine: "ваша",
+    best: "Лучшая сделка — {name}: {r}, {side}, вход в {time} ET ({min} мин после открытия)",
+    bestPre: "Лучшая сделка — {name}: {r}, {side}, вход в {time} ET, до открытия",
+    bestOpen: "Лучшая сделка — {name}: {r}, {side}, вход на открытии ({time} ET)",
     averaging: "{averaged} из {losers} трейдеров в минусе доливались против позиции",
     timing: "В плюсе входили около {winners} ET, в минусе — около {losers} ET",
     sides: "Шорт: в плюсе {sw} из {st} · Лонг: {lw} из {lt}",

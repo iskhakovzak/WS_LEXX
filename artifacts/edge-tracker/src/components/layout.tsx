@@ -8,7 +8,7 @@ import { Link, useLocation } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { MOTION } from "@/components/ds/motion";
 import { Sidebar, SidebarProvider, SidebarTrigger, useSidebar } from "@/components/ui/sidebar";
-import { GlobalSearch } from "@/components/global-search";
+import { PaletteLauncher } from "@/components/shell/palette-launcher";
 import { useAuth } from "@/contexts/auth-context";
 import { MarketClock } from "@/components/shell/market-clock";
 import { LanguageMenu, NotificationBell, ThemeToggle, UserMenu } from "@/components/shell/header-actions";
@@ -16,6 +16,7 @@ import { shellI18n } from "@/i18n/ns/shell";
 import { SidebarNav } from "@/components/shell/sidebar-nav";
 import { MobileNav } from "@/components/shell/mobile-nav";
 import { readSidebarOpen, writeSidebarOpen } from "@/components/shell/use-nav-prefs";
+import { PlaybookSheetHost } from "@/components/playbook-sheet-host";
 
 /**
  * Full sidebar 15rem; icon rail 3.5rem + 1rem gutter. ui/sidebar.tsx sizes the rail with `var(--spacing-4)`, which
@@ -106,7 +107,7 @@ function Header() {
       <div className="flex min-w-0 items-center gap-2">
         <SidebarTrigger aria-label={t("header.toggleMenu")} className="chip hidden h-10 w-10 shrink-0 hover:text-foreground md:inline-flex" />
         <Logo />
-        <GlobalSearch />
+        <PaletteLauncher />
       </div>
       <MarketClock fit="container" className="justify-self-center" />
       <div className="flex min-w-0 items-center justify-end gap-1.5 md:gap-2">
@@ -182,6 +183,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </main>
       </div>
       <MobileNav location={location} />
+      <PlaybookSheetHost />
     </SidebarProvider>
   );
 }

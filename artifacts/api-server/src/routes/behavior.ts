@@ -211,7 +211,7 @@ router.get("/behavior", asyncHandler(async (req, res) => {
   const lang = langOf(req);
   // Own contract verdicts (lib/daily) move the day's discipline score: kept +, broken −.
   const days = trades.map((t) => t.date).sort();
-  const contract = scope && scope !== GUEST_SCOPE && days.length ? await contractDeltas(scope, trades, days[0]!, days[days.length - 1]!) : undefined;
+  const contract = scope && scope !== GUEST_SCOPE && days.length ? await contractDeltas(scope, trades, days[0]!, days[days.length - 1]!, async (f, t) => (await loadBehaviorRows(scope, f, t)).map(rowToBehaviorTrade)) : undefined;
   const report = analyzeBehavior(trades, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, lang, contract);
   // Auto-classifier setups carry their canonical (RU) name; show the class label in the reader's language.
   const relabel = <T extends { label: string } | null>(b: T): T => (b ? { ...b, label: setupLabelOf(b.label, lang) } : b);

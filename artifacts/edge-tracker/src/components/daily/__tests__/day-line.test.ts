@@ -69,7 +69,7 @@ describe("after the close", () => {
     expect(html).toContain("AMD в тот день торговали ещё 6 трейдеров");
     expect(html).toContain("/desk-day?ticker=AMD&date=2026-10-16");
     expect(html).toContain("Сделки");
-    expect(html).toContain("12 из 10");
+    expect(html).toContain("12 / лимит 10");
     expect(html).toContain("Разобрал");
     expect(html).toContain("Это не ошибка");
     expect(html).toContain("/journal?date=2026-10-16");

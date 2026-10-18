@@ -19,6 +19,8 @@ import {
 import { canSeeAggregateMoney, canSeeTradeMoney, redactEdgeStats, redactSummaryRow, redactTradeRow } from "../lib/playbookPrivacy";
 import { AppError, badRequest, notFound, sendError, sendErrorWith, unauthorized } from "../lib/http";
 import { aiLanguageEn } from "../i18n/ai";
+import { setupTierFields } from "../lib/playbookToday/setupFields";
+import { tradeTagged } from "../lib/playbookToday/service";
 import { langOf } from "../i18n";
 
 /**
@@ -143,6 +145,8 @@ const PLAYBOOK_SELECT_FIELDS = `
   invalidation_text AS "invalidationText",
   ideal_conditions  AS "idealConditions",
   time_of_day       AS "timeOfDay",
+  min_tier          AS "minTier",
+  schema_key        AS "schema",
   horizon,
   media,
   updated_at        AS "updatedAt"
@@ -984,6 +988,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
   if (shortInterest !== undefined) { fields.push(`short_interest = $${i++}`); vals.push(shortInterest ? Number(shortInterest) : null); }
   if (sector !== undefined) { fields.push(`sector = $${i++}`); vals.push(sector ? String(sector) : null); }
   if (longName !== undefined) { fields.push(`long_name = $${i++}`); vals.push(longName ? String(longName) : null); }
+  const tier = setupTierFields(body, prevRows[0], v); for (const [col, val] of tier.cols) { fields.push(`${col} = $${i++}`); vals.push(val); }
   if (!fields.length) throw badRequest("NO_FIELDS");
   fields.push(`updated_at = NOW()`);
   vals.push(id);
@@ -993,6 +998,7 @@ router.patch("/playbook/:id", asyncHandler(async (req, res): Promise<void> => {
     vals
   );
   if (!rows[0]) throw notFound();
+  await tier.audit(auth.name, rows[0].name);
   await logActivity({ action: "updated", section: "playbook", entityId: String(id), entityTitle: rows[0].name, trader: auth.name, details: activityDetails("setupUpdated"), params: { detailsKey: "setupUpdated" } });
   res.json({ ...rows[0], access: accessHints(v, rows[0]) });
 }));
@@ -1378,6 +1384,7 @@ router.post("/playbook/:id/link-trade", asyncHandler(async (req, res): Promise<v
   if (!pb || !canReadPure(await loadViewer(req), pb)) throw new AppError("SETUP_NOT_FOUND");
   const own = await canTouchTrade(req, Number(tradeId));
   await pool.query(`UPDATE trades SET playbook_id = $1 WHERE id = $2`, [id, Number(tradeId)]);
+  await tradeTagged(Number(tradeId));
   res.json({ success: true });
 }));
 
@@ -1387,6 +1394,7 @@ router.delete("/playbook/:id/link-trade/:tradeId", asyncHandler(async (req, res)
   if (isNaN(tradeId)) throw badRequest("INVALID_ID");
   const own = await canTouchTrade(req, tradeId);
   await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND ($2::int IS NULL OR playbook_id = $2)`, [tradeId, Number.isInteger(id) ? id : null]);
+  await tradeTagged(tradeId);
   res.json({ success: true });
 }));
 

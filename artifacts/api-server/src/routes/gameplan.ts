@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
+import { forgetQuests } from "../lib/quests/cache";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can, readScope, requireCap } from "../lib/permissions";
@@ -16,6 +17,7 @@ import {
 } from "../lib/planMedia";
 import { AppError, badRequest, unauthorized } from "../lib/http";
 import { isMistakeId } from "../lib/daily/engine";
+import { PlanPicksFields, keepPlanPicks } from "../lib/playbookToday/plan";
 
 /**
  * «План дня».
@@ -199,6 +201,7 @@ const TraderPlanBody = PlanBody.extend({
   // Rule of the day (daily loop MistakeId, lib/daily/engine isMistakeId). Absent = never chosen (the web prefills the
   // focus), null = «no rule»; read back by lib/daily (own contract verdict).
   ownRule: z.string().trim().max(60).refine(isMistakeId, "unknown mistake").nullable().optional(),
+  ...PlanPicksFields, // playbook «Сегодня» picks + 1R (absent = keep the stored value; a picks-only row is not a written plan yet)
 });
 
 function zodError(err: z.ZodError): string {
@@ -352,13 +355,14 @@ router.put("/game-plan/my/:date", asyncHandler(async (req, res): Promise<void> =
     `INSERT INTO trader_plans (trader, date, doc, status)
      VALUES ($1, $2, $3::jsonb, $4)
      ON CONFLICT (trader, date) DO UPDATE SET
-       doc = EXCLUDED.doc, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL
+       doc = EXCLUDED.doc, status = EXCLUDED.status, updated_at = NOW(), deleted_at = NULL, created_at = CASE WHEN trader_plans.doc - 'setups' = '{}'::jsonb THEN NOW() ELSE trader_plans.created_at END
      RETURNING id, trader, date, doc, status, created_at, updated_at`,
-    [me, date, JSON.stringify(doc), status],
+    [me, date, JSON.stringify(keepPlanPicks(doc, before[0]?.doc)), status],
   );
   await softDeleteDropped(collectPlanMediaIds(before[0]?.doc), collectPlanMediaIds(doc), "personal", date, me).catch((err) =>
     logger.warn({ err }, "game-plan: soft delete of dropped media failed"),
   );
+  forgetQuests(me); // plan quests (onboarding: first plan with a stop, own rule; plan before the open)
   res.json(serializeTraderPlan(rows[0]!));
 }));
 

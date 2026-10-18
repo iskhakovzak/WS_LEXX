@@ -234,12 +234,13 @@ export type InboxTrade = {
 };
 export type InboxResponse = { trader: string | null; days: number; total: number; trades: InboxTrade[] };
 
-/** GET /api/playbook-tools/inbox — null on an older API (404) so the home hides the block. */
-export function usePlaybookInbox(days = 14, enabled = true) {
+/** GET /api/playbook-tools/inbox — null on an older API (404) so the home hides the block. `untagged`: only trades
+ * without a live setup (the evening «Разметь N сделок» step — matches the EveningCard.untagged counter). */
+export function usePlaybookInbox(days = 14, enabled = true, untagged = false) {
   return useQuery<InboxResponse | null>({
-    queryKey: ["playbook-inbox", days],
+    queryKey: ["playbook-inbox", days, untagged],
     queryFn: ({ signal }) =>
-      http.get<InboxResponse>("/api/playbook-tools/inbox", { query: { days, limit: 40 }, signal }).catch(nullIfMissing),
+      http.get<InboxResponse>("/api/playbook-tools/inbox", { query: { days, limit: 40, ...(untagged ? { untagged: 1 } : {}) }, signal }).catch(nullIfMissing),
     enabled,
     staleTime: STALE.default,
     retry: 1,

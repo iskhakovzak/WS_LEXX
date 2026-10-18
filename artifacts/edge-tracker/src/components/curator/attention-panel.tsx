@@ -45,11 +45,15 @@ function reasonDetail(r: Reason): string {
   return curatorI18n.tryT(r.text.key, p) ?? reasonLabel(r.kind);
 }
 
-/** «Следующие шаги» merged with the queue by money: the most expensive problems first, then the usual next steps. */
-export function AttentionPanel({ data, onOpenTrader, onTemplate }: {
+/**
+ * «Следующие шаги» merged with the queue by money: the most expensive problems first, then the usual next steps.
+ * `extra` — small item types composed by the page on top (reward requests to grant / decline).
+ */
+export function AttentionPanel({ data, onOpenTrader, onTemplate, extra }: {
   data: TodayPayload;
   onOpenTrader: (trader: string, tab?: string) => void;
   onTemplate: (traders: string[]) => void;
+  extra?: React.ReactNode;
 }) {
   const { t } = curatorI18n.useT();
   const [all, setAll] = React.useState(false);
@@ -65,6 +69,7 @@ export function AttentionPanel({ data, onOpenTrader, onTemplate }: {
       description={t("today.nextHint")}
       actions={open ? <Pill tone="neutral">{open}</Pill> : undefined}
     >
+      {extra && <div className="mb-1.5 empty:hidden">{extra}</div>}
       {rows.length === 0 ? (
         <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
       ) : (
@@ -91,11 +96,14 @@ function CostRow({ row, onOpenTrader }: { row: Extract<AttentionRow, { type: "co
   const action = primaryAction(row);
   const day = fmtDate(item.date, "dayMonth");
   return (
-    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3", item.resolved && "opacity-70")}>
+    <li className={cn("tile flex min-w-0 flex-col gap-2 px-3 py-2 sm:flex-row sm:items-center sm:gap-3", item.resolved && "opacity-70", row.cont && "-mt-1 ml-4 border-l-2 border-[var(--glass-border)]")}>
       <div className="flex min-w-0 items-baseline gap-2 sm:w-32 sm:shrink-0 sm:flex-col sm:gap-0">
-        <button type="button" onClick={() => onOpenTrader(item.trader)} className="max-w-full truncate text-left text-sm font-medium text-foreground hover:text-primary" title={personName(item.trader)}>
-          {personName(item.trader)}
-        </button>
+        {/* Another day of the trader above: the name is not repeated (the group reads as one trader). */}
+        {row.cont ? <span className="sr-only">{personName(item.trader)}</span> : (
+          <button type="button" onClick={() => onOpenTrader(item.trader)} className="max-w-full truncate text-left text-sm font-medium text-foreground hover:text-primary" title={personName(item.trader)}>
+            {personName(item.trader)}
+          </button>
+        )}
         <Link href={curatorLinks.journalDay(item.trader, item.date)} className="text-xs tabular-nums text-muted-foreground hover:text-primary" title={t("costQueue.dayTitle", { date: day })}>
           {day}
         </Link>

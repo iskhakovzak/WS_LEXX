@@ -4,6 +4,10 @@
  * re-renders React or rebuilds the chart. The overlay (fills, position, stop / target, reveal) is pushed into a
  * primitive. Fake time before the reveal: intraday axis shows the New York clock and «Yesterday / Today», swing shows
  * day numbers; after the reveal the axis switches to the real times.
+ * Interaction (trainer): `onDragLine` lets the player drag the stop / target (and the planned stop while flat) with a
+ * mouse or a finger — panning is paused while a line is held; `onPick` reports a click / tap (pointer events, so a
+ * finger works like a mouse) as (bar index, price) («Найди вход»). Both use the lightweight-charts public API only
+ * (coordinate ↔ logical index / price).
  */
 import * as React from "react";
 import {
@@ -19,8 +23,15 @@ import { fmtDate, fmtPrice, localeTag } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import type { Levels, SimMode } from "./api";
-import { fakeClock, hhmm, swingIndex } from "./model";
-import { SimOverlayPrimitive, type OverlayData } from "./sim-overlay";
+import { fakeClock, hhmm, roundPrice, swingIndex } from "./model";
+import { SimOverlayPrimitive, type DragLine, type OverlayData } from "./sim-overlay";
+
+/** Pan / zoom options while no line is held (restored after a drag). */
+const SCROLL_ON = { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false } as const;
+const SCALE_ON = { axisPressedMouseMove: true, axisDoubleClickReset: true, mouseWheel: true, pinch: true } as const;
+/** How close (px) a pointer must be to grab a line: a finger needs more room than a mouse. */
+const GRAB_MOUSE = 8;
+const GRAB_TOUCH = 16;
 
 /** Mutable bar store of one game, shared by the game controller and the chart (no React state per bar). */
 export class BarFeed {
@@ -68,7 +79,7 @@ const perf: Perf | null = import.meta.env.DEV ? ((globalThis as { __simPerf?: Pe
 export function markGameRequested(): void { if (perf) { perf.t0 = performance.now(); perf.firstBarMs = null; } }
 
 export function SimChart({
-  feed, mode, startIdx, levels, overlay, toggles, className,
+  feed, mode, startIdx, levels, overlay, toggles, className, onDragLine, dragLabel, onPick,
 }: {
   feed: BarFeed;
   mode: SimMode;
@@ -77,14 +88,20 @@ export function SimChart({
   overlay: OverlayData;
   toggles: ChartToggles;
   className?: string;
+  /** A stop / target / planned-stop line was dragged to `price`. */
+  onDragLine?: (kind: DragLine, price: number) => void;
+  /** Label of a line while it is dragged. */
+  dragLabel?: (kind: DragLine, price: number) => string;
+  /** Click / tap on the chart: the bar under the pointer and the price at its height. */
+  onPick?: (idx: number, price: number) => void;
 }) {
   const boxRef = React.useRef<HTMLDivElement | null>(null);
   const refs = React.useRef<Refs | null>(null);
   const themeVersion = useThemeVersion();
   const { t } = simI18n.useT();
   const intraday = mode === "intraday";
-  const live = React.useRef({ startIdx, intraday, t, toggles, levels, overlay });
-  live.current = { startIdx, intraday, t, toggles, levels, overlay };
+  const live = React.useRef({ startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick });
+  live.current = { startIdx, intraday, t, toggles, levels, overlay, onDragLine, dragLabel, onPick };
 
   // Axis / crosshair labels: fake clock until the reveal, real time after.
   const tickLabel = React.useCallback((time: Time, type: number): string => {
@@ -127,8 +144,8 @@ export function SimChart({
         vertLine: { color: theme.muted(0.45), labelBackgroundColor: theme.labelBg, width: 1, style: 3 },
         horzLine: { color: theme.muted(0.45), labelBackgroundColor: theme.labelBg, width: 1, style: 3 },
       },
-      handleScale: { axisPressedMouseMove: true, axisDoubleClickReset: true, mouseWheel: true, pinch: true },
-      handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+      handleScale: SCALE_ON,
+      handleScroll: SCROLL_ON,
     });
     const candles = chart.addSeries(CandlestickSeries, {
       upColor: theme.up(), downColor: theme.down(), borderUpColor: theme.up(), borderDownColor: theme.down(), wickUpColor: theme.up(0.9), wickDownColor: theme.down(0.9),
@@ -234,6 +251,90 @@ export function SimChart({
   }, [levels, toggles, intraday, themeVersion, feed]);
 
   React.useEffect(() => { refs.current?.overlay.set(overlay); }, [overlay, themeVersion, feed]);
+
+  // ── Drag stop / target / planned stop ───────────────────────────────────
+  React.useEffect(() => {
+    const el = boxRef.current;
+    if (!el) return;
+    let held: { kind: DragLine; id: number; price: number } | null = null;
+    // A tap / click (no drag) for `onPick`: pointer events work the same for a mouse and a finger.
+    let press: { id: number; x: number; y: number; at: number } | null = null;
+    const yOf = (clientY: number) => clientY - el.getBoundingClientRect().top;
+    const xOf = (clientX: number) => clientX - el.getBoundingClientRect().left;
+    const grab = (y: number, touch: boolean): { kind: DragLine; price: number } | null => {
+      const r = refs.current;
+      if (!r || !live.current.onDragLine) return null;
+      let best: { kind: DragLine; price: number; d: number } | null = null;
+      for (const l of r.overlay.dragLines()) {
+        const ly = r.candles.priceToCoordinate(l.price);
+        if (ly == null) continue;
+        const d = Math.abs(ly - y);
+        if (d <= (touch ? GRAB_TOUCH : GRAB_MOUSE) && (!best || d < best.d)) best = { ...l, d };
+      }
+      return best;
+    };
+    const pause = (on: boolean) => refs.current?.chart.applyOptions(on ? { handleScroll: false, handleScale: false } : { handleScroll: SCROLL_ON, handleScale: SCALE_ON });
+    const onDown = (e: PointerEvent) => {
+      press = e.isPrimary ? { id: e.pointerId, x: e.clientX, y: e.clientY, at: performance.now() } : null;
+      const g = grab(yOf(e.clientY), e.pointerType !== "mouse");
+      if (!g) return;
+      held = { kind: g.kind, id: e.pointerId, price: g.price };
+      pause(true);
+      el.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    const onMove = (e: PointerEvent) => {
+      const r = refs.current;
+      if (!r) return;
+      if (!held) {
+        if (e.pointerType === "mouse") el.style.cursor = grab(yOf(e.clientY), false) ? "ns-resize" : "";
+        return;
+      }
+      if (e.pointerId !== held.id) return;
+      const p = r.candles.coordinateToPrice(yOf(e.clientY));
+      if (p == null || !(p > 0)) return;
+      held.price = roundPrice(p);
+      r.overlay.preview(held.kind, held.price, live.current.dragLabel?.(held.kind, held.price) ?? fmtPrice(held.price));
+    };
+    const onUp = (e: PointerEvent) => {
+      const p = press;
+      press = null;
+      if (!held && p && e.type === "pointerup" && e.pointerId === p.id && live.current.onPick) {
+        const r = refs.current;
+        const tap = Math.hypot(e.clientX - p.x, e.clientY - p.y) < 8 && performance.now() - p.at < 600;
+        if (r && tap) {
+          const logical = r.chart.timeScale().coordinateToLogical(xOf(e.clientX));
+          const price = r.candles.coordinateToPrice(yOf(e.clientY));
+          if (logical != null && price != null) live.current.onPick(Math.round(logical), price);
+        }
+      }
+      if (!held || e.pointerId !== held.id) return;
+      const h = held;
+      held = null;
+      pause(false);
+      if (el.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId);
+      if (e.type === "pointerup") live.current.onDragLine?.(h.kind, h.price);
+      else refs.current?.overlay.set(live.current.overlay);
+    };
+    // A finger on a line must not scroll the page (touch-action can't be decided per touch, so cancel here).
+    const onTouch = (e: TouchEvent) => {
+      const t0 = e.touches[0];
+      if (t0 && grab(yOf(t0.clientY), true)) e.preventDefault();
+    };
+    el.addEventListener("pointerdown", onDown, true);
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerup", onUp);
+    el.addEventListener("pointercancel", onUp);
+    el.addEventListener("touchstart", onTouch, { capture: true, passive: false });
+    return () => {
+      el.removeEventListener("pointerdown", onDown, true);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerup", onUp);
+      el.removeEventListener("pointercancel", onUp);
+      el.removeEventListener("touchstart", onTouch, true);
+    };
+  }, [feed, intraday, themeVersion]);
 
   return <div ref={boxRef} className={cn("relative h-full min-h-[420px] w-full", className)} />;
 }

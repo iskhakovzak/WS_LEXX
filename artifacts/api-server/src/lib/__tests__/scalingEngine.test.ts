@@ -72,6 +72,20 @@ describe("scalingEngine.computeWindowMetrics", () => {
     expect(r.net_pnl.value).toBeNull();
   });
 
+  it("risk desk basis: the drawdown now from the all-time peak and a recorded drawdown breach (once per window)", () => {
+    const base = input([trade("2026-10-12", 300, 1), trade("2026-10-13", -100, -2)]);
+    const limits = { accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000 };
+    const plain = computeWindowMetrics({ ...base, limits }, null, 20).values;
+    expect(plain.max_dd_usd.value).toBe(100);
+    expect(plain.limit_breaches.value).toBe(0);
+    const desk = computeWindowMetrics({ ...base, limits, currentDrawdownUsd: 3631, drawdownBreachDates: ["2026-10-13", "2026-10-14", "2026-10-15"] }, null, 20).values;
+    expect(desk.max_dd_usd.value).toBe(3631);
+    expect(desk.max_dd_pct.value).toBeCloseTo(181.55, 2);
+    expect(desk.limit_breaches.value).toBe(1);
+    // A breach before the window does not count.
+    expect(computeWindowMetrics({ ...base, limits, drawdownBreachDates: ["2025-01-02"] }, null, 20).values.limit_breaches.value).toBe(0);
+  });
+
   it("broker rows win over journal rows for money when any exist", () => {
     const m = computeWindowMetrics(input([
       trade("2026-10-12", 1000, 1, "win", "manual"),

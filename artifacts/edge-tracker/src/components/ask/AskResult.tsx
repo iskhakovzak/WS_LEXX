@@ -5,7 +5,8 @@
 import * as React from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowRight, ChevronDown, HelpCircle, Pin, PinOff, X } from "lucide-react";
-import { DataTable, EmptyState, Panel, Pill, SortableTh, VirtualRows, toneOf, toneText, useTableSort } from "@/components/ds";
+import { DataTable, EmptyState, Panel, Pill, SortableTh, toneOf, toneText, useTableSort } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { netPnl } from "@/lib/trade-math";

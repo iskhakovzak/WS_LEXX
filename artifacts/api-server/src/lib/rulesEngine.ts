@@ -77,8 +77,14 @@ export async function fetchRiskLimits(trader: string): Promise<RiskLimits> {
   }
 }
 
-/** All non-deleted trades of a trader with the fields every rule kind needs, ordered by day and entry time. */
-export async function fetchTrades(trader: string): Promise<TradeForRule[]> {
+/**
+ * All non-deleted trades of a trader with the fields every rule kind needs, ordered by day and entry time. `range`
+ * (NY days, inclusive, on the trade's own date) bounds the load for callers that only judge a window (lib/daily) —
+ * the same rows as filtering the full list by `date.slice(0, 10)` afterwards, without reading the whole history.
+ */
+export async function fetchTrades(trader: string, range?: { from: string; to: string }): Promise<TradeForRule[]> {
+  const params: string[] = range ? [trader, range.from, range.to] : [trader];
+  const days = (a: string) => (range ? ` AND substring(${a}.date, 1, 10) >= $2 AND substring(${a}.date, 1, 10) <= $3` : "");
   const { rows } = await pool.query<any>(
     `SELECT t.id, t.trader, t.date, t.ticker, t.side, t.hold_time, t.context_snapshot,
             ${closeDateSql()} AS close_date,
@@ -99,21 +105,21 @@ export async function fetchTrades(trader: string): Promise<TradeForRule[]> {
              FROM trade_executions
             -- only this trader's fills: the running position is per trade, so the result is identical,
             -- without a window pass over the whole executions table
-            WHERE trade_id IN (SELECT id FROM trades WHERE trader = $1 AND deleted_at IS NULL)
+            WHERE trade_id IN (SELECT tt.id FROM trades tt WHERE tt.trader = $1 AND tt.deleted_at IS NULL${days("tt")})
          ) e GROUP BY trade_id
        ) x ON x.trade_id = t.id
-      WHERE t.trader = $1 AND t.deleted_at IS NULL
+      WHERE t.trader = $1 AND t.deleted_at IS NULL${days("t")}
       ORDER BY t.date ASC, t.created_at ASC, t.id ASC`,
-    [trader],
+    params,
   );
   const execs = new Map<number, ExecRow[]>();
   try {
     const { rows: ex } = await pool.query<any>(
       `SELECT e.trade_id, e.kind, e.price, e.qty, e.executed_at
          FROM trade_executions e JOIN trades t ON t.id = e.trade_id
-        WHERE t.trader = $1 AND t.deleted_at IS NULL
+        WHERE t.trader = $1 AND t.deleted_at IS NULL${days("t")}
         ORDER BY e.trade_id, e.sort_order, e.executed_at NULLS LAST, e.id`,
-      [trader],
+      params,
     );
     for (const e of ex) {
       const id = Number(e.trade_id);

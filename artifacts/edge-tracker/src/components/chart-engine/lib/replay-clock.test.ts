@@ -88,3 +88,25 @@ describe("trade window", () => {
     expect(tradeWindow({ ...trade, date: "2026-10-12", horizon: "overnight", exitDate: "2026-10-13" }, 0, "2026-10-17")).toMatchObject({ fromKey: "2026-10-12", toKey: "2026-10-13" });
   });
 });
+
+describe("replay keys and anchors", () => {
+  it("maps the keyboard", async () => {
+    const { replayKeyAction } = await import("./replay-clock");
+    expect(replayKeyAction(" ", "Space", false)).toEqual({ kind: "toggle" });
+    expect(replayKeyAction("ArrowRight", "ArrowRight", false)).toEqual({ kind: "step", delta: 1 });
+    expect(replayKeyAction("ArrowLeft", "ArrowLeft", true)).toEqual({ kind: "step", delta: -10 });
+    expect(replayKeyAction("1", "Digit1", false)).toEqual({ kind: "speed", speed: 1 });
+    expect(replayKeyAction("6", "Digit6", false)).toEqual({ kind: "speed", speed: 60 });
+    expect(replayKeyAction("7", "Digit7", false)).toBeNull();
+    expect(replayKeyAction("Home", "Home", false)).toEqual({ kind: "open" });
+    expect(replayKeyAction("e", "KeyE", false)).toEqual({ kind: "entry" });
+    expect(replayKeyAction("x", "KeyX", false)).toEqual({ kind: "exit" });
+    expect(replayKeyAction("q", "KeyQ", false)).toBeNull();
+  });
+  it("finds the first bar of the day and the 9:30 open", async () => {
+    const { dayFloorIndex, sessionOpenIndex } = await import("./replay-clock");
+    expect(dayFloorIndex(bars, DAY)).toBe(0);
+    expect(sessionOpenIndex(bars, DAY)).toBe(idxAt(9, 30));
+    expect(sessionOpenIndex(bars, "2026-10-16")).toBe(0); // no bars of that day: the start of the data
+  });
+});

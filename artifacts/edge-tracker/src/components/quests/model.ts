@@ -1,0 +1,164 @@
+/**
+ * Quests and achievements — pure view logic over the contract (lib/quests/types): texts from keys, the dashboard strip
+ * («Квесты 1/3» / «Первые шаги 3/7»), grouping by scope, history, deadlines, achievement tiers. No React, no fetching,
+ * so the tests cover every rule with fixtures.
+ */
+import type { Params } from "@/i18n/core";
+import { questsI18n } from "@/i18n/ns/quests";
+import type { Achievement, AchievementCategory, AchievementTier, AchievementTierState, Quest, QuestScope, QuestsMe, TextItem } from "@/lib/quests/types";
+import { addDays } from "@/lib/trading-date";
+
+export const SCOPE_ORDER: readonly QuestScope[] = ["onboarding", "curator", "daily", "weekly", "monthly"];
+export const TIER_ORDER: readonly AchievementTier[] = ["bronze", "silver", "gold", "platinum"];
+export const CATEGORY_ORDER: readonly AchievementCategory[] = ["discipline", "review", "focus", "risk", "planning", "learning", "growth"];
+
+// ─── texts ──────────────────────────────────────────────────────────────────
+
+function cleanParams(p: TextItem["params"], extra: Params): Params {
+  const out: Params = { ...extra };
+  for (const [k, v] of Object.entries(p ?? {})) if (v != null) out[k] = v;
+  if (out.count == null && out.target != null) out.count = out.target;
+  return out;
+}
+
+/** A server text item in the UI language: its own key, then the template / line key, else undefined. */
+export function textOf(item: TextItem | null | undefined, fallbackKey: string | null, extra: Params = {}): string | undefined {
+  const params = cleanParams(item?.params, extra);
+  return (item?.key ? questsI18n.tryT(item.key, params) : undefined) ?? (fallbackKey ? questsI18n.tryT(fallbackKey, params) : undefined);
+}
+
+export function questTitle(q: Pick<Quest, "title" | "template" | "target">): string {
+  return textOf(q.title, `quest.${q.template}.title`, { count: q.target }) ?? questsI18n.t("quest.fallback");
+}
+
+export function questDescription(q: Pick<Quest, "description" | "template" | "target">): string {
+  return textOf(q.description, `quest.${q.template}.desc`, { count: q.target }) ?? "";
+}
+
+export function achievementTitle(a: Pick<Achievement, "title" | "id">): string {
+  return textOf(a.title, `ach.${a.id}.title`) ?? questsI18n.t("ach.fallback");
+}
+
+/** How to earn the next tier (the hint with the next target as `count`). */
+export function achievementHint(a: Pick<Achievement, "hint" | "id">, target: number): string {
+  return textOf(a.hint, `ach.${a.id}.hint`, { count: target }) ?? "";
+}
+
+export function tierLabel(t: AchievementTier): string {
+  return questsI18n.t(`achievements.tier.${t}`);
+}
+
+// ─── dates ──────────────────────────────────────────────────────────────────
+
+const dayNum = (d: string) => Math.round(Date.parse(`${d}T12:00:00Z`) / 86_400_000);
+
+/** Calendar days from `today` to the inclusive deadline (0 = ends today, negative = past). */
+export function daysLeft(endsOn: string, today: string): number {
+  return dayNum(endsOn) - dayNum(today);
+}
+
+/**
+ * Default deadline of a curator quest: Friday of this week, or of the next week when fewer than two days are left
+ * (Thu → next Fri, Fri/Sat/Sun → the coming Friday).
+ */
+export function defaultDeadline(today: string): string {
+  const wd = new Date(`${today}T12:00:00Z`).getUTCDay(); // 0 Sun … 6 Sat
+  let d = (5 - wd + 7) % 7;
+  if (d < 2 && wd !== 6 && wd !== 0) d += 7;
+  return addDays(today, d);
+}
+
+// ─── quests ─────────────────────────────────────────────────────────────────
+
+const doneDay = (q: Quest) => q.completedAt?.slice(0, 10) ?? null;
+const pct = (n: number, of: number) => Math.max(0, Math.min(100, Math.round((n / Math.max(1, of)) * 100)));
+export const questPct = (q: Pick<Quest, "progress" | "target">) => pct(q.progress, q.target);
+
+/** Today's set: today's daily quests (incl. a review quest still open or finished today) plus curator quests still running or finished today. */
+export function todayQuests(me: QuestsMe): Quest[] {
+  return me.quests.filter((q) =>
+    (q.scope === "daily" && (q.startsOn === me.today || doneDay(q) === me.today || (q.status === "active" && (q.endsOn == null || q.endsOn >= me.today))))
+    || (q.scope === "curator" && (q.status === "active" || doneDay(q) === me.today)));
+}
+
+export type StripView = {
+  /** «Первые шаги 3/7» while the onboarding chain is unfinished, else «Квесты 1/3». */
+  kind: "onboarding" | "today";
+  done: number;
+  total: number;
+  /** The next onboarding step (active, lowest id). */
+  next: Quest | null;
+  steps: Quest[];
+  today: Quest[];
+};
+
+export function stripView(me: QuestsMe | null | undefined): StripView | null {
+  if (!me) return null;
+  const today = todayQuests(me);
+  const steps = me.quests.filter((q) => q.scope === "onboarding").sort((a, b) => a.id - b.id);
+  const ob = me.summary.onboarding ?? (steps.length ? { done: steps.filter((q) => q.status === "done").length, total: steps.length } : null);
+  if (ob && ob.total > 0 && ob.done < ob.total) {
+    return { kind: "onboarding", done: ob.done, total: ob.total, next: steps.find((q) => q.status === "active") ?? null, steps, today };
+  }
+  if (today.length === 0) return null;
+  return { kind: "today", done: today.filter((q) => q.status === "done").length, total: today.length, next: null, steps: [], today };
+}
+
+/** Active quests grouped by scope (fixed order; empty scopes dropped). Curator quests: nearest deadline first. */
+export function activeByScope(quests: readonly Quest[]): { scope: QuestScope; quests: Quest[] }[] {
+  return SCOPE_ORDER.map((scope) => ({
+    scope,
+    quests: quests
+      .filter((q) => q.scope === scope && q.status === "active")
+      .sort((a, b) => (a.endsOn ?? "9999").localeCompare(b.endsOn ?? "9999") || a.id - b.id),
+  })).filter((g) => g.quests.length > 0);
+}
+
+/** Finished quests (done / failed / expired), newest first. */
+export function questHistory(quests: readonly Quest[]): Quest[] {
+  const key = (q: Quest) => doneDay(q) ?? q.endsOn ?? q.startsOn;
+  return quests.filter((q) => q.status !== "active").sort((a, b) => key(b).localeCompare(key(a)) || b.id - a.id);
+}
+
+/**
+ * Quests finished since the viewer last saw them (completed today or yesterday, id not in `seen`): the strip
+ * celebrates them once. Older completions are never celebrated.
+ */
+export function freshlyDone(quests: readonly Quest[], today: string, seen: ReadonlySet<number>): Quest[] {
+  const from = addDays(today, -1);
+  return quests.filter((q) => q.status === "done" && !seen.has(q.id) && (doneDay(q) ?? "") >= from);
+}
+
+// ─── achievements ───────────────────────────────────────────────────────────
+
+export function nextTier(a: Pick<Achievement, "tiers">): AchievementTierState | null {
+  return [...a.tiers].sort((x, y) => TIER_ORDER.indexOf(x.tier) - TIER_ORDER.indexOf(y.tier)).find((t) => !t.earnedAt) ?? null;
+}
+
+/** Earned tiers, highest first. */
+export function earnedTiers(a: Pick<Achievement, "tiers">): AchievementTierState[] {
+  return a.tiers.filter((t) => t.earnedAt).sort((x, y) => TIER_ORDER.indexOf(y.tier) - TIER_ORDER.indexOf(x.tier));
+}
+
+export const achievementPct = (a: Achievement) => {
+  const n = nextTier(a);
+  return n ? pct(a.current, n.target) : 100;
+};
+
+/** A secret line stays «???» until its first tier is earned. */
+export const isHidden = (a: Pick<Achievement, "secret" | "tier">) => a.secret && !a.tier;
+
+/** Category order; inside: earned (higher tier first), then closest to the next tier; hidden secrets last. */
+export function sortAchievements(list: readonly Achievement[]): Achievement[] {
+  const rank = (a: Achievement) => (a.tier ? TIER_ORDER.indexOf(a.tier) + 1 : 0);
+  return [...list].sort((a, b) =>
+    CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category)
+    || Number(isHidden(a)) - Number(isHidden(b))
+    || rank(b) - rank(a)
+    || achievementPct(b) - achievementPct(a)
+    || a.id.localeCompare(b.id));
+}
+
+export function categoriesOf(list: readonly Achievement[]): AchievementCategory[] {
+  return CATEGORY_ORDER.filter((c) => list.some((a) => a.category === c));
+}

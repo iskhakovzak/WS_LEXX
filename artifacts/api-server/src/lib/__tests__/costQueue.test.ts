@@ -4,6 +4,7 @@ import {
   rankQueue, rulesReason, stopBreachReason, storedVerdict, sumCost, type DayTrade,
 } from "../daily/costQueue";
 import type { FocusVerdict } from "../daily/types";
+import { __loadSettingsCache } from "../settings/registry";
 
 const tr = (id: number, net: number | null, exitAt: number | null = id): DayTrade => ({ id, ticker: "AMD", net, exitAt });
 
@@ -66,6 +67,17 @@ describe("costQueue reasons", () => {
     expect(givebackReason([tr(1, 100), tr(2, -75)])).toBeNull(); // kept 25 % of the peak
     // exit order, not id order
     expect(giveback([tr(2, -90, 30), tr(1, 150, 10)]).peak).toBe(150);
+  });
+
+  it("settings at their bounds: a 0 peak threshold never makes a plain losing day a giveback; fees never «earn»", () => {
+    __loadSettingsCache({ "daily.givebackMinPeakUsd": 0, "daily.feesShare": 0.1, "daily.feesHealthyShare": 1 });
+    try {
+      expect(givebackReason([tr(1, -40), tr(2, -30)])).toBeNull(); // never green: nothing to give back
+      expect(givebackReason([tr(1, 10), tr(2, -30)])).toMatchObject({ kind: "giveback", costNet: -30 });
+      expect(feesReason(100, 20)!.costNet).toBe(-10); // healthy share capped at the mistake share (10 %)
+    } finally {
+      __loadSettingsCache({});
+    }
   });
 
   it("rules: one cost per trade (deepest), day-level added, unknown money → null", () => {

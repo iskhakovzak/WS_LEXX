@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import { PICKABLE_MISTAKES, mistakeLabel, mistakeRule, parseMistake } from "@/components/shared/mistake-labels";
-import { contractLine, contractOverall, dayView, fmtDelta, fmtMetric, fmtTarget, planContract, tierTitle } from "../daily-model";
+import { contractLine, contractOverall, dayView, eveningRewards, fmtDelta, fmtMetric, fmtTarget, planContract, tierTitle } from "../daily-model";
 import { contractBroken, eveningBroken, focusAuto, focusNone, me, progress } from "./fixtures";
 
 afterEach(async () => {
@@ -127,5 +127,37 @@ describe("mistake dictionary covers every MistakeId", () => {
     expect(mistakeLabel("weird")).toContain("weird");
     expect(parseMistake("behavior:revenge")).toEqual({ group: "behavior", key: "revenge" });
     expect(PICKABLE_MISTAKES).toHaveLength(14);
+  });
+});
+
+describe("eveningRewards — the Telegram rewards line on the web card", () => {
+  const card = (rewards: Parameters<typeof eveningRewards>[0]["rewards"]) => ({ rewards });
+
+  it("nothing new (or an older server): no line", () => {
+    expect(eveningRewards(card(undefined))).toBeNull();
+    expect(eveningRewards(card(null))).toBeNull();
+    expect(eveningRewards(card({ streak: 4, badges: [] }))).toBeNull();
+    expect(eveningRewards(card({ streak: 4, badges: [], achievements: [], questsDone: 0 }))).toBeNull();
+  });
+
+  it("achievement tiers lead, the quests done that day follow", () => {
+    const line = eveningRewards(card({ streak: 3, badges: [{ id: "streak_1", target: 3 }], achievements: [{ line: "contract_streak", tier: "bronze", target: 3 }], questsDone: 2 }));
+    expect(line?.text).toBe("Новое достижение: Серия контракта (Бронза) · 2 квеста выполнено");
+    expect(line?.quests).toBe(2);
+  });
+
+  it("badges when no achievement tier is known; unknown lines are skipped", () => {
+    const line = eveningRewards(card({ streak: 5, badges: [{ id: "streak_1", target: 5 }], achievements: [{ line: "nope", tier: "gold", target: 1 }] }));
+    expect(line?.text).toBe("Новая награда: Контракт 5 дней подряд");
+  });
+
+  it("quests alone, with plural forms in every language", async () => {
+    expect(eveningRewards(card({ streak: 0, badges: [], questsDone: 1 }))?.text).toBe("Выполнен 1 квест");
+    expect(eveningRewards(card({ streak: 0, badges: [], questsDone: 5 }))?.text).toBe("Выполнено 5 квестов");
+    await setLang("en", { source: "init" });
+    expect(eveningRewards(card({ streak: 0, badges: [], questsDone: 2 }))?.text).toBe("2 quests done");
+    await setLang("uz", { source: "init" });
+    expect(eveningRewards(card({ streak: 0, badges: [], achievements: [{ line: "reviews_total", tier: "silver", target: 20 }], questsDone: 1 }))?.text)
+      .toBe("Yangi yutuq: Tahlil qilingan kunlar (Kumush) · 1 ta kvest bajarildi");
   });
 });

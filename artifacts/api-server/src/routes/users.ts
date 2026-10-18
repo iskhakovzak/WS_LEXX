@@ -1,5 +1,6 @@
 import { Router, type IRouter, type Request } from "express";
 import { pool } from "@workspace/db";
+import { forgetQuests } from "../lib/quests/cache";
 import { asyncHandler } from "../lib/asyncHandler";
 import { z } from "zod";
 import { hashPassword, verifyPassword, bumpTokenVersion, requireMember, isGuestUser, signToken } from "../lib/auth";
@@ -13,6 +14,7 @@ import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
 import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
 import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
+import { clearFeedStreamCache } from "../lib/feedStream";
 
 const router: IRouter = Router();
 
@@ -237,6 +239,8 @@ const SettingsPatch = z.object({
   tradingDefaults: TradingDefaultsSchema.nullable().optional(),
   /** Daily loop in Telegram (morning focus, evening card, contract alerts — lib/daily/telegramJobs). Absent = on. */
   dailyTelegram: z.boolean().optional(),
+  /** Recognition (desk feed, Telegram group, others' rankings, public titles — lib/gamification). Absent = on. */
+  shareAchievements: z.boolean().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -264,12 +268,14 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
     set.tradingDefaults = { ...body.data.tradingDefaults, updatedAt: body.data.tradingDefaults.updatedAt ?? new Date().toISOString() };
   }
   if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
+  if (body.data.shareAchievements !== undefined) set.shareAchievements = body.data.shareAchievements;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
     [JSON.stringify(set), drop, req.authUser!.id],
   );
   if (!rows[0]) throw notFound();
+  if (body.data.shareAchievements !== undefined) clearFeedStreamCache(); // recognition in the desk feed follows the switch at once
   res.json({ settings: rows[0].settings ?? {} });
 }));
 
@@ -326,6 +332,7 @@ router.post("/users/me/password", asyncHandler(async (req, res): Promise<void> =
   pwAttempts.delete(me.id);
   await pool.query(`UPDATE users SET password_hash = $1, must_change_secret = false WHERE id = $2`, [await hashPassword(newPassword), me.id]);
   await bumpTokenVersion(me.id);
+  forgetQuests(rows[0].name); // onboarding: own PIN
   const token = await signToken({ id: me.id, name: rows[0].name, role: rows[0].role });
   res.json({ success: true, token, reloginRequired: false });
 }));

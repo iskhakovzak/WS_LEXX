@@ -38,10 +38,8 @@ export const DEFAULT_PANES: PaneToggles = { volume: true, pnl: false };
 
 /** Shown in the «Слои» menu (VWAP, levels and volume also have one-click chips in the bar). */
 const MENU: readonly (keyof Overlays)[] = ["zone", "stopTarget", "vwapBands", "avwap", "orb", "profile", "excursion", "session", "events"];
-/** Overlays that would reveal the real trade — locked off in training until the reveal. */
-export const TRADE_OVERLAYS: readonly (keyof Overlays)[] = ["zone", "avwap", "excursion", "stopTarget"];
 
-const TOOL_ICON: Record<DrawingType, React.ComponentType<{ className?: string }>> = { hline: MoveHorizontal, trend: TrendingUp, rect: Square, fib: Layers };
+const TOOL_ICON: Record<DrawingType, React.ComponentType<{ className?: string }>> = { hline: MoveHorizontal, trend: TrendingUp, rect: Square };
 
 function CheckRow({ id, label, checked, onChange, disabled, note }: { id: string; label: string; checked: boolean; onChange: (v: boolean) => void; disabled?: boolean; note?: string }) {
   return (
@@ -100,7 +98,7 @@ export function HotkeysHelp({ rows, className }: { rows: HotkeyRow[]; className?
  * fullscreen. Scrolls sideways on a phone instead of wrapping into three rows.
  */
 export const ChartToolbar = React.memo(function ChartToolbar({
-  timeframe, timeframes, allTimeframes, baseSec, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget, lockTrade,
+  timeframe, timeframes, allTimeframes, baseSec, onTimeframe, mode, onMode, showModes = true, overlays, onOverlay, panes, onPane, hasPosition, hasEvents, hasStopOrTarget,
   tool, onTool, drawingsCount, onClearDrawings, onScreenshot, onFit, onFullscreen, fullscreen, fetching, hotkeys, className, view, onView,
 }: {
   timeframe: Timeframe;
@@ -121,8 +119,6 @@ export const ChartToolbar = React.memo(function ChartToolbar({
   hasPosition: boolean;
   hasEvents: boolean;
   hasStopOrTarget: boolean;
-  /** Training before the reveal: overlays that show the real trade are locked off. */
-  lockTrade: boolean;
   tool: DrawingType | null;
   onTool: (t: DrawingType | null) => void;
   drawingsCount: number;
@@ -141,7 +137,7 @@ export const ChartToolbar = React.memo(function ChartToolbar({
   const { t: tc } = chartI18n.useT();
   const uid = React.useId();
   const menu = MENU.filter((k) => (k !== "events" || hasEvents) && (k !== "stopTarget" || hasStopOrTarget));
-  const onCount = menu.filter((k) => overlays[k] && !(lockTrade && TRADE_OVERLAYS.includes(k))).length + (panes.pnl && hasPosition ? 1 : 0);
+  const onCount = menu.filter((k) => overlays[k]).length + (panes.pnl && hasPosition ? 1 : 0);
   const ToolIcon = tool ? TOOL_ICON[tool] : Pencil;
   // The drawing menu closes once a tool is picked, so the next click lands on the chart.
   const [drawOpen, setDrawOpen] = React.useState(false);
@@ -156,7 +152,7 @@ export const ChartToolbar = React.memo(function ChartToolbar({
         })}
       />
       {showModes && (
-        <Segmented size="sm" ariaLabel={tc("toolbar.mode")} value={mode} onChange={onMode} options={(["analysis", "replay", "training"] as ChartMode[]).map((m) => ({ value: m, label: tc(`mode.${m}`) }))} className="shrink-0" />
+        <Segmented size="sm" ariaLabel={tc("toolbar.mode")} value={mode} onChange={onMode} options={(["analysis", "replay"] as ChartMode[]).map((m) => ({ value: m, label: tc(`mode.${m}`) }))} className="shrink-0" />
       )}
       <span className="mx-0.5 h-5 w-px shrink-0 bg-[var(--glass-border)]" aria-hidden="true" />
       <Chip on={overlays.vwap} onClick={() => onOverlay("vwap", !overlays.vwap)} title={tc("toolbar.vwapTitle")}>VWAP</Chip>
@@ -175,12 +171,9 @@ export const ChartToolbar = React.memo(function ChartToolbar({
           </button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[min(90vw,290px)] p-2">
-          {menu.map((k) => {
-            const locked = lockTrade && TRADE_OVERLAYS.includes(k);
-            return <CheckRow key={k} id={`${uid}-ov-${k}`} label={tc(`overlay.${k}`)} checked={overlays[k] && !locked} disabled={locked} note={locked ? tc("toolbar.lockedTitle") : undefined} onChange={(v) => onOverlay(k, v)} />;
-          })}
+          {menu.map((k) => <CheckRow key={k} id={`${uid}-ov-${k}`} label={tc(`overlay.${k}`)} checked={overlays[k]} onChange={(v) => onOverlay(k, v)} />)}
           <div className="mt-1 border-t border-[var(--glass-border)] pt-1">
-            <CheckRow id={`${uid}-pane-pnl`} label={tc("toolbar.pnlPane")} checked={panes.pnl && hasPosition && !lockTrade} disabled={!hasPosition || lockTrade} onChange={(v) => onPane("pnl", v)} />
+            <CheckRow id={`${uid}-pane-pnl`} label={tc("toolbar.pnlPane")} checked={panes.pnl && hasPosition} disabled={!hasPosition} onChange={(v) => onPane("pnl", v)} />
           </div>
         </PopoverContent>
       </Popover>
@@ -217,8 +210,8 @@ export const ChartToolbar = React.memo(function ChartToolbar({
           />
         )}
         <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={tc("toolbar.fit")} title={tc("toolbar.fitTitle")} onClick={onFit}><Scan /></Button>
-        <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={tc("toolbar.screenshot")} title={tc("toolbar.screenshotTitle")} onClick={onScreenshot}><Camera /></Button>
-        <HotkeysHelp rows={hotkeys} />
+        <Button variant="ghost" size="icon" className="hidden h-8 w-8 sm:inline-flex" aria-label={tc("toolbar.screenshot")} title={tc("toolbar.screenshotTitle")} onClick={onScreenshot}><Camera /></Button>
+        <HotkeysHelp rows={hotkeys} className="hidden sm:inline-flex" />
         <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={fullscreen ? tc("toolbar.exitFullscreen") : tc("toolbar.fullscreen")} title={fullscreen ? tc("toolbar.exitFullscreenTitle") : tc("toolbar.fullscreenTitle")} onClick={onFullscreen}>
           {fullscreen ? <Minimize2 /> : <Maximize2 />}
         </Button>

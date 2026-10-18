@@ -3,9 +3,11 @@
 // the components render what these functions decide, and daily-model.test.ts pins the decisions with fixtures.
 import type { Tone } from "@/components/ds";
 import type { ContractVerdict, DailyFocus, DailyMe, EveningCard, MistakeId, TierProgress, VerdictStatus } from "@/lib/daily/types";
+import type { PlaybookToday } from "@/lib/playbook-today/types";
 import { fmtCount, fmtNum, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { dailyI18n } from "@/i18n/ns/daily";
+import { questsI18n } from "@/i18n/ns/quests";
 
 export type ContractStatus = VerdictStatus | "unset";
 
@@ -32,6 +34,16 @@ export function dayView(me: DailyMe | null | undefined): DayView | null {
   if (late && evening) return { primary: "evening", evening, pendingEvening: false, focus: me.focus };
   if (!me.focus && !evening) return null;
   return { primary: "focus", evening, pendingEvening: !!evening && !evening.reviewed, focus: me.focus };
+}
+
+/** The playbook bits of the day line: today's picks («Сегодня торгую» chips) and the untagged count (evening step). */
+export type DayPlaybook = { picks: { id: number; name: string }[]; untagged: number; date: string };
+
+export function dayPlaybook(today: PlaybookToday | null | undefined): DayPlaybook | null {
+  if (!today) return null;
+  const names = new Map(today.setups.map((s) => [s.id, s.name]));
+  const picks = today.picks.filter((id) => names.has(id)).map((id) => ({ id, name: names.get(id) ?? "" }));
+  return { picks, untagged: Math.max(0, today.untagged ?? 0), date: today.date };
 }
 
 /** Today's own contract as written in the personal plan (doc.maxLossUsd / maxTrades / ownRule). */
@@ -87,6 +99,29 @@ export function contractOverall(c: ContractVerdict | null | undefined): Contract
 }
 
 /** «+3» / «−2» / «0» — discipline points with a real minus sign. */
+/**
+ * The evening card's rewards line, as in the Telegram card (api lib/daily/telegramText rewardsLine): the achievement
+ * tiers earned that day (else the badges), with the quests done that day; or the quests alone; null when nothing new.
+ * The streak and the day's points are not repeated here — the contract row and the rewards chip already show them.
+ */
+export function eveningRewards(card: Pick<EveningCard, "rewards">): { text: string; quests: number } | null {
+  const r = card.rewards;
+  if (!r) return null;
+  const quests = r.questsDone ?? 0;
+  const names = (r.achievements ?? []).flatMap((a) => {
+    const name = questsI18n.tryT(`ach.${a.line}.title`);
+    const tier = questsI18n.tryT(`achievements.tier.${a.tier}`);
+    return name && tier ? [dailyI18n.t("evening.rewardsTier", { name, tier })] : [];
+  });
+  const head = names.length
+    ? dailyI18n.t("evening.rewardsAchievement", { names: names.join(", ") })
+    : r.badges.length
+      ? dailyI18n.t("evening.rewardsBadge", { badges: r.badges.map((b) => dailyI18n.tryT(`rewards.badge.${b.id}`, { count: b.target }) ?? b.id).join(", ") })
+      : null;
+  if (head) return { text: quests > 0 ? `${head} · ${dailyI18n.t("evening.rewardsQuestsSuffix", { count: quests })}` : head, quests };
+  return quests > 0 ? { text: dailyI18n.t("evening.rewardsQuests", { count: quests }), quests } : null;
+}
+
 export function fmtDelta(n: number): string {
   if (!Number.isFinite(n) || n === 0) return "0";
   return fmtNum(n, { signed: true, decimals: Number.isInteger(n) ? 0 : 1 });

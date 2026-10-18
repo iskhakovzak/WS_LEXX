@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { entryBracket, fakeClock, hhmm, keyAction, maxQtyFor, nextSpeed, parsePrice, positionAfter, presetQty, roundPrice, stepErrorOf, swingIndex } from "./model";
+import { breakEvenStop, entryBracket, fakeClock, halfQty, hhmm, keyAction, maxQtyFor, nextSpeed, parsePrice, positionAfter, presetQty, riskQty, roundPrice, stepErrorOf, stopFits, swingIndex } from "./model";
 
 describe("sim model — orders and bracket", () => {
   it("position after an order mirrors the server", () => {
@@ -58,5 +58,39 @@ describe("sim model — keys, speed, clock, errors", () => {
     expect(stepErrorOf({ body: { details: { reason: "buyingPower", maxQty: 279 } } })).toEqual({ reason: "buyingPower", maxQty: 279 });
     expect(stepErrorOf({ body: { details: { reason: "stop" } } })).toEqual({ reason: "stop" });
     expect(stepErrorOf(new Error("x"))).toEqual({ reason: "generic" });
+  });
+});
+
+describe("sim model — DAS-like keys, partial exits, risk sizing", () => {
+  it("maps H / E / Esc", () => {
+    expect(keyAction({ code: "KeyH", key: "р" })).toBe("half");
+    expect(keyAction({ code: "KeyE", key: "у" })).toBe("breakeven");
+    expect(keyAction({ code: "Escape", key: "Escape" })).toBe("cancel");
+  });
+
+  it("half closes half (rounded down), a single share closes it", () => {
+    expect(halfQty(100)).toBe(50);
+    expect(halfQty(-75)).toBe(37);
+    expect(halfQty(1)).toBe(1);
+    expect(halfQty(0)).toBe(0);
+  });
+
+  it("break-even stop only while in profit", () => {
+    expect(breakEvenStop(100, 10.004, 10.5)).toBe(10);
+    expect(breakEvenStop(100, 10, 9.9)).toBeNull();
+    expect(breakEvenStop(-100, 10, 9.5)).toBe(10);
+    expect(breakEvenStop(-100, 10, 10.2)).toBeNull();
+    expect(breakEvenStop(0, null, 10)).toBeNull();
+  });
+
+  it("risk size = 1R / stop distance, capped by buying power", () => {
+    expect(riskQty(50, 20, 19.5, 1000)).toBe(100);
+    expect(riskQty(50, 20, 20.25, 1000)).toBe(200);
+    expect(riskQty(50, 20, 19.99, 1000)).toBe(1000);
+    expect(riskQty(50, 20, null, 1000)).toBeNull();
+    expect(riskQty(50, 20, 20, 1000)).toBeNull();
+    expect(stopFits("buy", 20, 19.5)).toBe(true);
+    expect(stopFits("sell", 20, 19.5)).toBe(false);
+    expect(stopFits("sell", 20, 20.5)).toBe(true);
   });
 });

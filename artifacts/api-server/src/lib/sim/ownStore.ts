@@ -45,3 +45,14 @@ export async function playedOwnTrades(userId: number): Promise<Map<number, numbe
   );
   return new Map(rows.filter((r) => r.tid != null).map((r) => [Number(r.tid), Number(r.gid)]));
 }
+
+/** The viewer's unfinished own game (the start card offers «continue» instead of a new one), or null. */
+export async function activeOwnGame(userId: number): Promise<{ gameId: number; tradeId: number | null; ticker: string; date: string } | null> {
+  const { rows } = await pool.query<{ id: number; tid: number | null; ticker: string; day: string }>(
+    `SELECT id::int AS id, (params->'own'->>'tradeId')::int AS tid, ticker, day::text AS day
+       FROM sim_games WHERE user_id = $1 AND status = 'active' AND params ? 'own' ORDER BY id DESC LIMIT 1`,
+    [userId],
+  );
+  const r = rows[0];
+  return r ? { gameId: Number(r.id), tradeId: r.tid == null ? null : Number(r.tid), ticker: String(r.ticker), date: String(r.day).slice(0, 10) } : null;
+}

@@ -9,6 +9,7 @@ import { buildDeskDay, type DeskDay, type DeskTradeRow } from "./deskDay";
 import { deskAliases } from "./deskAliases";
 import { setting } from "./settings/registry";
 import { computeStructures, loadExtremes, type ExecRowLite, type TradeRowLite } from "./tradeStructureStore";
+import { CLOSE_DAY } from "./topDayStore";
 
 type Queryable = { query: (typeof pool)["query"] };
 
@@ -17,10 +18,16 @@ export const DESK_DAY_MAX_TRADES = 400;
 
 type Row = TradeRowLite & DeskTradeRow;
 
-/** Every trader with a live trade on `date` (any ticker) — the desk-wide roster the day aliases are numbered over. */
+/**
+ * Every trader with a live trade on `date` (any ticker) — the desk-wide roster the day aliases are numbered over: traded
+ * that day (the desk-day chart) or closed a trade that day (the top of the day counts by the close day), so «Трейдер 3»
+ * is one person on both pages.
+ */
 export async function deskRoster(date: string, q: Queryable = pool): Promise<string[]> {
   const { rows } = await q.query(
-    `SELECT DISTINCT trader FROM trades WHERE date = $1 AND deleted_at IS NULL AND trader IS NOT NULL AND trader <> ''`,
+    `SELECT trader FROM trades WHERE date = $1 AND deleted_at IS NULL AND trader IS NOT NULL AND trader <> ''
+     UNION
+     SELECT trader FROM trades t WHERE ${CLOSE_DAY} = $1 AND t.deleted_at IS NULL AND t.trader IS NOT NULL AND t.trader <> ''`,
     [date],
   );
   return (rows as { trader: string }[]).map((r) => r.trader);

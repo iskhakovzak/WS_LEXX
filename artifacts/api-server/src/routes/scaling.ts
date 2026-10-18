@@ -26,6 +26,7 @@ import { logger } from "../lib/logger";
 import { logAudit } from "../lib/audit";
 import { nyDate } from "../lib/tradingDate";
 import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
+import { loadRiskBasis } from "../lib/scalingRiskBasis";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
   DEFAULT_RULES, DEFAULT_TIERS, OPS, evaluateTrader, metricsMeta, renderStoredReasons, sortTiers, unitsMeta, windowStart,
@@ -298,6 +299,7 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
   const maxWindow = Math.max(20, ...rules.map((r) => r.windowDays || 20));
   // one extra week so the week-based metrics can see the full first week of the window
   const from = windowStart(today, maxWindow + 5);
+  const basisP = loadRiskBasis(trader, from, today);
   const [tradesRes, ratingsRes, violRes, errRes, usersRes, limits] = await Promise.all([
     pool.query(
       `SELECT t.trader, ${closeDateSql("t")} AS d, ${netPnlSql("t")}::float AS net, ${signedRSql("t")}::float AS r, ${resultSql("t")} AS result,
@@ -327,7 +329,6 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
     pool.query(`SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false AND ($1::text IS NULL OR name = $1)`, [trader]),
     loadLimits(trader),
   ]);
-
   const inputs = new Map<string, TraderInput>();
   const get = (name: string): TraderInput => {
     let x = inputs.get(name);
@@ -361,6 +362,7 @@ async function loadInputs(trader: string | null, today: string, rules: Rule[]): 
   for (const r of ratingsRes.rows) get(String(r.trader)).ratings.push({ week: String(r.week).slice(0, 10), discipline: num(r.discipline), overall: num(r.overall) });
   for (const r of violRes.rows) get(String(r.trader)).violationDates.push(String(r.d));
   for (const r of errRes.rows) get(String(r.trader)).violationDates.push(String(r.d));
+  for (const [name, x] of await basisP) if (inputs.has(name)) Object.assign(get(name), x); // the risk desk's drawdown basis
   return { inputs, limits };
 }
 

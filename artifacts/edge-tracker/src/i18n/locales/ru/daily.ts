@@ -40,7 +40,7 @@ export default {
       rule: "Правило",
     },
     lossActual: "{actual} / лимит {limit}",
-    tradesActual: "{actual} из {limit}",
+    tradesActual: "{actual} / лимит {limit}",
   },
   status: {
     kept: "соблюдён",
@@ -64,7 +64,7 @@ export default {
       focus_hit: "нарушение фокуса",
       best: "лучшая сделка",
     },
-    desk: "{ticker} в тот день торговали ещё {traders}",
+    desk: { one: "{ticker} в тот день торговал ещё {count} трейдер", few: "{ticker} в тот день торговали ещё {count} трейдера", many: "{ticker} в тот день торговали ещё {count} трейдеров", other: "{ticker} в тот день торговали ещё {count} трейдера" },
     deskAria: "Как деск торговал {ticker} {date}",
     reviewed: "Разобрал",
     notMistake: "Это не ошибка",
@@ -80,6 +80,13 @@ export default {
     open: "Разобрать",
     hide: "Свернуть",
     saveFailed: "Не удалось сохранить разбор",
+    /** Rewards line (as in the Telegram card): achievement tiers / badges earned that day, quests done that day. */
+    rewardsAchievement: "Новое достижение: {names}",
+    rewardsBadge: "Новая награда: {badges}",
+    rewardsTier: "{name} ({tier})",
+    rewardsQuests: { one: "Выполнен {count} квест", few: "Выполнено {count} квеста", many: "Выполнено {count} квестов", other: "Выполнено {count} квеста" },
+    rewardsQuestsSuffix: { one: "{count} квест выполнен", few: "{count} квеста выполнено", many: "{count} квестов выполнено", other: "{count} квеста выполнено" },
+    rewardsLink: "Квесты и достижения",
   },
   tier: {
     to: {
@@ -184,7 +191,8 @@ export default {
     levelTop: "высший уровень",
     window: "За {days} торговых дней: {points}",
     total: "Всего: {points}",
-    hint: "Очки дают только соблюдённый контракт и серия подряд; нарушение отнимает очки и сбивает серию. Дни без контракта серию не прерывают.",
+    hint: "Очки дают соблюдённый контракт, серия подряд и выполненные квесты — никогда не прибыль или число сделок; нарушение отнимает очки и сбивает серию. Дни без контракта серию не прерывают.",
+    allLink: "Квесты и достижения",
     earnedOn: "получена {date}",
     progress: "{progress} из {target}",
     badgesAria: "Награды за дисциплину",

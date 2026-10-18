@@ -1,5 +1,5 @@
 /**
- * WS Chart — public API.
+ * WS Chart — public API (analysis + replay; the training game lives in the «Тренажёр», components/sim).
  *
  *   import { WsChart, TradeSparkline } from "@/components/chart-engine";
  *   <WsChart trade={trade} target={target} initialTimeframe="1m" mode="analysis" height={520} />
@@ -15,7 +15,7 @@ export { readChartTheme, type ChartTheme } from "./theme";
 
 export type {
   Candle, Bar, Timeframe, ApiInterval, Session, Side, ExecutionKind, Execution, Fill, TradeLike, PositionPoint, PositionState,
-  ExcursionResult, VwapPoint, DayLevels, VolumeProfile, MarketEventLite, DrawingType, DrawingPoint, Drawing, ChartMode, TrainingResult, SparkData, TradeStructureDto,
+  ExcursionResult, VwapPoint, DayLevels, VolumeProfile, MarketEventLite, DrawingType, DrawingRole, DrawingPoint, Drawing, ChartMode, SparkData, TradeStructureDto,
 } from "./types";
 export { TIMEFRAMES, TF_SECONDS, TF_LABEL, API_INTERVAL_SECONDS } from "./types";
 
@@ -34,5 +34,6 @@ export {
   excursion, riskPerShare, grossFromFills,
 } from "./lib/position";
 export { buildGeometry, type Geometry, type GeometryInput } from "./lib/geometry";
-export { FIB_LEVELS, DRAWING_LABEL, DRAWING_POINTS, makeDrawing, isValidDrawing, serializeDrawings, parseDrawings, drawingsStorageKey, loadDrawings, saveDrawings } from "./lib/drawings";
+export { DRAWING_LABEL, DRAWING_POINTS, makeDrawing, isValidDrawing, toApiDrawing, fromApiDrawing, parseDrawingsResponse, moveDrawing, movePoint } from "./lib/drawings";
+export { baseChartOptions, priceFormatFor, candleColors, wheelNeedsModifier } from "./lib/chart-options";
 export { buildSparkData, type SparkInput } from "./lib/sparkline";

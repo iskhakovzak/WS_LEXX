@@ -184,6 +184,8 @@ export default {
     },
   },
   inbox: {
+    onlyDay: "Only {date}",
+    allDays: "All days",
     title: "Sort trades",
     descWithTrades: "Your trades without an example. The best go to Tier 1, mistakes to Tier 3 “to review”.",
     descWithWeek: "Your trades without an example · {trades} this week. The best go to Tier 1, mistakes to Tier 3 “to review”.",

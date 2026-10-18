@@ -39,6 +39,7 @@ export function valueText(key: string, def: SettingDef, v: SettingValue): string
 
 export function problemText(p: Problem): string {
   if (p.kind === "range") return t("problems.range", { min: String(p.min ?? ""), max: String(p.max ?? "") });
+  if (p.kind === "order") return t("problems.order", { after: p.after ? settingLabel(p.after) : "—", min: String(p.min ?? "") });
   return t(`problems.${p.kind}`);
 }
 

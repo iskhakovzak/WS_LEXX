@@ -3,7 +3,8 @@
  * Fixed row height so J/K keyboard navigation can scroll to any index without measuring.
  */
 import * as React from "react";
-import { DataTable, Delta, SortableTh, TermTooltip, VirtualRows, type SortDir } from "@/components/ds";
+import { DataTable, Delta, SortableTh, TermTooltip, type SortDir } from "@/components/ds";
+import { VirtualRows } from "@/components/ds/virtual";
 import { cn } from "@/lib/utils";
 import { GradeChange, Highlight, KindPill, Marks, ReactionChip, RowActions, TargetChange } from "./ActionRow";
 import type { Row } from "./rows";

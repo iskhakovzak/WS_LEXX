@@ -13,7 +13,10 @@ export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
 export type FeedKind =
   | "day_result" | "streak" | "best_day" | "best_week" | "exam" | "promotion" | "clean_streak"
-  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary";
+  | "violations" | "risk_breach" | "review" | "idea" | "playbook" | "thread" | "game_plan" | "event" | "weekly_summary"
+  /** Recognition (lib/gamification): a new achievement tier / streak / title of a trader who shares achievements.
+   * title/subtitle are server-rendered; `trader` is null when names are hidden from the viewer (alias in the title). */
+  | "recognition";
 
 export type StreamItem = {
   id: string;
