@@ -14,7 +14,8 @@ export type SettingDef =
   | (Base & { type: "number"; default: number; min: number; max: number; step?: number })
   | (Base & { type: "time"; default: string })
   | (Base & { type: "boolean"; default: boolean })
-  | (Base & { type: "select"; default: string; options: readonly string[] });
+  | (Base & { type: "select"; default: string; options: readonly string[] })
+  | (Base & { type: "text"; default: string; maxLength: number });
 export type SettingValue = number | boolean | string;
 
 export interface SettingRow {
@@ -27,14 +28,14 @@ export interface SettingRow {
   updatedAt: string | null;
 }
 
-export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate" | "order";
+export type ProblemKind = "empty" | "type" | "range" | "integer" | "time" | "option" | "unknown" | "duplicate" | "order" | "length";
 /** `order` (server: ladders must grow): `after` = the key of the step before, `min` = the smallest value that fits. */
 export interface Problem { key: string; kind: ProblemKind; min?: number; max?: number; options?: readonly string[]; after?: string }
 
 export const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 /** Groups in display order; a group the page does not know goes last, in registry order. */
-export const GROUP_ORDER = ["daily", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "curator", "privacy"] as const;
+export const GROUP_ORDER = ["daily", "discipline", "rewards", "quests", "achievements", "gamification", "trainer", "telegram", "curator", "privacy", "nav", "usage"] as const;
 
 export function groupRows(rows: readonly SettingRow[]): { group: string; rows: SettingRow[] }[] {
   const by = new Map<string, SettingRow[]>();
@@ -93,6 +94,9 @@ export function checkValue(key: string, def: SettingDef, v: SettingValue): Probl
       return typeof v === "boolean" ? null : { key, kind: "type" };
     case "select":
       return typeof v === "string" && def.options.includes(v) ? null : { key, kind: "option" };
+    case "text":
+      if (typeof v !== "string") return { key, kind: "type" };
+      return v.trim().length <= def.maxLength ? null : { key, kind: "length", max: def.maxLength };
   }
 }
 

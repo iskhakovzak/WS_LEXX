@@ -28,6 +28,7 @@ import { ratingsI18n } from "@/i18n/ns/ratings";
 import { questsI18n } from "@/i18n/ns/quests";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
+import { trackAction } from "@/lib/usage";
 
 type Tab = "leaderboard" | "curator" | "me" | "quests" | "season";
 const TABS: readonly Tab[] = ["leaderboard", "curator", "me", "quests", "season"];
@@ -115,6 +116,8 @@ export default function RatingsPage() {
     { value: "season" as const, label: <span className="inline-flex items-center gap-1.5"><CalendarClock className="hidden h-4 w-4 sm:block" aria-hidden="true" />{tg("season.tab")}</span> },
   ];
   const activeTab: Tab = (tab === "me" && !me) || (tab === "quests" && !questsOn) ? (isCurator ? "curator" : "leaderboard") : tab;
+  // Usage (internal): the quests / season tabs opened (the tab lives in local storage, not in the URL).
+  useEffect(() => { if (activeTab === "quests") trackAction("quests.tab"); else if (activeTab === "season") trackAction("season.tab"); }, [activeTab]);
 
   return (
     <Page>

@@ -120,6 +120,18 @@ export default {
     allSectionsDesc: "Navigation to every section of the app",
     searchPlaceholder: "Search trades, tickers, ideas…",
   },
+  /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «More» group. */
+  simple: {
+    progress: "Quests and achievements",
+    more: "More",
+    main: "Main",
+    showMore: "Show the other sections",
+    hideMore: "Hide the other sections",
+    opensAt: {
+      junior: "The full menu opens at the Junior level",
+      trader: "The full menu opens at the Trader level",
+    },
+  },
   header: {
     skipToContent: "Skip to content",
     toggleMenu: "Collapse or expand the menu",

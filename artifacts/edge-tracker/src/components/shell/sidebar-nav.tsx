@@ -5,7 +5,7 @@
  */
 import React from "react";
 import { Link } from "wouter";
-import { ChevronRight, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
+import { ChevronRight, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Pin } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Kbd } from "@/components/ds";
 import { Reveal } from "@/components/ds/motion";
@@ -13,8 +13,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { useSidebar } from "@/components/ui/sidebar";
 import { useAuth } from "@/contexts/auth-context";
 import { fmtUsd, fmtRate } from "@/lib/format";
-import { GO_MODE_EVENT, NAV_GROUPS, isNavActive, isWithin, rowChildren, rowLabel, type NavGroup, type NavItem } from "./nav";
-import { usePinnedNav } from "./use-nav-prefs";
+import { GO_MODE_EVENT, isNavActive, isWithin, rowChildren, rowLabel, type NavItem } from "./nav";
+import type { SimpleNav } from "./nav-model";
+import { useNavModel } from "./use-nav-model";
+import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useRiskToday, useShellBadges, type NavBadge, type RiskToday } from "./use-shell-badges";
 import { preloadRoute } from "./route-loaders";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -33,37 +35,6 @@ const DOT_CLS: Record<NavBadge["tone"], string> = {
 };
 
 const MOD_KEY = /Mac|iPhone|iPad/.test(typeof navigator !== "undefined" ? navigator.platform : "") ? "⌘" : "Ctrl";
-
-export type VisibleGroup = Omit<NavGroup, "items"> & {
-  /** Sidebar rows with only the children this viewer may open. */
-  rows: NavItem[];
-  /** Every visible page of the group, flat (rows and their children) — the phone «More» sheet. */
-  items: NavItem[];
-};
-
-/** Visible nav for the current role (staff-only pages filtered, hidden ones dropped). */
-export function useVisibleNav(): VisibleGroup[] {
-  const { isCurator } = useAuth();
-  return React.useMemo(() => visibleNav(isCurator), [isCurator]);
-}
-
-function visibleNav(isCurator: boolean): VisibleGroup[] {
-  const ok = (i: NavItem) => !i.hidden && (!i.staff || isCurator);
-  return NAV_GROUPS.map((g) => {
-    const rows = g.items.filter(ok).map((r) => {
-      if (!r.children) return r;
-      const copy = withGetters(r);
-      copy.children = r.children.filter(ok);
-      return copy;
-    });
-    return { id: g.id, get label() { return g.label; }, rows, items: rows.flatMap((r) => [r, ...(r.children ?? [])]) };
-  }).filter((g) => g.rows.length);
-}
-
-/** Copy of an item that keeps its label getters (spreading would freeze them in one language). */
-function withGetters(i: NavItem): NavItem {
-  return Object.create(Object.getPrototypeOf(i), Object.getOwnPropertyDescriptors(i));
-}
 
 /** Badge chip / dot. `onSolid` = drawn on the active (solid) pill. */
 function BadgeMark({ badge, onSolid, className }: { badge: NavBadge; onSolid?: boolean; className?: string }) {
@@ -177,7 +148,7 @@ function Row({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
     <li>
       <div className="group/row relative">
         <Link
-          href={row.href}
+          href={row.to ?? row.href}
           aria-current={self ? "page" : undefined}
           onPointerEnter={() => preloadRoute(row.href)}
           onFocus={() => preloadRoute(row.href)}
@@ -237,7 +208,7 @@ function RailLink({ item, ctx, label, icon, small, self, within }: {
       <Tooltip>
         <TooltipTrigger asChild>
           <Link
-            href={item.href}
+            href={item.to ?? item.href}
             aria-current={self ? "page" : undefined}
             onPointerEnter={() => preloadRoute(item.href)}
             onFocus={() => preloadRoute(item.href)}
@@ -282,6 +253,53 @@ function RailRow({ row, ctx }: { row: NavItem; ctx: RowCtx }) {
         <RailLink key={`sub-${k.href}`} item={k} ctx={ctx} label={k.name} icon={k.icon} small self={isNavActive(k, ctx.location)} />
       ))}
     </>
+  );
+}
+
+/**
+ * Simple menu: the «Ещё» group under the primary rows — one row that folds every other section (remembered per user;
+ * open by itself while you are inside one of its sections). A closed group still shows that something inside needs you.
+ */
+function MoreGroup({ simple, ctx, rail, open, setOpen }: { simple: SimpleNav; ctx: RowCtx; rail: boolean; open: boolean; setOpen: (v: boolean) => void }) {
+  const { t } = shellI18n.useT();
+  const within = simple.more.some((r) => isWithin(r, ctx.location));
+  const shown = open || within;
+  const badge = shown ? undefined : simple.moreItems.map((i) => ctx.badges[i.href]).find(Boolean);
+  const label = shown ? t("simple.hideMore") : t("simple.showMore");
+  const hint = t(simple.opensAt === "trader" ? "simple.opensAt.trader" : "simple.opensAt.junior");
+  const toggle = (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      disabled={within}
+      aria-expanded={shown}
+      aria-controls="nav-more"
+      aria-label={rail ? label : undefined}
+      title={label}
+      className={cn(
+        "relative outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default",
+        rail ? "mx-auto grid h-9 w-9 place-items-center rounded-full transition-[background-color,color] duration-[var(--dur-1)]" : cn(rowBase, "h-8 w-full pl-3 pr-2"),
+        rowIdle,
+      )}
+    >
+      <MoreHorizontal className="h-4 w-4 shrink-0" aria-hidden="true" />
+      {!rail && <span className="min-w-0 flex-1 truncate text-left">{t("simple.more")}</span>}
+      {badge && (rail
+        ? <span aria-hidden="true" className={cn("absolute right-0.5 top-0.5 h-2 w-2 rounded-full ring-2 ring-background", DOT_CLS[badge.tone])} />
+        : <BadgeMark badge={badge} />)}
+      {!rail && <ChevronRight className={cn("h-3.5 w-3.5 shrink-0 opacity-60 transition-transform duration-[var(--dur-2)] ease-smooth motion-reduce:transition-none", shown && "rotate-90")} aria-hidden="true" />}
+    </button>
+  );
+  return (
+    <section aria-label={t("simple.more")} className={rail ? "mt-1.5 border-t border-[var(--glass-border)] pt-1.5" : "pt-2.5"}>
+      {rail ? <Tooltip><TooltipTrigger asChild>{toggle}</TooltipTrigger><TooltipContent side="right" sideOffset={10}>{label}</TooltipContent></Tooltip> : toggle}
+      <Reveal open={shown} id="nav-more">
+        {!rail && <p className="px-3 pb-1 pt-0.5 text-2xs leading-snug text-muted-foreground">{hint}</p>}
+        <ul className={cn("space-y-0.5", rail && "pt-0.5")}>
+          {simple.more.map((row) => (rail ? <RailRow key={row.href} row={row} ctx={ctx} /> : <Row key={row.href} row={row} ctx={ctx} />))}
+        </ul>
+      </Reveal>
+    </section>
   );
 }
 
@@ -358,9 +376,10 @@ function TodayCard({ risk, rail }: { risk: RiskToday; rail: boolean }) {
 
 // Trades arrive from the broker automatically, so the sidebar offers no manual entry.
 export function SidebarNav({ location }: { location: string }) {
-  const groups = useVisibleNav();
+  const { groups, simple } = useNavModel();
   const { t } = shellI18n.useT();
   const { user } = useAuth();
+  const [moreOpen, setMoreOpen] = useMoreOpen(user?.traderName);
   const { state, isMobile, toggleSidebar } = useSidebar();
   const rail = state === "collapsed" && !isMobile;
   const pins = usePinnedNav(user?.role);
@@ -407,14 +426,21 @@ export function SidebarNav({ location }: { location: string }) {
       if (r.top < l.top || r.bottom > l.bottom) el.scrollIntoView({ block: "center" });
     });
     return () => cancelAnimationFrame(id);
-  }, [location, rail]);
+  }, [location, rail, simple]);
 
   const ctx: RowCtx = { location, badges: rowBadges, go, pins, opened, toggleOpened };
 
   return (
     <nav aria-label={t("sidebar.navLabel")} className="flex min-h-0 flex-1 flex-col">
       <div ref={listRef} className={cn("scrollbar-none min-h-0 flex-1 overflow-y-auto pb-2", rail ? "px-1.5" : "px-2")}>
-        {groups.map((g, gi) =>
+        {simple ? (
+          <>
+            <ul className="space-y-0.5 pt-1.5">
+              {simple.primary.map((row) => (rail ? <RailRow key={row.href} row={row} ctx={ctx} /> : <Row key={row.href} row={row} ctx={ctx} />))}
+            </ul>
+            <MoreGroup simple={simple} ctx={ctx} rail={rail} open={moreOpen} setOpen={setMoreOpen} />
+          </>
+        ) : groups.map((g, gi) =>
           rail ? (
             <section key={g.id} aria-label={g.label} className={cn(gi === 0 ? "pt-1.5" : "mt-1.5 border-t border-[var(--glass-border)] pt-1.5")}>
               <ul className="space-y-0.5">

@@ -99,6 +99,7 @@ export const CAPABILITIES = [
   { key: "permissions.manage", group: G.admin, adminOnly: true },
   { key: "admin.errors", group: G.admin, adminOnly: true },
   { key: "settings.manage", group: G.admin, adminOnly: true },
+  { key: "usage.read", group: G.admin, adminOnly: true },
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number]["key"];
@@ -156,6 +157,10 @@ export type PermissionsMe = {
   /** True when the desk has overrides on top of the defaults. */
   customized: boolean;
   updatedAt: string | null;
+  /** Ladder tier as the playbook locks resolve it (trainee … lead); null for staff / guests. Absent on older API builds. */
+  tier?: "trainee" | "junior" | "trader" | "senior" | "lead" | null;
+  /** Desk settings for the simple menu (components/shell/nav-model.ts). Absent on older API builds. */
+  nav?: { simpleForTrainees: boolean; simpleUntilTier: "trainee" | "junior" };
 };
 
 export type Target = { trader?: string | null };

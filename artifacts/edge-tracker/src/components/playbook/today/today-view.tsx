@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
+import { UsageMark } from "@/components/shared/usage-tracker";
 import { useAuth } from "@/contexts/auth-context";
 import { useToast } from "@/hooks/use-toast";
 import type { PlaybookToday } from "@/lib/playbook-today/types";
@@ -92,6 +93,7 @@ export function TodayView({
     if (selected) {
       body = (
         <div className="flex min-w-0 flex-col gap-3">
+          <UsageMark action="playbook.cheat" meta={{ code: selected.code }} />
           <Button variant="ghost" size="sm" className="-ml-2 self-start" onClick={() => onOpen(null)}>
             <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("card.back")}
           </Button>
@@ -141,6 +143,7 @@ export function TodayView({
   }
   return (
     <div className="flex flex-col gap-[var(--page-gap)]">
+      <UsageMark action="playbook.today" />
       {header}
       {body}
     </div>

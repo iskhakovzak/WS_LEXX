@@ -6,6 +6,7 @@
  *   time     "HH:MM", 00:00–23:59 (New York time)
  *   boolean  true / false
  *   select   one of the declared options
+ *   text     a string, trimmed, control characters removed, ≤ maxLength
  *
  * A rejected value comes back as a problem the admin page can show next to the field (SETTINGS_INVALID details).
  * Ladders (level thresholds rewards.level1..4Points, each achievement line's tier targets achievements.<line>1..n) must
@@ -14,7 +15,7 @@
  */
 import { SETTINGS, setting, type SettingDef, type SettingKey } from "./registry";
 
-export type SettingProblemKind = "unknown" | "duplicate" | "type" | "range" | "integer" | "time" | "option" | "order";
+export type SettingProblemKind = "unknown" | "duplicate" | "type" | "range" | "integer" | "time" | "option" | "order" | "length";
 export type SettingProblem = {
   key: string;
   kind: SettingProblemKind;
@@ -62,6 +63,11 @@ export function validateSetting(key: string, value: unknown): { ok: true; value:
     case "select":
       if (typeof value !== "string") return { ok: false, problem: { key, kind: "type" } };
       return def.options.includes(value) ? { ok: true, value } : { ok: false, problem: { key, kind: "option", options: def.options } };
+    case "text": {
+      if (typeof value !== "string") return { ok: false, problem: { key, kind: "type" } };
+      const v = [...value].map((ch) => (ch.charCodeAt(0) < 32 || ch.charCodeAt(0) === 127 ? " " : ch)).join("").trim();
+      return v.length <= def.maxLength ? { ok: true, value: v } : { ok: false, problem: { key, kind: "length", max: def.maxLength } };
+    }
   }
 }
 

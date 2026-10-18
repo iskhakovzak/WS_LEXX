@@ -1,11 +1,13 @@
-/** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section. */
-import { lazy, Suspense, useCallback, useEffect, useState } from "react";
+/** Phone navigation: a floating bottom tab bar (4 key sections + «More») and a bottom sheet with every section.
+ * New traders (simple menu, nav-model.ts) get Сегодня, План, Плейбук, Тренажёр; the sheet lists the rest. */
+import React, { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import { Link } from "wouter";
 import { MoreHorizontal } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ALL_NAV_ITEMS, MOBILE_TABS, isNavActive, type NavItem } from "./nav";
-import { useVisibleNav } from "./sidebar-nav";
-import { usePinnedNav } from "./use-nav-prefs";
+import { ALL_NAV_ITEMS, isNavActive, type NavItem } from "./nav";
+import { mobileTabs } from "./nav-model";
+import { useNavModel } from "./use-nav-model";
+import { useMoreOpen, usePinnedNav } from "./use-nav-prefs";
 import { useShellBadges } from "./use-shell-badges";
 import { preloadRoute } from "./route-loaders";
 import { useAuth } from "@/contexts/auth-context";
@@ -21,15 +23,18 @@ export function MobileNav({ location }: { location: string }) {
   const [sheetArmed, setSheetArmed] = useState(false);
   const arm = useCallback(() => { void loadSheet().then(() => setSheetArmed(true), () => {}); }, []);
   const { t } = shellI18n.useT();
-  const groups = useVisibleNav();
+  const { groups, simple } = useNavModel();
   const { pins } = usePinnedNav();
-  const { isCurator } = useAuth();
+  const { isCurator, user } = useAuth();
+  const [moreGroupOpen, setMoreGroupOpen] = useMoreOpen(user?.traderName);
   const badges = useShellBadges();
-  const tabs = MOBILE_TABS.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i);
+  // Simple menu (new traders): Сегодня, План, Плейбук, Тренажёр + «Ещё»; full menu: Дашборд, План, Сделки, Дневник + «Ещё».
+  const tabs = React.useMemo(() => mobileTabs(groups, simple), [groups, simple]);
+  const tabHrefs = tabs.map((i) => i.href);
   const inTabs = tabs.some((t) => isNavActive(t, location));
   // Same rule as the sidebar: a staff-only section pinned while signed in as curator never shows for a trader.
   const pinnedItems = pins.map((h) => ALL_NAV_ITEMS.find((i) => i.href === h)).filter((i): i is NavItem => !!i && !i.hidden && (!i.staff || isCurator));
-  const anyAlert = Object.entries(badges).some(([href, b]) => b && !MOBILE_TABS.includes(href));
+  const anyAlert = Object.entries(badges).some(([href, b]) => b && !tabHrefs.includes(href));
 
   useEffect(() => { setMoreOpen(false); }, [location]);
   useEffect(() => {
@@ -56,7 +61,7 @@ export function MobileNav({ location }: { location: string }) {
             return (
               <li key={t.href}>
                 <Link
-                  href={t.href}
+                  href={t.to ?? t.href}
                   aria-current={active ? "page" : undefined}
                   onPointerDown={() => preloadRoute(t.href)}
                   className={cn(
@@ -97,7 +102,11 @@ export function MobileNav({ location }: { location: string }) {
 
       {sheetArmed && (
         <Suspense fallback={null}>
-          <MobileMoreSheet open={moreOpen} onOpenChange={setMoreOpen} location={location} groups={groups} pinnedItems={pinnedItems} badges={badges} />
+          <MobileMoreSheet
+            open={moreOpen} onOpenChange={setMoreOpen} location={location} groups={groups} pinnedItems={pinnedItems} badges={badges}
+            simple={simple ? { ...simple, primary: simple.primary.filter((i) => !tabHrefs.includes(i.href)) } : null}
+            moreGroupOpen={moreGroupOpen} setMoreGroupOpen={setMoreGroupOpen}
+          />
         </Suspense>
       )}
     </>

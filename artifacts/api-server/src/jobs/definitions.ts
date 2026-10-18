@@ -261,6 +261,19 @@ export function registerAllJobs(): void {
     },
   });
 
+  // Internal usage tracking (lib/usage): events older than usage.retentionDays (default 120) are deleted every night —
+  // configuration-driven data hygiene; plans, reviews and trades are never touched.
+  registerJob({
+    name: "usage.prune",
+    cron: "55 3 * * *",
+    timeoutMs: 5 * MIN,
+    async run() {
+      const { setting } = await import("../lib/settings/registry");
+      const { pruneUsageEvents } = await import("../lib/usage/store");
+      return pruneUsageEvents(setting("usage.retentionDays"));
+    },
+  });
+
   registerJob({
     name: "candles.prune",
     cron: "50 3 * * *",

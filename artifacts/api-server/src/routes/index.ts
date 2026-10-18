@@ -84,6 +84,7 @@ import deskDayRouter from "./deskDay";
 import topRouter from "./top";
 import questsRouter from "./quests";
 import gamificationRouter from "./gamification";
+import usageRouter from "./usage";
 
 const router: IRouter = Router();
 
@@ -172,5 +173,6 @@ router.use(deskDayRouter);
 router.use(topRouter);
 router.use(questsRouter);
 router.use(gamificationRouter);
+router.use(usageRouter);
 
 export default router;

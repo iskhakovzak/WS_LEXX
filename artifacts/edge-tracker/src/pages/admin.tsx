@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { Activity, Bug, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
+import { Activity, BarChart3, Bug, Database, Flag, KeyRound, RefreshCw, ScrollText, Shield, ShieldAlert, SlidersHorizontal, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Kbd, Page, PageHeader, SectionTabs, UpdatedAgo } from "@/components/ds";
@@ -15,13 +15,16 @@ import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { DeskSettingsPanel } from "@/components/admin/DeskSettingsPanel";
+import { UsagePanel } from "@/components/admin/UsagePanel";
+import { routeTitle } from "@/components/shell/nav";
+import { usageI18n } from "@/i18n/ns/usage";
 import { RewardsEditorPanel } from "@/components/gamification/reward-editor";
 import { deskSettingsI18n } from "@/i18n/ns/deskSettings";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
 import { adminI18n } from "@/i18n/ns/admin";
 import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useTiers } from "@/components/admin/console-api";
 
-const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "settings", "data", "audit", "errors"];
+const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "settings", "usage", "data", "audit", "errors"];
 // Old tab ids (links/bookmarks) map onto the new ones.
 const LEGACY: Record<string, AdminTab> = { users: "people", traders: "people", reports: "moderation", tools: "data", permissions: "roles" };
 const TAB_KEY = "admin.tab";
@@ -40,6 +43,12 @@ function initialTab(): AdminTab {
     if (s && TABS.includes(s)) return s;
   } catch { /* ignore */ }
   return "overview";
+}
+
+/** Usage view: a route pattern ("/playbook?mode=mine") → the section name the shell shows for it (null = unknown). */
+function screenLabel(key: string): string | null {
+  const i = key.indexOf("?");
+  return routeTitle(i < 0 ? key : key.slice(0, i), i < 0 ? "" : key.slice(i));
 }
 
 function initialFilter(): TraderFilter {
@@ -75,12 +84,15 @@ function AdminConsole() {
   const showErrors = isAdmin && can("admin.errors");
   // «Настройки деска» (thresholds, Telegram times, privacy) is admin-only too (capability settings.manage).
   const showSettings = isAdmin && can("settings.manage");
+  // «Использование» (internal usage tracking for the pilot) is admin-only too (capability usage.read).
+  const showUsage = isAdmin && can("usage.read");
   const { t: tSettings } = deskSettingsI18n.useT();
-  const tabs = TABS.filter((x) => (x !== "errors" || showErrors) && (x !== "settings" || showSettings));
+  const { t: tUsage } = usageI18n.useT();
+  const tabs = TABS.filter((x) => (x !== "errors" || showErrors) && (x !== "settings" || showSettings) && (x !== "usage" || showUsage));
   const actor = user?.traderName ?? "";
   const qc = useQueryClient();
   const [tabState, setTabState] = useState<AdminTab>(initialTab);
-  const tab: AdminTab = (tabState === "errors" && !showErrors) || (tabState === "settings" && !showSettings) ? "overview" : tabState;
+  const tab: AdminTab = (tabState === "errors" && !showErrors) || (tabState === "settings" && !showSettings) || (tabState === "usage" && !showUsage) ? "overview" : tabState;
   const [traderFilter, setTraderFilterState] = useState<TraderFilter>(initialFilter);
   const [peopleView, setPeopleViewState] = useState<PeopleView>(initialView);
 
@@ -182,6 +194,7 @@ function AdminConsole() {
             { value: "moderation", label: t("page.tabs.moderation"), icon: Flag, count: openReports || undefined },
             { value: "roles", label: t("page.tabs.roles"), icon: KeyRound },
             ...(showSettings ? [{ value: "settings" as const, label: tSettings("tab"), icon: SlidersHorizontal }] : []),
+            ...(showUsage ? [{ value: "usage" as const, label: tUsage("tab"), icon: BarChart3 }] : []),
             { value: "data", label: t("page.tabs.data"), icon: Database },
             { value: "audit", label: t("page.tabs.audit"), icon: ScrollText },
             ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),
@@ -233,6 +246,7 @@ function AdminConsole() {
             <DeskSettingsPanel canManage={showSettings} />
           </div>
         )}
+        {tab === "usage" && <UsagePanel enabled={showUsage} screenLabel={screenLabel} onOpenSettings={showSettings ? () => setTab("settings") : undefined} />}
         {tab === "data" && <DataPanel actor={actor} isAdmin={isAdmin} />}
         {tab === "audit" && <AuditLog actor={actor} tierNames={tierNames} />}
         {tab === "errors" && <AppErrorsPanel />}

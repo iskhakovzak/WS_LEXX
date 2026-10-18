@@ -143,5 +143,17 @@ function Control({ id, row, value, text, label, invalid, errId, onValue }: {
           </SelectContent>
         </Select>
       );
+    case "text":
+      return (
+        <Input
+          id={id}
+          autoComplete="off"
+          maxLength={def.maxLength}
+          className={cn("h-9 w-80 max-w-full", invalid && "border-down focus-visible:ring-down")}
+          value={String(value)}
+          onChange={(e) => onValue(e.target.value)}
+          {...aria}
+        />
+      );
   }
 }

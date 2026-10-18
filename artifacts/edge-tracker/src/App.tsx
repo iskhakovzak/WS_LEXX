@@ -19,6 +19,7 @@ import { ROUTE_LOADERS, preloadCommonRoutes } from "@/components/shell/route-loa
 import { I18nProvider, i18nReady } from "@/i18n";
 import { LocaleSync } from "@/i18n/locale-sync";
 import { shellI18n } from "@/i18n/ns/shell";
+import { UsageRouteTracker } from "@/components/shared/usage-tracker";
 
 // Every section except the dashboard (the landing page) is its own chunk; see shell/route-loaders.ts.
 const L = ROUTE_LOADERS;
@@ -146,6 +147,7 @@ function Router() {
   return (
     <Layout>
       <RouteTitle />
+      <UsageRouteTracker />
       <RouteErrorBoundary resetKey={location}>
       <Suspense fallback={<PageFallback />}>
         <Switch>

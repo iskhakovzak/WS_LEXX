@@ -17,6 +17,7 @@ import { useAuth } from "@/contexts/auth-context";
 import type { PlaybookToday, TodaySetup } from "@/lib/playbook-today/types";
 import { cn } from "@/lib/utils";
 import { playbookTodayI18n } from "@/i18n/ns/playbookToday";
+import { UsageMark } from "@/components/shared/usage-tracker";
 import { PlaybookInbox } from "../home";
 import { CheatCard } from "./cheat-card";
 import { SetupSchema } from "./schema-art";
@@ -108,6 +109,7 @@ function SetupPane({ request, onClose }: { request: Extract<QuickSheetRequest, {
   const openPage = () => { onClose(); navigate(`/playbook?id=${setup.id}`); };
   return (
     <div className="flex flex-col gap-2">
+      <UsageMark action="playbook.cheat" meta={{ code: setup.code }} />
       <button type="button" onClick={() => setPicked(null)} className="inline-flex min-h-9 items-center gap-1.5 self-start rounded-lg px-1 text-sm text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <ArrowLeft className="h-4 w-4" aria-hidden="true" /> {t("sheet.back")}
       </button>

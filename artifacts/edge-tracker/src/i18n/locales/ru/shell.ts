@@ -124,6 +124,18 @@ export default {
     allSectionsDesc: "Навигация по всем разделам приложения",
     searchPlaceholder: "Поиск по сделкам, тикерам, идеям…",
   },
+  /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «Ещё» group. */
+  simple: {
+    progress: "Квесты и достижения",
+    more: "Ещё",
+    main: "Главное",
+    showMore: "Показать остальные разделы",
+    hideMore: "Скрыть остальные разделы",
+    opensAt: {
+      junior: "Полное меню откроется с уровня Джун",
+      trader: "Полное меню откроется с уровня Трейдер",
+    },
+  },
   header: {
     skipToContent: "Перейти к содержимому",
     toggleMenu: "Свернуть или развернуть меню",

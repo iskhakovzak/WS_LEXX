@@ -469,6 +469,7 @@ export default {
       permissions_manage: { label: "Change permissions", description: "Edit the desk permissions matrix." },
       admin_errors: { label: "App errors", description: "Console → Errors: server and browser errors, marking as fixed." },
       settings_manage: { label: "Desk settings", description: "Console → Desk settings: daily-loop thresholds, Telegram send times, privacy." },
+      usage_read: { label: "Site usage", description: "Console → Usage: which screens people open, the daily-loop funnel, inactive traders. Internal, never for rewards or rankings." },
     },
   },
 } satisfies Messages<typeof ru>;

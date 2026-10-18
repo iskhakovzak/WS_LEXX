@@ -28,7 +28,7 @@ import { Kbd } from "@/components/ds";
 import { useAuth } from "@/contexts/auth-context";
 import { useTheme } from "@/contexts/theme-context";
 import { ALL_NAV_ITEMS, groupOf, parentOf, rowChildren, rowLabel, type NavItem } from "@/components/shell/nav";
-import { useVisibleNav } from "@/components/shell/sidebar-nav";
+import { useVisibleNav } from "@/components/shell/use-nav-model";
 import { rankPeople, usePeopleDirectory, type DirectoryPerson } from "@/components/people/search";
 import { Highlight } from "@/components/people/highlight";
 import { shellI18n } from "@/i18n/ns/shell";

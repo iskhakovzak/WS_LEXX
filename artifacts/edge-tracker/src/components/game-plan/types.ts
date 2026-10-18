@@ -2,6 +2,7 @@ import { http, ApiError } from "@/lib/api/http";
 import { KEYS } from "@/lib/api/keys";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
+import { trackAction } from "@/lib/usage";
 import type { Tone } from "@/components/ds";
 
 export type MarketBias = "bull" | "bear" | "neutral" | "mixed";
@@ -164,7 +165,9 @@ export const gpApi = {
   markRead: (id: number) => http.post<{ readAt: string }>(`/api/game-plan/${id}/read`).catch(notDeployed),
   my: (date: string) => http.get<MyPlanResponse>("/api/game-plan/my", { query: { date } }).catch(notDeployed),
   saveMy: (date: string, body: PlanDoc & { status: PlanStatus }, signal?: AbortSignal) =>
-    http.put<TraderPlan>(`/api/game-plan/my/${encodeURIComponent(date)}`, body, { signal }).catch(notDeployed),
+    http.put<TraderPlan>(`/api/game-plan/my/${encodeURIComponent(date)}`, body, { signal })
+      .then((plan) => { trackAction("plan.save"); return plan; })
+      .catch(notDeployed),
   traders: (date: string) => http.get<TraderPlansResponse>("/api/game-plan/traders", { query: { date } }).catch(notDeployed),
   templates: (kind: "desk" | "personal") => http.get<PlanTemplate[]>("/api/game-plan/templates", { query: { kind } }).catch(notDeployed),
   saveTemplate: (body: { name: string; kind: "desk" | "personal"; shared?: boolean; doc: PlanDoc }) =>

@@ -469,6 +469,7 @@ export default {
       permissions_manage: { label: "Kirish huquqlarini oʻzgartirish", description: "Desk huquqlar matritsasini tahrirlash." },
       admin_errors: { label: "Ilova xatolari", description: "Pult → Xatolar: server va brauzer xatolari, «tuzatildi» belgisi." },
       settings_manage: { label: "Desk sozlamalari", description: "Pult → Desk sozlamalari: kunlik sikl chegaralari, Telegram yuborish vaqti, maxfiylik." },
+      usage_read: { label: "Saytdan foydalanish", description: "Pult → Foydalanish: qaysi ekranlar ochiladi, kunlik sikl voronkasi, faol boʻlmaganlar. Ichki hisob, mukofot va reyting uchun emas." },
     },
   },
 } satisfies Messages<typeof ru>;

@@ -120,6 +120,18 @@ export default {
     allSectionsDesc: "Ilovaning barcha boʻlimlari boʻyicha navigatsiya",
     searchPlaceholder: "Savdolar, tikerlar, gʻoyalar boʻyicha qidiruv…",
   },
+  /** Simple menu for new traders (components/shell/nav-model.ts): seven primary rows + one collapsed «Yana» group. */
+  simple: {
+    progress: "Kvestlar va yutuqlar",
+    more: "Yana",
+    main: "Asosiy",
+    showMore: "Qolgan boʻlimlarni koʻrsatish",
+    hideMore: "Qolgan boʻlimlarni yashirish",
+    opensAt: {
+      junior: "Toʻliq menyu Junior darajasidan ochiladi",
+      trader: "Toʻliq menyu Treyder darajasidan ochiladi",
+    },
+  },
   header: {
     skipToContent: "Asosiy kontentga oʻtish",
     toggleMenu: "Menyuni yigʻish yoki yoyish",

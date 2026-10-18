@@ -66,5 +66,6 @@ export default {
     "permissions.manage": { label: "Change permissions", description: "PUT /permissions/matrix." },
     "admin.errors": { label: "App errors", description: "Control room → Errors: server and browser errors, marking them fixed." },
     "settings.manage": { label: "Desk settings", description: "Control room → Desk settings: daily-loop thresholds, Telegram send times, privacy (GET/PUT /admin/settings)." },
+    "usage.read": { label: "Site usage", description: "Control room → Usage: which screens people open, the daily-loop funnel, inactive traders (GET /admin/usage). Internal, never for rewards or rankings." },
   },
 } satisfies CapabilityTexts;

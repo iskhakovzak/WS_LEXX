@@ -16,6 +16,8 @@ export default {
     privacy: { title: "Privacy", description: "What traders see about colleagues." },
     trainer: { title: "Trainer", description: "Simulator fills (spread, slippage, 1R), «Daily challenge» and «Find the entry»." },
     gamification: { title: "Gamification", description: "Seasons, the curator league, recognition, setup mastery and streak freezes." },
+    nav: { title: "Menu", description: "A short menu for new traders: the main sections, everything else under «More»." },
+    usage: { title: "Usage", description: "Internal tracking: which screens people open and whether they go through the daily loop. Admins only; never for rewards or rankings." },
     other: { title: "Other", description: "Settings without a group." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "days", points: "pts", minutes: "min", count: "times" },
@@ -57,6 +59,7 @@ export default {
     unknown: "This setting no longer exists — reload the page",
     duplicate: "The setting is listed twice",
     order: "Must be greater than “{after}” (at least {min})",
+    length: "Too long: at most {max} characters",
   },
   denied: "Desk settings are changed by an admin.",
   loadFailed: "Couldn't load the settings",
@@ -163,6 +166,15 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Queue carry-over", help: "How many past trading days unresolved problems stay in the curator queue." },
+    },
+    nav: {
+      simpleForTrainees: { label: "Simple menu for newcomers", help: "Traders up to the chosen tier see the 7 main sections; the rest sits in a collapsed «More» group. Curators and admins always get the full menu." },
+      simpleUntilTier: { label: "Who gets the simple menu", help: "Up to which tier, inclusive (the tier as the playbook locks see it).", options: { trainee: "Interns only", junior: "Interns and juniors" } },
+    },
+    usage: {
+      enabled: { label: "Usage tracking on", help: "The site records opened screens and daily-loop steps (no amounts, tickers or text). Off — nothing is recorded." },
+      retentionDays: { label: "Keep events for", help: "Older events are deleted at night. Plans, reviews and trades are never touched." },
+      pilotUsers: { label: "Pilot participants", help: "Names separated by commas, as in the team list (e.g. Kirill B., Egor M.). The funnel in «Usage» filters by them." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Hide names from traders", help: "On shared charts and the top of the day a trader sees “Trader N” and the amounts; off — names show, other traders’ amounts don’t." },

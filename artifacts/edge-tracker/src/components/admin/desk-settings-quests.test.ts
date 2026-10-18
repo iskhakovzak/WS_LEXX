@@ -27,3 +27,15 @@ describe("quests / achievements settings", () => {
     expect(deskSettingsI18n.tryT("groups.achievements.title")).toBe("Yutuqlar");
   });
 });
+
+describe("simple-menu settings (group nav)", () => {
+  it("comes last, with labels and options in RU and UZ", async () => {
+    const g = groupRows([row("nav.simpleForTrainees", "nav"), row("privacy.hideNamesFromTraders", "privacy")]);
+    expect(g.map((x) => x.group)).toEqual(["privacy", "nav"]);
+    expect(settingLabel("nav.simpleForTrainees")).toBe("Простое меню для новичков");
+    expect(deskSettingsI18n.tryT("settings.nav.simpleUntilTier.options.junior")).toBe("Стажёры и джуны");
+    await setLang("uz", { source: "init" });
+    expect(deskSettingsI18n.tryT("groups.nav.title")).toBe("Menyu");
+    expect(settingLabel("nav.simpleUntilTier")).toBe("Oddiy menyuni kimlar oladi");
+  });
+});

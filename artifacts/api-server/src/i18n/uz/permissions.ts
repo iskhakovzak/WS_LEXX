@@ -64,5 +64,6 @@ export default {
     "permissions.manage": { label: "Huquqlarni oʻzgartirish", description: "PUT /permissions/matrix." },
     "admin.errors": { label: "Ilova xatolari", description: "Boshqaruv → Xatolar: server va brauzer xatolari, «tuzatildi» belgisi." },
     "settings.manage": { label: "Desk sozlamalari", description: "Boshqaruv → Desk sozlamalari: kunlik sikl chegaralari, Telegram yuborish vaqti, maxfiylik (GET/PUT /admin/settings)." },
+    "usage.read": { label: "Saytdan foydalanish", description: "Boshqaruv → Foydalanish: qaysi ekranlar ochiladi, kunlik sikl voronkasi, faol boʻlmaganlar (GET /admin/usage). Ichki hisob, mukofot va reyting uchun emas." },
   },
 } satisfies CapabilityTexts;

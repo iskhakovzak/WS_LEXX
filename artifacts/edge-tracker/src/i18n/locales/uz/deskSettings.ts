@@ -16,6 +16,8 @@ export default {
     privacy: { title: "Maxfiylik", description: "Treyderlar hamkasblari haqida nimani koʻradi." },
     trainer: { title: "Trenajyor", description: "Simulyatorda ijro (spred, sirpanish, 1R), «Kun vazifasi» va «Kirishni top»." },
     gamification: { title: "Geymifikatsiya", description: "Mavsumlar, kuratorlar ligasi, eʼtirof, setap mahorati va seriyani muzlatish." },
+    nav: { title: "Menyu", description: "Yangi treyderlar uchun qisqa menyu: asosiy boʻlimlar, qolganlari «Yana» guruhida." },
+    usage: { title: "Foydalanish", description: "Ichki hisob: qaysi ekranlar ochiladi va kunlik sikl bajariladimi. Faqat adminlar koʻradi; mukofot va reyting uchun emas." },
     other: { title: "Boshqa", description: "Guruhsiz sozlamalar." },
   },
   units: { usd: "$", pct: "%", ratio: "%", days: "kun", points: "ochko", minutes: "daq", count: "marta" },
@@ -57,6 +59,7 @@ export default {
     unknown: "Bunday sozlama endi yoʻq — sahifani yangilang",
     duplicate: "Sozlama ikki marta koʻrsatilgan",
     order: "«{after}» dan katta boʻlishi kerak (kamida {min})",
+    length: "Juda uzun: {max} belgidan oshmasin",
   },
   denied: "Desk sozlamalarini administrator oʻzgartiradi.",
   loadFailed: "Sozlamalarni yuklab boʻlmadi",
@@ -163,6 +166,15 @@ export default {
     },
     curator: {
       queueCarryDays: { label: "Navbat dumi", help: "Hal qilinmagan muammolar kurator navbatida oʻtgan nechta savdo kuni qoladi." },
+    },
+    nav: {
+      simpleForTrainees: { label: "Yangilar uchun oddiy menyu", help: "Tanlangan darajagacha boʻlgan treyderlar 7 ta asosiy boʻlimni koʻradi, qolganlari yigʻilgan «Yana» guruhida. Kuratorlar va adminlar doim toʻliq menyuni koʻradi." },
+      simpleUntilTier: { label: "Oddiy menyuni kimlar oladi", help: "Qaysi darajagacha, shu jumladan (daraja — pleybuk qulflaridagidek).", options: { trainee: "Faqat stajyorlar", junior: "Stajyorlar va juniorlar" } },
+    },
+    usage: {
+      enabled: { label: "Foydalanish hisobi yoqilgan", help: "Sayt ochilgan ekranlar va kunlik sikl qadamlarini qayd etadi (summalar, tikerlar va matnsiz). Oʻchirilgan — hech narsa yozilmaydi." },
+      retentionDays: { label: "Hodisalarni saqlash", help: "Eskilari tunda oʻchiriladi. Rejalar, tahlillar va bitimlarga tegilmaydi." },
+      pilotUsers: { label: "Pilot ishtirokchilari", help: "Ismlar vergul bilan, jamoa roʻyxatidagidek (masalan: Kirill B., Egor M.). «Foydalanish»dagi voronka shular boʻyicha saralanadi." },
     },
     privacy: {
       hideNamesFromTraders: { label: "Ismlarni treyderlardan yashirish", help: "Umumiy grafiklar va kun topida treyder «Treyder N» va summalarni koʻradi; oʻchirilsa — ismlar koʻrinadi, boshqalarning summalari emas." },

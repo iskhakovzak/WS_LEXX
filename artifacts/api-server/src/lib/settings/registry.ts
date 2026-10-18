@@ -8,7 +8,7 @@
  * Adding a setting: append to SETTINGS (keep keys stable — they are stored in app_settings), read it with setting().
  */
 
-export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer";
+export type SettingGroup = "daily" | "discipline" | "rewards" | "quests" | "achievements" | "telegram" | "curator" | "privacy" | "gamification" | "trainer" | "nav" | "usage";
 export type SettingUnit = "usd" | "pct" | "days" | "points" | "minutes" | "count" | "ratio";
 
 type Base = { group: SettingGroup; unit?: SettingUnit };
@@ -16,7 +16,9 @@ export type NumberDef = Base & { type: "number"; default: number; min: number; m
 export type TimeDef = Base & { type: "time"; default: string /* "HH:MM", New York time */ };
 export type BoolDef = Base & { type: "boolean"; default: boolean };
 export type SelectDef = Base & { type: "select"; default: string; options: readonly string[] };
-export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef;
+/** Free text (one line, trimmed, ≤ maxLength): e.g. a comma-separated list of stored names. */
+export type TextDef = Base & { type: "text"; default: string; maxLength: number };
+export type SettingDef = NumberDef | TimeDef | BoolDef | SelectDef | TextDef;
 
 export const SETTINGS = {
   // Daily focus (lib/daily/detectors + engine)
@@ -144,6 +146,11 @@ export const SETTINGS = {
   "gamification.mastery4": { group: "gamification", type: "number", default: 50, min: 1, max: 1000, step: 1, unit: "points" },
   "gamification.masteryDrillsPerPoint": { group: "gamification", type: "number", default: 2, min: 1, max: 20, step: 1, unit: "count" },
 
+  // Simple menu for new traders (web shell, GET /api/permissions/me → nav): a short primary menu + one «Ещё» group for
+  // traders up to `simpleUntilTier` (tier as for the playbook locks, lib/playbookToday/tier); staff always get the full menu
+  "nav.simpleForTrainees": { group: "nav", type: "boolean", default: true },
+  "nav.simpleUntilTier": { group: "nav", type: "select", default: "trainee", options: ["trainee", "junior"] },
+
   // Privacy of cross-trader views (desk-day, top of the day)
   "privacy.hideNamesFromTraders": { group: "privacy", type: "boolean", default: true },
 
@@ -175,6 +182,12 @@ export const SETTINGS = {
   "trainer.drillPassScore": { group: "trainer", type: "number", default: 70, min: 1, max: 100, step: 1, unit: "points" },
   "trainer.drillMinExamples": { group: "trainer", type: "number", default: 8, min: 0, max: 100, step: 1, unit: "count" },
   "trainer.drillMaxPerSetup": { group: "trainer", type: "number", default: 40, min: 1, max: 500, step: 1, unit: "count" },
+
+  // Internal usage tracking (lib/usage, admin console → «Использование»; staff-only, never for rewards or rankings):
+  // the switch, how long events are kept (nightly job usage.prune) and the pilot participants the funnel filters by
+  "usage.enabled": { group: "usage", type: "boolean", default: true },
+  "usage.retentionDays": { group: "usage", type: "number", default: 120, min: 14, max: 730, step: 1, unit: "days" },
+  "usage.pilotUsers": { group: "usage", type: "text", default: "", maxLength: 2000 },
 } as const satisfies Record<string, SettingDef>;
 
 export type SettingKey = keyof typeof SETTINGS;

@@ -7,13 +7,13 @@
  * prepares on Sunday for Monday, and the picks land in Monday's plan.
  */
 import { pool } from "@workspace/db";
-import { pickStage } from "../discussionAudience";
 import { forgetQuests } from "../quests/cache";
 import { setting } from "../settings/registry";
 import { addDays, isWeekend, nyDate, nyMinutes } from "../tradingDate";
 import { closedSql, closeDateSql, decidedSql, resultSql, signedRSql } from "../tradeMath";
 import { spaceSql } from "../playbookAccess";
 import { buildToday, type EdgeRow, type SetupRow } from "./build";
+import { forgetTier, loadStaffTier } from "./tier";
 import { tagDays, untaggedOf, weekdaysBack } from "./untagged";
 import type { PlaybookToday } from "./types";
 
@@ -81,28 +81,17 @@ async function loadEdges(trader: string): Promise<EdgeRow[]> {
   }));
 }
 
-/** Role, academy stage (own → enrollment → scaling tier: routes/academy-path loadStageInfo order) and the risk limit. */
+/** Role and tier (./tier.ts: own stage → enrollment → scaling tier) and the risk limit. */
 async function loadPerson(trader: string): Promise<{ staff: boolean; tier: string | null; maxRisk: number | null }> {
-  const [user, own, enr, lim] = await Promise.all([
-    pool.query<{ role: string }>(`SELECT role FROM users WHERE name = $1 LIMIT 1`, [trader]).catch(() => none<{ role: string }>()),
-    pool.query<{ stage: string }>(`SELECT stage FROM academy_trader_stage WHERE user_name = $1`, [trader]).catch(() => none<{ stage: string }>()),
-    pool.query<{ stage: string }>(
-      `SELECT stage FROM academy_enrollments WHERE user_name = $1 AND archived_at IS NULL AND COALESCE(status, 'active') IN ('active', 'paused')
-        ORDER BY joined_on DESC NULLS LAST, id DESC LIMIT 1`,
+  const [who, lim] = await Promise.all([
+    loadStaffTier(trader),
+    pool.query<{ max_risk: number | null }>(
+      `SELECT max_risk_per_trade::float8 AS max_risk FROM trader_risk_limits WHERE trader = $1`,
       [trader],
-    ).catch(() => none<{ stage: string }>()),
-    pool.query<{ tier: string | null; max_risk: number | null }>(
-      `SELECT tier, max_risk_per_trade::float8 AS max_risk FROM trader_risk_limits WHERE trader = $1`,
-      [trader],
-    ).catch(() => none<{ tier: string | null; max_risk: number | null }>()),
+    ).catch(() => none<{ max_risk: number | null }>()),
   ]);
-  const role = user.rows[0]?.role ?? null;
   const maxRisk = lim.rows[0]?.max_risk;
-  return {
-    staff: role === "curator" || role === "admin",
-    tier: pickStage(own.rows[0]?.stage, enr.rows[0]?.stage, lim.rows[0]?.tier),
-    maxRisk: maxRisk != null && Number(maxRisk) > 0 ? Number(maxRisk) : null,
-  };
+  return { ...who, maxRisk: maxRisk != null && Number(maxRisk) > 0 ? Number(maxRisk) : null };
 }
 
 async function loadPlanDoc(trader: string, date: string): Promise<Record<string, unknown> | null> {
@@ -150,6 +139,7 @@ export function rememberPicks(trader: string, date: string, picks: number[]): vo
 
 /** Drop the trader's cached answers (a link / tier change elsewhere). */
 export function forgetToday(trader: string): void {
+  forgetTier(trader);
   for (const k of cache.keys()) if (k.startsWith(`${trader}|`)) cache.delete(k);
 }
 

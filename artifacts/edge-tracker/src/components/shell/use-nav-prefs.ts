@@ -91,3 +91,57 @@ export function writeSidebarOpen(open: boolean) {
     localStorage.setItem(RAIL_KEY, open ? "0" : "1");
   } catch {}
 }
+
+const MORE_KEY = "ws_lexx_nav_more:";
+const SIMPLE_KEY = "ws_lexx_nav_simple:";
+
+/** The simple menu's «Ещё» group: open / closed, remembered per user (default closed), in sync across sidebar and sheet. */
+export function useMoreOpen(user: string | null | undefined): [boolean, (open: boolean) => void] {
+  const key = MORE_KEY + (user ?? "");
+  const read = useCallback(() => {
+    try {
+      return localStorage.getItem(key) === "1";
+    } catch {
+      return false;
+    }
+  }, [key]);
+  const [open, setOpen] = useState(read);
+  useEffect(() => {
+    setOpen(read());
+    const onSync = (e: Event) => { if ((e as CustomEvent<string>).detail === key) setOpen(read()); };
+    const onStorage = (e: StorageEvent) => { if (e.key === key) setOpen(read()); };
+    window.addEventListener(SYNC_EVENT, onSync);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      window.removeEventListener(SYNC_EVENT, onSync);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [key, read]);
+  const write = useCallback(
+    (v: boolean) => {
+      try {
+        localStorage.setItem(key, v ? "1" : "0");
+      } catch {}
+      setOpen(v);
+      window.dispatchEvent(new CustomEvent(SYNC_EVENT, { detail: key }));
+    },
+    [key],
+  );
+  return [open, write];
+}
+
+/** Last menu mode seen for this user (simple / full), so a reload does not flash the other menu before the API answers. */
+export function readSimpleMode(user: string | null | undefined): boolean | null {
+  try {
+    const v = localStorage.getItem(SIMPLE_KEY + (user ?? ""));
+    return v === "1" ? true : v === "0" ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+export function writeSimpleMode(user: string | null | undefined, simple: boolean) {
+  try {
+    localStorage.setItem(SIMPLE_KEY + (user ?? ""), simple ? "1" : "0");
+  } catch {}
+}

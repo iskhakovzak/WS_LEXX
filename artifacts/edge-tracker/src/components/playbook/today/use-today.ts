@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { KEYS } from "@/lib/api/keys";
+import { trackAction } from "@/lib/usage";
 import { playbookTodayQuery } from "@/lib/api/queries";
 import type { PlaybookToday, TodayPicksBody } from "@/lib/playbook-today/types";
 import { nyNow, nyOverride } from "./today-model";
@@ -41,6 +42,7 @@ export function useSavePicks(date: string | null) {
       for (const [key, data] of ctx?.prev ?? []) qc.setQueryData(key, data);
     },
     onSuccess: (picks, sent) => {
+      trackAction("playbook.picks");
       const saved = Array.isArray(picks) ? picks : sent;
       qc.setQueriesData<PlaybookToday | null>({ queryKey: ["playbook-today"] }, (prev) => (prev ? { ...prev, picks: saved } : prev));
       if (date) void qc.invalidateQueries({ queryKey: KEYS.myPlan(date) });

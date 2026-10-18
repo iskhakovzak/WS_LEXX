@@ -46,6 +46,8 @@ export type NavItem = {
   also?: string[];
   /** Two-key shortcut after "G" (e.g. G then D). */
   goKey?: string;
+  /** Link target when it differs from `href` (a tab of the page, e.g. «Мой прогресс» → /ratings?tab=quests). */
+  to?: string;
   /** Pages one level below this sidebar row (same job, own routes). */
   children?: NavItem[];
   /** The row is named for its job («Инструменты») instead of its first page; that page is then listed as a child too. */
@@ -207,9 +209,6 @@ export function rowChildren(item: NavItem): NavItem[] {
   const kids = item.children ?? [];
   return item.hubLabel && kids.length ? [item, ...kids] : kids;
 }
-
-/** Mobile bottom tab bar (the 5th slot is «More»). */
-export const MOBILE_TABS = ["/", "/game-plan", "/trades", "/journal"];
 
 export function isNavActive(item: NavItem, location: string): boolean {
   const match = (p: string) => (p === "/" ? location === "/" : location === p || location.startsWith(p + "/"));

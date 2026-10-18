@@ -104,6 +104,7 @@ export const CAPABILITIES = [
   { key: "permissions.manage", group: "Администрирование", label: "Менять права доступа", adminOnly: true, description: "PUT /permissions/matrix." },
   { key: "admin.errors", group: "Администрирование", label: "Ошибки приложения", adminOnly: true, description: "Пульт → Ошибки: ошибки сервера и браузера, пометка «исправлено»." },
   { key: "settings.manage", group: "Администрирование", label: "Настройки деска", adminOnly: true, description: "Пульт → Настройки деска: пороги дневного цикла, время Telegram-рассылок, приватность (GET/PUT /admin/settings)." },
+  { key: "usage.read", group: "Администрирование", label: "Использование сайта", adminOnly: true, description: "Пульт → Использование: какие экраны открывают, воронка дневного цикла, неактивные (GET /admin/usage). Внутренний учёт, не для наград и рейтингов." },
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number]["key"];

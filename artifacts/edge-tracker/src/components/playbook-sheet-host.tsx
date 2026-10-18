@@ -8,6 +8,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { PLAYBOOK_SHEET_EVENT, type PlaybookSheetRequest } from "@/components/shared/playbook-sheet";
 import type { QuickSheetRequest } from "@/components/playbook/today/quick-sheet";
+import { trackAction } from "@/lib/usage";
 
 const QuickSheet = lazy(() => import("@/components/playbook/today/quick-sheet"));
 
@@ -38,6 +39,9 @@ export function PlaybookSheetHost() {
     window.addEventListener(PLAYBOOK_SHEET_EVENT, onOpen);
     return () => window.removeEventListener(PLAYBOOK_SHEET_EVENT, onOpen);
   }, []);
+  // Usage: the tagging sheet opened (from the evening card, the playbook link or the quest link).
+  const tagN = request?.kind === "tag" ? request.n : null;
+  useEffect(() => { if (tagN != null) trackAction("playbook.tagging"); }, [tagN]);
   if (!request) return null;
   return (
     <Suspense fallback={null}>

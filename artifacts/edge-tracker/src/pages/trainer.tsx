@@ -23,6 +23,7 @@ import { RecentGames, WeeklyBoard } from "@/components/sim/start-screen";
 import { TrainerCards, TrainerStatsLine, type HomeActions } from "@/components/sim/trainer-home";
 import { FindEntryRun } from "@/components/sim/find-entry-run";
 import { trainerHomeQuery } from "@/components/sim/trainer-api";
+import { trackAction } from "@/lib/usage";
 
 /** `?drill=` value → a run: a setup id, or null = all setups. Undefined = no run requested. */
 function drillParam(search: string): number | null | undefined {
@@ -81,9 +82,11 @@ export default function TrainerPage() {
       void open(id);
     } else if (tradeId > 0 && opened.current !== `own:${tradeId}`) {
       opened.current = `own:${tradeId}`;
+      trackAction("trainer.start", { mode: "my_days" });
       void startOwn("trade", tradeId);
     } else if (drill !== undefined && opened.current !== `d:${drill}`) {
       opened.current = `d:${drill}`;
+      trackAction("trainer.start", { mode: "find_entry" });
       setRun({ setupId: drill, key: Date.now() });
     }
   }, [search, guest, gameId, open, startOwn]);
@@ -103,12 +106,12 @@ export default function TrainerPage() {
   const actions: HomeActions = {
     starting,
     active: active.data ?? null,
-    onDaily: () => void startDaily(),
+    onDaily: () => { trackAction("trainer.start", { mode: "daily" }); void startDaily(); },
     onOpenGame: (id) => { if (active.data?.id === id) load(active.data); else void open(id); },
     onResume: () => { if (active.data) load(active.data); },
-    onMyDays: (pick) => void startOwn(pick, undefined, "1m"),
-    onFindEntry: (setupId) => { setRun({ setupId, key: Date.now() }); setUrlParams({ drill: setupId != null ? String(setupId) : "all" }); },
-    onFree: (mode: SimMode, level: Difficulty, tf: IntradayTf | null) => void start(mode, level, tf),
+    onMyDays: (pick) => { trackAction("trainer.start", { mode: "my_days" }); void startOwn(pick, undefined, "1m"); },
+    onFindEntry: (setupId) => { trackAction("trainer.start", { mode: "find_entry" }); setRun({ setupId, key: Date.now() }); setUrlParams({ drill: setupId != null ? String(setupId) : "all" }); },
+    onFree: (mode: SimMode, level: Difficulty, tf: IntradayTf | null) => { trackAction("trainer.start", { mode: "free" }); void start(mode, level, tf); },
   };
 
   const ticket: Ticket = { qty, setQty, speed, setSpeed, autoStop, setAutoStop, autoTarget, setAutoTarget, riskSize, setRiskSize, planStop, setPlanStop };
