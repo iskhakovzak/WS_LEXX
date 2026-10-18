@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
+import { ReplayOwnDayButton } from "@/components/shared/replay-own-day";
 import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { DateHolidayBadge } from "@/components/holiday-badge";
@@ -31,6 +32,7 @@ import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { commonI18n } from "@/i18n/ns/common";
 import { personName } from "@/i18n";
+import { DeskDayLink } from "@/components/shared/desk-day-link";
 
 
 type TradeTiming = {
@@ -237,6 +239,8 @@ export function TradeDetailSheet(p: Props) {
   // Another trader's trade opened from the playbook: $ come back null, and the owner-only blocks (quality, AI
   // review, checklist, voice notes, curator reviews) would only answer 403 — they are not shown at all.
   const redacted = t ? isRedactedTrade(t) : false;
+  // The viewer's own losing intraday trade: «Переиграть этот день» in the simulator (the button checks the bars).
+  const ownLoss = !!t && !redacted && !!p.traderName && t.trader === p.traderName && (netPnl(t) ?? 0) < 0 && horizonOf(t) === "intraday";
   React.useEffect(() => { if (redacted && tab === "ai") setTab("overview"); }, [redacted, tab]);
 
   return (
@@ -273,6 +277,7 @@ export function TradeDetailSheet(p: Props) {
                     <Link href={links.dayReport(dayOf(t), t.trader ?? undefined)} className="inline-flex items-center gap-1 text-primary hover:underline">
                       · <FileText className="h-3.5 w-3.5" aria-hidden="true" /> {tt("sheet.dayReport")}
                     </Link>
+                    <DeskDayLink ticker={t.ticker} date={t.date} trader={t.trader} lead />
                   </SheetDescription>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -288,11 +293,12 @@ export function TradeDetailSheet(p: Props) {
               </div>
               <KpiRow trade={t} holdSeconds={timing?.holdSeconds ?? null} />
               {redacted && <RedactedHint />}
-              {p.canEdit && (
+              {(p.canEdit || ownLoss) && (
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> {tc("actions.edit")}</Button>}
-                  <AddToPlaybookButton payload={tradePlaybookPayload(t)} />
-                  {canDelete && (
+                  {p.canEdit && canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> {tc("actions.edit")}</Button>}
+                  {p.canEdit && <AddToPlaybookButton payload={tradePlaybookPayload(t)} />}
+                  <ReplayOwnDayButton tradeId={t.id} own={ownLoss} />
+                  {p.canEdit && canDelete && (
                     <Button variant="ghost" size="sm" className="ml-auto gap-1.5 text-muted-foreground hover:text-down" onClick={() => p.onDelete(t)}>
                       <Trash2 className="h-3.5 w-3.5" /> {tc("actions.delete")}
                     </Button>

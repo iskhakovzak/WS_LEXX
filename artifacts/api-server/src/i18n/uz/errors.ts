@@ -314,4 +314,5 @@ export default {
   DESK_PLAN_MEDIA_DELETE_STAFF_ONLY: "Desk rejasi skrinshotlarini faqat kurator oʻchira oladi",
   FEED_GENERATE_STAFF_ONLY: "Lentani faqat kurator yarata oladi",
   PERMISSIONS_CELLS_REJECTED: "Huquqlardagi baʼzi oʻzgarishlarni qoʻllab boʻlmaydi: admin va mehmon qatorlari yopiq, «faqat admin uchun» huquqlar admindan pastga berilmaydi",
+  DAILY_NOTHING_TO_DISPUTE: "Bu kunda fokus buzilmagan — eʼtiroz bildiradigan narsa yoʻq",
 } satisfies Messages<typeof ru>;

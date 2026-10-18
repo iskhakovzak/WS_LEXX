@@ -11,6 +11,7 @@ import { Switch } from "@/components/ui/switch";
 import { Kbd, Segmented, toneOf, toneText } from "@/components/ds";
 import { fmtCount, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { simI18n } from "@/i18n/ns/simulator";
 import type { PublicState } from "./api";
 import { SPEEDS, parsePrice, presetQty, roundPrice, type SizePreset, type Speed } from "./model";
@@ -159,7 +160,7 @@ export function BracketBox({
           </div>
         </div>
       )}
-      <p className="text-2xs text-muted-foreground">{t("hud.riskUnit", { value: fmtUsd(ru, { decimals: ru < 1 ? 4 : 2 }) })}</p>
+      <p className="text-2xs text-muted-foreground">{game.meta.own && game.meta.own.riskSource !== "atr" ? simOwnI18n.t("hudRiskUnit", { value: fmtUsd(ru, { decimals: ru < 1 ? 4 : 2 }) }) : t("hud.riskUnit", { value: fmtUsd(ru, { decimals: ru < 1 ? 4 : 2 }) })}</p>
     </div>
   );
 }

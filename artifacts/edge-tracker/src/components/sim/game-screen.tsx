@@ -1,22 +1,27 @@
 /**
  * The game: chart (left, takes the space) + one side column (HUD while playing, the verdict after). Focus mode —
  * nothing else on the page competes with the chart (UX §4a.2). Keys work page-wide except while typing in a field.
- * After the reveal the details (trades, mistakes, the desk) open under the chart.
+ * After the reveal the details (trades, mistakes, the desk) open under the chart. Own mode («Мои худшие дни») swaps
+ * the «hidden» badge for «your trade · ticker · date», adds the decision tile on top of the HUD and the real-entry
+ * marker on the chart, and shows the then-vs-now verdict (own-result.tsx).
  */
 import * as React from "react";
-import { EyeOff, Flag, LogOut } from "lucide-react";
+import { EyeOff, Flag, LogOut, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { FilterChip, Pill, usePersistentState } from "@/components/ds";
-import { fmtCount, fmtPrice, fmtUsd } from "@/lib/format";
+import { fmtCount, fmtDate, fmtPrice, fmtUsd } from "@/lib/format";
+import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
+import { simOwnI18n } from "@/i18n/ns/simOwn";
 import { keyAction, nextSpeed, type Speed } from "./model";
 import { SimChart, type ChartToggles } from "./sim-chart";
 import { EMPTY_OVERLAY, type OverlayData, type OverlayDeskFill } from "./sim-overlay";
 import { BracketBox, KeysHint, OrderPad, PlayBar, PositionCard } from "./hud";
 import { LevelPill, ResultDetails, ResultSummary } from "./result";
+import { OwnRealTrade, OwnResultSummary } from "./own-result";
 import type { GameView } from "./use-sim-game";
 import type { OrderKind } from "./api";
 
@@ -117,8 +122,11 @@ export function GameScreen({
         spans.push({ from: tr.openIdx, to: tr.closeIdx ?? game.cursor, text: `${t("chart.mistake", { n: tr.n })} · ${t(`result.mistakeShort.${m.kind}`)}` });
       }
     }
-    if (!s.fills.length && !desk.length && s.pos === 0 && !spans.length) return { ...EMPTY_OVERLAY, cursor: game.cursor };
+    const own = game.meta.own;
+    const marker = own && game.cursor >= own.decisionIdx ? { idx: own.decisionIdx, text: simOwnI18n.t("chartEntry") } : null;
+    if (!s.fills.length && !desk.length && s.pos === 0 && !spans.length) return { ...EMPTY_OVERLAY, cursor: game.cursor, marker };
     return {
+      marker,
       fills: s.fills, pos: s.pos, avg: s.avg, stop: s.stop, target: s.target, openIdx: open?.openIdx ?? null, cursor: game.cursor, spans, desk,
       text: {
         position: s.pos !== 0 && s.avg != null ? t("chart.you", { side: sideWord, qty: fmtCount(Math.abs(s.pos)), price: fmtPrice(s.avg) }) : null,
@@ -126,7 +134,7 @@ export function GameScreen({
         target: s.target != null ? t("chart.target", { price: fmtPrice(s.target) }) : null,
       },
     };
-  }, [game.state, game.cursor, game.reveal, hiddenDesk, t]);
+  }, [game.state, game.cursor, game.reveal, game.meta.own, hiddenDesk, t]);
 
   const total = game.meta.endIdx - game.meta.startIdx;
   const played = game.cursor - game.meta.startIdx;
@@ -135,8 +143,14 @@ export function GameScreen({
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="flex flex-wrap items-center gap-2">
-        <LevelPill mode={game.meta.mode} difficulty={game.meta.difficulty} />
-        {!done && <Pill tone="neutral"><EyeOff aria-hidden="true" />{t("hiddenBadge")}</Pill>}
+        {game.meta.own ? (
+          <Pill tone="accent"><RotateCcw aria-hidden="true" />{simOwnI18n.t("banner.pill", { ticker: game.meta.own.ticker, date: fmtDate(game.meta.own.date, "medium") })}</Pill>
+        ) : (
+          <>
+            <LevelPill mode={game.meta.mode} difficulty={game.meta.difficulty} />
+            {!done && <Pill tone="neutral"><EyeOff aria-hidden="true" />{t("hiddenBadge")}</Pill>}
+          </>
+        )}
         <div className="flex min-w-[12rem] flex-1 items-center gap-2" aria-hidden="true">
           <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--glass-bg)]">
             <div className="h-full rounded-full bg-primary transition-[width] duration-[var(--dur-1)] motion-reduce:transition-none" style={{ width: `${total > 0 ? (played / total) * 100 : 0}%` }} />
@@ -163,15 +177,18 @@ export function GameScreen({
         </div>
         <aside className="glass-panel flex min-h-0 flex-col gap-3 overflow-y-auto rounded-2xl p-[var(--panel-p)] lg:h-[calc(100dvh-13rem)] lg:min-h-[480px]">
           {done ? (
-            <ResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} />
+            game.reveal?.own
+              ? <OwnResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} />
+              : <ResultSummary game={game} onAgain={c.again} onStart={c.leave} starting={c.starting} />
           ) : (
             <>
+              {game.meta.own && <OwnMoment cursor={game.cursor} decisionIdx={game.meta.own.decisionIdx} />}
               <PositionCard game={game} />
               <OrderPad game={game} qty={qty} setQty={setQty} onOrder={c.order} onUndo={c.undo} disabled={false} />
               <BracketBox game={game} autoStop={autoStop} setAutoStop={setAutoStop} autoTarget={autoTarget} setAutoTarget={setAutoTarget} onBracket={c.setBracket} disabled={false} />
               <div className="mt-auto flex flex-col gap-3">
                 <PlayBar game={game} playing={c.playing} setPlaying={c.setPlaying} speed={speed} setSpeed={setSpeed} onNext={() => c.next(1)} disabled={false} />
-                <p className="text-2xs text-muted-foreground">{t("hud.fee", { value: fmtUsd(game.meta.feePerShare, { decimals: 4 }) })}</p>
+                <p className="text-2xs text-muted-foreground">{game.meta.own ? simOwnI18n.t("hudFee", { value: fmtUsd(game.meta.feePerShare, { decimals: 4 }) }) : t("hud.fee", { value: fmtUsd(game.meta.feePerShare, { decimals: 4 }) })}</p>
                 <KeysHint />
               </div>
             </>
@@ -179,6 +196,7 @@ export function GameScreen({
         </aside>
       </div>
 
+      {done && game.reveal?.own && <OwnRealTrade own={game.reveal.own} />}
       {done && <ResultDetails game={game} hiddenDesk={hiddenDesk} toggleDesk={(k) => setHiddenDesk((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; })} />}
 
       <AlertDialog open={confirmFinish} onOpenChange={setConfirmFinish}>
@@ -193,6 +211,20 @@ export function GameScreen({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/** Own mode: where the player is relative to their real entry (lead-in → the decision → the rest of the day). */
+function OwnMoment({ cursor, decisionIdx }: { cursor: number; decisionIdx: number }) {
+  const { t } = simOwnI18n.useT();
+  const phase = cursor < decisionIdx ? "lead" : cursor === decisionIdx ? "decision" : "after";
+  return (
+    <div
+      role="status"
+      className={cn("tile rounded-xl p-3 text-sm", phase === "decision" ? "font-medium ring-2 ring-primary" : "text-muted-foreground")}
+    >
+      {t(`banner.${phase}`)}
     </div>
   );
 }

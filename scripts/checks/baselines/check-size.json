@@ -40,14 +40,14 @@
       }
     },
     "web-functions>300": {
-      "total": 18668,
+      "total": 18636,
       "byKey": {
         "artifacts/edge-tracker/src/components/add-to-playbook.tsx#AddToPlaybookDialog": 324,
         "artifacts/edge-tracker/src/components/admin/PeoplePanel.tsx#PeoplePanel": 452,
         "artifacts/edge-tracker/src/components/analytics-page/EdgeTab.tsx#EdgeTab": 302,
         "artifacts/edge-tracker/src/components/calculator/ChainAdvisor.tsx#ChainAdvisor": 494,
         "artifacts/edge-tracker/src/components/chart-engine/WsChart.tsx#WsChart": 848,
-        "artifacts/edge-tracker/src/components/curator/today-view.tsx#TodayView": 341,
+        "artifacts/edge-tracker/src/components/curator/today-view.tsx#TodayView": 309,
         "artifacts/edge-tracker/src/components/dashboard/attention-panel.tsx#AttentionPanel": 373,
         "artifacts/edge-tracker/src/components/discussions/ThreadView.tsx#ThreadView": 459,
         "artifacts/edge-tracker/src/components/equity-chart/EquityChart.tsx#EquityChart": 313,

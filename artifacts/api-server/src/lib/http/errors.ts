@@ -334,6 +334,7 @@ export const ERROR_CODES = {
   DESK_PLAN_MEDIA_DELETE_STAFF_ONLY: 403,
   FEED_GENERATE_STAFF_ONLY: 403,
   PERMISSIONS_CELLS_REJECTED: 400,
+  DAILY_NOTHING_TO_DISPUTE: 409,
 } as const satisfies Record<keyof typeof ruErrors, number>;
 
 export type ErrorCode = keyof typeof ERROR_CODES;

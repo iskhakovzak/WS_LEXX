@@ -324,6 +324,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `DESK_PLAN_MEDIA_UPLOAD_STAFF_ONLY` | 403 | Plan media upload with context=desk without gameplan.publish. | — |
 | `DESK_PLAN_MEDIA_DELETE_STAFF_ONLY` | 403 | Plan media delete of a desk screenshot without gameplan.publish. | — |
 | `FEED_GENERATE_STAFF_ONLY` | 403 | POST /market-brief/generate-feed without dailyfeed.manage. | — |
+| `DAILY_NOTHING_TO_DISPUTE` | 409 | POST /daily/review with `dispute: true` for a day whose focus was not broken (kept, no trades, no focus). | — |
 | `PERMISSIONS_CELLS_REJECTED` | 400 | PUT /permissions/matrix with cells for an unknown capability, a locked role (admin/guest) or an admin-only capability. | `details.problems: [{ kind: "unknown_capability" \| "locked_role" \| "admin_only", role, capability }]` |
 
 A status can differ from the default when an old handler used another one. The codemod kept every original status, so branch on `code` first and `status` second.

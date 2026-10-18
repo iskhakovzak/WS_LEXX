@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { curatorI18n } from "@/i18n/ns/curator";
+import type { CostQueueItem, DailyFocus, FocusVerdict, MistakeCost, MistakeId } from "@/lib/daily/types";
 
 /**
  * «Кабинет куратора» client: types + lib/api/http hooks for /api/curator/* and the risk-process endpoints
@@ -90,6 +91,20 @@ export type TodayPayload = {
   queueWindow?: { days: number; includeOld: boolean; old: number; oldOverdue: number };
   overdueActions: { id: number; trader: string; title: string; dueOn: string; owner: string; daysOverdue: number }[];
   nextActions: (NextAction & { trader: string })[];
+  /** The queue by money (lib/daily/costQueue): most negative first; `resolved` — the curator already looked. Absent on older API builds. */
+  byCost?: CostQueueRow[];
+};
+
+export type CostQueueRow = CostQueueItem & { resolved: boolean };
+export type CostReasonKind = CostQueueItem["reasons"][number]["kind"];
+
+/** Profile `focus` (api lib/daily/curatorFocus): the focus in force, its day-by-day history, the options to replace it. */
+export type CuratorFocus = {
+  current: DailyFocus | null;
+  date: string;
+  history: { date: string; trades: number; netPnl: number | null; focus: FocusVerdict | null; reviewed: boolean }[];
+  options: MistakeCost[];
+  window: { from: string; to: string };
 };
 
 export type TradersPayload = { date: string; scope: Scope; wards: number; traders: TraderSignal[] };
@@ -136,6 +151,8 @@ export type ProfilePayload = {
   notes: CuratorNote[];
   limitEvents: { id: number; reason: string | null; changedBy: string | null; changedAt: string | null }[];
   canEditLimits: boolean;
+  /** Daily-loop focus; absent on older API builds. */
+  focus?: CuratorFocus;
 };
 
 export type BreachesPayload = {
@@ -216,6 +233,9 @@ export const curatorApi = {
   idpMetrics: () => orNotAvailable(http.get<{ metrics: IdpMetric[] }>("/api/academy/idp/metrics")),
   addGoal: (body: { student: string; title: string; metric: string; target?: number; window?: number | null; dueOn?: string | null; note?: string }) =>
     orNotAvailable(http.post<{ id: number }>("/api/academy/idp", body)),
+  /** Curator replaces the trader's focus for a day (routes/daily.ts, contract: PUT /api/daily/focus/:trader/:date {mistake}). */
+  setFocus: (trader: string, date: string, mistake: MistakeId) =>
+    orNotAvailable(http.put<unknown>(`/api/daily/focus/${enc(trader)}/${enc(date)}`, { mistake })),
   behavior: (trader: string, from: string, to: string) =>
     orNotAvailable(http.get<{ patterns?: { key: string; title: string; n: number; share?: number; net?: number | null; cost?: number | null; severity?: string }[] }>(
       "/api/behavior", { query: { trader, from, to } })),

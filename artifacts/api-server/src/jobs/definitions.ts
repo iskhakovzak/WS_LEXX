@@ -19,6 +19,7 @@ import { pool } from "@workspace/db";
 import { config } from "../config";
 import { registerJob, listJobs } from "./registry";
 import { syncCron } from "../lib/propreports/scheduler";
+import { dailyTelegramEnabled, intradayAlertsEnabled } from "../lib/daily/telegramGuard";
 
 const MIN = 60_000;
 let registered = false;
@@ -73,6 +74,45 @@ export function registerAllJobs(): void {
       const { runDigestIfNeeded } = await import("../lib/digest");
       await runDigestIfNeeded("evening");
       return { period: "evening" };
+    },
+  });
+
+  // Daily loop in the Telegram bot (lib/daily/telegramJobs.ts): production + bot token only; every send once per
+  // trader and day (notification_dedup). Morning 08:45 NY = premarket, 45 min before the open, the previous day synced.
+  registerJob({
+    name: "telegram.daily-morning",
+    cron: "45 8 * * 1-5",
+    timeoutMs: 10 * MIN,
+    enabled: dailyTelegramEnabled,
+    async run({ signal }) {
+      const { runMorningFocus } = await import("../lib/daily/telegramJobs");
+      return runMorningFocus({ signal });
+    },
+  });
+
+  // Evening card: 16:30 NY (the session's trades are in after the post-close sync) + every PropReports sync after
+  // 16:15 NY, so a later / manual sync sends the cards it unlocks; a trader without trades that day gets none.
+  registerJob({
+    name: "telegram.daily-evening",
+    cron: "30 16 * * 1-5",
+    on: ["propreports.synced"],
+    timeoutMs: 10 * MIN,
+    enabled: dailyTelegramEnabled,
+    async run({ signal }) {
+      const { runEveningCards } = await import("../lib/daily/telegramJobs");
+      return runEveningCards({ signal });
+    },
+  });
+
+  // Intraday own-contract alerts (daily stop / max trades): only with the scheduled PropReports sync, after each sync.
+  registerJob({
+    name: "telegram.contract-alerts",
+    on: ["propreports.synced"],
+    timeoutMs: 5 * MIN,
+    enabled: intradayAlertsEnabled,
+    async run({ signal }) {
+      const { runContractAlerts } = await import("../lib/daily/telegramJobs");
+      return runContractAlerts({ signal });
     },
   });
 

@@ -36,13 +36,13 @@ const loginSchema = z.object({
   password: z.string().min(1).max(200),
 });
 
-type LoginRow = { id: number; name: string; name_latin: string | null; password_hash: string | null; role: string; banned: boolean };
+type LoginRow = { id: number; name: string; name_latin: string | null; password_hash: string | null; role: string; banned: boolean; must_change_secret: boolean };
 
 /** Active accounts the typed name may resolve to (name_latin is optional on older databases). */
 async function loginCandidates(): Promise<LoginRow[]> {
   const latin = await ensureNameLatin().then(() => true, () => false);
   const { rows } = await pool.query<LoginRow>(
-    `SELECT id, name, ${latin ? "name_latin" : "NULL::text AS name_latin"}, password_hash, role, COALESCE(banned, false) AS banned
+    `SELECT id, name, ${latin ? "name_latin" : "NULL::text AS name_latin"}, password_hash, role, COALESCE(banned, false) AS banned, must_change_secret
        FROM users WHERE active = true`,
   );
   return rows;
@@ -61,8 +61,9 @@ function lockedResponse(req: Request, res: Response, retryAfterSec: number): voi
  * POST /auth/login { name, password } — name typed by the user (lib/security/loginGuard resolveLoginName).
  * Unknown, ambiguous and wrong-secret answers are identical: 401 INVALID_CREDENTIALS. 5 failures on one account
  * (or one typed unknown name) → 429 LOGIN_LOCKED with Retry-After, escalating 15 → 30 → 60 min …; each lock is audited.
- * Staff with a secret shorter than 10 characters get `mustChangePassword: true` and a `pwc` token (only the
- * password change works until they set a new one). Secrets are never logged.
+ * `mustChangePassword: true` and a `pwc` token (only the secret change works until a new one is saved) when the account
+ * still has an issued secret (users.must_change_secret: first sign-in, admin reset — `mustChangeReason: "first"`) or
+ * is staff with a secret shorter than 10 characters (`"policy"`). Secrets are never logged.
  */
 router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   const t = securityT.tFor(langOf(req));
@@ -100,12 +101,13 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   // Only after the secret matched: a banned account is not revealed to someone who doesn't know its PIN.
   if (user.banned) { sendSecurityError(res, 403, "BANNED", t("login.banned")); return; }
   await store.clear(key);
-  const pwc = mustChangeSecret(user.role, password);
+  const pwc = user.must_change_secret || mustChangeSecret(user.role, password);
   const token = await signToken({ id: user.id, name: user.name, role: user.role }, { pwc });
   res.json({
     token,
     user: { id: user.id, name: user.name, role: user.role },
     mustChangePassword: pwc,
+    ...(pwc ? { mustChangeReason: user.must_change_secret ? "first" : "policy" } : {}),
     secretPolicy: secretPolicyFor(user.role),
   });
 }));
@@ -124,6 +126,12 @@ router.post("/auth/guest", asyncHandler(async (_req, res): Promise<void> => {
   res.json({ token, user: { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE }, expiresInSec: 12 * 3600 });
 }));
 
+/** Why a pwc session must change its secret: an issued secret («first») or the staff minimum («policy»). */
+async function mustChangeReasonOf(id: number): Promise<"first" | "policy"> {
+  const { rows } = await pool.query<{ m: boolean }>(`SELECT must_change_secret AS m FROM users WHERE id = $1`, [id]);
+  return rows[0]?.m ? "first" : "policy";
+}
+
 /**
  * GET /auth/me → { user, guest, locale, mustChangePassword, secretPolicy?, token? }.
  * Sliding session: a member token older than 24 h comes back re-issued in `token` (7 more days); the client stores it.
@@ -134,6 +142,7 @@ router.get("/auth/me", asyncHandler(async (req, res): Promise<void> => {
   // `locale`: the saved interface language (the client adopts it on a new device; see edge-tracker i18n/locale-sync).
   const locale = guest ? null : await localeOfUser(req.authUser.id);
   const pwc = !!req.authMeta?.pwc;
+  const reason = pwc ? await mustChangeReasonOf(req.authUser.id) : null;
   const token = !guest && shouldRefreshToken(req.authMeta?.iat) ? await signToken(req.authUser, { pwc }) : undefined;
   if (token) res.setHeader("Cache-Control", "no-store");
   res.json({
@@ -141,6 +150,7 @@ router.get("/auth/me", asyncHandler(async (req, res): Promise<void> => {
     guest,
     locale,
     mustChangePassword: pwc,
+    ...(reason ? { mustChangeReason: reason } : {}),
     ...(guest ? {} : { secretPolicy: secretPolicyFor(req.authUser.role) }),
     ...(token ? { token } : {}),
   });
@@ -196,7 +206,7 @@ router.post("/auth/init-passwords", asyncHandler(async (req, res): Promise<void>
   for (const [name, password] of entries) {
     const hash = await hashPassword(password);
     const { rowCount } = await pool.query(
-      `UPDATE users SET password_hash = $1 WHERE name = $2 AND password_hash IS NULL`,
+      `UPDATE users SET password_hash = $1, must_change_secret = true WHERE name = $2 AND password_hash IS NULL`,
       [hash, name]
     );
     results.push({ name, updated: (rowCount ?? 0) > 0 });

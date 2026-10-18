@@ -77,3 +77,6 @@ accounts.db
 *.backup
 *-backup*.json
 *.db
+.claude/launch.json
+local-logins.txt
+artifacts/api-server/dist-*/

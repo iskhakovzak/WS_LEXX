@@ -1,4 +1,5 @@
-// Dashboard = the trader's command screen. Top to bottom: header (NY session, today / week net, risk limit) →
+// Dashboard = the trader's command screen. Top to bottom: header (NY session, today / week net, risk limit + the day
+// line: focus / own contract / evening card / tier progress — the one focal point) →
 // «Что важно сейчас» + week/month equity → recent trades + desk (staff) or streaks → opt-in extras
 // (check-in, brief, sectors, macro, DNA, quote, psychology — off by default, switched on in «Настроить»).
 // Each block answers one question; trades arrive automatically, so there are no entry CTAs here.
@@ -24,6 +25,9 @@ import { StreaksPanel } from "@/components/dashboard/streaks-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
+import { DayLine } from "@/components/daily/day-line";
+import { dayView } from "@/components/daily/daily-model";
+import { useDailyMe } from "@/components/daily/use-daily";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import {
   SECTION_WIDTH,
@@ -105,6 +109,12 @@ export default function Dashboard() {
           .find((d) => d < tradingDate || (d === tradingDate && afterClose)) ?? null)
       : null;
   const lastDayEodQ = useEodDay(lastDay, userName, authed && scope === "me" && on("attention"));
+  // The day line (header) owns the last finished day's review; the journal stays its next step while still open.
+  const dailyOn = authed && scope === "me";
+  const dailyQ = useDailyMe(dailyOn);
+  const dayCardDate = dayView(dailyQ.data)?.evening?.date ?? null;
+  const lastDayRow = lastDayEodQ.data?.traders.find((x) => x.trader === userName);
+  const journalOpenDate = lastDay && lastDayRow?.status === "open" && lastDayRow.trades > 0 ? lastDay : null;
   // «Что важно сейчас» counts tasks from all of these: render it once they have answered (no 2 → 3 jump).
   const attentionLoading = todayQ.isLoading || recentQ.isLoading || riskQ.isLoading || deskQ.isLoading || eodQ.isLoading
     || eventsQ.isLoading || holidaysQ.isLoading || unreadQ.isLoading || lastDayEodQ.isLoading;
@@ -139,6 +149,7 @@ export default function Dashboard() {
             isLoading={attentionLoading}
             updatedAt={todayQ.dataUpdatedAt || undefined}
             onCheckin={goToCheckin}
+            dayCardDate={dayCardDate}
           />
         );
       case "equity":
@@ -214,6 +225,7 @@ export default function Dashboard() {
         onScopeChange={(s) => update({ scope: s })}
         canChooseScope={staff}
         userName={userName}
+        dayLine={<DayLine enabled={dailyOn} journalOpenDate={journalOpenDate} />}
         customize={
           authed ? <CustomizePopover staff={staff} order={prefs.order} hidden={prefs.hidden} onChange={(patch) => update(patch)} onReset={reset} /> : null
         }

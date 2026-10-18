@@ -42,4 +42,8 @@ export const KEYS = {
   watchlist: () => ["watchlist"] as const,
   /** GET /api/risk/me?date= — dashboard, risk page, shell badge. Starts with ["risk", "me"] (riskKeys.me) so old invalidations match. */
   riskMe: (date: string) => ["risk", "me", date] as const,
+  /** GET /api/daily/me — dashboard day line, personal plan (rule-of-the-day prefill). Trade-derived ("daily"). */
+  dailyMe: (date: string) => ["daily", "me", date] as const,
+  /** GET /api/game-plan/my?date= — personal plan editor (gpKeys.my) and the dashboard contract line. */
+  myPlan: (date: string) => ["game-plan", "my", date] as const,
 } as const;

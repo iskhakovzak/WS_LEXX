@@ -11,7 +11,8 @@ function getBotToken(): string {
   return config.telegram.botToken;
 }
 
-export type InlineButton = { text: string; callback_data: string };
+/** A callback button (handled in routes/telegram.ts) or a URL button (opens the site). */
+export type InlineButton = { text: string; callback_data: string; url?: never } | { text: string; url: string; callback_data?: never };
 export type InlineKeyboard = InlineButton[][];
 
 export interface SendOptions {
@@ -44,14 +45,16 @@ async function tgPost(method: string, body: object): Promise<{ ok: boolean; desc
   }
 }
 
-export async function sendMessage(chatId: string | number, text: string, opts: SendOptions = {}): Promise<void> {
-  await tgPost("sendMessage", {
+/** Resolves true when Telegram accepted the message (callers that don't care may ignore it). */
+export async function sendMessage(chatId: string | number, text: string, opts: SendOptions = {}): Promise<boolean> {
+  const res = await tgPost("sendMessage", {
     chat_id: chatId,
     text,
     parse_mode: opts.parse_mode ?? "HTML",
     disable_web_page_preview: opts.disable_web_page_preview ?? true,
     ...(opts.reply_markup ? { reply_markup: opts.reply_markup } : {}),
   });
+  return !!res?.ok;
 }
 
 export async function sendMediaGroup(chatId: string | number, photoUrls: string[]): Promise<void> {

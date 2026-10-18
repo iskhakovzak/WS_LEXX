@@ -15,6 +15,7 @@ import {
   softDeleteDropped,
 } from "../lib/planMedia";
 import { AppError, badRequest, unauthorized } from "../lib/http";
+import { isMistakeId } from "../lib/daily/engine";
 
 /**
  * «План дня».
@@ -193,7 +194,12 @@ const PlanBody = z.object({
     .transform((a) => [...new Set(a.filter(Boolean))]),
 });
 type PlanDoc = z.infer<typeof PlanBody>;
-const TraderPlanBody = PlanBody.extend({ status: z.enum(["draft", "ready"]).default("draft") });
+const TraderPlanBody = PlanBody.extend({
+  status: z.enum(["draft", "ready"]).default("draft"),
+  // Rule of the day (daily loop MistakeId, lib/daily/engine isMistakeId). Absent = never chosen (the web prefills the
+  // focus), null = «no rule»; read back by lib/daily (own contract verdict).
+  ownRule: z.string().trim().max(60).refine(isMistakeId, "unknown mistake").nullable().optional(),
+});
 
 function zodError(err: z.ZodError): string {
   return err.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");

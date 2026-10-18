@@ -36,6 +36,7 @@ export default {
     trades: { "structure-backfill": "Структура сделок" },
     jobs: { prune: "Очистка истории задач" },
     candles: { archive: "Архив свечей", prune: "Чистка кэша свечей" },
+    telegram: { "daily-morning": "Telegram: утренний фокус", "daily-evening": "Telegram: карточка дня", "contract-alerts": "Telegram: стоп по контракту" },
   },
   backups: {
     description: "pg_dump каждый день в 03:15 по Нью-Йорку (кэш-таблицы без данных). Хранятся 14 дневных и 8 недельных копий.",

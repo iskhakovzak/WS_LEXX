@@ -6,6 +6,7 @@ import { DataTable, EmptyState, Kbd, Pill, Sparkline, toneOf, toneText } from "@
 import { fmtCount, fmtDate, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
+import { simOwnI18n } from "@/i18n/ns/simOwn";
 import type { DeskTrader, Mistake, Reveal, SimTrade } from "./api";
 import type { GameView } from "./use-sim-game";
 
@@ -147,7 +148,7 @@ export function ResultDetails({ game, hiddenDesk, toggleDesk }: { game: GameView
         )}
       </section>
       <section className="glass-panel min-w-0 rounded-2xl p-[var(--panel-p)] xl:col-span-5">
-        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{swing ? t("result.deskTitleSwing") : t("result.deskTitle")}</h2>
+        <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold"><Users className="h-4 w-4 text-muted-foreground" aria-hidden="true" />{r.own ? simOwnI18n.t("result.deskTitle", { ticker: r.ticker }) : swing ? t("result.deskTitleSwing") : t("result.deskTitle")}</h2>
         {r.desk.traders.length === 0 ? (
           <div className="text-sm text-muted-foreground">
             <p>{swing ? t("result.deskNoneSwing") : t("result.deskNone")}</p>

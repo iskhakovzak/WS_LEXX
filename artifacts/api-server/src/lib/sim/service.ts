@@ -19,6 +19,7 @@ import {
 } from "./scenario";
 import * as store from "./store";
 import type { GameRow } from "./store";
+import { compareOwn, publicOf, type OwnPublic, type OwnReveal } from "./own";
 
 export type Viewer = { id: number; name: string; staff: boolean };
 
@@ -28,7 +29,7 @@ const CACHE_MAX = 300;
 const cache = new Map<number, GameRow>();
 const locks = new Map<number, Promise<unknown>>();
 
-function remember(g: GameRow): GameRow {
+export function remember(g: GameRow): GameRow {
   cache.delete(g.id);
   cache.set(g.id, g);
   if (cache.size > CACHE_MAX) cache.delete(cache.keys().next().value as number);
@@ -165,6 +166,8 @@ export type Reveal = {
   realTimes: number[];
   result: SimResult & { equity: number[] };
   desk: DeskView;
+  /** Own mode («Мои худшие дни»): the real trade next to the sim decision. */
+  own: OwnReveal | null;
 };
 
 export type Snapshot = {
@@ -185,6 +188,8 @@ export type Snapshot = {
   state: PublicState;
   createdAt: string;
   reveal: Reveal | null;
+  /** Own mode: the player's own trade (ticker and date are not secret there) and the bar where they really entered. */
+  own: OwnPublic | null;
 };
 
 export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> {
@@ -198,6 +203,7 @@ export async function snapshotOf(g: GameRow, viewer: Viewer): Promise<Snapshot> 
     state: publicState(g, s),
     createdAt: g.createdAt,
     reveal: g.status === "finished" ? await revealOf(g, viewer) : null,
+    own: g.params.own ? publicOf(g.params.own) : null,
   };
 }
 
@@ -216,7 +222,9 @@ const LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
 
 export async function deskViewOf(g: GameRow, viewer: Viewer): Promise<DeskView> {
   const intraday = g.mode === "intraday";
-  const rows = intraday ? await store.deskTradesForDay(g.ticker, g.day) : await store.deskTradesForRange(g.ticker, g.day, g.dayTo ?? g.day);
+  const all = intraday ? await store.deskTradesForDay(g.ticker, g.day) : await store.deskTradesForRange(g.ticker, g.day, g.dayTo ?? g.day);
+  // Own mode shows the player's own trades only (the desk's day is /desk-day, with its own privacy rules).
+  const rows = g.params.own ? all.filter((r) => r.trader === viewer.name) : all;
   const byTrader = new Map<string, DeskTrader>();
   let outside = 0;
   let letter = 0;
@@ -284,14 +292,20 @@ async function revealOf(g: GameRow, viewer: Viewer): Promise<Reveal> {
     realTimes: g.bars.slice(0, g.endIdx + 1).map((b) => b.t),
     result,
     desk: await deskViewOf(g, viewer),
+    own: g.params.own ? { ...g.params.own, compare: (result as { own?: OwnReveal["compare"] }).own ?? compareOwn(g.params.own, result) } : null,
   };
 }
 
 /* ─────────────────────────── Commands ─────────────────────────── */
 
-export async function createGame(viewer: Viewer, mode: SimMode, difficulty: Difficulty, rnd: () => number = Math.random): Promise<Snapshot> {
+/** Settle the viewer's unfinished game before a new one starts. */
+export async function settleActive(viewer: Viewer): Promise<void> {
   const prevId = await store.activeGameId(viewer.id);
   if (prevId != null) await withLock(prevId, () => settle(viewer, prevId));
+}
+
+export async function createGame(viewer: Viewer, mode: SimMode, difficulty: Difficulty, rnd: () => number = Math.random): Promise<Snapshot> {
+  await settleActive(viewer);
   const picked = mode === "intraday" ? await pickIntraday(viewer, difficulty, rnd) : await pickSwing(viewer, difficulty, rnd);
   if (!picked) throw notFound("NOT_FOUND");
   const price = picked.bars[picked.startIdx].c;
@@ -373,7 +387,11 @@ export function step(viewer: Viewer, id: number, input: StepInput): Promise<Step
     if (g.events.length + added.length > MAX_EVENTS) throw badRequest("VALIDATION", { reason: "tooMany" });
     g.events.push(...added);
     const from = g.cursor + 1;
-    g.cursor = Math.min(g.endIdx, g.cursor + Math.max(0, Math.floor(input.advance)));
+    let to = Math.min(g.endIdx, g.cursor + Math.max(0, Math.floor(input.advance)));
+    // Own mode: the autoplay stops on the bar where the player really entered — the decision moment.
+    const decision = g.params.own?.decisionIdx;
+    if (decision != null && g.cursor < decision) to = Math.min(to, decision);
+    g.cursor = to;
     if (g.cursor >= g.endIdx) {
       await finishNow(g);
       return { cursor: g.cursor, bars: toWire(g.bars, g.params.times, from, g.cursor), state: publicState(g, simulate(g.bars, cfg, g.events, g.cursor)), done: true, reveal: await revealOf(g, viewer) };
@@ -417,7 +435,8 @@ async function finishNow(g: GameRow): Promise<void> {
   const atEnd = simulate(g.bars, cfg, g.events, g.endIdx);
   if (atEnd.pos !== 0) g.events.push({ seq: seq(), idx: g.endIdx, type: "order", kind: "flat", qty: 0, auto: true });
   const final = simulate(g.bars, cfg, g.events, g.endIdx);
-  const result = { ...resultOf(g.bars, cfg, final, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, g.tf) }), equity: downsample(final.equity, 400) };
+  const base = resultOf(g.bars, cfg, final, { baseQty: g.params.defaultQty, ...judgeOpts(g.mode, g.tf) });
+  const result = { ...base, equity: downsample(final.equity, 400), ...(g.params.own ? { own: compareOwn(g.params.own, base) } : {}) };
   await store.saveFinished(g.id, g.cursor, g.events, result);
   g.status = "finished";
   g.result = result;
@@ -435,15 +454,18 @@ export function downsample(xs: readonly number[], max: number): number[] {
 /* ─────────────────────────── Progress ─────────────────────────── */
 
 export type MyStats = {
+  /** Fair games only (own-mode replays are summed in `own`). */
   totals: { games: number; r: number; wins: number; beatBh: number; net: number };
   best: store.FinishedRow | null;
   streak: { current: number; best: number; days: number };
   byLevel: { mode: SimMode; difficulty: Difficulty; games: number; r: number }[];
   recent: store.FinishedRow[];
   prefs: { leaderboardVisible: boolean };
+  /** Own mode: replays played, how many beat the real trade, Σ (sim − real) $. */
+  own: { games: number; better: number; diff: number };
 };
 
-export function streaks(rows: readonly store.FinishedRow[], today: string): MyStats["streak"] {
+export function streaks(rows: readonly Pick<store.FinishedRow, "net" | "finishedAt">[], today: string): MyStats["streak"] {
   // rows newest first.
   let current = 0;
   for (const r of rows) { if (r.net > 0) current++; else break; }
@@ -457,7 +479,14 @@ export function streaks(rows: readonly store.FinishedRow[], today: string): MySt
 }
 
 export async function myStats(viewer: Viewer): Promise<MyStats> {
-  const rows = await store.finishedGames(viewer.id, 500);
+  const all = await store.finishedGames(viewer.id, 500);
+  const rows = all.filter((r) => !r.own);
+  const ownRows = all.filter((r) => r.own);
+  const own = {
+    games: ownRows.length,
+    better: ownRows.filter((r) => (r.ownDiff ?? 0) > 0).length,
+    diff: Math.round(ownRows.reduce((s, r) => s + (r.ownDiff ?? 0), 0) * 100) / 100,
+  };
   const totals = rows.reduce(
     (t, r) => ({ games: t.games + 1, r: t.r + r.r, wins: t.wins + (r.net > 0 ? 1 : 0), beatBh: t.beatBh + (r.beatBh ? 1 : 0), net: t.net + r.net }),
     { games: 0, r: 0, wins: 0, beatBh: 0, net: 0 },
@@ -473,7 +502,7 @@ export async function myStats(viewer: Viewer): Promise<MyStats> {
     v.games++; v.r = Math.round((v.r + r.r) * 100) / 100;
     levels.set(k, v);
   }
-  return { totals, best, streak: streaks(rows, nyDate()), byLevel: [...levels.values()], recent: rows.slice(0, 20), prefs: await store.getPrefs(viewer.id) };
+  return { totals, best, streak: streaks(rows, nyDate()), byLevel: [...levels.values()], recent: all.slice(0, 20), prefs: await store.getPrefs(viewer.id), own };
 }
 
 /** Monday of the New York week containing `day`. */

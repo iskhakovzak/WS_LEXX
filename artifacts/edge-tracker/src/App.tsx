@@ -64,6 +64,7 @@ const Benchmark = lazy(L["/benchmark"]);
 const OfficeStats = lazy(L["/office"]);
 const Ask = lazy(L["/ask"]);
 const ChartLab = lazy(L["/chart-lab"]);
+const DeskDay = lazy(L["/desk-day"]);
 const AcademyPath = lazy(L["/academy/path"]);
 const AcademyChallenges = lazy(L["/academy/challenges"]);
 const AcademyMy = lazy(L["/academy/my"]);
@@ -190,6 +191,7 @@ function Router() {
           <Route path="/office" component={OfficeStats} />
           <Route path="/ask" component={Ask} />
           <Route path="/chart-lab" component={ChartLab} />
+          <Route path="/desk-day" component={DeskDay} />
           <Route path="/academy/path" component={AcademyPath} />
           <Route path="/academy/challenges" component={AcademyChallenges} />
           <Route path="/academy/my" component={AcademyMy} />

@@ -14,10 +14,12 @@ export interface UserSession {
   traderName: string | null;
   token?: string | null;
   /**
-   * Staff signed in with a password shorter than the staff minimum: the API accepts only the password change
-   * until a new one is set (token claim `pwc`). The app stays on the login screen, step «Новый пароль».
+   * The account still has an issued secret, or is staff with a password shorter than the staff minimum: the API
+   * accepts only the secret change until a new one is set (token claim `pwc`). The app stays on the login screen, step «Новый пароль».
    */
   mustChangePassword?: boolean;
+  /** Why: «first» = an issued secret (first sign-in, admin reset) the owner replaces; «policy» = staff minimum. */
+  mustChangeReason?: "first" | "policy";
   /** Minimum length of a new secret for this role (from the API: 6 for traders, 10 for staff). */
   secretMin?: number;
   /** UI language saved in the profile (`users.locale`), as last reported by GET /auth/me. Not persisted. */
@@ -183,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
         if (!r.ok || _currentToken !== tok) return;
         const me = (await r.json().catch(() => null)) as
-          | { token?: string; mustChangePassword?: boolean; secretPolicy?: { min?: number }; locale?: unknown }
+          | { token?: string; mustChangePassword?: boolean; mustChangeReason?: "first" | "policy"; secretPolicy?: { min?: number }; locale?: unknown }
           | null;
         if (!me) return;
         const fresh = typeof me.token === "string" && me.token ? me.token : null;
@@ -194,8 +196,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           const min = me.secretPolicy?.min ?? u.secretMin;
           // LocaleSync reads the profile language from here instead of requesting /auth/me a second time.
           const locale = typeof me.locale === "string" ? me.locale : u.profileLocale;
-          if (!fresh && must === !!u.mustChangePassword && min === u.secretMin && locale === u.profileLocale) return u;
-          return { ...u, token: fresh ?? u.token, mustChangePassword: must, secretMin: min, profileLocale: locale };
+          const reason = must ? me.mustChangeReason ?? u.mustChangeReason : undefined;
+          if (!fresh && must === !!u.mustChangePassword && reason === u.mustChangeReason && min === u.secretMin && locale === u.profileLocale) return u;
+          return { ...u, token: fresh ?? u.token, mustChangePassword: must, mustChangeReason: reason, secretMin: min, profileLocale: locale };
         });
       } catch {
         // network error — keep the session, the user may just be offline
@@ -231,7 +234,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         localStorage.setItem(STORAGE_KEY, JSON.stringify({
           role: user.role,
           traderName: user.traderName,
-          ...(user.mustChangePassword ? { mustChangePassword: true, secretMin: user.secretMin } : {}),
+          ...(user.mustChangePassword ? { mustChangePassword: true, mustChangeReason: user.mustChangeReason, secretMin: user.secretMin } : {}),
         }));
         if (user.token) {
           writeToken(user.token);
@@ -264,6 +267,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         token: string;
         user: { id: number; name: string; role: string };
         mustChangePassword?: boolean;
+        mustChangeReason?: "first" | "policy";
         secretPolicy?: { min?: number };
       };
       _currentToken = data.token;
@@ -274,6 +278,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         traderName: data.user.name,
         token: data.token,
         mustChangePassword: !!data.mustChangePassword,
+        mustChangeReason: data.mustChangePassword ? data.mustChangeReason : undefined,
         secretMin: data.secretPolicy?.min,
       });
       return null;
@@ -296,7 +301,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!r.ok || !token) return body?.error ?? `HTTP ${r.status}`;
       _currentToken = token;
       writeToken(token);
-      setUser((u) => (u ? { ...u, token, mustChangePassword: false } : u));
+      setUser((u) => (u ? { ...u, token, mustChangePassword: false, mustChangeReason: undefined } : u));
       return null;
     } catch {
       return "network";

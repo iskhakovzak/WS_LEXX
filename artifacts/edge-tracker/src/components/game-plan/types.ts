@@ -1,4 +1,5 @@
 import { http, ApiError } from "@/lib/api/http";
+import { KEYS } from "@/lib/api/keys";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
 import type { Tone } from "@/components/ds";
@@ -71,6 +72,8 @@ export type PlanDoc = {
   maxTrades: number | null;
   media: MediaRef[];
   tvLinks: string[];
+  /** Personal plan only: rule of the day = a daily-loop MistakeId; absent = never chosen (prefilled with the focus), null = none. */
+  ownRule?: string | null;
 };
 
 export type PlanStatus = "draft" | "ready";
@@ -143,7 +146,7 @@ export const gpKeys = {
   day: (date: string) => ["game-plan", "day", date] as const,
   history: ["game-plan", "history"] as const,
   reads: (id: number) => ["game-plan", "reads", id] as const,
-  my: (date: string) => ["game-plan", "my", date] as const,
+  my: (date: string) => KEYS.myPlan(date),
   traders: (date: string) => ["game-plan", "traders", date] as const,
   templates: (kind: "desk" | "personal") => ["game-plan", "templates", kind] as const,
 };

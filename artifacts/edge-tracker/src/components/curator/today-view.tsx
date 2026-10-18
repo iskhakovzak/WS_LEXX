@@ -2,9 +2,9 @@ import * as React from "react";
 import { Link } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlarmClock, Archive, ArrowRight, BookCheck, CalendarX, ClipboardList, History, Inbox, Layers, ListChecks, ShieldAlert, Sparkles, Users,
+  AlarmClock, Archive, ArrowRight, BookCheck, CalendarX, ClipboardList, History, Inbox, Layers, ListChecks, ShieldAlert, Users,
 } from "lucide-react";
-import { BentoGrid, EmptyState, FilterChip, LimitBar, Panel, Pill, StatCard, StatGrid, StatusDot, Tile, usePersistentState } from "@/components/ds";
+import { BentoGrid, EmptyState, FilterChip, LimitBar, Panel, Pill, StatCard, StatGrid, Tile, usePersistentState } from "@/components/ds";
 import { Button } from "@/components/ui/button";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -15,9 +15,10 @@ import { cn } from "@/lib/utils";
 import { UndoToast } from "@/components/undo-toast";
 import { curatorApi, curatorKeys, type QueueKind, type Scope, type TodayPayload } from "./api";
 import { useCuratorEodReview, type EodTarget } from "./eod-review";
-import { QUEUE_LABEL, QUEUE_TONE, actionTone, curatorLinks, profileHref, riskTone, waitLabel } from "./curator-math";
+import { QUEUE_LABEL, QUEUE_TONE, curatorLinks, profileHref, riskTone, waitLabel } from "./curator-math";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
+import { AttentionPanel } from "./attention-panel";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
@@ -88,7 +89,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
       void qc.invalidateQueries({ queryKey: curatorKeys.all });
     }
   };
-  const [showAll, setShowAll] = React.useState<{ next?: boolean; queue?: boolean; overdue?: boolean; risk?: boolean }>({});
+  const [showAll, setShowAll] = React.useState<{ queue?: boolean; overdue?: boolean; risk?: boolean }>({});
   const expand = (k: keyof typeof showAll) => setShowAll((s) => ({ ...s, [k]: !s[k] }));
   const c = data.counts;
   const riskCount = c.halted + c.nearStop;
@@ -136,39 +137,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
       </StatGrid>
 
       <BentoGrid>
-        <Panel
-          className="lg:col-span-7"
-          fill
-          title={t("today.nextTitle")}
-          icon={Sparkles}
-          description={t("today.nextHint")}
-          actions={data.nextActions.length ? <Pill tone="neutral">{data.nextActions.length}</Pill> : undefined}
-        >
-          {data.nextActions.length === 0 ? (
-            <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
-          ) : (
-            <ul className="flex flex-col gap-1.5">
-              {(showAll.next ? data.nextActions : data.nextActions.slice(0, 10)).map((a) => (
-                <li key={a.trader} className="tile flex min-w-0 items-center gap-3 px-3 py-2">
-                  <button type="button" onClick={() => onOpenTrader(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary">
-                    {personName(a.trader)}
-                  </button>
-                  <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
-                  {a.kind === "no_limits" ? (
-                    <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setTemplateFor([a.trader])}>
-                      <Layers className="h-3.5 w-3.5" /> {t("today.template")}
-                    </Button>
-                  ) : (
-                    <Button asChild size="sm" variant="ghost" className="shrink-0">
-                      <Link href={a.href}>{t("open")} <ArrowRight className="h-3.5 w-3.5" /></Link>
-                    </Button>
-                  )}
-                </li>
-              ))}
-              {data.nextActions.length > 10 && <li><ShowMore open={!!showAll.next} rest={data.nextActions.length - 10} onClick={() => expand("next")} /></li>}
-            </ul>
-          )}
-        </Panel>
+        <AttentionPanel data={data} onOpenTrader={onOpenTrader} onTemplate={setTemplateFor} />
 
         <Panel
           className="lg:col-span-5"

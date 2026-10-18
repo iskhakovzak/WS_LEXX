@@ -168,6 +168,7 @@ export function DashboardHeader({
   canChooseScope,
   userName,
   customize,
+  dayLine,
 }: {
   data: DashboardToday | undefined;
   risk: RiskMe | null | undefined;
@@ -181,6 +182,8 @@ export function DashboardHeader({
   canChooseScope: boolean;
   userName: string | null;
   customize: ReactNode;
+  /** The trader's day line (focus · contract · evening card · tier progress), rendered under the state line. */
+  dayLine?: ReactNode;
 }) {
   const { t: tr } = dashboardI18n.useT();
   const now = new Date();
@@ -281,6 +284,7 @@ export function DashboardHeader({
           </>
         )}
       </div>
+      {!guest && dayLine}
     </section>
   );
 }

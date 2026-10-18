@@ -107,6 +107,8 @@ export type DisciplineDay = {
   net: number | null;
   /** Штрафные баллы по компонентам (положительные числа). */
   penalties: Partial<Record<PatternKey, number>>;
+  /** Own-contract verdict points of the day (lib/daily DISCIPLINE_POINTS; kept +, broken −), when a contract was set. */
+  contract?: number;
 };
 
 export type BehaviorOptions = {
@@ -787,7 +789,7 @@ const PENALTY: Record<PatternKey, { per: number; cap: number }> = {
   firstTrade: { per: 0, cap: 0 },
 };
 
-function disciplineDays(byDay: Map<string, BehaviorTrade[]>, drafts: Map<PatternKey, PatternDraft>): DisciplineDay[] {
+function disciplineDays(byDay: Map<string, BehaviorTrade[]>, drafts: Map<PatternKey, PatternDraft>, contract?: ReadonlyMap<string, number>): DisciplineDay[] {
   const perDay = new Map<string, Partial<Record<PatternKey, number>>>();
   const bump = (date: string, key: PatternKey, count: number) => {
     const cfg = PENALTY[key];
@@ -813,8 +815,8 @@ function disciplineDays(byDay: Map<string, BehaviorTrade[]>, drafts: Map<Pattern
   const out: DisciplineDay[] = [];
   for (const [date, list] of byDay) {
     const penalties = perDay.get(date) ?? {};
-    const total = Object.values(penalties).reduce((a, b) => a + (b ?? 0), 0);
-    out.push({ date, score: Math.max(0, Math.min(100, 100 - total)), trades: list.length, net: sumNet(list).sum, penalties });
+    const total = Object.values(penalties).reduce((a, b) => a + (b ?? 0), 0), c = contract?.get(date);
+    out.push({ date, score: Math.max(0, Math.min(100, 100 - total + (c ?? 0))), trades: list.length, net: sumNet(list).sum, penalties, ...(c != null ? { contract: c } : {}) });
   }
   return out;
 }
@@ -860,8 +862,8 @@ function detect(input: BehaviorTrade[], options: BehaviorOptions, lang: Lang = D
   return { opts, trades, byDay, ctx, drafts, madTradesPerDay };
 }
 
-/** The behaviour report; all texts (patterns, notes, insights, buckets, profile) in `lang`. */
-export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions = {}, lang: Lang = DEFAULT_LANG): BehaviorReport {
+/** The behaviour report; all texts in `lang`. `contract` = own-contract points per day (lib/daily/service contractDeltas). */
+export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions = {}, lang: Lang = DEFAULT_LANG, contract?: ReadonlyMap<string, number>): BehaviorReport {
   const { opts, trades, byDay, ctx, drafts, madTradesPerDay } = detect(input, options, lang);
   const { medianGapMin, tradesPerDayNorm, medianTradesPerDay } = ctx;
 
@@ -893,7 +895,7 @@ export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions
     });
   }
 
-  const discipline = disciplineDays(byDay, drafts);
+  const discipline = disciplineDays(byDay, drafts, contract);
   const wk = new Map<string, { sum: number; days: number }>();
   for (const d of discipline) {
     const k = weekKey(d.date);
@@ -1121,6 +1123,11 @@ export function shiftDate(date: string, n: number): string {
 }
 
 export { HOUR_BUCKETS, hourBucket };
+
+/** Flagged trade ids + the personal norm (avg net of the comparable group) per pattern — windowed costs (lib/daily/engine). */
+export function patternFlags(input: BehaviorTrade[], options: BehaviorOptions = {}): Map<PatternKey, { ids: number[]; baselineAvg: number | null; noCost: boolean }> {
+  return new Map([...detect(input, options).drafts].map(([k, d]) => [k, { ids: d.flagged.map((f) => f.trade.id), baselineAvg: avgNet(d.baseline), noCost: !!d.noCost }]));
+}
 
 
 /* ─── Форматирование для заметок ──────────────────────────────────────────── */

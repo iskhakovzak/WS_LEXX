@@ -19,6 +19,7 @@ import { FocusBanner, shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { personName } from "@/i18n";
 import { ApiError } from "@/lib/api/http";
+import { dailyMeQuery } from "@/lib/api/queries";
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string } | { kind: "invalid" };
 
@@ -159,6 +160,18 @@ function MyPlanEditor({
 
   const setDraft: SetDraft = useCallback((fn) => setDraftState(fn), []);
 
+  // Prefill law: on the focus day a rule of the day that was never chosen starts as the focus. A plan without a row
+  // keeps it as the baseline (saved with the first real edit, no «unsaved» warning); an existing plan saves it.
+  const dailyQ = useQuery({ ...dailyMeQuery(), retry: false });
+  const focus = dailyQ.data?.focus;
+  const focusMistake = focus && focus.date === date && focus.source !== "none" ? focus.mistake : null;
+  useEffect(() => {
+    if (!focusMistake) return;
+    const fill = (d: PlanDraft): PlanDraft => (d.ownRule === undefined ? { ...d, ownRule: focusMistake } : d);
+    if (!initial.plan) saved.current = { ...saved.current, draft: fill(saved.current.draft) };
+    setDraftState(fill);
+  }, [focusMistake, initial.plan]);
+
   // Clear errors as fields get fixed.
   useEffect(() => {
     if (Object.keys(errors).length) setErrors(validateDraft(draft));
@@ -253,6 +266,7 @@ function MyPlanEditor({
             draft={draft}
             setDraft={setDraft}
             errors={errors}
+            focusMistake={focusMistake}
             tickerActions={deskTickers.length > 0 ? <DeskTickerPicker items={deskTickers} taken={taken} onPick={(l) => addTickers(setDraft, l)} /> : null}
             navSlot={
               <>

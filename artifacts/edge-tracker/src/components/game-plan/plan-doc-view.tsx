@@ -5,13 +5,16 @@ import { MediaGallery } from "./plan-media";
 import { MARKET_BIAS, type PlanDoc } from "./types";
 import { fmtUsd } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { dailyI18n } from "@/i18n/ns/daily";
+import { mistakeLabel } from "@/components/shared/mistake-labels";
 
 /** Read-only rendering of a personal plan (trader's own read mode and the curator's «Трейдеры» view). */
 export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; compactTickers?: boolean }) {
   const { t } = gpI18n.useT();
+  const { t: td } = dailyI18n.useT();
   const bias = MARKET_BIAS[doc.bias ?? "neutral"] ?? MARKET_BIAS.neutral;
   const tickers = doc.inPlay ?? [];
-  const hasRisk = doc.maxLossUsd != null || doc.maxTrades != null || !!doc.riskNotes?.trim();
+  const hasRisk = doc.maxLossUsd != null || doc.maxTrades != null || !!doc.riskNotes?.trim() || !!doc.ownRule;
   const hasMarket = !!doc.marketView?.trim() || !!doc.media?.length || !!doc.tvLinks?.length;
   const empty = !hasRisk && !hasMarket && tickers.length === 0 && !doc.focus?.trim();
 
@@ -52,6 +55,12 @@ export function PlanDocView({ doc, compactTickers }: { doc: Partial<PlanDoc>; co
               <span className="text-sm">
                 <span className="text-muted-foreground">{t("doc.maxTrades")} </span>
                 <span className="font-semibold tabular-nums">{doc.maxTrades}</span>
+              </span>
+            )}
+            {doc.ownRule && (
+              <span className="text-sm">
+                <span className="text-muted-foreground">{td("ownRule.label")}: </span>
+                <span className="font-semibold">{mistakeLabel(doc.ownRule)}</span>
               </span>
             )}
           </div>

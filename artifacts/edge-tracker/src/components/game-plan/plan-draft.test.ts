@@ -56,3 +56,16 @@ describe("plan draft", () => {
     expect(isDraftEmpty(docToDraft(null))).toBe(true);
   });
 });
+
+describe("rule of the day (ownRule)", () => {
+  it("keeps never-chosen / none / a mistake apart through the round trip", () => {
+    expect("ownRule" in draftToDoc(docToDraft({}))).toBe(false);
+    expect(draftToDoc(docToDraft({ ownRule: null })).ownRule).toBeNull();
+    expect(draftToDoc(docToDraft({ ownRule: "structure:averaging" })).ownRule).toBe("structure:averaging");
+  });
+
+  it("a prefilled rule alone does not make a plan worth a row", () => {
+    expect(isDraftEmpty({ ...docToDraft({}), ownRule: "behavior:revenge" })).toBe(true);
+    expect(blockDone({ ...docToDraft({}), ownRule: "behavior:revenge" }).risk).toBe(true);
+  });
+});

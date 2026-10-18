@@ -75,6 +75,9 @@ import uzPlaybook from "./uz/playbook";
 import ruCalendar from "./ru/calendar";
 import enCalendar from "./en/calendar";
 import uzCalendar from "./uz/calendar";
+import ruDaily from "./ru/daily";
+import enDaily from "./en/daily";
+import uzDaily from "./uz/daily";
 
 export const commonT = defineNamespace(ruCommon, { en: enCommon, uz: uzCommon });
 
@@ -149,3 +152,6 @@ export const playbookT = defineNamespace(ruPlaybook, { en: enPlaybook, uz: uzPla
 
 /** `calendar` (server-b). */
 export const calendarT = defineNamespace(ruCalendar, { en: enCalendar, uz: uzCalendar });
+
+/** `daily`: daily loop (lib/daily/*): mistake names, focus lines, verdicts, own contract, Telegram cards. */
+export const dailyT = defineNamespace(ruDaily, { en: enDaily, uz: uzDaily });

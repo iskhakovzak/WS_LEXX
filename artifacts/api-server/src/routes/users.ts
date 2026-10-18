@@ -235,6 +235,8 @@ const TradingDefaultsSchema = z.object({
 }).partial();
 const SettingsPatch = z.object({
   tradingDefaults: TradingDefaultsSchema.nullable().optional(),
+  /** Daily loop in Telegram (morning focus, evening card, contract alerts — lib/daily/telegramJobs). Absent = on. */
+  dailyTelegram: z.boolean().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -261,6 +263,7 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   else if (body.data.tradingDefaults !== undefined) {
     set.tradingDefaults = { ...body.data.tradingDefaults, updatedAt: body.data.tradingDefaults.updatedAt ?? new Date().toISOString() };
   }
+  if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,
@@ -321,7 +324,7 @@ router.post("/users/me/password", asyncHandler(async (req, res): Promise<void> =
     sendSecurityError(res, 400, "WRONG_PASSWORD", t("password.currentWrong")); return;
   }
   pwAttempts.delete(me.id);
-  await pool.query(`UPDATE users SET password_hash = $1 WHERE id = $2`, [await hashPassword(newPassword), me.id]);
+  await pool.query(`UPDATE users SET password_hash = $1, must_change_secret = false WHERE id = $2`, [await hashPassword(newPassword), me.id]);
   await bumpTokenVersion(me.id);
   const token = await signToken({ id: me.id, name: rows[0].name, role: rows[0].role });
   res.json({ success: true, token, reloginRequired: false });
@@ -439,6 +442,8 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
     const weak = checkSecret(effectiveRole, p, typeof name === "string" ? name : null);
     if (weak) { sendSecurityError(res, 400, "WEAK_PASSWORD", secretProblemText(req, weak), { policy: secretPolicyFor(effectiveRole) }); return; }
     fields.push(`password_hash = $${i++}`); vals.push(await hashPassword(p));
+    // A secret issued by someone else is temporary: its owner sets their own on the next sign-in.
+    fields.push(`must_change_secret = $${i++}`); vals.push(id !== req.authUser?.id);
     passwordChanged = true;
   }
   let roleChanged = false;

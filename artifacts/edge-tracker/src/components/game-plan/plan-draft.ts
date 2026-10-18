@@ -39,6 +39,8 @@ export type PlanDraft = {
   riskNotes: string;
   maxLoss: string;
   maxTrades: string;
+  /** Rule of the day (MistakeId); undefined = never chosen, null = «no rule». Personal plans only. */
+  ownRule?: string | null;
   focus: string;
   media: MediaRef[];
   tvLinks: string[];
@@ -118,6 +120,7 @@ export function docToDraft(doc: Partial<PlanDoc> | null | undefined): PlanDraft 
     riskNotes: s(d.riskNotes),
     maxLoss: d.maxLossUsd != null ? String(d.maxLossUsd) : "",
     maxTrades: d.maxTrades != null ? String(d.maxTrades) : "",
+    ownRule: typeof d.ownRule === "string" && d.ownRule ? d.ownRule : d.ownRule === null ? null : undefined,
     focus: s(d.focus),
     media: refs(d.media),
     tvLinks: Array.isArray(d.tvLinks) ? d.tvLinks.filter((u): u is string => typeof u === "string") : [],
@@ -215,6 +218,7 @@ export function draftToDoc(d: PlanDraft): PlanDoc {
     maxTrades: mt === null || Number.isNaN(mt) ? null : Math.trunc(mt),
     media: d.media,
     tvLinks: d.tvLinks,
+    ...(d.ownRule !== undefined ? { ownRule: d.ownRule } : {}),
   };
 }
 
@@ -223,6 +227,7 @@ export function sameDoc(a: PlanDraft, b: PlanDraft): boolean {
   return JSON.stringify(draftToDoc(a)) === JSON.stringify(draftToDoc(b));
 }
 
+/** The rule of the day alone (usually the focus prefill) does not make a plan worth a row. */
 export function isDraftEmpty(d: PlanDraft): boolean {
   const doc = draftToDoc(d);
   return (
@@ -244,7 +249,7 @@ export function blockDone(d: PlanDraft) {
   return {
     market: !!(d.marketView.trim() || d.macro.length || d.media.length || d.tvLinks.length || d.spyS || d.spyR || d.qqqS || d.qqqR),
     tickers: d.inPlay.some((t) => t.ticker.trim() && (t.scenarioA.trim() || t.trigger.trim() || t.plan.trim() || t.support || t.resistance)),
-    risk: !!(d.riskNotes.trim() || d.maxLoss.trim() || d.maxTrades.trim()),
+    risk: !!(d.riskNotes.trim() || d.maxLoss.trim() || d.maxTrades.trim() || d.ownRule),
     focus: !!d.focus.trim(),
   };
 }

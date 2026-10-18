@@ -53,6 +53,7 @@ const PAGE_IMPORTS = {
   "/office": () => import("@/pages/office-stats"),
   "/ask": () => import("@/pages/ask"),
   "/chart-lab": () => import("@/pages/chart-lab"),
+  "/desk-day": () => import("@/pages/desk-day"),
   "/academy/path": () => import("@/pages/academy/path"),
   "/academy/challenges": () => import("@/pages/academy/challenges"),
   "/academy/my": () => import("@/pages/academy/my"),

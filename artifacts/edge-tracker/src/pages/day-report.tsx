@@ -24,6 +24,7 @@ import {
   BreakdownPanel, ComparisonPanel, EquityPanel, LeaksPanel, LinksPanel, PlanPanel, StrengthsPanel, SummaryBento, TimelinePanel,
 } from "@/components/day-report/sections";
 import { PersonSelect } from "@/components/people/person-select";
+import { DeskDayChips } from "@/components/shared/desk-day-link";
 
 const PRINT_CSS = `
 @media print {
@@ -221,6 +222,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
         <ComparisonPanel doc={doc} />
       </div>
       <TimelinePanel doc={doc} />
+      <DeskDayChips tickers={doc.timeline.map((r) => r.ticker)} date={doc.date} trader={doc.trader} className="-mt-1 px-1" />
       <div className="grid gap-4 xl:grid-cols-2">
         <LeaksPanel doc={doc} />
         <PlanPanel doc={doc} />

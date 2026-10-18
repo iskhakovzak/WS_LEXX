@@ -84,6 +84,7 @@ export default {
     quiz: "Test",
     assignment: "Topshiriq",
     notFound: "Sahifa topilmadi",
+    deskDay: "Tikerdagi desk",
     login: "Kirish",
   },
   sidebar: {

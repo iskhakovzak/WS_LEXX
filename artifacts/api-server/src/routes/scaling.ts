@@ -398,6 +398,12 @@ async function evaluateScope(trader: string | null, today: string): Promise<{ ti
   return { tiers, rules, traders };
 }
 
+/** One trader's evaluation now (lib/daily tier progress «to Junior: 3 of 5»); null when the trader is unknown. */
+export async function evaluateTraderNow(trader: string, today: string): Promise<Evaluation | null> {
+  await ensureTables();
+  return (await evaluateScope(trader, today)).traders.find((t) => t.trader === trader) ?? null;
+}
+
 // ─── config ─────────────────────────────────────────────────────────────────
 
 const meta = (lang: Lang) => ({ metrics: metricsMeta(lang), ops: OPS, units: unitsMeta(lang) });

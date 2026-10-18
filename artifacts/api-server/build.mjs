@@ -11,7 +11,8 @@ globalThis.require = createRequire(import.meta.url);
 const artifactDir = path.dirname(fileURLToPath(import.meta.url));
 
 async function buildAll() {
-  const distDir = path.resolve(artifactDir, "dist");
+  // API_DIST_DIR: a separate output (e.g. dist-agent3) so a second local API can be built without touching dist/.
+  const distDir = path.resolve(artifactDir, process.env.API_DIST_DIR || "dist");
   await rm(distDir, { recursive: true, force: true });
 
   await esbuild({

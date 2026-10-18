@@ -30,6 +30,7 @@ import {
 } from "./plan-draft";
 import { MediaStrip, PasteRouterProvider, TvLinkField, useEditorPaste } from "./plan-media";
 import type { MediaContext } from "./media";
+import { OwnRuleField } from "./own-rule-field";
 import { gpI18n } from "@/i18n/ns/gamePlan";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -57,6 +58,8 @@ export function PlanEditor(props: {
   navSlot?: React.ReactNode;
   /** Offset for the sticky block nav inside its scroller. */
   stickyClassName?: string;
+  /** Personal plan for the focus day: today's focus (MistakeId), listed first in «Правило дня». */
+  focusMistake?: string | null;
 }) {
   return (
     <PasteRouterProvider>
@@ -74,6 +77,7 @@ function EditorInner({
   tickerActions,
   navSlot,
   stickyClassName,
+  focusMistake,
 }: Parameters<typeof PlanEditor>[0]) {
   const { t: tr } = gpI18n.useT();
   const uid = useId();
@@ -320,6 +324,7 @@ function EditorInner({
             <Input id={`${uid}-mt`} inputMode="numeric" placeholder="10" value={draft.maxTrades} onChange={(e) => patch({ maxTrades: e.target.value })} className="tabular-nums" />
           </Field>
         </div>
+        {!isDesk && <OwnRuleField id={`${uid}-or`} value={draft.ownRule} onChange={(v) => patch({ ownRule: v })} focusMistake={focusMistake} />}
         <Field label={isDesk ? tr("editor.riskNotesDesk") : tr("editor.riskNotes")} htmlFor={`${uid}-rn`}>
           <Textarea
             id={`${uid}-rn`}

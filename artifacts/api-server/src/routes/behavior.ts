@@ -32,6 +32,7 @@ import { TRIGGER_KIND_SET, describeTrigger, evaluateTrigger, isAutoTriggerName, 
 import { behaviorT } from "../lib/behaviorI18n";
 import { setupLabelOf } from "../lib/setupClassifier";
 import { langOf } from "../i18n";
+import { contractDeltas } from "../lib/daily/discipline";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
@@ -208,7 +209,10 @@ router.get("/behavior", asyncHandler(async (req, res) => {
   const rows = await loadBehaviorRows(scope, q.from, q.to);
   const trades = await withAutoSetups(rows.map(rowToBehaviorTrade));
   const lang = langOf(req);
-  const report = analyzeBehavior(trades, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, lang);
+  // Own contract verdicts (lib/daily) move the day's discipline score: kept +, broken −.
+  const days = trades.map((t) => t.date).sort();
+  const contract = scope && scope !== GUEST_SCOPE && days.length ? await contractDeltas(scope, trades, days[0]!, days[days.length - 1]!) : undefined;
+  const report = analyzeBehavior(trades, { revengeMin: q.revengeMin, euphoriaMin: q.euphoriaMin }, lang, contract);
   // Auto-classifier setups carry their canonical (RU) name; show the class label in the reader's language.
   const relabel = <T extends { label: string } | null>(b: T): T => (b ? { ...b, label: setupLabelOf(b.label, lang) } : b);
   report.profile.setups = { ...report.profile.setups, best: relabel(report.profile.setups.best), worst: relabel(report.profile.setups.worst), rows: report.profile.setups.rows.map(relabel) };

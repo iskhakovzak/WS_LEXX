@@ -172,7 +172,7 @@ async function loadExecs(q: Queryable, tradeIds: readonly number[]): Promise<Exe
  * prints by lib/candleClean like every other candle read. Never fetches:
  * no cached candles → no entry → the heuristic simply does not fire.
  */
-async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs: readonly ExecRowLite[]): Promise<Map<number, number>> {
+export async function loadExtremes(q: Queryable, trades: readonly TradeRowLite[], execs: readonly ExecRowLite[]): Promise<Map<number, number>> {
   const out = new Map<number, number>();
   const window = new Map<number, { from: number; to: number }>();
   for (const t of trades) {

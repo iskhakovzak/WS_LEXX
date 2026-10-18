@@ -96,7 +96,9 @@ function MarketClock() {
 /** «Вход → Новый пароль»: shown while the second step is active, so it reads as one process. */
 function SignInSteps({ step }: { step: 1 | 2 }) {
   const { t } = authI18n.useT();
-  const items = [t("steps.signIn"), t("steps.newPassword")];
+  const { user } = useAuth();
+  const pin = user?.role !== "curator" && user?.role !== "admin";
+  const items = [t("steps.signIn"), t(pin ? "steps.newPin" : "steps.newPassword")];
   return (
     <ol aria-label={t("steps.aria")} className="mt-5 flex items-center justify-center gap-2 text-xs">
       {items.map((label, i) => {
