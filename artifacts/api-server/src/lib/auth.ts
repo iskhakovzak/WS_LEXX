@@ -87,7 +87,8 @@ function invalidateTvCache(userId: number): void {
 }
 
 /**
- * `pwc` (password change required): staff whose secret is shorter than the staff minimum (lib/security/passwordPolicy).
+ * `pwc` (password change required): the account still has an issued secret (users.must_change_secret), or staff whose
+ * secret is shorter than the staff minimum (lib/security/passwordPolicy).
  * While it is set, apiAuthGate allows only PASSWORD_CHANGE_ROUTES.
  */
 export async function signToken(u: AuthUser, opts: { pwc?: boolean } = {}): Promise<string> {

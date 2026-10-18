@@ -12,7 +12,7 @@ import jwt from "jsonwebtoken";
 
 process.env.JWT_SECRET = "vitest-only-secret-for-auth-security";
 
-type U = { id: number; name: string; name_latin: string | null; role: string; password_hash: string; banned: boolean; token_version: number };
+type U = { id: number; name: string; name_latin: string | null; role: string; password_hash: string; banned: boolean; token_version: number; must_change_secret?: boolean };
 const users: U[] = [];
 const recorded: unknown[][] = [];
 
@@ -22,8 +22,12 @@ vi.mock("@workspace/db", () => ({
   pool: {
     connect: async () => { throw new Error("no pg in tests"); },
     query: vi.fn(async (sql: string, params: unknown[] = []) => {
-      if (/FROM users WHERE active = true\s*$/.test(sql.trim()) || /password_hash, role, COALESCE\(banned, false\) AS banned\s+FROM users WHERE active = true/.test(sql)) {
-        return { rows: users.map((u) => ({ id: u.id, name: u.name, name_latin: u.name_latin, password_hash: u.password_hash, role: u.role, banned: u.banned })), rowCount: users.length };
+      if (/FROM users WHERE active = true\s*$/.test(sql.trim()) || /password_hash, role, COALESCE\(banned, false\) AS banned, must_change_secret\s+FROM users WHERE active = true/.test(sql)) {
+        return { rows: users.map((u) => ({ id: u.id, name: u.name, name_latin: u.name_latin, password_hash: u.password_hash, role: u.role, banned: u.banned, must_change_secret: !!u.must_change_secret })), rowCount: users.length };
+      }
+      if (/SELECT must_change_secret AS m FROM users WHERE id = \$1/.test(sql)) {
+        const u = users.find((x) => x.id === params[0]);
+        return { rows: u ? [{ m: !!u.must_change_secret }] : [], rowCount: u ? 1 : 0 };
       }
       if (/SELECT token_version FROM users WHERE id = \$1/.test(sql)) {
         const u = users.find((x) => x.id === params[0]);
@@ -38,9 +42,9 @@ vi.mock("@workspace/db", () => ({
         const u = users.find((x) => x.id === params[0]);
         return { rows: u ? [{ password_hash: u.password_hash, role: u.role, name: u.name }] : [], rowCount: u ? 1 : 0 };
       }
-      if (/UPDATE users SET password_hash = \$1 WHERE id = \$2/.test(sql)) {
+      if (/UPDATE users SET password_hash = \$1, must_change_secret = false WHERE id = \$2/.test(sql)) {
         const u = users.find((x) => x.id === params[1]);
-        if (u) u.password_hash = String(params[0]);
+        if (u) { u.password_hash = String(params[0]); u.must_change_secret = false; }
         return { rows: [], rowCount: u ? 1 : 0 };
       }
       if (/INSERT INTO app_errors/.test(sql)) {
@@ -88,6 +92,7 @@ beforeAll(async () => {
     { id: 2, name: "Антон", name_latin: null, role: "curator", password_hash: await bcrypt.hash("246810", 4), banned: false, token_version: 0 },
     { id: 3, name: "Артур", name_latin: null, role: "trader", password_hash: await bcrypt.hash("111222", 4), banned: false, token_version: 0 },
     { id: 4, name: "Дмитрий К.", name_latin: null, role: "admin", password_hash: await bcrypt.hash("long-admin-pass", 4), banned: false, token_version: 0 },
+    { id: 5, name: "Умид", name_latin: null, role: "trader", password_hash: await bcrypt.hash("000000", 4), banned: false, token_version: 0, must_change_secret: true },
   );
   server = http.createServer(app);
   await new Promise<void>((r) => server.listen(0, "127.0.0.1", r));
@@ -178,6 +183,25 @@ describe("staff forced password change", () => {
     expect((await call("GET", "/auth/me", { token: pwc })).status).toBe(401);
     // Next sign-in with the new password: no forced change.
     expect((await login("Антон", "a-much-longer-pass")).json.mustChangePassword).toBe(false);
+  });
+
+  it("an issued secret (first sign-in) forces a trader to set an own PIN, then signs in normally", async () => {
+    const r = await login("Умид", "000000");
+    expect(r.status).toBe(200);
+    expect(r.json.mustChangePassword).toBe(true);
+    expect(r.json.mustChangeReason).toBe("first");
+    expect(r.json.secretPolicy).toMatchObject({ kind: "pin", min: 6 });
+    const pwc = r.json.token as string;
+    expect((await call("GET", "/users", { token: pwc })).json.code).toBe("PASSWORD_CHANGE_REQUIRED");
+    expect((await call("GET", "/auth/me", { token: pwc })).json.mustChangeReason).toBe("first");
+    const same = await call("POST", "/users/me/password", { token: pwc, body: { currentPassword: "000000", newPassword: "000000" } });
+    expect(same.json.code).toBe("SAME_PASSWORD");
+    const ok = await call("POST", "/users/me/password", { token: pwc, body: { currentPassword: "000000", newPassword: "482915" } });
+    expect(ok.status).toBe(200);
+    const again = await login("Умид", "482915");
+    expect(again.json.mustChangePassword).toBe(false);
+    expect(again.json.mustChangeReason).toBeUndefined();
+    expect((await login("Умид", "000000")).status).toBe(401);
   });
 
   it("staff with a long password sign in normally", async () => {
