@@ -75,6 +75,8 @@ import trainingRouter from "./training";
 import simRouter from "./sim";
 import officeStatsRouter from "./officeStats";
 import askRouter from "./ask";
+import dailyRouter from "./daily";
+import deskDayRouter from "./deskDay";
 
 const router: IRouter = Router();
 
@@ -154,5 +156,7 @@ router.use(trainingRouter);
 router.use(simRouter);
 router.use(officeStatsRouter);
 router.use(askRouter);
+router.use(dailyRouter);
+router.use(deskDayRouter);
 
 export default router;

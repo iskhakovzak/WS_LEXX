@@ -27,6 +27,7 @@ import { telegramT } from "../i18n/ns";
 import { personNameFor } from "../lib/people/latinNames";
 import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
+import { handleDailyCallback } from "../lib/daily/telegramCallback";
 
 const router: IRouter = Router();
 
@@ -287,6 +288,7 @@ async function handleCallbackQuery(cq: NonNullable<TelegramUpdate["callback_quer
   const L = tg(lang);
 
   logger.info({ chatId, data }, "Telegram callback received");
+  if (data.startsWith("daily:")) { await handleDailyCallback(cq); return; } // evening card buttons (lib/daily)
 
   // ── Menu navigation (non-idea callbacks) ──────────────────────────────────
   if (data.startsWith("menu:")) {

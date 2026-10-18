@@ -179,6 +179,7 @@ export function AttentionPanel({
   isLoading,
   updatedAt,
   onCheckin,
+  dayCardDate,
   fill,
 }: {
   data: DashboardToday | undefined;
@@ -198,6 +199,8 @@ export function AttentionPanel({
   isLoading: boolean;
   updatedAt?: number;
   onCheckin: () => void;
+  /** The day the header's evening card covers: its review (with the journal link) replaces the «fill the day» task. */
+  dayCardDate?: string | null;
   fill?: boolean;
 }) {
   const { t } = dashboardI18n.useT();
@@ -271,7 +274,7 @@ export function AttentionPanel({
   }
 
   // ── Day review (own: the last trading day that isn't closed; team: who hasn't closed today) ──
-  if (!team && lastDay && lastDayEod) {
+  if (!team && lastDay && lastDayEod && lastDay !== dayCardDate) {
     const row = lastDayEod.traders.find((x) => x.trader === me);
     if (row && row.status === "open" && row.trades > 0) {
       const isToday = lastDay === today;
@@ -471,7 +474,7 @@ export function AttentionPanel({
   // Nothing urgent → the next step is still useful: look at the last day's breakdown.
   const lastTradeDate = !team ? (recent?.[0]?.closeDate?.slice(0, 10) ?? null) : null;
   const fallback: Item | null =
-    items.length === 0 && lastTradeDate
+    items.length === 0 && lastTradeDate && !dayCardDate
       ? {
           key: "report",
           rank: 99,

@@ -84,6 +84,7 @@ export default {
     quiz: "Quiz",
     assignment: "Assignment",
     notFound: "Page not found",
+    deskDay: "Desk on the ticker",
     login: "Sign in",
   },
   sidebar: {

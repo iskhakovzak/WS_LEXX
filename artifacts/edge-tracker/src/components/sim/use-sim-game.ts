@@ -3,13 +3,17 @@
  * and the bar feed for the chart. Every request is built at send time from the latest server state, so an order
  * pressed during autoplay fills at the bar the player is looking at (or the next one if a step was already in
  * flight) — never at an earlier one. Consecutive «next» presses merge into one request.
+ *
+ * Own mode («Мои худшие дни»): a fresh game autoplays its lead-in and stops on the decision bar (the server also caps
+ * every step there), so the player decides at the moment they really entered.
  */
 import * as React from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/hooks/use-toast";
 import { humanizeApiError } from "@/lib/api/errors";
 import { simI18n } from "@/i18n/ns/simulator";
-import { simApi, simKeys, type Difficulty, type OrderKind, type PublicState, type Reveal, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
+import { simOwnI18n } from "@/i18n/ns/simOwn";
+import { simApi, simKeys, type Difficulty, type OrderKind, type OwnPick, type PublicState, type Reveal, type SimMode, type Snapshot, type StepBody, type StepResult } from "./api";
 import { entryBracket, fromWire, maxQtyFor, positionAfter, stepErrorOf, type Speed } from "./model";
 import { BarFeed, markGameRequested } from "./sim-chart";
 
@@ -51,12 +55,15 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     void qc.invalidateQueries({ queryKey: simKeys.me() });
     void qc.invalidateQueries({ queryKey: simKeys.board() });
     void qc.invalidateQueries({ queryKey: simKeys.active() });
+    void qc.invalidateQueries({ queryKey: simKeys.own() });
   }, [qc]);
 
   const load = React.useCallback((s: Snapshot) => {
     queue.current = [];
-    setPlaying(false);
-    setGame(viewOf(s));
+    const v = viewOf(s);
+    // Own mode: a game still in its lead-in plays itself up to the decision bar.
+    setPlaying(!v.done && v.meta.own != null && v.cursor < v.meta.own.decisionIdx);
+    setGame(v);
   }, []);
 
   const apply = React.useCallback((r: StepResult) => {
@@ -64,6 +71,12 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     if (!g) return;
     g.feed.push(r.bars.map(fromWire));
     if (r.done && r.reveal) g.feed.relabel(r.reveal.realTimes);
+    const decision = g.meta.own?.decisionIdx;
+    if (decision != null && g.cursor < decision && r.cursor >= decision) {
+      // The decision moment: stop the autoplay and drop bars still owed, the player acts first.
+      setPlaying(false);
+      queue.current = queue.current.filter((x) => x.k !== "advance");
+    }
     const next: GameView = { ...g, cursor: r.cursor, state: r.state, reveal: r.reveal ?? g.reveal, done: r.done };
     gameRef.current = next;
     setGame(next);
@@ -173,6 +186,22 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     }
   }, [load, qc, t]);
 
+  const startOwn = React.useCallback(async (pick: OwnPick, tradeId?: number) => {
+    setStarting(true);
+    markGameRequested();
+    try {
+      load(await simApi.createOwn(pick, tradeId));
+      void qc.invalidateQueries({ queryKey: simKeys.active() });
+      void qc.invalidateQueries({ queryKey: simKeys.own() });
+    } catch (err) {
+      const reason = (err as { body?: { details?: { reason?: unknown } } }).body?.details?.reason;
+      const known = reason === "noBars" || reason === "notReplayable" || reason === "noOwnTrades" ? reason : null;
+      toast({ title: known ? simOwnI18n.t(`errors.${known}`) : humanizeApiError(err, t("errors.load")), variant: "destructive" });
+    } finally {
+      setStarting(false);
+    }
+  }, [load, qc, t]);
+
   const open = React.useCallback(async (id: number) => {
     try { load(await simApi.game(id)); } catch (err) { toast({ title: humanizeApiError(err, t("errors.load")), variant: "destructive" }); }
   }, [load, t]);
@@ -184,5 +213,5 @@ export function useSimGame(ticket: TicketPrefs, speed: Speed) {
     invalidate();
   }, [invalidate]);
 
-  return { game, starting, playing, setPlaying, busy, start, open, load, leave, next, order, setBracket, undo, finish };
+  return { game, starting, playing, setPlaying, busy, start, startOwn, open, load, leave, next, order, setBracket, undo, finish };
 }

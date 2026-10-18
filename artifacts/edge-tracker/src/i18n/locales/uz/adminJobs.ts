@@ -35,6 +35,7 @@ export default {
     trades: { "structure-backfill": "Savdolar tuzilmasi" },
     jobs: { prune: "Vazifalar tarixini tozalash" },
     candles: { archive: "Shamlar arxivi", prune: "Shamlar keshini tozalash" },
+    telegram: { "daily-morning": "Telegram: ertalabki fokus", "daily-evening": "Telegram: kun kartasi", "contract-alerts": "Telegram: shartnoma stopi" },
   },
   backups: {
     description: "pg_dump har kuni Nyu-York vaqti bilan 03:15 da (kesh jadvallari maʼlumotlarisiz). 14 kunlik va 8 haftalik nusxa saqlanadi.",

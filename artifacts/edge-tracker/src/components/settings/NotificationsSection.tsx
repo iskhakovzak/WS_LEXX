@@ -238,6 +238,43 @@ function DigestPanel() {
   );
 }
 
+/** Daily loop in the bot (morning focus, evening card, contract alerts): users.settings.dailyTelegram, absent = on. */
+function DailyTelegramRow({ disabled }: { disabled: boolean }) {
+  const { t } = settingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const { toast } = useToast();
+  const [on, setOn] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    http.get<{ settings?: { dailyTelegram?: unknown } } | null>("/api/users/me/settings")
+      .then((d) => setOn(d?.settings?.dailyTelegram !== false))
+      .catch(() => setOn(true));
+  }, []);
+
+  async function toggle(v: boolean) {
+    const prev = on;
+    setOn(v);
+    setSaving(true);
+    try {
+      await http.put("/api/users/me/settings", { dailyTelegram: v });
+      toast({ title: v ? t("tgAlerts.dailyOn") : t("tgAlerts.dailyOff") });
+    } catch (e) {
+      setOn(prev);
+      toast({ title: e instanceof ApiError && !e.isNetwork ? t("digest.saveError") : tc("states.networkError"), description: e instanceof ApiError && !e.isNetwork ? humanizeApiError(e) : undefined, variant: "destructive" });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (on === null) return <Skeleton className="h-10 rounded-xl" />;
+  return (
+    <SettingRow label={t("tgAlerts.daily")} htmlFor="tg-daily" hint={t("tgAlerts.dailyHint")}>
+      <Switch id="tg-daily" checked={on && !disabled} disabled={saving || disabled} onCheckedChange={toggle} />
+    </SettingRow>
+  );
+}
+
 function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => void }) {
   const { t } = settingsI18n.useT();
   const { t: tc } = commonI18n.useT();
@@ -292,6 +329,7 @@ function TelegramAlertsPanel({ onNavigate }: { onNavigate: (id: SectionId) => vo
               : profile && !linked ? t("tgAlerts.offNotLinked") : t("tgAlerts.offLinked")}>
             <Switch id="tg-alerts" checked={!!enabled} disabled={toggling} onCheckedChange={toggle} />
           </SettingRow>
+          <DailyTelegramRow disabled={!enabled} />
           {profile && !linked && (
             <button type="button" onClick={() => onNavigate("integrations")}
               className="lift flex items-center justify-between gap-3 rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2.5 text-left text-sm">

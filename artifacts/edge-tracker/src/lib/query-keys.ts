@@ -56,6 +56,8 @@ const TRADE_DEPENDENT_PREFIXES: readonly string[] = [
   "day-report",
   "/api/eod",
   "/api/events",
+  // Daily loop (focus / evening card are decided from the trades).
+  "daily",
 ];
 
 function firstSegment(key: QueryKey): string | null {

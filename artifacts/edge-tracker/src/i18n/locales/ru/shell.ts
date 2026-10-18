@@ -87,6 +87,7 @@ export default {
     quiz: "Тест",
     assignment: "Задание",
     notFound: "Страница не найдена",
+    deskDay: "Деск на тикере",
     login: "Вход",
   },
   sidebar: {

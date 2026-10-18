@@ -235,6 +235,8 @@ const TradingDefaultsSchema = z.object({
 }).partial();
 const SettingsPatch = z.object({
   tradingDefaults: TradingDefaultsSchema.nullable().optional(),
+  /** Daily loop in Telegram (morning focus, evening card, contract alerts — lib/daily/telegramJobs). Absent = on. */
+  dailyTelegram: z.boolean().optional(),
 });
 
 router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
@@ -261,6 +263,7 @@ router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
   else if (body.data.tradingDefaults !== undefined) {
     set.tradingDefaults = { ...body.data.tradingDefaults, updatedAt: body.data.tradingDefaults.updatedAt ?? new Date().toISOString() };
   }
+  if (body.data.dailyTelegram !== undefined) set.dailyTelegram = body.data.dailyTelegram;
   const { rows } = await pool.query<{ settings: Record<string, unknown> | null }>(
     `UPDATE users SET settings = (COALESCE(settings, '{}'::jsonb) - $2::text[]) || $1::jsonb
       WHERE id = $3 RETURNING settings`,

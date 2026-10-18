@@ -227,7 +227,7 @@ export function navItemFor(location: string): NavItem | undefined {
   return ALL_NAV_ITEMS.find(own) ?? ALL_NAV_ITEMS.find((i) => isNavActive(i, location));
 }
 
-type TitleKey = "research" | "lesson" | "quiz" | "assignment";
+type TitleKey = "research" | "lesson" | "quiz" | "assignment" | "deskDay";
 const navTitle = (key: NavKey) => () => shellI18n.t(`nav.${key}`);
 const title = (key: TitleKey) => () => shellI18n.t(`titles.${key}`);
 
@@ -236,6 +236,7 @@ const EXTRA_TITLES: [string, () => string][] = [
   ["/research", title("research")],
   ["/error-tracker", navTitle("rules")],
   ["/academy/lesson", title("lesson")],
+  ["/desk-day", title("deskDay")],
 ];
 
 /** Sub-views of one route told apart by the query string (first matching param wins). */

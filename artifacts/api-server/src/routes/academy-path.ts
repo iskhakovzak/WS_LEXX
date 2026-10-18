@@ -369,7 +369,9 @@ async function loadDiscipline(user: string, from: string, to: string): Promise<{
     const [beh, eng] = await Promise.all([import("./behavior"), import("../lib/behaviorEngine")]);
     if (typeof beh.loadBehaviorRows !== "function" || typeof eng.analyzeBehavior !== "function") return null;
     const rows = await beh.loadBehaviorRows(user, from, to);
-    const report = eng.analyzeBehavior(rows.map(beh.rowToBehaviorTrade));
+    const trades = rows.map(beh.rowToBehaviorTrade);
+    const { contractDeltas } = await import("../lib/daily/discipline");
+    const report = eng.analyzeBehavior(trades, {}, undefined, await contractDeltas(user, trades, from, to));
     return report.discipline.map((d) => ({ date: d.date, score: d.score }));
   } catch (err) {
     logger.debug({ err }, "academy-path: behaviour engine unavailable");

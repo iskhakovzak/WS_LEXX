@@ -19,8 +19,14 @@ export const links = {
     href("/trades", { ...p, ids: p.ids?.length ? p.ids.join(",") : undefined }),
   journalDay: (date: string, trader?: string) => href("/journal", { date, trader }),
   dayReport: (date: string, trader?: string) => href("/day-report", { date, trader }),
+  /** «Same ticker, same day»: every desk trader's entries / exits on one chart (pages/desk-day). */
+  deskDay: (ticker: string, date: string) => href("/desk-day", { ticker, date }),
+  /** Simulator «Мои худшие дни»: replay one of the viewer's own losing trades (own trades only, server-checked). */
+  simOwn: (tradeId: number) => href("/simulator", { own: tradeId }),
   behavior: (p: { trader?: string; from?: string; to?: string } = {}) => href("/behavior", p),
   gamePlan: (date?: string) => href("/game-plan", { date }),
+  /** The trader's own plan (daily stop, max trades, rule of the day). */
+  myPlan: (date?: string) => href("/game-plan", { view: "my", date }),
   setup: (id: number) => href("/playbook", { id }),
   playbookSearch: (q: string) => href("/playbook", { q }),
   idea: (id: number) => href("/trade-ideas", { idea: id }),

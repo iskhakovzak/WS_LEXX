@@ -324,4 +324,5 @@ export default {
   DESK_PLAN_MEDIA_DELETE_STAFF_ONLY: "Удалять скриншоты плана деска может куратор",
   FEED_GENERATE_STAFF_ONLY: "Генерировать ленту может только куратор",
   PERMISSIONS_CELLS_REJECTED: "Часть изменений прав нельзя применить: роли админа и гостя закрыты, а права «только для админа» не выдаются ниже админа",
+  DAILY_NOTHING_TO_DISPUTE: "В этот день фокус не нарушен — оспаривать нечего",
 } as const;

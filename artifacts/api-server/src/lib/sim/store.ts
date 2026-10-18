@@ -3,6 +3,10 @@
  *
  * Tables: sim_games, sim_prefs — migration src/db/migrations/0200_sim_games.sql.
  *
+ * Own mode («Мои худшие дни», own.ts / ownService.ts) needs no migration: an own game is stored with mode 'intraday'
+ * and difficulty 'medium' (the CHECK constraints of 0200) and is marked by params.own (the real trade). Own games are
+ * excluded from the weekly board and the fair progress: the player knows the ticker, the date and how the day went.
+ *
  * Bars:
  *   - intraday: only the permanent candle archive (lib/candleArchive) — listArchivedDays picks days with 1-minute /
  *     5-minute bars and already knows each day's gap, range and desk trades; readArchivedDays decodes the bars and
@@ -19,6 +23,7 @@ import { fetchDailyRange } from "../candles/market";
 import { addDays, nyDate } from "../tradingDate";
 import type { SimBar, SimEvent, SimResult } from "./engine";
 import type { Difficulty, Levels, SimMode, SimTf } from "./scenario";
+import type { OwnParams } from "./own";
 
 /* ─────────────────────────── Intraday (candle archive) ─────────────────────────── */
 
@@ -169,6 +174,8 @@ export type GameParams = {
   /** Fake times of every bar (what the client sees). */
   times: number[];
   longName?: string | null;
+  /** Own mode: the real trade (server only until the reveal). */
+  own?: OwnParams;
 };
 
 export type GameRow = {
@@ -312,11 +319,14 @@ export async function longNameOf(ticker: string): Promise<string | null> {
 export type FinishedRow = {
   id: number; mode: SimMode; difficulty: Difficulty; ticker: string; day: string; dayTo: string | null; tf: SimTf;
   net: number; r: number; pct: number; bhPct: number; beatBh: boolean; trades: number; finishedAt: string;
+  /** Own mode game; `ownDiff` = sim net − real net ($). */
+  own: boolean; ownDiff: number | null;
 };
 
 export async function finishedGames(userId: number, limit = 500): Promise<FinishedRow[]> {
   const { rows } = await pool.query(
-    `SELECT id, mode, difficulty, ticker, day, day_to, tf, net_pnl, r_total, pct, bh_pct, beat_bh, trades_count, finished_at
+    `SELECT id, mode, difficulty, ticker, day, day_to, tf, net_pnl, r_total, pct, bh_pct, beat_bh, trades_count, finished_at,
+            (params ? 'own') AS own, (result->'own'->>'diff')::numeric AS own_diff
        FROM sim_games WHERE user_id = $1 AND status = 'finished' ORDER BY finished_at DESC LIMIT $2`,
     [userId, limit],
   );
@@ -324,19 +334,21 @@ export async function finishedGames(userId: number, limit = 500): Promise<Finish
     id: Number(r.id), mode: r.mode, difficulty: r.difficulty, ticker: r.ticker, day: r.day, dayTo: r.day_to, tf: r.tf,
     net: Number(r.net_pnl) || 0, r: Number(r.r_total) || 0, pct: Number(r.pct) || 0, bhPct: Number(r.bh_pct) || 0, beatBh: !!r.beat_bh,
     trades: Number(r.trades_count) || 0, finishedAt: new Date(r.finished_at).toISOString(),
+    own: !!r.own, ownDiff: r.own_diff == null ? null : Number(r.own_diff),
   }));
 }
 
 export type BoardRow = { userId: number; name: string; games: number; r: number; wins: number; best: number; beatBh: number; me: boolean };
 
-/** Leaderboard of [from, to) — New York calendar dates. Only players who opted in, plus the viewer. */
+/** Leaderboard of [from, to) — New York calendar dates. Only players who opted in, plus the viewer. Fair games only
+ *  (own-mode games are replays of a known day). */
 export async function weeklyBoard(from: string, to: string, viewerId: number): Promise<{ rows: BoardRow[]; hidden: number }> {
   const { rows } = await pool.query(
     `SELECT g.user_id, u.name, count(*)::int AS games, COALESCE(sum(g.r_total), 0) AS r,
             count(*) FILTER (WHERE g.net_pnl > 0)::int AS wins, COALESCE(max(g.r_total), 0) AS best,
             count(*) FILTER (WHERE g.beat_bh)::int AS beat, COALESCE(bool_or(p.leaderboard_visible), false) AS visible
        FROM sim_games g JOIN users u ON u.id = g.user_id LEFT JOIN sim_prefs p ON p.user_id = g.user_id
-      WHERE g.status = 'finished'
+      WHERE g.status = 'finished' AND NOT (g.params ? 'own')
         AND g.finished_at >= ($1::date)::timestamp AT TIME ZONE 'America/New_York'
         AND g.finished_at < ($2::date)::timestamp AT TIME ZONE 'America/New_York'
       GROUP BY g.user_id, u.name`,

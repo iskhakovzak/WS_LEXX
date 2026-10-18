@@ -4,11 +4,11 @@
  *   GET  /curator/today                 ?scope=mine|desk&date=&old=1 — фаза дня, кто торгует, риск, нет плана / не закрыт день,
  *                                       общая очередь разборов (EOD + недельные + задания Академии + нарушения;
  *                                       по умолчанию за последние 14 дн., old=1 — со старыми; важное и свежее сверху),
- *                                       просроченные договорённости 1:1, приоритетные «следующие шаги»
+ *                                       просроченные договорённости 1:1, приоритетные «следующие шаги», byCost (lib/daily/costQueue)
  *   GET  /curator/traders               ?scope=mine|desk — карточка на трейдера: тренд 4 нед., дисциплина, риск, тир/ступень,
  *                                       последний разбор, 1:1, нарушения, последняя заметка, следующий шаг
  *   GET  /curator/trader/:name          профиль: карточка + лимиты/метрики, нарушения с разбором, дни EOD, недели,
- *                                       Академия (договорённости, 1:1 без приватных заметок, цели ИПР), заметки
+ *                                       Академия (договорённости, 1:1 без приватных заметок, цели ИПР), заметки, focus (lib/daily/curatorFocus)
  *   GET  /curator/notes?trader=         заметки о трейдере (персонал; трейдер не видит)
  *   POST /curator/notes                 {trader, body, kind?, pinned?}
  *   PATCH /curator/notes/:id            {body?, kind?, pinned?}
@@ -38,6 +38,9 @@ import { AppError, badRequest, forbidden, notFound } from "../lib/http";
 import { langOf, type Lang } from "../i18n";
 import { riskT } from "../i18n/ns";
 import { fmtDateFor } from "../i18n/format";
+import { buildCostQueue } from "../lib/daily/costQueue";
+import { eveningFor } from "../lib/daily/service";
+import { curatorFocusFor } from "../lib/daily/curatorFocus";
 
 const router: IRouter = Router();
 
@@ -324,7 +327,8 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today, langOf(req));
+  // byCost — the queue by money (lib/daily/costQueue), loaded alongside the bulk in one round.
+  const [b, byCost] = await Promise.all([loadBulk(roster.traders, today, langOf(req)), buildCostQueue(roster.traders, today, { eveningFor })]);
   const signals = roster.traders.map((t) => buildSignal(t, b));
   const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
   const now = Date.now();
@@ -389,6 +393,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
     queueWindow: { days: QUEUE_DEFAULT_DAYS, includeOld, old: arranged.old.count, oldOverdue: arranged.old.overdue },
     overdueActions,
     nextActions,
+    byCost,
   });
 }));
 
@@ -461,7 +466,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
   const signal = buildSignal(name, b);
   const row = b.desk.rows.find((r) => r.trader === name);
   const from90 = addDays(today, -89);
-  const [breaches, eodDays, weeks, actions, meetings, goals, notes, limitEvents] = await Promise.all([
+  const [breaches, eodDays, weeks, actions, meetings, goals, notes, limitEvents, focus] = await Promise.all([
     safe(`SELECT a.id, a.date, a.kind, a.used::float AS used, a."limit"::float AS "limit", a.message, a.created_at,
                  CASE WHEN r.id IS NULL THEN NULL ELSE row_to_json(r.*) END AS review
             FROM risk_alert_log a LEFT JOIN risk_breach_reviews r ON r.alert_id = a.id AND r.archived_at IS NULL
@@ -477,6 +482,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
             FROM academy_idp_goals WHERE archived_at IS NULL AND student = $1 ORDER BY (status = 'active') DESC, created_at DESC LIMIT 10`, [name]),
     safe(`SELECT * FROM curator_notes WHERE archived_at IS NULL AND trader = $1 ORDER BY pinned DESC, created_at DESC LIMIT 100`, [name]),
     safe(`SELECT id, reason, changed_by, changed_at FROM trader_risk_limit_events WHERE trader = $1 ORDER BY changed_at DESC LIMIT 5`, [name]),
+    curatorFocusFor(name, today), // the daily-loop focus: current, history, options to replace it (lib/daily/curatorFocus)
   ]);
   res.json({
     trader: name,
@@ -505,6 +511,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
     goals: goals.map((g: any) => ({ id: Number(g.id), title: String(g.title), metric: String(g.metric), comparator: String(g.comparator), target: g.target, dueOn: g.due_on ?? null, status: String(g.status), lastValue: g.last_value, lastProgress: g.last_progress })),
     notes: notes.map(rowToNote),
     limitEvents: limitEvents.map((e: any) => ({ id: Number(e.id), reason: e.reason ?? null, changedBy: e.changed_by ?? null, changedAt: iso(e.changed_at) })),
+    focus,
     canEditLimits: await can(req, "risk.limits.edit", { trader: name }),
   });
 }));

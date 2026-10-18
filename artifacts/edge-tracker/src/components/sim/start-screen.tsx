@@ -1,13 +1,19 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { CalendarClock, CandlestickChart, Flame, Gauge, History, Play, Sigma, Trophy, Users } from "lucide-react";
+import { CalendarClock, CandlestickChart, Flame, Gauge, History, Play, RotateCcw, Sigma, Trophy, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { DataTable, EmptyState, ErrorState, Kbd, ListSkeleton, Panel, Segmented, StatCard, StatGrid, toneOf, toneText } from "@/components/ds";
 import { fmtDate, fmtPct, fmtR, fmtRate, fmtUsd, fmtCount } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
-import { boardQuery, myStatsQuery, simApi, simKeys, type Difficulty, type FinishedGame, type SimMode, type Snapshot } from "./api";
+import { simOwnI18n } from "@/i18n/ns/simOwn";
+import { boardQuery, myStatsQuery, ownCandidatesQuery, simApi, simKeys, type Difficulty, type FinishedGame, type SimMode, type Snapshot } from "./api";
+import { OwnPicker, type OwnStartPick } from "./own-start";
+
+/** What the start screen offers: the two fair modes and the own replay («Мои худшие дни»). */
+export type PlayMode = SimMode | "own";
+export const isPlayMode = (v: unknown): v is PlayMode => v === "intraday" || v === "swing" || v === "own";
 
 import { personName } from "@/i18n";
 const LEVELS: Difficulty[] = ["easy", "medium", "hard"];
@@ -17,18 +23,23 @@ const PLAY_BARS: Record<SimMode, Record<Difficulty, number>> = {
 };
 
 export function NewGamePanel({
-  mode, setMode, level, setLevel, onPlay, starting, active, onResume,
+  mode, setMode, level, setLevel, ownPick, setOwnPick, onPlay, starting, active, onResume,
 }: {
-  mode: SimMode;
-  setMode: (m: SimMode) => void;
+  mode: PlayMode;
+  setMode: (m: PlayMode) => void;
   level: Difficulty;
   setLevel: (d: Difficulty) => void;
+  ownPick: OwnStartPick;
+  setOwnPick: (p: OwnStartPick) => void;
   onPlay: () => void;
   starting: boolean;
   active: Snapshot | null;
   onResume: () => void;
 }) {
   const { t } = simI18n.useT();
+  const { t: to } = simOwnI18n.useT();
+  const own = useQuery({ ...ownCandidatesQuery(), enabled: mode === "own" });
+  const ownEmpty = mode === "own" && (own.isLoading || !own.data?.trades.length);
   return (
     <Panel title={t("start.title")} icon={Play} fill className="lg:col-span-7">
       <div className="flex flex-col gap-4">
@@ -37,7 +48,7 @@ export function NewGamePanel({
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold">{t("start.resumeTitle")}</p>
               <p className="text-xs text-muted-foreground">
-                {t(`mode.${active.mode}`)} · {t(`difficulty.${active.difficulty}`)} · {t("start.resumeHint", { played: active.cursor - active.startIdx, total: active.endIdx - active.startIdx })}
+                {active.own ? `${to("mode")} · ${active.own.ticker}` : `${t(`mode.${active.mode}`)} · ${t(`difficulty.${active.difficulty}`)}`} · {t("start.resumeHint", { played: active.cursor - active.startIdx, total: active.endIdx - active.startIdx })}
               </p>
             </div>
             <Button onClick={onResume}>{t("start.resume")}</Button>
@@ -50,10 +61,14 @@ export function NewGamePanel({
             options={[
               { value: "intraday", label: <><CandlestickChart aria-hidden="true" />{t("mode.intraday")}</> },
               { value: "swing", label: <><CalendarClock aria-hidden="true" />{t("mode.swing")}</> },
+              { value: "own", label: <><RotateCcw aria-hidden="true" />{to("mode")}</> },
             ]}
           />
-          <p className="text-xs text-muted-foreground">{t(`modeHint.${mode}`)}</p>
+          <p className="text-xs text-muted-foreground">{mode === "own" ? to("modeHint") : t(`modeHint.${mode}`)}</p>
         </div>
+        {mode === "own" ? (
+          <OwnPicker data={own.data} loading={own.isLoading} pick={ownPick} setPick={setOwnPick} />
+        ) : (
         <div className="flex flex-col gap-2">
           <p className="text-xs font-medium text-muted-foreground">{t("start.levelLabel")}</p>
           <div role="radiogroup" aria-label={t("start.levelLabel")} className="grid grid-cols-3 gap-2">
@@ -78,13 +93,14 @@ export function NewGamePanel({
             })}
           </div>
         </div>
-        <Button size="lg" className="min-h-12 self-stretch text-base sm:self-start sm:px-10" onClick={onPlay} disabled={starting} aria-keyshortcuts="Enter">
+        )}
+        <Button size="lg" className="min-h-12 self-stretch text-base sm:self-start sm:px-10" onClick={onPlay} disabled={starting || ownEmpty} aria-keyshortcuts="Enter">
           <Play aria-hidden="true" /> {starting ? t("start.starting") : t("start.play")} {!starting && <Kbd className="border-white/30 bg-white/10 text-white/90">Enter</Kbd>}
         </Button>
         <div className="border-t border-[var(--glass-border)] pt-3">
           <p className="mb-1.5 text-xs font-medium text-muted-foreground">{t("start.howTitle")}</p>
           <ul className="grid gap-1.5 text-xs text-muted-foreground sm:grid-cols-2">
-            {(["a", "b", "c", "d"] as const).map((k) => <li key={k} className="flex gap-2"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden="true" />{t(`start.how.${k}`)}</li>)}
+            {(["a", "b", "c", "d"] as const).map((k) => <li key={k} className="flex gap-2"><span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-muted-foreground" aria-hidden="true" />{mode === "own" ? to(`how.${k}`) : t(`start.how.${k}`)}</li>)}
           </ul>
         </div>
       </div>
@@ -118,6 +134,12 @@ export function ProgressPanel({ onOpen }: { onOpen: (id: number) => void }) {
               </span>
               <span className={cn("text-base font-semibold tabular-nums", toneText(toneOf(s.best.r)))}>{fmtR(s.best.r)}</span>
             </button>
+          )}
+          {s && s.own.games > 0 && (
+            <p className="flex items-center gap-2 text-xs text-muted-foreground">
+              <RotateCcw className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+              {simOwnI18n.t("progressSummary", { games: s.own.games, better: s.own.better, diff: fmtUsd(s.own.diff, { signed: true, decimals: "auto" }) })}
+            </p>
           )}
         </div>
       )}
@@ -158,15 +180,15 @@ export function RecentGames({ onOpen }: { onOpen: (id: number) => void }) {
 
 function RecentRow({ g, onOpen }: { g: FinishedGame; onOpen: (id: number) => void }) {
   const { t } = simI18n.useT();
-  const vs = g.pct - g.bhPct;
+  const vs = g.own ? g.ownDiff ?? 0 : g.pct - g.bhPct;
   return (
     <tr className="cursor-pointer" onClick={() => onOpen(g.id)} onKeyDown={(e) => { if (e.key === "Enter") onOpen(g.id); }} tabIndex={0}>
       <td className="whitespace-nowrap text-muted-foreground">{fmtDate(g.finishedAt, "dateTime")}</td>
       <td className="font-medium">{g.ticker}</td>
-      <td className="whitespace-nowrap text-muted-foreground">{t(`mode.${g.mode}`)} · {t(`difficulty.${g.difficulty}`)}</td>
+      <td className="whitespace-nowrap text-muted-foreground">{g.own ? simOwnI18n.t("progressLabel") : `${t(`mode.${g.mode}`)} · ${t(`difficulty.${g.difficulty}`)}`}</td>
       <td className={cn("text-right tabular-nums", toneText(toneOf(g.r)))}>{fmtR(g.r)}</td>
       <td className={cn("text-right tabular-nums", toneText(toneOf(g.net)))}>{fmtUsd(g.net, { signed: true, decimals: "auto" })}</td>
-      <td className={cn("text-right tabular-nums", toneText(toneOf(vs)))}>{fmtPct(vs, 1)}</td>
+      <td className={cn("text-right tabular-nums", toneText(toneOf(vs)))}>{g.own ? fmtUsd(vs, { signed: true, decimals: "auto" }) : fmtPct(vs, 1)}</td>
     </tr>
   );
 }

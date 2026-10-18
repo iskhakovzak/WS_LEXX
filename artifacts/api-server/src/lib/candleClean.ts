@@ -9,7 +9,9 @@
  *   - bodies (open / close) of normal bars are never changed;
  *   - a wick is clamped only when it sticks out beyond the body by more than `tol` (max of K × the neighbours' median
  *     range and a % of price — looser in regular hours than in pre/post-market) AND no adjacent bar traded at least
- *     halfway out to it;
+ *     halfway out to it — with its body, with volume, or with a wick that is not itself beyond the cap (neighbouring
+ *     zero-volume stray prints with the same absurd wick, META 2026-09-16 16:45 + 16:50 ET up to 714 at ~674, do not
+ *     vouch for each other);
  *     it is cut back to the body plus the neighbours' typical wick;
  *   - a bar is dropped only when it is clearly broken: non-finite / non-positive prices, or a zero-volume body that
  *     sits alone far away from both the previous close and the next open while those two agree (a single-bar spike);
@@ -103,8 +105,9 @@ export function cleanCandles<T extends Ohlcv>(bars: readonly T[], opts: CleanOpt
     const refLo = Math.min(bot, median(nb.map((x) => x.l)));
     const capHi = refHi + tol, capLo = refLo - tol;
     // An adjacent bar that traded at least halfway out to this extreme confirms it (a real spike, not a stray print).
-    const confirmedHi = adj.some((x) => x.h >= top + (b.h - top) / 2);
-    const confirmedLo = adj.some((x) => x.l <= bot - (bot - b.l) / 2);
+    const halfHi = top + (b.h - top) / 2, halfLo = bot - (bot - b.l) / 2;
+    const confirmedHi = adj.some((x) => Math.max(x.o, x.c) >= halfHi || (x.h >= halfHi && (x.v > 0 || x.h <= capHi)));
+    const confirmedLo = adj.some((x) => Math.min(x.o, x.c) <= halfLo || (x.l <= halfLo && (x.v > 0 || x.l >= capLo)));
     let { h, l } = b;
     if (h > capHi && !confirmedHi) h = Math.max(top, Math.min(capHi, top + upWick));
     if (l < capLo && !confirmedLo) l = Math.min(bot, Math.max(capLo, bot - dnWick));

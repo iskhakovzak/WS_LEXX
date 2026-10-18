@@ -14,6 +14,7 @@ import { actionTone, curatorLinks, disciplineTone, riskTone, waitLabel } from ".
 import { useCuratorEodReview, type EodTarget } from "./eod-review";
 import { GoalDialog } from "./goal-dialog";
 import { NotesPanel } from "./notes-panel";
+import { FocusPanel } from "./focus-panel";
 import { TemplateDialog } from "./template-dialog";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
@@ -177,6 +178,7 @@ function OverviewTab({ p, onTab, onGoal }: { p: ProfilePayload; onTab: (t: Profi
           </Panel>
         </div>
         <div className="flex flex-col gap-[var(--grid-gap)] lg:col-span-5">
+          {p.focus && <FocusPanel trader={p.trader} focus={p.focus} />}
           <Panel title={t("profile.lastReports")} icon={BookOpen}>
             <dl className="grid grid-cols-[1fr_auto] gap-x-4 gap-y-2 text-sm">
               <dt className="text-muted-foreground">{t("profile.lastClosed")}</dt>

@@ -35,6 +35,7 @@ export default {
     trades: { "structure-backfill": "Trade structure" },
     jobs: { prune: "Job history cleanup" },
     candles: { archive: "Candle archive", prune: "Candle cache cleanup" },
+    telegram: { "daily-morning": "Telegram: morning focus", "daily-evening": "Telegram: day card", "contract-alerts": "Telegram: contract stop alerts" },
   },
   backups: {
     description: "pg_dump daily at 03:15 New York time (cache tables without data). 14 daily and 8 weekly copies are kept.",

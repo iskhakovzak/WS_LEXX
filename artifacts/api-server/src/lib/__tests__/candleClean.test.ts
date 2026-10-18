@@ -81,6 +81,18 @@ describe("cleanCandles — rules", () => {
     expect(out[16].h).toBe(111.5);
   });
 
+  it("clamps neighbouring zero-volume stray wicks that only vouch for each other (META 2026-09-16 16:45/16:50 ET)", () => {
+    const src = quiet(30, 674).map((b) => ({ ...b, v: 0 }));
+    src[15] = { ...src[15], h: 714.4555, l: 628.7078 };
+    src[16] = { ...src[16], h: 714.4555, l: 628.7078 };
+    const out = cleanCandles(src);
+    for (const i of [15, 16]) {
+      expect(out[i].h).toBeLessThan(680);
+      expect(out[i].l).toBeGreaterThan(668);
+      expect([out[i].o, out[i].c]).toEqual([src[i].o, src[i].c]);
+    }
+  });
+
   it("keeps a real gap: bodies move and stay there", () => {
     const src = [...quiet(20, 100), ...quiet(20, 125, T0 + 20 * 60)];
     src[20] = { ...src[20], o: 100, l: 99.9 }; // the gap bar opens at the old level and closes at the new one

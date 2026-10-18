@@ -4,6 +4,8 @@
  */
 import { queryOptions } from "@tanstack/react-query";
 import { nyDate } from "@/lib/trading-date";
+import type { DailyMe } from "@/lib/daily/types";
+import { apiErrorStatus } from "./errors";
 import { http } from "./http";
 import { KEYS, STALE } from "./keys";
 
@@ -43,4 +45,29 @@ export const riskMeQuery = <T = unknown>(date: string = nyDate()) =>
     queryKey: KEYS.riskMe(date),
     queryFn: ({ signal }) => http.get<T>("/api/risk/me", { query: { date }, signal }),
     staleTime: STALE.default,
+  });
+
+/**
+ * The viewer's daily loop (GET /api/daily/me): focus, last finished day's evening card, tier progress. Keyed by the NY
+ * day; texts travel as keys (rendered by the web dictionaries), so a language switch needs no refetch. 403 → null
+ * (a role without a personal loop).
+ */
+export const dailyMeQuery = (date: string = nyDate()) =>
+  queryOptions({
+    queryKey: KEYS.dailyMe(date),
+    queryFn: ({ signal }) =>
+      http.get<DailyMe>("/api/daily/me", { signal }).catch((e: unknown) => {
+        if (apiErrorStatus(e) === 403) return null;
+        throw e;
+      }),
+    staleTime: STALE.default,
+    meta: { i18n: false },
+  });
+
+/** The viewer's personal plan for `date` (GET /api/game-plan/my?date=); each reader types `doc` with its own shape. */
+export const myPlanQuery = <T = unknown>(date: string) =>
+  queryOptions({
+    queryKey: KEYS.myPlan(date),
+    queryFn: ({ signal }) => http.get<T>("/api/game-plan/my", { query: { date }, signal }),
+    staleTime: STALE.short,
   });

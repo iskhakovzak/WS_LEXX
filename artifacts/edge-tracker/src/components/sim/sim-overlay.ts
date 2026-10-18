@@ -1,7 +1,8 @@
 /**
  * Series primitive for the simulator chart: the player's fills (B / S circles, × stop, ✓ target), the open position
  * (average line, stop and target), and after the reveal the round trips with a mistake (tinted span + «#n») and the
- * desk's real fills (small triangles, one colour for the viewer's own trades, another for everyone else).
+ * desk's real fills (small triangles, one colour for the viewer's own trades, another for everyone else). Own mode adds
+ * a dashed vertical marker where the player really entered (the decision moment).
  * Labels arrive already translated; the primitive only draws.
  */
 import { fmtPrice } from "@/lib/format";
@@ -23,6 +24,8 @@ export type OverlayData = {
   spans: readonly OverlaySpan[];
   desk: readonly OverlayDeskFill[];
   text: { position: string | null; stop: string | null; target: string | null };
+  /** Own mode: the real entry moment (drawn after the close of bar `idx`). */
+  marker?: { idx: number; text: string } | null;
 };
 
 export const EMPTY_OVERLAY: OverlayData = {
@@ -50,6 +53,24 @@ export class SimOverlayPrimitive extends SeriesPrimitiveBase {
   render(rc: RenderCtx): void {
     const d = this.d;
     const { ctx, theme, width, height } = rc;
+
+    if (d.marker) {
+      // Integer logical indices only (the decision bar may be the last one loaded): its centre + half a bar.
+      const xc = rc.x(d.marker.idx), xp = rc.x(d.marker.idx - 1);
+      const x = xc != null ? xc + (xp != null ? (xc - xp) / 2 : 0) : null;
+      if (x != null && x >= 0 && x <= width) {
+        ctx.save();
+        ctx.strokeStyle = theme.c1(0.85);
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.beginPath();
+        ctx.moveTo(Math.round(x) + 0.5, 0);
+        ctx.lineTo(Math.round(x) + 0.5, height);
+        ctx.stroke();
+        ctx.restore();
+        label(ctx, theme, d.marker.text, x + 3, 24, { anchor: "tl", bg: theme.c1(0.9), size: 10, clamp: { width, height } });
+      }
+    }
 
     for (const s of d.spans) {
       const x1 = rc.x(s.from - 0.5), x2 = rc.x(s.to + 0.5);

@@ -5,6 +5,7 @@
 import { queryOptions } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import { OWN_CANDIDATES_KEY } from "@/components/shared/replay-own-day";
 
 export type SimMode = "intraday" | "swing";
 export type Difficulty = "easy" | "medium" | "hard";
@@ -40,9 +41,26 @@ export type DeskTrader = {
   key: string; name: string | null; label: string; own: boolean;
   trades: { side: "long" | "short"; r: number | null; perShare: number | null; net: number | null; fills: DeskFill[] }[];
 };
+/* Own mode («Мои худшие дни», server lib/sim/own.ts): the player's own losing trade, replayed. */
+export type OwnPick = "worst" | "random" | "trade";
+export type LegRole = "entry" | "reentry" | "flip" | "add" | "partial_exit" | "exit" | "stop";
+export type OwnPublic = { tradeId: number; pick: OwnPick; ticker: string; date: string; decisionIdx: number; riskSource: "trade" | "stop" | "atr" };
+export type OwnCompare = { realNet: number; realR: number; simNet: number; simR: number; diff: number; riskUsd: number; verdict: "better" | "same" | "worse" | "skipped" };
+export type OwnReveal = OwnPublic & {
+  side: "long" | "short"; entryIdx: number; exitIdx: number | null;
+  realNet: number; realGross: number; realFees: number; maxQty: number; avgEntry: number | null; avgExit: number | null; stop: number | null;
+  riskUsd: number;
+  legs: { role: LegRole; price: number; qty: number | null; at: string | null; idx: number | null }[];
+  mistakes: string[];
+  compare: OwnCompare;
+};
+export type { OwnCandidate, OwnCandidates } from "@/components/shared/replay-own-day";
+export { ownCandidatesQuery } from "@/components/shared/replay-own-day";
+
 export type Reveal = {
   ticker: string; longName: string | null; day: string; dayTo: string | null; realTimes: number[]; result: SimResult;
   desk: { traders: DeskTrader[]; outside: number; intradayCount: number | null };
+  own: OwnReveal | null;
 };
 
 export type Snapshot = {
@@ -50,6 +68,7 @@ export type Snapshot = {
   startIdx: number; endIdx: number; cursor: number;
   feePerShare: number; riskUnit: number; defaultQty: number; maxNotional: number; levels: Levels;
   bars: WireBar[]; state: PublicState; createdAt: string; reveal: Reveal | null;
+  own: OwnPublic | null;
 };
 
 export type StepBody = {
@@ -62,6 +81,7 @@ export type StepResult = { cursor: number; bars: WireBar[]; state: PublicState; 
 export type FinishedGame = {
   id: number; mode: SimMode; difficulty: Difficulty; ticker: string; day: string; dayTo: string | null; tf: SimTf;
   net: number; r: number; pct: number; bhPct: number; beatBh: boolean; trades: number; finishedAt: string;
+  own: boolean; ownDiff: number | null;
 };
 export type MyStats = {
   totals: { games: number; r: number; wins: number; beatBh: number; net: number };
@@ -70,6 +90,7 @@ export type MyStats = {
   byLevel: { mode: SimMode; difficulty: Difficulty; games: number; r: number }[];
   recent: FinishedGame[];
   prefs: { leaderboardVisible: boolean };
+  own: { games: number; better: number; diff: number };
 };
 export type Board = {
   from: string; to: string; hidden: number;
@@ -81,6 +102,7 @@ export const simKeys = {
   active: () => ["sim", "active"] as const,
   me: () => ["sim", "me"] as const,
   board: () => ["sim", "board"] as const,
+  own: () => OWN_CANDIDATES_KEY,
 };
 
 /** Language-independent data: no refetch on a language switch. */
@@ -97,6 +119,7 @@ export const boardQuery = () => queryOptions({ queryKey: simKeys.board(), queryF
 
 export const simApi = {
   create: (mode: SimMode, difficulty: Difficulty) => http.post<Snapshot>("/api/sim/games", { mode, difficulty }),
+  createOwn: (pick: OwnPick, tradeId?: number) => http.post<Snapshot>("/api/sim/own", tradeId != null ? { pick, tradeId } : { pick }),
   game: (id: number) => http.get<Snapshot>(`/api/sim/games/${id}`),
   step: (id: number, body: StepBody) => http.post<StepResult>(`/api/sim/games/${id}/step`, body),
   undo: (id: number) => http.post<StepResult>(`/api/sim/games/${id}/undo`),
