@@ -2,7 +2,9 @@
  * Analyst actions — pure helpers (formatting, NY-time session logic, scoring, persisted view state).
  */
 import type { Tone } from "@/components/ds";
-import { fmtDate, fmtPct, fmtUsd, fmtWeekday } from "@/lib/format";
+import { fmtDate, fmtPct, fmtRelative, fmtUsd, fmtWeekday } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
 
 export type ActionKind = "upgrade" | "downgrade" | "initiated" | "maintain" | "reiterated" | "other";
 
@@ -57,13 +59,19 @@ export type OpenPosition = {
 
 /* ── Kinds ─────────────────────────────────────────────────────────────── */
 
-export const KIND_META: Record<ActionKind, { label: string; short: string; tone: Tone }> = {
-  upgrade: { label: "Апгрейд", short: "Апгрейд", tone: "up" },
-  downgrade: { label: "Даунгрейд", short: "Даунгрейд", tone: "down" },
-  initiated: { label: "Начало покрытия", short: "Покрытие", tone: "accent" },
-  maintain: { label: "Подтверждение", short: "Таргет", tone: "neutral" },
-  reiterated: { label: "Повтор", short: "Повтор", tone: "neutral" },
-  other: { label: "Другое", short: "Другое", tone: "neutral" },
+const kindMeta = (k: ActionKind, tone: Tone) => ({
+  tone,
+  get label() { return analystI18n.t(`kind.label.${k}`); },
+  get short() { return analystI18n.t(`kind.short.${k}`); },
+});
+/** Action kind → label / short label (read from the dictionary at access time) and tone. */
+export const KIND_META: Record<ActionKind, { readonly label: string; readonly short: string; tone: Tone }> = {
+  upgrade: kindMeta("upgrade", "up"),
+  downgrade: kindMeta("downgrade", "down"),
+  initiated: kindMeta("initiated", "accent"),
+  maintain: kindMeta("maintain", "neutral"),
+  reiterated: kindMeta("reiterated", "neutral"),
+  other: kindMeta("other", "neutral"),
 };
 
 export type TypeFilter = "all" | "moves" | "upgrade" | "downgrade" | "initiated" | "targets";
@@ -158,7 +166,7 @@ export function sessionWindow(now = new Date()): { startKey: string; sessionDay:
   let prev = shiftDay(target.day, -1);
   while (prev.weekday === 0 || prev.weekday === 6) prev = shiftDay(prev.day, -1);
   const wd = fmtWeekday(prev.weekday, "short");
-  return { startKey: `${prev.day} 16:00`, sessionDay: target.day, label: `с закрытия ${wd} 16:00 ET` };
+  return { startKey: `${prev.day} 16:00`, sessionDay: target.day, label: analystI18n.t("sinceClose", { weekday: wd }) };
 }
 
 export type Session = "pre" | "rth" | "post";
@@ -169,29 +177,23 @@ export function sessionOf(iso: string | null): Session | null {
   if (m < 16 * 60) return "rth";
   return "post";
 }
-export const SESSION_LABEL: Record<Session, string> = { pre: "до открытия", rth: "в сессию", post: "после закрытия" };
+export const SESSION_LABEL = {} as Record<Session, string>;
+for (const k of ["pre", "rth", "post"] as const) Object.defineProperty(SESSION_LABEL, k, { get: () => analystI18n.t(`session.${k}`), enumerable: true });
 
 export function nyTime(iso: string | null): string {
   return iso ? nyParts(new Date(iso)).hhmm : "—";
 }
 
 export function dayTitle(day: string, today: string): string {
-  if (day === today) return "Сегодня";
-  if (day === shiftDay(today, -1).day) return "Вчера";
+  if (day === today) return commonI18n.t("time.today");
+  if (day === shiftDay(today, -1).day) return commonI18n.t("time.yesterday");
   const s = fmtDate(day, "weekdayDayMonth");
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 export function relAgo(iso: string | null): string {
   if (!iso) return "";
-  const ms = Date.now() - new Date(iso).getTime();
-  const h = Math.floor(ms / 3600_000);
-  if (h < 1) return "только что";
-  if (h < 24) return `${h} ч назад`;
-  const d = Math.floor(h / 24);
-  if (d < 30) return `${d} дн назад`;
-  if (d < 365) return `${Math.floor(d / 30)} мес назад`;
-  return `${Math.floor(d / 365)} г назад`;
+  return fmtRelative(iso, { style: "short" });
 }
 
 /* ── Ratings ───────────────────────────────────────────────────────────── */
@@ -246,40 +248,36 @@ export function scoreAction(a: FeedAction, ctx: ScoreCtx): { score: number; reas
   const reasons: ScoreReason[] = [];
   if (a.action === "upgrade" || a.action === "downgrade") s += 100;
   else if (a.action === "initiated") s += 50;
-  if (ctx.held) { s += 200; reasons.push({ key: "held", label: "позиция команды", tone: "warn" }); }
-  if (ctx.top) { s += 40; reasons.push({ key: "top", label: "топ-фирма", tone: "accent" }); }
+  const t = analystI18n.t;
+  if (ctx.held) { s += 200; reasons.push({ key: "held", label: t("reason.held"), tone: "warn" }); }
+  if (ctx.top) { s += 40; reasons.push({ key: "top", label: t("reason.top"), tone: "accent" }); }
   const w = ctx.weight;
   if (w && w.n >= WEIGHT_MIN_N && w.ratio != null && w.ratio >= 1.5) {
     s += Math.min(40, (w.ratio - 1) * 25);
-    reasons.push({ key: "weight", label: `вес ×${w.ratio.toFixed(1)}`, tone: "purple" });
+    reasons.push({ key: "weight", label: t("reason.weight", { value: w.ratio.toFixed(1) }), tone: "purple" });
   }
   const pt = ptChangePct(a);
   if (pt != null) {
     s += Math.min(60, Math.abs(pt) * 2);
     if (Math.abs(pt) >= 10) reasons.push({ key: "pt", label: `PT ${fmtPct(pt, 0)}`, tone: pt > 0 ? "up" : "down" });
   }
-  if (ctx.watched) { s += 50; reasons.push({ key: "watch", label: "в вотчлисте", tone: "accent" }); }
+  if (ctx.watched) { s += 50; reasons.push({ key: "watch", label: t("reason.watch"), tone: "accent" }); }
   if (ctx.traded > 0) {
     s += 30 + Math.min(30, ctx.traded);
-    reasons.push({ key: "traded", label: `я торговал · ${ctx.traded}`, tone: "neutral" });
+    reasons.push({ key: "traded", label: t("reason.traded", { count: ctx.traded }), tone: "neutral" });
   }
   if (ctx.gapPct != null && Math.abs(ctx.gapPct) >= 2) {
     s += 20;
-    reasons.push({ key: "gap", label: `гэп ${fmtPct(ctx.gapPct, 1)}`, tone: ctx.gapPct > 0 ? "up" : "down" });
+    reasons.push({ key: "gap", label: t("reason.gap", { value: fmtPct(ctx.gapPct, 1) }), tone: ctx.gapPct > 0 ? "up" : "down" });
   }
   return { score: Math.round(s), reasons: reasons.slice(0, 4) };
 }
 
 /* ── Filters (persisted) ───────────────────────────────────────────────── */
 
-export const PERIODS = [
-  { value: "1", label: "1д" },
-  { value: "3", label: "3д" },
-  { value: "5", label: "5д" },
-  { value: "14", label: "14д" },
-  { value: "30", label: "30д" },
-  { value: "90", label: "90д" },
-] as const;
+const period = <V extends string>(value: V) => ({ value, get label() { return analystI18n.t("period.d", { count: value }); } });
+/** Data windows; labels («5д» / "5d" / "5k") follow the UI language. */
+export const PERIODS = [period("1"), period("3"), period("5"), period("14"), period("30"), period("90")] as const;
 export type Period = (typeof PERIODS)[number]["value"];
 
 export const CAP_PRESETS = [0, 1, 2, 10, 50, 200] as const;

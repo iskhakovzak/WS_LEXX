@@ -21,6 +21,8 @@ import type { TickerFundamentals } from "@/lib/market-intel";
 import { FilterChip, Pill } from "@/components/ds";
 import { nyDate } from "@/lib/trading-date";
 import { RESEARCH_TEMPLATES, confidencePct, confidenceTone, noteDay } from "./research-utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { researchI18n } from "@/i18n/ns/research";
 
 export type ResearchFormData = {
   date: string;
@@ -81,7 +83,7 @@ export function formToResearchBody(f: ResearchFormData): CreateResearchBody & { 
   };
 }
 
-const CONF_LABEL: Record<string, string> = { up: "Высокая", warn: "Средняя", down: "Низкая", neutral: "—" };
+const confLabel = (tone: "up" | "warn" | "down" | "neutral") => (tone === "neutral" ? "—" : researchI18n.t(`form.conf.${tone}`));
 
 export function ResearchFormDialog({
   open,
@@ -99,6 +101,7 @@ export function ResearchFormDialog({
   onOpenChange: (open: boolean) => void;
   onSubmit: (form: ResearchFormData) => void;
 }) {
+  const { t: tr } = researchI18n.useT();
   const [form, setForm] = useState<ResearchFormData>(blankResearch());
   const [template, setTemplate] = useState<string | null>(null);
 
@@ -173,15 +176,15 @@ export function ResearchFormDialog({
           className="space-y-5"
         >
           <DialogHeader>
-            <DialogTitle>{editing ? "Редактировать заметку" : "Новая заметка"}</DialogTitle>
+            <DialogTitle>{editing ? tr("form.titleEdit") : tr("form.titleNew")}</DialogTitle>
             <DialogDescription>
-              Паттерн, тикер или тема — всё, что стоит запомнить команде. Ctrl+Enter — сохранить.
+              {tr("form.description")}
             </DialogDescription>
           </DialogHeader>
 
           {!editing && (
             <div className="space-y-2">
-              <div className="micro-label">Шаблон</div>
+              <div className="micro-label">{tr("form.template")}</div>
               <div className="flex flex-wrap gap-2">
                 {RESEARCH_TEMPLATES.map((t) => (
                   <FilterChip key={t.id} active={template === t.id} onClick={() => applyTemplate(t.id)} className="min-h-8 text-xs">
@@ -194,7 +197,7 @@ export function ResearchFormDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-5">
             <div className="space-y-1.5 sm:col-span-2">
-              <Label htmlFor="rs-pattern">Название *</Label>
+              <Label htmlFor="rs-pattern">{tr("form.name")}</Label>
               <Input
                 id="rs-pattern"
                 autoFocus
@@ -204,7 +207,7 @@ export function ResearchFormDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rs-ticker">Тикер</Label>
+              <Label htmlFor="rs-ticker">{tr("form.ticker")}</Label>
               <Input
                 id="rs-ticker"
                 value={form.ticker}
@@ -214,11 +217,11 @@ export function ResearchFormDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rs-date">Торговый день</Label>
+              <Label htmlFor="rs-date">{tr("form.tradingDay")}</Label>
               <Input id="rs-date" type="date" value={form.date} onChange={(e) => set("date", e.target.value)} />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="rs-repeat">Повторений</Label>
+              <Label htmlFor="rs-repeat">{tr("form.repeats")}</Label>
               <Input id="rs-repeat" type="number" inputMode="numeric" min="1" value={form.repeatCount} onChange={(e) => set("repeatCount", e.target.value)} />
             </div>
           </div>
@@ -227,14 +230,14 @@ export function ResearchFormDialog({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="rs-confidence">Уверенность</Label>
+              <Label htmlFor="rs-confidence">{tr("form.confidence")}</Label>
               <Pill tone={tone}>
-                {conf}% · {CONF_LABEL[tone]}
+                {conf}% · {confLabel(tone)}
               </Pill>
             </div>
             <Slider
               id="rs-confidence"
-              aria-label="Уверенность"
+              aria-label={tr("form.confidence")}
               min={0}
               max={100}
               step={5}
@@ -245,28 +248,28 @@ export function ResearchFormDialog({
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between">
-              <Label htmlFor="rs-context">Контекст</Label>
+              <Label htmlFor="rs-context">{tr("form.context")}</Label>
               <VoiceRecorder onTranscript={(text) => set("context", form.context ? `${form.context}\n${text}` : text)} />
             </div>
             <Textarea id="rs-context" value={form.context} onChange={(e) => set("context", e.target.value)} rows={4} className="resize-y" />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="rs-market">Условия рынка</Label>
-            <Input id="rs-market" value={form.marketCondition} onChange={(e) => set("marketCondition", e.target.value)} placeholder="Тренд вверх, VIX низкий…" />
+            <Label htmlFor="rs-market">{tr("form.market")}</Label>
+            <Input id="rs-market" value={form.marketCondition} onChange={(e) => set("marketCondition", e.target.value)} placeholder={tr("form.marketPlaceholder")} />
           </div>
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="rs-worked" className="text-up">Что работало</Label>
+                <Label htmlFor="rs-worked" className="text-up">{tr("form.worked")}</Label>
                 <VoiceRecorder onTranscript={(text) => set("whatWorked", form.whatWorked ? `${form.whatWorked}\n${text}` : text)} />
               </div>
               <Textarea id="rs-worked" value={form.whatWorked} onChange={(e) => set("whatWorked", e.target.value)} rows={4} className="resize-y" />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
-                <Label htmlFor="rs-failed" className="text-down">Что не работало</Label>
+                <Label htmlFor="rs-failed" className="text-down">{tr("form.failed")}</Label>
                 <VoiceRecorder onTranscript={(text) => set("whatFailed", form.whatFailed ? `${form.whatFailed}\n${text}` : text)} />
               </div>
               <Textarea id="rs-failed" value={form.whatFailed} onChange={(e) => set("whatFailed", e.target.value)} rows={4} className="resize-y" />
@@ -274,7 +277,7 @@ export function ResearchFormDialog({
           </div>
 
           <div className="space-y-1.5">
-            <Label>Теги</Label>
+            <Label>{tr("form.tags")}</Label>
             <TagSelector
               selectedTags={form.tags ? form.tags.split(",").map((t) => t.trim()).filter(Boolean) : []}
               onChange={(tags) => set("tags", tags.join(", "))}
@@ -290,10 +293,10 @@ export function ResearchFormDialog({
 
           <DialogFooter className="gap-2">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Отмена
+              {commonI18n.t("actions.cancel")}
             </Button>
             <Button type="submit" disabled={!canSave}>
-              {saving ? "Сохраняем…" : "Сохранить"}
+              {saving ? tr("form.saving") : commonI18n.t("actions.save")}
             </Button>
           </DialogFooter>
         </form>

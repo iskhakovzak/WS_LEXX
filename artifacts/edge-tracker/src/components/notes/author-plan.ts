@@ -8,6 +8,7 @@
  */
 import { SECTIONS, parseNote, type AuthorNote, type DayTrade, type SectionKey } from "./author-model";
 import { fmtDate, fmtR } from "@/lib/format";
+import { notesI18n } from "@/i18n/ns/notes";
 
 /* ───────────────────────── Previous plan ───────────────────────── */
 
@@ -110,20 +111,28 @@ export function followThrough(lines: string[], trades: TradeLike[]): FollowItem[
   });
 }
 
-export const FOLLOW_HEADER = "План vs факт";
+/** «План vs факт» in the UI language (inserted into the author's text). */
+export function followHeader(): string {
+  return notesI18n.t("author.follow.header");
+}
+const FOLLOW_HEADER_RU = "План vs факт"; // i18n-ignore (detects a block written while the UI was in RU)
+/** True when the lessons text already has a «План vs факт» block (RU or the current UI language). */
+export function hasFollowBlock(text: string): boolean {
+  return text.includes(followHeader()) || text.includes(FOLLOW_HEADER_RU);
+}
 
 /** Block for «Уроки»: one line per plan item with what actually happened; R only — the note is read by the team. */
 export function followThroughBlock(prevDate: string, items: FollowItem[]): string {
   const rows = items.map((it) => {
     const fact =
       it.status === "traded"
-        ? `торговал ${it.traded.map((t) => (t.r != null ? `${t.ticker} ${fmtR(t.r, 1)}` : t.ticker)).join(", ")} — `
+        ? notesI18n.t("author.follow.traded", { list: it.traded.map((t) => (t.r != null ? `${t.ticker} ${fmtR(t.r, 1)}` : t.ticker)).join(", ") })
         : it.status === "missed"
-          ? "не торговал — "
+          ? notesI18n.t("author.follow.missed")
           : "";
     return `• ${it.line} → ${fact}`;
   });
-  return `${FOLLOW_HEADER} (план от ${fmtDate(prevDate, "dayMonth")}):\n${rows.join("\n")}`;
+  return `${notesI18n.t("author.follow.block", { header: followHeader(), date: fmtDate(prevDate, "dayMonth") })}\n${rows.join("\n")}`;
 }
 
 /* ───────────────────────── Money in text ───────────────────────── */

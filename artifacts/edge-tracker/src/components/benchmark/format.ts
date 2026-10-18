@@ -1,17 +1,27 @@
 import type { CSSProperties } from "react";
 import type { MetricDef, MetricUnit } from "./api";
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { benchmarkI18n } from "@/i18n/ns/benchmark";
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
+
+/** Metric label / hint in the UI language by the server metric key; unknown keys keep the server text. */
+export function metricLabel(m: Pick<MetricDef, "key" | "label">): string {
+  return benchmarkI18n.tryT(`metric.${m.key}.label`) ?? m.label;
+}
+export function metricHint(m: Pick<MetricDef, "key" | "hint">): string {
+  return benchmarkI18n.tryT(`metric.${m.key}.hint`) ?? m.hint;
+}
 
 /** 75 → «1 ч 15 мин», 4.5 → «4.5 мин», 0.4 → «24 с». */
 export function fmtMinutes(v: number | null | undefined): string {
   if (!isNum(v)) return "—";
-  if (v < 1) return `${Math.round(v * 60)} с`;
-  if (v < 60) return `${v < 10 ? fmtNum(v, 1) : Math.round(v)} мин`;
+  const t = benchmarkI18n.t;
+  if (v < 1) return t("unit.seconds", { count: Math.round(v * 60) });
+  if (v < 60) return t("unit.minutes", { count: v < 10 ? fmtNum(v, 1) : Math.round(v) });
   const h = Math.floor(v / 60);
   const m = Math.round(v - h * 60);
-  return m ? `${h} ч ${m} мин` : `${h} ч`;
+  return m ? t("unit.hoursMinutes", { h, m }) : t("unit.hours", { count: h });
 }
 
 /** NY minutes since midnight → «09:31». */
@@ -29,7 +39,8 @@ export function fmtByUnit(unit: MetricUnit, v: number | null | undefined): strin
     case "ratio": return fmtNum(v);
     case "count": return isNum(v) ? (Number.isInteger(v) ? String(v) : fmtNum(v, 1)) : "—";
     case "min": return fmtMinutes(v);
-    case "days": return isNum(v) ? `${v} дн` : "—";
+    case "days": return isNum(v) ? benchmarkI18n.t("unit.days", { count: v }) : "—";
+
     case "r": return fmtR(v);
   }
 }

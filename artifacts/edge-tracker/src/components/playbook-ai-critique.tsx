@@ -12,6 +12,8 @@ import { cn } from "@/lib/utils";
 import { Pill, toneText, type Tone } from "@/components/ds";
 import { IconAction, InlineMd, lsGet, lsSet } from "@/components/playbook-sub/bits";
 import { commonI18n } from "@/i18n/ns/common";
+import { playbookToolsI18n } from "@/i18n/ns/playbookTools";
+import { getLang } from "@/i18n";
 import { fmtRelative } from "@/lib/format";
 
 type Critique = { critique: string; tradesAnalyzed: number; at: number };
@@ -23,7 +25,7 @@ const HEADING_RES: RegExp[] = [
   /^#{1,6}\s+(.+?)\s*#*$/,
   /^\*\*([^*]{2,80}?)\*\*:?\s*$/,
   /^\d+[.)]\s+\*\*([^*]{2,80}?)\*\*:?\s*$/,
-  /^([A-ZА-ЯЁ][^:.!?]{2,60}):\s*$/,
+  /^([A-ZА-ЯЁ][^:.!?]{2,60}):\s*$/, // i18n-ignore (parses AI output)
 ];
 
 /** Split free-form AI markdown into titled sections with paragraphs and lists. */
@@ -69,18 +71,21 @@ function parseCritique(text: string): Section[] {
 
 function sectionStyle(title: string | null): { tone: Tone; icon: LucideIcon; highlight?: boolean } {
   const t = (title ?? "").toLowerCase();
-  if (/правк|рекоменд|измен|исправ|предлаг|edit|что сделать|действ/.test(t)) return { tone: "accent", icon: Wrench, highlight: true };
-  if (/противореч|ошибк|проблем|слаб|риск|contradict/.test(t)) return { tone: "down", icon: Ban };
-  if (/недостающ|пропущ|не хватает|размыт|расплывч|vague|missing|неясн/.test(t)) return { tone: "warn", icon: HelpCircle };
-  if (/работает|сильн|плюс|хорош|strength/.test(t)) return { tone: "up", icon: CheckCircle2 };
+  // Section headings of the AI answer (RU / EN / UZ) — input parsing, not UI text.
+  if (/правк|рекоменд|измен|исправ|предлаг|edit|recommend|fix|action|что сделать|действ|tavsiya|tuzat|oʻzgart|o'zgart/.test(t)) return { tone: "accent", icon: Wrench, highlight: true }; // i18n-ignore (parses AI output)
+  if (/противореч|ошибк|проблем|слаб|риск|contradict|problem|weak|risk|ziddiyat|xato|muammo|zaif/.test(t)) return { tone: "down", icon: Ban }; // i18n-ignore (parses AI output)
+  if (/недостающ|пропущ|не хватает|размыт|расплывч|vague|missing|unclear|неясн|yetishmay|noaniq/.test(t)) return { tone: "warn", icon: HelpCircle }; // i18n-ignore (parses AI output)
+  if (/работает|сильн|плюс|хорош|strength|works|kuchli|ishlaydi/.test(t)) return { tone: "up", icon: CheckCircle2 }; // i18n-ignore (parses AI output)
   return { tone: "neutral", icon: FileText };
 }
 
+/** The cached AI text is in the language it was requested in — the key includes the UI language. */
 function cacheKey(id: number, userKey: string | null) {
-  return `pb-critique:${id}:${userKey ?? "all"}`;
+  return `pb-critique:${id}:${userKey ?? "all"}:${getLang()}`;
 }
 
 export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playbookId: number; playbookName?: string }) {
+  const { t } = playbookToolsI18n.useT();
   const { user } = useAuth();
   const { toast } = useToast();
   const userKey = user?.role === "trader" && user.traderName ? user.traderName : null;
@@ -95,7 +100,7 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
       } catch (e) {
         if (e instanceof ApiError && e.status === 429) {
           const mins = Math.max(1, Math.ceil(Number(e.field("retryAfterMs") ?? 0) / 60000));
-          throw new ApiError({ status: 429, code: e.code, message: `AI-разбор этого сетапа уже запрашивали недавно. Повторить можно через ${mins} мин.`, method: e.method, url: e.url });
+          throw new ApiError({ status: 429, code: e.code, message: playbookToolsI18n.t("critique.rateLimited", { count: mins }), method: e.method, url: e.url });
         }
         throw e;
       }
@@ -109,8 +114,8 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
     onError: (e: any) => {
       let msg = String((e instanceof ApiError && e.field<string>("detail")) || (e?.message ?? ""));
       try { const j = JSON.parse(msg); msg = j?.detail ?? j?.error ?? msg; } catch { /* plain text */ }
-      setError(msg.slice(0, 300) || "Неизвестная ошибка");
-      toast({ title: "Не удалось получить AI-разбор", description: msg.slice(0, 200) || undefined, variant: "destructive" });
+      setError(msg.slice(0, 300) || t("critique.unknownError"));
+      toast({ title: t("critique.failed"), description: msg.slice(0, 200) || undefined, variant: "destructive" });
     },
   });
 
@@ -128,9 +133,9 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
     if (!result) return;
     try {
       await navigator.clipboard.writeText(result.critique);
-      toast({ title: "Разбор скопирован" });
+      toast({ title: t("critique.copied") });
     } catch {
-      toast({ title: "Не удалось скопировать", variant: "destructive" });
+      toast({ title: t("critique.copyFailed"), variant: "destructive" });
     }
   }
 
@@ -139,8 +144,8 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
   return (
     <>
       <IconAction
-        aria-label="AI-разбор сетапа"
-        title={mut.isPending ? "AI анализирует сетап…" : "AI-разбор сетапа"}
+        aria-label={t("critique.title")}
+        title={mut.isPending ? t("critique.running") : t("critique.title")}
         onClick={(e) => { e.stopPropagation(); openDialog(); }}
         aria-busy={mut.isPending}
         className="hover:text-[hsl(var(--chart-5))]"
@@ -153,16 +158,16 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
           <DialogHeader className="pr-10">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
               <Sparkles className="h-4 w-4 text-[hsl(var(--chart-5))]" aria-hidden="true" />
-              AI-разбор сетапа
+              {t("critique.title")}
             </DialogTitle>
             <DialogDescription className="flex flex-wrap items-center gap-2 text-xs">
               {playbookName && <span className="truncate font-medium text-foreground">{playbookName}</span>}
               {result && (
                 <>
                   <Pill tone={n < 5 ? "warn" : "neutral"}>
-                    {commonI18n.t("units.trades", { count: n })} в анализе
+                    {t("critique.tradesInAnalysis", { count: n })}
                   </Pill>
-                  <span>обновлён {fmtRelative(result.at)}</span>
+                  <span>{t("critique.updated", { time: fmtRelative(result.at) })}</span>
                 </>
               )}
             </DialogDescription>
@@ -171,7 +176,7 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
           <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1" aria-live="polite" aria-busy={mut.isPending}>
             {mut.isPending ? (
               <div className="space-y-3">
-                <p className="text-sm text-muted-foreground">AI сверяет описание сетапа с привязанными сделками — обычно это занимает 10–30 секунд…</p>
+                <p className="text-sm text-muted-foreground">{t("critique.waiting")}</p>
                 {[0, 1, 2].map((i) => (
                   <div key={i} className="space-y-2 rounded-xl border border-[var(--glass-border)] p-3">
                     <Skeleton className="h-4 w-40" />
@@ -187,8 +192,8 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
               </div>
             ) : !result ? (
               <div className="flex flex-col items-start gap-2 rounded-xl border border-dashed border-[var(--field-border)] p-4 text-sm text-muted-foreground">
-                <p>AI сверит описание сетапа с привязанными сделками (нетто P&L, знаковый R) и укажет противоречия, пробелы и правки.</p>
-                <p className="text-xs">Запрос занимает 10–30 секунд и ограничен одним запуском на сетап в 10 минут.</p>
+                <p>{t("critique.intro")}</p>
+                <p className="text-xs">{t("critique.introLimit")}</p>
               </div>
             ) : result ? (
               <>
@@ -196,12 +201,12 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
                   <div className="flex items-start gap-2 rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] p-3 text-xs text-[hsl(var(--chart-3))]">
                     <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                     {n === 0
-                      ? "К сетапу не привязано ни одной сделки — разбор основан только на тексте сетапа."
-                      : "Мало сделок — выводы предварительные. Привяжите больше сделок для точного разбора."}
+                      ? t("critique.noTrades")
+                      : t("critique.fewTrades")}
                   </div>
                 )}
                 {sections.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">AI вернул пустой ответ. Попробуйте обновить разбор.</p>
+                  <p className="text-sm text-muted-foreground">{t("critique.empty")}</p>
                 ) : sections.map((s, i) => {
                   const st = sectionStyle(s.title);
                   const Icon = st.icon;
@@ -254,14 +259,14 @@ export function PlaybookAICritiqueButton({ playbookId, playbookName }: { playboo
           <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--glass-border)] pt-3">
             {result && (
               <Button variant="ghost" size="sm" onClick={copy}>
-                <Copy aria-hidden="true" /> Копировать
+                <Copy aria-hidden="true" /> {commonI18n.t("actions.copy")}
               </Button>
             )}
             <Button variant="outline" size="sm" onClick={() => mut.mutate()} disabled={mut.isPending}>
               <RefreshCw className={cn(mut.isPending && "motion-safe:animate-spin")} aria-hidden="true" />
-              {result ? "Обновить разбор" : error ? "Повторить" : "Запустить разбор"}
+              {result ? t("critique.refresh") : error ? commonI18n.t("actions.retry") : t("critique.start")}
             </Button>
-            <Button size="sm" onClick={() => setOpen(false)}>Закрыть</Button>
+            <Button size="sm" onClick={() => setOpen(false)}>{commonI18n.t("actions.close")}</Button>
           </div>
         </DialogContent>
       </Dialog>

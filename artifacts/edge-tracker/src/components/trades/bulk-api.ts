@@ -1,6 +1,7 @@
 import type { Trade } from "@workspace/api-client-react";
 import { ApiError, http } from "@/lib/api/http";
 import { splitTags } from "./trade-utils";
+import { tradesI18n } from "@/i18n/ns/trades";
 
 export type BulkBody =
   | { action: "delete" | "restore"; ids: number[] }
@@ -46,6 +47,6 @@ export async function bulkTrades(body: BulkBody, trades: Trade[]): Promise<numbe
   };
   const done = await Promise.all(body.ids.map((id) => one(id).catch(() => null)));
   const ok = done.filter((x): x is number => x != null);
-  if (!ok.length) throw new Error("Ни одна сделка не изменена");
+  if (!ok.length) throw new Error(tradesI18n.t("bulk.noneChanged"));
   return ok;
 }

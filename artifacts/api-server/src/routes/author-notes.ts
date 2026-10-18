@@ -15,6 +15,8 @@ import {
   type AudienceMemberInput, type AudienceStage, type SnapshotTrade,
 } from "../lib/authorNotesLogic";
 import { AppError, badRequest, forbidden, notFound, sendError } from "../lib/http";
+import { aiAnswerLanguage } from "../i18n/ai";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -181,8 +183,8 @@ router.get("/author-notes/feed", requireAuth, asyncHandler(async (req, res): Pro
   const me = req.authUser!.name;
   const to = (req.query["to"] as string | undefined) || todayNy();
   const from = (req.query["from"] as string | undefined) || addDaysIso(to, -6);
-  if (!isIsoDate(from) || !isIsoDate(to) || from > to) { res.status(400).json({ error: "Некорректный период" }); return; }
-  if (Date.parse(to) - Date.parse(from) > 92 * 86_400_000) { res.status(400).json({ error: "Период не больше 3 месяцев" }); return; }
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to) throw new AppError("INVALID_RANGE", undefined, { max: 92 });
+  if (Date.parse(to) - Date.parse(from) > 92 * 86_400_000) throw new AppError("RANGE_TOO_LONG", undefined, { max: 92 });
   const rawTrader = req.query["trader"];
   const trader = typeof rawTrader === "string" && rawTrader.trim() ? rawTrader.trim() : null;
   await ensureReadsTable();
@@ -352,7 +354,7 @@ router.post("/author-notes/:id/read", requireAuth, asyncHandler(async (req, res)
   await ensureReadsTable();
   const { rows: noteRows } = await pool.query(`SELECT trader FROM author_notes WHERE id = $1`, [id]);
   if (!noteRows[0]) throw notFound();
-  if (noteRows[0].trader === me) { res.status(400).json({ error: "Это твоя запись" }); return; }
+  if (noteRows[0].trader === me) throw new AppError("OWN_ENTRY");
   const { rows } = await pool.query(
     `INSERT INTO author_note_reads (note_id, reader) VALUES ($1, $2)
      ON CONFLICT (note_id, reader) DO UPDATE SET read_at = author_note_reads.read_at
@@ -376,10 +378,10 @@ router.put("/author-notes", asyncHandler(async (req, res): Promise<void> => {
   const { raw_text, note_date, mood } = req.body as { raw_text?: string; note_date?: string; mood?: string };
   const date = note_date || todayNy();
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  if (raw_text != null && typeof raw_text !== "string") { res.status(400).json({ error: "raw_text must be a string" }); return; }
+  if (raw_text != null && typeof raw_text !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "raw_text" });
   const text = (raw_text ?? "").trim();
-  if (text.length > 50_000) { res.status(400).json({ error: "Слишком длинная запись" }); return; }
-  if (mood != null && (typeof mood !== "string" || mood.length > 32)) { res.status(400).json({ error: "Некорректное настроение" }); return; }
+  if (text.length > 50_000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "text", max: 20000 });
+  if (mood != null && (typeof mood !== "string" || mood.length > 32)) throw new AppError("INVALID_FIELD", undefined, { field: "mood" });
   const { rows } = await pool.query(
     `INSERT INTO author_notes (trader, note_date, raw_text, mood, updated_at)
      VALUES ($1, $2, $3, $4, NOW())
@@ -403,7 +405,7 @@ router.patch("/author-notes/:id/refined", asyncHandler(async (req, res): Promise
      WHERE id = $2 AND trader = $3 RETURNING ${NOTE_COLS}`,
     [refined_text, id, trader],
   );
-  if (!rows[0]) { res.status(404).json({ error: "Note not found" }); return; }
+  if (!rows[0]) throw new AppError("NOTE_NOT_FOUND");
   res.json(rows[0]);
 }));
 
@@ -441,7 +443,7 @@ router.patch("/author-notes/:id", asyncHandler(async (req, res): Promise<void> =
 router.post("/author-notes/improve", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { text, note_id, note_date } = req.body as { text: string; note_id?: number; note_date?: string };
-  if (!text?.trim()) { res.status(400).json({ error: "text required" }); return; }
+  if (!text?.trim()) throw new AppError("COMMENT_EMPTY");
 
   const date = isIsoDate(note_date) ? note_date : todayNy();
   const tradesRes = await pool.query(
@@ -449,12 +451,13 @@ router.post("/author-notes/improve", aiTextLimiter, asyncHandler(async (req, res
      FROM trades t WHERE t.trader = $1 AND t.date = $2 AND t.deleted_at IS NULL ORDER BY t.created_at LIMIT 15`,
     [trader, date],
   );
-  const tradesContext = tradesRes.rows.length > 0
-    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map(t =>
+  const tradesContext = tradesRes.rows.length > 0 // i18n-ignore (AI prompt context)
+    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map(t => // i18n-ignore (AI prompt context)
         `- ${t.ticker}: ${t.result}${t.pnl_net != null ? ` | PnL нетто: $${t.pnl_net}` : ""}${t.r_signed != null ? ` | R: ${t.r_signed}` : ""}${t.setup ? ` | Сетап: ${t.setup}` : ""}`
       ).join("\n")}`
     : "";
 
+  // i18n-ignore-next (AI prompt — model input; the answer language follows the reader)
   const prompt = `Ты — опытный ментор трейдеров. Трейдер ${trader} сделал голосовую (или текстовую) запись о своём торговом дне. Твоя задача — структурировать и улучшить его мысли, сохранив оригинальный голос и суть.
 ${tradesContext}
 
@@ -475,7 +478,8 @@ ${text.slice(0, 4000)}
 
 **🎯 Фокус на завтра** — конкретный план или фокус
 
-Пиши в живом разговорном стиле от первого лица. Сохраняй специфические тикеры, числа и термины из оригинала. Не добавляй ничего, чего трейдер не упоминал.`;
+Пиши в живом разговорном стиле от первого лица. Сохраняй специфические тикеры, числа и термины из оригинала. Не добавляй ничего, чего трейдер не упоминал.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -515,10 +519,7 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
      WHERE trader = $1 AND note_date >= $2 AND note_date <= $3 ORDER BY note_date`,
     [trader, weekStart, weekEnd],
   );
-  if (notes.length === 0) {
-    res.status(400).json({ error: "Нет записей за эту неделю" });
-    return;
-  }
+  if (notes.length === 0) throw new AppError("NOT_FOUND", 400);
 
   const { rows: trades } = await pool.query(
     `SELECT t.date, t.ticker, t.result, ROUND(${netPnlSql("t")}, 2) AS pnl_net, ROUND(${signedRSql("t")}, 2) AS r_signed, t.setup FROM trades t
@@ -526,16 +527,17 @@ router.post("/author-notes/weekly-summary", aiTextLimiter, asyncHandler(async (r
     [trader, weekStart, weekEnd],
   );
 
-  const notesText = notes.map(n =>
+  const notesText = notes.map(n => // i18n-ignore (AI prompt context)
     `=== ${n.note_date} (настроение: ${n.mood || "не указано"}) ===\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 
-  const tradesText = trades.length > 0
-    ? `\nРезультаты по трейдам за неделю:\n${trades.map((t: any) =>
+  const tradesText = trades.length > 0 // i18n-ignore (AI prompt context)
+    ? `\nРезультаты по трейдам за неделю:\n${trades.map((t: any) => // i18n-ignore (AI prompt context)
         `${t.date} | ${t.ticker} | ${t.result}${t.pnl_net != null ? ` | нетто $${t.pnl_net}` : ""}${t.r_signed != null ? ` | R:${t.r_signed}` : ""}${t.setup ? ` | ${t.setup}` : ""}`
       ).join("\n")}`
     : "";
 
+  // i18n-ignore-next (AI prompt — model input)
   const prompt = `Ты — ментор трейдеров. Проведи детальный разбор недели ${weekStart} — ${weekEnd} для трейдера ${trader}.
 ${tradesText}
 
@@ -559,7 +561,8 @@ ${notesText.slice(0, 8000)}
 ---
 **Цитата недели:** «[самая точная или ценная фраза трейдера из его записей, дословно]»
 
-Пиши на русском, живо и конкретно. Только то, что есть в записях.`;
+Пиши живо и конкретно. Только то, что есть в записях. Цитату приводи дословно, на языке оригинала.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -595,20 +598,19 @@ ${notesText.slice(0, 8000)}
 router.post("/author-notes/team-summary", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const raw = (req.body as { note_ids?: unknown }).note_ids;
   const note_ids = Array.isArray(raw) ? raw.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 100) : [];
-  if (note_ids.length === 0) {
-    res.status(400).json({ error: "Выбери хотя бы одну запись" }); return;
-  }
+  if (note_ids.length === 0) throw new AppError("SELECT_AT_LEAST_ONE");
   const { rows } = await pool.query(
     `SELECT trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, raw_text, refined_text, mood
      FROM author_notes WHERE id = ANY($1) ORDER BY trader, note_date`,
     [note_ids],
   );
-  if (rows.length === 0) { res.status(400).json({ error: "Записи не найдены" }); return; }
+  if (rows.length === 0) throw new AppError("NOT_FOUND", 400);
 
-  const notesText = rows.map((n: any) =>
+  const notesText = rows.map((n: any) => // i18n-ignore (AI prompt context)
     `### ${n.trader} (${n.note_date}${n.mood ? `, настроение: ${n.mood}` : ""})\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 
+  // i18n-ignore-next (AI prompt — model input)
   const prompt = `Ты — ментор проп трейдинг деска. Создай общую командную сводку на основе ежедневных записей трейдеров.
 
 ЗАПИСИ КОМАНДЫ:
@@ -626,7 +628,8 @@ ${notesText.slice(0, 8000)}
 
 **🔮 Фокус команды на завтра** — что стоит держать в голове
 
-Пиши конкретно, ссылайся на реальные примеры из записей. Не придумывай ничего, чего нет в записях. На русском.`;
+Пиши конкретно, ссылайся на реальные примеры из записей. Не придумывай ничего, чего нет в записях.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);

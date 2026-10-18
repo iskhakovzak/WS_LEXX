@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { cn } from "@/lib/utils";
 import { SECTION_GROUPS, SECTIONS, parseNote } from "./author-model";
 import { splitTickers } from "./author-plan";
+import { notesI18n } from "@/i18n/ns/notes";
 
 /** Wraps case-insensitive matches of `query` in <mark>. */
 export function Highlight({ text, query }: { text: string; query?: string }) {
@@ -34,7 +35,7 @@ export function RichText({ text, query }: { text: string; query?: string }) {
             key={i}
             href={`/research?ticker=${encodeURIComponent(p.ticker)}`}
             className="mx-px inline-flex items-center rounded-md bg-primary/12 px-1 font-mono text-[0.92em] font-semibold text-accent-soft hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            title={`Открыть ${p.ticker} в «Ресерч»`}
+            title={notesI18n.t("author.openResearch", { ticker: p.ticker })}
           >
             <Highlight text={p.text} query={query} />
           </Link>

@@ -10,9 +10,8 @@ import { securityT } from "../lib/security/i18n";
 import { can, requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
-import { commonT } from "../i18n/ns";
 import { ensureNameLatin, loadDirectory, searchPeople } from "../lib/peopleDirectory";
-import { AppError, badRequest, forbidden, notFound, sendError, unauthorized } from "../lib/http";
+import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -92,9 +91,9 @@ router.get("/users/all", asyncHandler(async (req, res): Promise<void> => {
 
 router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
   const { name, theme } = req.body as { name?: string; theme?: string };
-  if (!name || !theme) { res.status(400).json({ error: "name and theme required" }); return; }
+  if (!name || !theme) throw new AppError("VALIDATION");
   const allowed = ["dark", "dim", "sepia", "light"];
-  if (!allowed.includes(theme)) { res.status(400).json({ error: "Invalid theme" }); return; }
+  if (!allowed.includes(theme)) throw new AppError("INVALID_FIELD", undefined, { field: "theme" });
   if (!(await canActOnName(req, name))) throw forbidden();
   await pool.query(`UPDATE users SET theme = $1 WHERE name = $2`, [theme, name]);
   res.json({ success: true });
@@ -104,7 +103,7 @@ router.patch("/users/theme", asyncHandler(async (req, res): Promise<void> => {
 // /users/tg-notifications is captured by the `:id` route and always fails.
 router.patch("/users/tg-notifications", asyncHandler(async (req, res): Promise<void> => {
   const { name, enabled } = req.body as { name?: string; enabled?: boolean };
-  if (!name || typeof enabled !== "boolean") { res.status(400).json({ error: "name and enabled required" }); return; }
+  if (!name || typeof enabled !== "boolean") throw new AppError("VALIDATION");
   if (!(await canActOnName(req, name))) throw forbidden();
   const { rowCount } = await pool.query(`UPDATE users SET tg_notifications_enabled = $1 WHERE name = $2`, [enabled, name]);
   if (!rowCount) throw notFound();
@@ -113,7 +112,7 @@ router.patch("/users/tg-notifications", asyncHandler(async (req, res): Promise<v
 
 router.get("/users/tg-notifications", asyncHandler(async (req, res): Promise<void> => {
   const name = typeof req.query.name === "string" ? req.query.name : null;
-  if (!name) { res.status(400).json({ error: "name required" }); return; }
+  if (!name) throw new AppError("VALIDATION");
   const { rows } = await pool.query<any>(
     `SELECT COALESCE(tg_notifications_enabled, true) AS tg_notifications_enabled FROM users WHERE name = $1`, [name]
   );
@@ -176,10 +175,7 @@ router.patch("/users/me/locale", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const raw = (req.body as { locale?: unknown } | undefined)?.locale;
   const locale = typeof raw === "string" && raw.length <= 10 ? parseLang(raw) : null;
-  if (!locale) {
-    res.status(400).json({ error: commonT.tFor(langOf(req))("errors.invalidLocale", { value: String(raw ?? "") }), code: "VALIDATION" });
-    return;
-  }
+  if (!locale) throw badRequest("INVALID_LOCALE", undefined, { value: String(raw ?? "").slice(0, 20) });
   await ensureLocaleColumn();
   const me = req.authUser!;
   await pool.query(`UPDATE users SET locale = $1 WHERE id = $2`, [locale, me.id]);
@@ -241,7 +237,7 @@ router.get("/users/me/settings", asyncHandler(async (req, res): Promise<void> =>
 router.put("/users/me/settings", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const body = SettingsPatch.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   await ensureSettingsColumn();
   const set: Record<string, unknown> = {};
   const drop: string[] = [];
@@ -368,17 +364,17 @@ router.get("/users/directory", asyncHandler(async (req, res): Promise<void> => {
 }));
 
 router.post("/users", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "users.manage", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
   const { name, password, role } = req.body as Record<string, unknown>;
   const cleanName = typeof name === "string" ? name.trim() : "";
   const cleanPassword = typeof password === "string" ? password : "";
-  if (!cleanName || !cleanPassword.trim()) { res.status(400).json({ error: "name and password required" }); return; }
-  if (cleanName.length > 100) { res.status(400).json({ error: "Name too long" }); return; }
+  if (!cleanName || !cleanPassword.trim()) throw new AppError("VALIDATION");
+  if (cleanName.length > 100) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
   const userRole = normalizeRole(role);
   const weak = checkSecret(userRole, cleanPassword, cleanName);
   if (weak) { sendSecurityError(res, 400, "WEAK_PASSWORD", secretProblemText(req, weak), { policy: secretPolicyFor(userRole) }); return; }
-  if (userRole === "admin" && !adminMgr) { res.status(403).json({ error: "Only admin can create admins" }); return; }
+  if (userRole === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
   try {
     const passwordHash = await hashPassword(cleanPassword);
     const { rows } = await pool.query<any>(
@@ -388,7 +384,7 @@ router.post("/users", asyncHandler(async (req, res): Promise<void> => {
     );
     res.status(201).json(rows[0]);
   } catch (e: any) {
-    if (e.code === "23505") { res.status(409).json({ error: "User with this name already exists" }); return; }
+    if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
     throw e;
   }
 }));
@@ -396,12 +392,12 @@ router.post("/users", asyncHandler(async (req, res): Promise<void> => {
 router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) throw badRequest("INVALID_ID");
-  if (!(await requireCap(req, res, "users.manage", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
   const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
   const target = targetRows[0];
   if (!target) throw notFound();
-  if (target.role === "admin" && !adminMgr) { res.status(403).json({ error: "Only admin can modify admins" }); return; }
+  if (target.role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
 
   const { name, password, role, active } = req.body as Record<string, unknown>;
   const fields: string[] = [];
@@ -410,14 +406,14 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   // `active` lets staff re-activate a user deactivated via DELETE (or deactivate, same rules as DELETE).
   let activeChanged = false;
   if (active !== undefined) {
-    if (typeof active !== "boolean") { res.status(400).json({ error: "active must be boolean" }); return; }
-    if (!active && id === req.authUser?.id) { res.status(400).json({ error: "Cannot deactivate yourself" }); return; }
+    if (typeof active !== "boolean") throw new AppError("INVALID_FIELD", undefined, { field: "active" });
+    if (!active && id === req.authUser?.id) throw new AppError("CANNOT_DEACTIVATE_SELF");
     fields.push(`active = $${i++}`); vals.push(active);
     activeChanged = !active;
   }
   if (name !== undefined) {
     const cleanName = String(name).trim();
-    if (!cleanName || cleanName.length > 100) { res.status(400).json({ error: "Invalid name" }); return; }
+    if (!cleanName || cleanName.length > 100) throw new AppError("INVALID_FIELD", undefined, { field: "name" });
     fields.push(`name = $${i++}`); vals.push(cleanName);
   }
   let passwordChanged = false;
@@ -432,8 +428,8 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   let roleChanged = false;
   if (role !== undefined) {
     const newRole = normalizeRole(role);
-    if (newRole === "admin" && !adminMgr) { res.status(403).json({ error: "Only admin can grant admin role" }); return; }
-    if (id === req.authUser?.id && newRole !== target.role) { res.status(400).json({ error: "Cannot change your own role" }); return; }
+    if (newRole === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
+    if (id === req.authUser?.id && newRole !== target.role) throw new AppError("CANNOT_CHANGE_OWN_ROLE");
     fields.push(`role = $${i++}`); vals.push(newRole);
     roleChanged = newRole !== target.role;
   }
@@ -445,14 +441,14 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
        RETURNING ${USER_COLUMNS}`,
       vals
     );
-    if (!rows[0]) { sendError(res, notFound()); return; }
+    if (!rows[0]) throw notFound();
     // Invalidate existing sessions so a reset password / new role takes effect immediately.
     if (passwordChanged || roleChanged || activeChanged) await bumpTokenVersion(id);
     // An admin reset of the secret also lifts a sign-in lock on that account.
     if (passwordChanged) await lockoutStore().clearUser(id).catch((err) => logger.warn({ err }, "users: clear login lock failed"));
     res.json(rows[0]);
   } catch (e: any) {
-    if (e.code === "23505") { res.status(409).json({ error: "User with this name already exists" }); return; }
+    if (e.code === "23505") throw new AppError("USER_NAME_TAKEN");
     throw e;
   }
 }));
@@ -460,12 +456,12 @@ router.patch("/users/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/users/:id", asyncHandler(async (req, res): Promise<void> => {
   const id = parseId(req.params.id);
   if (id === null) throw badRequest("INVALID_ID");
-  if (!(await requireCap(req, res, "users.manage", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "users.manage", null, "STAFF_ONLY"))) return;
   const adminMgr = await can(req, "users.manage.admins");
-  if (id === req.authUser?.id) { res.status(400).json({ error: "Cannot deactivate yourself" }); return; }
+  if (id === req.authUser?.id) throw new AppError("CANNOT_DEACTIVATE_SELF");
   const { rows: targetRows } = await pool.query<{ role: string }>(`SELECT role FROM users WHERE id = $1`, [id]);
   if (!targetRows[0]) throw notFound();
-  if (targetRows[0].role === "admin" && !adminMgr) { res.status(403).json({ error: "Only admin can deactivate admins" }); return; }
+  if (targetRows[0].role === "admin" && !adminMgr) throw new AppError("ADMIN_ONLY");
   await pool.query(`UPDATE users SET active = false WHERE id = $1`, [id]);
   await bumpTokenVersion(id);
   res.json({ success: true });

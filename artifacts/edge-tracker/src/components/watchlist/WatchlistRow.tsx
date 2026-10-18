@@ -6,6 +6,8 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, DropdownMenuLabel, DropdownMenuShortcut,
 } from "@/components/ui/dropdown-menu";
 import { LISTS, LIST_LABELS, type ListName, type WatchlistItem } from "./lib";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Everything a row / the detail sheet can do with a ticker. The page owns the implementations. */
 export type RowActions = {
@@ -30,6 +32,7 @@ export function RowMenu({
   canModify?: boolean;
   actions: RowActions; scoring: boolean;
 }) {
+  const { t } = watchlistI18n.useT();
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -38,7 +41,7 @@ export function RowMenu({
           onClick={(e) => e.stopPropagation()}
           onKeyDown={(e) => e.stopPropagation()}
           className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={`Действия для ${item.ticker}`}
+          aria-label={t("row.actions", { ticker: item.ticker })}
         >
           <MoreHorizontal className="h-4 w-4" />
         </button>
@@ -46,7 +49,7 @@ export function RowMenu({
       <DropdownMenuContent align="end" className="w-60" onClick={(e) => e.stopPropagation()}>
         <DropdownMenuLabel className="text-xs text-muted-foreground">{item.ticker}</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => actions.open(item)}>
-          <PanelRightOpen className="mr-2 h-4 w-4" />Открыть карточку<DropdownMenuShortcut>Enter</DropdownMenuShortcut>
+          <PanelRightOpen className="mr-2 h-4 w-4" />{t("row.open")}<DropdownMenuShortcut>Enter</DropdownMenuShortcut>
         </DropdownMenuItem>
         {canEdit && (
           <>
@@ -54,32 +57,32 @@ export function RowMenu({
             {list ? (
               LISTS.map((l, i) => (
                 <DropdownMenuItem key={l} disabled={l === list} onSelect={() => actions.moveTo([item], l)}>
-                  <CornerDownRight className="mr-2 h-4 w-4" />В «{LIST_LABELS[l]}»<DropdownMenuShortcut>{i + 1}</DropdownMenuShortcut>
+                  <CornerDownRight className="mr-2 h-4 w-4" />{t("row.toList", { list: LIST_LABELS[l] })}<DropdownMenuShortcut>{i + 1}</DropdownMenuShortcut>
                 </DropdownMenuItem>
               ))
             ) : (
               LISTS.map((l) => (
                 <DropdownMenuItem key={l} onSelect={() => actions.restore(item, l)}>
-                  <ArchiveRestore className="mr-2 h-4 w-4" />Вернуть в «{LIST_LABELS[l]}»
+                  <ArchiveRestore className="mr-2 h-4 w-4" />{t("row.restoreTo", { list: LIST_LABELS[l] })}
                 </DropdownMenuItem>
               ))
             )}
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => actions.addToPlan(item)}><ClipboardList className="mr-2 h-4 w-4" />В план дня</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.createIdea(item)}><Lightbulb className="mr-2 h-4 w-4" />Создать идею</DropdownMenuItem>
-            <DropdownMenuItem onSelect={() => actions.createIdea(item, true)}><ArrowRightLeft className="mr-2 h-4 w-4" />Идея → сделка</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.addToPlan(item)}><ClipboardList className="mr-2 h-4 w-4" />{t("row.toPlan")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.createIdea(item)}><Lightbulb className="mr-2 h-4 w-4" />{t("row.createIdea")}</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.createIdea(item, true)}><ArrowRightLeft className="mr-2 h-4 w-4" />{t("row.ideaToTrade")}</DropdownMenuItem>
             <DropdownMenuSeparator />
             {canModify && (
-              <DropdownMenuItem onSelect={() => actions.edit(item)}><Pencil className="mr-2 h-4 w-4" />Катализатор, стоп, цель…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => actions.edit(item)}><Pencil className="mr-2 h-4 w-4" />{t("row.edit")}</DropdownMenuItem>
             )}
-            <DropdownMenuItem disabled={scoring} onSelect={() => actions.rescore(item)}><RefreshCw className="mr-2 h-4 w-4" />Пересчитать score</DropdownMenuItem>
+            <DropdownMenuItem disabled={scoring} onSelect={() => actions.rescore(item)}><RefreshCw className="mr-2 h-4 w-4" />{t("row.rescore")}</DropdownMenuItem>
             {list && (
               <DropdownMenuItem onSelect={() => actions.archive([item])}>
-                <Archive className="mr-2 h-4 w-4" />В архив<DropdownMenuShortcut>Del</DropdownMenuShortcut>
+                <Archive className="mr-2 h-4 w-4" />{t("row.archive")}<DropdownMenuShortcut>Del</DropdownMenuShortcut>
               </DropdownMenuItem>
             )}
             {canModify && (
-              <DropdownMenuItem onSelect={() => actions.remove([item])} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => actions.remove([item])} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />{commonI18n.t("actions.delete")}</DropdownMenuItem>
             )}
           </>
         )}

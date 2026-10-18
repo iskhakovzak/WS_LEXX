@@ -291,14 +291,14 @@ export async function extractMentions(text: string | null | undefined): Promise<
 
 /**
  * Notify everyone @mentioned in `text` (except the author). Returns the notified names.
- * Example: notifyMentions({ text, authorName, context: "в обсуждении NVDA", link: "/discussions?thread=12" }).
+ * Example: notifyMentions({ text, authorName, where: { kind: "discussion", subject: "NVDA" }, link: "/discussions?thread=12" }).
+ * The text is stored as type `mention` + params and rendered per reader (in-app: request language, Telegram: users.locale).
  */
 export async function notifyMentions(opts: {
   text: string | null | undefined;
   authorName: string;
-  context: string;
-  /** Text as data: where the mention happened (rendered per reader language). `context` stays the Russian fallback. */
-  where?: { kind: "discussion"; subject?: string | null };
+  /** Where the mention happened (rendered per reader language). */
+  where: { kind: "discussion"; subject?: string | null };
   link?: string;
   ideaId?: number | null;
   telegram?: boolean;
@@ -309,20 +309,16 @@ export async function notifyMentions(opts: {
   if (names.length && opts.filter) names = await opts.filter(names);
   if (names.length === 0) return [];
   const preview = (opts.text ?? "").replace(/\s+/g, " ").trim().slice(0, 120);
-  // Gender-neutral («Ольга Н.: «…»»): the title already says «Упоминание <context>»; Telegram gets the context inline.
-  const message = `${opts.authorName}: «${preview}»`;
-  const tgText = `Упоминание ${opts.context} — ${message}${opts.link ? ` ${getSiteUrl()}${opts.link}` : ""}`;
-  const params: NotificationParams | null = opts.where
-    ? { where: opts.where.kind, subject: opts.where.subject ?? null, actor: opts.authorName, preview }
-    : null;
+  const params: NotificationParams = { where: opts.where.kind, subject: opts.where.subject ?? null, actor: opts.authorName, preview };
+  const linkTail = opts.link ? ` ${getSiteUrl()}${opts.link}` : "";
   for (const name of names) {
     let telegram: string | false = false;
     if (opts.telegram ?? true) {
-      const r = params ? renderNotification("mention", params, await localeOfUser(name)) : null;
-      telegram = r ? `${r.telegram}${opts.link ? ` ${getSiteUrl()}${opts.link}` : ""}` : tgText;
+      const r = renderNotification("mention", params, await localeOfUser(name));
+      telegram = r ? `${r.telegram}${linkTail}` : false;
     }
     await notifyUser({
-      userName: name, type: "mention", ...(params ? { params } : { title: `Упоминание ${opts.context}`.slice(0, 200), message }),
+      userName: name, type: "mention", params,
       link: opts.link ?? null, actor: opts.authorName, ideaId: opts.ideaId ?? null,
       telegram,
     });
@@ -349,7 +345,7 @@ export async function notifyTraderTelegram(
     const notificationsEnabled = rows[0]?.tg_notifications_enabled as boolean ?? true;
     if (!chatId || !notificationsEnabled) return;
 
-    const keyboard = opts?.ideaId ? buildTraderReplyKeyboard(opts.ideaId) : undefined;
+    const keyboard = opts?.ideaId ? buildTraderReplyKeyboard(opts.ideaId, await localeOfUser(trader)) : undefined;
     await sendMessage(chatId, message, {
       ...(keyboard ? { reply_markup: { inline_keyboard: keyboard } } : {}),
     });
@@ -403,7 +399,7 @@ export async function notifyReviewersOnPublish(idea: {
       );
       const chatId = rows[0]?.telegram_chat_id as string | undefined;
       if (chatId) {
-        await sendIdeaNotification(chatId, idea, siteUrl);
+        await sendIdeaNotification(chatId, idea, siteUrl, await localeOfUser(name));
         logger.info({ ideaId: idea.id, reviewer: name, chatId }, "notifyReviewersOnPublish: TG message sent");
       } else {
         logger.warn({ ideaId: idea.id, reviewer: name }, "notifyReviewersOnPublish: reviewer has no telegram_chat_id");

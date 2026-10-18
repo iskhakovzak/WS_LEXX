@@ -16,6 +16,8 @@ import { DeskView } from "@/components/scaling/desk-view";
 import { MyView } from "@/components/scaling/my-view";
 import { ConfigSheet } from "@/components/scaling/config-sheet";
 import { scalingKeys, useAutoProposals, useScalingConfig } from "@/components/scaling/use-scaling";
+import { scalingI18n } from "@/i18n/ns/scaling";
+import { shellI18n } from "@/i18n/ns/shell";
 
 type View = "desk" | "me";
 const VIEWS: readonly View[] = ["desk", "me"];
@@ -37,6 +39,8 @@ function useStoredView(): [View, (v: View) => void] {
 
 export default function ScalingPage() {
   const { user, isCurator } = useAuth();
+  const { t } = scalingI18n.useT();
+  const { t: ts } = shellI18n.useT();
   const me = user && user.role !== "guest" ? user.traderName : null;
   const [stored, setView] = useStoredView();
   const view: View = isCurator ? stored : "me";
@@ -62,37 +66,35 @@ export default function ScalingPage() {
   const runAuto = async () => {
     try {
       const r = await auto.mutateAsync();
-      toast({ title: r.created ? `Создано предложений: ${r.created}` : "Новых рекомендаций нет", description: r.created ? r.proposals.map((p) => `${p.trader} → ${p.toTier}`).join(", ") : "Все рекомендации уже в очереди или правила не сработали" });
+      toast({ title: r.created ? t("page.autoCreated", { count: r.created }) : t("page.autoNone"), description: r.created ? r.proposals.map((p) => `${p.trader} → ${p.toTier}`).join(", ") : t("page.autoNoneHint") });
     } catch (e) {
-      toast({ title: "Не удалось создать предложения", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("page.autoFailed"), description: (e as Error).message, variant: "destructive" });
     }
   };
 
   return (
     <Page>
       <PageHeader
-        title="План масштабирования"
-        description={view === "desk"
-          ? "Тиры buying power по объективным правилам: кто готов к повышению, кого пора притормозить, очередь на одобрение"
-          : "Ваш тир, что не хватает до следующего и что он даст"}
+        title={ts("nav.scaling")}
+        description={view === "desk" ? t("page.descDesk") : t("page.descMe")}
         icon={TrendingUp}
         actions={me ? (
           <>
             <UpdatedAgo at={updatedAt} className="hidden 2xl:inline-flex" />
-            <Button variant="outline" size="icon" onClick={refresh} aria-label="Обновить план" disabled={fetching}>
+            <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refresh")} title={t("page.refresh")} disabled={fetching}>
               <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
             {isCurator && (
               <>
-                <Button variant="outline" onClick={() => setConfigOpen(true)} aria-label="Тиры и правила">
-                  <Settings2 className="h-4 w-4" aria-hidden="true" /> Тиры и правила
+                <Button variant="outline" onClick={() => setConfigOpen(true)}>
+                  <Settings2 className="h-4 w-4" aria-hidden="true" /> {t("page.config")}
                 </Button>
                 {view === "desk" && (
-                  <Button onClick={runAuto} disabled={auto.isPending} aria-label="Создать предложения по правилам" title="Создать предложения повышения / понижения по правилам">
-                    <Sparkles className="h-4 w-4" aria-hidden="true" /> {auto.isPending ? "Проверяем…" : "Предложения"}
+                  <Button onClick={runAuto} disabled={auto.isPending} aria-label={t("page.autoAria")} title={t("page.autoTitle")}>
+                    <Sparkles className="h-4 w-4" aria-hidden="true" /> {auto.isPending ? t("page.autoRunning") : t("page.auto")}
                   </Button>
                 )}
-                <Segmented ariaLabel="Режим плана" value={view} onChange={setView} options={[{ value: "desk", label: "Деск" }, { value: "me", label: "Мой план" }]} />
+                <Segmented ariaLabel={t("page.viewAria")} value={view} onChange={setView} options={[{ value: "desk", label: t("page.viewDesk") }, { value: "me", label: t("page.viewMe") }]} />
               </>
             )}
           </>
@@ -100,7 +102,7 @@ export default function ScalingPage() {
       />
 
       {!me ? (
-        <Panel><EmptyState icon={TrendingUp} title="Войдите, чтобы увидеть план" description="План масштабирования доступен трейдерам и кураторам." /></Panel>
+        <Panel><EmptyState icon={TrendingUp} title={t("page.signInTitle")} description={t("page.signInHint")} /></Panel>
       ) : view === "desk" ? (
         <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader && focusTrader !== me ? focusTrader : null} />
       ) : (

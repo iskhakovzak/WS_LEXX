@@ -38,6 +38,9 @@ import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { isStaffRole, requireMember, requireStaff, scopeTrader, viewerRole } from "../lib/auth";
 import { assignedStaffOf, notifyUsers, notifyUser } from "../lib/notifyUtils";
+import { academyContentT } from "../lib/academyI18n";
+import { AppError, sendError as sendAppError, type ErrorCode } from "../lib/http";
+import { langOf, type Params } from "../i18n";
 import { logger } from "../lib/logger";
 import { netPnlSql, signedRSql, num } from "../lib/tradeMath";
 import {
@@ -210,8 +213,14 @@ const qInt = (v: unknown): number | null => {
 };
 const iso = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
 
-function bad(res: Response, error: string, status = 400): void {
-  res.status(status).json({ error });
+/** Error response by code (text translated by the error contract into the request language). */
+function bad(res: Response, code: ErrorCode, status = 400, params?: Params, details?: unknown): void {
+  sendAppError(res, new AppError(code, status, params, details));
+}
+
+/** Quiz / rubric validation problems (already in the request language) as one API error. */
+function invalidContent(res: Response, errors: string[]): void {
+  bad(res, "CONTENT_INVALID", 400, { reason: errors.join("; ") }, { errors });
 }
 
 async function isStaffReq(req: Request): Promise<boolean> {
@@ -225,7 +234,7 @@ async function isStaffReq(req: Request): Promise<boolean> {
  */
 async function progressUser(req: Request, res: Response): Promise<{ user: string; staff: boolean } | null> {
   const scoped = await scopeTrader(req, qStr(req.query.user, 120) || null);
-  if (scoped === undefined) { bad(res, "Требуется вход", 401); return null; }
+  if (scoped === undefined) { bad(res, "AUTH_REQUIRED", 401); return null; }
   const staff = await isStaffReq(req);
   return { user: scoped ?? req.authUser!.name, staff };
 }
@@ -409,7 +418,7 @@ async function itemProgram(kind: ItemKind, id: number): Promise<{ moduleId: numb
 /** Ученик видит элемент, только если программа опубликована, элемент не черновик и ничего не в архиве. */
 async function visibleItem(req: Request, res: Response, kind: ItemKind, id: number, staff: boolean) {
   const info = await itemProgram(kind, id);
-  if (!info || (!staff && (info.archived || info.draft || !info.published))) { bad(res, "Не найдено", 404); return null; }
+  if (!info || (!staff && (info.archived || info.draft || !info.published))) { bad(res, "NOT_FOUND", 404); return null; }
   return info;
 }
 
@@ -483,11 +492,11 @@ router.get(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
 router.get(`${P}/programs/:id`, asyncHandler(async (req, res): Promise<void> => {
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
   if (!who) return;
   const [program] = await loadPrograms({ staff: who.staff, ids: [id] });
-  if (!program) return bad(res, "Программа не найдена", 404);
+  if (!program) return bad(res, "PROGRAM_NOT_FOUND", 404);
   const [modules, items, facts] = await Promise.all([loadModules([id]), loadItems([id], { drafts: who.staff }), loadFacts([who.user])]);
   const f = facts.get(who.user)!;
   const prog = computeProgress(toProgressItems(items), modules.map((m) => m.id), f);
@@ -540,7 +549,7 @@ router.get(`${P}/lessons/by-setup`, asyncHandler(async (req, res): Promise<void>
   const staff = await isStaffReq(req);
   const playbookId = qInt(req.query.playbookId);
   let setup = qStr(req.query.setup, 120);
-  if (!playbookId && !setup) return bad(res, "Нужен playbookId или setup");
+  if (!playbookId && !setup) return bad(res, "VALIDATION");
   if (playbookId && !setup) {
     const { rows } = await pool.query<{ name: string }>(`SELECT name FROM playbook WHERE id = $1 AND deleted_at IS NULL`, [playbookId]);
     setup = rows[0]?.name ?? "";
@@ -566,7 +575,7 @@ router.get(`${P}/lessons/by-setup`, asyncHandler(async (req, res): Promise<void>
 router.get(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> => {
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
   if (!who) return;
   const info = await visibleItem(req, res, "lesson", id, who.staff);
@@ -589,11 +598,11 @@ router.post(`${P}/lessons/:id/progress`, asyncHandler(async (req, res): Promise<
   if (!requireMember(req, res)) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const staff = await isStaffReq(req);
   if (!(await visibleItem(req, res, "lesson", id, staff))) return;
   const parsed = z.object({ completed: z.boolean().optional() }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const user = req.authUser!.name;
   const completed = parsed.data.completed;
   // completed не передан — просто отметка «начат» (просмотр), прохождение не трогаем.
@@ -628,7 +637,7 @@ function quizQuestions(q: QuizRow): QuizQuestion[] {
 router.get(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> => {
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
   if (!who) return;
   const info = await visibleItem(req, res, "quiz", id, who.staff);
@@ -657,11 +666,11 @@ router.post(`${P}/quizzes/:id/attempts`, asyncHandler(async (req, res): Promise<
   if (!requireMember(req, res)) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const staff = await isStaffReq(req);
   if (!(await visibleItem(req, res, "quiz", id, staff))) return;
   const parsed = z.object({ answers: z.record(z.string(), z.unknown()) }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны ответы");
+  if (!parsed.success) return bad(res, "QUIZ_ANSWERS_REQUIRED");
   const user = req.authUser!.name;
   const client = await pool.connect();
   try {
@@ -670,10 +679,10 @@ router.post(`${P}/quizzes/:id/attempts`, asyncHandler(async (req, res): Promise<
     await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [`academy-quiz:${id}:${user}`]);
     const quiz = (await client.query<QuizRow>(`SELECT * FROM academy_quizzes WHERE id = $1`, [id])).rows[0];
     const questions = quizQuestions(quiz);
-    if (!questions.length) { await client.query("ROLLBACK"); return bad(res, "В тесте нет вопросов", 409); }
+    if (!questions.length) { await client.query("ROLLBACK"); return bad(res, "QUIZ_EMPTY", 409); }
     const prev = (await client.query<AttemptRow>(`SELECT id, answers, results, score, max_score, pct, passed, submitted_at FROM academy_quiz_attempts WHERE quiz_id = $1 AND user_name = $2`, [id, user])).rows;
     const cfg = { passPct: quiz.pass_pct, maxAttempts: quiz.max_attempts };
-    if (!attemptState(prev.map(attemptLite), cfg).canAttempt) { await client.query("ROLLBACK"); return bad(res, "Попытки закончились", 409); }
+    if (!attemptState(prev.map(attemptLite), cfg).canAttempt) { await client.query("ROLLBACK"); return bad(res, "QUIZ_NO_ATTEMPTS", 409); }
     // Сохраняем только ответы на существующие вопросы (без мусора из тела запроса).
     const answers: Record<string, unknown> = {};
     for (const q of questions) {
@@ -751,7 +760,7 @@ async function submissionsJson(rows: SubmissionRow[]) {
 router.get(`${P}/assignments/:id`, asyncHandler(async (req, res): Promise<void> => {
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const who = await progressUser(req, res);
   if (!who) return;
   const info = await visibleItem(req, res, "assignment", id, who.staff);
@@ -772,33 +781,34 @@ const submissionBody = z.object({
 });
 
 /** Проверяет, что все сделки принадлежат ученику; возвращает ошибку или null. */
+/** Trade ids that are not the user's (first 10, comma-separated) or null. */
 async function foreignTrades(ids: number[], user: string): Promise<string | null> {
   if (!ids.length) return null;
   const { rows } = await pool.query<{ id: number }>(`SELECT id FROM trades WHERE id = ANY($1) AND trader = $2 AND deleted_at IS NULL`, [ids, user]);
   const own = new Set(rows.map((r) => Number(r.id)));
-  const bad = ids.filter((i) => !own.has(i));
-  return bad.length ? `Сделки не найдены или не ваши: ${bad.slice(0, 10).join(", ")}` : null;
+  const foreign = ids.filter((i) => !own.has(i));
+  return foreign.length ? foreign.slice(0, 10).join(", ") : null;
 }
 
 router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const staff = await isStaffReq(req);
   if (!(await visibleItem(req, res, "assignment", id, staff))) return;
   const parsed = submissionBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const user = req.authUser!.name;
   const a = (await pool.query<AssignmentRow>(`SELECT * FROM academy_assignments WHERE id = $1`, [id])).rows[0];
   const rawUrl = parsed.data.url?.trim() || "";
   const url = rawUrl ? safeHttpUrl(rawUrl) : null;
-  if (rawUrl && !url) return bad(res, "Ссылка должна начинаться с http(s)://");
+  if (rawUrl && !url) return bad(res, "INVALID_URL");
   const tradeIds = parseTradeIds(parsed.data.tradeIds);
   const chk = checkSubmission({ text: parsed.data.text, url, tradeIds }, a.min_trades);
-  if (!chk.ok) return bad(res, chk.error);
+  if (!chk.ok) return bad(res, chk.code, 400, chk.params);
   const foreign = await foreignTrades(tradeIds, user);
-  if (foreign) return bad(res, foreign);
+  if (foreign) return bad(res, "TRADES_NOT_YOURS", 400, { ids: foreign });
   const { rows } = await pool.query<SubmissionRow>(
     `INSERT INTO academy_submissions (assignment_id, user_name, body, url, trade_ids) VALUES ($1, $2, $3, $4, $5) RETURNING *`,
     [id, user, parsed.data.text.trim(), url, tradeIds],
@@ -807,8 +817,8 @@ router.post(`${P}/assignments/:id/submissions`, asyncHandler(async (req, res): P
   const mentors = await mentorsOf(user);
   await notifyUsers(mentors, {
     type: "academy_submitted",
-    title: `Задание на проверку: ${a.title}`.slice(0, 200),
-    message: `${user}: задание «${a.title}» сдано на проверку${tradeIds.length ? ` (сделок: ${tradeIds.length})` : ""}.`,
+    // Text as data (lib/notificationRenderers/academyContent.ts): rendered in each reader's language.
+    params: { title: a.title, user, n: tradeIds.length },
     link: learnLink.assignment(id, `&submission=${sub.id}`),
     entityType: "academy_submission", entityId: sub.id, actor: user, source: "academy",
   }, user);
@@ -819,27 +829,27 @@ router.patch(`${P}/submissions/:id`, asyncHandler(async (req, res): Promise<void
   if (!requireMember(req, res)) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const user = req.authUser!.name;
   const cur = (await pool.query<SubmissionRow>(`SELECT * FROM academy_submissions WHERE id = $1 AND archived_at IS NULL`, [id])).rows[0];
-  if (!cur || cur.user_name !== user) return bad(res, "Не найдено", 404);
-  if (cur.status !== "submitted") return bad(res, "Проверенную сдачу менять нельзя — отправьте новую", 409);
+  if (!cur || cur.user_name !== user) return bad(res, "NOT_FOUND", 404);
+  if (cur.status !== "submitted") return bad(res, "SUBMISSION_GRADED_EDIT", 409);
   const parsed = submissionBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const a = (await pool.query<AssignmentRow>(`SELECT * FROM academy_assignments WHERE id = $1`, [cur.assignment_id])).rows[0];
   const rawUrl = parsed.data.url?.trim() || "";
   const url = rawUrl ? safeHttpUrl(rawUrl) : null;
-  if (rawUrl && !url) return bad(res, "Ссылка должна начинаться с http(s)://");
+  if (rawUrl && !url) return bad(res, "INVALID_URL");
   const tradeIds = parseTradeIds(parsed.data.tradeIds);
   const chk = checkSubmission({ text: parsed.data.text, url, tradeIds }, a.min_trades);
-  if (!chk.ok) return bad(res, chk.error);
+  if (!chk.ok) return bad(res, chk.code, 400, chk.params);
   const foreign = await foreignTrades(tradeIds, user);
-  if (foreign) return bad(res, foreign);
+  if (foreign) return bad(res, "TRADES_NOT_YOURS", 400, { ids: foreign });
   const { rows } = await pool.query<SubmissionRow>(
     `UPDATE academy_submissions SET body = $2, url = $3, trade_ids = $4, updated_at = now() WHERE id = $1 AND status = 'submitted' RETURNING *`,
     [id, parsed.data.text.trim(), url, tradeIds],
   );
-  if (!rows[0]) return bad(res, "Сдача уже проверена", 409);
+  if (!rows[0]) return bad(res, "SUBMISSION_GRADED", 409);
   res.json({ submission: (await submissionsJson(rows))[0] });
 }));
 
@@ -847,18 +857,18 @@ router.post(`${P}/submissions/:id/archive`, asyncHandler(async (req, res): Promi
   if (!requireMember(req, res)) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const staff = await isStaffReq(req);
   const cur = (await pool.query<SubmissionRow>(`SELECT * FROM academy_submissions WHERE id = $1 AND archived_at IS NULL`, [id])).rows[0];
-  if (!cur || (!staff && cur.user_name !== req.authUser!.name)) return bad(res, "Не найдено", 404);
-  if (!staff && cur.status !== "submitted") return bad(res, "Проверенную сдачу отозвать нельзя", 409);
+  if (!cur || (!staff && cur.user_name !== req.authUser!.name)) return bad(res, "NOT_FOUND", 404);
+  if (!staff && cur.status !== "submitted") return bad(res, "SUBMISSION_GRADED_WITHDRAW", 409);
   await pool.query(`UPDATE academy_submissions SET archived_at = now(), updated_at = now() WHERE id = $1`, [id]);
   res.json({ ok: true, id });
 }));
 
 router.get(`${P}/my-trades`, asyncHandler(async (req, res): Promise<void> => {
   const scoped = await scopeTrader(req, qStr(req.query.user, 120) || null);
-  if (scoped === undefined) return bad(res, "Требуется вход", 401);
+  if (scoped === undefined) return bad(res, "AUTH_REQUIRED", 401);
   const user = scoped ?? req.authUser!.name;
   const q = qStr(req.query.q, 60);
   const limit = Math.min(200, Math.max(1, qInt(req.query.limit) ?? 60));
@@ -897,7 +907,7 @@ router.get(`${P}/review-queue`, asyncHandler(async (req, res): Promise<void> => 
   const params: unknown[] = [];
   const where = ["s.archived_at IS NULL"];
   if (status !== "all") {
-    if (!["submitted", "graded", "returned"].includes(status)) return bad(res, "Некорректный статус");
+    if (!["submitted", "graded", "returned"].includes(status)) return bad(res, "VALIDATION");
     params.push(status); where.push(`s.status = $${params.length}`);
   }
   if (cohortId) {
@@ -929,26 +939,26 @@ router.post(`${P}/submissions/:id/grade`, asyncHandler(async (req, res): Promise
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({
     decision: z.enum(["graded", "returned"]),
     scores: z.record(z.string(), z.union([z.number(), z.string()])).optional(),
     comment: z.string().max(10000).optional().default(""),
   }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const cur = (await pool.query<SubmissionRow>(`SELECT * FROM academy_submissions WHERE id = $1 AND archived_at IS NULL`, [id])).rows[0];
-  if (!cur) return bad(res, "Сдача не найдена", 404);
+  if (!cur) return bad(res, "SUBMISSION_NOT_FOUND", 404);
   const a = (await pool.query<AssignmentRow>(`SELECT * FROM academy_assignments WHERE id = $1`, [cur.assignment_id])).rows[0];
   const rubric = rubricOf(a.rubric);
   const comment = parsed.data.comment.trim();
   const mentor = req.authUser!.name;
   let grade: ReturnType<typeof gradeRubric> | null = null;
   if (parsed.data.decision === "graded") {
-    if (!rubric.length) return bad(res, "У задания нет рубрики", 409);
+    if (!rubric.length) return bad(res, "ASSIGNMENT_NO_RUBRIC", 409);
     grade = gradeRubric(rubric, parsed.data.scores ?? {}, a.pass_pct);
-    if (grade.missing.length) return bad(res, `Оцените все критерии: ${grade.missing.map((k) => rubric.find((c) => c.key === k)?.label ?? k).join(", ")}`);
+    if (grade.missing.length) return bad(res, "RUBRIC_INCOMPLETE", 400, { missing: grade.missing.map((k) => rubric.find((c) => c.key === k)?.label ?? k).join(", ") });
   } else if (!comment) {
-    return bad(res, "Для возврата на доработку нужен комментарий");
+    return bad(res, "RETURN_COMMENT_REQUIRED");
   }
   const { rows } = await pool.query<SubmissionRow>(
     `UPDATE academy_submissions SET status = $2, scores = $3, total = $4, max_total = $5, pct = $6, passed = $7,
@@ -958,14 +968,11 @@ router.post(`${P}/submissions/:id/grade`, asyncHandler(async (req, res): Promise
       grade ? grade.passed : null, comment || null, mentor],
   );
   const sub = rows[0];
-  const title = parsed.data.decision === "returned"
-    ? `Задание возвращено на доработку: ${a.title}`
-    : grade!.passed ? `Задание зачтено: ${a.title}` : `Задание проверено (не зачтено): ${a.title}`;
-  const message = parsed.data.decision === "returned"
-    ? `${mentor}: ${comment.slice(0, 300)}`
-    : `Оценка ${grade!.total} из ${grade!.maxTotal} (${Math.round(grade!.pct)}%).${comment ? ` ${mentor}: ${comment.slice(0, 300)}` : ""}`;
+  const params = parsed.data.decision === "returned"
+    ? { variant: "returned", title: a.title, mentor, comment: comment.slice(0, 300) }
+    : { variant: grade!.passed ? "passed" : "failed", title: a.title, mentor, comment: comment ? comment.slice(0, 300) : null, total: grade!.total, max: grade!.maxTotal, pct: Math.round(grade!.pct) };
   await notifyUser({
-    userName: cur.user_name, type: "academy_graded", title: title.slice(0, 200), message,
+    userName: cur.user_name, type: "academy_graded", params,
     severity: parsed.data.decision === "returned" || (grade && !grade.passed) ? "warn" : "info",
     link: learnLink.assignment(Number(a.id), `&submission=${id}`), entityType: "academy_submission", entityId: id, actor: mentor, source: "academy",
   });
@@ -1088,7 +1095,7 @@ router.post(`${P}/programs`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = programBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужно название программы");
+  if (!parsed.success) return bad(res, "NAME_REQUIRED");
   const d = parsed.data;
   const base = slugify(d.title);
   const { rows: ex } = await pool.query<{ slug: string }>(`SELECT slug FROM academy_programs WHERE slug LIKE $1`, [`${base}%`]);
@@ -1106,9 +1113,9 @@ router.patch(`${P}/programs/:id`, asyncHandler(async (req, res): Promise<void> =
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = programBody.partial().safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   const { rows } = await pool.query<ProgramRow>(
     `UPDATE academy_programs SET
@@ -1122,7 +1129,7 @@ router.patch(`${P}/programs/:id`, asyncHandler(async (req, res): Promise<void> =
     [id, d.title ?? null, d.description !== undefined, d.description ?? null, d.level !== undefined, d.level ?? null,
       d.stage !== undefined, normalizeStage(d.stage), d.published ?? null],
   );
-  if (!rows[0]) return bad(res, "Не найдено", 404);
+  if (!rows[0]) return bad(res, "NOT_FOUND", 404);
   res.json({ program: programJson(rows[0]) });
 }));
 
@@ -1132,7 +1139,7 @@ router.post(`${P}/modules`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = moduleBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны программа и название модуля");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   const { rows } = await pool.query<ModuleRow>(
     `INSERT INTO academy_modules (program_id, title, description, position)
@@ -1140,7 +1147,7 @@ router.post(`${P}/modules`, asyncHandler(async (req, res): Promise<void> => {
       WHERE EXISTS (SELECT 1 FROM academy_programs WHERE id = $1) RETURNING id, program_id, title, description, position, archived_at`,
     [d.programId, d.title, d.description ?? null],
   );
-  if (!rows[0]) return bad(res, "Программа не найдена", 404);
+  if (!rows[0]) return bad(res, "PROGRAM_NOT_FOUND", 404);
   res.status(201).json({ module: rows[0] });
 }));
 
@@ -1148,16 +1155,16 @@ router.patch(`${P}/modules/:id`, asyncHandler(async (req, res): Promise<void> =>
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = moduleBody.omit({ programId: true }).partial().safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   const { rows } = await pool.query<ModuleRow>(
     `UPDATE academy_modules SET title = COALESCE($2, title), description = CASE WHEN $3::boolean THEN $4 ELSE description END, updated_at = now()
       WHERE id = $1 RETURNING id, program_id, title, description, position, archived_at`,
     [id, d.title ?? null, d.description !== undefined, d.description ?? null],
   );
-  if (!rows[0]) return bad(res, "Не найдено", 404);
+  if (!rows[0]) return bad(res, "NOT_FOUND", 404);
   res.json({ module: rows[0] });
 }));
 
@@ -1203,11 +1210,11 @@ router.post(`${P}/lessons`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = lessonBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны модуль и название урока");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
-  if (!(await moduleExists(d.moduleId))) return bad(res, "Модуль не найден", 404);
+  if (!(await moduleExists(d.moduleId))) return bad(res, "MODULE_NOT_FOUND", 404);
   const video = checkVideo(d.videoUrl);
-  if (!video.ok) return bad(res, "Видео: поддерживаются только ссылки YouTube, Vimeo и Loom");
+  if (!video.ok) return bad(res, "VIDEO_URL_UNSUPPORTED");
   const { rows } = await pool.query<LessonRow>(
     `INSERT INTO academy_lessons (module_id, title, summary, body_md, video_url, attachments, duration_min, playbook_ids, setup_names, position, draft, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING *`,
@@ -1221,12 +1228,12 @@ router.patch(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> =>
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = lessonBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   const video = d.videoUrl !== undefined ? checkVideo(d.videoUrl) : ({ ok: true, value: null } as const);
-  if (!video.ok) return bad(res, "Видео: поддерживаются только ссылки YouTube, Vimeo и Loom");
+  if (!video.ok) return bad(res, "VIDEO_URL_UNSUPPORTED");
   const pb = await validPlaybookIds(d.playbookIds);
   const { rows } = await pool.query<LessonRow>(
     `UPDATE academy_lessons SET
@@ -1245,7 +1252,7 @@ router.patch(`${P}/lessons/:id`, asyncHandler(async (req, res): Promise<void> =>
       d.attachments ? JSON.stringify(normalizeAttachments(d.attachments)) : null, d.durationMin !== undefined, d.durationMin ?? null,
       pb ?? null, d.setupNames ?? null, d.draft ?? null],
   );
-  if (!rows[0]) return bad(res, "Не найдено", 404);
+  if (!rows[0]) return bad(res, "NOT_FOUND", 404);
   res.json({ lesson: lessonJson(rows[0]) });
 }));
 
@@ -1267,13 +1274,13 @@ router.post(`${P}/quizzes`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = quizBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны модуль и название теста");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
-  if (!(await moduleExists(d.moduleId))) return bad(res, "Модуль не найден", 404);
+  if (!(await moduleExists(d.moduleId))) return bad(res, "MODULE_NOT_FOUND", 404);
   let questions: QuizQuestion[] = [];
   if (d.questions && d.questions.length) {
-    const v = normalizeQuestions(d.questions);
-    if (!v.ok) return void res.status(400).json({ error: v.errors[0], errors: v.errors });
+    const v = normalizeQuestions(d.questions, langOf(req));
+    if (!v.ok) return void invalidContent(res, v.errors);
     questions = v.value;
   }
   const { rows } = await pool.query<QuizRow>(
@@ -1288,14 +1295,14 @@ router.patch(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> =>
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = quizBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   let questions: string | null = null;
   if (d.questions !== undefined) {
-    const v = normalizeQuestions(d.questions);
-    if (!v.ok) return void res.status(400).json({ error: v.errors[0], errors: v.errors });
+    const v = normalizeQuestions(d.questions, langOf(req));
+    if (!v.ok) return void invalidContent(res, v.errors);
     questions = JSON.stringify(v.value);
   }
   const { rows } = await pool.query<QuizRow>(
@@ -1311,7 +1318,7 @@ router.patch(`${P}/quizzes/:id`, asyncHandler(async (req, res): Promise<void> =>
     [id, d.title ?? null, d.description !== undefined, d.description ?? null, questions, d.passPct != null ? clampPct(d.passPct) : null,
       d.maxAttempts !== undefined, d.maxAttempts ?? null, d.draft ?? null],
   );
-  if (!rows[0]) return bad(res, "Не найдено", 404);
+  if (!rows[0]) return bad(res, "NOT_FOUND", 404);
   res.json({ quiz: quizAdminJson(rows[0]) });
 }));
 
@@ -1329,13 +1336,14 @@ router.post(`${P}/assignments`, asyncHandler(async (req, res): Promise<void> => 
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = assignmentBody.safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны модуль и название задания");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
-  if (!(await moduleExists(d.moduleId))) return bad(res, "Модуль не найден", 404);
-  let rubric: RubricCriterion[] = [{ key: "quality", label: "Качество выполнения", maxPoints: 10 }];
+  if (!(await moduleExists(d.moduleId))) return bad(res, "MODULE_NOT_FOUND", 404);
+  // Default rubric of a new assignment: stored data, in the author's language (staff edit it afterwards).
+  let rubric: RubricCriterion[] = [{ key: "quality", label: academyContentT.tFor(langOf(req))("defaultRubric"), maxPoints: 10 }];
   if (d.rubric && d.rubric.length) {
-    const v = normalizeRubric(d.rubric);
-    if (!v.ok) return void res.status(400).json({ error: v.errors[0], errors: v.errors });
+    const v = normalizeRubric(d.rubric, langOf(req));
+    if (!v.ok) return void invalidContent(res, v.errors);
     rubric = v.value;
   }
   const { rows } = await pool.query<AssignmentRow>(
@@ -1350,14 +1358,14 @@ router.patch(`${P}/assignments/:id`, asyncHandler(async (req, res): Promise<void
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = assignmentBody.omit({ moduleId: true }).partial().safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Некорректные данные");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
   let rubric: string | null = null;
   if (d.rubric !== undefined) {
-    const v = normalizeRubric(d.rubric);
-    if (!v.ok) return void res.status(400).json({ error: v.errors[0], errors: v.errors });
+    const v = normalizeRubric(d.rubric, langOf(req));
+    if (!v.ok) return void invalidContent(res, v.errors);
     rubric = JSON.stringify(v.value);
   }
   const { rows } = await pool.query<AssignmentRow>(
@@ -1367,21 +1375,21 @@ router.patch(`${P}/assignments/:id`, asyncHandler(async (req, res): Promise<void
      WHERE id = $1 RETURNING *`,
     [id, d.title ?? null, d.bodyMd ?? null, rubric, d.passPct != null ? clampPct(d.passPct, 70) : null, d.minTrades ?? null, d.draft ?? null],
   );
-  if (!rows[0]) return bad(res, "Не найдено", 404);
+  if (!rows[0]) return bad(res, "NOT_FOUND", 404);
   res.json({ assignment: { kind: "assignment", ...assignmentJson(rows[0]) } });
 }));
 
 for (const action of ["archive", "restore"] as const) {
   router.post(`${P}/:kind/:id/${action}`, asyncHandler(async (req, res): Promise<void> => {
     const table = ARCHIVE_TABLE[String(req.params.kind)];
-    if (!table) return bad(res, "Неизвестный тип", 404);
+    if (!table) return bad(res, "VALIDATION", 404);
     if (!(await requireStaff(req, res))) return;
     await ensureAcademyContentTables();
     const id = idParam(req);
-    if (!id) return bad(res, "Некорректный id");
+    if (!id) return bad(res, "INVALID_ID");
     const { rowCount } = await pool.query(
       `UPDATE ${table} SET archived_at = ${action === "archive" ? "COALESCE(archived_at, now())" : "NULL"}, updated_at = now() WHERE id = $1`, [id]);
-    if (!rowCount) return bad(res, "Не найдено", 404);
+    if (!rowCount) return bad(res, "NOT_FOUND", 404);
     res.json({ ok: true, kind: req.params.kind, id, archived: action === "archive" });
   }));
 }
@@ -1390,9 +1398,9 @@ router.post(`${P}/programs/:id/reorder`, asyncHandler(async (req, res): Promise<
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({ moduleIds: z.array(z.number().int().positive()).max(200) }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужен список moduleIds");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const cur = await loadModules([id]);
   const order = applyIdOrder(cur.map((m) => m.id), parsed.data.moduleIds);
   const client = await pool.connect();
@@ -1413,7 +1421,7 @@ router.post(`${P}/programs-order`, asyncHandler(async (req, res): Promise<void> 
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = z.object({ programIds: z.array(z.number().int().positive()).max(200) }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужен список programIds");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const cur = await loadPrograms({ staff: true });
   const order = applyIdOrder(cur.map((p) => p.id), parsed.data.programIds);
   for (const o of order) await pool.query(`UPDATE academy_programs SET position = $2 WHERE id = $1`, [o.id, o.position]);
@@ -1426,9 +1434,9 @@ router.post(`${P}/modules/:id/reorder`, asyncHandler(async (req, res): Promise<v
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const id = idParam(req);
-  if (!id) return bad(res, "Некорректный id");
+  if (!id) return bad(res, "INVALID_ID");
   const parsed = z.object({ items: z.array(itemRef).max(300) }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужен список items");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const { rows } = await pool.query<{ kind: ItemKind; id: number; position: number }>(
     `SELECT 'lesson'::text AS kind, id, position FROM academy_lessons WHERE module_id = $1 AND archived_at IS NULL
      UNION ALL SELECT 'quiz', id, position FROM academy_quizzes WHERE module_id = $1 AND archived_at IS NULL
@@ -1452,12 +1460,12 @@ router.post(`${P}/items/move`, asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
   await ensureAcademyContentTables();
   const parsed = itemRef.extend({ moduleId: z.number().int().positive() }).safeParse(req.body ?? {});
-  if (!parsed.success) return bad(res, "Нужны kind, id и moduleId");
+  if (!parsed.success) return bad(res, "VALIDATION");
   const d = parsed.data;
-  if (!(await moduleExists(d.moduleId))) return bad(res, "Модуль не найден", 404);
+  if (!(await moduleExists(d.moduleId))) return bad(res, "MODULE_NOT_FOUND", 404);
   const pos = await nextPos(d.moduleId);
   const { rowCount } = await pool.query(`UPDATE ${KIND_TABLE[d.kind]} SET module_id = $2, position = $3, updated_at = now() WHERE id = $1`, [d.id, d.moduleId, pos]);
-  if (!rowCount) return bad(res, "Не найдено", 404);
+  if (!rowCount) return bad(res, "NOT_FOUND", 404);
   res.json({ ok: true, kind: d.kind, id: d.id, moduleId: d.moduleId, position: pos });
 }));
 

@@ -6,6 +6,9 @@
 import type { CSSProperties } from "react";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
+import { fmtRelative } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { notesI18n } from "@/i18n/ns/notes";
 
 export type AuthorNote = {
   id: number;
@@ -36,7 +39,10 @@ export type AudienceMember = { name: string; role: string; stage: AudienceStage 
 /** GET /author-notes/:id/audience — who of the team has / has not read the note (unread first, trainees first). */
 export type Audience = { total: number; read: number; members: AudienceMember[] };
 
-export const STAGE_LABEL: Record<AudienceStage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+const STAGE_TIER = { trainee: "tiers.intern", junior: "tiers.junior", trader: "tiers.trader", senior: "tiers.senior" } as const;
+export function stageLabel(stage: AudienceStage): string {
+  return commonI18n.t(STAGE_TIER[stage]);
+}
 
 export type FeedNote = AuthorNote & {
   reads: NoteRead[];
@@ -93,12 +99,13 @@ export type DayContext = {
 
 /* ───────────────────────── Mood ───────────────────────── */
 
+// `label` is a getter: read at render time in the current UI language.
 export const MOODS = [
-  { value: "focused", emoji: "🎯", label: "Сосредоточен", score: 1 },
-  { value: "confident", emoji: "💪", label: "Уверен", score: 2 },
-  { value: "neutral", emoji: "😐", label: "Нейтральный", score: 0 },
-  { value: "stressed", emoji: "😰", label: "Напряжён", score: -1 },
-  { value: "frustrated", emoji: "😤", label: "Раздражён", score: -2 },
+  { value: "focused", emoji: "🎯", score: 1, get label() { return notesI18n.t("author.mood.focused"); } },
+  { value: "confident", emoji: "💪", score: 2, get label() { return notesI18n.t("author.mood.confident"); } },
+  { value: "neutral", emoji: "😐", score: 0, get label() { return notesI18n.t("author.mood.neutral"); } },
+  { value: "stressed", emoji: "😰", score: -1, get label() { return notesI18n.t("author.mood.stressed"); } },
+  { value: "frustrated", emoji: "😤", score: -2, get label() { return notesI18n.t("author.mood.frustrated"); } },
 ] as const;
 
 export type MoodValue = (typeof MOODS)[number]["value"];
@@ -115,32 +122,36 @@ export type SectionDef = {
   key: SectionKey;
   heading: string;
   group: "market" | "trades" | "lessons" | "plan";
-  label: string;
-  placeholder: string;
+  readonly label: string;
+  readonly placeholder: string;
 };
 
-export const SECTION_GROUPS: { id: SectionDef["group"]; title: string; hint: string }[] = [
-  { id: "market", title: "Рынок", hint: "Фон дня, кто в игре, катализаторы" },
-  { id: "trades", title: "Мои сделки", hint: "По горизонтам: интрадей, овернайт, свинг" },
-  { id: "lessons", title: "Уроки", hint: "Что забираю в плейбук, где ошибся" },
-  { id: "plan", title: "План на завтра", hint: "Что несу через ночь и что делать на открытии" },
+type GroupId = SectionDef["group"];
+const group = (id: GroupId) => ({
+  id,
+  get title() { return notesI18n.t(`author.groups.${id}.title`); },
+  get hint() { return notesI18n.t(`author.groups.${id}.hint`); },
+});
+export const SECTION_GROUPS: { id: GroupId; readonly title: string; readonly hint: string }[] = [
+  group("market"), group("trades"), group("lessons"), group("plan"),
 ];
 
+/** `heading` is the storage format inside raw_text («## Рынок») — RU in every UI language, never translated. */
+const section = (key: SectionKey, heading: string, g: GroupId): SectionDef => ({
+  key,
+  heading,
+  group: g,
+  get label() { return notesI18n.t(`author.sections.${key}.label`); },
+  get placeholder() { return notesI18n.t(`author.sections.${key}.placeholder`); },
+});
 export const SECTIONS: SectionDef[] = [
-  { key: "market", heading: "Рынок", group: "market", label: "Рынок",
-    placeholder: "SPY / QQQ, сектора, кто в игре, катализаторы, что было необычного…" },
-  { key: "intraday", heading: "Сделки · интрадей", group: "trades", label: "Интрадей",
-    placeholder: "Лучшая и худшая сделка, A+ сетапы, исполнение, где отдал деньги…" },
-  { key: "overnight", heading: "Сделки · овернайт", group: "trades", label: "Овернайт",
-    placeholder: "Что перенёс через ночь и почему, гэп-риск, размер…" },
-  { key: "swing", heading: "Сделки · свинг", group: "trades", label: "Свинг",
-    placeholder: "Свинг-позиции: тезис жив? уровни, стопы, что меняю…" },
-  { key: "lessons", heading: "Уроки", group: "lessons", label: "Уроки",
-    placeholder: "1–3 урока дня. Что повторять, что прекратить…" },
-  { key: "hold", heading: "План · держу на ночь", group: "plan", label: "Держу на ночь",
-    placeholder: "Тикер · размер · стоп · катализатор · что делаю при гэпе против…" },
-  { key: "open", heading: "План · на открытии", group: "plan", label: "На открытии",
-    placeholder: "Премаркет: имена в игре, уровни, первый трейд, условие red day stop…" },
+  section("market", "Рынок", "market"), // i18n-ignore
+  section("intraday", "Сделки · интрадей", "trades"), // i18n-ignore
+  section("overnight", "Сделки · овернайт", "trades"), // i18n-ignore
+  section("swing", "Сделки · свинг", "trades"), // i18n-ignore
+  section("lessons", "Уроки", "lessons"), // i18n-ignore
+  section("hold", "План · держу на ночь", "plan"), // i18n-ignore
+  section("open", "План · на открытии", "plan"), // i18n-ignore
 ];
 
 export type Sections = Record<SectionKey, string>;
@@ -211,54 +222,28 @@ export function appendText(base: string, add: string): string {
 
 export type NoteTemplate = { id: string; name: string; description: string; sections: Partial<Sections>; custom?: boolean };
 
-export const BUILTIN_TEMPLATES: NoteTemplate[] = [
-  {
-    id: "standard",
-    name: "Обычный день",
-    description: "Полный разбор по всем блокам",
-    sections: {
-      market: "SPY / QQQ: \nСильные / слабые сектора: \nВ игре: ",
-      intraday: "Лучшая сделка: \nХудшая сделка: \nОшибки исполнения: ",
-      overnight: "Что перенёс и почему: \nГэп-риск: ",
-      swing: "Позиции и уровни: ",
-      lessons: "1. \n2. ",
-      hold: "Тикер · размер · стоп · катализатор: ",
-      open: "Премаркет-список: \nКлючевые уровни: \nЕсли гэп против позиции — ",
-    },
+type BuiltinId = "standard" | "red" | "earnings" | "friday";
+const TEMPLATE_SECTIONS: Record<BuiltinId, readonly SectionKey[]> = {
+  standard: ["market", "intraday", "overnight", "swing", "lessons", "hold", "open"],
+  red: ["intraday", "lessons", "open"],
+  earnings: ["market", "overnight", "hold", "open"],
+  friday: ["lessons", "swing", "hold", "open"],
+};
+/** Prompts are written in the UI language at the moment the template is applied (then they are the author's text). */
+const builtin = (id: BuiltinId): NoteTemplate => ({
+  id,
+  get name() { return notesI18n.t(`author.templates.${id}.name`); },
+  get description() { return notesI18n.t(`author.templates.${id}.description`); },
+  get sections() {
+    const out: Partial<Sections> = {};
+    for (const k of TEMPLATE_SECTIONS[id]) {
+      // «standard» lessons is a plain numbered list in every language.
+      out[k] = id === "standard" && k === "lessons" ? "1. \n2. " : notesI18n.tryT(`author.templates.${id}.${k}`) ?? "";
+    }
+    return out;
   },
-  {
-    id: "red",
-    name: "Красный день",
-    description: "Разбор убытка и правила на завтра",
-    sections: {
-      intraday: "Где потерял основную часть: \nНарушенные правила: ",
-      lessons: "Сработал ли red day stop: \nЧто было вне плана: \nЧто меняю завтра (размер, сетапы): ",
-      open: "Первый час — половинный размер до +1R.\nТоргую только A+ сетапы: ",
-    },
-  },
-  {
-    id: "earnings",
-    name: "Отчёты и катализаторы",
-    description: "Сезон отчётов, гэпы, держим ли через событие",
-    sections: {
-      market: "Отчёты вчера / сегодня: \nРеакции на гэпы: ",
-      overnight: "Держу через отчёт? Размер и максимальный риск гэпа: ",
-      hold: "Имя · отчёт до/после рынка · план на гэп вверх / вниз: ",
-      open: "Гэпперы с катализатором: \nУровни премаркета: ",
-    },
-  },
-  {
-    id: "friday",
-    name: "Конец недели",
-    description: "Итоги недели и что несём на выходные",
-    sections: {
-      lessons: "Итоги недели (R, дисциплина): \nЛучший паттерн недели: \nГлавная ошибка недели: ",
-      swing: "Свинги на выходные — тезис и стопы: ",
-      hold: "Держу на выходные: ",
-      open: "Фокус на следующую неделю: ",
-    },
-  },
-];
+});
+export const BUILTIN_TEMPLATES: NoteTemplate[] = [builtin("standard"), builtin("red"), builtin("earnings"), builtin("friday")];
 
 const CUSTOM_TPL_KEY = "ws_author_notes_templates";
 
@@ -318,13 +303,7 @@ export function weekStartOf(dateStr: string): string {
 }
 
 export function relTime(ts: number, now: number): string {
-  const s = Math.max(0, Math.round((now - ts) / 1000));
-  if (s < 5) return "только что";
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  return `${h} ч назад`;
+  return fmtRelative(ts, { now });
 }
 
 export function isWeekend(dateStr: string): boolean {
@@ -346,7 +325,9 @@ export function writingStreak(dates: Set<string>, today: string): number {
   return n;
 }
 
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+export function horizonLabel(h: Horizon): string {
+  return commonI18n.t(`trading.${h}`);
+}
 
 export const CHART_TOOLTIP: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",

@@ -6,7 +6,7 @@ import { can } from "../lib/permissions";
 import { ensureRulesSchema } from "../lib/rulesEngine";
 import { closeDateSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
-import { badRequest, forbidden, notFound } from "../lib/http";
+import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -14,19 +14,17 @@ const router: IRouter = Router();
 // The mistake log is personal. The trader is always taken from the logged-in user;
 // curators/admins may act on behalf of a trader by passing `trader` (query or body).
 
-type Scope =
-  | { ok: true; trader: string | null; staff: boolean }
-  | { ok: false; status: number; error: string };
+type Scope = { ok: true; trader: string | null; staff: boolean };
 
 // errors.manage.team (permissions matrix, DB role) = act on other traders' mistakes.
 async function resolveScope(req: Request, claimed: unknown, opts: { allowAll?: boolean } = {}): Promise<Scope> {
   const auth = req.authUser;
-  if (!auth) return { ok: false, status: 401, error: "Требуется вход" };
+  if (!auth) throw unauthorized();
   const claimedName = typeof claimed === "string" && claimed.trim() ? claimed.trim() : null;
   const staff = await can(req, "errors.manage.team", claimedName && claimedName !== auth.name ? { trader: claimedName } : undefined);
   if (staff) return { ok: true, trader: claimedName ?? (opts.allowAll ? null : auth.name), staff };
   if (claimedName && claimedName !== auth.name) {
-    return { ok: false, status: 403, error: "Можно работать только со своими ошибками" };
+    throw new AppError("MISTAKES_OWN_ONLY");
   }
   return { ok: true, trader: auth.name, staff };
 }
@@ -79,7 +77,6 @@ async function loadOne(id: number) {
 
 router.get("/errors", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const rawLimit = Number(req.query.limit);
   const limit = Number.isFinite(rawLimit) && rawLimit > 0 ? Math.min(Math.floor(rawLimit), 1000) : 300;
   const params: unknown[] = [];
@@ -94,16 +91,15 @@ router.get("/errors", asyncHandler(async (req, res): Promise<void> => {
 router.post("/errors", asyncHandler(async (req, res): Promise<void> => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const scope = await resolveScope(req, body.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader!;
 
   const errorType = typeof body.errorType === "string" ? body.errorType.trim() : "";
-  if (!errorType) { res.status(400).json({ error: "errorType required" }); return; }
-  if (errorType.length > MAX_TYPE) { res.status(400).json({ error: `Категория длиннее ${MAX_TYPE} символов` }); return; }
+  if (!errorType) throw new AppError("INVALID_FIELD", undefined, { field: "errorType" });
+  if (errorType.length > MAX_TYPE) throw new AppError("TEXT_TOO_LONG", 400, { field: "errorType", max: MAX_TYPE });
   const description = typeof body.description === "string" && body.description.trim() ? body.description.trim() : errorType;
-  if (description.length > MAX_TEXT) { res.status(400).json({ error: "Описание слишком длинное" }); return; }
+  if (description.length > MAX_TEXT) throw new AppError("TEXT_TOO_LONG", undefined, { field: "description", max: MAX_TEXT });
   const severity = body.severity === undefined || body.severity === null || body.severity === "" ? "medium" : String(body.severity);
-  if (!VALID_SEVERITIES.includes(severity)) { res.status(400).json({ error: "Invalid severity" }); return; }
+  if (!VALID_SEVERITIES.includes(severity)) throw new AppError("INVALID_FIELD", undefined, { field: "severity" });
   const lesson = typeof body.lesson === "string" && body.lesson.trim() ? body.lesson.trim().slice(0, MAX_TEXT) : null;
 
   let tradeId: number | null = null;
@@ -112,7 +108,7 @@ router.post("/errors", asyncHandler(async (req, res): Promise<void> => {
     const tid = Number(body.tradeId);
     if (!Number.isInteger(tid) || tid <= 0) throw badRequest("INVALID_ID");
     const trade = await ownedTrade(tid, trader);
-    if (!trade) { res.status(400).json({ error: "Сделка не найдена у этого трейдера" }); return; }
+    if (!trade) throw new AppError("TRADE_NOT_OWNED");
     tradeId = tid;
     ticker = ticker ?? trade.ticker;
   }
@@ -128,29 +124,29 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const [existing] = await db.select({ trader: tradingErrorsTable.trader }).from(tradingErrorsTable).where(eq(tradingErrorsTable.id, id));
   if (!existing) throw notFound();
-  if (!(await canTouch(req, existing.trader))) { res.status(403).json({ error: "Можно менять только свои ошибки" }); return; }
+  if (!(await canTouch(req, existing.trader))) throw new AppError("MISTAKE_EDIT_OWN_ONLY");
 
   const updates: Partial<typeof tradingErrorsTable.$inferInsert> = {};
   const body = (req.body ?? {}) as Record<string, any>;
   if (body.resolved !== undefined) {
-    if (!VALID_RESOLVED.includes(body.resolved)) { res.status(400).json({ error: "Invalid resolved value" }); return; }
+    if (!VALID_RESOLVED.includes(body.resolved)) throw new AppError("INVALID_FIELD", undefined, { field: "resolved" });
     updates.resolved = body.resolved;
   }
   if (body.lesson !== undefined) {
     updates.lesson = typeof body.lesson === "string" && body.lesson.trim() ? body.lesson.trim().slice(0, MAX_TEXT) : null;
   }
   if (body.severity !== undefined) {
-    if (!VALID_SEVERITIES.includes(body.severity)) { res.status(400).json({ error: "Invalid severity" }); return; }
+    if (!VALID_SEVERITIES.includes(body.severity)) throw new AppError("INVALID_FIELD", undefined, { field: "severity" });
     updates.severity = body.severity;
   }
   if (body.description !== undefined) {
     const d = String(body.description ?? "").trim();
-    if (!d) { res.status(400).json({ error: "Описание не может быть пустым" }); return; }
+    if (!d) throw new AppError("DESCRIPTION_REQUIRED");
     updates.description = d.slice(0, MAX_TEXT);
   }
   if (body.errorType !== undefined) {
     const t = String(body.errorType ?? "").trim();
-    if (!t || t.length > MAX_TYPE) { res.status(400).json({ error: "Invalid errorType" }); return; }
+    if (!t || t.length > MAX_TYPE) throw new AppError("INVALID_FIELD", undefined, { field: "errorType" });
     updates.errorType = t;
   }
   if (body.ticker !== undefined) updates.ticker = cleanTicker(body.ticker);
@@ -161,7 +157,7 @@ router.patch("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
       const tid = Number(body.tradeId);
       if (!Number.isInteger(tid) || tid <= 0) throw badRequest("INVALID_ID");
       const trade = await ownedTrade(tid, existing.trader);
-      if (!trade) { res.status(400).json({ error: "Сделка не найдена у этого трейдера" }); return; }
+      if (!trade) throw new AppError("TRADE_NOT_OWNED");
       updates.tradeId = tid;
       if (body.ticker === undefined) updates.ticker = trade.ticker;
     }
@@ -181,7 +177,7 @@ router.delete("/errors/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const { rows: existing } = await pool.query<any>(`SELECT * FROM trading_errors WHERE id = $1`, [id]);
   if (!existing[0]) throw notFound();
-  if (!(await canTouch(req, existing[0].trader))) { res.status(403).json({ error: "Можно удалять только свои ошибки" }); return; }
+  if (!(await canTouch(req, existing[0].trader))) throw new AppError("MISTAKE_DELETE_OWN_ONLY");
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -231,15 +227,14 @@ router.post("/errors/:id/restore", asyncHandler(async (req, res): Promise<void> 
 router.post("/errors/bulk", asyncHandler(async (req, res): Promise<void> => {
   const body = (req.body ?? {}) as Record<string, unknown>;
   const scope = await resolveScope(req, body.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader!;
   const errorType = typeof body.errorType === "string" ? body.errorType.trim() : "";
-  if (!errorType || errorType.length > MAX_TYPE) { res.status(400).json({ error: "errorType required" }); return; }
+  if (!errorType || errorType.length > MAX_TYPE) throw new AppError("INVALID_FIELD", undefined, { field: "errorType" });
   const severity = body.severity == null || body.severity === "" ? "medium" : String(body.severity);
-  if (!VALID_SEVERITIES.includes(severity)) { res.status(400).json({ error: "Invalid severity" }); return; }
+  if (!VALID_SEVERITIES.includes(severity)) throw new AppError("INVALID_FIELD", undefined, { field: "severity" });
   const lesson = typeof body.lesson === "string" && body.lesson.trim() ? body.lesson.trim().slice(0, MAX_TEXT) : null;
   const ids = Array.isArray(body.tradeIds) ? [...new Set(body.tradeIds.map(Number).filter((x) => Number.isInteger(x) && x > 0))].slice(0, 200) : [];
-  if (!ids.length) { res.status(400).json({ error: "tradeIds required" }); return; }
+  if (!ids.length) throw new AppError("TRADE_IDS_REQUIRED");
   const { rows: trades } = await pool.query<any>(
     `SELECT t.id, t.ticker FROM trades t
       WHERE t.id = ANY($1::int[]) AND t.trader = $2 AND t.deleted_at IS NULL
@@ -265,7 +260,6 @@ router.post("/errors/bulk", asyncHandler(async (req, res): Promise<void> => {
  */
 router.get("/errors/summary", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader!;
   const isDay = (v: unknown): v is string => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
   const to = isDay(req.query.to) ? req.query.to : nyDate();
@@ -331,7 +325,6 @@ router.get("/errors/summary", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/errors/stats", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader, { allowAll: true });
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const params: unknown[] = [];
   let where = "";
   if (scope.trader) { params.push(scope.trader); where = `WHERE trader = $1`; }

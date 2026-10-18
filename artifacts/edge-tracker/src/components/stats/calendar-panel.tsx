@@ -5,17 +5,19 @@ import { Button } from "@/components/ui/button";
 import { Panel, Pill, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, weekHref } from "@/lib/period-links";
-import { fmtMetricCompact, fmtValue, heatBg, parseKey, toKey, type DayStat, type Metric } from "./metrics";
+import { fmtMetricCompact, fmtValue, heatBg, parseKey, toKey, weekdayLabel, type DayStat, type Metric } from "./metrics";
 import { TradeLinkRow } from "./trade-link-row";
 import { fmtDate, fmtMonth } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { statsI18n } from "@/i18n/ns/stats";
 
 /** «Октябрь» / «October»: stand-alone month name with a capital letter (calendar header). */
 const monthTitle = (m: number) => {
   const s = fmtMonth(m, "long");
   return s.charAt(0).toUpperCase() + s.slice(1);
 };
-const HEAD = ["Пн", "Вт", "Ср", "Чт", "Пт"];
+/** Mon–Fri column heads in the UI language (weekdayLabel takes a Monday-first index). */
+const head = () => [0, 1, 2, 3, 4].map(weekdayLabel);
 
 type Month = { y: number; m: number };
 const monthOf = (k: string): Month => ({ y: Number(k.substring(0, 4)), m: Number(k.substring(5, 7)) - 1 });
@@ -31,6 +33,7 @@ const cmp = (a: Month, b: Month) => a.y * 12 + a.m - (b.y * 12 + b.m);
  * the week total opens the weekly review.
  */
 export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metric: Metric; trader?: string | null }) {
+  const { t } = statsI18n.useT();
   const byKey = useMemo(() => new Map(days.map((d) => [d.key, d])), [days]);
   const latest = days.at(-1)?.key;
   const first = days[0]?.key;
@@ -68,20 +71,20 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
 
   return (
     <Panel
-      title="Календарь"
+      title={t("calendar.title")}
       icon={CalendarDays}
-      description={monthCount ? `${commonI18n.t("units.trades", { count: monthCount })} · ${monthDays.length} торг. дн.` : "Нет сделок в этом месяце"}
+      description={monthCount ? t("calendar.monthHint", { trades: commonI18n.t("units.trades", { count: monthCount }), days: monthDays.length }) : t("calendar.noMonth")}
       actions={
         <div className="flex items-center gap-1">
           <Button
-            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Предыдущий месяц"
+            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label={t("calendar.prev")}
             disabled={cmp(month, minMonth) <= 0} onClick={() => { setMonth((m) => addMonth(m, -1)); setSelected(null); }}
           >
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <span className="min-w-[7.5rem] text-center text-sm font-medium tabular-nums">{monthTitle(month.m)} {month.y}</span>
           <Button
-            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Следующий месяц"
+            variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label={t("calendar.next")}
             disabled={cmp(month, maxMonth) >= 0} onClick={() => { setMonth((m) => addMonth(m, 1)); setSelected(null); }}
           >
             <ChevronRight className="h-4 w-4" />
@@ -89,9 +92,9 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
         </div>
       }
     >
-      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,0.9fr)] gap-1 sm:gap-1.5" role="grid" aria-label={`Календарь: ${monthTitle(month.m)} ${month.y}`}>
-        {HEAD.map((h) => <div key={h} className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">{h}</div>)}
-        <div className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">Неделя</div>
+      <div className="grid grid-cols-[repeat(5,minmax(0,1fr))_minmax(0,0.9fr)] gap-1 sm:gap-1.5" role="grid" aria-label={t("calendar.aria", { month: `${monthTitle(month.m)} ${month.y}` })}>
+        {head().map((h) => <div key={h} className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">{h}</div>)}
+        <div className="pb-1 text-center text-2xs font-medium text-muted-foreground" role="columnheader">{t("calendar.week")}</div>
         {weeks.map((w, wi) => {
           const all = w.days.map((d) => byKey.get(toKey(d))).filter((x): x is DayStat => !!x);
           const wVal = all.reduce<number | null>((s, d) => (d.value == null ? s : (s ?? 0) + d.value), null);
@@ -105,7 +108,7 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
                 const active = selected === k;
                 const bg = !stat ? undefined : stat.value != null ? heatBg(stat.value, max) : heatBg(stat.wins - stat.losses, Math.max(4, Math.abs(stat.wins - stat.losses)));
                 if (!inMonth) return <div key={k} className="aspect-square rounded-lg sm:aspect-[4/3]" role="gridcell" aria-hidden="true" />;
-                const label = `${fmtDate(d, "dayMonthLong")}: ${stat ? `${commonI18n.t("units.trades", { count: stat.count })}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : "нет сделок"}`;
+                const label = `${fmtDate(d, "dayMonthLong")}: ${stat ? `${commonI18n.t("units.trades", { count: stat.count })}${stat.value != null ? `, ${fmtValue(stat.value, metric)}` : ""}` : t("calendar.noTrades")}`;
                 return (
                   <button
                     key={k}
@@ -131,20 +134,20 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
                         <span className="truncate text-2xs font-semibold tabular-nums text-foreground sm:text-xs">
                           {stat.value != null ? fmtMetricCompact(stat.value, metric) : `${stat.wins}/${stat.losses}`}
                         </span>
-                        <span className="hidden truncate text-2xs text-muted-foreground sm:block">{stat.count} сд.</span>
+                        <span className="hidden truncate text-2xs text-muted-foreground sm:block">{commonI18n.t("units.tradesShort", { count: stat.count })}</span>
                       </span>
                     )}
                   </button>
                 );
               })}
               {(() => {
-                const weekLabel = `Неделя: ${commonI18n.t("units.trades", { count: wCnt })}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`;
+                const weekLabel = `${t("calendar.weekLabel", { trades: commonI18n.t("units.trades", { count: wCnt }) })}${wVal != null ? `, ${fmtValue(wVal, metric)}` : ""}`;
                 const body = (
                   <>
                     <span className={cn("truncate text-2xs font-semibold tabular-nums sm:text-xs", wVal == null ? "text-muted-foreground" : wVal > 0 ? "text-up" : wVal < 0 ? "text-down" : "text-foreground")}>
                       {wCnt ? (wVal != null ? fmtMetricCompact(wVal, metric) : "—") : ""}
                     </span>
-                    {wCnt > 0 && <span className="text-2xs text-muted-foreground">{wCnt} сд.</span>}
+                    {wCnt > 0 && <span className="text-2xs text-muted-foreground">{commonI18n.t("units.tradesShort", { count: wCnt })}</span>}
                   </>
                 );
                 const cls = "flex aspect-square flex-col justify-center rounded-lg bg-[var(--glass-bg)] p-1 text-center sm:aspect-[4/3]";
@@ -169,15 +172,15 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>
-          Итог месяца:{" "}
+          {t("calendar.monthTotal")}{" "}
           <span className={cn("font-semibold tabular-nums", toneOf(monthValue) === "up" ? "text-up" : toneOf(monthValue) === "down" ? "text-down" : "text-foreground")}>
             {fmtValue(monthValue, metric)}
           </span>
         </span>
         <span className="inline-flex items-center gap-2">
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-up/50" aria-hidden="true" />плюс</span>
-          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-down/50" aria-hidden="true" />минус</span>
-          <span>· нажмите на день или неделю</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-up/50" aria-hidden="true" />{t("calendar.plus")}</span>
+          <span className="inline-flex items-center gap-1"><span className="h-2.5 w-2.5 rounded-sm bg-down/50" aria-hidden="true" />{t("calendar.minus")}</span>
+          <span>{t("calendar.clickHint")}</span>
         </span>
       </div>
 
@@ -186,13 +189,14 @@ export function CalendarPanel({ days, metric, trader }: { days: DayStat[]; metri
           <div className="flex items-center justify-between gap-2 px-2 pb-1">
             <div className="text-sm font-medium">
               {fmtDate(parseKey(sel.key), "dayMonthLong")}
-              <Pill tone={toneOf(sel.value)} className="ml-2">{sel.value != null ? fmtValue(sel.value, metric) : `${sel.count} сд.`}</Pill>
+              <Pill tone={toneOf(sel.value)} className="ml-2">{sel.value != null ? fmtValue(sel.value, metric) : commonI18n.t("units.tradesShort", { count: sel.count })}</Pill>
             </div>
             <span className="flex items-center gap-1">
               <Button asChild variant="ghost" size="sm" className="h-8 rounded-full px-3 text-xs text-primary">
                 <Link href={dayHref(sel.key, trader)}>{PERIOD_HINT.day} <ArrowRight aria-hidden="true" /></Link>
               </Button>
-              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label="Закрыть список дня" onClick={() => setSelected(null)}>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" aria-label={t("calendar.closeDay")}
+ onClick={() => setSelected(null)}>
                 <X className="h-4 w-4" />
               </Button>
             </span>

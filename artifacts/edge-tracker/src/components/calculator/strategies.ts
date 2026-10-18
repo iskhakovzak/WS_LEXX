@@ -1,5 +1,9 @@
-/** Rule-based options strategy advisor: builds candidate strategies from a loaded chain and scores them by goal. */
-import { probAbove } from "./lib";
+/**
+ * Rule-based options strategy advisor: builds candidate strategies from a loaded chain and scores them by goal.
+ * Texts are not built here: each strategy carries its `id` (→ `calculator` namespace `strategies.<id>.summary` /
+ * `.bestWhen`, resolved at render) and preformatted `summaryParams`. Names (Long Call…) are standard English terms.
+ */
+import { fmtStrike, probAbove } from "./lib";
 import { fmtPrice, fmtUsd } from "@/lib/format";
 
 export type ChainOption = {
@@ -16,13 +20,18 @@ export type ChainData = {
 export type AdvisorGoal = "bullish" | "bearish" | "hedge_long" | "hedge_short" | "big_move" | "neutral_sell";
 export type IvOutlook = "expand" | "contract" | "neutral";
 export type StrategyLeg = { action: "buy" | "sell"; optType: "call" | "put"; strike: number; premium: number };
+export type StrategyId =
+  | "long_call" | "long_put" | "bull_call_spread" | "bear_put_spread" | "protective_put"
+  | "collar" | "long_straddle" | "long_strangle" | "cash_secured_put" | "covered_call";
 export type Strategy = {
-  id: string; name: string; legs: StrategyLeg[];
+  id: StrategyId; name: string; legs: StrategyLeg[];
   netDebit: number;
   maxProfit: number | null; maxLoss: number | null;
   breakevens: number[]; probProfit: number | null;
   ivSensitivity: "positive" | "negative" | "neutral";
-  score: number; summary: string; bestWhen: string;
+  score: number;
+  /** Params for `strategies.<id>.summary` (strikes, prices and money already formatted). */
+  summaryParams: Record<string, string>;
   totalCostPerContract: number;
   riskReward: number | null;
 };
@@ -63,6 +72,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
   }
 
   const results: Strategy[] = [];
+  const usd0 = (v: number) => fmtUsd(v, { decimals: 0 });
+  const k = (v: number) => fmtStrike(v);
 
   const atm = fsFind(calls, spot);
   const atmP = fsFind(puts, spot);
@@ -83,8 +94,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: prem, maxProfit: null, maxLoss: cost,
       breakevens: [be], probProfit: pct(pAbove(be, lcStrike.iv)),
       ivSensitivity: "positive", score: scoreIt("positive", gm, cost),
-      summary: `Покупка Call ${lcStrike.strike}. Цена растёт выше ${fmtPrice(be)} — прибыль неограничена.`,
-      bestWhen: "Ждёте сильного роста, IV низкий, хотите ограниченный риск.", totalCostPerContract: prem * 100,
+      summaryParams: { strike: k(lcStrike.strike), be: fmtPrice(be) },
+      totalCostPerContract: prem * 100,
       riskReward: null,
     });
   }
@@ -102,8 +113,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: prem, maxProfit: maxP, maxLoss: cost,
       breakevens: [be], probProfit: pct(below(pAbove(be, lpStrike.iv))),
       ivSensitivity: "positive", score: scoreIt("positive", gm, cost),
-      summary: `Покупка Put ${lpStrike.strike}. Падение ниже ${fmtPrice(be)} — прибыль до ${fmtUsd(maxP, { decimals: 0 })}.`,
-      bestWhen: "Ждёте падения, IV низкий, или страховка лонга.", totalCostPerContract: prem * 100,
+      summaryParams: { strike: k(lpStrike.strike), be: fmtPrice(be), maxProfit: usd0(maxP) },
+      totalCostPerContract: prem * 100,
       riskReward: maxP > 0 && cost > 0 ? +(maxP / cost).toFixed(2) : null,
     });
   }
@@ -125,8 +136,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
         netDebit: debit, maxProfit: maxP, maxLoss: cost,
         breakevens: [be], probProfit: pct(pAbove(be, bcsLow.iv)),
         ivSensitivity: "neutral", score: scoreIt("neutral", gm, cost),
-        summary: `Buy Call ${bcsLow.strike} / Sell Call ${bcsHigh.strike}. Макс. прибыль ${fmtUsd(maxP, { decimals: 0 })}, риск ${fmtUsd(cost, { decimals: 0 })}.`,
-        bestWhen: "Умеренный рост до уровня верхнего страйка. Дешевле Long Call.", totalCostPerContract: debit * 100,
+        summaryParams: { low: k(bcsLow.strike), high: k(bcsHigh.strike), maxProfit: usd0(maxP), risk: usd0(cost) },
+        totalCostPerContract: debit * 100,
         riskReward: cost > 0 ? +(maxP / cost).toFixed(2) : null,
       });
     }
@@ -149,8 +160,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
         netDebit: debit, maxProfit: maxP, maxLoss: cost,
         breakevens: [be], probProfit: pct(below(pAbove(be, bpsHigh.iv))),
         ivSensitivity: "neutral", score: scoreIt("neutral", gm, cost),
-        summary: `Buy Put ${bpsHigh.strike} / Sell Put ${bpsLow.strike}. Макс. прибыль ${fmtUsd(maxP, { decimals: 0 })}, риск ${fmtUsd(cost, { decimals: 0 })}.`,
-        bestWhen: "Умеренное падение до уровня нижнего страйка. Дешевле Long Put.", totalCostPerContract: debit * 100,
+        summaryParams: { high: k(bpsHigh.strike), low: k(bpsLow.strike), maxProfit: usd0(maxP), risk: usd0(cost) },
+        totalCostPerContract: debit * 100,
         riskReward: cost > 0 ? +(maxP / cost).toFixed(2) : null,
       });
     }
@@ -168,8 +179,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: prem, maxProfit: null, maxLoss: (Math.max(0, spot - pp.strike) + prem) * 100 * N,
       breakevens: [spot + prem],
       probProfit: pct(pAbove(spot + prem, pp.iv)), ivSensitivity: "positive", score: scoreIt("positive", gm, cost),
-      summary: `Страховочный Put ${pp.strike}. Защищает лонг ниже ${pp.strike}. Стоимость страховки: ${fmtUsd(cost, { decimals: 0 })}.`,
-      bestWhen: "Держите акцию и хотите защиту от падения. Аналог страховки.", totalCostPerContract: prem * 100,
+      summaryParams: { strike: k(pp.strike), cost: usd0(cost) },
+      totalCostPerContract: prem * 100,
       riskReward: null,
     });
   }
@@ -187,8 +198,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: debit, maxProfit: (collarCall.strike - spot - debit) * 100 * N, maxLoss: Math.max(0, spot - collarPut.strike + debit) * 100 * N,
       breakevens: [spot + debit],
       probProfit: pct(pAbove(spot + debit, collarPut.iv)), ivSensitivity: "neutral", score: scoreIt("neutral", gm, cost),
-      summary: `Put ${collarPut.strike} + Short Call ${collarCall.strike}. Дешёвая страховка с ограниченным потолком роста.`,
-      bestWhen: "Держите акцию, хотите защиту недорого, готовы ограничить рост.", totalCostPerContract: Math.max(0, debit) * 100,
+      summaryParams: { put: k(collarPut.strike), call: k(collarCall.strike) },
+      totalCostPerContract: Math.max(0, debit) * 100,
       riskReward: null,
     });
   }
@@ -207,8 +218,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: debit, maxProfit: null, maxLoss: cost,
       breakevens: [beDn, beUp], probProfit: (() => { const up = pAbove(beUp, strdC.iv), dn = pAbove(beDn, strdP.iv ?? strdC.iv); return up === null || dn === null ? null : pct(up + (1 - dn)); })(), ivSensitivity: "positive",
       score: scoreIt("positive", gm, cost),
-      summary: `ATM Call ${strdC.strike} + ATM Put ${strdP.strike}. Прибыль если цена уйдёт за ${fmtPrice(beDn)} или ${fmtPrice(beUp)}.`,
-      bestWhen: "Ждёте большое движение (отчёт, новости), направление неизвестно. IV должен быть низким.", totalCostPerContract: debit * 100,
+      summaryParams: { call: k(strdC.strike), put: k(strdP.strike), low: fmtPrice(beDn), high: fmtPrice(beUp) },
+      totalCostPerContract: debit * 100,
       riskReward: null,
     });
   }
@@ -226,8 +237,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: debit, maxProfit: null, maxLoss: cost,
       breakevens: [beDn, beUp], probProfit: (() => { const up = pAbove(beUp, otmC5.iv), dn = pAbove(beDn, otmP5.iv ?? otmC5.iv); return up === null || dn === null ? null : pct(up + (1 - dn)); })(), ivSensitivity: "positive",
       score: scoreIt("positive", gm, cost),
-      summary: `OTM Call ${otmC5.strike} + OTM Put ${otmP5.strike}. Дешевле стрэддла, нужен бо́льший ход.`,
-      bestWhen: "Ждёте сильное движение, но хотите заплатить меньше чем за стрэддл.", totalCostPerContract: debit * 100,
+      summaryParams: { call: k(otmC5.strike), put: k(otmP5.strike) },
+      totalCostPerContract: debit * 100,
       riskReward: null,
     });
   }
@@ -245,8 +256,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: -credit, maxProfit: maxP, maxLoss: maxL,
       breakevens: [be], probProfit: pct(pAbove(be, otmP5.iv)), ivSensitivity: "negative",
       score: scoreIt("negative", gm, 0),
-      summary: `Short Put ${otmP5.strike}. Получаете ${fmtUsd(maxP, { decimals: 0 })} сразу. Риск — акция упадёт ниже ${fmtPrice(be)}.`,
-      bestWhen: "Хотите купить акцию дешевле или просто собрать премию. Нейтральный/бычий взгляд.", totalCostPerContract: 0,
+      summaryParams: { strike: k(otmP5.strike), credit: usd0(maxP), be: fmtPrice(be) },
+      totalCostPerContract: 0,
       riskReward: maxL > 0 ? +(maxP / maxL).toFixed(3) : null,
     });
   }
@@ -263,8 +274,8 @@ export function buildStrategies(chain: ChainData, goal: AdvisorGoal, maxRisk: nu
       netDebit: -credit, maxProfit: maxP, maxLoss: Math.max(0, be) * 100 * N, // stock → 0 minus premium received
       breakevens: [be], probProfit: pct(pAbove(be, otmC5.iv)), ivSensitivity: "negative",
       score: scoreIt("negative", gm, 0),
-      summary: `Short Call ${otmC5.strike} против 100 акций. Собираете ${fmtUsd(credit * 100 * N, { decimals: 0 })} сразу.`,
-      bestWhen: "Держите 100 акций, ожидаете нейтральное движение. Собираете доход.", totalCostPerContract: 0,
+      summaryParams: { strike: k(otmC5.strike), credit: usd0(credit * 100 * N) },
+      totalCostPerContract: 0,
       riskReward: null,
     });
   }

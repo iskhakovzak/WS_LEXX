@@ -5,14 +5,21 @@
  */
 import { type CommissionPlan, type PreviewTrade, type Rule, gradeRank, netOf, planSummary } from "./rules";
 import { fmtUsd } from "@/lib/format";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 
 export type PlanParams = Omit<CommissionPlan, "type">;
 export type TariffOption = { id: string; label: string; note?: string; plan: PlanParams };
 
-/** Generic example tariffs (regulatory fees kept, as the presets do). */
+/** Generic example tariffs (regulatory fees kept, as the presets do). Labels are getters: they follow the UI language. */
 export const TARIFF_EXAMPLES: TariffOption[] = [
-  { id: "ex-share", label: "Поштучный дешёвый", note: "$0.002 за акцию, мин. $0.25 за ордер, ECN $0.001", plan: { perShare: 0.002, minPerOrder: 0.25, ecnPerShare: 0.001, keepRegulatory: true } },
-  { id: "ex-flat", label: "Фикс за ордер", note: "$1 за ордер без ECN", plan: { perShare: 0, minPerOrder: 1, ecnPerShare: 0, keepRegulatory: true } },
+  {
+    id: "ex-share", get label() { return whatIfI18n.t("tariffs.exShare.label"); }, get note() { return whatIfI18n.t("tariffs.exShare.note"); },
+    plan: { perShare: 0.002, minPerOrder: 0.25, ecnPerShare: 0.001, keepRegulatory: true },
+  },
+  {
+    id: "ex-flat", get label() { return whatIfI18n.t("tariffs.exFlat.label"); }, get note() { return whatIfI18n.t("tariffs.exFlat.note"); },
+    plan: { perShare: 0, minPerOrder: 1, ecnPerShare: 0, keepRegulatory: true },
+  },
 ];
 
 export type Question = {
@@ -78,36 +85,38 @@ export function typicalDayLoss(trades: PreviewTrade[]): number | null {
 
 /** The question chips for these trades (always the same five, some disabled with a reason). */
 export function buildQuestions(trades: PreviewTrade[], presets: PresetLike[]): Question[] {
+  const t = whatIfI18n.t;
   const qs: Question[] = [];
-  qs.push({ id: "after3", label: "Не торговать после 3 убытков подряд", hint: "День заканчивается после третьего убытка подряд", rule: { type: "stopAfterLosses", n: 3 }, disabled: null });
+  qs.push({ id: "after3", label: t("questions.after3.label"), hint: t("questions.after3.hint"), rule: { type: "stopAfterLosses", n: 3 }, disabled: null });
 
   const dl = typicalDayLoss(trades);
   qs.push({
-    id: "dayLimit", label: dl ? `Стоп дня на −${fmtUsd(dl, { decimals: 0 })}` : "Стоп дня", hint: dl ? "Типичный убыточный день: после такого минуса торговля закончена" : "",
-    rule: dl ? { type: "dailyLossLimit", usd: dl } : null, disabled: dl ? null : "мало убыточных дней",
+    id: "dayLimit", label: dl ? t("questions.dayLimit.label", { amount: fmtUsd(dl, { decimals: 0 }) }) : t("questions.dayLimit.labelBare"), hint: dl ? t("questions.dayLimit.hint") : "",
+    rule: dl ? { type: "dailyLossLimit", usd: dl } : null, disabled: dl ? null : t("questions.dayLimit.disabled"),
   });
 
-  const hasSetups = trades.some((t) => t.setup?.trim());
+  const hasSetups = trades.some((tr) => tr.setup?.trim());
   const worst = worstSetups(trades);
   qs.push({
     id: "worstSetups",
-    label: worst.length ? `Без худших сетапов (${worst.map((w) => w.name).join(", ")})` : "Без худших сетапов",
-    hint: worst.length ? `Сетапы с самым большим минусом: ${worst.map((w) => `${w.name} ${fmtUsd(w.net, { decimals: 0 })}`).join(", ")}` : "",
+    label: worst.length ? t("questions.worstSetups.label", { setups: worst.map((w) => w.name).join(", ") }) : t("questions.worstSetups.labelBare"),
+    hint: worst.length ? t("questions.worstSetups.hint", { list: worst.map((w) => `${w.name} ${fmtUsd(w.net, { decimals: 0 })}`).join(", ") }) : "",
     rule: worst.length ? { type: "excludeSetups", setups: worst.map((w) => w.name) } : null,
-    disabled: worst.length ? null : hasSetups ? "нет убыточных сетапов с 5+ сделками" : "в сделках не размечены сетапы",
+    disabled: worst.length ? null : hasSetups ? t("questions.worstSetups.noLosing") : t("questions.worstSetups.noSetups"),
   });
 
-  const graded = trades.some((t) => gradeRank(t.grade) != null);
-  qs.push({ id: "aplus", label: "Только сделки A+", hint: "Только сделки, которым ты сам поставил A+", rule: graded ? { type: "minGrade", grade: "A+" } : null, disabled: graded ? null : "сделкам не поставлены оценки A+…C" });
+  const graded = trades.some((tr) => gradeRank(tr.grade) != null);
+  qs.push({ id: "aplus", label: t("questions.aplus.label"), hint: t("questions.aplus.hint"), rule: graded ? { type: "minGrade", grade: "A+" } : null, disabled: graded ? null : t("questions.aplus.disabled") });
 
   const best = cheapestTariff(trades, tariffOptions(presets));
   qs.push({
-    id: "tariff", label: best ? `Другой тариф: ${best.option.label}` : "Другой тариф",
-    hint: best ? `${best.option.note ?? "тариф из пресетов"} — комиссий меньше на ${fmtUsd(best.saving, { decimals: 0 })}` : "",
+    id: "tariff", label: best ? t("questions.tariff.label", { name: best.option.label }) : t("questions.tariff.labelBare"),
+    hint: best ? t("questions.tariff.hint", { note: best.option.note ?? t("questions.tariff.presetNote"), amount: fmtUsd(best.saving, { decimals: 0 }) }) : "",
     rule: best ? { type: "commissionPlan", ...best.option.plan } : null,
-    disabled: best ? null : trades.some((t) => t.qty != null) ? "ни один тариф не дешевле текущего" : "в сделках нет количества акций",
+    disabled: best ? null : trades.some((tr) => tr.qty != null) ? t("questions.tariff.noCheaper") : t("questions.tariff.noQty"),
   });
   return qs;
+
 }
 
 export type DayChange = { day: string; before: number; after: number; delta: number; removed: boolean };

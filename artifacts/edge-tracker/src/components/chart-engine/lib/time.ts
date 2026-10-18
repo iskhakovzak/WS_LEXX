@@ -3,6 +3,7 @@
  * Candle times are UTC epoch seconds; everything the trader sees is ET.
  */
 import { fmtDate, fmtDateCustom } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 import type { Candle, Session } from "../types";
 
 export const ET_TZ = "America/New_York";
@@ -133,10 +134,10 @@ export function formatDuration(seconds: number): string {
   const h = Math.floor(s / 3600); s -= h * 3600;
   const m = Math.floor(s / 60); s -= m * 60;
   let out: string;
-  if (d > 0) out = `${d} дн ${h} ч`;
-  else if (h > 0) out = `${h} ч ${String(m).padStart(2, "0")} мин`;
-  else if (m > 0) out = `${m} мин ${s} с`;
-  else out = `${s} с`;
+  if (d > 0) out = chartI18n.t("dur.dh", { d, h });
+  else if (h > 0) out = chartI18n.t("dur.hm", { h, m: String(m).padStart(2, "0") });
+  else if (m > 0) out = chartI18n.t("dur.ms", { m, s });
+  else out = chartI18n.t("dur.s", { s });
   return neg ? `−${out}` : out;
 }
 

@@ -8,13 +8,14 @@ import { cn } from "@/lib/utils";
 import { type AnalyticsFilters, type Unit, wilson } from "./metrics";
 import { fmtNum, fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { analyticsI18n } from "@/i18n/ns/analytics";
 import {
-  type EdgeCell, type EdgeDimension, EDGE_DIMENSIONS, EDGE_DIMENSION_LABEL, useEdgeMatrix, edgeKeyLabel, sortEdgeKeys,
+  type EdgeCell, type EdgeDimension, EDGE_DIMENSIONS, edgeDimLabel, useEdgeMatrix, edgeKeyLabel, sortEdgeKeys,
 } from "./edge-api";
 import { bootstrapMeanCI, hashSeed, type BootstrapCI } from "./edge-stats";
 
 type Metric = "expectancy" | "total" | "winRate" | "pf";
-const METRIC_LABEL: Record<Metric, string> = { expectancy: "Ожидание", total: "Итог", winRate: "Win rate", pf: "PF" };
+const METRICS: Metric[] = ["expectancy", "total", "winRate", "pf"];
 const MIN_N_OPTIONS = [1, 3, 5, 10, 20] as const;
 
 /** Literal class names so Tailwind emits them. Index = intensity 1–4. */
@@ -77,6 +78,7 @@ export function EdgeMatrixTab({
   hasPnl: boolean;
   isCurator: boolean;
 }) {
+  const { t } = analyticsI18n.useT();
   const [rows, setRows] = useState<EdgeDimension>("setup");
   const [cols, setCols] = useState<EdgeDimension>("horizon");
   const [tod, setTod] = useState<15 | 30>(30);
@@ -116,48 +118,48 @@ export function EdgeMatrixTab({
   const dimSelect = (value: EdgeDimension, onChange: (d: EdgeDimension) => void, label: string) => (
     <Select value={value} onValueChange={(v) => onChange(v as EdgeDimension)}>
       <SelectTrigger aria-label={label} className="h-8 w-auto min-w-[150px] text-xs"><SelectValue /></SelectTrigger>
-      <SelectContent>{dims.map((d) => <SelectItem key={d} value={d}>{EDGE_DIMENSION_LABEL[d]}</SelectItem>)}</SelectContent>
+      <SelectContent>{dims.map((d) => <SelectItem key={d} value={d}>{edgeDimLabel(d)}</SelectItem>)}</SelectContent>
     </Select>
   );
 
   return (
     <div className="flex flex-col gap-4">
       <Panel
-        title="Матрица преимущества"
-        description={`Ожидание, win rate и profit factor по двум разрезам. Считается на сервере по ${u === "r" ? "R" : "нетто $"}; доверительный интервал — бутстрэп (600 выборок)${isFetching && !isLoading ? " · обновляем…" : ""}`}
+        title={t("matrix.title")}
+        description={`${t("matrix.description", { unit: u === "r" ? "R" : t("unit.usdShort") })}${isFetching && !isLoading ? ` · ${t("matrix.updating")}` : ""}`}
         icon={Grid3x3}
       >
         <div className="mb-3 flex flex-wrap items-center gap-2">
-          <span className="text-xs text-muted-foreground">Строки</span>
-          {dimSelect(rows, setRows, "Разрез по строкам")}
-          <span className="text-xs text-muted-foreground">Столбцы</span>
-          {dimSelect(cols, setCols, "Разрез по столбцам")}
+          <span className="text-xs text-muted-foreground">{t("matrix.rows")}</span>
+          {dimSelect(rows, setRows, t("matrix.rowsAria"))}
+          <span className="text-xs text-muted-foreground">{t("matrix.cols")}</span>
+          {dimSelect(cols, setCols, t("matrix.colsAria"))}
           {(rows === "tod" || cols === "tod") && (
-            <Segmented<"15" | "30"> ariaLabel="Шаг времени" size="sm" options={[{ value: "15", label: "15 мин" }, { value: "30", label: "30 мин" }]} value={String(tod) as "15" | "30"} onChange={(v) => setTod(v === "15" ? 15 : 30)} />
+            <Segmented<"15" | "30"> ariaLabel={t("matrix.step")} size="sm" options={[{ value: "15", label: t("matrix.min15") }, { value: "30", label: t("matrix.min30") }]} value={String(tod) as "15" | "30"} onChange={(v) => setTod(v === "15" ? 15 : 30)} />
           )}
-          <Segmented<Metric> ariaLabel="Метрика" size="sm" options={(Object.keys(METRIC_LABEL) as Metric[]).map((m) => ({ value: m, label: METRIC_LABEL[m] }))} value={metric} onChange={setMetric} />
+          <Segmented<Metric> ariaLabel={t("matrix.metricAria")} size="sm" options={METRICS.map((m) => ({ value: m, label: t(`matrix.metric.${m}`) }))} value={metric} onChange={setMetric} />
           <div className="ml-auto flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Мин. сделок</span>
-            <Segmented<string> ariaLabel="Минимум сделок в ячейке" size="sm" options={MIN_N_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))} value={String(minN)} onChange={(v) => setMinN(Number(v) as (typeof MIN_N_OPTIONS)[number])} />
+            <span className="text-xs text-muted-foreground">{t("matrix.minTrades")}</span>
+            <Segmented<string> ariaLabel={t("matrix.minTradesAria")} size="sm" options={MIN_N_OPTIONS.map((n) => ({ value: String(n), label: String(n) }))} value={String(minN)} onChange={(v) => setMinN(Number(v) as (typeof MIN_N_OPTIONS)[number])} />
           </div>
         </div>
 
         {!hasR && !hasPnl && (
-          <p className="mb-3 text-xs text-muted-foreground">В отфильтрованных сделках нет ни R, ни P&L — матрица покажет только количество.</p>
+          <p className="mb-3 text-xs text-muted-foreground">{t("matrix.countOnly")}</p>
         )}
 
         {isError ? (
-          <EmptyState icon={Grid3x3} title="Не удалось загрузить матрицу" description="Сервер не ответил. Попробуйте ещё раз." action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> Повторить</Button>} />
+          <EmptyState icon={Grid3x3} title={t("matrix.loadError")} description={t("matrix.loadErrorHint")} action={<Button variant="outline" onClick={() => void refetch()}><RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>} />
         ) : isLoading || !grid ? (
           <Skeleton className="h-[260px] rounded-xl" />
         ) : grid.rowKeys.length === 0 ? (
-          <EmptyState icon={Grid3x3} title="Нет сделок под фильтры" description="Расширьте период или снимите часть фильтров — матрица строится по закрытым сделкам." />
+          <EmptyState icon={Grid3x3} title={t("matrix.empty")} description={t("matrix.emptyHint")} />
         ) : (
           <TableScroll>
             <table className="w-full text-xs">
               <thead>
                 <tr className="text-muted-foreground">
-                  <th className="sticky left-0 z-raised bg-[var(--sticky-bg)] px-2 py-1.5 text-left font-medium">{EDGE_DIMENSION_LABEL[rows]} ↓ / {EDGE_DIMENSION_LABEL[cols]} →</th>
+                  <th className="sticky left-0 z-raised bg-[var(--sticky-bg)] px-2 py-1.5 text-left font-medium">{edgeDimLabel(rows)} ↓ / {edgeDimLabel(cols)} →</th>
                   {grid.colKeys.map((ck) => <th key={ck} className="px-2 py-1.5 text-center font-medium">{edgeKeyLabel(cols, ck, tod)}</th>)}
                   <th className="px-2 py-1.5 text-center font-semibold">Σ</th>
                 </tr>
@@ -173,13 +175,13 @@ export function EdgeMatrixTab({
                       const v = guarded ? null : metricValue(s, metric);
                       const { cls } = intensity(v, metric, grid.scale);
                       const active = selected?.row === rk && selected?.col === ck;
-                      const ciText = s.ci ? ` · ДИ ${fmtNum(s.ci.lo, { decimals: 2, signed: true })}…${fmtNum(s.ci.hi, { decimals: 2, signed: true })}` : "";
+                      const ciText = s.ci ? ` · ${t("matrix.ci", { lo: fmtNum(s.ci.lo, { decimals: 2, signed: true }), hi: fmtNum(s.ci.hi, { decimals: 2, signed: true }) })}` : "";
                       return (
                         <td key={ck} className="p-0.5">
                           <button
                             type="button"
                             onClick={() => setSelected(active ? null : { row: rk, col: ck })}
-                            title={`${commonI18n.t("units.trades", { count: s.cell.n })} · WR ${fmtRate(s.winRate)} · ожидание ${fmtMetric(s.expectancy, "expectancy", u)}${ciText}`}
+                            title={`${t("matrix.cellTitle", { trades: commonI18n.t("units.trades", { count: s.cell.n }), wr: fmtRate(s.winRate), exp: fmtMetric(s.expectancy, "expectancy", u) })}${ciText}`}
                             className={cn(
                               "flex w-full min-w-[64px] flex-col items-center rounded-md px-2 py-1 tabular-nums transition-colors",
                               cls, guarded && "opacity-50", active && "ring-2 ring-primary",
@@ -187,7 +189,7 @@ export function EdgeMatrixTab({
                             )}
                           >
                             <span className={cn("font-semibold", guarded && "text-muted-foreground")}>{guarded ? "—" : fmtMetric(v, metric, u)}</span>
-                            <span className="text-2xs text-muted-foreground">{s.cell.n} сд.{s.ci && !guarded && metric === "expectancy" ? (s.ci.significant ? " ✓" : "") : ""}</span>
+                            <span className="text-2xs text-muted-foreground">{commonI18n.t("units.tradesShort", { count: s.cell.n })}{s.ci && !guarded && metric === "expectancy" ? (s.ci.significant ? " ✓" : "") : ""}</span>
                           </button>
                         </td>
                       );
@@ -198,7 +200,7 @@ export function EdgeMatrixTab({
                       return (
                         <td className="px-2 py-1 text-center font-semibold tabular-nums">
                           <span className={cn(toneOf(metric === "winRate" ? (v == null ? null : v - 0.5) : metric === "pf" ? (v == null ? null : v - 1) : v) === "up" ? "text-up" : toneOf(v) === "down" ? "text-down" : "text-muted-foreground")}>{fmtMetric(v, metric, u)}</span>
-                          <div className="text-2xs font-normal text-muted-foreground">{s.cell.n} сд.</div>
+                          <div className="text-2xs font-normal text-muted-foreground">{commonI18n.t("units.tradesShort", { count: s.cell.n })}</div>
                         </td>
                       );
                     })()}
@@ -209,19 +211,20 @@ export function EdgeMatrixTab({
           </TableScroll>
         )}
         <p className="mt-2 text-2xs text-muted-foreground">
-          Ячейки с числом сделок меньше порога приглушены (вывод по ним — случайность). «✓» — 95% бутстрэп-ДИ ожидания целиком выше нуля. Win rate = W/(W+L), безубыток не считаем; PF = Σ⁺/|Σ⁻|.
+          {t("matrix.footnote")}
         </p>
       </Panel>
 
       {sel && (
-        <Panel title={`${edgeKeyLabel(rows, sel.cell.row, tod)} × ${edgeKeyLabel(cols, sel.cell.col, tod)}`} description={`${commonI18n.t("units.trades", { count: sel.cell.n })} · закрытых ${sel.cell.closed} · W ${sel.cell.wins} / L ${sel.cell.losses} / б/у ${sel.cell.be}`}>
+        <Panel title={`${edgeKeyLabel(rows, sel.cell.row, tod)} × ${edgeKeyLabel(cols, sel.cell.col, tod)}`} description={t("matrix.selDescription", { trades: commonI18n.t("units.trades", { count: sel.cell.n }), closed: sel.cell.closed, wins: sel.cell.wins, losses: sel.cell.losses, be: sel.cell.be })}>
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <Stat label="Win rate" value={fmtRate(sel.winRate)} hint={sel.winRate != null ? `95% ДИ ${fmtRate(sel.wrLo)}–${fmtRate(sel.wrHi)}` : "нет решённых сделок"} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
-            <Stat label={`Ожидание, ${u === "r" ? "R" : "$ нетто"}`} value={fmtMetric(sel.expectancy, "expectancy", u)} hint={sel.ci ? `95% бутстрэп-ДИ ${fmtNum(sel.ci.lo, { signed: true })}…${fmtNum(sel.ci.hi, { signed: true })}${sel.ci.significant ? " · значимо > 0" : ""}` : "ДИ — от 5 значений"} tone={toneOf(sel.expectancy)} />
-            <Stat label="Итог" value={fmtMetric(sel.n ? sel.total : null, "total", u)} hint={u === "usd" ? `брутто ${fmtUsd(sel.cell.gross, { signed: true, decimals: "auto" })} · комиссии ${fmtUsd(-Math.abs(sel.cell.fees), { decimals: 0 })}` : `${sel.n} с R`} tone={toneOf(sel.total)} />
-            <Stat label="Profit factor" value={fmtRatio(sel.pf)} hint={sel.pf == null ? "нет убыточных — PF не определён" : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
+            <Stat label="Win rate" value={fmtRate(sel.winRate)} hint={sel.winRate != null ? t("matrix.wrCi", { lo: fmtRate(sel.wrLo), hi: fmtRate(sel.wrHi) }) : t("matrix.noDecided")} tone={sel.winRate == null ? "neutral" : sel.winRate >= 0.5 ? "up" : "down"} />
+            <Stat label={t("matrix.expectancy", { unit: u === "r" ? "R" : t("unit.usdShort") })} value={fmtMetric(sel.expectancy, "expectancy", u)} hint={sel.ci ? `${t("matrix.bootCi", { lo: fmtNum(sel.ci.lo, { signed: true }), hi: fmtNum(sel.ci.hi, { signed: true }) })}${sel.ci.significant ? ` · ${t("matrix.significant")}` : ""}` : t("matrix.ciFrom5")} tone={toneOf(sel.expectancy)} />
+            <Stat label={t("matrix.total")} value={fmtMetric(sel.n ? sel.total : null, "total", u)} hint={u === "usd" ? t("matrix.grossFees", { gross: fmtUsd(sel.cell.gross, { signed: true, decimals: "auto" }), fees: fmtUsd(-Math.abs(sel.cell.fees), { decimals: 0 }) }) : t("matrix.withR", { count: sel.n })} tone={toneOf(sel.total)} />
+            <Stat label="Profit factor" value={fmtRatio(sel.pf)} hint={sel.pf == null ? t("matrix.pfUndefined") : "Σ⁺ / |Σ⁻|"} tone={sel.pf == null ? "neutral" : sel.pf >= 1 ? "up" : "down"} />
           </div>
-          {sel.cell.n < minN && <Pill tone="warn" className="mt-3">Меньше {minN} сделок — вывод ненадёжен</Pill>}
+          {sel.cell.n < minN && <Pill tone="warn" className="mt-3">{t("matrix.fewTrades", { count: minN })}</Pill>}
+
         </Panel>
       )}
     </div>

@@ -16,8 +16,10 @@ import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { logActivity } from "../lib/activity";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { eodOverdueKey, fmtSignedUsd, plural, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
-import { badRequest, notFound, unauthorized } from "../lib/http";
+import { eodOverdueKey, fmtSignedUsd, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
+import { AppError, badRequest, errorMessage, notFound, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { reviewT } from "../i18n/ns";
 
 /**
  * «Закрытие дня» (end-of-day close) + curator review queue.
@@ -113,13 +115,14 @@ function isIsoDate(v: unknown): v is string {
  * Whose day are we looking at. Traders: always themselves; holders of journal.read.team (curators/admins,
  * permissions matrix, role from the DB): `claimed` or themselves.
  */
-async function scopeTrader(req: Request, claimed: unknown): Promise<{ ok: true; trader: string } | { ok: false; status: number; error: string }> {
+/** Throws 401 / 403 AppErrors. */
+async function scopeTrader(req: Request, claimed: unknown): Promise<{ ok: true; trader: string }> {
   const auth = req.authUser;
-  if (!auth) return { ok: false, status: 401, error: "Authentication required" };
+  if (!auth) throw unauthorized();
   const name = typeof claimed === "string" && claimed.trim() ? claimed.trim().slice(0, 120) : null;
   if (!name || name === auth.name) return { ok: true, trader: auth.name };
   if (await can(req, "journal.read.team", { trader: name })) return { ok: true, trader: name };
-  return { ok: false, status: 403, error: "Можно смотреть только свой день" };
+  throw new AppError("EOD_OWN_ONLY");
 }
 
 const iso = (v: unknown): string | null => (v instanceof Date ? v.toISOString() : v == null ? null : String(v));
@@ -163,9 +166,6 @@ const CuratorReviewBody = z.object({
   score: z.number().int().min(1).max(5),
 });
 
-function zodError(parsed: z.SafeParseError<unknown>): string {
-  return parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-}
 
 // ── Data ──────────────────────────────────────────────────────────────────────
 const DAY_COLS = `d.id, d.trader, d.date, d.closed_at AS "closedAt", d.discipline, d.summary,
@@ -328,7 +328,7 @@ async function loadStreaks(trader: string, today: string): Promise<Streaks> {
 }
 
 // ── Payload ───────────────────────────────────────────────────────────────────
-async function buildDay(trader: string, date: string) {
+async function buildDay(trader: string, date: string, lang: Lang = "ru") {
   const today = nyDate();
   const [day, trades, carried, plan, streaks] = await Promise.all([
     loadDay(trader, date), loadDayTrades(trader, date), loadCarried(trader, date), loadPlanTickers(date), loadStreaks(trader, today),
@@ -357,7 +357,7 @@ async function buildDay(trader: string, date: string) {
     missing: check.missing,
     softMissing: check.soft,
     canClose: check.ok,
-    closeBlockedReason: check.reason,
+    closeBlockedReason: check.reasonCode ? errorMessage(check.reasonCode, lang) : null,
     reconcile: {
       journal: totals(trades, date),
       broker: brokerRows.length ? totals(brokerRows, date) : null,
@@ -371,16 +371,14 @@ async function buildDay(trader: string, date: string) {
 // ── Routes: trader ────────────────────────────────────────────────────────────
 router.get("/eod/day", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const date = req.query.date === undefined || req.query.date === "" ? nyDate() : req.query.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   await ensureTables();
-  res.json(await buildDay(scope.trader, date));
+  res.json(await buildDay(scope.trader, date, langOf(req)));
 }));
 
 router.get("/eod/streaks", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   await ensureTables();
   res.json({ trader: scope.trader, ...(await loadStreaks(scope.trader, nyDate())) });
 }));
@@ -388,10 +386,9 @@ router.get("/eod/streaks", asyncHandler(async (req, res): Promise<void> => {
 /** Month calendar marks: EOD status per day for one trader. */
 router.get("/eod/days", asyncHandler(async (req, res): Promise<void> => {
   const scope = await scopeTrader(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const { from, to } = req.query;
-  if (!isIsoDate(from) || !isIsoDate(to) || from > to) { res.status(400).json({ error: "from/to must be YYYY-MM-DD, from <= to" }); return; }
-  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 120) { res.status(400).json({ error: "range too long (max 120 days)" }); return; }
+  if (!isIsoDate(from) || !isIsoDate(to) || from > to) throw new AppError("INVALID_RANGE", 400, { max: 120 });
+  if ((Date.parse(to) - Date.parse(from)) / 86_400_000 > 120) throw new AppError("INVALID_RANGE", 400, { max: 120 });
   await ensureTables();
   const { rows } = await pool.query<DayRow>(
     `SELECT ${DAY_COLS} FROM eod_days d WHERE d.trader = $1 AND d.date >= $2 AND d.date <= $3 ORDER BY d.date`,
@@ -412,18 +409,18 @@ router.put("/eod/trades/:id/review", asyncHandler(async (req, res): Promise<void
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = TradeReviewBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
+  if (!parsed.success) throw parsed.error;
   await ensureTables();
   const { rows: tr } = await pool.query<{ trader: string | null; date: string; closeDate: string }>(
     `SELECT t.trader, LEFT(t.date, 10) AS date, ${closeDateSql()} AS "closeDate" FROM trades t WHERE t.id = $1 AND t.deleted_at IS NULL`,
     [id],
   );
   if (!tr[0]) throw notFound("TRADE_NOT_FOUND");
-  if (tr[0].trader !== me.name) { res.status(403).json({ error: "Можно разбирать только свои сделки" }); return; }
+  if (tr[0].trader !== me.name) throw new AppError("TRADE_REVIEW_OWN_ONLY");
   // The trade's review belongs to the day it is realised on (or entered, for still-open trades).
   for (const d of new Set([tr[0].date, tr[0].closeDate])) {
     const day = await loadDay(me.name, d);
-    if (day?.closedAt) { res.status(409).json({ error: `День ${d} закрыт — откройте его заново, чтобы править разбор`, date: d }); return; }
+    if (day?.closedAt) throw new AppError("EOD_DAY_CLOSED", 409, { date: d }, { date: d });
   }
   const b = parsed.data;
   const mistakes = b.mistakes ? Array.from(new Set(b.mistakes.map((m) => m.trim()).filter(Boolean))) : null;
@@ -461,10 +458,10 @@ router.put("/eod/day/:date", asyncHandler(async (req, res): Promise<void> => {
   const date = req.params.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = DayBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
+  if (!parsed.success) throw parsed.error;
   await ensureTables();
   const existing = await loadDay(me.name, date);
-  if (existing?.closedAt) { res.status(409).json({ error: "День закрыт — откройте его заново, чтобы править итог" }); return; }
+  if (existing?.closedAt) throw new AppError("EOD_DAY_CLOSED", 409, { date: existing.date }, { date: existing.date });
   const day = await upsertDay(me.name, date, parsed.data);
   res.json(serializeDay(day));
 }));
@@ -510,17 +507,16 @@ router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void>
   const date = req.params.date;
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = DayBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
+  if (!parsed.success) throw parsed.error;
   await ensureTables();
   const today = nyDate();
   const trades = await loadDayTrades(me.name, date);
   const check = closeCheck(date, today, trades);
   if (!check.ok) {
-    res.status(422).json({ error: check.reason, code: "EOD_INCOMPLETE", missing: check.missing });
-    return;
+    throw new AppError(check.reasonCode ?? "EOD_INCOMPLETE", 422, undefined, { missing: check.missing });
   }
   const existing = await loadDay(me.name, date);
-  if (existing?.closedAt) { res.status(409).json({ error: "День уже закрыт", day: serializeDay(existing) }); return; }
+  if (existing?.closedAt) throw new AppError("EOD_ALREADY_CLOSED", 409, undefined, { day: serializeDay(existing) });
   const saved = await upsertDay(me.name, date, parsed.data);
   const { rows } = await pool.query<DayRow>(
     `UPDATE eod_days d SET closed_at = NOW(), updated_at = NOW() WHERE d.id = $1 RETURNING ${DAY_COLS}`,
@@ -537,13 +533,19 @@ router.post("/eod/day/:date/close", asyncHandler(async (req, res): Promise<void>
   const trader = me.name;
   inBackground("eod.close", async () => {
     const t = totals(trades, date);
-    const parts = [`${t.trades} ${plural(t.trades, "сделка", "сделки", "сделок")}`];
-    if (t.net != null) parts.push(`нетто ${fmtSignedUsd(t.net)}`);
-    if (day.discipline != null) parts.push(`дисциплина ${day.discipline}/5`);
+    const params = {
+      trader, date, trades: t.trades,
+      ...(t.net != null ? { net: fmtSignedUsd(t.net) } : {}),
+      ...(day.discipline != null ? { discipline: day.discipline } : {}),
+    };
+    // Activity log details: RU text (stored), same parts as the notification.
+    const tr = reviewT.tFor("ru");
+    const parts = [tr("eod.trades", { count: t.trades })];
+    if (params.net) parts.push(tr("eod.net", { net: params.net }));
+    if (params.discipline != null) parts.push(tr("eod.discipline", { value: params.discipline }));
     if (await claimOnce(`eod:review_request:${day.id}`)) await notifyUsers(await staffOrFallback(trader), {
       type: "eod_review_request", actor: trader, source: "eod",
-      title: `День закрыт: ${trader}, ${date}`,
-      message: `${parts.join(", ")} — ждёт разбора`,
+      params,
       link: notifLinks.journalDay(date, trader), entityType: "eod_day", entityId: day.id,
     }, trader);
     await logActivity({ action: "closed", section: "eod", entityId: date, entityTitle: date, trader, details: parts.join(", ") });
@@ -561,7 +563,7 @@ router.post("/eod/day/:date/reopen", asyncHandler(async (req, res): Promise<void
     `UPDATE eod_days d SET closed_at = NULL, updated_at = NOW() WHERE d.trader = $1 AND d.date = $2 RETURNING ${DAY_COLS}`,
     [me.name, date],
   );
-  if (!rows[0]) { res.status(404).json({ error: "День не найден" }); return; }
+  if (!rows[0]) throw new AppError("EOD_DAY_NOT_FOUND");
   inBackground("eod.reopen", () => logActivity({ action: "reopened", section: "eod", entityId: date, entityTitle: date, trader: me.name }));
   res.json(serializeDay(rows[0]));
 }));
@@ -576,7 +578,7 @@ router.get("/eod/status", asyncHandler(async (req, res): Promise<void> => {
   const qTrader = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   let traders: string[];
   if (!(await can(req, "journal.read.team", { trader: qTrader || null }))) {
-    if (qTrader && qTrader !== auth.name) { res.status(403).json({ error: "Можно смотреть только свой статус" }); return; }
+    if (qTrader && qTrader !== auth.name) throw new AppError("EOD_OWN_ONLY");
     traders = [auth.name];
   } else if (qTrader) {
     traders = [qTrader];
@@ -679,8 +681,7 @@ function sweepOverdue(): void {
       if (!(await claimOnce(eodOverdueKey(d.id, d.closedAt)))) continue;
       await notifyUsers(await staffOrFallback(d.trader), {
         type: "eod_overdue", source: "eod",
-        title: `Разбор просрочен: ${d.trader}, ${d.date}`,
-        message: `День ждёт разбора ${d.hoursWaiting} ч (SLA ${SLA_HOURS} ч)`,
+        params: { trader: d.trader, date: d.date, hours: d.hoursWaiting, sla: SLA_HOURS },
         link: notifLinks.journalDay(d.date, d.trader), entityType: "eod_day", entityId: d.id,
       }, d.trader);
     }
@@ -689,7 +690,7 @@ function sweepOverdue(): void {
 
 router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
-  if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const limitRaw = Number(req.query.limit ?? 50);
   const limit = Number.isFinite(limitRaw) ? Math.min(Math.max(Math.trunc(limitRaw), 1), 200) : 50;
   await ensureTables();
@@ -706,7 +707,7 @@ router.get("/eod/queue", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
-  if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   await ensureTables();
   await ensureCuratorTables();
   sweepOverdue();
@@ -721,15 +722,15 @@ router.get("/eod/queue/count", asyncHandler(async (req, res): Promise<void> => {
 router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void> => {
   const me = req.authUser;
   if (!me) throw unauthorized();
-  if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const parsed = CuratorReviewBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed) }); return; }
+  if (!parsed.success) throw parsed.error;
   await ensureTables();
   const existing = await loadDayById(id);
-  if (!existing) { res.status(404).json({ error: "День не найден" }); return; }
-  if (!existing.closedAt) { res.status(409).json({ error: "День ещё не закрыт трейдером" }); return; }
+  if (!existing) throw new AppError("EOD_DAY_NOT_FOUND");
+  if (!existing.closedAt) throw new AppError("EOD_NOT_CLOSED");
   const { rows } = await pool.query<DayRow>(
     `UPDATE eod_days d SET reviewed_by = $2, reviewed_at = NOW(), curator_comment = $3, curator_score = $4, updated_at = NOW()
       WHERE d.id = $1 RETURNING ${DAY_COLS}`,
@@ -742,8 +743,10 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
     const reviewer = me.name;
     inBackground("eod.reviewed", () => notifyUser({
       userName: reviewed.trader, type: "eod_reviewed", actor: reviewer, source: "eod",
-      title: `Разбор дня ${reviewed.date}: ${reviewed.curatorScore ?? "—"}/5`,
-      message: reviewed.curatorComment ? `${reviewer}: «${textPreview(reviewed.curatorComment, 140)}»` : `Оценка от ${reviewer}`,
+      params: {
+        date: reviewed.date, score: reviewed.curatorScore ?? null, reviewer,
+        comment: reviewed.curatorComment ? textPreview(reviewed.curatorComment, 140) : null,
+      },
       link: notifLinks.journalDay(reviewed.date, reviewed.trader), entityType: "eod_day", entityId: reviewed.id,
     }));
   }

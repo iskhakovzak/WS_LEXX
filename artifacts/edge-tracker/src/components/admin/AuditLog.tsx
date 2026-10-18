@@ -7,23 +7,17 @@ import { QueryError } from "@/components/query-error";
 import { EmptyState, ListSkeleton, Panel, Pill, Segmented } from "@/components/ds";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { downloadCsv, type AuditEntry } from "./api";
-import { OBJECT_TYPE_LABEL, actorName, auditSentence, describeAudit, objectLabel } from "./audit-text";
+import { actorName, auditSentence, describeAudit, objectLabel, objectTypeLabel } from "./audit-text";
 import { nyDayOf, useAuditSearch, type AuditQuery } from "./console-api";
 import { fmtDate, fmtDateCustom, fmtTimeNY } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 
 const ALL = "__all";
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 type Quick = "1" | "7" | "30" | "all" | "custom";
 
 /** Action groups for the «Что» filter («user.*» matches every user action). */
-const ACTION_GROUPS: { value: string; label: string }[] = [
-  { value: "user.*", label: "Пользователи: все действия" },
-  { value: "propreports.*", label: "PropReports: все действия" },
-  { value: "scaling.*", label: "Тиры: все действия" },
-  { value: "report.*", label: "Жалобы: все действия" },
-  { value: "academy.*", label: "Академия: все действия" },
-];
+const ACTION_GROUPS = ["user", "propreports", "scaling", "report", "academy"] as const;
 
 function rangeFor(q: Quick): { from?: string; to?: string } {
   const today = nyDate();
@@ -35,17 +29,18 @@ function rangeFor(q: Quick): { from?: string; to?: string } {
 
 function dayHeading(ymd: string) {
   const today = nyDate();
-  if (ymd === today) return "Сегодня";
-  if (ymd === addDays(today, -1)) return "Вчера";
+  if (ymd === today) return commonI18n.t("time.today");
+  if (ymd === addDays(today, -1)) return commonI18n.t("time.yesterday");
   return fmtDateCustom(ymd, { weekday: "short", day: "numeric", month: "long" });
 }
 
 export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: Record<string, string> }) {
+  const { t: ta } = adminAuditI18n.useT();
   const t = describeAudit(entry, tierNames);
   const obj = objectLabel(entry.targetType, entry.targetId);
   return (
     <li className="flex items-start gap-3 py-2.5">
-      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={`${fmtDate(entry.createdAt, "shortDateTimeSeconds", { timeZone: "America/New_York" })} NY · у вас ${fmtDate(entry.createdAt, "shortDateTimeSeconds")}`}>
+      <span className="w-12 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={ta("log.timeTitle", { ny: fmtDate(entry.createdAt, "shortDateTimeSeconds", { timeZone: "America/New_York" }), local: fmtDate(entry.createdAt, "shortDateTimeSeconds") })}>
         {fmtTimeNY(entry.createdAt)}
       </span>
       <div className="min-w-0 flex-1">
@@ -65,6 +60,8 @@ export function AuditRow({ entry, tierNames }: { entry: AuditEntry; tierNames?: 
 }
 
 export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Record<string, string> }) {
+  const { t: ta, lang } = adminAuditI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
   const [quick, setQuick] = useState<Quick>("30");
@@ -103,19 +100,19 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   const actors = useMemo(() => {
     const v = new Set((data?.facets.actors ?? []).map((f) => f.value));
     if (who !== ALL) v.add(who);
-    return [...v].sort((a, b) => a.localeCompare(b, "ru"));
-  }, [data, who]);
+    return [...v].sort((a, b) => a.localeCompare(b, lang));
+  }, [data, who, lang]);
   const actions = useMemo(() => {
     const v = new Map<string, string>();
     for (const f of data?.facets.actions ?? []) v.set(f.value, describeAudit({ actor: "", action: f.value, targetType: null, targetId: null, details: null }).label + ` · ${f.value}`);
     if (what !== ALL && !what.endsWith(".*")) v.set(what, what);
-    return [...v].sort((a, b) => a[1].localeCompare(b[1], "ru"));
-  }, [data, what]);
+    return [...v].sort((a, b) => a[1].localeCompare(b[1], lang));
+  }, [data, what, lang]);
   const objTypes = useMemo(() => {
     const v = new Set((data?.facets.targetTypes ?? []).map((f) => f.value));
     if (objType !== ALL) v.add(objType);
-    return [...v].sort();
-  }, [data, objType]);
+    return [...v].map((x) => [x, objectTypeLabel(x)] as const).sort((a, b) => a[1].localeCompare(b[1], lang));
+  }, [data, objType, lang]);
 
   const groups = useMemo(() => {
     const out: { key: string; label: string; items: AuditEntry[] }[] = [];
@@ -132,7 +129,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   const reset = () => { setQInput(""); setQ(""); setWho(ALL); setWhat(ALL); setObjType(ALL); setObjIdInput(""); setObjId(""); pickQuick("30"); };
 
   const exportCsv = () => downloadCsv(
-    ["Время", "Кто", "Что произошло", "Подробности", "Объект", "Код действия", "Тип объекта", "ID объекта", "Сырые данные"],
+    (["time", "who", "what", "details", "object", "action", "targetType", "targetId", "raw"] as const).map((k) => ta(`log.csv.${k}`)),
     entries.map((e) => {
       const t = describeAudit(e, tierNames);
       return [fmtDate(e.createdAt, "shortDateTimeSeconds"), actorName(e.actor), auditSentence(e, tierNames), t.detail ?? "", objectLabel(e.targetType, e.targetId), e.action, e.targetType ?? "", e.targetId ?? "", e.details ?? ""];
@@ -142,8 +139,8 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
 
   return (
     <Panel
-      title="Журнал аудита"
-      description="Кто, что и когда менял: люди, роли, тиры, счета, синки, жалобы. Дни — по Нью-Йорку."
+      title={ta("log.title")}
+      description={ta("log.description")}
       icon={ScrollText}
       actions={<Button variant="outline" size="sm" onClick={exportCsv} disabled={!entries.length}><Download /> CSV</Button>}
     >
@@ -155,55 +152,55 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
               value={qInput}
               onChange={(e) => setQInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") setQInput(""); }}
-              placeholder="Поиск: имя, причина, файл"
-              aria-label="Поиск по журналу аудита"
+              placeholder={ta("log.searchPlaceholder")}
+              aria-label={ta("log.searchAria")}
               className="pl-9"
             />
           </div>
           <Select value={who} onValueChange={setWho}>
-            <SelectTrigger aria-label="Кто"><SelectValue placeholder="Кто: все" /></SelectTrigger>
+            <SelectTrigger aria-label={ta("log.who")}><SelectValue placeholder={ta("log.whoAll")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Кто: все</SelectItem>
+              <SelectItem value={ALL}>{ta("log.whoAll")}</SelectItem>
               {actors.map((a) => <SelectItem key={a} value={a}>{actorName(a)}</SelectItem>)}
             </SelectContent>
           </Select>
           <Select value={what} onValueChange={setWhat}>
-            <SelectTrigger aria-label="Что"><SelectValue placeholder="Что: всё" /></SelectTrigger>
+            <SelectTrigger aria-label={ta("log.what")}><SelectValue placeholder={ta("log.whatAll")} /></SelectTrigger>
             <SelectContent>
-              <SelectItem value={ALL}>Что: всё</SelectItem>
-              {ACTION_GROUPS.map((g) => <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>)}
+              <SelectItem value={ALL}>{ta("log.whatAll")}</SelectItem>
+              {ACTION_GROUPS.map((g) => <SelectItem key={g} value={`${g}.*`}>{ta(`log.groups.${g}`)}</SelectItem>)}
               {actions.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
             </SelectContent>
           </Select>
           <div className="flex gap-2">
             <Select value={objType} onValueChange={setObjType}>
-              <SelectTrigger aria-label="Объект" className="min-w-0 flex-1"><SelectValue placeholder="Объект: любой" /></SelectTrigger>
+              <SelectTrigger aria-label={ta("log.object")} className="min-w-0 flex-1"><SelectValue placeholder={ta("log.objectAny")} /></SelectTrigger>
               <SelectContent>
-                <SelectItem value={ALL}>Объект: любой</SelectItem>
-                {objTypes.map((t) => <SelectItem key={t} value={t}>{OBJECT_TYPE_LABEL[t] ?? t}</SelectItem>)}
+                <SelectItem value={ALL}>{ta("log.objectAny")}</SelectItem>
+                {objTypes.map(([v, label]) => <SelectItem key={v} value={v}>{label}</SelectItem>)}
               </SelectContent>
             </Select>
-            <Input value={objIdInput} onChange={(e) => setObjIdInput(e.target.value)} placeholder="ID / имя" aria-label="ID объекта" className="w-28" />
+            <Input value={objIdInput} onChange={(e) => setObjIdInput(e.target.value)} placeholder={ta("log.objectId")} aria-label={ta("log.objectIdAria")} className="w-28" />
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Segmented<Quick>
-            ariaLabel="Период"
+            ariaLabel={ta("log.period")}
             size="sm"
             value={quick}
             onChange={pickQuick}
-            options={[{ value: "1", label: "24ч" }, { value: "7", label: "7д" }, { value: "30", label: "30д" }, { value: "all", label: "Всё" }, { value: "custom", label: "Даты" }]}
+            options={[{ value: "1", label: ta("log.quick.day") }, { value: "7", label: ta("log.quick.week") }, { value: "30", label: ta("log.quick.month") }, { value: "all", label: ta("log.quick.all") }, { value: "custom", label: ta("log.quick.custom") }]}
           />
           {quick === "custom" && (
             <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-              с <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label="С даты" className="h-8 w-[150px]" />
-              по <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label="По дату" className="h-8 w-[150px]" />
+              {ta("log.from")} <Input type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} aria-label={ta("log.fromAria")} className="h-8 w-[150px]" />
+              {ta("log.to")} <Input type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} aria-label={ta("log.toAria")} className="h-8 w-[150px]" />
             </span>
           )}
-          {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>Сбросить</Button>}
+          {filtersActive && <Button variant="ghost" size="sm" onClick={reset}>{tc("actions.reset")}</Button>}
           {data && (
             <span className="ml-auto text-xs tabular-nums text-muted-foreground">
-              {data.total > entries.length ? `показано ${entries.length} из ${data.total}` : commonI18n.t("units.entries", { count: entries.length })}
+              {data.total > entries.length ? ta("log.shown", { shown: entries.length, total: data.total }) : tc("units.entries", { count: entries.length })}
             </span>
           )}
         </div>
@@ -215,9 +212,9 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
         ) : entries.length === 0 ? (
           <EmptyState
             icon={ScrollText}
-            title={filtersActive ? "Ничего не найдено" : "Журнал пуст"}
-            description={filtersActive ? "Измените фильтры или период." : "Здесь появятся изменения людей, ролей, тиров, счетов и синки."}
-            action={filtersActive ? <Button variant="outline" size="sm" onClick={reset}>Сбросить фильтры</Button> : undefined}
+            title={filtersActive ? ta("log.empty.filtered") : ta("log.empty.none")}
+            description={filtersActive ? ta("log.empty.filteredHint") : ta("log.empty.noneHint")}
+            action={filtersActive ? <Button variant="outline" size="sm" onClick={reset}>{tc("actions.resetFilters")}</Button> : undefined}
           />
         ) : (
           <div className={isFetching ? "opacity-70 transition-opacity" : "transition-opacity"}>

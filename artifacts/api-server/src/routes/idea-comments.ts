@@ -7,7 +7,10 @@ import { inBackground } from "../lib/notifyEvents";
 import { preview as textPreview } from "../lib/notifyEventsCore";
 import { isGuest, requireMember } from "../lib/auth";
 import { can } from "../lib/permissions";
-import { badRequest, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
+import { localeOfUser } from "../i18n";
+import { telegramT } from "../i18n/ns";
+import { escHtml } from "../lib/telegramBot";
 
 const router: IRouter = Router();
 
@@ -55,8 +58,8 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
   const author = req.authUser!.name;
   const { text, is_private } = req.body as { text?: string; is_private?: boolean };
 
-  if (!text || !String(text).trim()) { res.status(400).json({ error: "text required" }); return; }
-  if (String(text).length > 5000) { res.status(400).json({ error: "Комментарий слишком длинный (макс. 5000 символов)" }); return; }
+  if (!text || !String(text).trim()) throw new AppError("COMMENT_EMPTY");
+  if (String(text).length > 5000) throw new AppError("TEXT_TOO_LONG", 400, { field: "text", max: 5000 });
 
   const { rows: ideaRows } = await pool.query(
     `SELECT id, ticker, trader, status FROM trade_ideas WHERE id = $1 AND deleted_at IS NULL`,
@@ -83,12 +86,12 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
       const recipient = idea.trader;
       inBackground("idea-comments.private", () => notifyUser({
         userName: recipient, type: "idea_comment", ideaId, actor: author, source: "website",
-        title: `Личный ответ к идее ${idea.ticker}`,
-        message: `${author}: «${textPreview(String(text), 100)}»`,
+        params: { variant: "private", ticker: idea.ticker, actor: author, ideaId, preview: textPreview(String(text), 100) },
         link: notifLinks.idea(ideaId), entityType: "idea", entityId: ideaId,
       }));
+      const lang = await localeOfUser(idea.trader);
       await notifyTraderTelegram(idea.trader,
-        `🔒 Личный ответ по идее <b>#${ideaId} ${idea.ticker}</b> от <b>${author}</b>:\n\n<i>"${preview}"</i>`);
+        telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(author), text: escHtml(preview) }));
     }
   } else {
     // Public comment — fan-out to creator + curator + risk manager + prior commenters
@@ -115,11 +118,11 @@ router.delete("/trade-ideas/:id/comments/:commentId", asyncHandler(async (req, r
     [commentId, ideaId],
   );
   const c = rows[0] as { author_name: string; created_at: string } | undefined;
-  if (!c) { res.status(404).json({ error: "comment not found" }); return; }
+  if (!c) throw notFound("COMMENT_NOT_FOUND");
   const isReviewer = await can(req, "ideas.review");
   const isFreshOwn = c.author_name === actor.name && Date.now() - new Date(c.created_at).getTime() < 24 * 60 * 60 * 1000;
   if (!isReviewer && !isFreshOwn) {
-    res.status(403).json({ error: "Удалить комментарий может автор (в течение суток) или куратор" }); return;
+    throw new AppError("IDEA_COMMENT_DELETE_FORBIDDEN");
   }
   await pool.query(`DELETE FROM trade_idea_comments WHERE id = $1`, [commentId]);
   res.json({ success: true });

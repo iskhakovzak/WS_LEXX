@@ -10,11 +10,13 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { EmptyState, Page, PageHeader, Panel, Pill, Toolbar } from "@/components/ds";
-import { STAGE_LABELS, api, invalidateAcademy, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
+import { api, invalidateAcademy, stageLabel, useAcademyMeta, useAdminTree, type ItemKind } from "@/components/academy/content/api";
 import { ContentTree, type Selection } from "@/components/academy/content/content-tree";
 import { ItemEditor, ModuleForm, ProgramForm } from "@/components/academy/content/editors";
 import { academyLinks } from "@/components/academy/content/links";
-import { pluralRu } from "@/lib/format";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
+import { shellI18n } from "@/i18n/ns/shell";
 
 /**
  * /academy/content-admin — «Редактор курсов» (наставники / staff).
@@ -33,6 +35,7 @@ export default function AcademyContentAdmin() {
   const staff = isCurator || !!meta.data?.staff;
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { t } = academyI18n.useT();
 
   const [showArchived, setShowArchived] = useState(false);
   const programParam = params.get("program");
@@ -52,11 +55,11 @@ export default function AcademyContentAdmin() {
     try {
       const r = await api.seedDemo();
       const created = Object.values(r.created).reduce((a, n) => a + n, 0);
-      toast({ title: r.alreadySeeded && !created ? "Демо-курс уже загружен" : "Демо-курс загружен", description: created ? `Создано элементов: ${created}` : "Недостающих частей нет — ничего не изменено" });
+      toast({ title: r.alreadySeeded && !created ? t("learn.demoAlready") : t("learn.demoLoaded"), description: created ? t("admin.demoCreated", { count: created }) : t("admin.demoNothing") });
       await invalidateAcademy(qc);
       setProgram(r.programId);
     } catch (e) {
-      toast({ title: "Не удалось загрузить демо-курс", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("learn.demoFailed"), description: (e as Error).message, variant: "destructive" });
     } finally {
       setSeeding(false);
     }
@@ -66,7 +69,7 @@ export default function AcademyContentAdmin() {
     return (
       <Page>
         <Panel>
-          <EmptyState icon={ShieldAlert} title="Только для наставников" description="Редактор курсов доступен кураторам, риск-менеджерам и администраторам." action={<Button asChild><Link href={academyLinks.learn()}>К обучению</Link></Button>} />
+          <EmptyState icon={ShieldAlert} title={t("admin.mentorsOnly")} description={t("admin.mentorsOnlyDesc")} action={<Button asChild><Link href={academyLinks.learn()}>{t("admin.toLearning")}</Link></Button>} />
         </Panel>
       </Page>
     );
@@ -98,66 +101,66 @@ export default function AcademyContentAdmin() {
       : null;
   }
   if (!editor && program) {
-    editor = <Panel><EmptyState icon={PencilRuler} title="Элемент не найден" description="Возможно, он в архиве — включите «Показать архив»." /></Panel>;
+    editor = <Panel><EmptyState icon={PencilRuler} title={t("admin.notFound")} description={t("admin.notFoundDesc")} /></Panel>;
   }
 
   return (
     <Page>
       <PageHeader
-        title="Редактор курсов"
+        title={shellI18n.t("nav.academyContent")}
         icon={PencilRuler}
-        description="Программы, модули, уроки, тесты и задания. Новые элементы создаются черновиками — ученики увидят их после публикации."
+        description={t("admin.description")}
         actions={
           <>
-            <Button variant="ghost" asChild><Link href={academyLinks.learn({ program: program?.id })}><ArrowLeft aria-hidden="true" />К обучению</Link></Button>
-            <Button variant="outline" onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}Демо-курс</Button>
+            <Button variant="ghost" asChild><Link href={academyLinks.learn({ program: program?.id })}><ArrowLeft aria-hidden="true" />{t("admin.toLearning")}</Link></Button>
+            <Button variant="outline" onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("admin.demoCourse")}</Button>
           </>
         }
       />
 
       <Toolbar>
-        <span className="px-2 text-sm text-muted-foreground">Программа</span>
+        <span className="px-2 text-sm text-muted-foreground">{t("learn.program")}</span>
         <Select value={creatingProgram ? NEW : program ? String(program.id) : ""} onValueChange={(v) => setProgram(v === NEW ? NEW : Number(v))}>
-          <SelectTrigger className="h-9 w-full rounded-full sm:w-[320px]" aria-label="Программа"><SelectValue placeholder="Выберите программу" /></SelectTrigger>
+          <SelectTrigger className="h-9 w-full rounded-full sm:w-[320px]" aria-label={t("learn.program")}><SelectValue placeholder={t("learn.pickProgram")} /></SelectTrigger>
           <SelectContent>
             {programs.map((p) => (
               <SelectItem key={p.id} value={String(p.id)}>
-                {p.title}{p.stage ? ` · ${STAGE_LABELS[p.stage]}` : ""}{!p.published ? " · черновик" : ""}{p.archivedAt ? " · архив" : ""}
+                {[p.title, p.stage ? stageLabel(p.stage) : null, !p.published ? t("admin.draftLower") : null, p.archivedAt ? t("admin.archiveLower") : null].filter(Boolean).join(" · ")}
               </SelectItem>
             ))}
-            <SelectItem value={NEW}>+ Новая программа</SelectItem>
+            <SelectItem value={NEW}>{t("admin.newProgramOption")}</SelectItem>
           </SelectContent>
         </Select>
         <div className="flex items-center gap-2 px-2">
           <Switch id="show-archived" checked={showArchived} onCheckedChange={setShowArchived} />
-          <Label htmlFor="show-archived" className="flex items-center gap-1 text-sm"><Archive className="h-3.5 w-3.5" aria-hidden="true" />Показать архив</Label>
+          <Label htmlFor="show-archived" className="flex items-center gap-1 text-sm"><Archive className="h-3.5 w-3.5" aria-hidden="true" />{t("admin.showArchive")}</Label>
         </div>
         {program && (
-          <Button variant="ghost" size="sm" asChild className="ml-auto"><Link href={academyLinks.learn({ program: program.id })}><Eye aria-hidden="true" />Предпросмотр программы</Link></Button>
+          <Button variant="ghost" size="sm" asChild className="ml-auto"><Link href={academyLinks.learn({ program: program.id })}><Eye aria-hidden="true" />{t("admin.previewProgram")}</Link></Button>
         )}
       </Toolbar>
 
       {tree.isLoading || meta.isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[360px_minmax(0,1fr)]"><Skeleton className="h-96 rounded-2xl" /><Skeleton className="h-[32rem] rounded-2xl" /></div>
       ) : tree.isError ? (
-        <Panel><p className="text-sm text-down">Не удалось загрузить контент: {(tree.error as Error).message}</p></Panel>
+        <Panel><p className="text-sm text-down">{t("admin.contentFailed", { message: (tree.error as Error).message })}</p></Panel>
       ) : !programs.length && !creatingProgram ? (
         <Panel>
           <EmptyState
             icon={GraduationCap}
-            title="Программ ещё нет"
-            description="Начните с демо-курса «Основы проп-трейдинга WS» для стажёров (6 уроков, 2 теста, 2 задания) или создайте программу с нуля."
+            title={t("matrix.noPrograms")}
+            description={t("admin.noProgramsDemo")}
             action={
               <div className="flex flex-wrap justify-center gap-2">
-                <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}Загрузить демо-курс</Button>
-                <Button variant="outline" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />Новая программа</Button>
+                <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
+                <Button variant="outline" onClick={() => setProgram(NEW)}><Plus aria-hidden="true" />{t("editor.program.new")}</Button>
               </div>
             }
           />
         </Panel>
       ) : (
         <div className="grid items-start gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] lg:overflow-y-auto lg:pr-0.5" aria-label="Структура программы">
+          <aside className="flex flex-col gap-3 lg:sticky lg:top-[var(--sticky-top)] lg:max-h-[calc(100dvh-var(--header-h)-0.75rem-2*var(--sticky-top))] lg:overflow-y-auto lg:pr-0.5" aria-label={t("admin.structureAria")}>
             {program && (
               <>
                 <button
@@ -168,10 +171,10 @@ export default function AcademyContentAdmin() {
                 >
                   <span className="font-semibold">{program.title}</span>
                   <span className="flex flex-wrap gap-1.5">
-                    {program.stage && <Pill tone="purple">{STAGE_LABELS[program.stage]}</Pill>}
-                    {program.published ? <Pill tone="up">Опубликована</Pill> : <Pill tone="warn">Черновик</Pill>}
-                    {program.archivedAt && <Pill tone="neutral">Архив</Pill>}
-                    <span className="text-xs text-muted-foreground tabular-nums">{modules.length} {pluralRu(modules.length, "модуль", "модуля", "модулей")} · {itemCount} {pluralRu(itemCount, "элемент", "элемента", "элементов")}</span>
+                    {program.stage && <Pill tone="purple">{stageLabel(program.stage)}</Pill>}
+                    {program.published ? <Pill tone="up">{t("editor.program.published")}</Pill> : <Pill tone="warn">{commonI18n.t("states.draft")}</Pill>}
+                    {program.archivedAt && <Pill tone="neutral">{t("admin.archive")}</Pill>}
+                    <span className="text-xs text-muted-foreground tabular-nums">{t("units.modules", { count: modules.length })} · {t("units.items", { count: itemCount })}</span>
                   </span>
                 </button>
                 <ContentTree programId={program.id} modules={modules} selection={selection} onSelect={setSelection} />

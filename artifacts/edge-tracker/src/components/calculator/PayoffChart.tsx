@@ -7,6 +7,7 @@ import { useId, useMemo } from "react";
 import { Area, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { fmtStrike, pnlAtExpiry, pnlNow, TOOLTIP_STYLE, type Leg } from "./lib";
 import { fmtNum, fmtUsd } from "@/lib/format";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
 export function PayoffChart({
   legs,
@@ -25,6 +26,7 @@ export function PayoffChart({
   breakevens?: number[];
   height?: number;
 }) {
+  const { t } = calculatorI18n.useT();
   const gid = useId().replace(/:/g, "");
   const T = Math.max(0, days) / 365;
   const r = ratePct / 100;
@@ -55,7 +57,7 @@ export function PayoffChart({
   }, [legs, spot, breakevens, showNow, T, r, sigma]);
 
   if (!(spot > 0) || !legs.length) {
-    return <p className="py-10 text-center text-sm text-muted-foreground">Заполните параметры, чтобы увидеть диаграмму.</p>;
+    return <p className="py-10 text-center text-sm text-muted-foreground">{t("payoff.empty")}</p>;
   }
 
   // Gradients use each path's own bounding box: split exactly at y = 0 so profit is green and loss is red.
@@ -103,8 +105,8 @@ export function PayoffChart({
             />
             <Tooltip
               contentStyle={TOOLTIP_STYLE}
-              labelFormatter={(v) => `Цена $${fmtNum(Number(v), 2)}`}
-              formatter={(v: number, name: string) => [fmtUsd(v, { signed: true, decimals: 0 }), name === "exp" ? "На экспирацию" : "Сегодня (B-S)"]}
+              labelFormatter={(v) => t("payoff.tooltipPrice", { price: `$${fmtNum(Number(v), 2)}` })}
+              formatter={(v: number, name: string) => [fmtUsd(v, { signed: true, decimals: 0 }), name === "exp" ? t("shared.atExpiry") : t("payoff.today")]}
               cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }}
             />
             <ReferenceLine y={0} stroke="hsl(var(--muted-foreground))" strokeOpacity={0.5} />
@@ -120,15 +122,15 @@ export function PayoffChart({
           </ComposedChart>
         </ResponsiveContainer>
       </div>
-      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label="Легенда">
-        <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-up" aria-hidden="true" />На экспирацию</li>
-        {showNow && <li className="flex items-center gap-1.5"><span className="h-0 w-4 border-t-2 border-dashed border-[hsl(var(--chart-1))]" aria-hidden="true" />Сегодня ({fmtNum(days, 0)} дн.)</li>}
-        <li className="flex items-center gap-1.5"><span className="h-3 w-0.5 rounded bg-[hsl(var(--chart-1))]" aria-hidden="true" />Спот <span className="tabular-nums text-foreground">${fmtNum(spot, 2)}</span></li>
+      <ul className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-muted-foreground" aria-label={t("payoff.legend")}>
+        <li className="flex items-center gap-1.5"><span className="h-0.5 w-4 rounded bg-up" aria-hidden="true" />{t("shared.atExpiry")}</li>
+        {showNow && <li className="flex items-center gap-1.5"><span className="h-0 w-4 border-t-2 border-dashed border-[hsl(var(--chart-1))]" aria-hidden="true" />{t("payoff.todayDays", { days: t("shared.days", { count: Math.round(days) }) })}</li>}
+        <li className="flex items-center gap-1.5"><span className="h-3 w-0.5 rounded bg-[hsl(var(--chart-1))]" aria-hidden="true" />{t("shared.spot")} <span className="tabular-nums text-foreground">${fmtNum(spot, 2)}</span></li>
         {strikes.length > 0 && (
-          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-[hsl(var(--chart-3))]" aria-hidden="true" />Страйк <span className="tabular-nums text-foreground">{strikes.map((k) => fmtStrike(k)).join(" / ")}</span></li>
+          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dashed border-[hsl(var(--chart-3))]" aria-hidden="true" />{t("shared.strike")} <span className="tabular-nums text-foreground">{strikes.map((k) => fmtStrike(k)).join(" / ")}</span></li>
         )}
         {breakevens.length > 0 && (
-          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dotted border-[hsl(var(--chart-5))]" aria-hidden="true" />Безубыток <span className="tabular-nums text-foreground">{breakevens.map((b) => `$${fmtNum(b, 2)}`).join(" / ")}</span></li>
+          <li className="flex items-center gap-1.5"><span className="h-3 w-0 border-l-2 border-dotted border-[hsl(var(--chart-5))]" aria-hidden="true" />{t("shared.breakeven")} <span className="tabular-nums text-foreground">{breakevens.map((b) => `$${fmtNum(b, 2)}`).join(" / ")}</span></li>
         )}
       </ul>
     </div>

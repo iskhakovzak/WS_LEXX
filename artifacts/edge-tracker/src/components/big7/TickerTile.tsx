@@ -4,6 +4,7 @@ import { Pill, Sparkline, SkeletonBlock, toneOf } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { Big7Row } from "./context";
 import { Signed, earningsLabel, fmtRvol } from "./ui";
+import { big7I18n } from "@/i18n/ns/big7";
 import { fmtPct, fmtPrice } from "@/lib/format";
 
 export type TileProps = {
@@ -23,13 +24,14 @@ export const TILE_H = "h-[138px]";
  * The sparkline is coloured by the same day change as the pill.
  */
 export const TickerTile = memo(function TickerTile({ row, hot, earnings, index, onOpen }: TileProps) {
+  const { t } = big7I18n.useT();
   const dayTone = toneOf(row.chg);
   return (
     <button
       type="button"
       onClick={() => onOpen(row.symbol)}
-      aria-label={`${row.symbol}${row.price != null ? `, ${fmtPrice(row.price)}` : ""}${row.chg != null ? `, ${fmtPct(row.chg)}` : ""}. Открыть детали`}
-      title={index < 9 ? `Клавиша ${index + 1}` : undefined}
+      aria-label={t("tile.open", { label: `${row.symbol}${row.price != null ? `, ${fmtPrice(row.price)}` : ""}${row.chg != null ? `, ${fmtPct(row.chg)}` : ""}` })}
+      title={index < 9 ? t("tile.key", { n: index + 1 }) : undefined}
       className={cn(
         "glass-panel lift group flex min-w-0 flex-col gap-1.5 rounded-2xl p-3 text-left outline-none focus-visible:ring-2 focus-visible:ring-ring",
         TILE_H,
@@ -46,10 +48,10 @@ export const TickerTile = memo(function TickerTile({ row, hot, earnings, index, 
       <div className="flex min-w-0 items-baseline justify-between gap-2">
         <span className="text-lg font-semibold leading-none tabular-nums">{fmtPrice(row.price)}</span>
         {earnings ? (
-          <span className="truncate whitespace-nowrap text-xs font-medium text-warn" title="Ближайший отчёт">{earningsLabel(earnings)}</span>
+          <span className="truncate whitespace-nowrap text-xs font-medium text-warn" title={t("tile.nextEarnings")}>{earningsLabel(earnings)}</span>
         ) : (
-          <span className="whitespace-nowrap text-xs text-muted-foreground" title="Гэп открытия (до открытия — премаркет к закрытию)">
-            гэп <Signed value={row.gap} digits={1} threshold={0.05} />
+          <span className="whitespace-nowrap text-xs text-muted-foreground" title={t("tile.gapTitle")}>
+            {t("tile.gap")} <Signed value={row.gap} digits={1} threshold={0.05} />
           </span>
         )}
       </div>
@@ -61,15 +63,15 @@ export const TickerTile = memo(function TickerTile({ row, hot, earnings, index, 
         tone={dayTone}
         baseline={row.pdc ?? undefined}
         className="h-[30px] w-full"
-        ariaLabel={`${row.symbol}: внутридневной график к закрытию вчера`}
+        ariaLabel={t("tile.sparkAria", { symbol: row.symbol })}
       />
 
       <div className="mt-auto flex items-center justify-between gap-2 text-xs tabular-nums">
-        <span className="whitespace-nowrap" title="Изменение минус изменение QQQ, п.п.">
+        <span className="whitespace-nowrap" title={t("tile.rsTitle")}>
           <span className="text-muted-foreground">RS </span>
           <Signed value={row.rsQqq} digits={1} suffix="" threshold={0.1} />
         </span>
-        <span className="whitespace-nowrap" title="Объём к среднему на это время дня">
+        <span className="whitespace-nowrap" title={t("tile.rvolTitle")}>
           <span className="text-muted-foreground">RVOL </span>
           <span className={cn(row.rvol != null && row.rvol >= 1.5 ? "font-semibold text-primary" : "text-foreground")}>{fmtRvol(row.rvol)}</span>
         </span>

@@ -19,7 +19,7 @@ import {
   GetResearchResponse,
   UpdateResearchResponse,
 } from "@workspace/api-zod";
-import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 /**
  * Research notes ("Ресёрч") — patterns the desk keeps studying.
@@ -184,7 +184,7 @@ router.get("/research", asyncHandler(async (req, res): Promise<void> => {
     ticker: req.query.ticker || undefined, q: req.query.q || undefined, tag: req.query.tag || undefined,
     pinned: req.query.pinned || undefined, limit: req.query.limit, offset: req.query.offset,
   });
-  if (!q.success) { res.status(400).json({ error: q.error.message }); return; }
+  if (!q.success) throw q.error;
   const viewer = req.authUser?.name ?? null;
   const where: string[] = ["r.deleted_at IS NULL"];
   const params: unknown[] = [scope, viewer];
@@ -222,12 +222,12 @@ router.post("/research", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const parsed = CreateResearchBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const extra = CreateExtra.safeParse(req.body);
-  if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
+  if (!extra.success) throw extra.error;
   const d = parsed.data;
   const name = d.patternName.trim();
-  if (!name) { res.status(400).json({ error: "Название обязательно" }); return; }
+  if (!name) throw new AppError("NAME_REQUIRED_GENERIC");
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO research (pattern_name, ticker, context, market_condition, what_worked, what_failed, repeat_count, confidence_level,
        screenshot_url, screenshot_notes, tags, market_cap, float, adv, atr, relative_volume, beta, short_interest, sector, long_name,
@@ -252,7 +252,7 @@ router.get("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   const scope = await evidenceScope(req);
   if (scope === undefined) throw unauthorized();
   const params = GetResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const viewer = req.authUser?.name ?? null;
   const entry = await loadResearch(params.data.id, viewer, scope);
   if (!entry) throw notFound("RESEARCH_NOT_FOUND");
@@ -276,16 +276,16 @@ router.patch("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = UpdateResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const parsed = UpdateResearchBody.safeParse(req.body);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const extra = PatchExtra.safeParse(req.body);
-  if (!extra.success) { res.status(400).json({ error: extra.error.message }); return; }
+  if (!extra.success) throw extra.error;
   const viewer = req.authUser!.name;
   const scope = (await evidenceScope(req)) ?? null;
   const existing = await loadResearch(params.data.id, viewer, scope);
   if (!existing) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Изменять заметку может только автор или куратор" }); return; }
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const d = parsed.data;
   const patch: Record<string, unknown> = {
     ...d,
@@ -319,10 +319,10 @@ router.delete("/research/:id", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   if (!requireMember(req, res)) return;
   const params = DeleteResearchParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const existing = await loadResearch(params.data.id, req.authUser!.name, GUEST_SCOPE);
   if (!existing) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Удалить заметку может только автор или куратор" }); return; }
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE research SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL`, [existing.id]);
   logActivity({ action: "deleted", section: "research", entityId: String(existing.id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
   res.sendStatus(204);
@@ -334,7 +334,7 @@ router.post("/research/:id/restore", asyncHandler(async (req, res): Promise<void
   const id = parseId(req, res); if (id == null) return;
   const existing = await loadResearch(id, req.authUser!.name, GUEST_SCOPE, true);
   if (!existing || !existing.deleted_at) throw notFound("RESEARCH_NOT_FOUND");
-  if (!(await canModify(req, existing))) { res.status(403).json({ error: "Восстановить заметку может только автор или куратор" }); return; }
+  if (!(await canModify(req, existing))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await pool.query(`UPDATE research SET deleted_at = NULL WHERE id = $1 AND deleted_at IS NOT NULL`, [id]);
   logActivity({ action: "restored", section: "research", entityId: String(id), entityTitle: existing.pattern_name, trader: req.authUser!.name });
   res.json({ success: true });
@@ -439,12 +439,12 @@ router.post("/research/:id/link-trade", asyncHandler(async (req, res): Promise<v
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = LinkBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "tradeId required" }); return; }
+  if (!body.success) throw new AppError("FIELD_REQUIRED", undefined, { field: "tradeId" });
   const { rows: exists } = await pool.query<{ pattern_name: string }>(`SELECT pattern_name FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   const access = await canAccessTrade(req, body.data.tradeId);
   if (access === null) throw notFound("TRADE_NOT_FOUND");
-  if (!access) { res.status(403).json({ error: "Можно привязывать только свои сделки" }); return; }
+  if (!access) throw new AppError("OWN_TRADES_ONLY");
   await pool.query(`UPDATE trades SET pattern_id = $1 WHERE id = $2 AND deleted_at IS NULL`, [body.data.unlink ? null : id, body.data.tradeId]);
   logActivity({ action: body.data.unlink ? "unlinked" : "linked", section: "research", entityId: String(id), entityTitle: exists[0].pattern_name, trader: req.authUser!.name, details: `trade #${body.data.tradeId}` });
   res.json({ success: true, patternId: body.data.unlink ? null : id, tradeId: body.data.tradeId });
@@ -457,7 +457,7 @@ router.post("/research/:id/pin", asyncHandler(async (req, res): Promise<void> =>
   if (!requireMember(req, res)) return;
   const id = parseId(req, res); if (id == null) return;
   const body = PinBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: "pinned (boolean) required" }); return; }
+  if (!body.success) throw new AppError("INVALID_FIELD", undefined, { field: "pinned" });
   const { rows: exists } = await pool.query(`SELECT 1 FROM research WHERE id = $1 AND deleted_at IS NULL`, [id]);
   if (!exists.length) throw notFound("RESEARCH_NOT_FOUND");
   if (body.data.pinned) {

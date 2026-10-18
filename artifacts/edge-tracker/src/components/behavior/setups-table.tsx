@@ -22,6 +22,9 @@ import {
 } from "./api";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
+
+const tb = behaviorI18n.t;
 
 const THRESHOLDS = [0.5, 0.6, 0.7, 0.8, 0.9] as const;
 const BULK_CHUNK = 500;
@@ -51,37 +54,36 @@ function BulkAccept({ items }: { items: SetupItem[] }) {
         accepted += r.accepted;
         skipped += Object.values(r.skipped).reduce((s, v) => s + v, 0);
       }
-      toast({ title: `Принято ${commonI18n.t("units.trades", { count: accepted })}`, description: skipped ? `Пропущено ${skipped}: устарели, уже решены или нет доступа.` : "Сетапы записаны в сделки." });
+      toast({ title: tb("table.accepted", { trades: commonI18n.t("units.trades", { count: accepted }) }), description: skipped ? tb("table.skipped", { count: skipped }) : tb("table.written") });
     } catch (e) {
-      toast({ title: "Не удалось принять пачкой", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: tb("table.bulkFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     }
   };
 
   return (
     <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">Уверенность ≥</span>
+      <span className="text-muted-foreground">{tb("table.minConfidence")}</span>
       <Select value={String(min)} onValueChange={(v) => setMin(Number(v))}>
-        <SelectTrigger className="h-8 w-20" aria-label="Порог уверенности"><SelectValue /></SelectTrigger>
+        <SelectTrigger className="h-8 w-20" aria-label={tb("table.minAria")}><SelectValue /></SelectTrigger>
         <SelectContent>
           {THRESHOLDS.map((t) => <SelectItem key={t} value={String(t)}>{Math.round(t * 100)}%</SelectItem>)}
         </SelectContent>
       </Select>
       <Button size="sm" variant="outline" disabled={!eligible.length || bulk.isPending} aria-busy={bulk.isPending} onClick={() => setConfirm(true)}>
         <CheckCheck className="mr-1 h-3.5 w-3.5" aria-hidden="true" />
-        {bulk.isPending ? "Принимаем…" : `Принять ${eligible.length}`}
+        {bulk.isPending ? tb("table.accepting") : tb("table.acceptN", { count: eligible.length })}
       </Button>
       <AlertDialog open={confirm} onOpenChange={setConfirm}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Принять {commonI18n.t("units.trades", { count: eligible.length })}?</AlertDialogTitle>
+            <AlertDialogTitle>{tb("table.confirmTitle", { trades: commonI18n.t("units.trades", { count: eligible.length }) })}</AlertDialogTitle>
             <AlertDialogDescription>
-              Сетап запишется в сделки с уверенностью ≥ {Math.round(min * 100)}%:{" "}
-              {bySetup.slice(0, 6).map(([s, n]) => `${s} — ${n}`).join(", ")}{bySetup.length > 6 ? "…" : ""}. Потом сетап можно поменять в карточке сделки.
+              {tb("table.confirmText", { pct: Math.round(min * 100), list: `${bySetup.slice(0, 6).map(([s, n]) => `${s} — ${n}`).join(", ")}${bySetup.length > 6 ? "…" : ""}` })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => void run()}>Принять</AlertDialogAction>
+            <AlertDialogCancel>{tb("table.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void run()}>{tb("table.accept")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -89,7 +91,12 @@ function BulkAccept({ items }: { items: SetupItem[] }) {
   );
 }
 
-const STATUS_LABEL: Record<SuggestionStatus, string> = { suggested: "предложено", accepted: "принято", rejected: "отклонено", stale: "устарело" };
+const STATUS_LABEL = {
+  get suggested() { return tb("table.status.suggested"); },
+  get accepted() { return tb("table.status.accepted"); },
+  get rejected() { return tb("table.status.rejected"); },
+  get stale() { return tb("table.status.stale"); },
+} as Record<SuggestionStatus, string>;
 const STATUS_TONE: Record<SuggestionStatus, "neutral" | "up" | "down" | "warn" | "accent"> = { suggested: "accent", accepted: "up", rejected: "neutral", stale: "warn" };
 
 const ACCESSORS = {
@@ -106,7 +113,7 @@ const ACCESSORS = {
 function ConfidenceBar({ v }: { v: number }) {
   const tone = v >= 0.7 ? "hsl(var(--primary))" : v >= 0.45 ? "hsl(var(--primary) / 0.55)" : "hsl(var(--muted-foreground))";
   return (
-    <span className="inline-flex items-center gap-2" title={`Уверенность ${Math.round(v * 100)}%`}>
+    <span className="inline-flex items-center gap-2" title={tb("table.confidenceTitle", { pct: Math.round(v * 100) })}>
       <span className="h-1.5 w-16 overflow-hidden rounded-full bg-muted/40" aria-hidden="true">
         <span className="block h-full rounded-full" style={{ width: `${Math.round(v * 100)}%`, background: tone }} />
       </span>
@@ -142,24 +149,24 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
   const doAccept = (r: SetupItem) => {
     if (!r.suggestion) return;
     accept.mutate({ tradeId: r.tradeId }, {
-      onSuccess: () => toast({ title: `Сетап «${r.suggestion?.setup}» записан`, description: `${r.ticker} · ${fmtDate(r.date, "dayMonthNumeric")}` }),
-      onError: (e) => toast({ title: "Не удалось записать сетап", description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
+      onSuccess: () => toast({ title: tb("table.setupWritten", { setup: r.suggestion?.setup ?? "" }), description: `${r.ticker} · ${fmtDate(r.date, "dayMonthNumeric")}` }),
+      onError: (e) => toast({ title: tb("table.writeFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
     });
   };
   const doReject = (r: SetupItem) => {
     reject.mutate({ tradeId: r.tradeId }, {
-      onError: (e) => toast({ title: "Не удалось отклонить", description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
+      onError: (e) => toast({ title: tb("table.rejectFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
     });
   };
 
   if (!items.length) {
-    return <EmptyState icon={Sparkles} title="Нет сделок за период" description="Выберите другой период или трейдера. Открытые сделки не классифицируются." />;
+    return <EmptyState icon={Sparkles} title={tb("table.empty")} description={tb("table.emptyHint")} />;
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-xs">
-        <div className="flex flex-wrap gap-1" role="group" aria-label="Фильтр по статусу">
+        <div className="flex flex-wrap gap-1" role="group" aria-label={tb("table.statusAria")}>
           {(["all", "suggested", "accepted", "rejected", "pending"] as const).map((k) => (
             <button
               key={k}
@@ -168,7 +175,7 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
               onClick={() => setFilter(k)}
               className={cn("rounded-full px-2.5 py-1 tabular-nums transition-colors", filter === k ? "bg-primary-solid text-primary-foreground" : "bg-muted/40 text-muted-foreground hover:text-foreground")}
             >
-              {k === "all" ? "Все" : k === "pending" ? "Не посчитано" : STATUS_LABEL[k]} · {counts[k]}
+              {k === "all" ? tb("table.all") : k === "pending" ? tb("table.pending") : STATUS_LABEL[k]} · {counts[k]}
             </button>
           ))}
         </div>
@@ -179,19 +186,19 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
         )}
       </div>
 
-      <DataTable maxHeight="64vh" ariaLabel="Сделки с предложенным сетапом">
+      <DataTable maxHeight="64vh" ariaLabel={tb("table.aria")}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("date")}>Дата</SortableTh>
-              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-              <SortableTh {...thProps("time")}>Вход</SortableTh>
-              <SortableTh {...thProps("hold")}>Удержание</SortableTh>
-              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-              <SortableTh {...thProps("setup")}>Сетап (авто)</SortableTh>
-              <SortableTh {...thProps("confidence")}>Уверенность</SortableTh>
-              <SortableTh {...thProps("status")}>Статус</SortableTh>
-              <th scope="col" className="text-right">Действия</th>
+              <SortableTh {...thProps("date")}>{tb("table.col.date")}</SortableTh>
+              <SortableTh {...thProps("ticker")}>{tb("table.col.ticker")}</SortableTh>
+              <SortableTh {...thProps("time")}>{tb("table.col.entry")}</SortableTh>
+              <SortableTh {...thProps("hold")}>{tb("table.col.hold")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right">{tb("table.col.net")}</SortableTh>
+              <SortableTh {...thProps("setup")}>{tb("table.col.setup")}</SortableTh>
+              <SortableTh {...thProps("confidence")}>{tb("table.col.confidence")}</SortableTh>
+              <SortableTh {...thProps("status")}>{tb("table.col.status")}</SortableTh>
+              <th scope="col" className="text-right">{tb("table.col.actions")}</th>
             </tr>
           </thead>
           <tbody>
@@ -203,7 +210,7 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
                 <React.Fragment key={r.tradeId}>
                   <tr>
                     <td className="whitespace-nowrap">
-                      <Link href={links.trade(r.tradeId)} className="underline-offset-2 hover:underline" aria-label={`Открыть сделку ${r.ticker} от ${r.date}`}>{fmtDate(r.date, "dayMonthNumeric")}</Link>
+                      <Link href={links.trade(r.tradeId)} className="underline-offset-2 hover:underline" aria-label={tb("table.openTrade", { ticker: r.ticker, date: fmtDate(r.date, "medium") })}>{fmtDate(r.date, "dayMonthNumeric")}</Link>
                     </td>
                     <td className="whitespace-nowrap font-medium">
                       {r.ticker} <span className="text-xs text-muted-foreground">{r.side === "short" ? "S" : r.side === "long" ? "L" : ""}</span>
@@ -216,31 +223,31 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
                         <button type="button" onClick={() => toggle(r.tradeId)} aria-expanded={isOpen} className="inline-flex items-center gap-1 text-left hover:text-foreground">
                           {isOpen ? <ChevronDown className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />}
                           <span className="font-medium">{s.setup}</span>
-                          {!s.candlesAvailable && <Pill tone="warn" title="Свечей нет — только время и удержание">без свечей</Pill>}
+                          {!s.candlesAvailable && <Pill tone="warn" title={tb("table.noCandlesTitle")}>{tb("table.noCandles")}</Pill>}
                         </button>
                       ) : (
-                        <span className="text-muted-foreground">не посчитано</span>
+                        <span className="text-muted-foreground">{tb("table.notComputed")}</span>
                       )}
-                      {r.currentSetup && <div className="text-xs text-muted-foreground">в сделке: {r.currentSetup}</div>}
+                      {r.currentSetup && <div className="text-xs text-muted-foreground">{tb("table.inTrade", { setup: r.currentSetup })}</div>}
                     </td>
                     <td>{s ? <ConfidenceBar v={s.confidence} /> : "—"}</td>
-                    <td>{s ? <Pill tone={STATUS_TONE[s.status]} dot>{STATUS_LABEL[s.status]}</Pill> : <Pill tone="neutral">очередь</Pill>}</td>
+                    <td>{s ? <Pill tone={STATUS_TONE[s.status]} dot>{STATUS_LABEL[s.status]}</Pill> : <Pill tone="neutral">{tb("table.queue")}</Pill>}</td>
                     <td className="whitespace-nowrap text-right">
                       {canEdit && s && s.status !== "accepted" && s.status !== "stale" && (
                         <div className="inline-flex gap-1">
-                          <Button size="sm" variant="default" className="h-7 px-2" disabled={busy} onClick={() => doAccept(r)} aria-label={`Принять сетап ${s.setup} для ${r.ticker}`}>
-                            <Check className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Принять
+                          <Button size="sm" variant="default" className="h-7 px-2" disabled={busy} onClick={() => doAccept(r)} aria-label={tb("table.acceptAria", { setup: s.setup, ticker: r.ticker })}>
+                            <Check className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {tb("table.accept")}
                           </Button>
                           {s.status !== "rejected" && (
-                            <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={() => doReject(r)} aria-label={`Отклонить предложение для ${r.ticker}`}>
+                            <Button size="sm" variant="ghost" className="h-7 px-2" disabled={busy} onClick={() => doReject(r)} aria-label={tb("table.rejectAria", { ticker: r.ticker })}>
                               <X className="h-3.5 w-3.5" aria-hidden="true" />
                             </Button>
                           )}
                         </div>
                       )}
                       {canEdit && s && s.status === "stale" && (
-                        <Button size="sm" variant="outline" className="h-7 px-2" disabled={busy} onClick={() => recompute.mutate({ tradeId: r.tradeId })} aria-label={`Пересчитать предложение для ${r.ticker}`}>
-                          <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Пересчитать
+                        <Button size="sm" variant="outline" className="h-7 px-2" disabled={busy} onClick={() => recompute.mutate({ tradeId: r.tradeId })} aria-label={tb("table.recomputeAria", { ticker: r.ticker })}>
+                          <RefreshCw className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {tb("table.recompute")}
                         </Button>
                       )}
                     </td>
@@ -249,20 +256,20 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
                     <tr>
                       <td colSpan={9} className="bg-muted/10 text-xs">
                         <div className="flex flex-col gap-1.5 py-1">
-                          <ul className="list-disc pl-5 text-muted-foreground" aria-label="Сработавшие признаки">
+                          <ul className="list-disc pl-5 text-muted-foreground" aria-label={tb("table.featuresAria")}>
                             {s.reasons.map((x, i) => <li key={i}>{x}</li>)}
                           </ul>
                           {s.note && <p className="text-down">{s.note}</p>}
                           <div className="flex flex-wrap items-center gap-1.5">
-                            {s.alternatives.length > 0 && <span className="text-muted-foreground">альтернативы:</span>}
+                            {s.alternatives.length > 0 && <span className="text-muted-foreground">{tb("table.alternatives")}</span>}
                             {s.alternatives.map((a) => (
                               canEdit && s.status !== "accepted"
-                                ? <Button key={a.setup} size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={busy} onClick={() => accept.mutate({ tradeId: r.tradeId, setup: a.setup })} aria-label={`Принять альтернативу ${a.setup}`}>{a.setup} · {Math.round(a.score * 100)}%</Button>
+                                ? <Button key={a.setup} size="sm" variant="outline" className="h-6 px-2 text-xs" disabled={busy} onClick={() => accept.mutate({ tradeId: r.tradeId, setup: a.setup })} aria-label={tb("table.acceptAltAria", { setup: a.setup })}>{a.setup} · {Math.round(a.score * 100)}%</Button>
                                 : <Pill key={a.setup} tone="neutral">{a.setup} · {Math.round(a.score * 100)}%</Pill>
                             ))}
                             {s.tags.map((t) => <Pill key={t} tone="accent">{t}</Pill>)}
                             <span className="ml-auto text-muted-foreground">
-                              бары {s.interval ?? "—"} · правила v{s.version}
+                              {tb("table.bars", { interval: s.interval ?? "—", version: s.version })}
                               {s.decidedBy && ` · ${STATUS_LABEL[s.status]} ${s.decidedBy}`}
                             </span>
                           </div>
@@ -277,7 +284,8 @@ export function SetupsTable({ items, canEdit }: { items: SetupItem[]; canEdit: b
         </table>
       </DataTable>
       <p className="text-xs text-muted-foreground">
-        {commonI18n.t("units.trades", { count: filtered.length })} в таблице. Предложения считаются по правилам (без ИИ) из времени входа, удержания и свечей дня; в сделку сетап записывается только по кнопке «Принять».
+        {tb("table.footnote", { trades: commonI18n.t("units.trades", { count: filtered.length }) })}
+
       </p>
     </div>
   );

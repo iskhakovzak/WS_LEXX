@@ -3,6 +3,8 @@ import { ExternalLink, ImageOff, Pencil, Check, X, Maximize2 } from "lucide-reac
 import { Lightbox } from "@/components/screenshot-fields";
 import { cn } from "@/lib/utils";
 import type { Shot } from "./feed-utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { feedI18n } from "@/i18n/ns/feed";
 
 function Thumb({ shot, index, onOpen }: { shot: Shot; index: number; onOpen: () => void }) {
   const [failed, setFailed] = useState(false);
@@ -17,7 +19,7 @@ function Thumb({ shot, index, onOpen }: { shot: Shot; index: number; onOpen: () 
         )}
       >
         <ImageOff className="h-4 w-4" aria-hidden="true" />
-        Открыть ссылку #{index + 1}
+        {feedI18n.t("gallery.openLink", { n: index + 1 })}
       </a>
     );
   }
@@ -25,7 +27,7 @@ function Thumb({ shot, index, onOpen }: { shot: Shot; index: number; onOpen: () 
     <button
       type="button"
       onClick={onOpen}
-      aria-label={`Открыть скриншот ${index + 1}${shot.note ? `: ${shot.note}` : ""}`}
+      aria-label={shot.note ? feedI18n.t("gallery.openShotNote", { n: index + 1, note: shot.note }) : feedI18n.t("gallery.openShot", { n: index + 1 })}
       className={cn(
         "group relative block w-full overflow-hidden rounded-xl border border-border bg-[var(--glass-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring aspect-[4/3]",
       )}
@@ -58,7 +60,7 @@ function Caption({ note, onSave }: { note: string; onSave?: (v: string) => void 
       <div className="mt-1.5 flex items-center gap-1">
         <input
           autoFocus
-          aria-label="Подпись к скриншоту"
+          aria-label={feedI18n.t("gallery.caption")}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => {
@@ -67,10 +69,10 @@ function Caption({ note, onSave }: { note: string; onSave?: (v: string) => void 
           }}
           className="glass-field h-8 min-w-0 flex-1 px-3 text-xs text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
         />
-        <button type="button" aria-label="Сохранить подпись" onClick={() => { onSave(draft.trim()); setEditing(false); }} className="grid h-8 w-8 place-items-center rounded-full text-up hover:bg-[var(--glass-hover-bg)]">
+        <button type="button" aria-label={feedI18n.t("gallery.saveCaption")} onClick={() => { onSave(draft.trim()); setEditing(false); }} className="grid h-8 w-8 place-items-center rounded-full text-up hover:bg-[var(--glass-hover-bg)]">
           <Check className="h-4 w-4" />
         </button>
-        <button type="button" aria-label="Отменить" onClick={() => setEditing(false)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]">
+        <button type="button" aria-label={commonI18n.t("actions.cancel")} onClick={() => setEditing(false)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)]">
           <X className="h-4 w-4" />
         </button>
       </div>
@@ -79,12 +81,12 @@ function Caption({ note, onSave }: { note: string; onSave?: (v: string) => void 
   return (
     <div className="group/cap mt-1.5 flex items-start gap-1">
       <p className={cn("min-w-0 flex-1 text-xs leading-snug", note ? "text-foreground/90" : "text-muted-foreground")}>
-        {note || (onSave ? "Без подписи" : "")}
+        {note || (onSave ? feedI18n.t("gallery.noCaption") : "")}
       </p>
       {onSave && (
         <button
           type="button"
-          aria-label="Изменить подпись"
+          aria-label={feedI18n.t("gallery.editCaption")}
           onClick={() => { setDraft(note); setEditing(true); }}
           className="grid h-6 w-6 shrink-0 place-items-center rounded-full text-muted-foreground opacity-70 hover:bg-[var(--glass-hover-bg)] hover:text-foreground group-hover/cap:opacity-100"
         >
@@ -113,9 +115,9 @@ export function FeedGallery({ shots, onNotesChange, max = 4 }: {
   return (
     <div>
       <div className="mb-2 flex items-center justify-between gap-2">
-        <span className="micro-label">Скриншоты · {shots.length}</span>
+        <span className="micro-label">{feedI18n.t("gallery.shots", { count: shots.length })}</span>
         <a href={shots[0].href} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-primary">
-          <ExternalLink className="h-3 w-3" aria-hidden="true" /> Оригинал
+          <ExternalLink className="h-3 w-3" aria-hidden="true" /> {feedI18n.t("gallery.original")}
         </a>
       </div>
       {/* Uniform 4:3 tiles, capped width: the box size is known before images load (no CLS, no 700px blank). */}
@@ -131,7 +133,7 @@ export function FeedGallery({ shots, onNotesChange, max = 4 }: {
       </div>
       {hidden > 0 && (
         <button type="button" onClick={() => setExpanded(true)} className="chip mt-3 inline-flex min-h-8 items-center px-3 text-xs font-medium">
-          Ещё {hidden}
+          {feedI18n.t("gallery.more", { count: hidden })}
         </button>
       )}
       {open !== null && (

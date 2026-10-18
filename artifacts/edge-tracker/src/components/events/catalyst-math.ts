@@ -6,6 +6,7 @@ import { isOpen, netPnl, resultOf, type TradeLike } from "@/lib/trade-math";
 import { addDays } from "@/lib/trading-date";
 import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { eventsI18n } from "@/i18n/ns/events";
 
 /* ───────────── Inputs ───────────── */
 
@@ -29,17 +30,19 @@ export type TickerHistory = { ticker: string; quarters: ReactionQuarter[] };
 
 export type CatKey = "cpi" | "ppi" | "nfp" | "fomc" | "opex" | "month_end" | "short_day";
 
-export const CATS: { key: CatKey; label: string; hint: string }[] = [
-  { key: "cpi", label: "CPI", hint: "Инфляция, 8:30 ET — гэп и волатильность на открытии" },
-  { key: "nfp", label: "NFP", hint: "Рынок труда, 8:30 ET" },
-  { key: "fomc", label: "FOMC (решение)", hint: "Решение по ставке 14:00 ET, пресс-конференция 14:30" },
-  { key: "ppi", label: "PPI", hint: "Цены производителей, 8:30 ET" },
-  { key: "opex", label: "Экспирация", hint: "Месячная / квартальная экспирация опционов" },
-  { key: "month_end", label: "Конец месяца", hint: "Ребалансировка фондов" },
-  { key: "short_day", label: "Короткий день", hint: "Биржа закрывается раньше (13:00 ET)" },
-];
+/** CPI / NFP / PPI are codes in every language; the rest are translated (events.cat.label.*). */
+export const catLabel = (k: CatKey): string =>
+  k === "cpi" || k === "nfp" || k === "ppi" ? k.toUpperCase() : eventsI18n.t(`cat.label.${k}`);
+export const catHint = (k: CatKey): string => eventsI18n.t(`cat.hint.${k}`);
 
-export const catLabel = (k: CatKey) => CATS.find((c) => c.key === k)?.label ?? k;
+const catDef = (key: CatKey) => ({
+  key,
+  get label() { return catLabel(key); },
+  get hint() { return catHint(key); },
+});
+export const CATS: { key: CatKey; readonly label: string; readonly hint: string }[] = (
+  ["cpi", "nfp", "fomc", "ppi", "opex", "month_end", "short_day"] as const
+).map(catDef);
 
 const isWeekendYmd = (d: string) => {
   const wd = new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -375,12 +378,13 @@ export function pooledEarnings(edges: EarningsEdge[]) {
  * Deliberately cautious with thin samples.
  */
 export function takeaway(row: CategoryEdge, _base: DayAgg): string {
+  const t = eventsI18n.t;
   const a = row.agg;
-  if (a.days === 0) return row.calendarDays ? `В такие дни вы не торговали (${commonI18n.t("units.days", { count: row.calendarDays })} в календаре).` : "В вашем периоде таких дней не было.";
-  if (row.verdict === "low") return `Всего ${commonI18n.t("units.days", { count: a.days })} — пока наблюдение, не правило.`;
-  if (row.verdict === "noise") return "Не отличается от случайного разброса — отдельное правило не нужно.";
+  if (a.days === 0) return row.calendarDays ? t("takeaway.noTradesCal", { days: commonI18n.t("units.days", { count: row.calendarDays }) }) : t("takeaway.noneInPeriod");
+  if (row.verdict === "low") return t("takeaway.low", { days: commonI18n.t("units.days", { count: a.days }) });
+  if (row.verdict === "noise") return t("takeaway.noise");
   const d = row.delta ?? 0;
   return d < 0
-    ? `Хуже обычного на ${fmtUsd(Math.abs(d), { decimals: 0 })}/день — уменьшите размер или ждите выхода цифр.`
-    : `Лучше обычного на ${fmtUsd(d, { decimals: 0 })}/день — ваш день: план и лимиты как обычно.`;
+    ? t("takeaway.worse", { amount: fmtUsd(Math.abs(d), { decimals: 0 }) })
+    : t("takeaway.better", { amount: fmtUsd(d, { decimals: 0 }) });
 }

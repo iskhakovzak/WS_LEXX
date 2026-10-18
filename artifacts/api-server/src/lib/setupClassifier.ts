@@ -11,6 +11,9 @@
  * движение до входа (от открытия и за последние 30 минут), класс удержания (скальп < 2 мин, интрадей, овернайт, свинг).
  */
 
+import { DEFAULT_LANG, type Lang, type Params } from "../i18n";
+import { ruSetups, setupsT } from "./setupsI18n";
+
 export const CLASSIFIER_VERSION = "1.0";
 
 export type ClassifierCandle = { t: number; o: number; h: number; l: number; c: number; v: number };
@@ -75,10 +78,13 @@ export type SetupFeatures = {
 };
 
 export type SetupSuggestion = {
+  /** Canonical setup name (stored in trades.setup on accept; never translated). */
   setup: string;
+  /** Display name of the setup in the requested language. */
+  setupLabel: string;
   confidence: number;
   reasons: string[];
-  alternatives: { setup: string; score: number }[];
+  alternatives: { setup: string; label: string; score: number }[];
   tags: string[];
   features: SetupFeatures;
   candlesAvailable: boolean;
@@ -87,12 +93,24 @@ export type SetupSuggestion = {
   version: string;
 };
 
-export const SETUP_CLASSES = [
-  "ORB пробой", "Momentum открытия", "Пробой HOD", "Пробой LOD", "Пробой PMH", "Пробой PML",
-  "Fade гэпа", "Продолжение гэпа", "Возврат к VWAP", "Отскок от VWAP", "Шорт отката от хая", "Лонг отката от лоя",
-  "Power hour", "Игра на закрытие", "Полдень", "Утро", "Премаркет", "Афтер-маркет", "Скальп", "Овернайт", "Свинг", "Без времени",
-] as const;
-export type SetupClass = (typeof SETUP_CLASSES)[number];
+/** Setup classes as codes; their canonical names (RU, `setups.classes`) are what gets stored. */
+export const SETUP_CODES = [
+  "orb", "openMomentum", "hod", "lod", "pmh", "pml",
+  "gapFade", "gapGo", "vwapReversion", "vwapBounce", "shortHigh", "longLow",
+  "powerHour", "close", "midday", "morning", "premarket", "after", "scalp", "overnight", "swing", "noTime",
+] as const satisfies readonly (keyof typeof ruSetups.classes)[];
+export type SetupCode = (typeof SETUP_CODES)[number];
+const SETUP_NAME: Record<SetupCode, string> = Object.fromEntries(SETUP_CODES.map((c) => [c, ruSetups.classes[c]])) as Record<SetupCode, string>;
+/** Canonical setup names (historical export; the values written to trades.setup). */
+export const SETUP_CLASSES: readonly string[] = SETUP_CODES.map((c) => SETUP_NAME[c]);
+export type SetupClass = string;
+const CODE_BY_NAME = new Map<string, SetupCode>(SETUP_CODES.map((c) => [SETUP_NAME[c], c]));
+
+/** Display label of a setup name in `lang`: a classifier class gets its translation, anything else (user setups) as is. */
+export function setupLabelOf(name: string, lang: Lang = DEFAULT_LANG): string {
+  const code = CODE_BY_NAME.get(name);
+  return code ? setupsT.tryFor(lang, `classes.${code}`) ?? name : name;
+}
 
 /* ─── Время ET для свечей ─────────────────────────────────────────────────── */
 
@@ -228,48 +246,55 @@ export function computeFeatures(trade: ClassifierTrade, market: MarketInputs): S
 
 /* ─── Классификация ───────────────────────────────────────────────────────── */
 
-type Candidate = { setup: SetupClass; score: number; reasons: string[] };
+type Reason = { key: string; params?: Params };
+type Candidate = { setup: SetupCode; score: number; reasons: Reason[] };
 
 const fmtPct = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : ""}${v.toFixed(2)}%`);
 const fmtMin = (m: number | null) => (m == null ? "—" : `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}`);
 
-const TOD_LABEL: Record<TodBucket, string> = {
-  premarket: "премаркет (до 9:30)", openDrive: "open drive (9:30–9:45)", morning: "утро (9:45–11:30)",
-  midday: "полдень (11:30–14:00)", afternoon: "день (14:00–15:00)", powerHour: "power hour (15:00–15:45)", close: "закрытие (15:45–16:00)",
-  after: "афтер-маркет (после 16:00)", unknown: "время входа неизвестно",
-};
+/** Classify from a trade and market data (computes features first). Texts in `lang`; `setup` is always canonical. */
+export function classifySetup(trade: ClassifierTrade, market: MarketInputs, lang: Lang = DEFAULT_LANG): SetupSuggestion {
+  return classifyFromFeatures(trade, computeFeatures(trade, market), lang);
+}
 
-export function classifySetup(trade: ClassifierTrade, market: MarketInputs): SetupSuggestion {
-  const f = computeFeatures(trade, market);
+/**
+ * Classification from already computed features (pure, no market data): used on read to render the stored suggestion's
+ * reasons in the reader's language. Deterministic for the same trade, features and CLASSIFIER_VERSION.
+ */
+export function classifyFromFeatures(trade: ClassifierTrade, f: SetupFeatures, lang: Lang = DEFAULT_LANG): SetupSuggestion {
+  const t = setupsT.tFor(lang);
+  const text = (r: Reason) => setupsT.tryFor(lang, `reason.${r.key}`, r.params) ?? r.key;
   const cands: Candidate[] = [];
   const tags: string[] = [];
   const side = trade.side;
   const em = trade.entryMin;
   const tol = 0.0015; // 0.15% допуск на «пробой» уровня
 
-  const add = (setup: SetupClass, score: number, reasons: string[]) => cands.push({ setup, score, reasons });
-  const timeReason = `вход в ${fmtMin(em)} — ${TOD_LABEL[f.tod]}`;
+  const add = (setup: SetupCode, score: number, reasons: Reason[]) => cands.push({ setup, score, reasons });
+  const timeReason: Reason = { key: "time", params: { time: fmtMin(em), tod: setupsT.tryFor(lang, `tod.${f.tod}`) ?? f.tod } };
+  const sideWord = (long: boolean) => t(long ? "side.long" : "side.short");
+  const dirWord = (below: boolean) => t(below ? "dir.below" : "dir.above");
 
   // Классы по удержанию/горизонту.
-  if (f.holdClass === "swing") add("Свинг", 0.7, [`горизонт свинг, удержание ${trade.holdMin == null ? "—" : Math.round(trade.holdMin / 1440) + " д"}`]);
-  if (f.holdClass === "overnight") add("Овернайт", 0.7, ["позиция перенесена через ночь"]);
-  if (f.holdClass === "scalp") { tags.push("скальп"); add("Скальп", 0.45, [`удержание ${Math.round((trade.holdMin ?? 0) * 60)} с (< 2 мин)`]); }
-  if (f.holdClass === "intraday") tags.push("интрадей");
+  if (f.holdClass === "swing") add("swing", 0.7, [{ key: "swing", params: { hold: trade.holdMin == null ? "—" : t("reason.swingDays", { n: Math.round(trade.holdMin / 1440) }) } }]);
+  if (f.holdClass === "overnight") add("overnight", 0.7, [{ key: "overnight" }]);
+  if (f.holdClass === "scalp") { tags.push(t("tags.scalp")); add("scalp", 0.45, [{ key: "scalpHold", params: { sec: Math.round((trade.holdMin ?? 0) * 60) } }]); }
+  if (f.holdClass === "intraday") tags.push(t("tags.intraday"));
 
   // Классы по времени (слабые — уступают рыночным).
-  if (f.tod === "unknown") add("Без времени", 0.2, ["нет времени входа — классификация по удержанию"]);
-  if (f.tod === "premarket") add("Премаркет", 0.5, [timeReason]);
-  if (f.tod === "after") add("Афтер-маркет", 0.5, [timeReason]);
-  if (f.tod === "powerHour") add("Power hour", 0.5, [timeReason]);
-  if (f.tod === "close") add("Игра на закрытие", 0.55, [timeReason, "вход в последние 15 минут сессии (имбаланс / MOC)"]);
-  if (f.tod === "midday" || f.tod === "afternoon") add("Полдень", 0.35, [timeReason]);
-  if (f.tod === "morning") add("Утро", 0.35, [timeReason]);
+  if (f.tod === "unknown") add("noTime", 0.2, [{ key: "noTime" }]);
+  if (f.tod === "premarket") add("premarket", 0.5, [timeReason]);
+  if (f.tod === "after") add("after", 0.5, [timeReason]);
+  if (f.tod === "powerHour") add("powerHour", 0.5, [timeReason]);
+  if (f.tod === "close") add("close", 0.55, [timeReason, { key: "closeMoc" }]);
+  if (f.tod === "midday" || f.tod === "afternoon") add("midday", 0.35, [timeReason]);
+  if (f.tod === "morning") add("morning", 0.35, [timeReason]);
   if (f.tod === "openDrive") {
-    const r = [timeReason];
+    const r: Reason[] = [timeReason];
     let s = 0.45;
-    if (f.gapPct != null && side && Math.sign(f.gapPct) === (side === "long" ? 1 : -1) && Math.abs(f.gapPct) >= 1) { s += 0.15; r.push(`в сторону гэпа ${fmtPct(f.gapPct)}`); }
-    if (f.rvol != null && f.rvol >= 1.5) { s += 0.1; r.push(`RVOL ${f.rvol.toFixed(1)}`); }
-    add("Momentum открытия", s, r);
+    if (f.gapPct != null && side && Math.sign(f.gapPct) === (side === "long" ? 1 : -1) && Math.abs(f.gapPct) >= 1) { s += 0.15; r.push({ key: "withGap", params: { gap: fmtPct(f.gapPct) } }); }
+    if (f.rvol != null && f.rvol >= 1.5) { s += 0.1; r.push({ key: "rvol", params: { rvol: f.rvol.toFixed(1) } }); }
+    add("openMomentum", s, r);
   }
 
   if (f.candlesAvailable && side && trade.entry != null) {
@@ -277,42 +302,43 @@ export function classifySetup(trade: ClassifierTrade, market: MarketInputs): Set
     const long = side === "long";
     const gap = f.gapPct;
     const rvolBoost = f.rvol != null && f.rvol >= 1.5 ? 0.1 : 0;
-    const rvolReason = f.rvol != null && f.rvol >= 1.5 ? [`RVOL ${f.rvol.toFixed(1)}`] : [];
+    const rvolReason: Reason[] = f.rvol != null && f.rvol >= 1.5 ? [{ key: "rvol", params: { rvol: f.rvol.toFixed(1) } }] : [];
+    const pm = f.tod === "premarket" ? t("reason.gapPm") : "";
 
     // ORB пробой: вход в 9:35–10:30 над максимумом / под минимумом первых 15 (или 5) минут.
     if (em != null && em >= 575 && em <= 630) {
       const hi = f.orb15High ?? f.orb5High, lo = f.orb15Low ?? f.orb5Low;
       const win = f.orb15High != null ? 15 : 5;
       if (hi != null && lo != null) {
-        if (long && e >= hi * (1 - tol)) add("ORB пробой", 0.8 + rvolBoost, [`лонг над максимумом ORB${win} ${hi.toFixed(2)} (вход ${e.toFixed(2)}, ${fmtMin(em)})`, ...rvolReason]);
-        if (!long && e <= lo * (1 + tol)) add("ORB пробой", 0.8 + rvolBoost, [`шорт под минимумом ORB${win} ${lo.toFixed(2)} (вход ${e.toFixed(2)}, ${fmtMin(em)})`, ...rvolReason]);
+        if (long && e >= hi * (1 - tol)) add("orb", 0.8 + rvolBoost, [{ key: "orbLong", params: { win, level: hi.toFixed(2), entry: e.toFixed(2), time: fmtMin(em) } }, ...rvolReason]);
+        if (!long && e <= lo * (1 + tol)) add("orb", 0.8 + rvolBoost, [{ key: "orbShort", params: { win, level: lo.toFixed(2), entry: e.toFixed(2), time: fmtMin(em) } }, ...rvolReason]);
       }
     }
 
     // Пробой PMH / PML (уровень ещё не пробит до входа).
     if (long && f.pmHigh != null && e >= f.pmHigh * (1 - tol) && (f.hodBefore == null || f.hodBefore < f.pmHigh * (1 + tol)))
-      add("Пробой PMH", 0.75 + rvolBoost, [`лонг над максимумом премаркета ${f.pmHigh.toFixed(2)} (${fmtPct(f.distPmhPct)})`, ...rvolReason]);
+      add("pmh", 0.75 + rvolBoost, [{ key: "pmh", params: { level: f.pmHigh.toFixed(2), dist: fmtPct(f.distPmhPct) } }, ...rvolReason]);
     if (!long && f.pmLow != null && e <= f.pmLow * (1 + tol) && (f.lodBefore == null || f.lodBefore > f.pmLow * (1 - tol)))
-      add("Пробой PML", 0.75 + rvolBoost, [`шорт под минимумом премаркета ${f.pmLow.toFixed(2)} (${fmtPct(f.distPmlPct)})`, ...rvolReason]);
+      add("pml", 0.75 + rvolBoost, [{ key: "pml", params: { level: f.pmLow.toFixed(2), dist: fmtPct(f.distPmlPct) } }, ...rvolReason]);
 
     // Пробой HOD / LOD (после open drive; в первые 15 минут это ORB/momentum).
     if (em != null && em >= 585 && f.barsBeforeEntry >= 2) {
       if (long && f.hodBefore != null && e >= f.hodBefore * (1 - tol))
-        add("Пробой HOD", 0.7 + rvolBoost, [`лонг у максимума дня ${f.hodBefore.toFixed(2)} (${fmtPct(f.distHodPct)} к HOD)`, ...rvolReason]);
+        add("hod", 0.7 + rvolBoost, [{ key: "hod", params: { level: f.hodBefore.toFixed(2), dist: fmtPct(f.distHodPct) } }, ...rvolReason]);
       if (!long && f.lodBefore != null && e <= f.lodBefore * (1 + tol))
-        add("Пробой LOD", 0.7 + rvolBoost, [`шорт у минимума дня ${f.lodBefore.toFixed(2)} (${fmtPct(f.distLodPct)} к LOD)`, ...rvolReason]);
+        add("lod", 0.7 + rvolBoost, [{ key: "lod", params: { level: f.lodBefore.toFixed(2), dist: fmtPct(f.distLodPct) } }, ...rvolReason]);
     }
 
     // Гэп: fade (против гэпа) / продолжение (по гэпу), до 11:00.
     if (gap != null && Math.abs(gap) >= 2 && em != null && em < 660) {
       const withGap = Math.sign(gap) === (long ? 1 : -1);
       if (!withGap) {
-        const r = [`гэп ${fmtPct(gap)}${f.tod === "premarket" ? " (по цене входа к prevClose)" : ""}, вход против гэпа (${long ? "лонг" : "шорт"})`];
+        const r: Reason[] = [{ key: "gapFade", params: { gap: fmtPct(gap), pm, side: sideWord(long) } }];
         let s = 0.65;
-        if (f.distVwapPct != null && ((long && f.distVwapPct < -0.3) || (!long && f.distVwapPct > 0.3))) { s += 0.1; r.push(`цена ${long ? "ниже" : "выше"} VWAP на ${Math.abs(f.distVwapPct).toFixed(2)}%`); }
-        add("Fade гэпа", s, r);
+        if (f.distVwapPct != null && ((long && f.distVwapPct < -0.3) || (!long && f.distVwapPct > 0.3))) { s += 0.1; r.push({ key: "vwapSide", params: { dir: dirWord(long), pct: Math.abs(f.distVwapPct).toFixed(2) } }); }
+        add("gapFade", s, r);
       } else if (f.tod !== "openDrive") {
-        add("Продолжение гэпа", 0.55 + rvolBoost, [`гэп ${fmtPct(gap)}${f.tod === "premarket" ? " (по цене входа к prevClose)" : ""}, вход по направлению гэпа`, ...rvolReason]);
+        add("gapGo", 0.55 + rvolBoost, [{ key: "gapGo", params: { gap: fmtPct(gap), pm } }, ...rvolReason]);
       }
     }
 
@@ -321,54 +347,58 @@ export function classifySetup(trade: ClassifierTrade, market: MarketInputs): Set
       const d = f.distVwapPct;
       if ((long && d <= -0.6) || (!long && d >= 0.6)) {
         const s = Math.abs(d) >= 1.2 ? 0.7 : 0.6;
-        add("Возврат к VWAP", s, [`вход ${long ? "ниже" : "выше"} VWAP на ${Math.abs(d).toFixed(2)}% — ставка на возврат к VWAP`]);
+        add("vwapReversion", s, [{ key: "vwapReversion", params: { dir: dirWord(long), pct: Math.abs(d).toFixed(2) } }]);
       }
       if (Math.abs(d) <= 0.25 && f.moveFromOpenPct != null && f.barsBeforeEntry >= 3) {
         if ((long && f.moveFromOpenPct >= 0.3) || (!long && f.moveFromOpenPct <= -0.3))
-          add("Отскок от VWAP", 0.65, [`вход у VWAP (${fmtPct(d)}) по тренду дня (от открытия ${fmtPct(f.moveFromOpenPct)})`]);
+          add("vwapBounce", 0.65, [{ key: "vwapBounce", params: { dist: fmtPct(d), move: fmtPct(f.moveFromOpenPct) } }]);
       }
     }
 
     // Откат от экстремума: шорт около HOD после роста / лонг около LOD после падения.
     if (f.barsBeforeEntry >= 3 && f.moveFromOpenPct != null) {
       if (!long && f.distHodPct != null && f.distHodPct > -0.6 && f.distHodPct < tol * 100 && f.moveFromOpenPct >= 1)
-        add("Шорт отката от хая", 0.6, [`шорт в ${Math.abs(f.distHodPct).toFixed(2)}% от максимума дня после роста ${fmtPct(f.moveFromOpenPct)} от открытия`]);
+        add("shortHigh", 0.6, [{ key: "shortHigh", params: { pct: Math.abs(f.distHodPct).toFixed(2), move: fmtPct(f.moveFromOpenPct) } }]);
       if (long && f.distLodPct != null && f.distLodPct < 0.6 && f.distLodPct > -tol * 100 && f.moveFromOpenPct <= -1)
-        add("Лонг отката от лоя", 0.6, [`лонг в ${Math.abs(f.distLodPct).toFixed(2)}% от минимума дня после падения ${fmtPct(f.moveFromOpenPct)} от открытия`]);
+        add("longLow", 0.6, [{ key: "longLow", params: { pct: Math.abs(f.distLodPct).toFixed(2), move: fmtPct(f.moveFromOpenPct) } }]);
     }
 
-    if (f.last30Pct != null && Math.abs(f.last30Pct) >= 1) tags.push(`движение за 30 мин ${fmtPct(f.last30Pct)}`);
-    if (gap != null && Math.abs(gap) >= 2) tags.push(`гэп ${fmtPct(gap)}`);
+    if (f.last30Pct != null && Math.abs(f.last30Pct) >= 1) tags.push(t("tags.move30", { pct: fmtPct(f.last30Pct) }));
+    if (gap != null && Math.abs(gap) >= 2) tags.push(t("tags.gap", { gap: fmtPct(gap) }));
     if (f.rvol != null && f.rvol >= 2) tags.push(`RVOL ${f.rvol.toFixed(1)}`);
   }
 
   // Слияние одинаковых классов (берём лучший), сортировка.
-  const best = new Map<SetupClass, Candidate>();
+  const best = new Map<SetupCode, Candidate>();
   for (const c of cands) {
     const prev = best.get(c.setup);
     if (!prev || prev.score < c.score) best.set(c.setup, c);
   }
   const sorted = [...best.values()].sort((a, b) => b.score - a.score);
-  const top = sorted[0] ?? { setup: "Без времени" as SetupClass, score: 0.1, reasons: ["нет данных для классификации"] };
+  const top: Candidate = sorted[0] ?? { setup: "noTime", score: 0.1, reasons: [{ key: "noData" }] };
 
   let confidence = Math.min(0.95, top.score);
   let note: string | null = null;
   if (!f.candlesAvailable) {
     confidence = Math.min(confidence, 0.4);
-    note = "Свечей нет — сетап определён только по времени входа и удержанию.";
-  } else if (market.interval === "60m" || market.interval === "30m") {
+    note = t("note.noCandles");
+  } else if (f.interval === "60m" || f.interval === "30m") {
     confidence = Math.round(confidence * 0.8 * 100) / 100;
-    note = `Бары ${market.interval} (сделка старше 60 дней) — уровни HOD/LOD/VWAP приблизительные, ORB недоступен.`;
+    note = t("note.coarse", { interval: f.interval });
   }
   const reasons = [...top.reasons];
-  if (!top.reasons.some((r) => r.includes("вход в "))) reasons.push(timeReason);
-  if (f.holdClass === "scalp" && top.setup !== "Скальп") reasons.push(`удержание < 2 мин (скальп)`);
+  // The entry time is always explained (the close play already carries it).
+  if (!top.reasons.some((r) => r.key === "time" || r.key === "closeMoc")) reasons.push(timeReason);
+  if (f.holdClass === "scalp" && top.setup !== "scalp") reasons.push({ key: "scalpTail" });
 
   return {
-    setup: top.setup,
+    setup: SETUP_NAME[top.setup],
+    setupLabel: setupLabelOf(SETUP_NAME[top.setup], lang),
     confidence: Math.round(confidence * 100) / 100,
-    reasons,
-    alternatives: sorted.slice(1).filter((c) => c.score >= 0.3).slice(0, 3).map((c) => ({ setup: c.setup, score: Math.round(c.score * 100) / 100 })),
+    reasons: reasons.map(text),
+    alternatives: sorted.slice(1).filter((c) => c.score >= 0.3).slice(0, 3).map((c) => ({
+      setup: SETUP_NAME[c.setup], label: setupLabelOf(SETUP_NAME[c.setup], lang), score: Math.round(c.score * 100) / 100,
+    })),
     tags: [...new Set(tags)],
     features: f,
     candlesAvailable: f.candlesAvailable,

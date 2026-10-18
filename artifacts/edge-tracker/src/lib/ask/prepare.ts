@@ -1,11 +1,14 @@
 // «Спроси журнал» — text preparation before the rule parser (pure, no React).
 //
-// 1. Normalise: lowercase, ё→е, punctuation → space.
-// 2. Number words → digits («две недели» → «2 недели», «три лучших» → «3 лучших»).
-// 3. Wrong keyboard layout: a Latin word that is not a known ticker and reads as a Russian vocabulary
+// 1. Normalise: lowercase, ё→е, punctuation → space; Uzbek apostrophes inside Latin words are dropped
+//    («oʻrtacha» / «o'rtacha» / «o‘rtacha» → «ortacha», «boʻyicha» → «boyicha»), so UZ rules use one spelling.
+// 2. Number words → digits («две недели» → «2 недели», «two weeks» → «2 weeks», «ikki hafta» → «2 hafta»).
+// 3. Wrong keyboard layout: a Latin word that is not a known ticker / Latin rule word and reads as a Russian vocabulary
 //    word in the ЙЦУКЕН layout is replaced («dbyhtqn» → «винрейт»).
-// 4. Typos: a Cyrillic word that is not in the vocabulary is replaced by the single closest vocabulary
-//    word (OSA distance ≤ 1 for 4–6 letters, ≤ 2 for 7+), «винрейд» → «винрейт», «комисии» → «комиссии».
+// 4. Typos: a Cyrillic word that is not in the vocabulary is replaced by the single closest vocabulary word
+//    (OSA distance ≤ 1 for 4–6 letters, ≤ 2 for 7+), «винрейд» → «винрейт», «комисии» → «комиссии». A lowercase
+//    Latin word of 6+ letters is corrected the same way towards the words the EN / UZ rules use («winrte» →
+//    «winrate», «komisiya» → «komissiya»); Uzbek words with a case ending are left alone.
 //
 // Replacements change length, so every output character keeps the span of the original text it came
 // from (`src`): a rule match [a, b) in the prepared text maps back to [src[a].start, src[b−1].end) in the
@@ -25,6 +28,8 @@ const NUM_WORDS: Record<string, number> = {
   один: 1, одна: 1, одну: 1, одного: 1, два: 2, две: 2, двух: 2, три: 3, трех: 3, четыре: 4, четырех: 4, пять: 5, пяти: 5,
   шесть: 6, шести: 6, семь: 7, семи: 7, восемь: 8, восьми: 8, девять: 9, девяти: 9, десять: 10, десяти: 10,
   пятнадцать: 15, двадцать: 20, тридцать: 30, пару: 2, пара: 2,
+  two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, fifteen: 15, twenty: 20, thirty: 30, couple: 2,
+  ikki: 2, uch: 3, tort: 4, besh: 5, olti: 6, yetti: 7, sakkiz: 8, toqqiz: 9, yigirma: 20, ottiz: 30,
 };
 
 /** Words the rules know (full forms). Typos are corrected towards these. */
@@ -142,11 +147,18 @@ export interface PrepareOptions {
   protect?: ReadonlySet<string>;
   /** Known tickers (uppercase) — a Latin word that is a ticker is never re-read as Russian. */
   tickers?: ReadonlySet<string>;
+  /** Latin words the EN / UZ rules use (never «fixed»; typo targets). */
+  latinKnown?: ReadonlySet<string>;
 }
+
+/** Apostrophe-like characters inside a Latin word (oʻ gʻ, taʼlim, don't). */
+const APOS = /['`ʻʼ‘’]/g;
+/** Uzbek case endings: a Latin word ending with one is not typo-corrected (agglutination, not a typo). */
+const UZ_ENDING = /(?:da|dan|ga|ni|ning|lar|lari|larda|gacha|dagi|niki)$/;
 
 function isProtected(w: string, protect: ReadonlySet<string>): boolean {
   if (protect.has(w)) return true;
-  for (const p of protect) if (p.length >= 3 && w.startsWith(p) && w.length - p.length <= 3) return true;
+  for (const p of protect) if (p.length >= 3 && w.startsWith(p) && w.length - p.length <= 4) return true;
   return false;
 }
 
@@ -161,6 +173,8 @@ function normChar(ch: string): string {
 export function prepare(orig: string, opts: PrepareOptions = {}): Prepared {
   const protect = opts.protect ?? new Set<string>();
   const tickers = opts.tickers ?? new Set<string>();
+  const latin = opts.latinKnown ?? new Set<string>();
+  const latinVocab = [...latin].filter((w) => w.length >= 5);
   const chars = [...orig];
   // Character offsets into `orig` (UTF-16) for each code point.
   const offs: number[] = [];
@@ -178,27 +192,41 @@ export function prepare(orig: string, opts: PrepareOptions = {}): Prepared {
   let i = 0;
   while (i < chars.length) {
     const c0 = normChar(chars[i]);
-    // A "word" = run of letters (Latin letters may include the layout punctuation [ ] ; ' , . `).
-    if (/\p{L}/u.test(c0)) {
+    // A "word" = run of letters (Latin words may include the layout punctuation [ ] ; ' ` and Uzbek apostrophes).
+    if (/\p{L}/u.test(c0) && !/[ʻʼ]/.test(c0)) {
       let j = i;
       let w = "";
       while (j < chars.length) {
-        const c = normChar(chars[j]);
-        if (/\p{L}/u.test(c) || (/[[\];'`]/.test(chars[j]) && /^[a-z]/.test(w))) { w += c === " " ? chars[j] : c; j++; }
+        const raw = chars[j];
+        const c = normChar(raw);
+        const latinWord = /^[a-z]/.test(w);
+        if (/\p{L}/u.test(c) && !/[ʻʼ]/.test(c)) { w += c; j++; }
+        else if (latinWord && (/[[\];'`ʻʼ‘’]/.test(raw))) { w += raw; j++; }
         else break;
       }
       const start = offs[i], end = offs[j];
+      const bare = w.replace(APOS, "");
       let out = w;
-      if (NUM_WORDS[w] != null) out = String(NUM_WORDS[w]);
-      else if (CYR.test(w) && !VOCAB_SET.has(w) && !STOP.has(w) && !isProtected(w, protect)) {
-        const fix = closestWord(w);
-        if (fix && fix !== w) { out = fix; corrections.push({ from: orig.slice(start, end), to: fix }); }
-      } else if (LAT.test(w) && w.length >= 4 && !tickers.has(w.toUpperCase()) && !protect.has(w)) {
-        const ru = fromWrongLayout(w);
-        if (ru) {
-          const fix = VOCAB_SET.has(ru) || STOP.has(ru) ? ru : closestWord(ru);
-          if (fix) { out = fix; corrections.push({ from: orig.slice(start, end), to: fix }); }
+      const fix = (to: string) => { out = to; corrections.push({ from: orig.slice(start, end), to }); };
+      if (NUM_WORDS[bare] != null) out = String(NUM_WORDS[bare]);
+      else if (CYR.test(w)) {
+        if (!VOCAB_SET.has(w) && !STOP.has(w) && !isProtected(w, protect)) {
+          const f = closestWord(w);
+          if (f && f !== w) fix(f);
         }
+      } else if (/^[a-z]/.test(w)) {
+        const known = latin.has(bare) || protect.has(bare) || tickers.has(bare.toUpperCase());
+        const lower = orig.slice(start, end) === orig.slice(start, end).toLowerCase();
+        if (!known && lower && bare.length >= 6 && /^[a-z]+$/.test(bare) && !UZ_ENDING.test(bare) && !isProtected(bare, protect)) {
+          const f = closestWord(bare, latinVocab);
+          if (f && f !== bare) fix(f);
+        }
+        if (out === w && !known && LAT.test(w) && w.length >= 4 && !tickers.has(w.toUpperCase()) && !protect.has(w)) {
+          const ru = fromWrongLayout(w);
+          const f = ru ? (VOCAB_SET.has(ru) || STOP.has(ru) ? ru : closestWord(ru)) : null;
+          if (f) fix(f);
+        }
+        if (out === w) out = bare;
       }
       if (out === w) for (let k = i; k < j; k++) push(normChar(chars[k]), offs[k], offs[k + 1]);
       else push(out, start, end);

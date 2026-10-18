@@ -37,14 +37,14 @@ describe("marketReporters", () => {
     });
     const r = marketReporters(data, day, prev);
     expect(r.open).toHaveLength(1);
-    expect(reactionOf(r.open[0])).toEqual({ label: "пре", pct: -3.1 });
+    expect(reactionOf(r.open[0])).toEqual({ kind: "pre", label: "пре", pct: -3.1 });
   });
 });
 
 describe("reactionOf", () => {
   it("premarket beats after-hours; nothing → null", () => {
-    expect(reactionOf({ pricePreMarket: 2, pricePostMarket: 5 })).toEqual({ label: "пре", pct: 2 });
-    expect(reactionOf({ pricePreMarket: null, pricePostMarket: -4 })).toEqual({ label: "после закр.", pct: -4 });
+    expect(reactionOf({ pricePreMarket: 2, pricePostMarket: 5 })).toEqual({ kind: "pre", label: "пре", pct: 2 });
+    expect(reactionOf({ pricePreMarket: null, pricePostMarket: -4 })).toEqual({ kind: "post", label: "после закр.", pct: -4 });
     expect(reactionOf({ pricePreMarket: null, pricePostMarket: null })).toBeNull();
   });
 });

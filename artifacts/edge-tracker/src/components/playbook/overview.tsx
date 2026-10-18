@@ -6,8 +6,10 @@ import { PlaybookHealthWidget } from "@/components/playbook-health-widget";
 import { cn } from "@/lib/utils";
 import { ConfidenceMeter, EdgeMini, SetupTypePill, TagChips } from "./setup-bits";
 import { checklistCount, folderSwatch, isSameLocalDay, moneyTone, timeAgo, usdEdge, type PlaybookEntry, type QuickFilter, type SetupSummary } from "./model";
-import { fmtRate, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { playbookI18n } from "@/i18n/ns/playbook";
+const pt = playbookI18n.t; // called at render time only
 
 function MiniList({ items, summary, onOpen, right }: {
   items: PlaybookEntry[]; summary: Map<number, SetupSummary>; onOpen: (id: number) => void; right: (e: PlaybookEntry, s: SetupSummary | undefined) => ReactNode;
@@ -22,8 +24,8 @@ function MiniList({ items, summary, onOpen, right }: {
             className="flex w-full min-w-0 items-center gap-3 rounded-xl px-2 py-2 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-sm font-medium text-foreground">{e.name}</span>
-              <span className="block truncate text-xs text-muted-foreground">{e.folder ?? "Без папки"}</span>
+              <span className="block truncate text-sm font-medium text-foreground" title={e.name}>{e.name}</span>
+              <span className="block truncate text-xs text-muted-foreground">{e.folder ?? commonI18n.t("fields.noFolder")}</span>
             </span>
             <span className="shrink-0 text-right">{right(e, summary.get(e.id))}</span>
           </button>
@@ -75,18 +77,18 @@ export function Overview({
     { key: "total", label: `${commonI18n.t("units.setups", { count: stats.total })}`, f: "all" },
   ];
   if (summaryLoaded) {
-    facts.push({ key: "covered", label: `${stats.covered} со сделками`, f: stats.covered < stats.total ? "untested" : undefined });
-    if (stats.tier1 > 0) facts.push({ key: "tier1", label: `${stats.tier1} ${pluralRu(stats.tier1, "эталон", "эталона", "эталонов")} Tier 1` });
-    if (stats.noExamples > 0) facts.push({ key: "noEx", label: `${stats.noExamples} без эталонов`, f: "noExamples" });
-    if (stats.today > 0) facts.push({ key: "today", label: `${stats.today} в работе сегодня`, f: "today" });
+    facts.push({ key: "covered", label: pt("overview.withTrades", { count: stats.covered }), f: stats.covered < stats.total ? "untested" : undefined });
+    if (stats.tier1 > 0) facts.push({ key: "tier1", label: pt("overview.tier1", { count: stats.tier1 }) });
+    if (stats.noExamples > 0) facts.push({ key: "noEx", label: pt("overview.noExamples", { count: stats.noExamples }), f: "noExamples" });
+    if (stats.today > 0) facts.push({ key: "today", label: pt("overview.today", { count: stats.today }), f: "today" });
   }
-  if (showReview && stats.unreviewed > 0) facts.push({ key: "unrev", label: `${stats.unreviewed} не ${pluralRu(stats.unreviewed, "проверен", "проверено", "проверено")}`, f: "unreviewed" });
+  if (showReview && stats.unreviewed > 0) facts.push({ key: "unrev", label: pt("overview.unreviewed", { count: stats.unreviewed }), f: "unreviewed" });
 
   const list = stats.recent.length ? stats.recent : stats.newest;
 
   return (
     <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
-      <p className="flex min-h-9 flex-wrap items-center gap-x-1 gap-y-1 text-sm text-muted-foreground" aria-label="Состояние плейбука">
+      <p className="flex min-h-9 flex-wrap items-center gap-x-1 gap-y-1 text-sm text-muted-foreground" aria-label={pt("overview.aria")}>
         {summaryLoaded ? null : <span className="mr-2 inline-block h-4 w-40 animate-pulse rounded bg-[var(--glass-bg)] motion-reduce:animate-none" aria-hidden="true" />}
         {facts.map((x, i) => (
           <span key={x.key} className="inline-flex items-center">
@@ -110,7 +112,7 @@ export function Overview({
 
       <div className={cn("grid min-w-0 gap-[var(--grid-gap)]", stats.top.length > 0 && "lg:grid-cols-2")}>
         {stats.top.length > 0 && (
-          <Panel title="Лучший edge" description="Ожидание нетто на сделку, от 3 сделок" icon={Sparkles}>
+          <Panel title={pt("overview.bestEdge")} description={pt("overview.bestEdgeDesc")} icon={Sparkles}>
             <MiniList
               items={stats.top}
               summary={summary}
@@ -120,14 +122,14 @@ export function Overview({
                 return (
                   <>
                     <span className={cn("block text-sm font-semibold tabular-nums", toneText(moneyTone(v)))}>{fmtUsd(v, { signed: true, decimals: 2 })}</span>
-                    <span className="block text-xs tabular-nums text-muted-foreground">{s?.tradeCount} сд. · WR {fmtRate(s?.winrate)}</span>
+                    <span className="block text-xs tabular-nums text-muted-foreground">{pt("overview.tradesWr", { count: s?.tradeCount ?? 0, wr: fmtRate(s?.winrate) })}</span>
                   </>
                 );
               }}
             />
           </Panel>
         )}
-        <Panel title={stats.recent.length ? "Недавно в работе" : "Новые сетапы"} icon={stats.recent.length ? CalendarCheck : BookOpen}>
+        <Panel title={stats.recent.length ? pt("overview.recent") : pt("overview.newest")} icon={stats.recent.length ? CalendarCheck : BookOpen}>
           {list.length ? (
             <MiniList
               items={list}
@@ -138,7 +140,7 @@ export function Overview({
               )}
             />
           ) : (
-            <EmptyState className="py-6" icon={BookOpen} title="Плейбук пуст" description="Создайте первый сетап — опишите контекст, триггер, вход, стоп и цели." />
+            <EmptyState className="py-6" icon={BookOpen} title={pt("overview.emptyTitle")} description={pt("overview.emptyDesc")} />
           )}
         </Panel>
       </div>
@@ -168,8 +170,8 @@ export function SetupCard({
     >
       <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
         <span className={cn("h-2 w-2 shrink-0 rounded-full", sw.bg)} aria-hidden="true" />
-        <span className="truncate">{e.folder ?? "Без папки"}</span>
-        {isSameLocalDay(s?.lastUsedAt) && <span className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 text-xs text-primary">сегодня</span>}
+        <span className="truncate">{e.folder ?? commonI18n.t("fields.noFolder")}</span>
+        {isSameLocalDay(s?.lastUsedAt) && <span className="ml-auto shrink-0 rounded-full bg-primary/15 px-1.5 text-xs text-primary">{pt("overview.today1")}</span>}
       </div>
       <div className="line-clamp-2 min-h-[2lh] text-base font-semibold leading-snug text-foreground" title={e.name.length > 60 ? e.name : undefined}>{e.name}</div>
       <div className="flex flex-wrap items-center gap-2">
@@ -184,9 +186,9 @@ export function SetupCard({
         <ConfidenceMeter level={e.confidenceLevel} />
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span className="inline-flex items-center gap-1"><ListChecks className="h-3 w-3" aria-hidden="true" />{n || "нет"} {n ? pluralRu(n, "пункт", "пункта", "пунктов") : "чеклиста"}</span>
+        <span className="inline-flex items-center gap-1"><ListChecks className="h-3 w-3" aria-hidden="true" />{n ? pt("overview.checklistItems", { count: n }) : pt("overview.noChecklist")}</span>
         {(s?.tier1Count ?? 0) > 0 && <span className="inline-flex items-center gap-1"><Trophy className="h-3 w-3" aria-hidden="true" />{s!.tier1Count} Tier 1</span>}
-        {e.reviewed && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />проверен</span>}
+        {e.reviewed && <span className="inline-flex items-center gap-1"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />{pt("overview.reviewed")}</span>}
       </div>
     </button>
   );

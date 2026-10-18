@@ -33,11 +33,13 @@ import {
   type Candle, type Interval,
 } from "../lib/candles/market";
 import { loadBehaviorRows, rowToBehaviorTrade } from "./behavior";
-import { classifySetup, inputsHash, CLASSIFIER_VERSION, type ClassifierTrade, type MarketInputs, type SetupSuggestion } from "../lib/setupClassifier";
-import { HOUR_BUCKETS, hourBucket, type BehaviorTrade } from "../lib/behaviorEngine";
+import { classifySetup, classifyFromFeatures, inputsHash, setupLabelOf, CLASSIFIER_VERSION, type ClassifierTrade, type MarketInputs, type SetupFeatures, type SetupSuggestion } from "../lib/setupClassifier";
+import { setupsT } from "../lib/setupsI18n";
+import { langOf, type Lang } from "../i18n";
+import { hourBucketsFor, hourBucket, type BehaviorTrade } from "../lib/behaviorEngine";
 import { bootstrapMean, wilson, round2, SMALL_SAMPLE } from "../lib/behaviorStats";
 import { can } from "../lib/permissions";
-import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, conflict, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -237,8 +239,30 @@ async function loadSuggestions(ids: number[]): Promise<Map<number, SuggestionRow
   return out;
 }
 
-function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow | null, hash: string) {
+/**
+ * Reasons / tags / note of a stored suggestion in the reader's language: re-derived from the stored features (pure, no
+ * market data) when the classifier version and the result match; otherwise the stored Russian texts.
+ */
+function localizedExplanation(trade: BehaviorTrade, exit: number | null, s: SuggestionRow, lang: Lang) {
+  const stored = {
+    reasons: s.explanation?.reasons ?? [],
+    alternatives: (s.explanation?.alternatives ?? []).map((a) => ({ ...a, label: setupLabelOf(a.setup, lang) })),
+    tags: s.explanation?.tags ?? [],
+    note: s.explanation?.note ?? null,
+  };
+  if (lang === "ru" || !s.features || s.version !== CLASSIFIER_VERSION) return stored;
+  try {
+    const re = classifyFromFeatures(toClassifierTrade(trade, exit), s.features as SetupFeatures, lang);
+    if (re.setup !== s.setup) return stored;
+    return { reasons: re.reasons, alternatives: re.alternatives, tags: re.tags, note: re.note };
+  } catch {
+    return stored;
+  }
+}
+
+function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow | null, hash: string, lang: Lang) {
   const fresh = s != null && s.inputs_hash === hash;
+  const ex = s ? localizedExplanation(trade, exit, s, lang) : null;
   return {
     tradeId: trade.id,
     ticker: trade.ticker,
@@ -255,11 +279,12 @@ function serialize(trade: BehaviorTrade, exit: number | null, s: SuggestionRow |
     suggestion: s
       ? {
           setup: s.setup,
+          setupLabel: setupLabelOf(s.setup, lang),
           confidence: Number(s.confidence),
-          reasons: s.explanation?.reasons ?? [],
-          alternatives: s.explanation?.alternatives ?? [],
-          tags: s.explanation?.tags ?? [],
-          note: s.explanation?.note ?? null,
+          reasons: ex!.reasons,
+          alternatives: ex!.alternatives,
+          tags: ex!.tags,
+          note: ex!.note,
           candlesAvailable: s.candles_available,
           interval: s.interval,
           status: fresh ? s.status : "stale",
@@ -299,7 +324,8 @@ router.get("/setups-auto", asyncHandler(async (req, res) => {
   }
   const pending = withHash.filter((x) => { const s = existing.get(x.trade.id); return !s || s.inputs_hash !== x.hash; }).length;
 
-  let items = withHash.map((x) => serialize(x.trade, x.exit, existing.get(x.trade.id) ?? null, x.hash));
+  const lang = langOf(req);
+  let items = withHash.map((x) => serialize(x.trade, x.exit, existing.get(x.trade.id) ?? null, x.hash, lang));
   if (q.status === "pending") items = items.filter((i) => !i.suggestion || i.suggestion.status === "stale");
   else if (q.status) items = items.filter((i) => i.suggestion?.status === q.status);
   // Новые сверху.
@@ -332,6 +358,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     .filter((x) => x.trade.result !== "open")
     .filter((x) => q.withSetup === "1" || !x.trade.setup);
   const existing = await loadSuggestions(trades.map((x) => x.trade.id));
+  const lang = langOf(req);
 
   type Agg = { setup: string; n: number; wins: number; losses: number; be: number; net: number; nets: number[]; posNet: number; negNet: number; confSum: number; accepted: number };
   type Cell = { n: number; wins: number; losses: number; net: number };
@@ -361,8 +388,8 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     if (t.result === "win") g.wins++; else if (t.result === "loss") g.losses++; else if (t.result === "be") g.be++;
     if (t.net != null) { g.net += t.net; g.nets.push(t.net); if (t.net > 0) g.posNet += t.net; else g.negNet += t.net; }
     groups.set(setup, g);
-    if (t.entryMin != null) bump(hourCells, `${setup}\u0000${hourBucket(t.entryMin)}`, t);
-    const hb = holdBucket(t);
+    if (t.entryMin != null) bump(hourCells, `${setup}\u0000${hourBucket(t.entryMin, lang)}`, t);
+    const hb = holdBucket(t, lang);
     if (hb) bump(holdCells, `${setup}\u0000${hb}`, t);
   }
   const out = [...groups.values()].map((g) => {
@@ -371,6 +398,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     const eci = bootstrapMean(g.nets, `${scope ?? "*"}|${q.from ?? ""}|${q.to ?? ""}|${g.setup}`);
     return {
       setup: g.setup,
+      setupLabel: setupLabelOf(g.setup, lang),
       n: g.n, wins: g.wins, losses: g.losses, be: g.be,
       winRate: decided ? g.wins / decided : null,
       winRateCI: ci ? { low: Math.round(ci.low * 10000) / 10000, high: Math.round(ci.high * 10000) / 10000 } : null,
@@ -387,7 +415,7 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
   const shapeCells = (m: Map<string, Cell>) => [...m.entries()].map(([k, c]) => {
     const [setup, bucket] = k.split("\u0000");
     return {
-      setup, bucket, n: c.n, net: round2(c.net),
+      setup, setupLabel: setupLabelOf(setup, lang), bucket, n: c.n, net: round2(c.net),
       avg: c.n ? round2(c.net / c.n) : null,
       winRate: c.wins + c.losses ? c.wins / (c.wins + c.losses) : null,
     };
@@ -399,25 +427,24 @@ router.get("/setups-auto/aggregates", asyncHandler(async (req, res) => {
     smallSample: SMALL_SAMPLE,
     groups: out,
     matrix: {
-      hour: { buckets: HOUR_BUCKETS, cells: shapeCells(hourCells) },
-      hold: { buckets: HOLD_BUCKETS, cells: shapeCells(holdCells) },
+      hour: { buckets: hourBucketsFor(lang), cells: shapeCells(hourCells) },
+      hold: { buckets: holdBucketsFor(lang), cells: shapeCells(holdCells) },
     },
     generatedAt: new Date().toISOString(),
   });
 }));
 
-const HOLD_BUCKETS = ["<1м", "1–2м", "2–5м", "5–15м", "15–60м", "1–4ч", "4ч+", "перенос"];
-function holdBucket(t: BehaviorTrade): string | null {
-  if (t.horizon !== "intraday") return "перенос";
+/** Hold-time buckets (codes → labels of the `setups.hold` dictionary; one response uses the labels as keys). */
+const HOLD_CODES = ["lt1m", "m1to2", "m2to5", "m5to15", "m15to60", "h1to4", "h4plus", "carried"] as const;
+type HoldCode = (typeof HOLD_CODES)[number];
+const holdLabel = (code: HoldCode, lang: Lang) => setupsT.tryFor(lang, `hold.${code}`) ?? code;
+const holdBucketsFor = (lang: Lang) => HOLD_CODES.map((c) => holdLabel(c, lang));
+function holdBucket(t: BehaviorTrade, lang: Lang): string | null {
+  if (t.horizon !== "intraday") return holdLabel("carried", lang);
   const m = t.holdMin;
   if (m == null || !Number.isFinite(m)) return null;
-  if (m < 1) return "<1м";
-  if (m < 2) return "1–2м";
-  if (m < 5) return "2–5м";
-  if (m < 15) return "5–15м";
-  if (m < 60) return "15–60м";
-  if (m < 240) return "1–4ч";
-  return "4ч+";
+  const code: HoldCode = m < 1 ? "lt1m" : m < 2 ? "m1to2" : m < 5 ? "m2to5" : m < 15 ? "m5to15" : m < 60 ? "m15to60" : m < 240 ? "h1to4" : "h4plus";
+  return holdLabel(code, lang);
 }
 
 /* ─── POST /setups-auto/accept-bulk ───────────────────────────────────────── */
@@ -429,7 +456,7 @@ const bulkBody = z.object({
 
 router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
   const body = bulkBody.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: "Неверные данные", details: body.error.flatten() }); return; }
+  if (!body.success) throw badRequest("VALIDATION", body.error.flatten());
   const me = req.authUser;
   if (!me || isGuestUser(me)) throw new AppError("GUEST_READ_ONLY");
   await ensureTable();
@@ -470,9 +497,12 @@ router.post("/setups-auto/accept-bulk", asyncHandler(async (req, res) => {
       WHERE trade_id = ANY($1::int[]) AND status = 'suggested'`,
     [apply.map((a) => a.id), me.name],
   );
+  const ru = setupsT.tFor("ru");
+  const pct = Math.round(minConf * 100);
   logActivity({
-    action: "updated", section: "trades", entityTitle: `${apply.length} сделок`, trader: me.name,
-    details: `сетапы приняты пачкой (авто-классификатор${minConf ? `, уверенность ≥ ${Math.round(minConf * 100)}%` : ""})`,
+    action: "updated", section: "trades", entityTitle: ru("activity.tradesCount", { count: apply.length }), trader: me.name,
+    details: minConf ? ru("activity.bulkMin", { pct }) : ru("activity.bulk"),
+    params: { titleKey: "setups.activity.tradesCount", count: apply.length, detailsKey: minConf ? "setups.activity.bulkMin" : "setups.activity.bulk", pct },
   });
   invalidateDashboardCache();
   res.json({ ok: true, accepted: apply.length, tradeIds: apply.map((a) => a.id), skipped });
@@ -487,7 +517,7 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   const id = idParam.safeParse(req.params.tradeId);
   if (!id.success) throw badRequest("INVALID_ID");
   const body = acceptBody.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: "Неверные данные", details: body.error.flatten() }); return; }
+  if (!body.success) throw badRequest("VALIDATION", body.error.flatten());
   const access = await canAccessTrade(req, id.data, "write");
   if (access === null) throw notFound("TRADE_NOT_FOUND");
   if (!access) throw new AppError("TRADE_FORBIDDEN");
@@ -495,7 +525,7 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
 
   const current = (await loadSuggestions([id.data])).get(id.data) ?? null;
   const setup = body.data.setup ?? current?.setup ?? null;
-  if (!setup) { res.status(409).json({ error: "Для сделки ещё нет предложения — откройте список, чтобы посчитать" }); return; }
+  if (!setup) throw conflict("SETUP_SUGGESTION_MISSING");
 
   // Тот же механизм, что у PATCH /trades/:id для поля setup (drizzle update + активность + сброс кэша дашборда),
   // без чеклиста перед сделкой — сделки исторические.
@@ -508,7 +538,13 @@ router.post("/setups-auto/:tradeId/accept", asyncHandler(async (req, res) => {
   );
   logActivity({
     action: "updated", section: "trades", entityId: String(updated.id), entityTitle: updated.ticker ?? undefined,
-    trader: req.authUser?.name, details: `setup=${setup} (авто-классификатор${current && current.setup !== setup ? `, предложено «${current.setup}»` : ""})`,
+    trader: req.authUser?.name,
+    details: current && current.setup !== setup
+      ? setupsT.tFor("ru")("activity.acceptedChanged", { setup, suggested: current.setup })
+      : setupsT.tFor("ru")("activity.accepted", { setup }),
+    params: current && current.setup !== setup
+      ? { detailsKey: "setups.activity.acceptedChanged", setup, suggested: current.setup }
+      : { detailsKey: "setups.activity.accepted", setup },
   });
   invalidateDashboardCache();
   res.json({ ok: true, tradeId: id.data, setup, status: "accepted" });
@@ -525,7 +561,7 @@ router.post("/setups-auto/:tradeId/reject", asyncHandler(async (req, res) => {
     `UPDATE trade_setup_suggestions SET status = 'rejected', decided_by = $2, decided_at = NOW(), updated_at = NOW() WHERE trade_id = $1`,
     [id.data, req.authUser?.name ?? null],
   );
-  if (!rowCount) { res.status(409).json({ error: "Для сделки ещё нет предложения" }); return; }
+  if (!rowCount) throw conflict("SETUP_SUGGESTION_MISSING");
   res.json({ ok: true, tradeId: id.data, status: "rejected" });
 }));
 
@@ -544,7 +580,7 @@ router.post("/setups-auto/:tradeId/recompute", asyncHandler(async (req, res) => 
   await pool.query(`DELETE FROM trade_setup_suggestions WHERE trade_id = $1 AND status = 'suggested'`, [id.data]);
   const done = await computeBatch([{ trade, exit, hash }], 1);
   const s = (await loadSuggestions([id.data])).get(id.data) ?? null;
-  res.json({ ok: done > 0, item: serialize(trade, exit, s, hash) });
+  res.json({ ok: done > 0, item: serialize(trade, exit, s, hash, langOf(req)) });
 }));
 
 export default router;

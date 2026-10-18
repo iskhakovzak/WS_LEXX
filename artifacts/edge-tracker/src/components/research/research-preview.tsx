@@ -11,6 +11,9 @@ import { type UpcomingItem } from "@/components/shared/market/earnings-api";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { ResearchEvidence } from "./research-evidence";
 import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote } from "./research-utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { researchI18n } from "@/i18n/ns/research";
+import { rich } from "@/i18n/rich";
 
 function Section({
   label,
@@ -64,6 +67,7 @@ export function ResearchPreview({
   onSelect: (id: number) => void;
   onSaveScreenshotNotes: (notes: string) => void;
 }) {
+  const { t } = researchI18n.useT();
   const tickers = splitTickers(r.ticker);
   const tags = splitTags(r.tags);
   // Confidence: the manual slider until the note has real evidence (≥5 closed trades), then the observed win rate.
@@ -76,9 +80,9 @@ export function ResearchPreview({
   const nextReport = activeHist ? upcoming.get(activeHist) : undefined;
 
   const fundamentals: [string, string | null | undefined][] = [
-    ["Капитализация", r.marketCap],
+    [commonI18n.t("trading.marketCap"), r.marketCap],
     ["Float", r.float],
-    ["Средний объём", r.adv],
+    [t("preview.avgVolume"), r.adv],
     ["ATR", r.atr != null ? String(r.atr) : null],
     ["RelVol", r.relativeVolume != null ? `${r.relativeVolume}×` : null],
     ["Beta", r.beta != null ? String(r.beta) : null],
@@ -90,10 +94,10 @@ export function ResearchPreview({
     <article className="flex flex-col gap-4" aria-label={r.patternName}>
       <header className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-          <span className="first-letter:uppercase" title={`Торговый день ${noteDay(r)}`}>{formatDay(noteDay(r))}</span>
+          <span className="first-letter:uppercase" title={t("preview.tradingDay", { date: noteDay(r) })}>{formatDay(noteDay(r))}</span>
           {r.createdBy && <><span aria-hidden="true">·</span><span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" aria-hidden="true" />{r.createdBy}</span></>}
           {r.sector && <><span aria-hidden="true">·</span><span>{r.sector}</span></>}
-          {pinned && <Pill tone="accent"><Pin className="h-3 w-3" aria-hidden="true" />Закреплено</Pill>}
+          {pinned && <Pill tone="accent"><Pin className="h-3 w-3" aria-hidden="true" />{t("preview.pinned")}</Pill>}
         </div>
         <h2 className="text-xl font-semibold leading-tight tracking-tight">
           <Highlight text={r.patternName} terms={terms} />
@@ -109,17 +113,17 @@ export function ResearchPreview({
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={onTogglePin} aria-pressed={pinned}>
             {pinned ? <PinOff className="h-3.5 w-3.5" /> : <Pin className="h-3.5 w-3.5" />}
-            {pinned ? "Открепить" : "Закрепить"}
+            {pinned ? commonI18n.t("actions.unpin") : commonI18n.t("actions.pin")}
           </Button>
           <WriteOnly>
             <Button variant="outline" size="sm" onClick={onEdit}>
-              <Pencil className="h-3.5 w-3.5" /> Изменить
+              <Pencil className="h-3.5 w-3.5" /> {commonI18n.t("actions.edit")}
             </Button>
             <AddToPlaybookButton
               payload={{
                 name: `${r.patternName} ${r.ticker ? `(${r.ticker})` : ""}`.trim(),
                 conditions: r.whatWorked || undefined,
-                notes: [r.context, r.whatFailed ? `Что не работало: ${r.whatFailed}` : ""].filter(Boolean).join("\n") || undefined,
+                notes: [r.context, r.whatFailed ? t("preview.whatFailedPb", { text: r.whatFailed }) : ""].filter(Boolean).join("\n") || undefined,
                 screenshotUrl: r.screenshotUrl || undefined,
                 screenshotNotes: r.screenshotNotes || undefined,
                 tags: r.tags || undefined,
@@ -128,7 +132,7 @@ export function ResearchPreview({
               }}
             />
             <Button variant="ghost" size="sm" onClick={onDelete} className="text-down">
-              <Trash2 className="h-3.5 w-3.5" /> Удалить
+              <Trash2 className="h-3.5 w-3.5" /> {commonI18n.t("actions.delete")}
             </Button>
           </WriteOnly>
         </div>
@@ -136,8 +140,8 @@ export function ResearchPreview({
 
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-          <div className="text-xs text-muted-foreground" title={byTrades ? "Win rate по привязанным сделкам (BE не считаются)" : "Ручная оценка — станет расчётной после 5 закрытых сделок"}>
-            Уверенность <span className="text-2xs">· {byTrades ? "по сделкам" : "ручная оценка"}</span>
+          <div className="text-xs text-muted-foreground" title={byTrades ? t("preview.confTradesTitle") : t("preview.confManualTitle")}>
+            {t("preview.confidence")} <span className="text-2xs">· {byTrades ? t("preview.byTrades") : t("preview.manual")}</span>
           </div>
           <div className="mt-1 flex items-center gap-2">
             <span className={cn("text-lg font-semibold tabular-nums", tone === "up" ? "text-up" : tone === "down" ? "text-down" : tone === "warn" ? "text-[hsl(var(--chart-3))]" : "")}>
@@ -152,7 +156,7 @@ export function ResearchPreview({
           </div>
         </div>
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Repeat className="h-3 w-3" aria-hidden="true" /> Повторений</div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground"><Repeat className="h-3 w-3" aria-hidden="true" /> {t("row.repeats")}</div>
           <div className="mt-1 text-lg font-semibold tabular-nums">{r.repeatCount ?? 0}</div>
         </div>
       </div>
@@ -163,18 +167,18 @@ export function ResearchPreview({
         <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary/10 p-3 text-sm">
           <CalendarClock className="h-4 w-4 text-primary" aria-hidden="true" />
           <span>
-            Отчёт {nextReport.ticker} — <b className="font-semibold">{fmtDate(nextReport.date, "weekdayDayMonth")}</b>
+            {rich(t("preview.nextReport", { ticker: nextReport.ticker, date: "{date}" }), { date: <b className="font-semibold">{fmtDate(nextReport.date, "weekdayDayMonth")}</b> })}
           </span>
           <CallTypePill type={nextReport.callType} />
-          {nextReport.epsEstimate != null && <span className="text-muted-foreground">прогноз EPS {fmtUsd(nextReport.epsEstimate)}</span>}
+          {nextReport.epsEstimate != null && <span className="text-muted-foreground">{t("preview.epsEstimate", { value: fmtUsd(nextReport.epsEstimate) })}</span>}
         </div>
       )}
 
-      <Section label="Контекст" text={r.context} terms={terms} />
-      <Section label="Условия рынка" text={r.marketCondition} terms={terms} />
+      <Section label={t("field.context")} text={r.context} terms={terms} />
+      <Section label={t("field.marketCondition")} text={r.marketCondition} terms={terms} />
       <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        <Section label="Что работало" text={r.whatWorked} terms={terms} tone="up" />
-        <Section label="Что не работало" text={r.whatFailed} terms={terms} tone="down" />
+        <Section label={t("field.whatWorked")} text={r.whatWorked} terms={terms} tone="up" />
+        <Section label={t("field.whatFailed")} text={r.whatFailed} terms={terms} tone="down" />
       </div>
 
       {tags.length > 0 && (
@@ -191,7 +195,7 @@ export function ResearchPreview({
 
       {hasFund && (
         <section className="rounded-xl bg-[var(--glass-bg)] px-3.5 py-2">
-          <h3 className="micro-label pt-1.5">Фундаментал на момент записи</h3>
+          <h3 className="micro-label pt-1.5">{t("preview.fundamentals")}</h3>
           <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
             {fundamentals.filter(([, v]) => v).map(([k, v]) => (
               <StatRow key={k} label={<TermLabel text={k} />} value={v} />
@@ -208,11 +212,11 @@ export function ResearchPreview({
             aria-expanded={showHist}
             className="flex w-full items-center justify-between gap-2 text-left"
           >
-            <span className="text-sm font-semibold">Отчёты {activeHist}: beat/miss и реакции</span>
+            <span className="text-sm font-semibold">{t("preview.reportsToggle", { ticker: activeHist })}</span>
             <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform", !showHist && "-rotate-90")} aria-hidden="true" />
           </button>
           {tickers.length > 1 && showHist && (
-            <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label="Тикер для истории отчётов">
+            <div className="mt-2 flex flex-wrap gap-1.5" role="group" aria-label={t("preview.historyTicker")}>
               {tickers.map((t) => (
                 <button key={t} type="button" className="chip min-h-7 px-2.5 text-xs" aria-pressed={t === activeHist} onClick={() => setHistTicker(t)}>
                   {t}
@@ -230,7 +234,7 @@ export function ResearchPreview({
 
       {related.length > 0 && (
         <section>
-          <h3 className="micro-label mb-2 flex items-center gap-1"><Link2 className="h-3 w-3" aria-hidden="true" /> Связанные заметки</h3>
+          <h3 className="micro-label mb-2 flex items-center gap-1"><Link2 className="h-3 w-3" aria-hidden="true" /> {t("preview.related")}</h3>
           <ul className="flex flex-col gap-1">
             {related.slice(0, 6).map((x) => (
               <li key={x.id}>

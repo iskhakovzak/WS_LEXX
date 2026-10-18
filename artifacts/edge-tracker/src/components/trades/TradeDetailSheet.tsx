@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
-import { REDACTED_HINT, RedactedHint } from "@/components/playbook/setup-bits";
+import { RedactedHint, redactedHint } from "@/components/playbook/setup-bits";
 import { ScreenshotDisplay } from "@/components/screenshot-fields";
 import { DateHolidayBadge } from "@/components/holiday-badge";
 import type { HolidayEvent } from "@/lib/market-intel";
@@ -18,7 +18,7 @@ import { links } from "@/lib/links";
 import { BASE } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { EVENT_LABEL, SESSION_LABEL, dayOf, tradePlaybookPayload, daysHeld, effectiveR, horizonOf, isBrokerTrade, isRedactedTrade, netPnl, parseHoldText, resultKey } from "./trade-utils";
+import { eventLabel, sessionLabel, dayOf, tradePlaybookPayload, daysHeld, effectiveR, horizonOf, isBrokerTrade, isRedactedTrade, netPnl, parseHoldText, resultKey } from "./trade-utils";
 import { ConvictionDots, HorizonPill, ResultMenu, SidePill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { ReviewChips, type PickerTarget } from "./review-tagging";
@@ -28,9 +28,9 @@ import { TradeSocial } from "./TradeSocial";
 import { QualityBlock, useAfterExitMinutes } from "@/components/replay/QualityBlock";
 import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession } from "@/components/trade-chart-parts/chart-utils";
 import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { commonI18n } from "@/i18n/ns/common";
 
-/** Session names as the DB stores them (PropReports sync writes «postmarket»; the shared map only knows «afterhours»). */
-const SESSION_LABEL_LOCAL: Record<string, string> = { ...SESSION_LABEL, postmarket: "Постмаркет", afterhours: "Постмаркет", regular: "Основная сессия" };
 
 type TradeTiming = {
   /** Wall-clock ET «HH:MM:SS» of the first fill / last fill (PropReports contextSnapshot), when known. */
@@ -109,6 +109,7 @@ type Props = {
 /** Copies a link that opens this trade (/trades?highlight=id) — for discussions, notes and messages to the curator. */
 function CopyTradeLink({ id, ticker }: { id: number; ticker: string }) {
   const { toast } = useToast();
+  const { t } = tradesI18n.useT();
   const [done, setDone] = React.useState(false);
   React.useEffect(() => {
     if (!done) return;
@@ -120,13 +121,13 @@ function CopyTradeLink({ id, ticker }: { id: number; ticker: string }) {
     try {
       await navigator.clipboard.writeText(url);
       setDone(true);
-      toast({ title: "Ссылка скопирована", description: `${ticker} · откроет эту сделку в журнале` });
+      toast({ title: t("sheet.linkCopied"), description: t("sheet.linkCopiedHint", { ticker }) });
     } catch {
-      toast({ title: "Не удалось скопировать", description: url, variant: "destructive" });
+      toast({ title: commonI18n.t("states.copyFailed"), description: url, variant: "destructive" });
     }
   };
   return (
-    <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Скопировать ссылку на сделку" title="Скопировать ссылку на сделку" onClick={() => void copy()}>
+    <Button variant="outline" size="icon" className="h-8 w-8" aria-label={t("sheet.copyLink")} title={t("sheet.copyLink")} onClick={() => void copy()}>
       {done ? <Check className="text-up" /> : <Link2 />}
     </Button>
   );
@@ -141,29 +142,31 @@ function Kpi({ label, value, className, hint, cellClassName }: { label: string; 
   );
 }
 
-const REVIEW_FIELDS = [
-  ["notes", "Заметки"],
-  ["whatWorked", "Что сработало"],
-  ["whatFailed", "Что не сработало"],
-  ["conclusion", "Вывод / урок"],
-] as const;
-type ReviewKey = (typeof REVIEW_FIELDS)[number][0];
+const REVIEW_KEYS = ["notes", "whatWorked", "whatFailed", "conclusion"] as const;
+type ReviewKey = (typeof REVIEW_KEYS)[number];
+/** [field, label] in the current language (call in render). */
+function reviewFields(): (readonly [ReviewKey, string])[] {
+  return REVIEW_KEYS.map((k) => [k, k === "notes" ? commonI18n.t("fields.notes") : tradesI18n.t(`reviewFields.${k}`)] as const);
+}
 
 /** Inline editor for the four review text fields; saves only changed fields. */
 function ReviewEditor({ trade, canEdit, onPatch }: { trade: Trade; canEdit: boolean; onPatch: Props["onPatch"] }) {
+  const { t } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const REVIEW_FIELDS = reviewFields();
   const initial = React.useMemo(
-    () => Object.fromEntries(REVIEW_FIELDS.map(([k]) => [k, trade[k] ?? ""])) as Record<ReviewKey, string>,
+    () => Object.fromEntries(REVIEW_KEYS.map((k) => [k, trade[k] ?? ""])) as Record<ReviewKey, string>,
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [trade.id, trade.notes, trade.whatWorked, trade.whatFailed, trade.conclusion],
   );
   const [draft, setDraft] = React.useState(initial);
   const [saving, setSaving] = React.useState(false);
   React.useEffect(() => setDraft(initial), [initial]);
-  const dirtyKeys = REVIEW_FIELDS.map(([k]) => k).filter((k) => draft[k] !== initial[k]);
+  const dirtyKeys = REVIEW_KEYS.filter((k) => draft[k] !== initial[k]);
 
   if (!canEdit) {
     const filled = REVIEW_FIELDS.filter(([k]) => trade[k]);
-    if (!filled.length) return <p className="text-sm text-muted-foreground">Разбор не заполнен.</p>;
+    if (!filled.length) return <p className="text-sm text-muted-foreground">{t("sheet.reviewEmpty")}</p>;
     return (
       <div className="grid gap-3 sm:grid-cols-2">
         {filled.map(([k, label]) => (
@@ -199,7 +202,7 @@ function ReviewEditor({ trade, canEdit, onPatch }: { trade: Trade; canEdit: bool
               value={draft[k]}
               onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))}
               rows={3}
-              placeholder={k === "conclusion" ? "Главный урок одной фразой" : undefined}
+              placeholder={k === "conclusion" ? t("sheet.conclusionPlaceholder") : undefined}
               className={cn("resize-y rounded-xl text-sm", draft[k] !== initial[k] && "border-primary/60")}
             />
           </div>
@@ -207,9 +210,9 @@ function ReviewEditor({ trade, canEdit, onPatch }: { trade: Trade; canEdit: bool
       </div>
       {dirtyKeys.length > 0 && (
         <div className="flex items-center justify-end gap-2">
-          <span className="mr-auto text-xs text-muted-foreground">Не сохранено · Ctrl+Enter</span>
-          <Button variant="ghost" size="sm" onClick={() => setDraft(initial)} disabled={saving}>Отменить</Button>
-          <Button size="sm" onClick={save} disabled={saving}>{saving ? "Сохраняем…" : "Сохранить разбор"}</Button>
+          <span className="mr-auto text-xs text-muted-foreground">{t("sheet.unsaved")}</span>
+          <Button variant="ghost" size="sm" onClick={() => setDraft(initial)} disabled={saving}>{tc("actions.undo")}</Button>
+          <Button size="sm" onClick={save} disabled={saving}>{saving ? tc("states.saving") : t("sheet.saveReview")}</Button>
         </div>
       )}
     </div>
@@ -217,6 +220,8 @@ function ReviewEditor({ trade, canEdit, onPatch }: { trade: Trade; canEdit: bool
 }
 
 export function TradeDetailSheet(p: Props) {
+  const { t: tt } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const t = p.trade;
   const [tab, setTab] = React.useState("overview");
   const [reviewCount, setReviewCount] = React.useState<number | null>(null);
@@ -254,18 +259,18 @@ export function TradeDetailSheet(p: Props) {
                       <DateHolidayBadge events={p.holidayEvents} />
                     </span>
                     {timing?.openedWall && (
-                      <span className="tabular-nums" title="Время первого и последнего исполнения, Нью-Йорк (ET)">
+                      <span className="tabular-nums" title={tt("sheet.fillTimesTitle")}>
                         · {timing.openedWall}{timing.closedWall ? ` → ${timing.closedWall}` : ""} ET{timing.holdSeconds != null ? ` · ${fmtDuration(timing.holdSeconds)}` : ""}
                       </span>
                     )}
                     {t.trader && <span>· {t.trader}</span>}
-                    {(t.setup || t.eventType) && <span>· {t.setup || EVENT_LABEL[t.eventType ?? ""] || t.eventType}</span>}
-                    {t.session && <span>· {SESSION_LABEL_LOCAL[t.session] ?? t.session}</span>}
+                    {(t.setup || t.eventType) && <span>· {t.setup || eventLabel(t.eventType)}</span>}
+                    {t.session && <span>· {sessionLabel(t.session, { full: true })}</span>}
                     {timing?.exitSession && timing.exitSession !== "regular" && timing.exitSession !== timing.entrySession && (
-                      <span className="text-muted-foreground" title="Позиция закрыта вне основной сессии">· выход в {timing.exitSession === "postmarket" ? "постмаркете" : timing.exitSession === "premarket" ? "премаркете" : ET_SESSION_LABEL[timing.exitSession]}</span>
+                      <span className="text-muted-foreground" title={tt("sheet.exitOutsideTitle")}>· {timing.exitSession === "postmarket" ? tt("sheet.exitIn.postmarket") : timing.exitSession === "premarket" ? tt("sheet.exitIn.premarket") : tt("sheet.exitIn.other", { session: ET_SESSION_LABEL[timing.exitSession] })}</span>
                     )}
                     <Link href={links.dayReport(dayOf(t), t.trader ?? undefined)} className="inline-flex items-center gap-1 text-primary hover:underline">
-                      · <FileText className="h-3.5 w-3.5" aria-hidden="true" /> отчёт дня
+                      · <FileText className="h-3.5 w-3.5" aria-hidden="true" /> {tt("sheet.dayReport")}
                     </Link>
                   </SheetDescription>
                 </div>
@@ -273,8 +278,8 @@ export function TradeDetailSheet(p: Props) {
                   {(p.onPrev || p.onNext) && (
                     <>
                       {p.position && <span className="mr-1 hidden text-xs tabular-nums text-muted-foreground sm:inline">{p.position.index + 1} / {p.position.total}</span>}
-                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Предыдущая сделка (K)" disabled={!p.onPrev} onClick={p.onPrev}><ChevronUp /></Button>
-                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Следующая сделка (J)" disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label={tt("sheet.prev")} title={tt("sheet.prev")} disabled={!p.onPrev} onClick={p.onPrev}><ChevronUp /></Button>
+                      <Button variant="outline" size="icon" className="h-8 w-8" aria-label={tt("sheet.next")} title={tt("sheet.next")} disabled={!p.onNext} onClick={p.onNext}><ChevronDown /></Button>
                     </>
                   )}
                   <CopyTradeLink id={t.id} ticker={t.ticker} />
@@ -284,11 +289,11 @@ export function TradeDetailSheet(p: Props) {
               {redacted && <RedactedHint />}
               {p.canEdit && (
                 <div className="flex flex-wrap items-center gap-2">
-                  {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> Редактировать</Button>}
+                  {canEditForm && <Button variant="outline" size="sm" className="gap-1.5" onClick={() => p.onEdit(t)}><Pencil className="h-3.5 w-3.5" /> {tc("actions.edit")}</Button>}
                   <AddToPlaybookButton payload={tradePlaybookPayload(t)} />
                   {canDelete && (
                     <Button variant="ghost" size="sm" className="ml-auto gap-1.5 text-muted-foreground hover:text-down" onClick={() => p.onDelete(t)}>
-                      <Trash2 className="h-3.5 w-3.5" /> Удалить
+                      <Trash2 className="h-3.5 w-3.5" /> {tc("actions.delete")}
                     </Button>
                   )}
                 </div>
@@ -298,18 +303,18 @@ export function TradeDetailSheet(p: Props) {
             <Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
               <div className="px-5 pt-3">
                 <TabsList className="w-full justify-start overflow-x-auto">
-                  <TabsTrigger value="overview">Обзор</TabsTrigger>
-                  <TabsTrigger value="chart">График</TabsTrigger>
-                  <TabsTrigger value="replay">Реплей</TabsTrigger>
-                  <TabsTrigger value="executions">Исполнения</TabsTrigger>
-                  {!redacted && <TabsTrigger value="ai">AI-разбор</TabsTrigger>}
-                  <TabsTrigger value="social">Обсуждение{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
+                  <TabsTrigger value="overview">{tt("sheet.tabs.overview")}</TabsTrigger>
+                  <TabsTrigger value="chart">{tt("sheet.tabs.chart")}</TabsTrigger>
+                  <TabsTrigger value="replay">{tt("sheet.tabs.replay")}</TabsTrigger>
+                  <TabsTrigger value="executions">{tt("sheet.tabs.executions")}</TabsTrigger>
+                  {!redacted && <TabsTrigger value="ai">{tt("sheet.tabs.ai")}</TabsTrigger>}
+                  <TabsTrigger value="social">{tt("sheet.tabs.social")}{reviewCount ? ` · ${reviewCount}` : ""}</TabsTrigger>
                 </TabsList>
               </div>
               <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-8 pt-2">
                 <TabsContent value="overview" className="space-y-5">
                   <section className="space-y-2">
-                    <p className="micro-label">Разметка</p>
+                    <p className="micro-label">{tt("sheet.markup")}</p>
                     {/* data-active keeps the "+" buttons visible here (they are hover-only in the list rows). */}
                     <div className="group" data-active="true">
                       <ReviewChips
@@ -325,18 +330,18 @@ export function TradeDetailSheet(p: Props) {
                   {!isBrokerTrade(t) && !redacted && <ChecklistStatus tradeId={t.id} />}
                   {(t.entry != null || t.exit != null) && !redacted && (
                     <section className="space-y-2">
-                      <p className="micro-label">Качество исполнения</p>
+                      <p className="micro-label">{tt("sheet.quality")}</p>
                       <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
                     </section>
                   )}
                   <section className="space-y-2">
-                    <p className="micro-label">Разбор</p>
+                    <p className="micro-label">{tt("sheet.review")}</p>
                     <ReviewEditor trade={t} canEdit={p.canEdit} onPatch={p.onPatch} />
                   </section>
                   <ContextRow trade={t} timing={timing} />
                   {t.screenshotUrl && (
                     <section className="space-y-2">
-                      <p className="micro-label">Скриншоты</p>
+                      <p className="micro-label">{tc("fields.screenshots")}</p>
                       <ScreenshotDisplay
                         urls={t.screenshotUrl}
                         notes={t.screenshotNotes}
@@ -355,7 +360,8 @@ export function TradeDetailSheet(p: Props) {
                 </TabsContent>
                 <TabsContent value="chart" className="space-y-4">
                   <React.Suspense fallback={<Skeleton className="h-[360px] rounded-2xl" />}>
-                    <LazyTradeChart tradeId={t.id} ticker={t.ticker} date={t.date} side={t.side} entry={t.entry} exit={t.exit} stop={t.stop} rMultiple={t.rMultiple} target={ideaTarget} />
+                    {/* Multi-day trades: TradeChart loads every day from entry to exit (same window as the replay). */}
+                    <LazyTradeChart tradeId={t.id} ticker={t.ticker} date={t.date} side={t.side} entry={t.entry} exit={t.exit} stop={t.stop} rMultiple={t.rMultiple} target={ideaTarget} exitDate={t.exitDate} horizon={horizonOf(t)} result={t.result} />
                   </React.Suspense>
                   <React.Suspense fallback={<Skeleton className="h-32 rounded-2xl" />}>
                     <LazyNewsFeed ticker={t.ticker} limit={10} compact cutoffDate={t.createdAt ?? `${dayOf(t)}T23:59:59Z`} />
@@ -369,7 +375,7 @@ export function TradeDetailSheet(p: Props) {
                   )}
                   {!redacted && (
                       <section className="space-y-2">
-                        <p className="micro-label">Качество исполнения</p>
+                        <p className="micro-label">{tt("sheet.quality")}</p>
                         <QualityBlock trade={t} afterExit={afterExit} onAfterExitChange={setAfterExit} />
                       </section>
                     )}
@@ -397,7 +403,7 @@ export function TradeDetailSheet(p: Props) {
             </Tabs>
           </>
         ) : (
-          <SheetHeader className="sr-only"><SheetTitle>Сделка</SheetTitle><SheetDescription>Нет данных</SheetDescription></SheetHeader>
+          <SheetHeader className="sr-only"><SheetTitle>{tc("trading.trade")}</SheetTitle><SheetDescription>{tt("sheet.noData")}</SheetDescription></SheetHeader>
         )}
       </SheetContent>
     </Sheet>
@@ -406,6 +412,8 @@ export function TradeDetailSheet(p: Props) {
 
 /** One row of five: net (gross / fees in the tooltip), entry -> exit, hold, R or $ per share, size. */
 function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number | null }) {
+  const { t: tt } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const r = effectiveR(t);
   const net = netPnl(t);
   const open = resultKey(t.result) === "open";
@@ -419,43 +427,45 @@ function KpiRow({ trade: t, holdSeconds }: { trade: Trade; holdSeconds: number |
     // Phones: two columns, prices on their own full row; wider: one row, the price pair gets more room.
     <div className="grid grid-flow-dense grid-cols-2 gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_repeat(3,minmax(0,1fr))]">
       <Kpi
-        label={t.fees ? "Нетто" : "P&L"}
+        label={t.fees ? tc("trading.net") : "P&L"}
         value={fmtUsd(net, { signed: true, decimals: "auto" })}
         className={net == null ? "text-muted-foreground" : toneText(toneOf(net))}
-        hint={redacted ? REDACTED_HINT : t.fees && t.pnl != null ? `Брутто ${fmtUsd(t.pnl, { signed: true, decimals: "auto" })} · комиссии ${fmtUsd(-Math.abs(t.fees), { signed: true, decimals: "auto" })}` : undefined}
+        hint={redacted ? redactedHint() : t.fees && t.pnl != null ? tt("sheet.kpi.grossFees", { gross: fmtUsd(t.pnl, { signed: true, decimals: "auto" }), fees: fmtUsd(-Math.abs(t.fees), { signed: true, decimals: "auto" }) }) : undefined}
       />
-      <Kpi label="Вход → выход" cellClassName="col-span-2 sm:col-span-1" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
+      <Kpi label={tt("sheet.kpi.entryExit")} cellClassName="col-span-2 sm:col-span-1" value={`${fmtPrice(t.entry)} → ${open && t.exit == null ? "…" : fmtPrice(t.exit)}`} />
       {open && t.exit == null
-        ? <Kpi label="В позиции" value={held != null ? `${held} дн.` : "—"} className="text-primary" />
-        : <Kpi label="Удержание" value={hold != null ? fmtDuration(hold) : t.holdTime || "—"} className={hold == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
+        ? <Kpi label={tc("trading.inPosition")} value={held != null ? tt("sheet.kpi.daysShort", { count: held }) : "—"} className="text-primary" />
+        : <Kpi label={tc("trading.holdTime")} value={hold != null ? fmtDuration(hold) : t.holdTime || "—"} className={hold == null && !t.holdTime ? "text-muted-foreground" : undefined} />}
       {useR
-        ? <Kpi label={r.derived ? "R (по ценам)" : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
-        : <Kpi label="На акцию" value={fmtUsd(perShare, { signed: true })} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? REDACTED_HINT : "Брутто на акцию: стоп не задан, R не считается"} />}
-      <Kpi label="Объём" value={t.qty != null ? `${fmtCount(t.qty)} шт.` : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? REDACTED_HINT : undefined} />
+        ? <Kpi label={r.derived ? tt("sheet.kpi.rDerived") : "R"} value={fmtR(r.value)} className={toneText(toneOf(r.value))} />
+        : <Kpi label={tt("sheet.kpi.perShare")} value={fmtUsd(perShare, { signed: true })} className={perShare == null ? "text-muted-foreground" : toneText(toneOf(perShare))} hint={redacted ? redactedHint() : tt("sheet.kpi.perShareHint")} />}
+      <Kpi label={tt("sheet.kpi.volume")} value={t.qty != null ? tc("units.shares", { count: fmtCount(t.qty) }) : "—"} className={t.qty == null ? "text-muted-foreground" : undefined} hint={redacted ? redactedHint() : undefined} />
     </div>
   );
 }
 
 function ContextRow({ trade: t, timing }: { trade: Trade; timing: TradeTiming | null }) {
+  const { t: tt } = tradesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const items: [string, React.ReactNode][] = [];
   // Size, gross/fees and hold are in the KPI row; the data source is not the trader's concern.
-  if (t.stop != null && Number(t.stop) > 0) items.push(["Стоп", fmtPrice(t.stop)]);
-  if (t.riskUsd != null) items.push(["Риск", fmtUsd(t.riskUsd, { decimals: "trim" })]);
-  if (timing?.entrySession && timing.exitSession && timing.entrySession !== timing.exitSession) items.push(["Сессии", `${ET_SESSION_LABEL[timing.entrySession]} → ${ET_SESSION_LABEL[timing.exitSession]}`]);
+  if (t.stop != null && Number(t.stop) > 0) items.push([tc("trading.stop"), fmtPrice(t.stop)]);
+  if (t.riskUsd != null) items.push([tc("trading.risk"), fmtUsd(t.riskUsd, { decimals: "trim" })]);
+  if (timing?.entrySession && timing.exitSession && timing.entrySession !== timing.exitSession) items.push([tt("sheet.context.sessions"), `${ET_SESSION_LABEL[timing.entrySession]} → ${ET_SESSION_LABEL[timing.exitSession]}`]);
   const held = daysHeld(t);
-  if (held != null && horizonOf(t) !== "intraday") items.push(["Дней", held]);
+  if (held != null && horizonOf(t) !== "intraday") items.push([tt("sheet.context.days"), held]);
   if (t.relativeVolume != null) items.push(["RVOL", `${t.relativeVolume}x`]);
   if (t.float) items.push(["Float", t.float]);
-  if (t.marketCap) items.push(["Капитализация", t.marketCap]);
-  if (t.sector) items.push(["Сектор", t.sector]);
+  if (t.marketCap) items.push([tc("trading.marketCap"), t.marketCap]);
+  if (t.sector) items.push([tc("trading.sector"), t.sector]);
   if (t.atr != null) items.push(["ATR", t.atr]);
-  if (t.slippage != null) items.push(["Проскальз.", t.slippage]);
-  if (t.eventType) items.push(["Событие", EVENT_LABEL[t.eventType] ?? t.eventType]);
+  if (t.slippage != null) items.push([tt("sheet.context.slippage"), t.slippage]);
+  if (t.eventType) items.push([tt("sheet.context.event"), eventLabel(t.eventType)]);
   const hasPsy = t.conviction != null || t.confidenceGrade;
   if (!items.length && !hasPsy) return null;
   return (
     <section className="space-y-2">
-      <p className="micro-label">Контекст</p>
+      <p className="micro-label">{tt("sheet.context.title")}</p>
       <div className="flex flex-wrap gap-1.5">
         {items.map(([k, v]) => (
           <span key={k} className="inline-flex items-center gap-1 rounded-full bg-[var(--glass-bg)] px-2.5 py-1 text-xs">
@@ -466,10 +476,10 @@ function ContextRow({ trade: t, timing }: { trade: Trade; timing: TradeTiming | 
       </div>
       {hasPsy && (
         <div className="flex flex-wrap items-center gap-4 text-sm">
-          {t.conviction != null && <span className="inline-flex items-center gap-2 text-muted-foreground">Убеждённость <ConvictionDots value={t.conviction} /></span>}
+          {t.conviction != null && <span className="inline-flex items-center gap-2 text-muted-foreground">{tt("sheet.context.conviction")} <ConvictionDots value={t.conviction} /></span>}
           {t.confidenceGrade && (
             <span className="inline-flex items-center gap-2 text-muted-foreground">
-              Грейд <Pill tone={t.confidenceGrade === "A+" ? "up" : t.confidenceGrade === "A" ? "accent" : t.confidenceGrade === "B" ? "warn" : "down"}>{t.confidenceGrade}</Pill>
+              {tt("sheet.context.grade")} <Pill tone={t.confidenceGrade === "A+" ? "up" : t.confidenceGrade === "A" ? "accent" : t.confidenceGrade === "B" ? "warn" : "down"}>{t.confidenceGrade}</Pill>
             </span>
           )}
         </div>

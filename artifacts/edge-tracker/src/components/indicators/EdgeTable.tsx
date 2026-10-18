@@ -6,6 +6,7 @@ import { CATEGORY_META, HORIZONS, HORIZON_META, type Horizon, type LibIndicator 
 import { FitMeter, Highlight } from "./IndicatorCard";
 import { EMPTY_STATS, type IndicatorStats } from "./stats";
 import { fmtR, fmtUsd } from "@/lib/format";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 type Col = "name" | "count" | "winRate" | "avgR" | "netPnl" | Horizon;
 
@@ -26,6 +27,7 @@ export function EdgeTable({
   query: string;
   onOpen: (id: string) => void;
 }) {
+  const { t } = indicatorsI18n.useT();
   const [sort, setSort] = useState<{ col: Col; dir: 1 | -1 } | null>(null);
 
   const rows = useMemo(() => {
@@ -75,15 +77,15 @@ export function EdgeTable({
     <Panel padded={false} className="overflow-hidden">
       <TableScroll className="mx-0 px-0">
         <table className="w-full min-w-[760px] text-sm tabular-nums">
-          <caption className="sr-only">Сравнение индикаторов по моим сделкам</caption>
+          <caption className="sr-only">{t("table.caption")}</caption>
           <thead className="text-xs text-muted-foreground">
             <tr className="border-b border-border/60">
-              <Th col="name" className="text-left">Индикатор</Th>
+              <Th col="name" className="text-left">{t("table.indicator")}</Th>
               {HORIZONS.map((h) => <Th key={h} col={h} className="text-center">{HORIZON_META[h].label}</Th>)}
-              <Th col="count" className="text-right">Сделок</Th>
+              <Th col="count" className="text-right">{t("table.trades")}</Th>
               <Th col="winRate" className="text-right">WR</Th>
-              <Th col="avgR" className="text-right">Ср. R</Th>
-              <Th col="netPnl" className="text-right">P&L net</Th>
+              <Th col="avgR" className="text-right">{t("table.avgR")}</Th>
+              <Th col="netPnl" className="text-right">{t("table.netPnl")}</Th>
             </tr>
           </thead>
           <tbody>
@@ -96,15 +98,15 @@ export function EdgeTable({
                   onClick={() => onOpen(ind.id)}
                   onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onOpen(ind.id); } }}
                   className="cursor-pointer border-b border-border/40 last:border-0 hover:bg-[var(--glass-hover-bg)] focus-visible:bg-[var(--glass-hover-bg)] focus-visible:outline-none"
-                  aria-label={`${ind.shortName}: открыть карточку`}
+                  aria-label={t("table.openRow", { short: ind.shortName })}
                 >
                   <td className="px-3 py-2.5">
                     <div className="flex items-center gap-2">
-                      {favorites.has(ind.id) && <Star className="h-3.5 w-3.5 shrink-0 fill-current text-[hsl(var(--chart-3))]" aria-label="В моём наборе" />}
+                      {favorites.has(ind.id) && <Star className="h-3.5 w-3.5 shrink-0 fill-current text-[hsl(var(--chart-3))]" aria-label={t("table.inSet")} />}
                       <span className="font-semibold"><Highlight text={ind.shortName} q={query} /></span>
                       <span className="truncate text-xs text-muted-foreground">{ind.name}</span>
                       <Pill tone={CATEGORY_META[ind.category].tone} className="ml-auto">{CATEGORY_META[ind.category].label}</Pill>
-                      {notes[ind.id] && <StickyNote className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label="Есть заметка" />}
+                      {notes[ind.id] && <StickyNote className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-label={t("card.hasNote")} />}
                     </div>
                   </td>
                   {HORIZONS.map((h) => (

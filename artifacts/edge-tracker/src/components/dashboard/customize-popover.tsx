@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Switch } from "@/components/ui/switch";
 import { SECTION_META, type SectionId } from "./use-dashboard";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
 
 /** Reorder / hide dashboard sections. Saved per viewer in localStorage. */
 export function CustomizePopover({
@@ -19,6 +20,7 @@ export function CustomizePopover({
   onChange: (patch: { order?: SectionId[]; hidden?: SectionId[] }) => void;
   onReset: () => void;
 }) {
+  const { t } = dashboardI18n.useT();
   // Staff-only blocks are not offered to traders; moving swaps with the nearest visible-in-list neighbour.
   const list = order.filter((id) => staff || !SECTION_META[id].staffOnly);
   const move = (idx: number, dir: -1 | 1) => {
@@ -40,8 +42,8 @@ export function CustomizePopover({
           variant="outline"
           size="icon"
           className="h-9 w-9"
-          aria-label="Настроить дашборд"
-          title="Настроить дашборд"
+          aria-label={t("customize.button")}
+          title={t("customize.button")}
         >
           <SlidersHorizontal aria-hidden="true" />
         </Button>
@@ -54,8 +56,8 @@ export function CustomizePopover({
       >
         <div className="mb-2 flex items-center justify-between gap-2 px-1">
           <div>
-            <p className="text-sm font-semibold">Разделы дашборда</p>
-            <p className="text-xs text-muted-foreground">Соседние блоки встают в один ряд. Сохраняется на этом устройстве</p>
+            <p className="text-sm font-semibold">{t("customize.title")}</p>
+            <p className="text-xs text-muted-foreground">{t("customize.hint")}</p>
           </div>
         </div>
         <ul className="flex flex-col gap-1">
@@ -68,7 +70,7 @@ export function CustomizePopover({
               <Fragment key={id}>
                 {firstExtra && (
                   <li className="mt-1 border-t border-border/60 px-1 pb-0.5 pt-2" aria-hidden="true">
-                    <span className="micro-label">Дополнительно</span>
+                    <span className="micro-label">{t("customize.extra")}</span>
                   </li>
                 )}
                 <li className="flex items-center gap-2 rounded-xl px-1 py-1.5 hover:bg-[var(--glass-hover-bg)]">
@@ -77,7 +79,7 @@ export function CustomizePopover({
                     <span className={`block truncate text-sm ${visible ? "" : "text-muted-foreground"}`}>
                       {meta.label}
                     </span>
-                    <span className="block truncate text-2xs text-muted-foreground">{meta.hint}</span>
+                    <span className="block truncate text-2xs text-muted-foreground" title={meta.hint}>{meta.hint}</span>
                   </label>
                   <div className="flex shrink-0">
                     <Button
@@ -86,7 +88,7 @@ export function CustomizePopover({
                       className="h-8 w-8"
                       disabled={idx === 0}
                       onClick={() => move(idx, -1)}
-                      aria-label={`Поднять «${meta.label}»`}
+                      aria-label={t("customize.up", { label: meta.label })}
                     >
                       <ArrowUp aria-hidden="true" />
                     </Button>
@@ -96,7 +98,7 @@ export function CustomizePopover({
                       className="h-8 w-8"
                       disabled={idx === list.length - 1}
                       onClick={() => move(idx, 1)}
-                      aria-label={`Опустить «${meta.label}»`}
+                      aria-label={t("customize.down", { label: meta.label })}
                     >
                       <ArrowDown aria-hidden="true" />
                     </Button>
@@ -109,7 +111,7 @@ export function CustomizePopover({
         <div className="mt-2 flex items-center justify-end gap-2 border-t border-border/60 px-1 pt-2">
           <Button variant="ghost" size="sm" onClick={onReset}>
             <RotateCcw aria-hidden="true" />
-            Вернуть по умолчанию
+            {t("customize.reset")}
           </Button>
         </div>
       </PopoverContent>

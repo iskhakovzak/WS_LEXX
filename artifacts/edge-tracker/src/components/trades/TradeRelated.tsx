@@ -11,13 +11,20 @@ import { DEFAULT_FILTERS, computeStats, dayOf, effectiveR } from "./trade-utils"
 import { ResultPill } from "./trade-bits";
 import { TRADES_PAGE_KEY, buildTradesPageParams, fetchTradesPage } from "@/hooks/use-trades-page";
 import { fmtDate, fmtR, fmtRate } from "@/lib/format";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { commonI18n } from "@/i18n/ns/common";
+import { withNodes } from "./rich-text";
+import { shellI18n } from "@/i18n/ns/shell";
+
+const shellPlaybook = () => shellI18n.t("nav.playbook");
 
 type PlaybookLite = { id: number; name: string; setupType: string | null; ticker: string | null; sourceType: string | null; sourceId: number | null; folder: string | null };
 type IdeaLite = { id: number; ticker: string; side: string | null; status: string | null; thesis: string | null; createdAt: string; convertedTradeId?: number | null; trader?: string | null; target?: string | null };
 type ChecklistResp = { id: number; passed: boolean; responses: string; createdAt: string };
 
 
-const IDEA_STATUS: Record<string, string> = { draft: "Черновик", published: "Опубликована", approved: "Одобрена", needs_work: "На доработке", rejected: "Отклонена", converted: "Сделка" };
+/** Idea status code → label (unknown codes as is). */
+const ideaStatus = (s: string | null | undefined) => (s ? tradesI18n.tryT(`related.ideaStatus.${s}`) ?? s : "—");
 
 function Row({ icon: Icon, children, onClick, label }: { icon: React.ComponentType<{ className?: string }>; children: React.ReactNode; onClick: () => void; label: string }) {
   return (
@@ -31,6 +38,7 @@ function Row({ icon: Icon, children, onClick, label }: { icon: React.ComponentTy
 
 /** Checklist gate result for the trade. */
 export function ChecklistStatus({ tradeId }: { tradeId: number }) {
+  const { t } = tradesI18n.useT();
   const q = useQuery<ChecklistResp[]>({
     queryKey: ["trade-checklist-response", tradeId],
     queryFn: ({ signal }) => http.get<ChecklistResp[]>(`/api/checklist-responses?tradeId=${tradeId}`, { signal }),
@@ -41,7 +49,7 @@ export function ChecklistStatus({ tradeId }: { tradeId: number }) {
   if (!r) {
     return (
       <span className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
-        <ShieldQuestion className="h-4 w-4" aria-hidden="true" /> Чек-лист не привязан (быстрый ввод)
+        <ShieldQuestion className="h-4 w-4" aria-hidden="true" /> {t("related.checklistNone")}
       </span>
     );
   }
@@ -53,7 +61,7 @@ export function ChecklistStatus({ tradeId }: { tradeId: number }) {
   return (
     <span className={`inline-flex items-center gap-1.5 text-sm ${r.passed ? "text-up" : "text-down"}`}>
       {r.passed ? <ShieldCheck className="h-4 w-4" aria-hidden="true" /> : <ShieldAlert className="h-4 w-4" aria-hidden="true" />}
-      {r.passed ? "Чек-лист пройден" : "Чек-лист не пройден"}
+      {r.passed ? t("related.checklistPassed") : t("related.checklistFailed")}
       {total > 0 && <span className="tabular-nums text-muted-foreground">· {yes}/{total}</span>}
       <span className="text-muted-foreground">· #{r.id}</span>
     </span>
@@ -80,6 +88,7 @@ export function useSourceIdeaTarget(trade: Trade | null): string | null {
 
 /** Cross-links: playbook setups, ideas and history for the same ticker. */
 export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; allTrades: Trade[]; onOpenTrade: (t: Trade) => void }) {
+  const { t: tt } = tradesI18n.useT();
   const [, setLocation] = useLocation();
   const playbook = useQuery<PlaybookLite[]>({
     queryKey: ["trades-related-playbook"],
@@ -123,44 +132,46 @@ export function TradeRelated({ trade, allTrades, onOpenTrade }: { trade: Trade; 
   return (
     <div className="grid gap-4 md:grid-cols-2">
       <div className="space-y-1">
-        <p className="micro-label px-2.5">Плейбук</p>
+        <p className="micro-label px-2.5">{shellPlaybook()}</p>
         {playbook.isLoading ? <Skeleton className="h-9 rounded-xl" /> : pbMatches.length === 0 ? (
-          <p className="px-2.5 text-sm text-muted-foreground">{setup ? "Нет сетапа с таким названием." : "Укажите сетап — подтянем запись плейбука."}</p>
+          <p className="px-2.5 text-sm text-muted-foreground">{setup ? tt("related.playbookNoSetup") : tt("related.playbookSetSetup")}</p>
         ) : pbMatches.map(({ e, score }) => (
-          <Row key={e.id} icon={BookOpen} label={`Открыть в плейбуке: ${e.name}`} onClick={() => setLocation(`/playbook?highlight=${e.id}`)}>
+          <Row key={e.id} icon={BookOpen} label={tt("related.openInPlaybook", { name: e.name })} onClick={() => setLocation(`/playbook?highlight=${e.id}`)}>
             <span className="block truncate">{e.name}</span>
-            <span className="text-xs text-muted-foreground">{score >= 10 ? "создано из этой сделки" : e.setupType ?? e.folder ?? "по тикеру"}</span>
+            <span className="text-xs text-muted-foreground">{score >= 10 ? tt("related.fromThisTrade") : e.setupType ?? e.folder ?? tt("related.byTicker")}</span>
           </Row>
         ))}
       </div>
 
       <div className="space-y-1">
-        <p className="micro-label px-2.5">Идеи по {trade.ticker}</p>
+        <p className="micro-label px-2.5">{tt("related.ideasFor", { ticker: trade.ticker })}</p>
         {ideas.isLoading ? <Skeleton className="h-9 rounded-xl" /> : ideaList.length === 0 ? (
-          <p className="px-2.5 text-sm text-muted-foreground">Идей по тикеру нет.</p>
+          <p className="px-2.5 text-sm text-muted-foreground">{tt("related.noIdeas")}</p>
         ) : ideaList.map((i) => (
-          <Row key={i.id} icon={Lightbulb} label={`Идея ${i.ticker} #${i.id}`} onClick={() => setLocation(`/trade-ideas?highlight=${i.id}`)}>
+          <Row key={i.id} icon={Lightbulb} label={tt("related.ideaAria", { ticker: i.ticker, id: i.id })} onClick={() => setLocation(`/trade-ideas?highlight=${i.id}`)}>
             <span className="flex items-center gap-2">
-              <span className="truncate">{i.thesis?.split("\n")[0] || `Идея #${i.id}`}</span>
-              {i.convertedTradeId === trade.id && <Pill tone="accent">источник</Pill>}
+              <span className="truncate">{i.thesis?.split("\n")[0] || tt("related.ideaFallback", { id: i.id })}</span>
+              {i.convertedTradeId === trade.id && <Pill tone="accent">{tt("related.source")}</Pill>}
             </span>
-            <span className="text-xs text-muted-foreground">{fmtDate(i.createdAt.substring(0, 10), "shortYY")} · {IDEA_STATUS[i.status ?? ""] ?? i.status ?? "—"}</span>
+            <span className="text-xs text-muted-foreground">{fmtDate(i.createdAt.substring(0, 10), "shortYY")} · {ideaStatus(i.status)}</span>
           </Row>
         ))}
       </div>
 
       <div className="space-y-1 md:col-span-2">
-        <p className="micro-label px-2.5">История по {trade.ticker}</p>
+        <p className="micro-label px-2.5">{tt("related.historyFor", { ticker: trade.ticker })}</p>
         {history.length === 0 ? (
-          <p className="px-2.5 text-sm text-muted-foreground">Первая сделка по этому тикеру.</p>
+          <p className="px-2.5 text-sm text-muted-foreground">{tt("related.firstTrade")}</p>
         ) : (
           <>
             <p className="px-2.5 pb-1 text-sm text-muted-foreground">
-              {history.length} сделок · win rate <span className="font-medium text-foreground tabular-nums">{fmtRate(hStats.winRate)}</span> · средний R{" "}
-              <span className="font-medium text-foreground tabular-nums">{fmtR(hStats.avgR)}</span>
+              {withNodes(tt("related.historyStats", { trades: commonI18n.t("units.trades", { count: history.length }), wr: "{wr}", r: "{r}" }), {
+                wr: <span className="font-medium text-foreground tabular-nums">{fmtRate(hStats.winRate)}</span>,
+                r: <span className="font-medium text-foreground tabular-nums">{fmtR(hStats.avgR)}</span>,
+              })}
             </p>
             {history.slice(0, 5).map((t) => (
-              <Row key={t.id} icon={History} label={`Открыть сделку ${t.ticker} ${dayOf(t)}`} onClick={() => onOpenTrade(t)}>
+              <Row key={t.id} icon={History} label={tt("related.openTrade", { ticker: t.ticker, date: dayOf(t) })} onClick={() => onOpenTrade(t)}>
                 <span className="flex items-center gap-2">
                   <span className="tabular-nums">{fmtDate(dayOf(t), "shortYY")}</span>
                   <ResultPill result={t.result} />

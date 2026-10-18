@@ -11,7 +11,8 @@ import { cn } from "@/lib/utils";
 import { fmtShare, fmtV, monthLong } from "./api";
 import { downloadCsv } from "./csv";
 import type { Ctx } from "./overview";
-import { fmtCount } from "@/lib/format";
+import { fmtCount, fmtMonth } from "@/lib/format";
+import { officeI18n } from "@/i18n/ns/officeStats";
 
 type Row = {
   month: number;
@@ -36,6 +37,7 @@ const tone = (v: number | null | undefined) => (v == null || Math.abs(v) < 1e-12
 
 export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: string; onPickMonth: (m: number) => void }) {
   const { focus, view, unit } = ctx;
+  const { t } = officeI18n.useT();
   const prevY = view.years.find((y) => y.year === focus.year - 1 && y.hasData);
   const curMonth = Number(today.slice(0, 4)) === focus.year ? Number(today.slice(5, 7)) : 13;
 
@@ -74,10 +76,10 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
   const exportCsv = () => {
     const u = unit === "usd" ? "$" : "%";
     downloadCsv(`office-months-${focus.year}-${unit}.csv`, [
-      ["Месяц", `Нетто ${u}`, `Δ к пред. месяцу ${u}`, ...(prevY ? [`${prevY.year} ${u}`, `Δ к ${prevY.year} ${u}`] : []), `С начала года ${u}`,
-        ...(hasPlan ? [`План ${u}`, `К плану ${u}`] : []), "Торговых дней", "Зелёных дней", "Сделок"],
+      [t("cols.month"), t("cols.netUnit", { unit: u }), t("monthly.deltaPrevUnit", { unit: u }), ...(prevY ? [t("monthly.yearUnit", { year: prevY.year, unit: u }), t("monthly.deltaYearUnit", { year: prevY.year, unit: u })] : []), t("cols.ytdUnit", { unit: u }),
+        ...(hasPlan ? [t("monthly.planUnit", { unit: u }), t("monthly.vsPlanUnit", { unit: u })] : []), t("cols.tradingDays"), t("cols.greenDaysCount"), t("cols.trades")],
       ...rows.map((r) => [
-        `${monthLong(r.month - 1)} ${focus.year}${r.running ? " (идёт)" : ""}`, r.v, r.mom,
+        t(r.running ? "monthly.runningCsv" : "period.monthOfYear", { month: monthLong(r.month - 1), year: focus.year }), r.v, r.mom,
         ...(prevY ? [r.prevYear, r.yoy] : []), r.cum, ...(hasPlan ? [r.plan, r.vsPlan] : []), r.days, r.green, r.trades,
       ]),
     ]);
@@ -85,26 +87,30 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
 
   return (
     <Panel
-      title="Месяц к месяцу"
-      description={`${focus.year} · изменение к прошлому месяцу${prevY ? ` и к ${prevY.year}` : ""}${hasPlan ? " · нарастающий итог против ровного плана к цели" : ""} · нажмите на месяц — открыть его`}
+      title={t("monthly.title")}
+      description={[
+        prevY ? t("monthly.descWithPrev", { year: focus.year, prev: prevY.year }) : t("monthly.desc", { year: focus.year }),
+        ...(hasPlan ? [t("monthly.descPlan")] : []),
+        t("monthly.descTail"),
+      ].join(" · ")}
       icon={CalendarRange}
-      actions={rows.length > 0 && <Button variant="ghost" size="sm" onClick={exportCsv} aria-label="Скачать таблицу по месяцам CSV"><Download className="h-4 w-4" /> CSV</Button>}
+      actions={rows.length > 0 && <Button variant="ghost" size="sm" onClick={exportCsv} aria-label={t("monthly.csvAria")}><Download className="h-4 w-4" /> CSV</Button>}
     >
-      {!rows.length ? <EmptyState compact icon={CalendarRange} title={`За ${focus.year} сделок нет`} /> : (
-        <DataTable ariaLabel={`Результат офиса по месяцам ${focus.year}`} className={cn(TFOOT, "[&_tbody_td]:px-2 [&_tfoot_td]:px-2 [&_thead_th]:px-2")}>
+      {!rows.length ? <EmptyState compact icon={CalendarRange} title={t("states.noTradesYear", { year: focus.year })} /> : (
+        <DataTable ariaLabel={t("monthly.tableAria", { year: focus.year })} className={cn(TFOOT, "[&_tbody_td]:px-2 [&_tfoot_td]:px-2 [&_thead_th]:px-2 [&_thead_th]:h-auto [&_thead_th]:min-h-9 [&_thead_th]:whitespace-normal [&_thead_th]:align-bottom [&_thead_th]:leading-tight")}>
           <table>
             <thead>
               <tr>
-                <th scope="col">Месяц</th>
-                <th scope="col" className="text-right">Нетто</th>
-                <th scope="col" className="text-right" title="Результат месяца минус результат предыдущего месяца">Δ к пред.</th>
-                {prevY && <th scope="col" className="text-right" title={`Тот же месяц ${prevY.year}`}>{prevY.year}</th>}
-                {prevY && <th scope="col" className="text-right" title={`Результат месяца минус тот же месяц ${prevY.year}`}>Δ к {prevY.year}</th>}
-                <th scope="col" className="text-right">С начала года</th>
-                {hasPlan && <th scope="col" className="text-right" title={`Ровный темп к цели +${focus.goalPct}%: цель × месяц ÷ 12 (для текущего месяца — на сегодня)`}>План</th>}
-                {hasPlan && <th scope="col" className="text-right" title="Нарастающий итог минус план">К плану</th>}
-                <th scope="col" className="text-right" title="Зелёные дни из торговых">Зелёные дни</th>
-                <th scope="col" className="hidden text-right min-[1400px]:table-cell">Сделок</th>
+                <th scope="col">{t("cols.month")}</th>
+                <th scope="col" className="text-right">{t("cols.net")}</th>
+                <th scope="col" className="text-right" title={t("monthly.deltaPrevTip")}>{t("monthly.deltaPrev")}</th>
+                {prevY && <th scope="col" className="text-right" title={t("monthly.sameMonth", { year: prevY.year })}>{prevY.year}</th>}
+                {prevY && <th scope="col" className="text-right" title={t("monthly.deltaYearTip", { year: prevY.year })}>{t("monthly.deltaYear", { year: prevY.year })}</th>}
+                <th scope="col" className="text-right">{t("monthly.ytd")}</th>
+                {hasPlan && <th scope="col" className="text-right" title={t("monthly.planTip", { pct: focus.goalPct })}>{t("monthly.plan")}</th>}
+                {hasPlan && <th scope="col" className="text-right" title={t("monthly.vsPlanTip")}>{t("monthly.vsPlan")}</th>}
+                <th scope="col" className="text-right" title={t("monthly.greenTip")}>{t("cols.greenDays")}</th>
+                <th scope="col" className="hidden text-right min-[1400px]:table-cell">{t("cols.trades")}</th>
               </tr>
             </thead>
             <tbody>
@@ -120,10 +126,10 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                       disabled={!r.days}
                       onClick={(e) => { e.stopPropagation(); onPickMonth(r.month); }}
                       className="inline-flex items-center gap-2 rounded-md font-medium text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-                      title={r.days ? `Открыть ${monthLong(r.month - 1).toLowerCase()} ${focus.year}` : "Нет сделок"}
+                      title={r.days ? t("monthly.open", { month: fmtMonth(r.month - 1, "long"), year: focus.year }) : t("states.noTrades")}
                     >
                       {monthLong(r.month - 1)}
-                      {r.running && <Pill tone="accent">идёт</Pill>}
+                      {r.running && <Pill tone="accent">{t("monthly.running")}</Pill>}
                     </button>
                   </td>
                   <td className="text-right">
@@ -140,20 +146,20 @@ export function MonthlyPanel({ ctx, today, onPickMonth }: { ctx: Ctx; today: str
                   <td className={cn("text-right font-medium", tone(r.cum))}>{fmtV(r.cum, unit)}</td>
                   {hasPlan && <td className="text-right text-muted-foreground">{fmtV(r.plan, unit)}</td>}
                   {hasPlan && <td className={cn("text-right font-medium", r.vsPlan == null ? "" : r.vsPlan >= 0 ? "text-up" : "text-warn")}>{fmtV(r.vsPlan, unit)}</td>}
-                  <td className="whitespace-nowrap text-right" title={r.days ? `${r.green} зелёных из ${r.days} торговых дней` : undefined}>{r.days ? <>{fmtShare(r.green / r.days)}<span className="ml-1 hidden text-2xs text-muted-foreground min-[1400px]:inline">{r.green}/{r.days}</span></> : "—"}</td>
+                  <td className="whitespace-nowrap text-right" title={r.days ? t("monthly.greenOfDays", { green: r.green, days: r.days }) : undefined}>{r.days ? <>{fmtShare(r.green / r.days)}<span className="ml-1 hidden text-2xs text-muted-foreground min-[1400px]:inline">{r.green}/{r.days}</span></> : "—"}</td>
                   <td className="hidden text-right min-[1400px]:table-cell">{fmtCount(r.trades)}</td>
                 </tr>
               ))}
             </tbody>
             <tfoot>
               <tr className="font-semibold">
-                <td>Итого {focus.year}</td>
+                <td>{t("monthly.total", { year: focus.year })}</td>
                 <td className={cn("text-right", tone(focus.totals.net))}>{fmtV(focus.totals.net, unit)}</td>
                 <td className="text-right text-muted-foreground">—</td>
                 {prevY && <td className="text-right text-muted-foreground">{fmtV(prevTotal, unit)}</td>}
                 {prevY && <td className={cn("text-right", tone(prevTotal == null ? null : focus.totals.net - prevTotal))}>{prevTotal == null ? "—" : fmtV(focus.totals.net - prevTotal, unit)}</td>}
                 <td className={cn("text-right", tone(lastRow?.cum))}>{fmtV(lastRow?.cum, unit)}</td>
-                {hasPlan && <td className="whitespace-nowrap text-right text-muted-foreground" title="Годовая цель">цель {fmtV(focus.goal, unit)}</td>}
+                {hasPlan && <td className="whitespace-nowrap text-right text-muted-foreground" title={t("monthly.goalTip")}>{t("monthly.goal", { value: fmtV(focus.goal, unit) })}</td>}
                 {hasPlan && <td className={cn("text-right", (lastRow?.vsPlan ?? 0) >= 0 ? "text-up" : "text-warn")}>{fmtV(lastRow?.vsPlan, unit)}</td>}
                 <td className="text-right">{totalDays ? fmtShare(totalGreen / totalDays) : "—"}</td>
                 <td className="hidden text-right min-[1400px]:table-cell">{fmtCount(totalTrades)}</td>

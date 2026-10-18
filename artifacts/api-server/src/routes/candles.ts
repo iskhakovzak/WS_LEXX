@@ -8,7 +8,7 @@ import {
   listArchivedDays, type ArchiveTf, type ArchivedDay,
 } from "../lib/candleArchive";
 import { z } from "zod";
-import { AppError, badRequest, route } from "../lib/http";
+import { AppError, badRequest, route, sendError } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -37,7 +37,7 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   if (!ticker || !/^[A-Z][A-Z0-9.\-]{0,10}$/.test(ticker)) throw badRequest("INVALID_TICKER");
   const from = parseDateStrict(fromStr);
   const to = parseDateStrict(toStr);
-  if (!from || !to || fromStr > toStr) { res.status(400).json({ error: "invalid range (expected from<=to, YYYY-MM-DD)" }); return; }
+  if (!from || !to || fromStr > toStr) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
 
   const days = tradingDaysBetween(fromStr, toStr, 30);
   if (!days.length) { res.status(422).json({ error: "non_trading_day", reason: "weekend", ticker, from: fromStr, to: toStr }); return; }
@@ -82,7 +82,7 @@ router.get("/candles/:ticker/range", asyncHandler(async (req: Request, res: Resp
   const dedup: Candle[] = [];
   let lastT = -1;
   for (const c of candles) if (c.t !== lastT) { dedup.push(c); lastT = c.t; }
-  if (!dedup.length) { res.status(404).json({ error: "no candles available", ticker, from: fromStr, to: toStr, interval }); return; }
+  if (!dedup.length) throw new AppError("NO_DATA", 404, undefined, { ticker, from: fromStr, to: toStr, interval });
 
   // The response `from` / `days` say which days were actually served (older context days may have been dropped).
   const servedDays = interval === "1d" ? days : rangeDays;
@@ -174,10 +174,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
     throw badRequest("INVALID_TICKER");
   }
   const parsed = parseDateStrict(dateStr);
-  if (!parsed) {
-    res.status(400).json({ error: "invalid date (expected calendar YYYY-MM-DD)" });
-    return;
-  }
+  if (!parsed) throw new AppError("INVALID_DATE");
 
   // Pre-check: weekend (Sat/Sun) → no trading
   const probe = new Date(Date.UTC(parsed.y, parsed.m - 1, parsed.d));
@@ -241,7 +238,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
   }
 
   if (!anyFetched || allCandles.length === 0) {
-    res.status(404).json({ error: "no candles available", ticker, date: dateStr, interval, extended, daysBack });
+    sendError(res, new AppError("NO_DATA", 404, undefined, { ticker, date: dateStr, interval, extended, daysBack }));
     return;
   }
 
@@ -260,7 +257,7 @@ router.get("/candles/:ticker", asyncHandler(async (req: Request, res: Response):
     if (c.t !== lastT) { dedup.push(c); lastT = c.t; }
   }
   if (dedup.length === 0) {
-    res.status(404).json({ error: "no candles available", ticker, date: dateStr, interval, extended, daysBack });
+    sendError(res, new AppError("NO_DATA", 404, undefined, { ticker, date: dateStr, interval, extended, daysBack }));
     return;
   }
 

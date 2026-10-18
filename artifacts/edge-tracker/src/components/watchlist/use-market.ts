@@ -8,15 +8,17 @@ import { dayLevels } from "@/components/chart-engine/lib/levels";
 import { sessionVwap } from "@/components/chart-engine/lib/vwap";
 import { etParts } from "@/components/chart-engine/lib/time";
 import { type EarningsHit, type NewsDigest, type Quote } from "./lib";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 /** Quote refresh choices (ms). 0 = paused. The API caches each symbol for 60 s, so faster polling buys nothing. */
-export const QUOTE_INTERVALS = [
-  { value: 60_000, label: "1 мин" },
-  { value: 120_000, label: "2 мин" },
-  { value: 300_000, label: "5 мин" },
-  { value: 0, label: "Пауза" },
-] as const;
-export type QuoteInterval = (typeof QUOTE_INTERVALS)[number]["value"];
+export type QuoteInterval = 60_000 | 120_000 | 300_000 | 0;
+const intervalOption = (value: QuoteInterval) => ({
+  value,
+  get label() { return value === 0 ? watchlistI18n.t("quote.pause") : watchlistI18n.t("quote.min", { count: value / 60_000 }); },
+});
+export const QUOTE_INTERVALS: readonly { readonly value: QuoteInterval; readonly label: string }[] = [
+  intervalOption(60_000), intervalOption(120_000), intervalOption(300_000), intervalOption(0),
+];
 
 /** Day levels refresh: PDH/PDL never change intraday; VWAP moves slowly. One candles call per ticker per 5 min. */
 const LEVELS_INTERVAL_MS = 5 * 60_000;

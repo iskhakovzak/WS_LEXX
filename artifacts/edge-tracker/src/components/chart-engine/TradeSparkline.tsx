@@ -6,6 +6,7 @@
  * (fill times of all rows in one request; falls back to GET /api/trades/:id/executions).
  */
 import * as React from "react";
+import { chartI18n } from "@/i18n/ns/chart";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
@@ -216,7 +217,9 @@ export function TradeSparkline({ tradeId, trade, data: dataProp, width = 120, he
     dot(data.exitIdx, data.exitPrice, color(1));
   }, [data, width, height, tone, ref]);
 
-  const label = title ?? (data ? `Спарклайн: ${data.closes.length} точек${data.entryPrice != null ? `, вход ${data.entryPrice}` : ""}${data.exitPrice != null ? `, выход ${data.exitPrice}` : ""}` : "Спарклайн сделки");
+  const label = title ?? (data
+    ? [chartI18n.t("sparkline.aria", { count: data.closes.length }), data.entryPrice != null ? chartI18n.t("sparkline.entry", { price: data.entryPrice }) : null, data.exitPrice != null ? chartI18n.t("sparkline.exit", { price: data.exitPrice }) : null].filter(Boolean).join(", ")
+    : chartI18n.t("sparkline.empty"));
   return (
     <canvas
       ref={ref}

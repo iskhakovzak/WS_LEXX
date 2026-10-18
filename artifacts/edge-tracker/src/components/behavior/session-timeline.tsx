@@ -16,6 +16,10 @@ import {
 } from "./api";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
+
+const tb = behaviorI18n.t;
+const sideWord = (side: string | null | undefined) => (side === "short" ? commonI18n.t("trading.short").toLowerCase() : side === "long" ? commonI18n.t("trading.long").toLowerCase() : "");
 
 const TONE_VAR: Record<Tone, string> = {
   up: "hsl(var(--up))",
@@ -26,9 +30,10 @@ const TONE_VAR: Record<Tone, string> = {
   neutral: "hsl(var(--muted-foreground))",
 };
 
-const MARKER_LETTER: Partial<Record<PatternKey, string>> = {
-  revenge: "Р", tilt: "Т", martingale: "М", euphoria: "Э", chase: "О", overtrading: "+", disposition: "П",
-};
+/** One-letter ribbon markers (letters follow the UI language: Р / R …); patterns without a marker are absent. */
+const MARKER_KEYS = ["revenge", "tilt", "martingale", "euphoria", "chase", "overtrading", "disposition"] as const;
+const MARKER_LETTER: Partial<Record<PatternKey, string>> = {};
+for (const k of MARKER_KEYS) Object.defineProperty(MARKER_LETTER, k, { get: () => tb(`marker.${k}`), enumerable: true });
 
 function useWidth<T extends HTMLElement>(): [React.RefObject<T | null>, number] {
   const ref = React.useRef<T>(null);
@@ -123,7 +128,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
   return (
     <div ref={ref} className="relative w-full">
       {width > 0 ? (
-        <svg width={width} height={height} role="img" aria-label={`Лента сессии ${tl.date}: ${commonI18n.t("units.trades", { count: tl.summary.n })}, нетто ${fmtUsd(tl.summary.net, { signed: true, decimals: "auto" })}`} className="block">
+        <svg width={width} height={height} role="img" aria-label={tb("timeline.aria", { date: fmtDate(tl.date, "medium"), trades: commonI18n.t("units.trades", { count: tl.summary.n }), net: fmtUsd(tl.summary.net, { signed: true, decimals: "auto" }) })} className="block">
           {/* сетка часов */}
           {ticks.map((m) => (
             <g key={m}>
@@ -146,7 +151,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
             <g>
               <line x1={x(bd.entryMin)} x2={x(bd.entryMin)} y1={0} y2={height - AXIS_H} stroke="hsl(var(--down))" strokeWidth={1.5} strokeDasharray="4 3" />
               <text x={Math.min(x(bd.entryMin) + 4, PAD_L + innerW - 4)} y={12} textAnchor={x(bd.entryMin) + 120 > PAD_L + innerW ? "end" : "start"} fontSize={12} fontWeight={600} fill="hsl(var(--down))">
-                срыв: {PATTERN_SHORT[bd.key]}
+                {tb("timeline.breakdown", { pattern: PATTERN_SHORT[bd.key] })}
               </text>
             </g>
           )}
@@ -158,7 +163,7 @@ const Ribbon = React.memo(function Ribbon({ tl, onOpen }: { tl: DayTimeline; onO
             const w = Math.max(3, x(t.e) - x0);
             const tone = toneOf(t.net);
             const flagged = t.flags.filter((f) => MARKER_LETTER[f.key]);
-            const label = `${fmtClock(t.entryMin)}–${fmtClock(t.exitMin)} ${t.ticker} ${t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : ""} · ${fmtUsd(t.net, { signed: true, decimals: "auto" })} · накоплено ${fmtUsd(t.cum, { signed: true, decimals: "auto" })}` +
+            const label = `${fmtClock(t.entryMin)}–${fmtClock(t.exitMin)} ${t.ticker} ${sideWord(t.side)} · ${fmtUsd(t.net, { signed: true, decimals: "auto" })} · ${tb("timeline.accumulated", { value: fmtUsd(t.cum, { signed: true, decimals: "auto" }) })}` +
               (t.flags.length ? `\n${t.flags.map((f) => `${PATTERN_SHORT[f.key]}: ${f.note}`).join("\n")}` : "");
             return (
               <g
@@ -209,16 +214,16 @@ function TradesList({ tl }: { tl: DayTimeline }) {
   // Default: by entry time (the day's story); headers re-sort, e.g. by net or by number of flags.
   const { rows, thProps } = useTableSort(tl.trades, TRADE_ACCESSORS, "entry", "asc");
   return (
-    <DataTable maxHeight="60vh" ariaLabel={`Сделки ${tl.date}`}>
+    <DataTable maxHeight="60vh" ariaLabel={tb("timeline.tableAria", { date: fmtDate(tl.date, "medium") })}>
       <table>
         <thead>
           <tr>
-            <SortableTh {...thProps("entry")}>Вход</SortableTh>
-            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-            <SortableTh {...thProps("hold")}>Удержание</SortableTh>
-            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-            <SortableTh {...thProps("cum")} align="right">Накоплено</SortableTh>
-            <SortableTh {...thProps("flags")}>Флаги</SortableTh>
+            <SortableTh {...thProps("entry")}>{tb("timeline.col.entry")}</SortableTh>
+            <SortableTh {...thProps("ticker")}>{tb("timeline.col.ticker")}</SortableTh>
+            <SortableTh {...thProps("hold")}>{tb("timeline.col.hold")}</SortableTh>
+            <SortableTh {...thProps("net")} align="right">{tb("timeline.col.net")}</SortableTh>
+            <SortableTh {...thProps("cum")} align="right">{tb("timeline.col.cum")}</SortableTh>
+            <SortableTh {...thProps("flags")}>{tb("timeline.col.flags")}</SortableTh>
           </tr>
         </thead>
         <tbody>
@@ -228,7 +233,7 @@ function TradesList({ tl }: { tl: DayTimeline }) {
                 <Link href={links.trade(t.id)} className="underline-offset-2 hover:underline">{fmtClock(t.entryMin)}</Link>
               </td>
               <td className="whitespace-nowrap font-medium">
-                {t.ticker} <span className="text-xs font-normal text-muted-foreground">{t.side === "short" ? "шорт" : t.side === "long" ? "лонг" : ""}</span>
+                {t.ticker} <span className="text-xs font-normal text-muted-foreground">{sideWord(t.side)}</span>
               </td>
               <td className="tabular-nums">{fmtMinutes(t.holdMin)}</td>
               <td className={cn("text-right tabular-nums", toneText(toneOf(t.net)))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</td>
@@ -273,30 +278,30 @@ export function SessionTimeline({
     return [...s];
   }, [tl]);
 
-  if (!date) return <EmptyState icon={CalendarDays} title="Выберите день" description="Кликните по дню на тепловой карте выше." />;
+  if (!date) return <EmptyState icon={CalendarDays} title={tb("timeline.pickDay")} description={tb("timeline.pickDayHint")} />;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex items-center gap-1">
-          <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!prev} onClick={() => prev && onDateChange(prev)} aria-label="Предыдущий торговый день">
+          <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!prev} onClick={() => prev && onDateChange(prev)} aria-label={tb("timeline.prevDay")}>
             <ArrowLeft className="h-4 w-4" aria-hidden="true" />
           </Button>
           <span className="min-w-[8.5rem] text-center text-base font-semibold text-foreground" aria-live="polite">{fmtDate(date, "weekdayDayMonth")}</span>
-          <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!next} onClick={() => next && onDateChange(next)} aria-label="Следующий торговый день">
+          <Button size="icon" variant="ghost" className="h-8 w-8" disabled={!next} onClick={() => next && onDateChange(next)} aria-label={tb("timeline.nextDay")}>
             <ArrowRight className="h-4 w-4" aria-hidden="true" />
           </Button>
         </div>
         {tl && (
           <>
             <Pill tone="neutral">{commonI18n.t("units.trades", { count: tl.summary.n })}</Pill>
-            <Pill tone={toneOf(tl.summary.net)}>нетто {fmtUsd(tl.summary.net, { signed: true, decimals: "auto" })}</Pill>
-            {tl.summary.score != null && <Pill tone={scoreTone(tl.summary.score)} title="Индекс дисциплины дня">индекс {tl.summary.score}</Pill>}
-            {penalties.map(([k, v]) => <Pill key={k} tone="neutral" title="Штраф индекса дисциплины">{PATTERN_SHORT[k as PatternKey]} −{v}</Pill>)}
+            <Pill tone={toneOf(tl.summary.net)}>{tb("timeline.net", { value: fmtUsd(tl.summary.net, { signed: true, decimals: "auto" }) })}</Pill>
+            {tl.summary.score != null && <Pill tone={scoreTone(tl.summary.score)} title={tb("timeline.scoreTitle")}>{tb("timeline.score", { value: tl.summary.score })}</Pill>}
+            {penalties.map(([k, v]) => <Pill key={k} tone="neutral" title={tb("timeline.penaltyTitle")}>{PATTERN_SHORT[k as PatternKey]} −{v}</Pill>)}
           </>
         )}
         <Link href={dayReportHref(date, trader)} className="ml-auto inline-flex items-center gap-1 text-xs text-primary underline-offset-2 hover:underline">
-          Разбор дня <ArrowRight className="h-3 w-3" aria-hidden="true" />
+          {tb("timeline.dayReview")} <ArrowRight className="h-3 w-3" aria-hidden="true" />
         </Link>
       </div>
 
@@ -305,20 +310,20 @@ export function SessionTimeline({
       ) : !tl ? (
         <SkeletonBlock className="h-[220px] w-full rounded-xl" />
       ) : tl.trades.length === 0 ? (
-        <EmptyState icon={CalendarDays} title="В этот день сделок нет" description="Выберите другой день на тепловой карте." />
+        <EmptyState icon={CalendarDays} title={tb("timeline.noTrades")} description={tb("timeline.noTradesHint")} />
       ) : (
         <div className={cn("flex flex-col gap-2 transition-opacity duration-[var(--dur-2)]", q.isFetching && q.isPlaceholderData && "opacity-60")}>
           {tl.trades.some((t) => t.entryMin != null) ? (
             <Ribbon tl={tl} onOpen={onOpen} />
           ) : (
-            <p className="text-xs text-muted-foreground">У сделок этого дня нет времени входа — лента недоступна, ниже список.</p>
+            <p className="text-xs text-muted-foreground">{tb("timeline.noTime")}</p>
           )}
 
           {tl.summary.breakdown && (
             <p className="text-sm text-foreground">
-              <span className="font-semibold text-down">Срыв в {fmtClock(tl.summary.breakdown.entryMin)}</span>
-              {" — "}{tl.summary.breakdown.note}. До этого день {fmtUsd(tl.summary.breakdown.cumBefore, { signed: true, decimals: "auto" })}
-              {tl.summary.breakdown.netAfter != null && <>, после — ещё {fmtUsd(tl.summary.breakdown.netAfter, { signed: true, decimals: "auto" })}</>}.
+              <span className="font-semibold text-down">{tb("timeline.breakAt", { time: fmtClock(tl.summary.breakdown.entryMin) })}</span>
+              {" — "}{tl.summary.breakdown.note}. {tb("timeline.before", { value: fmtUsd(tl.summary.breakdown.cumBefore, { signed: true, decimals: "auto" }) })}
+              {tl.summary.breakdown.netAfter != null && tb("timeline.after", { value: fmtUsd(tl.summary.breakdown.netAfter, { signed: true, decimals: "auto" }) })}.
             </p>
           )}
 
@@ -329,9 +334,10 @@ export function SessionTimeline({
                 {PATTERN_SHORT[k]}
               </span>
             ))}
-            <span>Норма: {tl.norms.tradesPerDayNorm} сделок/день, реванш — вход &lt; {tl.norms.revengeMin} мин после убытка.</span>
+            <span>{tb("timeline.norm", { norm: tl.norms.tradesPerDayNorm, min: tl.norms.revengeMin })}</span>
             <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setShowList((v) => !v)} aria-expanded={showList}>
-              <Rows3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {showList ? "Скрыть список" : "Список сделок"}
+              <Rows3 className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {showList ? tb("timeline.hideList") : tb("timeline.showList")}
+
             </Button>
           </div>
 

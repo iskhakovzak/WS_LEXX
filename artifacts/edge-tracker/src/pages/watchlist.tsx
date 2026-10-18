@@ -32,6 +32,10 @@ import { canModifyOwned } from "@/lib/ownership";
 import { gpApi, gpKeys, type InPlayItem } from "@/components/game-plan/types";
 import { docToDraft, draftToDoc } from "@/components/game-plan/plan-draft";
 import { commonI18n } from "@/i18n/ns/common";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { fmtDate } from "@/lib/format";
+
+const wt = watchlistI18n.t;
 
 const LS_LISTS = "wl:lists";
 const LS_PINS = "wl:pins";
@@ -67,7 +71,7 @@ function csvCell(v: unknown) {
 }
 const round2 = (v: number) => Math.round(v * 100) / 100;
 /** «AVGO, COIN, MSTR и ещё 3» */
-const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : `${ts.slice(0, max).join(", ")} и ещё ${ts.length - max}`);
+const tickerList = (ts: string[], max = 6) => (ts.length <= max ? ts.join(", ") : wt("tickerList", { list: ts.slice(0, max).join(", "), count: ts.length - max }));
 
 /** Run async jobs with limited concurrency (fallback adds: each old POST scores the ticker synchronously). */
 async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): Promise<PromiseSettledResult<R>[]> {
@@ -86,6 +90,7 @@ async function pool<T, R>(items: T[], limit: number, fn: (x: T) => Promise<R>): 
 export default function Watchlist() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = watchlistI18n.useT();
   const { canEdit, user, isCurator } = useAuth();
   const me = user && user.role !== "guest" ? user.traderName ?? null : null;
   /** Content edit / delete of a row: its author or staff (server: 403 NOT_OWNER otherwise). */
@@ -268,7 +273,7 @@ export default function Watchlist() {
           : body.action === "delete" ? http.del(`/api/watchlist/${id}`)
           : http.post(`/api/watchlist/${id}/restore`)));
       const count = res.filter((r) => r.status === "fulfilled").length;
-      if (!count) throw new Error("Не удалось применить действие");
+      if (!count) throw new Error(wt("toast.actionFailed"));
       return { count };
     }
   }, []);
@@ -312,14 +317,14 @@ export default function Watchlist() {
     try {
       await applyLists(moving.map((item) => ({ item, list })));
       if (!opts.silent) {
-        const label = moving.length === 1 ? `${moving[0].ticker} → «${LIST_LABELS[list]}»` : `${commonI18n.t("units.tickers", { count: moving.length })} → «${LIST_LABELS[list]}»`;
+        const what = moving.length === 1 ? moving[0].ticker : commonI18n.t("units.tickers", { count: moving.length });
         toast({
-          title: label,
-          action: <ToastAction altText="Отменить перенос" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>Отменить</ToastAction>,
+          title: wt("toast.moved", { what, list: LIST_LABELS[list] }),
+          action: <ToastAction altText={wt("toast.undoMove")} onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, list }, list: p.list }))); }}>{commonI18n.t("actions.undo")}</ToastAction>,
         });
       }
     } catch (e) {
-      toast({ title: "Не удалось перенести", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.moveFailed"), description: errMsg(e), variant: "destructive" });
     }
   }, [applyLists, listOf, toast]);
 
@@ -336,11 +341,11 @@ export default function Watchlist() {
       const flagged = rows.filter((i) => i.inPlay).map((i) => i.id);
       if (flagged.length && serverInPlay) await bulk({ ids: flagged, action: "inplay", inPlay: false });
       toast({
-        title: rows.length === 1 ? `${rows[0].ticker} в архиве` : `В архив: ${rows.length}`,
-        action: <ToastAction altText="Вернуть из архива" onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, status: "passed" }, list: p.list }))); }}>Отменить</ToastAction>,
+        title: rows.length === 1 ? wt("toast.archivedOne", { ticker: rows[0].ticker }) : wt("toast.archivedMany", { count: rows.length }),
+        action: <ToastAction altText={wt("toast.undoArchive")} onClick={() => { void applyLists(prev.map((p) => ({ item: { ...p.item, status: "passed" }, list: p.list }))); }}>{commonI18n.t("actions.undo")}</ToastAction>,
       });
     } catch (e) {
-      toast({ title: "Не удалось отправить в архив", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.archiveFailed"), description: errMsg(e), variant: "destructive" });
     } finally {
       invalidate();
     }
@@ -348,8 +353,8 @@ export default function Watchlist() {
 
   const restore = useCallback((item: WatchlistItem, list: ListName = "watch") => {
     void applyLists([{ item, list }]).then(
-      () => toast({ title: `${item.ticker} → «${LIST_LABELS[list]}»` }),
-      (e) => toast({ title: "Не удалось вернуть", description: errMsg(e), variant: "destructive" }),
+      () => toast({ title: wt("toast.moved", { what: item.ticker, list: LIST_LABELS[list] }) }),
+      (e) => toast({ title: wt("toast.restoreFailed"), description: errMsg(e), variant: "destructive" }),
     );
   }, [applyLists, toast]);
 
@@ -361,7 +366,7 @@ export default function Watchlist() {
       patchCache((i) => (i.id === id ? { ...i, ...data } as WatchlistItem : i));
       return { prev };
     },
-    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev); toast({ title: "Заметка не сохранена", description: errMsg(e), variant: "destructive" }); },
+    onError: (e, _v, ctx) => { if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev); toast({ title: wt("toast.noteFailed"), description: errMsg(e), variant: "destructive" }); },
     onSettled: invalidate,
   });
 
@@ -371,7 +376,7 @@ export default function Watchlist() {
     const byTicker = new Map(realItems.map((i) => [i.ticker.toUpperCase(), i]));
     const existing = tickers.map((t) => byTicker.get(t)).filter((i): i is WatchlistItem => !!i);
     const fresh = tickers.filter((t) => !byTicker.has(t));
-    if (tickers.length > 30) { toast({ title: "Не больше 30 тикеров за раз", variant: "destructive" }); return false; }
+    if (tickers.length > 30) { toast({ title: wt("toast.max30"), variant: "destructive" }); return false; }
     setAdding(true);
     // Optimistic rows for the new tickers.
     const prev = qc.getQueryData<WatchlistItem[]>(KEYS.watchlist());
@@ -399,11 +404,11 @@ export default function Watchlist() {
         // Fallback for API builds without /quick: one POST per ticker (2 at a time) + move the existing ones.
         if (list !== "watch") setLocalLists((cur) => { const n = { ...cur }; for (const t of tickers) n[t] = list; return n; });
         const res = await pool(fresh, 2, async (ticker) => {
-          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list }, `${ticker} уже в вотчлисте`);
+          return createWatchRow({ ticker, status: "watching", inPlay: list === "today", list }, wt("toast.duplicate", { ticker }));
         });
         createdCount = res.filter((x) => x.status === "fulfilled").length;
         const failed = res.map((x, k) => (x.status === "rejected" ? `${fresh[k]}: ${errMsg(x.reason)}` : null)).filter(Boolean);
-        if (failed.length) toast({ title: `Не добавлено: ${failed.length}`, description: failed.slice(0, 4).join("\n"), variant: "destructive" });
+        if (failed.length) toast({ title: wt("toast.notAdded", { count: failed.length }), description: failed.slice(0, 4).join("\n"), variant: "destructive" });
         if (existing.length) await moveTo(existing, list, { silent: true });
       }
       if (serverLists && existing.length) {
@@ -412,15 +417,15 @@ export default function Watchlist() {
       }
       const moved = existing.filter((i) => listOf(i) !== list);
       const parts = [
-        createdCount ? `добавлено ${createdCount}` : null,
-        moved.length ? `перенесено ${moved.length}` : null,
+        createdCount ? wt("toast.addedN", { count: createdCount }) : null,
+        moved.length ? wt("toast.movedN", { count: moved.length }) : null,
       ].filter(Boolean);
-      toast({ title: `«${LIST_LABELS[list]}»: ${parts.join(", ") || "уже в списке"}`, description: tickerList(tickers) });
+      toast({ title: wt("toast.addResult", { list: LIST_LABELS[list], parts: parts.join(", ") || wt("toast.alreadyInList") }), description: tickerList(tickers) });
       if (isListName(view) && view !== list) setView(list);
       return true;
     } catch (e) {
       if (prev) qc.setQueryData(KEYS.watchlist(), prev);
-      toast({ title: "Не удалось добавить", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.addFailed"), description: errMsg(e), variant: "destructive" });
       return false;
     } finally {
       setAdding(false);
@@ -430,21 +435,21 @@ export default function Watchlist() {
 
   const updateMut = useMutation({
     mutationFn: ({ id, data }: { id: number; data: Record<string, unknown> }) => http.patch<WatchlistItem>(`/api/watchlist/${id}`, data),
-    onSuccess: (row) => { void invalidate(); setFormOpen(false); toast({ title: `${row?.ticker ?? "Тикер"} сохранён` }); },
-    onError: (e) => toast({ title: "Ошибка сохранения", description: errMsg(e), variant: "destructive" }),
+    onSuccess: (row) => { void invalidate(); setFormOpen(false); toast({ title: wt("toast.saved", { ticker: row?.ticker ?? wt("toast.tickerWord") }) }); },
+    onError: (e) => toast({ title: wt("toast.saveFailed"), description: errMsg(e), variant: "destructive" }),
   });
   const createMut = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
-      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today" }, "Тикер уже в вотчлисте"),
+      createWatchRow({ ...data, list: addTarget, inPlay: addTarget === "today" }, wt("toast.duplicateGeneric")),
     onSuccess: (row) => {
       if (!serverLists && addTarget !== "watch") setLocalLists((cur) => ({ ...cur, [row.ticker]: addTarget }));
       void invalidate(); setFormOpen(false);
-      toast({ title: `${row?.ticker ?? "Тикер"} добавлен в «${LIST_LABELS[addTarget]}»` });
+      toast({ title: wt("toast.addedTo", { ticker: row?.ticker ?? wt("toast.tickerWord"), list: LIST_LABELS[addTarget] }) });
     },
     onError: (e) => {
       const dup = e instanceof DuplicateTickerError ? e : null;
-      if (dup?.id) { setFormOpen(false); setOpenId(dup.id); toast({ title: dup.message, description: "Открыли существующую карточку" }); return; }
-      toast({ title: "Не удалось добавить", description: errMsg(e), variant: "destructive" });
+      if (dup?.id) { setFormOpen(false); setOpenId(dup.id); toast({ title: dup.message, description: wt("toast.openedExisting") }); return; }
+      toast({ title: wt("toast.addFailed"), description: errMsg(e), variant: "destructive" });
     },
   });
 
@@ -452,14 +457,14 @@ export default function Watchlist() {
     const list_items = all_items.filter(mayModify);
     const ids = list_items.filter((i) => i.id > 0).map((i) => i.id);
     if (!ids.length) return;
-    const label = ids.length === 1 ? `${list_items[0].ticker} удалён` : `Удалено тикеров: ${ids.length}`;
+    const label = ids.length === 1 ? wt("toast.deletedOne", { ticker: list_items[0].ticker }) : wt("toast.deletedMany", { count: ids.length });
     const undo = async () => {
       try {
         if (ids.length === 1) await http.post(`/api/watchlist/${ids[0]}/restore`);
         else await bulk({ ids, action: "restore" });
         void invalidate();
-        toast({ title: "Восстановлено" });
-      } catch (e) { toast({ title: "Не удалось восстановить", description: errMsg(e), variant: "destructive" }); }
+        toast({ title: wt("toast.restored") });
+      } catch (e) { toast({ title: wt("toast.restoreDeletedFailed"), description: errMsg(e), variant: "destructive" }); }
     };
     try {
       // Soft delete on the server (restorable).
@@ -469,9 +474,9 @@ export default function Watchlist() {
       setDeleting(null);
       setSelected(new Set());
       if (openId != null && ids.includes(openId)) setOpenId(null);
-      toast({ title: label, action: <ToastAction altText="Отменить удаление" onClick={undo}>Отменить</ToastAction> });
+      toast({ title: label, action: <ToastAction altText={wt("toast.undoDelete")} onClick={undo}>{commonI18n.t("actions.undo")}</ToastAction> });
     } catch (e) {
-      toast({ title: "Ошибка удаления", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.deleteFailed"), description: errMsg(e), variant: "destructive" });
     }
   };
 
@@ -479,8 +484,8 @@ export default function Watchlist() {
     mutationFn: (id: number) => http.post<{ row: WatchlistItem }>(`/api/watchlist/${id}/score`),
     onMutate: (id) => setScoringIds((cur) => new Set(cur).add(id)),
     onSettled: (_d, _e, id) => setScoringIds((cur) => { const n = new Set(cur); n.delete(id); return n; }),
-    onSuccess: (data) => { void invalidate(); toast({ title: `${data.row.ticker} · Score: ${data.row.score}/100` }); },
-    onError: (e) => toast({ title: "Ошибка расчёта", description: errMsg(e), variant: "destructive" }),
+    onSuccess: (data) => { void invalidate(); toast({ title: wt("toast.scoreResult", { ticker: data.row.ticker, score: data.row.score ?? "—" }) }); },
+    onError: (e) => toast({ title: wt("toast.scoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
   const scoreAllMut = useMutation({
     mutationFn: () => http.post<{ count: number; failed?: number; failures?: { ticker: string }[] }>("/api/watchlist/score-all"),
@@ -488,27 +493,27 @@ export default function Watchlist() {
       void invalidate();
       const failed = data.failed ?? 0;
       toast({
-        title: `Пересчитано: ${commonI18n.t("units.tickers", { count: data.count })}`,
-        description: failed > 0 ? `Ошибка у ${failed}: ${(data.failures ?? []).map((f) => f.ticker).join(", ")}` : undefined,
+        title: wt("toast.rescored", { tickers: commonI18n.t("units.tickers", { count: data.count }) }),
+        description: failed > 0 ? wt("toast.rescoreErrors", { count: failed, list: (data.failures ?? []).map((f) => f.ticker).join(", ") }) : undefined,
         variant: failed > 0 && data.count === 0 ? "destructive" : undefined,
       });
     },
-    onError: (e) => toast({ title: "Ошибка пересчёта", description: errMsg(e), variant: "destructive" }),
+    onError: (e) => toast({ title: wt("toast.rescoreFailed"), description: errMsg(e), variant: "destructive" }),
   });
 
   /** «В план дня»: append the ticker to «В игре» of my plan for today (levels from PDH/PDL/stop/target, note → plan). */
   const addToPlan = useCallback(async (item: WatchlistItem) => {
-    if (!me) { toast({ title: "План дня ведёт трейдер под своим именем", variant: "destructive" }); return; }
+    if (!me) { toast({ title: wt("toast.planOwnerOnly"), variant: "destructive" }); return; }
     setPlanBusy(true);
     try {
       const date = planDay;
       const r = await gpApi.my(date);
       const doc = draftToDoc(docToDraft(r.plan?.doc));
       if (doc.inPlay.some((t) => t.ticker.toUpperCase() === item.ticker.toUpperCase())) {
-        toast({ title: `${item.ticker} уже в плане дня` });
+        toast({ title: wt("toast.alreadyInPlan", { ticker: item.ticker }) });
         return;
       }
-      if (doc.inPlay.length >= PLAN_MAX) { toast({ title: `В плане уже ${PLAN_MAX} тикеров`, variant: "destructive" }); return; }
+      if (doc.inPlay.length >= PLAN_MAX) { toast({ title: wt("toast.planFull", { count: PLAN_MAX }), variant: "destructive" }); return; }
       const q = market.quotes[item.ticker];
       const price = q?.price ?? null;
       const lv = levels[item.ticker];
@@ -519,24 +524,24 @@ export default function Watchlist() {
       const earn = market.earnings[item.ticker];
       const entry: InPlayItem = {
         ticker: item.ticker,
-        catalyst: item.catalyst ?? (earn ? `Отчёт ${earn.callType}${earn.when === "recent" ? " (вчера)" : ""}` : ""),
+        catalyst: item.catalyst ?? (earn ? wt(earn.when === "recent" ? "toast.planCatalystEarnRecent" : "toast.planCatalystEarn", { call: earn.callType }) : ""),
         bias: plan.side === "long" ? "bull" : plan.side === "short" ? "bear" : "neutral",
         grade: null,
         levels: { support, resistance },
         plan: item.notes ?? "",
         horizon: listOf(item) === "swing" ? "swing" : "intraday",
-        risk_note: plan.stop != null ? `Стоп ${plan.stop}` : "",
+        risk_note: plan.stop != null ? wt("toast.planStop", { price: plan.stop }) : "",
         trigger: "",
       };
       await gpApi.saveMy(date, { ...doc, inPlay: [...doc.inPlay, entry], status: r.plan?.status ?? "draft" });
       void qc.invalidateQueries({ queryKey: gpKeys.my(date) });
       toast({
-        title: date === today ? `${item.ticker} добавлен в план дня` : `${item.ticker} добавлен в план на ${date.slice(8, 10)}.${date.slice(5, 7)}`,
-        description: support.length || resistance.length ? `Уровни: ${[...support, ...resistance].sort((a, b) => a - b).join(" · ")}` : undefined,
-        action: <ToastAction altText="Открыть план дня" onClick={() => navigate(links.gamePlan(date))}>Открыть</ToastAction>,
+        title: date === today ? wt("toast.addedToPlanToday", { ticker: item.ticker }) : wt("toast.addedToPlanOn", { ticker: item.ticker, date: fmtDate(date, "dayMonthNumeric") }),
+        description: support.length || resistance.length ? wt("toast.planLevels", { levels: [...support, ...resistance].sort((a, b) => a - b).join(" · ") }) : undefined,
+        action: <ToastAction altText={wt("toast.openPlan")} onClick={() => navigate(links.gamePlan(date))}>{commonI18n.t("actions.open")}</ToastAction>,
       });
     } catch (e) {
-      toast({ title: "Не удалось добавить в план", description: errMsg(e), variant: "destructive" });
+      toast({ title: wt("toast.planFailed"), description: errMsg(e), variant: "destructive" });
     } finally {
       setPlanBusy(false);
     }
@@ -562,15 +567,15 @@ export default function Watchlist() {
     if (!ts.length) return;
     const ok = await copyText(ts.join(", "));
     toast(ok
-      ? { title: `Скопировано: ${commonI18n.t("units.tickers", { count: ts.length })}`, description: tickerList(ts) }
-      : { title: "Не удалось скопировать", description: "Браузер не дал доступ к буферу обмена", variant: "destructive" });
+      ? { title: wt("toast.copiedTickers", { tickers: commonI18n.t("units.tickers", { count: ts.length }) }), description: tickerList(ts) }
+      : { title: commonI18n.t("states.copyFailed"), description: wt("toast.clipboardDenied"), variant: "destructive" });
   }, [toast]);
 
   const exportCsv = () => {
-    const head = ["Тикер", "Список", "Цена", "Изм %", "Гэп %", "rVol", "ATR", "Ближайший уровень", "Цена уровня", "До уровня %", "Мои сделки", "Net $", "WR %", "Стоп", "Цель", "Катализатор", "Заметка", "Теги"];
+    const head = [t("csv.ticker"), t("csv.list"), t("csv.price"), t("csv.change"), t("csv.gap"), "rVol", "ATR", t("csv.nearest"), t("csv.levelPrice"), t("csv.toLevel"), t("csv.myTrades"), "Net $", "WR %", t("csv.stop"), t("csv.target"), t("csv.catalyst"), t("csv.note"), t("csv.tags")];
     const rowsCsv = visible.map((r) => {
       const q = r.quote; const k = r.keys[0]; const h = r.history;
-      return [r.item.ticker, r.list ? LIST_LABELS[r.list] : "Архив", q?.price ?? "", q?.change ?? "", q?.gapPct ?? "", q?.relativeVolume ?? "", q?.atr ?? "",
+      return [r.item.ticker, r.list ? LIST_LABELS[r.list] : t("list.archive"), q?.price ?? "", q?.change ?? "", q?.gapPct ?? "", q?.relativeVolume ?? "", q?.atr ?? "",
         k?.label ?? "", k?.price ?? "", k ? k.distPct.toFixed(2) : "", h?.n ?? "", h ? h.net.toFixed(2) : "", h?.wr != null ? Math.round(h.wr * 100) : "",
         r.item.stopPrice ?? "", r.item.targetPrice ?? "", r.item.catalyst ?? "", r.item.notes ?? "", r.item.tags ?? ""];
     });
@@ -674,7 +679,7 @@ export default function Watchlist() {
         .then((r) => {
           setLocalLists({});
           void invalidate();
-          if (r.count) toast({ title: `Списки перенесены в общий вотчлист: ${r.count}` });
+          if (r.count) toast({ title: wt("toast.migrated", { count: r.count }) });
         })
         .catch(() => { /* keep local overrides; retry next load */ })
         .finally(() => { migrating.current = false; });
@@ -701,7 +706,7 @@ export default function Watchlist() {
     } else if (canEdit) {
       setPrefill({ value: ticker, nonce: Date.now() });
     } else {
-      toast({ title: `${ticker} нет в вотчлисте` });
+      toast({ title: wt("toast.notInWatchlist", { ticker }) });
     }
     try {
       const params = new URLSearchParams(window.location.search);
@@ -749,11 +754,9 @@ export default function Watchlist() {
   return (
     <Page>
       <PageHeader
-        title="Вотчлист"
+        title={t("page.title")}
         icon={Radar}
-        description={days.weekend
-          ? `Выходной: уровни PDH/PDL — на сессию ${days.levelsDay.slice(8, 10)}.${days.levelsDay.slice(5, 7)}, VWAP появится после открытия.`
-          : "Рабочий список дня: тикеры, уровни, сценарий и твоя история по каждому."}
+        description={days.weekend ? t("page.descWeekend", { date: fmtDate(days.levelsDay, "dayMonthNumeric") }) : t("page.desc")}
         actions={
           <>
             <QuoteStatus
@@ -841,11 +844,11 @@ export default function Watchlist() {
         <div role="note" className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-[var(--glass-bg)] px-3 py-2 text-sm">
           <History className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-muted-foreground">
-            <span className="font-medium text-foreground">{commonI18n.t("units.tickers", { count: staleToday.length })}</span> в «Сегодня» с прошлых сессий: {tickerList(staleToday.map((i) => i.ticker), 8)}
+            {t("stale.text", { tickers: commonI18n.t("units.tickers", { count: staleToday.length }), list: tickerList(staleToday.map((i) => i.ticker), 8) })}
           </span>
-          <Button size="sm" variant="outline" onClick={() => void moveTo(staleToday, "watch")}>В «Наблюдаю»</Button>
-          <Button size="sm" variant="outline" onClick={() => void archive(staleToday)}><Archive className="h-4 w-4" />В архив</Button>
-          <Button size="sm" variant="ghost" onClick={() => setStaleDismissed(prevSession)} title="Скрыть до следующей сессии">Оставить</Button>
+          <Button size="sm" variant="outline" onClick={() => void moveTo(staleToday, "watch")}>{t("stale.toWatch")}</Button>
+          <Button size="sm" variant="outline" onClick={() => void archive(staleToday)}><Archive className="h-4 w-4" />{t("stale.toArchive")}</Button>
+          <Button size="sm" variant="ghost" onClick={() => setStaleDismissed(prevSession)} title={t("stale.keepTitle")}>{t("stale.keep")}</Button>
         </div>
       )}
 
@@ -855,9 +858,9 @@ export default function Watchlist() {
         {isError && (
           <EmptyState
             icon={AlertTriangle}
-            title="Не удалось загрузить вотчлист"
+            title={t("empty.loadFailed")}
             description={errMsg(error)}
-            action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin motion-reduce:animate-none")} />Повторить</Button>}
+            action={<Button variant="outline" onClick={() => refetch()} disabled={isFetching}><RefreshCw className={cn("h-4 w-4", isFetching && "animate-spin motion-reduce:animate-none")} />{commonI18n.t("actions.retry")}</Button>}
           />
         )}
 
@@ -890,20 +893,20 @@ export default function Watchlist() {
           filtersActive && inView.length > 0 ? (
             <EmptyState
               icon={Search}
-              title="Ничего не найдено"
-              description="Под фильтры не подходит ни один тикер этого списка."
-              action={<Button variant="outline" onClick={() => { setQuery(""); setFilters(new Set()); }}>Сбросить фильтры</Button>}
+              title={commonI18n.t("states.nothingFound")}
+              description={t("empty.noMatch")}
+              action={<Button variant="outline" onClick={() => { setQuery(""); setFilters(new Set()); }}>{commonI18n.t("actions.resetFilters")}</Button>}
             />
           ) : view === "archive" ? (
-            <EmptyState icon={Archive} title="Архив пуст" description="Сюда попадают тикеры, которые вы убрали из работы (Del или перетаскиванием на «Архив»). Отсюда их можно вернуть." compact />
+            <EmptyState icon={Archive} title={t("empty.archiveTitle")} description={t("empty.archiveText")} compact />
           ) : (
             <EmptyState
               icon={view === "today" ? Flame : view === "swing" ? Clock : Radar}
-              title={view === "all" ? "Вотчлист пуст" : `«${LIST_LABELS[view as ListName]}» пуст`}
+              title={view === "all" ? t("empty.allTitle") : t("empty.listTitle", { list: LIST_LABELS[view as ListName] })}
               description={canEdit
-                ? `Впишите тикеры в поле выше — можно сразу несколько через запятую или пробел. ${view === "today" ? "Сюда — то, что торгуете сегодня." : view === "swing" ? "Сюда — позиции и переносы на несколько дней." : ""}`
-                : "Тикеры добавляют трейдеры команды."}
-              action={canEdit ? <Button className="bg-primary-solid" onClick={() => addRef.current?.focus()}>Добавить тикеры <Kbd className="ml-1">A</Kbd></Button> : undefined}
+                ? t(view === "today" ? "empty.addHintToday" : view === "swing" ? "empty.addHintSwing" : "empty.addHint")
+                : t("empty.readOnly")}
+              action={canEdit ? <Button className="bg-primary-solid" onClick={() => addRef.current?.focus()}>{t("empty.addTickers")} <Kbd className="ml-1">A</Kbd></Button> : undefined}
             />
           )
         )}

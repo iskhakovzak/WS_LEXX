@@ -1,6 +1,9 @@
 /** Trade ideas — shared types and pure helpers (levels parsing, R:R, pipeline stage). */
-import type { Tone } from "@/components/ds";
-import { fmtDate } from "@/lib/format";
+import type { Tone } from "@/components/ds";
+
+import { fmtDate, fmtRelative } from "@/lib/format";
+import { ideasI18n } from "@/i18n/ns/ideas";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type Reaction = { id: number; tradeIdeaId: number; trader: string; reaction: string; comment: string | null; createdAt: string };
 /** Trade linked to an idea. `r`/`net`/`outcome` are computed server-side with the shared trade math (R signed, net = gross − |fees|). */
@@ -25,6 +28,8 @@ export type TradeIdea = {
   commentCount?: number; lastCommentAt?: string | null; unreadCount?: number;
   /** Dedicated columns (trade_ideas.horizon / valid_until); `expired` = published, not converted, valid_until < today (NY). */
   horizon?: Horizon | null; validUntil?: string | null; expired?: boolean; ideaDate?: string | null;
+  /** How the linked trade got attached: «auto» = matched to the author's PropReports trade, «manual» = linked by staff. */
+  tradeLinkSource?: "auto" | "manual" | null; tradeLinkedAt?: string | null;
 };
 
 export type IdeaTracking = {
@@ -79,21 +84,21 @@ export function levelPlan(side: string | null | undefined, entryZone: string | n
 
   if (entry != null && stopN != null) {
     const wrongStop = isShort ? stopN <= entry : stopN >= entry;
-    if (wrongStop) issues.push(isShort ? "Для шорта стоп должен быть выше входа" : "Для лонга стоп должен быть ниже входа");
+    if (wrongStop) issues.push(ideasI18n.t(isShort ? "issues.stopShort" : "issues.stopLong"));
     else riskPerShare = Math.abs(entry - stopN);
   }
   if (entry != null && targets.length) {
     const wrongTarget = targets.some((t) => (isShort ? t >= entry : t <= entry));
-    if (wrongTarget) issues.push(isShort ? "Для шорта цель должна быть ниже входа" : "Для лонга цель должна быть выше входа");
+    if (wrongTarget) issues.push(ideasI18n.t(isShort ? "issues.targetShort" : "issues.targetLong"));
     else rewardPerShare = Math.abs(targets[0] - entry);
   }
   if (riskPerShare && rewardPerShare != null) {
     rr = rewardPerShare / riskPerShare;
     rrFinal = Math.abs(targets[targets.length - 1] - (entry as number)) / riskPerShare;
-    if (rr < 1) issues.push("R:R меньше 1 — потенциал ниже риска");
+    if (rr < 1) issues.push(ideasI18n.t("issues.rrBelowOne"));
   }
   if (entry != null && stopN != null && riskPerShare && riskPerShare / entry > 0.15) {
-    issues.push("Стоп дальше 15% от входа — проверьте уровни");
+    issues.push(ideasI18n.t("issues.stopFar"));
   }
   return {
     isShort, entry,
@@ -118,21 +123,27 @@ export function rrTone(rr: number | null | undefined): Tone {
 
 export type Stage = "draft" | "review" | "active" | "won" | "lost" | "rejected";
 
-export const STAGES: { key: Stage; label: string; short: string; tone: Tone; hint: string }[] = [
-  { key: "draft", label: "Черновик", short: "Черновики", tone: "neutral", hint: "Видны всей команде, но ещё не отправлены на ревью" },
-  { key: "review", label: "На ревью", short: "На ревью", tone: "warn", hint: "Опубликованы и ждут решения куратора" },
-  { key: "active", label: "Активна", short: "Активные", tone: "accent", hint: "Одобрены или в сделке, цель и стоп ещё не задеты" },
-  { key: "won", label: "Сработала", short: "Сработали", tone: "up", hint: "Цель достигнута раньше стопа или сделка в плюсе" },
-  { key: "lost", label: "Не сработала", short: "Не сработали", tone: "down", hint: "Стоп задет раньше цели или сделка в минусе / в ноль" },
-  { key: "rejected", label: "Отклонена", short: "Отклонены", tone: "purple", hint: "Куратор отклонил идею" },
+type StageDef = { key: Stage; readonly label: string; readonly short: string; tone: Tone; readonly hint: string };
+/** Labels are getters: read at render time in the current UI language. */
+const stage = (key: Stage, tone: Tone): StageDef => ({
+  key,
+  tone,
+  get label() { return ideasI18n.t(`stage.${key}.label`); },
+  get short() { return ideasI18n.t(`stage.${key}.short`); },
+  get hint() { return ideasI18n.t(`stage.${key}.hint`); },
+});
+export const STAGES: StageDef[] = [
+  stage("draft", "neutral"), stage("review", "warn"), stage("active", "accent"),
+  stage("won", "up"), stage("lost", "down"), stage("rejected", "purple"),
 ];
 export const STAGE_BY_KEY = Object.fromEntries(STAGES.map((s) => [s.key, s])) as Record<Stage, (typeof STAGES)[number]>;
 
 export function normalizeTradeResult(raw: string | null | undefined): "win" | "loss" | "breakeven" | "open" {
   const r = (raw ?? "").toLowerCase().trim();
-  if (r === "win" || r === "winner" || r === "прибыль" || r === "profit" || r === "профит") return "win";
-  if (r === "loss" || r === "loser" || r === "убыток" || r === "убыточный" || r === "лосс") return "loss";
-  if (r === "breakeven" || r === "be" || r === "ноль" || r === "безубыток" || r === "бу") return "breakeven";
+  // Legacy stored values (some rows were written in Russian) — data parsing, not UI text.
+  if (r === "win" || r === "winner" || r === "прибыль" || r === "profit" || r === "профит") return "win"; // i18n-ignore
+  if (r === "loss" || r === "loser" || r === "убыток" || r === "убыточный" || r === "лосс") return "loss"; // i18n-ignore
+  if (r === "breakeven" || r === "be" || r === "ноль" || r === "безубыток" || r === "бу") return "breakeven"; // i18n-ignore
   return "open";
 }
 
@@ -177,12 +188,19 @@ export function stageOf(i: TradeIdea, tr?: IdeaTracking | null): Stage {
   return "review";
 }
 
-/** Horizon: the dedicated column first, legacy tag («Интрадей/Овернайт/Свинг») as fallback. */
+/** Horizon: the dedicated column first, legacy tag (RU «Интрадей/Овернайт/Свинг») as fallback. */
 export function ideaHorizon(i: Pick<TradeIdea, "horizon" | "tags">): Horizon | null {
   return i.horizon ?? horizonOf(i.tags);
 }
 
 export const SIDE_TONE = (side: string | null | undefined): Tone => (side === "Short" ? "down" : side === "Long" ? "up" : "neutral");
+
+/** Display of the stored side code ("Long" / "Short"): RU «Лонг / Шорт», EN/UZ «Long / Short». Other values as is. */
+export function sideLabel(side: string | null | undefined): string {
+  if (side === "Long") return commonI18n.t("trading.long");
+  if (side === "Short") return commonI18n.t("trading.short");
+  return side ?? "";
+}
 
 export const QUALITY_TONE: Record<string, Tone> = { "A+": "up", A: "up", "B+": "accent", B: "accent", C: "warn", D: "down" };
 
@@ -199,14 +217,8 @@ export function relTime(iso: string | null | undefined): string {
   if (!iso) return "";
   const d = new Date(iso);
   const diff = Date.now() - d.getTime();
-  const min = Math.round(diff / 60000);
-  if (min < 1) return "только что";
-  if (min < 60) return `${min} мин назад`;
-  const h = Math.round(min / 60);
-  if (h < 24) return `${h} ч назад`;
-  const days = Math.round(h / 24);
-  if (days < 7) return `${days} дн назад`;
-  return fmtDate(d, "dayMonth");
+  // A week or more back reads better as a date.
+  return diff < 7 * 86_400_000 ? fmtRelative(d) : fmtDate(d, "dayMonth");
 }
 
 export function initials(name: string | null | undefined): string {
@@ -231,15 +243,17 @@ export function writePref(key: string, value: string) {
 // Stored in trade_ideas.horizon (the API migrated the legacy tag once); the tag is still kept in sync for old filters.
 
 export type Horizon = "intraday" | "overnight" | "swing";
-export const HORIZONS: { key: Horizon; label: string }[] = [
-  { key: "intraday", label: "Интрадей" },
-  { key: "overnight", label: "Овернайт" },
-  { key: "swing", label: "Свинг" },
-];
+export const HORIZONS: { key: Horizon; readonly label: string }[] = (["intraday", "overnight", "swing"] as const).map((key) => ({
+  key,
+  get label() { return commonI18n.t(`trading.${key}`); },
+}));
+/** Legacy horizon tag written into `tags` (the API parses it, RU in every UI language — a stored code, not display). */
+const HORIZON_TAG: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" }; // i18n-ignore
+// Tag parsing accepts RU and EN spellings (data, not UI text).
 const HORIZON_ALIASES: Record<string, Horizon> = {
-  intraday: "intraday", "интрадей": "intraday", "интрадэй": "intraday", "day": "intraday",
-  overnight: "overnight", "овернайт": "overnight",
-  swing: "swing", "свинг": "swing",
+  intraday: "intraday", "интрадей": "intraday", "интрадэй": "intraday", "day": "intraday", // i18n-ignore
+  overnight: "overnight", "овернайт": "overnight", // i18n-ignore
+  swing: "swing", "свинг": "swing", // i18n-ignore
 };
 
 export function horizonOf(tags: string | null | undefined): Horizon | null {
@@ -251,12 +265,12 @@ export function horizonOf(tags: string | null | undefined): Horizon | null {
 }
 
 export function horizonLabel(h: Horizon | null | undefined): string {
-  return HORIZONS.find((x) => x.key === h)?.label ?? "";
+  return h ? commonI18n.t(`trading.${h}`) : "";
 }
 
 /** Replace any horizon tag in a comma list with the given horizon (or remove it when null). */
 export function setHorizonInTags(tags: string | null | undefined, h: Horizon | null): string {
   const rest = splitTags(tags).filter((t) => !HORIZON_ALIASES[t.toLowerCase()]);
-  if (h) rest.unshift(horizonLabel(h));
+  if (h) rest.unshift(HORIZON_TAG[h]);
   return rest.join(", ");
 }

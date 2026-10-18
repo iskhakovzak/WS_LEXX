@@ -6,7 +6,7 @@ import { logger } from "../lib/logger";
 import { requireMember, scopeTrader, GUEST_SCOPE } from "../lib/auth";
 import { loadMoneyViewer } from "../lib/playbookAccess";
 import { canSeeTradeMoney } from "../lib/playbookPrivacy";
-import { unauthorized } from "../lib/http";
+import { AppError, unauthorized } from "../lib/http";
 
 /**
  * Indicator notes + favourites ("Мой набор") per user — audit P1-6 (they lived only in localStorage).
@@ -91,10 +91,10 @@ router.get("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
 router.put("/indicator-notes/:key", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const key = keySchema.safeParse(req.params.key);
-  if (!key.success) { res.status(400).json({ error: "Некорректный ключ индикатора" }); return; }
+  if (!key.success) throw new AppError("INVALID_FIELD", undefined, { field: "key" });
   const body = rowPatch.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
-  if (body.data.note === undefined && body.data.favorite === undefined) { res.status(400).json({ error: "Нужно note или favorite" }); return; }
+  if (!body.success) throw body.error;
+  if (body.data.note === undefined && body.data.favorite === undefined) throw new AppError("FIELD_REQUIRED", undefined, { field: "note / favorite" });
   await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const note = body.data.note === undefined ? null : body.data.note.trim();
@@ -115,7 +115,7 @@ router.put("/indicator-notes/:key", asyncHandler(async (req, res): Promise<void>
 router.put("/indicator-notes", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
   const body = bulkBody.safeParse(req.body ?? {});
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   await ensureIndicatorNotesTable();
   const user = req.authUser!.name;
   const onlyIfEmpty = !!body.data.onlyIfEmpty;

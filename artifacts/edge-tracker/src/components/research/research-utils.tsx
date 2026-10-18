@@ -2,6 +2,8 @@ import * as React from "react";
 import type { Research } from "@workspace/api-client-react";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { fmtDateCustom } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { researchI18n } from "@/i18n/ns/research";
 
 /* ── Server shape: generated `Research` + additive fields from `GET /api/research` ── */
 export type ResearchEvidence = {
@@ -49,8 +51,8 @@ export function formatDay(dateStr: string) {
   const d = new Date(dateStr + "T12:00:00");
   if (isNaN(d.getTime())) return dateStr;
   const today = nyDate();
-  if (dateStr === today) return "Сегодня";
-  if (dateStr === addDays(today, -1)) return "Вчера";
+  if (dateStr === today) return commonI18n.t("time.today");
+  if (dateStr === addDays(today, -1)) return commonI18n.t("time.yesterday");
   return fmtDateCustom(d, {
     weekday: "short",
     day: "numeric",
@@ -84,18 +86,17 @@ export function isEmptyQuery(p: ParsedQuery) {
   return !p.words.length && !p.tags.length && !p.tickers.length;
 }
 
-export const SEARCH_FIELDS: { key: keyof Research; label: string }[] = [
-  { key: "patternName", label: "Название" },
-  { key: "ticker", label: "Тикер" },
-  { key: "context", label: "Контекст" },
-  { key: "whatWorked", label: "Что работало" },
-  { key: "whatFailed", label: "Что не работало" },
-  { key: "marketCondition", label: "Условия рынка" },
-  { key: "tags", label: "Теги" },
-  { key: "longName", label: "Компания" },
-  { key: "sector", label: "Сектор" },
-  { key: "screenshotNotes", label: "Заметки к скриншотам" },
-];
+type SearchKey = "patternName" | "ticker" | "context" | "whatWorked" | "whatFailed" | "marketCondition" | "tags" | "longName" | "sector" | "screenshotNotes";
+/** Field label in the UI language (read at call time). */
+function fieldLabel(k: SearchKey): string {
+  if (k === "ticker") return commonI18n.t("trading.ticker");
+  if (k === "tags") return commonI18n.t("fields.tags");
+  if (k === "sector") return commonI18n.t("trading.sector");
+  return researchI18n.t(`field.${k}`);
+}
+export const SEARCH_FIELDS: { key: SearchKey; readonly label: string }[] = (
+  ["patternName", "ticker", "context", "whatWorked", "whatFailed", "marketCondition", "tags", "longName", "sector", "screenshotNotes"] as const
+).map((key) => ({ key, get label() { return fieldLabel(key); } }));
 
 export type SearchHit = { score: number; snippetField?: string; snippet?: string };
 
@@ -232,39 +233,40 @@ export function exportResearchCsv(rows: Research[]) {
 
 // ── Templates for quick-add ─────────────────────────────────────────────
 export type ResearchTemplate = {
-  id: string;
-  label: string;
-  patternName: string;
-  context: string;
+  id: "earnings" | "ticker" | "pattern" | "theme";
+  readonly label: string;
+  readonly patternName: string;
+  readonly context: string;
   marketCondition?: string;
   tags?: string;
 };
 
+/** Starter text in the UI language (getters: read when the template is applied, never frozen at import). */
 export const RESEARCH_TEMPLATES: ResearchTemplate[] = [
   {
     id: "earnings",
-    label: "Реакция на отчёт",
+    get label() { return researchI18n.t("tpl.earnings.label"); },
     patternName: "Earnings gap",
-    context: "Отчёт: BMO/AMC, EPS факт vs прогноз, гайденс.\nГэп на открытии: \nПремаркет объём / уровни: \nПлан: ",
+    get context() { return researchI18n.t("tpl.earnings.context"); },
     tags: "earnings",
   },
   {
     id: "ticker",
-    label: "Досье тикера",
-    patternName: "Досье",
-    context: "Чем торгуется: \nКлючевые уровни: \nКатализаторы: \nПоведение на открытии: ",
+    get label() { return researchI18n.t("tpl.ticker.label"); },
+    get patternName() { return researchI18n.t("tpl.ticker.name"); },
+    get context() { return researchI18n.t("tpl.ticker.context"); },
   },
   {
     id: "pattern",
-    label: "Паттерн",
+    get label() { return researchI18n.t("tpl.pattern.label"); },
     patternName: "",
-    context: "Сетап: \nТриггер входа: \nСтоп / цель: \nКогда не работает: ",
+    get context() { return researchI18n.t("tpl.pattern.context"); },
   },
   {
     id: "theme",
-    label: "Тема / сектор",
-    patternName: "Тема: ",
-    context: "Драйвер темы: \nЛидеры: \nОтстающие: \nКак торговать: ",
+    get label() { return researchI18n.t("tpl.theme.label"); },
+    get patternName() { return researchI18n.t("tpl.theme.name"); },
+    get context() { return researchI18n.t("tpl.theme.context"); },
     marketCondition: "",
   },
 ];

@@ -17,6 +17,9 @@ import {
 } from "@/components/behavior/api";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
+
+const tb = behaviorI18n.t;
 import { TraderProfilePanel } from "@/components/behavior/trader-profile";
 import { PatternCards } from "@/components/behavior/pattern-cards";
 import { DisciplineHeatmap } from "@/components/behavior/discipline-heatmap";
@@ -31,9 +34,8 @@ import { PersonSelect } from "@/components/people/person-select";
 
 type Tab = "behavior" | "setups";
 type Period = "30d" | "90d" | "ytd" | "all";
-const PERIODS: { value: Period; label: string }[] = [
-  { value: "30d", label: "30 дней" }, { value: "90d", label: "90 дней" }, { value: "ytd", label: "С начала года" }, { value: "all", label: "Всё время" },
-];
+const PERIOD_KEYS: Period[] = ["30d", "90d", "ytd", "all"];
+const periodOptions = () => PERIOD_KEYS.map((value) => ({ value, label: tb(`period.${value}`) }));
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
 function rangeOf(p: Period): Range {
@@ -110,31 +112,31 @@ export default function BehaviorPage() {
   return (
     <Page>
       <PageHeader
-        title="Поведение и сетапы"
-        description="Где поведение стоит денег, что с этим делать и какой сетап стоит за сделкой. Правила без ИИ, деньги — нетто."
+        title={tb("title")}
+        description={tb("description")}
         icon={Brain}
         actions={
           <>
             {isCurator && (
-              <PersonSelect value={trader ?? ""} onValueChange={(v) => { setTrader(v); setDay(null); }} options={traders.map((u) => u.name)} className="w-44" ariaLabel="Трейдер" />
+              <PersonSelect value={trader ?? ""} onValueChange={(v) => { setTrader(v); setDay(null); }} options={traders.map((u) => u.name)} className="w-44" ariaLabel={tb("traderAria")} />
             )}
-            <Segmented ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
+            <Segmented ariaLabel={tb("periodAria")} value={period} onChange={setPeriod} options={periodOptions()} />
           </>
         }
       >
         <SectionTabs
-          ariaLabel="Разделы"
+          ariaLabel={tb("sectionsAria")}
           value={tab}
           onChange={setTab}
           tabs={[
-            { value: "behavior", label: "Поведение", icon: Activity },
-            { value: "setups", label: "Сетапы", icon: Sparkles },
+            { value: "behavior", label: tb("tab.behavior"), icon: Activity },
+            { value: "setups", label: tb("tab.setups"), icon: Sparkles },
           ]}
         />
       </PageHeader>
 
       {isGuest ? (
-        <Panel><EmptyState icon={Brain} title="Гостевой режим" description="Поведенческая аналитика доступна только участникам деска." /></Panel>
+        <Panel><EmptyState icon={Brain} title={tb("guest")} description={tb("guestHint")} /></Panel>
       ) : tab === "behavior" ? (
         <BehaviorTab trader={scopeTrader} me={me} range={range} canEdit={canEdit} day={day} onDay={setDay} onOpenSetups={openSetups} />
       ) : (
@@ -148,7 +150,7 @@ export default function BehaviorPage() {
 
 function BehaviorSkeleton() {
   return (
-    <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label="Загрузка отчёта">
+    <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={tb("loadingAria")}>
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] lg:grid-cols-12">
         {Array.from({ length: 4 }, (_, i) => <SkeletonBlock key={i} className="h-[196px] rounded-2xl lg:col-span-3" />)}
         <SkeletonBlock className="h-[188px] rounded-2xl lg:col-span-12" />
@@ -205,7 +207,7 @@ function BehaviorTab({
     return <BehaviorSkeleton />;
   }
   if (!r.summary.closed) {
-    return <Panel><EmptyState icon={Brain} title="Нет закрытых сделок за период" description="Выберите другой период. Паттерны считаются по закрытым сделкам с P&L; время входа берётся из исполнений или выписки брокера." /></Panel>;
+    return <Panel><EmptyState icon={Brain} title={tb("empty")} description={tb("emptyHint")} /></Panel>;
   }
   const owner = r.scope ?? me;
   const noTime = r.summary.closed - r.summary.withTime;
@@ -214,49 +216,49 @@ function BehaviorTab({
   return (
     <div className={`flex flex-col gap-[var(--grid-gap)] transition-opacity duration-[var(--dur-2)] ${q.isFetching && q.isPlaceholderData ? "opacity-70" : ""}`}>
       {r.profile && <Panel
-        title="Профиль трейдера"
-        description={`${commonI18n.t("units.trades", { count: r.summary.closed })} за ${r.summary.days} торг. дн.${periodLabel ? ` · ${periodLabel}` : ""}`}
+        title={tb("profile")}
+        description={`${tb("profileHint", { trades: commonI18n.t("units.trades", { count: r.summary.closed }), days: tb("tradingDays", { count: r.summary.days }) })}${periodLabel ? ` · ${periodLabel}` : ""}`}
         icon={UserRound}
-        actions={noTime > 0 ? <Pill tone="neutral" title="Такие сделки не участвуют в паттернах, зависящих от времени (реванш, тильт, отыгрыш, эйфория)">без времени входа: {noTime}</Pill> : undefined}
+        actions={noTime > 0 ? <Pill tone="neutral" title={tb("noTimeTitle")}>{tb("noTime", { count: noTime })}</Pill> : undefined}
       >
         <TraderProfilePanel report={r} onOpenSetups={onOpenSetups} />
       </Panel>}
 
       <Panel
-        title="Паттерны: что стоит денег"
-        description="Стоимость = нетто сделок паттерна минус n × средний нетто сравнимой группы. Сначала самые дорогие."
+        title={tb("patterns")}
+        description={tb("patternsHint")}
         icon={Activity}
       >
         <PatternCards patterns={r.patterns} trader={owner} canEdit={canEdit} />
       </Panel>
 
-      <Panel title="Индекс дисциплины по дням" description="100 — без штрафов. Клик по дню открывает его на ленте сессии ниже." icon={Gauge}>
+      <Panel title={tb("discipline")} description={tb("disciplineHint")} icon={Gauge}>
         <DisciplineHeatmap days={r.discipline} formula={r.disciplineFormula} avg={r.disciplineAvg} selected={day} onSelect={pickFromHeatmap} />
       </Panel>
 
       <div ref={timelineRef} className="scroll-mt-4">
-        <Panel title="Лента сессии" description="Сделки дня по времени, накопленный нетто и поведенческие маркеры. Клик по сделке открывает её." icon={CalendarRange}>
+        <Panel title={tb("session")} description={tb("sessionHint")} icon={CalendarRange}>
           <SessionTimeline trader={trader} range={range} days={r.discipline} date={day} onDateChange={pickFromHeatmap} />
         </Panel>
       </div>
 
-      <Panel title="Мои триггеры" description="Свои пороги и как часто они срабатывали бы за период." icon={BellRing}>
+      <Panel title={tb("triggers")} description={tb("triggersHint")} icon={BellRing}>
         <TriggersPanel trader={owner} range={range} onPickDay={pickFromTriggers} />
       </Panel>
 
-      <Panel title="Кривые поведения" description="Средний нетто по номеру сделки в дне, по паузе после убытка и по часу входа (Нью-Йорк)." icon={LineChart}>
+      <Panel title={tb("curves")} description={tb("curvesHint")} icon={LineChart}>
         <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-3">
-          <section aria-label="Нетто по номеру сделки в дне" className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground">По номеру сделки в дне</h3>
-            <BucketBars data={r.byTradeNumber} ariaLabel="Нетто по номеру сделки в дне" />
+          <section aria-label={tb("byNumberAria")} className="flex min-w-0 flex-col gap-1">
+            <h3 className="text-sm font-medium text-foreground">{tb("byNumber")}</h3>
+            <BucketBars data={r.byTradeNumber} ariaLabel={tb("byNumberAria")} />
           </section>
-          <section aria-label="Нетто по минутам после убытка" className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground">По минутам после убытка</h3>
-            <BucketBars data={r.byMinutesAfterLoss} ariaLabel="Нетто по минутам после убытка" />
+          <section aria-label={tb("byPauseAria")} className="flex min-w-0 flex-col gap-1">
+            <h3 className="text-sm font-medium text-foreground">{tb("byPause")}</h3>
+            <BucketBars data={r.byMinutesAfterLoss} ariaLabel={tb("byPauseAria")} />
           </section>
-          <section aria-label="Нетто по часу входа" className="flex min-w-0 flex-col gap-1">
-            <h3 className="text-sm font-medium text-foreground">По часу входа</h3>
-            <BucketBars data={r.byHour} ariaLabel="Нетто по часу входа" />
+          <section aria-label={tb("byHourAria")} className="flex min-w-0 flex-col gap-1">
+            <h3 className="text-sm font-medium text-foreground">{tb("byHour")}</h3>
+            <BucketBars data={r.byHour} ariaLabel={tb("byHourAria")} />
           </section>
         </div>
       </Panel>
@@ -291,14 +293,14 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="flex flex-wrap items-center gap-2">
         <Segmented
-          ariaLabel="Какие сделки классифицировать"
+          ariaLabel={tb("classifyAria")}
           value={withSetup ? "all" : "empty"}
           onChange={(v) => setWithSetup(v === "all")}
-          options={[{ value: "empty", label: "Только без сетапа" }, { value: "all", label: "Все сделки" }]}
+          options={[{ value: "empty", label: tb("classifyEmpty") }, { value: "all", label: tb("classifyAll") }]}
         />
         {list.data && (
           <span className="text-xs text-muted-foreground">
-            {commonI18n.t("units.trades", { count: list.data.total })} · правила v{list.data.version}
+            {tb("rulesVersion", { trades: commonI18n.t("units.trades", { count: list.data.total }), version: list.data.version })}
           </span>
         )}
       </div>
@@ -307,7 +309,7 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         <ComputeAllBar state={compute.state} pending={pending} canRun={canEdit} onRun={() => void compute.run()} onCancel={compute.cancel} />
       )}
 
-      <Panel title="Edge или утечка по сетапу" description="Ожидание $ на сделку с 95% интервалом; n < 20 — ненадёжно." icon={Sparkles}>
+      <Panel title={tb("setupEdge")} description={tb("setupEdgeHint")} icon={Sparkles}>
         {agg.data === undefined ? (
           agg.isError ? <ErrorState error={agg.error} onRetry={agg.refetch} compact /> : <TableSkeleton rows={5} cols={7} />
         ) : (
@@ -315,7 +317,7 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         )}
       </Panel>
 
-      <Panel title="Где сетап работает" description="Матрицы сетап × час входа и сетап × время удержания." icon={Grid3x3}>
+      <Panel title={tb("setupWhere")} description={tb("setupWhereHint")} icon={Grid3x3}>
         {agg.data === undefined ? (
           agg.isError ? <ErrorState error={agg.error} onRetry={agg.refetch} compact /> : <SkeletonBlock className="h-[240px] w-full rounded-xl" />
         ) : (
@@ -323,7 +325,8 @@ function SetupsTab({ trader, range, canEdit }: { trader: string | null; range: R
         )}
       </Panel>
 
-      <Panel title="Сделки и предложения" description="Уверенность и объяснение — по признакам: время, гэп, RVOL, VWAP, HOD/LOD, PMH/PML, ORB, удержание." icon={Sparkles}>
+      <Panel title={tb("setupTrades")} description={tb("setupTradesHint")} icon={Sparkles}>
+
         {list.data === undefined ? (
           list.isError ? <ErrorState error={list.error} onRetry={list.refetch} /> : <TableSkeleton rows={8} cols={8} />
         ) : (

@@ -14,7 +14,10 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { EmptyState, Pill, Segmented } from "@/components/ds";
 import { IconAction } from "@/components/playbook-sub/bits";
-import { fmtDateCustom, fmtRelative, pluralRu } from "@/lib/format";
+import { fmtDateCustom, fmtRelative } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookToolsI18n, type RevisionFieldKey } from "@/i18n/ns/playbookTools";
+import { HORIZON_LABEL, STRUCTURED, timeOfDayLabel, type StructuredKey } from "@/components/playbook/model";
 
 type Revision = {
   id: number;
@@ -24,21 +27,32 @@ type Revision = {
   createdAt: string;
 };
 
-const FIELDS: { key: string; label: string; multiline?: boolean }[] = [
-  { key: "name", label: "Название" },
-  { key: "folder", label: "Папка" },
-  { key: "setupType", label: "Тип" },
-  { key: "confidenceLevel", label: "Уверенность" },
-  { key: "tags", label: "Теги" },
-  { key: "conditions", label: "Условия входа", multiline: true },
-  { key: "checklist", label: "Чек-лист", multiline: true },
-  { key: "notes", label: "Заметки", multiline: true },
+type Field = { key: string; readonly label: string; multiline?: boolean; display?: (v: string) => string };
+/** Tracked fields; labels are getters (current UI language). The structured card fields come from the playbook model. */
+const plain = (key: RevisionFieldKey, multiline?: boolean, display?: (v: string) => string): Field => ({
+  key, multiline, display, get label() { return playbookToolsI18n.t(`revisions.field.${key}`); },
+});
+const card = (f: { key: StructuredKey; readonly label: string }): Field => ({ key: f.key, multiline: true, get label() { return f.label; } });
+const FIELDS: Field[] = [
+  plain("name"),
+  plain("folder"),
+  plain("setupType"),
+  plain("confidenceLevel"),
+  plain("tags"),
+  plain("horizon", false, (v) => HORIZON_LABEL[v] ?? v),
+  plain("timeOfDay", false, (v) => timeOfDayLabel(v)),
+  ...STRUCTURED.map(card),
+  plain("conditions", true),
+  plain("checklist", true),
+  plain("notes", true),
 ];
 
 function norm(v: any): string {
   if (v == null) return "";
   return String(v).replace(/\r\n/g, "\n").trim();
 }
+/** Field value as shown in the diff (codes such as the horizon are translated; user text as is). */
+const shown = (f: Field, v: string) => (v && f.display ? f.display(v) : v);
 
 function changedFields(a: Record<string, any> | undefined, b: Record<string, any> | undefined) {
   return FIELDS.filter((f) => norm(a?.[f.key]) !== norm(b?.[f.key]));
@@ -70,12 +84,13 @@ function diffLines(a: string, b: string): DiffLine[] {
 }
 
 function FieldDiff({ label, before, after, multiline }: { label: string; before: string; after: string; multiline?: boolean }) {
+  const { t } = playbookToolsI18n.useT();
   const changed = before !== after;
   return (
     <div className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3">
       <div className="mb-1.5 flex items-center gap-2">
         <span className="text-xs font-medium text-foreground">{label}</span>
-        {changed ? <Pill tone="warn">изменено</Pill> : <span className="text-xs text-muted-foreground">без изменений</span>}
+        {changed ? <Pill tone="warn">{t("revisions.changed")}</Pill> : <span className="text-xs text-muted-foreground">{t("revisions.unchanged")}</span>}
       </div>
       {!changed ? (
         <div className="whitespace-pre-wrap break-words text-sm text-muted-foreground">{before || "—"}</div>
@@ -92,7 +107,7 @@ function FieldDiff({ label, before, after, multiline }: { label: string; before:
               )}
             >
               <span className="w-3 shrink-0 select-none text-center" aria-hidden="true">{l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}</span>
-              <span className="sr-only">{l.kind === "add" ? "добавлено: " : l.kind === "del" ? "удалено: " : ""}</span>
+              <span className="sr-only">{l.kind === "add" ? t("revisions.added") : l.kind === "del" ? t("revisions.removed") : ""}</span>
               <span className="min-w-0 flex-1">{l.text || " "}</span>
             </div>
           ))}
@@ -123,6 +138,8 @@ function restoreBody(snap: Record<string, any>, current?: Record<string, any>) {
     confidenceLevel: snap.confidenceLevel ?? null,
     tags: snap.tags ?? null,
   };
+  // Structured card / horizon / time of day: only when the snapshot has them (older snapshots predate the columns).
+  for (const k of [...STRUCTURED.map((f) => f.key), "horizon", "timeOfDay"]) if (k in snap) body[k] = snap[k] ?? null;
   if (Array.isArray(snap.checklistItems) && snap.checklistItems.length > 0) body.checklistItems = snap.checklistItems;
   else body.checklist = snap.checklist ?? null;
   const owner = current?.trader ?? snap.trader;
@@ -140,6 +157,7 @@ export function PlaybookRevisionsButton({
   /** Called after a successful restore (the component already invalidates playbook queries). */
   onRestored?: () => void;
 }) {
+  const { t } = playbookToolsI18n.useT();
   const [open, setOpen] = useState(false);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [mode, setMode] = useState<"edit" | "current">("edit");
@@ -167,7 +185,7 @@ export function PlaybookRevisionsButton({
     if (open && selectedId == null && timeline.length > 0) setSelectedId(timeline[0].rev.id);
   }, [open, timeline, selectedId]);
 
-  const selIdx = timeline.findIndex((t) => t.rev.id === selectedId);
+  const selIdx = timeline.findIndex((x) => x.rev.id === selectedId);
   const sel = selIdx >= 0 ? timeline[selIdx] : null;
   const compareTo = mode === "edit" ? sel?.after : currentSnapshot;
   const fieldsToShow = sel ? (showAll ? FIELDS : changedFields(sel.rev.snapshot, compareTo)) : [];
@@ -180,12 +198,12 @@ export function PlaybookRevisionsButton({
       qc.invalidateQueries({ queryKey: ["playbook-children"] });
       qc.invalidateQueries({ queryKey: ["playbook-revisions", playbookId] });
       qc.invalidateQueries({ queryKey: ["playbook-health"] });
-      toast({ title: "Версия восстановлена", description: "Предыдущее состояние сохранено в истории — можно откатить обратно." });
+      toast({ title: t("revisions.restored"), description: t("revisions.restoredDesc") });
       setConfirm(false);
       setSelectedId(null);
       onRestored?.();
     },
-    onError: (e: any) => toast({ title: "Не удалось восстановить", description: String(e?.message ?? "").slice(0, 200) || undefined, variant: "destructive" }),
+    onError: (e: any) => toast({ title: t("revisions.restoreFailed"), description: String(e?.message ?? "").slice(0, 200) || undefined, variant: "destructive" }),
   });
 
   function onListKey(e: React.KeyboardEvent) {
@@ -200,8 +218,8 @@ export function PlaybookRevisionsButton({
   return (
     <>
       <IconAction
-        aria-label="История изменений"
-        title="История изменений"
+        aria-label={t("revisions.title")}
+        title={t("revisions.title")}
         onClick={(e) => { e.stopPropagation(); setOpen(true); }}
       >
         <History aria-hidden="true" />
@@ -211,15 +229,15 @@ export function PlaybookRevisionsButton({
         <DialogContent className="flex max-h-[85vh] max-w-4xl flex-col gap-4 p-4 sm:p-6">
           <DialogHeader className="pr-10">
             <DialogTitle className="flex items-center gap-2 text-base font-semibold">
-              <History className="h-4 w-4 text-primary" aria-hidden="true" /> История изменений
+              <History className="h-4 w-4 text-primary" aria-hidden="true" /> {t("revisions.title")}
               {revisions.length > 0 && (
                 <span className="text-xs font-normal tabular-nums text-muted-foreground">
-                  {revisions.length} {pluralRu(revisions.length, "правка", "правки", "правок")}
+                  {t("revisions.count", { count: revisions.length })}
                 </span>
               )}
             </DialogTitle>
             <DialogDescription className="text-xs">
-              Каждая правка показывает, что изменилось. Любое прежнее состояние можно вернуть — текущее при этом тоже попадёт в историю.
+              {t("revisions.description")}
             </DialogDescription>
           </DialogHeader>
 
@@ -231,18 +249,18 @@ export function PlaybookRevisionsButton({
           ) : isError ? (
             <EmptyState
               icon={AlertTriangle}
-              title="Не удалось загрузить историю"
-              action={<Button variant="outline" size="sm" onClick={() => refetch()}>Повторить</Button>}
+              title={t("revisions.loadFailed")}
+              action={<Button variant="outline" size="sm" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>}
             />
           ) : timeline.length === 0 ? (
-            <EmptyState icon={History} title="Правок пока не было" description="После первого редактирования сетапа здесь появится история изменений." />
+            <EmptyState icon={History} title={t("revisions.emptyTitle")} description={t("revisions.emptyDesc")} />
           ) : (
             <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,160px)_minmax(0,1fr)] gap-3 sm:grid-cols-[240px_minmax(0,1fr)] sm:grid-rows-1">
               {/* Timeline */}
               <div
                 ref={listRef}
                 role="listbox"
-                aria-label="Правки"
+                aria-label={t("revisions.listAria")}
                 aria-activedescendant={sel ? `rev-${sel.rev.id}` : undefined}
                 onKeyDown={onListKey}
                 className="relative min-h-0 overflow-y-auto pr-1"
@@ -275,10 +293,10 @@ export function PlaybookRevisionsButton({
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm font-medium text-foreground">{fmtRelative(rev.createdAt) || fmtDateCustom(rev.createdAt, REV_STAMP)}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{fmtDateCustom(rev.createdAt, REV_STAMP)} · {rev.trader ?? "система"}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{fmtDateCustom(rev.createdAt, REV_STAMP)} · {rev.trader ?? t("revisions.system")}</span>
                             <span className="mt-1 flex flex-wrap gap-1">
                               {changes.length === 0
-                                ? <span className="text-xs text-muted-foreground">без видимых изменений</span>
+                                ? <span className="text-xs text-muted-foreground">{t("revisions.noVisible")}</span>
                                 : changes.slice(0, 3).map((c) => <Pill key={c.key} tone="neutral" className="text-xs">{c.label}</Pill>)}
                               {changes.length > 3 && <span className="text-xs text-muted-foreground">+{changes.length - 3}</span>}
                             </span>
@@ -296,42 +314,42 @@ export function PlaybookRevisionsButton({
                   <>
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <Segmented
-                        ariaLabel="Режим сравнения"
+                        ariaLabel={t("revisions.modeAria")}
                         size="sm"
                         value={mode}
                         onChange={(v) => setMode(v as "edit" | "current")}
                         options={[
-                          { value: "edit", label: "Что изменила правка" },
-                          { value: "current", label: "До правки ↔ сейчас" },
+                          { value: "edit", label: t("revisions.modeEdit") },
+                          { value: "current", label: t("revisions.modeCurrent") },
                         ]}
                       />
                       <label className="inline-flex min-h-8 cursor-pointer items-center gap-2 text-xs text-muted-foreground">
                         <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-                        Все поля
+                        {t("revisions.allFields")}
                       </label>
                     </div>
                     <div className="min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
                       {fieldsToShow.length === 0 ? (
                         <p className="py-6 text-center text-sm text-muted-foreground">
-                          {mode === "current" ? "Это состояние совпадает с текущим." : "В отслеживаемых полях изменений нет."}
+                          {mode === "current" ? t("revisions.sameAsCurrent") : t("revisions.noTracked")}
                         </p>
                       ) : fieldsToShow.map((f) => (
                         <FieldDiff
                           key={f.key}
                           label={f.label}
                           multiline={f.multiline}
-                          before={norm(sel.rev.snapshot?.[f.key])}
-                          after={norm(compareTo?.[f.key])}
+                          before={shown(f, norm(sel.rev.snapshot?.[f.key]))}
+                          after={shown(f, norm(compareTo?.[f.key]))}
                         />
                       ))}
                     </div>
                     {canEdit && (
                       <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[var(--glass-border)] pt-3">
                         <span className="mr-auto text-xs text-muted-foreground">
-                          Вернуть состояние до правки от {fmtDateCustom(sel.rev.createdAt, REV_STAMP)}
+                          {t("revisions.restoreTo", { date: fmtDateCustom(sel.rev.createdAt, REV_STAMP) })}
                         </span>
                         <Button size="sm" onClick={() => setConfirm(true)} disabled={sameAsCurrent || restore.isPending}>
-                          <RotateCcw aria-hidden="true" /> Восстановить
+                          <RotateCcw aria-hidden="true" /> {t("revisions.restore")}
                         </Button>
                       </div>
                     )}
@@ -346,19 +364,18 @@ export function PlaybookRevisionsButton({
       <AlertDialog open={confirm} onOpenChange={(o) => !restore.isPending && setConfirm(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Восстановить эту версию?</AlertDialogTitle>
+            <AlertDialogTitle>{t("revisions.confirmTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Название, папка, тип, уверенность, теги, условия, чек-лист и заметки вернутся к состоянию до правки от {sel ? fmtDateCustom(sel.rev.createdAt, REV_STAMP) : ""}.
-              Текущая версия сохранится в истории. Скриншоты и привязанные сделки не изменятся.
+              {t("revisions.confirmDesc", { date: sel ? fmtDateCustom(sel.rev.createdAt, REV_STAMP) : "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={restore.isPending}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={restore.isPending}>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={restore.isPending || !sel}
               onClick={(e) => { e.preventDefault(); if (sel) restore.mutate(sel.rev.snapshot); }}
             >
-              {restore.isPending ? "Восстанавливаю…" : "Восстановить"}
+              {restore.isPending ? t("revisions.restoring") : t("revisions.restore")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

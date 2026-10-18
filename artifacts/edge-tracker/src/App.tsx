@@ -119,10 +119,12 @@ function RouteTitle() {
   const [location] = useLocation();
   const search = useSearch();
   const first = useRef(true);
+  // Re-run on a language switch too (and when a namespace chunk arrives): `lang` changes the title text.
+  const { lang } = shellI18n.useT();
   useEffect(() => {
     const section = routeTitle(location, search);
     document.title = `${section ?? shellI18n.t("titles.notFound")} · ${APP_NAME}`;
-  }, [location, search]);
+  }, [location, search, lang]);
   useEffect(() => {
     if (first.current) { first.current = false; return; }
     // After client-side navigation, put focus at the top of the new content (not on the old link).

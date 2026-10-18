@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type ComputeAllState } from "./api";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
 
 export const ComputeAllBar = React.memo(function ComputeAllBar({
   state, pending, canRun, onRun, onCancel,
@@ -32,30 +33,30 @@ export const ComputeAllBar = React.memo(function ComputeAllBar({
       <div className="flex flex-wrap items-center gap-2 text-xs">
         {running ? (
           <span className="tabular-nums text-foreground">
-            Считаем: {doneCount} из {total} · пакет {state.batches + 1} · осталось ~{etaMin} мин
+            {behaviorI18n.t("compute.running", { done: doneCount, total, batch: state.batches + 1, eta: etaMin })}
           </span>
         ) : state.status === "done" ? (
-          <span className="text-foreground">Готово: посчитано {commonI18n.t("units.trades", { count: state.done })}.</span>
+          <span className="text-foreground">{behaviorI18n.t("compute.done", { trades: commonI18n.t("units.trades", { count: state.done }) })}</span>
         ) : state.status === "cancelled" ? (
-          <span className="text-muted-foreground">Остановлено: посчитано {state.done}, не посчитано {pending}.</span>
+          <span className="text-muted-foreground">{behaviorI18n.t("compute.stopped", { done: state.done, pending })}</span>
         ) : state.status === "stalled" ? (
-          <span className="text-muted-foreground">Сервер не даёт прогресса (идёт другой расчёт или нет рыночных данных). Осталось {state.pending} — попробуйте позже.</span>
+          <span className="text-muted-foreground">{behaviorI18n.t("compute.stuck", { pending: state.pending })}</span>
         ) : state.status === "error" ? (
-          <span className="text-down">Ошибка: {state.error}</span>
+          <span className="text-down">{behaviorI18n.t("compute.error", { error: state.error ?? "" })}</span>
         ) : (
           <span className="text-muted-foreground">
-            Не посчитано {commonI18n.t("units.trades", { count: pending })} · примерно {etaMin} мин, пакетами по 30 с паузами (бережём лимиты рыночных данных).
+            {behaviorI18n.t("compute.pending", { trades: commonI18n.t("units.trades", { count: pending }), eta: etaMin })}
           </span>
         )}
         <div className="ml-auto flex items-center gap-2">
           {running ? (
             <Button size="sm" variant="outline" onClick={onCancel}>
-              <Square className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Отменить
+              <Square className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {behaviorI18n.t("compute.cancel")}
             </Button>
           ) : (
             canRun && pending > 0 && (
               <Button size="sm" onClick={onRun}>
-                <Play className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> Посчитать всё
+                <Play className="mr-1 h-3.5 w-3.5" aria-hidden="true" /> {behaviorI18n.t("compute.computeAll")}
               </Button>
             )
           )}
@@ -64,7 +65,8 @@ export const ComputeAllBar = React.memo(function ComputeAllBar({
       {(running || state.status === "cancelled" || state.status === "stalled") && total > 0 && (
         <div
           role="progressbar"
-          aria-label="Прогресс расчёта сетапов"
+          aria-label={behaviorI18n.t("compute.progressAria")}
+
           aria-valuemin={0}
           aria-valuemax={total}
           aria-valuenow={doneCount}

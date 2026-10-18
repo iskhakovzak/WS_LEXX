@@ -211,7 +211,8 @@ describe("language-dependent formats", () => {
     expect(fmtCount(1234567)).toBe("1,234,567");
     expect(fmtCount(-0)).toBe("0");
     await inLang("uz");
-    expect(fmtCount(1234567)).toBe(new Intl.NumberFormat("uz-Latn-UZ").format(1234567));
+    expect(fmtCount(1234567)).toBe("1 234 567"); // CLDR uz grouping, without relying on browser uz data
+    expect(fmtCount(1.5)).toBe("1,5");
   });
 
   it("dates, months, weekdays follow the language; no module-level locale", async () => {
@@ -236,7 +237,9 @@ describe("language-dependent formats", () => {
     expect(fmtMonth(9)).toBe("October");
     expect(fmtWeekday(d, "long")).toBe("Saturday");
     await inLang("uz");
-    expect(fmtMonth(9)).toBe(new Intl.DateTimeFormat("uz-Latn-UZ", { month: "long" }).format(new Date(2026, 9, 15)));
+    expect(fmtMonth(9)).toBe("oktabr");
+    expect(fmtDate(d, "dayMonth")).toBe("17-okt");
+    expect(fmtDate(d, "long")).toBe("2026-yil 17-oktabr");
     expect(fmtDate(d, "time")).toBe("14:05");
     expect(fmtDate(null)).toBe("—");
   });
@@ -247,6 +250,9 @@ describe("language-dependent formats", () => {
     expect(fmtDate(d, "time", { timeZone: "America/New_York" })).toBe("22:00");
     await inLang("en");
     expect(fmtDate(d, "dayMonth", { timeZone: "UTC" })).toBe("Oct 17");
+    await inLang("uz");
+    expect(fmtDate(d, "weekdayDayMonth", { timeZone: "America/New_York" })).toBe("Jum, 16-okt");
+    expect(fmtDate(d, "shortDateTime", { timeZone: "America/New_York" })).toBe("16.10.2026, 22:00");
   });
 });
 

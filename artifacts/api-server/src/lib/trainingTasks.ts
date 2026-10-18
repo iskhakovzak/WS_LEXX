@@ -11,7 +11,8 @@
  */
 import { redactExecutions, redactStructure, redactTradeRow, type MoneyViewer, type Redacted } from "./playbookPrivacy";
 import { dayResolution } from "./candleLimits";
-import { ROLE_LABEL_RU, structureSummary, type TradeStructure } from "./tradeStructure";
+import { roleLabel, structureSummary, type TradeStructure } from "./tradeStructure";
+import type { Lang } from "../i18n";
 import { signedR } from "./tradeMath";
 
 export type TrainingSource = "mine" | "desk" | "day";
@@ -180,6 +181,7 @@ export function buildTrainingTradePayload(
   execRows: readonly Record<string, unknown>[],
   computed: { structure: TradeStructure; siblings: unknown[] } | null,
   viewer: MoneyViewer,
+  lang: Lang = "ru",
 ): { trade: Redacted<TrainingTradeRow>; executions: TrainingExecution[]; structure: Record<string, unknown> | null } {
   const trade = trainingTradeOf(tradeRow, viewer);
   const owner = tradeRow.trader != null ? String(tradeRow.trader) : null;
@@ -197,13 +199,13 @@ export function buildTrainingTradePayload(
       note: r.note != null ? String(r.note) : null,
       sortOrder: Number(r.sort_order ?? 0),
       role: s?.role ?? null,
-      roleLabel: s ? ROLE_LABEL_RU[s.role] : null,
+      roleLabel: s ? roleLabel(s.role, lang) : null,
       roleInferred: s?.inferred ?? false,
       legIndex: s?.legIndex ?? null,
     };
   });
   const structure = computed
-    ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats) } }, viewer, owner), siblings: computed.siblings }
+    ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats, lang) } }, viewer, owner), siblings: computed.siblings }
     : null;
   return { trade, executions: redactExecutions(executions, viewer, owner), structure };
 }

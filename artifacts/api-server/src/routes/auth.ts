@@ -12,7 +12,7 @@ import { lockoutKey, lockoutStore, resolveLoginName } from "../lib/security/logi
 import { mustChangeSecret, secretPolicyFor, TRADER_MIN_SECRET } from "../lib/security/passwordPolicy";
 import { securityT } from "../lib/security/i18n";
 import { sendSecurityError } from "../lib/security/respond";
-import { unauthorized } from "../lib/http";
+import { AppError, unauthorized } from "../lib/http";
 import { config } from "../config";
 
 /**
@@ -67,10 +67,7 @@ function lockedResponse(req: Request, res: Response, retryAfterSec: number): voi
 router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
   const t = securityT.tFor(langOf(req));
   const parsed = loginSchema.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Некорректный запрос", code: "VALIDATION", details: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const { name, password } = parsed.data;
   const store = lockoutStore();
   const user = resolveLoginName((await loginCandidates()).map((u) => ({ ...u, nameLatin: u.name_latin })), name);
@@ -121,8 +118,7 @@ router.post("/auth/login", asyncHandler(async (req, res): Promise<void> => {
 router.post("/auth/guest", asyncHandler(async (_req, res): Promise<void> => {
   // GUEST_MODE switch (DEPLOY.md): off → no new guest tokens (and authMiddleware ignores old ones).
   if (!isGuestModeEnabled()) {
-    res.status(403).json({ error: "Гостевой вход отключён", code: "GUEST_DISABLED" });
-    return;
+    throw new AppError("GUEST_DISABLED");
   }
   const token = signGuestToken();
   res.json({ token, user: { id: GUEST_USER_ID, name: GUEST_NAME, role: GUEST_ROLE }, expiresInSec: 12 * 3600 });
@@ -185,19 +181,16 @@ function readEnvInitPasswords(): Record<string, string> {
 
 router.post("/auth/init-passwords", asyncHandler(async (req, res): Promise<void> => {
   if (!config.adminPassword) {
-    res.status(503).json({ error: "Инициализация паролей отключена (ADMIN_PASSWORD не настроен)" });
-    return;
+    throw new AppError("INIT_PASSWORDS_DISABLED");
   }
   const parsed = initPasswordsSchema.safeParse(req.body ?? {});
   if (!parsed.success || !adminPasswordMatches(parsed.data.adminPassword)) {
-    res.status(403).json({ error: "Нужен пароль администратора", code: "FORBIDDEN" });
-    return;
+    throw new AppError("ADMIN_PASSWORD_REQUIRED");
   }
   const source = parsed.data.passwords ?? readEnvInitPasswords();
   const entries = Object.entries(source);
   if (entries.length === 0) {
-    res.status(400).json({ error: "Пароли не переданы (body.passwords или переменная INIT_PASSWORDS)" });
-    return;
+    throw new AppError("INIT_PASSWORDS_MISSING");
   }
   const results: { name: string; updated: boolean }[] = [];
   for (const [name, password] of entries) {

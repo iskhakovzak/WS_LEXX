@@ -10,6 +10,8 @@
  *   BREACH_REASONS     справочник причин нарушения для «Разбора нарушения»
  */
 import { addDays, isWeekend } from "./tradingDate";
+import { riskT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 // ─── время ──────────────────────────────────────────────────────────────────
 
@@ -74,38 +76,48 @@ export type LimitFields = {
   allowSwing: boolean;
 };
 
-export const LIMIT_FIELD_LABELS: Record<keyof LimitFields, string> = {
-  accountSize: "Размер счёта",
-  dailyLossLimit: "Дневной лимит",
-  weeklyLossLimit: "Недельный лимит",
-  maxDrawdown: "Макс. просадка",
-  maxRiskPerTrade: "Риск на сделку",
-  maxPositionUsd: "Макс. позиция",
-  maxOvernightExposure: "Овернайт-экспозиция",
-  maxOpenPositions: "Открытых позиций",
-  allowOvernight: "Овернайт",
-  allowSwing: "Свинг",
-};
+const LIMIT_FIELDS: readonly (keyof LimitFields)[] = [
+  "accountSize", "dailyLossLimit", "weeklyLossLimit", "maxDrawdown", "maxRiskPerTrade",
+  "maxPositionUsd", "maxOvernightExposure", "maxOpenPositions", "allowOvernight", "allowSwing",
+];
+
+/** Label of a limit field in `lang` (risk namespace `limitField.*`). */
+export function limitFieldLabel(field: keyof LimitFields, lang: Lang = "ru"): string {
+  return riskT.tFor(lang)(`limitField.${field}`);
+}
+
+/** RU labels (kept for older imports). */
+export const LIMIT_FIELD_LABELS = Object.fromEntries(LIMIT_FIELDS.map((f) => [f, limitFieldLabel(f)])) as Record<keyof LimitFields, string>;
 
 export type LimitDiff = { field: keyof LimitFields; label: string; current: number | boolean | null; template: number | boolean | null };
 
 const sameNum = (a: number | null, b: number | null) => (a == null && b == null) || (a != null && b != null && Math.abs(a - b) < 0.005);
 
 /** Поля, где лимиты трейдера отличаются от шаблона тира (пусто = совпадают). null limits ⇒ отличается всё заданное. */
-export function templateDiff(limits: LimitFields | null, template: LimitFields): LimitDiff[] {
+export function templateDiff(limits: LimitFields | null, template: LimitFields, lang: Lang = "ru"): LimitDiff[] {
   const out: LimitDiff[] = [];
-  for (const field of Object.keys(LIMIT_FIELD_LABELS) as (keyof LimitFields)[]) {
+  for (const field of LIMIT_FIELDS) {
     const cur = limits ? limits[field] : null;
     const tpl = template[field];
     const differs = typeof tpl === "boolean" ? (limits ? cur !== tpl : true) : !sameNum(cur as number | null, tpl as number | null);
-    if (differs) out.push({ field, label: LIMIT_FIELD_LABELS[field], current: cur, template: tpl });
+    if (differs) out.push({ field, label: limitFieldLabel(field, lang), current: cur, template: tpl });
   }
   return out;
 }
 
 /** Академические ступени ↔ ключи тиров масштабирования (одни и те же ключи; «lead» — только в масштабировании). */
 export const STAGE_TIER_KEYS = ["trainee", "junior", "trader", "senior"] as const;
-export const STAGE_LABELS: Record<string, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор", lead: "Лид" };
+const TIER_KEYS = ["trainee", "junior", "trader", "senior", "lead"] as const;
+/** Stage / tier name in `lang` (risk namespace `tier.*`); unknown keys → undefined. */
+export function stageLabel(key: string | null | undefined, lang: Lang = "ru"): string | undefined {
+  return key ? riskT.tryFor(lang, `tier.${key}`) : undefined;
+}
+/** Stage / tier names by key in `lang`. */
+export function stageLabels(lang: Lang = "ru"): Record<string, string> {
+  return Object.fromEntries(TIER_KEYS.map((k) => [k, stageLabel(k, lang)!]));
+}
+/** RU names (kept for older imports). */
+export const STAGE_LABELS: Record<string, string> = stageLabels("ru");
 
 // ─── тренд ──────────────────────────────────────────────────────────────────
 
@@ -166,51 +178,48 @@ export type NextActionInput = {
 const enc = encodeURIComponent;
 
 /** Один следующий шаг: самое срочное из того, что куратор может сделать по трейдеру прямо сейчас. */
-export function nextActionFor(x: NextActionInput): NextAction {
+export function nextActionFor(x: NextActionInput, lang: Lang = "ru"): NextAction {
   const t = enc(x.trader);
+  const L = riskT.tFor(lang);
   const cands: NextAction[] = [];
-  if (x.unreviewedBreaches > 0) cands.push({ kind: "breach_review", priority: 100, label: `Разобрать нарушение${x.unreviewedBreaches > 1 ? ` (${x.unreviewedBreaches})` : ""}`, href: `/curator?trader=${t}&tab=risk` });
-  if (x.halted) cands.push({ kind: "stopped", priority: 95, label: "На стопе — связаться и проверить книгу", href: `/risk?trader=${t}` });
-  if (x.nearStop) cands.push({ kind: "near_stop", priority: 80, label: "Близко к стопу — предупредить", href: `/risk?trader=${t}` });
-  if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: `Разобрать закрытый день${x.eodPending > 1 ? ` (${x.eodPending})` : ""}`, href: `/curator?trader=${t}&tab=journal` });
-  if (x.weeklySubmitted) cands.push({ kind: "weekly_review", priority: 65, label: "Ответить на недельный отчёт", href: `/weekly-review?view=curator&trader=${t}` });
-  if (x.overdueActions > 0) cands.push({ kind: "overdue_action", priority: 60, label: `Договорённости 1:1 просрочены (${x.overdueActions})`, href: `/curator?trader=${t}&tab=academy` });
-  if (!x.hasLimits) cands.push({ kind: "no_limits", priority: 55, label: "Задать лимиты по шаблону тира", href: `/curator?trader=${t}&tab=risk` });
-  else if (x.templateDrift > 0) cands.push({ kind: "template_drift", priority: 30, label: "Лимиты отличаются от шаблона тира", href: `/curator?trader=${t}&tab=risk` });
-  if (x.missingEod) cands.push({ kind: "missing_eod", priority: 45, label: "Не закрыт вчерашний день — напомнить", href: `/journal?trader=${t}` });
-  if (x.missingPlan) cands.push({ kind: "missing_plan", priority: 40, label: "Нет плана на день — напомнить", href: `/curator?trader=${t}&tab=journal` });
+  if (x.unreviewedBreaches > 0) cands.push({ kind: "breach_review", priority: 100, label: x.unreviewedBreaches > 1 ? L("next.breach_review_n", { count: x.unreviewedBreaches }) : L("next.breach_review"), href: `/curator?trader=${t}&tab=risk` });
+  if (x.halted) cands.push({ kind: "stopped", priority: 95, label: L("next.stopped"), href: `/risk?trader=${t}` });
+  if (x.nearStop) cands.push({ kind: "near_stop", priority: 80, label: L("next.near_stop"), href: `/risk?trader=${t}` });
+  if (x.eodPending > 0) cands.push({ kind: "eod_review", priority: 70, label: x.eodPending > 1 ? L("next.eod_review_n", { count: x.eodPending }) : L("next.eod_review"), href: `/curator?trader=${t}&tab=journal` });
+  if (x.weeklySubmitted) cands.push({ kind: "weekly_review", priority: 65, label: L("next.weekly_review"), href: `/weekly-review?view=curator&trader=${t}` });
+  if (x.overdueActions > 0) cands.push({ kind: "overdue_action", priority: 60, label: L("next.overdue_action", { count: x.overdueActions }), href: `/curator?trader=${t}&tab=academy` });
+  if (!x.hasLimits) cands.push({ kind: "no_limits", priority: 55, label: L("next.no_limits"), href: `/curator?trader=${t}&tab=risk` });
+  else if (x.templateDrift > 0) cands.push({ kind: "template_drift", priority: 30, label: L("next.template_drift"), href: `/curator?trader=${t}&tab=risk` });
+  if (x.missingEod) cands.push({ kind: "missing_eod", priority: 45, label: L("next.missing_eod"), href: `/journal?trader=${t}` });
+  if (x.missingPlan) cands.push({ kind: "missing_plan", priority: 40, label: L("next.missing_plan"), href: `/curator?trader=${t}&tab=journal` });
   if (x.daysSinceOneOnOne == null || x.daysSinceOneOnOne > 14) {
-    cands.push({ kind: "one_on_one", priority: 20, label: x.daysSinceOneOnOne == null ? "Провести первую 1:1" : `1:1 не было ${x.daysSinceOneOnOne} дн.`, href: `/academy/mentor?student=${t}` });
+    cands.push({ kind: "one_on_one", priority: 20, label: x.daysSinceOneOnOne == null ? L("next.one_on_one_first") : L("next.one_on_one_days", { days: x.daysSinceOneOnOne }), href: `/academy/mentor?student=${t}` });
   }
-  if (!cands.length) return { kind: "none", priority: 0, label: "Всё в порядке", href: `/curator?trader=${t}` };
+  if (!cands.length) return { kind: "none", priority: 0, label: L("next.none"), href: `/curator?trader=${t}` };
   return cands.sort((a, b) => b.priority - a.priority)[0];
 }
 
 // ─── разбор нарушения ───────────────────────────────────────────────────────
 
-export const BREACH_REASONS = [
-  { key: "revenge", label: "Отыгрыш после убытка" },
-  { key: "size", label: "Размер позиции больше плана" },
-  { key: "no_stop", label: "Стоп не выставлен или сдвинут" },
-  { key: "overtrading", label: "Овертрейдинг" },
-  { key: "news", label: "Новости / гэп против позиции" },
-  { key: "overnight", label: "Позиция на ночь без разрешения" },
-  { key: "tilt", label: "Эмоции / тильт" },
-  { key: "technical", label: "Техническая проблема" },
-  { key: "other", label: "Другое" },
-] as const;
-export type BreachReason = (typeof BREACH_REASONS)[number]["key"];
-export const BREACH_REASON_KEYS = BREACH_REASONS.map((r) => r.key) as unknown as readonly [BreachReason, ...BreachReason[]];
+const REASON_KEYS = ["revenge", "size", "no_stop", "overtrading", "news", "overnight", "tilt", "technical", "other"] as const;
+export type BreachReason = (typeof REASON_KEYS)[number];
+export const BREACH_REASON_KEYS = REASON_KEYS as unknown as readonly [BreachReason, ...BreachReason[]];
+/** Breach reasons with labels in `lang` (risk namespace `breach.reason.*`). */
+export function breachReasons(lang: Lang = "ru"): { key: BreachReason; label: string }[] {
+  return REASON_KEYS.map((key) => ({ key, label: riskT.tFor(lang)(`breach.reason.${key}`) }));
+}
+/** RU list (kept for older imports). */
+export const BREACH_REASONS = breachReasons("ru");
 
-export const BREACH_CONSEQUENCES = [
-  { key: "none", label: "Без последствий" },
-  { key: "warning", label: "Предупреждение" },
-  { key: "reduced", label: "Лимиты урезаны" },
-  { key: "pause", label: "Пауза в торговле" },
-  { key: "demote", label: "Понижение тира" },
-] as const;
-export type BreachConsequence = (typeof BREACH_CONSEQUENCES)[number]["key"];
-export const BREACH_CONSEQUENCE_KEYS = BREACH_CONSEQUENCES.map((r) => r.key) as unknown as readonly [BreachConsequence, ...BreachConsequence[]];
+const CONSEQUENCE_KEYS = ["none", "warning", "reduced", "pause", "demote"] as const;
+export type BreachConsequence = (typeof CONSEQUENCE_KEYS)[number];
+export const BREACH_CONSEQUENCE_KEYS = CONSEQUENCE_KEYS as unknown as readonly [BreachConsequence, ...BreachConsequence[]];
+/** Breach consequences with labels in `lang` (risk namespace `breach.consequence.*`). */
+export function breachConsequences(lang: Lang = "ru"): { key: BreachConsequence; label: string }[] {
+  return CONSEQUENCE_KEYS.map((key) => ({ key, label: riskT.tFor(lang)(`breach.consequence.${key}`) }));
+}
+/** RU list (kept for older imports). */
+export const BREACH_CONSEQUENCES = breachConsequences("ru");
 
 export type BreachAction = { id: string; title: string; dueOn: string | null; status: "open" | "done" | "dropped" };
 

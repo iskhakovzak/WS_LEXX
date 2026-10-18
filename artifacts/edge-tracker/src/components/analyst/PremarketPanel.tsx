@@ -11,7 +11,10 @@ import { cn } from "@/lib/utils";
 import { GradeChange, KindPill, Marks, RowActions, TargetChange } from "./ActionRow";
 import { REACTION_KIND_LABEL, REACTION_MIN_N, type Row } from "./rows";
 import { gapOf, nyTime, shortDay, SESSION_LABEL, sessionOf } from "./lib";
-import { fmtPct, pluralRu } from "@/lib/format";
+import { fmtPct } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
+import { rich } from "@/i18n/rich";
 
 type Group = { ticker: string; lead: Row; others: Row[]; score: number };
 
@@ -66,14 +69,14 @@ export function PremarketPanel({
       icon={Sunrise}
       title={
         <span className="inline-flex items-center gap-1.5">
-          Сегодня до открытия
+          {analystI18n.t("premarket.title")}
           <TermTooltip term="analystScore" icon />
         </span>
       }
       description={
         fallbackDay
-          ? `К сессии новых действий пока нет — показана сессия ${shortDay(fallbackDay)}`
-          : `${windowLabel} · ${groups.length} ${pluralRu(groups.length, "тикер", "тикера", "тикеров")}, смен рейтинга ${ratingCount}`
+          ? analystI18n.t("premarket.fallback", { date: shortDay(fallbackDay) })
+          : analystI18n.t("premarket.summary", { window: windowLabel, tickers: commonI18n.t("units.tickers", { count: groups.length }), count: ratingCount })
       }
       bodyClassName="min-h-[320px]"
     >
@@ -85,12 +88,12 @@ export function PremarketPanel({
         <EmptyState
           compact
           icon={Sunrise}
-          title="К сессии новых действий нет"
-          description="Утренние апгрейды и даунгрейды обычно выходят с 6:00 до 9:30 ET."
+          title={analystI18n.t("premarket.emptyTitle")}
+          description={analystI18n.t("premarket.emptyText")}
         />
       ) : (
         <>
-          <ol className="flex flex-col gap-1.5" aria-label="Действия к сессии по важности">
+          <ol className="flex flex-col gap-1.5" aria-label={analystI18n.t("premarket.listAria")}>
             {shown.map((g, i) => (
               <PremarketCard
                 key={g.ticker}
@@ -108,7 +111,7 @@ export function PremarketPanel({
           </ol>
           {groups.length > LIMIT && (
             <Button variant="ghost" size="sm" className="mt-2 self-start" onClick={() => setAll((v) => !v)}>
-              {all ? "Свернуть" : `Показать все ${groups.length}`}
+              {all ? commonI18n.t("actions.collapse") : commonI18n.t("actions.showAllCount", { count: groups.length })}
             </Button>
           )}
         </>
@@ -150,14 +153,14 @@ function PremarketCard({
         type="button"
         onClick={onOpen}
         className="flex min-w-0 flex-1 flex-col gap-1 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        aria-label={`${a.ticker}: открыть историю рейтингов и реакцию`}
+        aria-label={analystI18n.t("premarket.openAria", { ticker: a.ticker })}
       >
         <span className="flex min-w-0 items-center gap-2">
           <span className="text-sm font-semibold tracking-tight text-foreground">{a.ticker}</span>
           <Marks held={r.held} watched={r.watched} traded={r.traded} />
           <KindPill kind={a.action} />
           <span className="min-w-0 truncate text-xs text-foreground" title={a.firm}>{a.firm}</span>
-          <span className="ml-auto shrink-0 text-2xs tabular-nums text-muted-foreground" title={session ? `${SESSION_LABEL[session]} (ET)` : undefined}>
+          <span className="ml-auto shrink-0 text-2xs tabular-nums text-muted-foreground" title={session ? analystI18n.t("table.sessionEt", { session: SESSION_LABEL[session] }) : undefined}>
             {nyTime(a.gradedAt)}
           </span>
         </span>
@@ -170,17 +173,18 @@ function PremarketCard({
             {reasons.map((x) => <Pill key={x.key} tone={x.tone} className="text-2xs">{x.label}</Pill>)}
             {otherFirms.length > 0 && (
               <span className="truncate text-2xs text-muted-foreground" title={otherFirms.join(", ")}>
-                + ещё {otherFirms.length} {otherFirms.length === 1 ? "фирма" : otherFirms.length < 5 ? "фирмы" : "фирм"}: {otherFirms.slice(0, 2).join(", ")}{otherFirms.length > 2 ? "…" : ""}
+                {analystI18n.t("premarket.otherFirms", { count: otherFirms.length, list: `${otherFirms.slice(0, 2).join(", ")}${otherFirms.length > 2 ? "…" : ""}` })}
               </span>
             )}
           </span>
         )}
         {hasReaction && (
           <span className="text-xs text-muted-foreground">
-            Обычно на {REACTION_KIND_LABEL[r.reactionKind!]}: день{" "}
-            <span className={cn("font-medium tabular-nums", (r.reaction!.avgDay ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtPct(r.reaction!.avgDay, 1)}</span>
-            {r.reaction!.avgGap != null && <>, гэп <span className="tabular-nums text-foreground">{fmtPct(r.reaction!.avgGap, 1)}</span></>}
-            {r.reaction!.hitRate != null && <>, в сторону {Math.round(r.reaction!.hitRate * 100)}%</>}
+            {rich(analystI18n.t("premarket.usually", { kind: REACTION_KIND_LABEL[r.reactionKind!], day: "{day}" }), {
+              day: <span className={cn("font-medium tabular-nums", (r.reaction!.avgDay ?? 0) >= 0 ? "text-up" : "text-down")}>{fmtPct(r.reaction!.avgDay, 1)}</span>,
+            })}
+            {r.reaction!.avgGap != null && rich(analystI18n.t("premarket.usuallyGap", { gap: "{gap}" }), { gap: <span className="tabular-nums text-foreground">{fmtPct(r.reaction!.avgGap, 1)}</span> })}
+            {r.reaction!.hitRate != null && analystI18n.t("premarket.usuallyHit", { pct: Math.round(r.reaction!.hitRate * 100) })}
             <span className="tabular-nums"> · n={r.reaction!.n}</span>
           </span>
         )}
@@ -188,13 +192,13 @@ function PremarketCard({
       <div className="flex shrink-0 flex-col items-end gap-1">
         <div className="flex min-h-5 items-center gap-2 text-xs tabular-nums">
           {gap != null && (
-            <span className="inline-flex items-center gap-1" title="Гэп: премаркет (или открытие последней сессии) к предыдущему закрытию">
-              <span className="text-muted-foreground">гэп</span>
+            <span className="inline-flex items-center gap-1" title={analystI18n.t("premarket.gapTitle")}>
+              <span className="text-muted-foreground">{analystI18n.t("premarket.gap")}</span>
               <Delta value={gap} suffix="%" bare showIcon={false} />
             </span>
           )}
           {q?.relativeVolume != null && Number.isFinite(q.relativeVolume) && (
-            <span className={cn(q.relativeVolume >= 2 ? "font-medium text-foreground" : "text-muted-foreground")} title="Относительный объём (RVOL)">
+            <span className={cn(q.relativeVolume >= 2 ? "font-medium text-foreground" : "text-muted-foreground")} title={analystI18n.t("premarket.rvolTitle")}>
               ×{q.relativeVolume.toFixed(1)}
             </span>
           )}

@@ -5,8 +5,7 @@ import { pool } from "@workspace/db";
 import { config } from "../config";
 import { can, readScope, resolveActor, type Capability } from "./permissions";
 import { canReadPersonal, guestModeEnabled } from "./accessRules";
-import { langOf } from "../i18n";
-import { securityT } from "./security/i18n";
+import { AppError, sendError, unauthorized } from "./http/errors";
 
 const SECRET = config.jwtSecret;
 if (!SECRET) {
@@ -30,7 +29,7 @@ export type AuthUser = { id: number; name: string; role: string };
 // cannot be revoked individually — rotating JWT_SECRET invalidates them all.
 export const GUEST_ROLE = "guest";
 export const GUEST_USER_ID = 0;
-export const GUEST_NAME = "Гость";
+export const GUEST_NAME = "Гость"; // i18n-ignore (identity of the guest session: JWT name / scope sentinel; the UI shows its own label)
 /**
  * Sentinel returned by scopeTrader() for guests. It is not a real trader name, so every
  * `WHERE trader = $scope` query yields zero rows: a guest sees only team-wide/non-personal
@@ -223,9 +222,7 @@ const PASSWORD_CHANGE_ROUTES: readonly PublicRoute[] = [
   { method: "PATCH", path: "/users/me/locale" },
 ];
 
-export const AUTH_REQUIRED_BODY = { error: "Требуется вход", code: "AUTH_REQUIRED" } as const;
-export const PASSWORD_CHANGE_REQUIRED_BODY = { error: "Сначала задайте новый пароль", code: "PASSWORD_CHANGE_REQUIRED" } as const;
-export const GUEST_READ_ONLY_BODY = { error: "Гостевой режим: только просмотр", code: "GUEST_READ_ONLY" } as const;
+// Error answers go through lib/http (codes AUTH_REQUIRED / GUEST_READ_ONLY / PASSWORD_CHANGE_REQUIRED, texts in the request language).
 
 /**
  * 401 for anonymous callers on every non-public route; 403 for guests on every mutation.
@@ -236,15 +233,15 @@ export function apiAuthGate(req: Request, res: Response, next: NextFunction): vo
   const path = normalizePath(req.path);
   if (isPublicApiRoute(method, path)) return next();
   if (!req.authUser) {
-    res.status(401).json(AUTH_REQUIRED_BODY);
+    sendError(res, unauthorized());
     return;
   }
   if (MUTATION_METHODS.has(method) && isGuestUser(req.authUser) && !matches(GUEST_ALLOWED_MUTATIONS, method, path)) {
-    res.status(403).json(GUEST_READ_ONLY_BODY);
+    sendError(res, new AppError("GUEST_READ_ONLY"));
     return;
   }
   if (req.authMeta?.pwc && !matches(PASSWORD_CHANGE_ROUTES, method === "HEAD" ? "GET" : method, path)) {
-    res.status(403).json({ ...PASSWORD_CHANGE_REQUIRED_BODY, error: securityT.tFor(langOf(req))("password.changeRequired") });
+    sendError(res, new AppError("PASSWORD_CHANGE_REQUIRED"));
     return;
   }
   next();
@@ -261,7 +258,7 @@ export function getActorRoleFromToken(req: Request): string | null {
 
 export function requireAuth(req: Request, res: Response, next: NextFunction): void {
   if (!req.authUser) {
-    res.status(401).json(AUTH_REQUIRED_BODY);
+    sendError(res, unauthorized());
     return;
   }
   next();
@@ -269,8 +266,8 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
 
 /** Sends 401 (anonymous) / 403 (guest) and returns false unless the caller is a real signed-in member. */
 export function requireMember(req: Request, res: Response): boolean {
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED_BODY); return false; }
-  if (isGuestUser(req.authUser)) { res.status(403).json(GUEST_READ_ONLY_BODY); return false; }
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
+  if (isGuestUser(req.authUser)) { sendError(res, new AppError("GUEST_READ_ONLY")); return false; }
   return true;
 }
 
@@ -300,8 +297,8 @@ export async function viewerRole(req: Request): Promise<string | null> {
 
 /** Sends 401/403 and returns false unless the caller is a curator/admin. */
 export async function requireStaff(req: Request, res: Response): Promise<boolean> {
-  if (!req.authUser) { res.status(401).json({ error: "Требуется вход" }); return false; }
-  if (!isStaffRole(await viewerRole(req))) { res.status(403).json({ error: "Только для кураторов" }); return false; }
+  if (!req.authUser) { sendError(res, unauthorized()); return false; }
+  if (!isStaffRole(await viewerRole(req))) { sendError(res, new AppError("STAFF_ONLY")); return false; }
   return true;
 }
 
@@ -336,13 +333,13 @@ export async function requirePersonalAccess(
   req: Request, res: Response, raw: unknown, cap: Capability = "journal.read.team",
 ): Promise<string | null> {
   const owner = typeof raw === "string" ? raw.trim() : "";
-  if (!owner || owner.length > 120) { res.status(400).json({ error: "userId is required" }); return null; }
-  if (!req.authUser) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
+  if (!owner || owner.length > 120) { sendError(res, new AppError("TRADER_REQUIRED")); return null; }
+  if (!req.authUser) { sendError(res, unauthorized()); return null; }
   const actor = await resolveActor(req);
-  if (!actor) { res.status(401).json(AUTH_REQUIRED_BODY); return null; }
-  if (actor.guest) { res.status(403).json({ error: "Гостевой режим: личные данные трейдеров недоступны", code: "FORBIDDEN" }); return null; }
+  if (!actor) { sendError(res, unauthorized()); return null; }
+  if (actor.guest) { sendError(res, new AppError("GUEST_NO_PERSONAL")); return null; }
   const teamAllowed = owner !== actor.name && (await can(req, cap, { trader: owner }));
-  if (!canReadPersonal(actor, owner, teamAllowed)) { res.status(403).json({ error: "Эти данные видит только сам трейдер или его куратор", code: "FORBIDDEN" }); return null; }
+  if (!canReadPersonal(actor, owner, teamAllowed)) { sendError(res, new AppError("PERSONAL_DATA_FORBIDDEN")); return null; }
   return owner;
 }
 

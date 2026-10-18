@@ -11,6 +11,9 @@ import { links } from "@/lib/links";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { RULE_PREFIX, VIOLATION_ARCHIVE, VIOLATION_RESOLUTION, VIOLATION_STATUS, severityMeta } from "./constants";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { rich } from "./rich";
 import { fmtDate, fmtDateCustom, fmtR, fmtUsd } from "@/lib/format";
 import { countedViolations, violationDay, withArchive } from "./discipline";
 import type { MistakePrefill, Severity, Violation, ViolationStatus } from "./types";
@@ -18,12 +21,7 @@ import type { MistakePrefill, Severity, Violation, ViolationStatus } from "./typ
 type StatusFilter = "all" | ViolationStatus;
 const NO_VIOLATIONS: Violation[] = [];
 
-const STATUS_FILTERS: { value: StatusFilter; label: string }[] = [
-  { value: "all", label: "Все" },
-  { value: "open", label: "Новые" },
-  { value: "acknowledged", label: "Принятые" },
-  { value: "resolved", label: "Решённые" },
-];
+const STATUS_FILTERS: StatusFilter[] = ["all", "open", "acknowledged", "resolved"];
 
 export function ViolationsList({
   violations: activeViolations,
@@ -56,6 +54,7 @@ export function ViolationsList({
   onOpenRules: () => void;
   onChanged: () => void;
 }) {
+  const { t } = rulesI18n.useT();
   const [, navigate] = useLocation();
   const { toast } = useToast();
   const [ruleFilter, setRuleFilter] = useState<number | null>(null);
@@ -71,20 +70,20 @@ export function ViolationsList({
   const openCount = countedViolations(activeViolations).filter((v) => v.status === "open").length;
   const archiveToggle = onToggleArchive ? (
     <label className="ml-auto inline-flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
-      <Switch checked={showArchive} onCheckedChange={onToggleArchive} aria-label="Показать архив" className="scale-90" />
-      <span>Показать архив{showArchive && !archiveLoading ? <span className="tabular-nums"> · {archived.length}</span> : null}</span>
+      <Switch checked={showArchive} onCheckedChange={onToggleArchive} aria-label={t("violations.showArchive")} className="scale-90" />
+      <span>{t("violations.showArchive")}{showArchive && !archiveLoading ? <span className="tabular-nums"> · {archived.length}</span> : null}</span>
     </label>
   ) : null;
 
   const byRule = useMemo(() => {
     const m = new Map<number, { name: string; count: number }>();
     for (const v of violations) {
-      const e = m.get(v.ruleId) ?? { name: v.ruleName ?? "Правило", count: 0 };
+      const e = m.get(v.ruleId) ?? { name: v.ruleName ?? t("ruleFallback"), count: 0 };
       e.count++;
       m.set(v.ruleId, e);
     }
     return [...m.entries()].sort((a, b) => b[1].count - a[1].count);
-  }, [violations]);
+  }, [violations, t]);
 
   const groups = useMemo(() => {
     const list = violations.filter((v) => (ruleFilter == null || v.ruleId === ruleFilter) && (statusFilter === "all" || v.status === statusFilter));
@@ -112,7 +111,7 @@ export function ViolationsList({
       setActiveId(null);
       onChanged();
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить нарушение"), variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, t("violations.updateFailed")), variant: "destructive" });
     } finally {
       setBusyId(null);
     }
@@ -123,20 +122,16 @@ export function ViolationsList({
       <div className="flex flex-col gap-3">
       {archiveToggle && (
         <div className="flex items-center">
-          {showArchive && !archiveLoading && <span className="text-xs text-muted-foreground">В архиве пусто</span>}
+          {showArchive && !archiveLoading && <span className="text-xs text-muted-foreground">{t("violations.archiveEmpty")}</span>}
           {archiveToggle}
         </div>
       )}
       <Panel>
         <EmptyState
           icon={hasRules ? ShieldCheck : ShieldAlert}
-          title={hasRules ? "Нарушений не найдено" : "Нет правил для проверки"}
-          description={
-            hasRules
-              ? "Все сделки соответствуют вашим правилам. Новые сделки проверяются автоматически."
-              : "Задайте правила — каждая сделка будет проверяться автоматически: лимит сделок, стоп-день после серии убытков, размер позиции, дневной лимит убытка."
-          }
-          action={!hasRules ? <Button variant="outline" onClick={onOpenRules}>Добавить правило</Button> : undefined}
+          title={hasRules ? t("violations.emptyTitle") : t("violations.noRulesTitle")}
+          description={hasRules ? t("violations.emptyDesc") : t("violations.noRulesDesc")}
+          action={!hasRules ? <Button variant="outline" onClick={onOpenRules}>{t("page.addRule")}</Button> : undefined}
         />
       </Panel>
       </div>
@@ -146,29 +141,30 @@ export function ViolationsList({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Фильтр по статусу">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("violations.statusAria")}>
           {STATUS_FILTERS.map((f) => {
-            const n = f.value === "all" ? violations.length : violations.filter((v) => v.status === f.value).length;
-            if (f.value !== "all" && n === 0 && statusFilter !== f.value) return null;
+            const n = f === "all" ? violations.length : violations.filter((v) => v.status === f).length;
+            if (f !== "all" && n === 0 && statusFilter !== f) return null;
             return (
-              <FilterChip key={f.value} active={statusFilter === f.value} onClick={() => setStatusFilter(f.value)} count={n} className="min-h-7 px-2.5 text-xs">
-                {f.label}
+              <FilterChip key={f} active={statusFilter === f} onClick={() => setStatusFilter(f)} count={n} className="min-h-7 px-2.5 text-xs">
+                {t(`violations.filters.${f}`)}
               </FilterChip>
             );
           })}
         </div>
         {isOwner && openCount > 0 && (
-          <span className="text-xs text-muted-foreground">
-            Новых нарушений: <span className="font-semibold text-foreground tabular-nums">{openCount}</span> — отметьте «Принято» и объясните, что произошло
+          <span className="inline-flex items-center gap-1.5 text-xs text-warn">
+            <ShieldAlert className="size-3.5 shrink-0" aria-hidden="true" />
+            <span>{rich(t("violations.newCount", { count: "{count}" }), { count: <span className="font-semibold tabular-nums">{openCount}</span> })}</span>
           </span>
         )}
         {archiveToggle}
       </div>
 
       {byRule.length > 1 && (
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Фильтр по правилу">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("violations.ruleAria")}>
           <FilterChip active={ruleFilter == null} onClick={() => setRuleFilter(null)} count={violations.length} className="min-h-7 px-2.5 text-xs">
-            Все правила
+            {t("violations.allRules")}
           </FilterChip>
           {byRule.map(([id, r]) => (
             <FilterChip key={id} active={ruleFilter === id} onClick={() => setRuleFilter(ruleFilter === id ? null : id)} count={r.count} className="min-h-7 px-2.5 text-xs">
@@ -180,7 +176,7 @@ export function ViolationsList({
 
       {groups.length === 0 && (
         <Panel>
-          <EmptyState icon={ShieldCheck} title="Ничего не найдено" description="Под выбранные фильтры нарушения не попали." />
+          <EmptyState icon={ShieldCheck} title={commonI18n.t("states.nothingFound")} description={t("violations.filteredEmpty")} />
         </Panel>
       )}
 
@@ -194,7 +190,7 @@ export function ViolationsList({
               <button
                 type="button"
                 className="inline-flex items-center gap-1 underline-offset-4 hover:text-primary hover:underline"
-                title="Открыть разбор дня"
+                title={t("violations.openDay")}
                 onClick={() => navigate(links.dayReport(date, trader))}
               >
                 <CalendarDays className="size-3" aria-hidden="true" />
@@ -202,7 +198,7 @@ export function ViolationsList({
               </button>
               <span className="normal-case tracking-normal">· {list.length}</span>
               {hasCost && dayCost !== 0 && (
-                <span className={cn("normal-case tracking-normal tabular-nums", dayCost < 0 ? "text-down" : "text-up")}>· {fmtUsd(dayCost, { signed: true, decimals: "trim" })} нетто</span>
+                <span className={cn("normal-case tracking-normal tabular-nums", dayCost < 0 ? "text-down" : "text-up")}>· {t("violations.net", { amount: fmtUsd(dayCost, { signed: true, decimals: "trim" }) })}</span>
               )}
             </h3>
             <ul className="flex flex-col gap-2">
@@ -221,7 +217,7 @@ export function ViolationsList({
                   <li key={v.id} className={cn("glass-panel relative overflow-hidden rounded-2xl p-4 pl-5", (v.resolution === "dismissed" || arch) && "opacity-70")}>
                     <span className={cn("absolute inset-y-0 left-0 w-1", sev.bar)} aria-hidden="true" />
                     <div className="flex flex-wrap items-center gap-2">
-                      <span className="font-semibold">{v.ruleName ?? "Правило"}</span>
+                      <span className="font-semibold">{v.ruleName ?? t("ruleFallback")}</span>
                       <Pill tone={sev.tone}>{sev.label}</Pill>
                       {res ? <Pill tone={res.tone} dot>{res.label}</Pill> : <Pill tone={st.tone} dot>{st.label}</Pill>}
                       {arch && <Pill tone="neutral" className="opacity-80" title={arch.hint}><Archive className="size-3" aria-hidden="true" />{arch.label}</Pill>}
@@ -230,7 +226,7 @@ export function ViolationsList({
                           type="button"
                           onClick={() => navigate(links.trade(v.tradeId!))}
                           className="chip inline-flex min-h-6 items-center gap-1 px-2 text-xs font-medium"
-                          title="Открыть сделку"
+                          title={t("violations.openTrade")}
                         >
                           {v.ticker ?? `#${v.tradeId}`}
                           {v.tradeNetPnl != null ? (
@@ -245,30 +241,30 @@ export function ViolationsList({
                           type="button"
                           onClick={() => navigate(links.setup(v.playbookId!))}
                           className="chip inline-flex min-h-6 items-center gap-1 px-2 text-xs"
-                          title="Открыть сетап в плейбуке"
+                          title={t("violations.openSetup")}
                         >
                           <BookOpen className="size-3" aria-hidden="true" />
-                          {v.playbookName ?? v.tradeSetup ?? "сетап"}
+                          {v.playbookName ?? v.tradeSetup ?? t("violations.setupFallback")}
                         </button>
                       )}
                       {v.costNet != null && v.costNet !== 0 && (
-                        <span className={cn("text-xs font-semibold tabular-nums", v.costNet < 0 ? "text-down" : "text-up")} title="Цена нарушения, нетто">
-                          {fmtUsd(v.costNet, { signed: true, decimals: "trim" })} нетто
+                        <span className={cn("text-xs font-semibold tabular-nums", v.costNet < 0 ? "text-down" : "text-up")} title={t("violations.costTitle")}>
+                          {t("violations.net", { amount: fmtUsd(v.costNet, { signed: true, decimals: "trim" }) })}
                         </span>
                       )}
                       <div className="ml-auto flex items-center gap-1">
                         {canAct && (
                           <Button variant={canAck ? "outline" : "ghost"} size="sm" disabled={busy} onClick={() => openActions(v)} aria-expanded={active}>
-                            {canAck ? "Принять" : isStaff ? "Решение" : "Комментарий"}
+                            {canAck ? t("violations.ack") : isStaff ? t("violations.decision") : t("violations.comment")}
                           </Button>
                         )}
                         <Button
                           variant="ghost"
                           size="sm"
-                          title="Записать в журнал ошибок с уроком"
+                          title={t("violations.logTitle")}
                           onClick={() =>
                             onLogMistake({
-                              errorType: `${RULE_PREFIX}${v.ruleName ?? "правило"}`,
+                              errorType: `${RULE_PREFIX}${v.ruleName ?? t("ruleFallback")}`,
                               description: v.message,
                               tradeId: v.tradeId,
                               ticker: v.ticker,
@@ -276,7 +272,7 @@ export function ViolationsList({
                             })
                           }
                         >
-                          В журнал
+                          {t("violations.toLog")}
                         </Button>
                       </div>
                     </div>
@@ -285,20 +281,20 @@ export function ViolationsList({
                     {(v.comment || v.consequence || v.acknowledgedAt || v.resolvedAt) && !active && (
                       <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                         {v.acknowledgedAt && (
-                          <span>Принято {v.acknowledgedBy ? `· ${v.acknowledgedBy}` : ""} · {fmtDate(v.acknowledgedAt, "dateTime", { timeZone: "America/New_York" })}</span>
+                          <span>{[t("violations.acknowledged"), v.acknowledgedBy, fmtDate(v.acknowledgedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
                         )}
                         {v.comment && <p className="break-words text-foreground">«{v.comment}»</p>}
                         {v.resolvedAt && (
-                          <span>{res?.label ?? "Решено"} {v.resolvedBy ? `· ${v.resolvedBy}` : ""} · {fmtDate(v.resolvedAt, "dateTime", { timeZone: "America/New_York" })}</span>
+                          <span>{[res?.label ?? VIOLATION_STATUS.resolved.label, v.resolvedBy, fmtDate(v.resolvedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
                         )}
-                        {v.consequence && <p className="break-words"><span className="font-medium text-foreground">Последствие:</span> {v.consequence}</p>}
+                        {v.consequence && <p className="break-words"><span className="font-medium text-foreground">{t("violations.consequence")}</span> {v.consequence}</p>}
                       </div>
                     )}
 
                     {active && (
                       <div className="mt-3 flex flex-col gap-2 rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3">
                         <label className="text-xs text-muted-foreground" htmlFor={`v-comment-${v.id}`}>
-                          {isOwner ? "Что произошло и почему (видит куратор)" : "Комментарий куратора"}
+                          {isOwner ? t("violations.ownerLabel") : t("violations.staffLabel")}
                         </label>
                         <Textarea
                           id={`v-comment-${v.id}`}
@@ -306,30 +302,30 @@ export function ViolationsList({
                           maxLength={2000}
                           value={comment}
                           onChange={(e) => setComment(e.target.value)}
-                          placeholder={isOwner ? "Например: взял сделку сверх лимита после двух стопов — эмоции" : "Разбор на 1:1, договорённость с трейдером"}
+                          placeholder={isOwner ? t("violations.ownerPlaceholder") : t("violations.staffPlaceholder")}
                         />
                         {isStaff && (
                           <>
-                            <label className="text-xs text-muted-foreground" htmlFor={`v-cons-${v.id}`}>Последствие (если подтверждено)</label>
+                            <label className="text-xs text-muted-foreground" htmlFor={`v-cons-${v.id}`}>{t("violations.consLabel")}</label>
                             <Textarea
                               id={`v-cons-${v.id}`}
                               rows={1}
                               maxLength={2000}
                               value={consequence}
                               onChange={(e) => setConsequence(e.target.value)}
-                              placeholder="Например: размер позиции −50% на неделю"
+                              placeholder={t("violations.consPlaceholder")}
                             />
                           </>
                         )}
                         <div className="flex flex-wrap items-center gap-2">
                           {canAck && (
-                            <Button size="sm" disabled={busy} onClick={() => patch(v, { acknowledged: true, comment: comment.trim() || null }, "Нарушение принято")}>
-                              <Check /> Принято
+                            <Button size="sm" disabled={busy} onClick={() => patch(v, { acknowledged: true, comment: comment.trim() || null }, t("violations.toastAck"))}>
+                              <Check /> {t("violations.btnAck")}
                             </Button>
                           )}
                           {isOwner && v.status === "acknowledged" && (
-                            <Button size="sm" variant="outline" disabled={busy} onClick={() => patch(v, { comment: comment.trim() || null }, "Комментарий сохранён")}>
-                              Сохранить комментарий
+                            <Button size="sm" variant="outline" disabled={busy} onClick={() => patch(v, { comment: comment.trim() || null }, t("violations.toastComment"))}>
+                              {t("violations.saveComment")}
                             </Button>
                           )}
                           {canResolve && (
@@ -338,26 +334,26 @@ export function ViolationsList({
                                 size="sm"
                                 variant="destructive"
                                 disabled={busy}
-                                onClick={() => patch(v, { resolution: "upheld", consequence: consequence.trim() || null, comment: comment.trim() || null }, "Нарушение подтверждено")}
+                                onClick={() => patch(v, { resolution: "upheld", consequence: consequence.trim() || null, comment: comment.trim() || null }, t("violations.toastUpheld"))}
                               >
-                                <Check /> Подтвердить
+                                <Check /> {t("violations.uphold")}
                               </Button>
                               <Button
                                 size="sm"
                                 variant="outline"
                                 disabled={busy}
-                                onClick={() => patch(v, { resolution: "dismissed", comment: comment.trim() || null }, "Нарушение снято")}
+                                onClick={() => patch(v, { resolution: "dismissed", comment: comment.trim() || null }, t("violations.toastDismissed"))}
                               >
-                                <X /> Снять
+                                <X /> {t("violations.dismiss")}
                               </Button>
                             </>
                           )}
                           {canReopen && (
-                            <Button size="sm" variant="ghost" disabled={busy} onClick={() => patch(v, { resolution: null, comment: comment.trim() || null }, "Решение отменено")}>
-                              <Undo2 /> Вернуть в работу
+                            <Button size="sm" variant="ghost" disabled={busy} onClick={() => patch(v, { resolution: null, comment: comment.trim() || null }, t("violations.toastReopened"))}>
+                              <Undo2 /> {t("violations.reopen")}
                             </Button>
                           )}
-                          <Button size="sm" variant="ghost" className="ml-auto" disabled={busy} onClick={() => setActiveId(null)}>Отмена</Button>
+                          <Button size="sm" variant="ghost" className="ml-auto" disabled={busy} onClick={() => setActiveId(null)}>{commonI18n.t("actions.cancel")}</Button>
                         </div>
                       </div>
                     )}

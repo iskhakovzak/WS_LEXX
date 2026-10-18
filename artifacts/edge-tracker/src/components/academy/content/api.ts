@@ -4,12 +4,18 @@
  */
 import { useMutation, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type ItemKind = "lesson" | "quiz" | "assignment";
 export type ItemStatus = "not_started" | "in_progress" | "completed";
 export type Stage = "trainee" | "junior" | "trader" | "senior";
 export const STAGES: readonly Stage[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
+/** Ladder stage name in the UI language (stage key `trainee` = tier «Стажёр» / Intern). Call at render time. */
+export const stageLabel = (s: Stage): string => commonI18n.t(`tiers.${STAGE_TIER[s]}`);
+/** Same for a stage code that may come from the server as a plain string. */
+export const stageLabelOf = (s: string | null | undefined): string => (s && (STAGES as readonly string[]).includes(s) ? stageLabel(s as Stage) : s ?? "");
 
 export type Attachment = { title: string; url: string };
 export type VideoEmbed = { provider: "youtube" | "vimeo" | "loom"; id: string; embedUrl: string; watchUrl: string };
@@ -240,4 +246,5 @@ export const api = {
 };
 
 export const KIND_ARCHIVE: Record<ItemKind, "lessons" | "quizzes" | "assignments"> = { lesson: "lessons", quiz: "quizzes", assignment: "assignments" };
-export const KIND_LABEL: Record<ItemKind, string> = { lesson: "Урок", quiz: "Тест", assignment: "Задание" };
+/** «Урок» / «Тест» / «Задание» in the UI language. Call at render time. */
+export const kindLabel = (k: ItemKind): string => academyI18n.t(`kind.${k}`);

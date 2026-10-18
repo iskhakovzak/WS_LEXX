@@ -4,6 +4,7 @@
 import type { Bar, Candle, Timeframe } from "../types";
 import { TF_SECONDS } from "../types";
 import { etParts } from "./time";
+import { chartI18n } from "@/i18n/ns/chart";
 
 /** Bucket start (epoch seconds) for a bar time on the given timeframe. */
 export function bucketStart(t: number, tf: Timeframe): number {
@@ -60,16 +61,16 @@ export function availableTimeframes(baseSec: number, all: readonly Timeframe[]):
  */
 export function timeframeUnavailableReason(tf: Timeframe, baseSec: number): string | null {
   if (TF_SECONDS[tf] >= baseSec) return null;
-  if (baseSec <= 300) return "1-минутные бары Yahoo отдаёт только за последние 7 дней, а этот день старше и не сохранён в кэше — есть только 5-минутки";
-  if (baseSec <= 3600) return "Минутные и 5-минутные бары есть только за последние 60 дней (или если день был сохранён в кэше) — для этого дня только часовые";
-  return "Внутридневных баров за этот день нет — только дневные";
+  if (baseSec <= 300) return chartI18n.t("tfReason.min1");
+  if (baseSec <= 3600) return chartI18n.t("tfReason.min5");
+  return chartI18n.t("tfReason.intraday");
 }
 
-/** Short label of the base bar size for notices: «1 мин», «5 мин», «1 ч». */
+/** Short label of the base bar size for notices: «1 мин», «5 мин», «1 ч» (EN/UZ «1m», «5m», «1h»). */
 export function baseBarLabel(baseSec: number): string {
-  if (baseSec >= 86400) return "дневные";
-  if (baseSec >= 3600) return `${Math.round(baseSec / 3600)} ч`;
-  return `${Math.round(baseSec / 60)} мин`;
+  if (baseSec >= 86400) return chartI18n.t("bars.daily");
+  if (baseSec >= 3600) return chartI18n.t("bars.hours", { n: Math.round(baseSec / 3600) });
+  return chartI18n.t("bars.minutes", { n: Math.round(baseSec / 60) });
 }
 
 /** Effective bar length in seconds for a timeframe (daily bars are one ET day). */

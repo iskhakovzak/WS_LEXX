@@ -23,7 +23,8 @@ import {
   buildTrainingTradePayload, canTrainOnTrades, candidateOf, parseTaskFilters, pickTask, resolutionCounts, taskKey,
   type TaskCandidate, type TaskFilters,
 } from "../lib/trainingTasks";
-import { badRequest, notFound } from "../lib/http";
+import { AppError, badRequest, notFound } from "../lib/http";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -104,11 +105,11 @@ router.get("/training/pool", asyncHandler(async (req: Request, res: Response): P
 router.get("/training/task", asyncHandler(async (req: Request, res: Response): Promise<void> => {
   const f = parseTaskFilters(req.query as Record<string, unknown>);
   const v = await viewerFor(req);
-  if (f.source !== "day" && !v.member) { res.status(403).json({ error: "Задачи из сделок доступны после входа", code: "MEMBERS_ONLY" }); return; }
+  if (f.source !== "day" && !v.member) throw new AppError("MEMBERS_ONLY");
   const list = await loadCandidates(f, v.name);
   const counts = resolutionCounts(list);
   const task = pickTask(list, f.res, f.exclude);
-  if (!task) { res.status(404).json({ error: "no_tasks", counts }); return; }
+  if (!task) throw new AppError("NO_TASKS", 404, undefined, { counts });
   res.json({ task: { ...task, key: taskKey(task), source: f.source }, counts });
 }));
 
@@ -124,16 +125,16 @@ router.get("/training/trades/:id", asyncHandler(async (req: Request, res: Respon
   if (!t) throw notFound("TRADE_NOT_FOUND");
   const v = await viewerFor(req);
   const own = !!v.name && t.trader === v.name;
-  if (!own && !v.member) { res.status(403).json({ error: "Тренировка на сделках деска доступна после входа" }); return; }
+  if (!own && !v.member) throw new AppError("MEMBERS_ONLY");
   const { rows: execs } = await pool.query(
     `SELECT id, trade_id, kind, price, qty, executed_at, note, sort_order FROM trade_executions WHERE trade_id = $1 ORDER BY sort_order ASC, id ASC`,
     [id],
   );
-  const computed = await structureForTrade(id).catch((e) => {
+  const computed = await structureForTrade(id, undefined, langOf(req)).catch((e) => {
     logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId: id }, "trade structure failed");
     return null;
   });
-  res.json(buildTrainingTradePayload(t, execs, computed, { name: v.name, staff: v.staff }));
+  res.json(buildTrainingTradePayload(t, execs, computed, { name: v.name, staff: v.staff }, langOf(req)));
 }));
 
 export default router;

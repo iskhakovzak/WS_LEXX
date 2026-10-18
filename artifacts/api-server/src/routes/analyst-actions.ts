@@ -20,7 +20,7 @@ import {
   aggregate, barsFromCandles, classifyAction, reactionDay, reactionOn,
   type Bar, type EventKind, type Reaction, type ReactionAgg,
 } from "../lib/analystReaction";
-import { badRequest, unauthorized } from "../lib/http";
+import { AppError, badRequest, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -153,8 +153,7 @@ router.get("/analyst-actions", asyncHandler(async (req, res): Promise<void> => {
     ({ rows } = await pool.query<any>(sql, params));
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst-actions query failed");
-    res.status(500).json({ error: "Не удалось загрузить действия аналитиков" });
-    return;
+    throw new AppError("COMPUTE_FAILED");
   }
 
   // Market cap filtering already happened in SQL; here we just shape rows.
@@ -366,8 +365,7 @@ router.get("/analyst-actions/firms", asyncHandler(async (req, res): Promise<void
     ));
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst-actions firms query failed");
-    res.status(500).json({ error: "Не удалось посчитать статистику фирм" });
-    return;
+    throw new AppError("COMPUTE_FAILED");
   }
 
   type Ev = { firm: string; t: number; d: number; rating: boolean };
@@ -681,8 +679,7 @@ router.get("/analyst-actions/reaction", asyncHandler(async (req, res): Promise<v
     rows = await actionsFor([ticker], new Date(Date.now() - REACTION_LOOKBACK_DAYS * 86400_000).toISOString());
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst reaction failed");
-    res.status(500).json({ error: "Не удалось посчитать реакцию на рейтинги" });
-    return;
+    throw new AppError("COMPUTE_FAILED");
   }
   const bars = cached?.bars ?? [];
   const events = buildEvents(rows, bars);
@@ -745,8 +742,7 @@ router.get("/analyst-actions/reactions", asyncHandler(async (req, res): Promise<
     cache = await readBars(tickers);
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst reactions: bars read failed");
-    res.status(500).json({ error: "Не удалось прочитать кэш котировок" });
-    return;
+    throw new AppError("COMPUTE_FAILED");
   }
   const missing = tickers.filter((t) => !cache.has(t) || Date.now() - cache.get(t)!.fetchedAt > BARS_TTL_MS);
   warmBars(missing, 20);
@@ -804,8 +800,7 @@ router.get("/analyst-actions/firm-weight", asyncHandler(async (req, res): Promis
     ));
   } catch (e: any) {
     req.log?.warn({ error: e?.message }, "analyst firm weight: base query failed");
-    res.status(500).json({ error: "Не удалось посчитать вес фирм" });
-    return;
+    throw new AppError("COMPUTE_FAILED");
   }
   const have = new Set(cachedTickers.map((r) => r.ticker));
   const stale = new Set(cachedTickers.filter((r) => Date.now() - new Date(r.fetched_at).getTime() > BARS_TTL_MS).map((r) => r.ticker));
@@ -905,8 +900,7 @@ router.get("/analyst-actions/my-days", asyncHandler(async (req, res): Promise<vo
       ));
     } catch (e: any) {
       req.log?.warn({ error: e?.message }, "analyst my-days query failed");
-      res.status(500).json({ error: "Не удалось посчитать статистику по дням рейтингов" });
-      return;
+      throw new AppError("COMPUTE_FAILED");
     }
   }
 

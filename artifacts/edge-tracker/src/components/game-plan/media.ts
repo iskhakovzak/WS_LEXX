@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { http, ApiError } from "@/lib/api/http";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 
 /**
  * Plan screenshots: client-side compression → POST /api/plan-media (raw bytes) → { id }.
@@ -43,13 +44,13 @@ async function decode(file: Blob): Promise<{ draw: (ctx: CanvasRenderingContext2
 
 /** Resize to ≤1600px on the long edge and re-encode as WebP (JPEG fallback) ~0.8; steps down until ≤2.4 MB. */
 export async function compressImage(file: Blob): Promise<{ blob: Blob; width: number; height: number }> {
-  if (!file.type.startsWith("image/")) throw new Error("Это не картинка");
-  if (file.size > MAX_SOURCE_BYTES) throw new Error("Файл больше 25 МБ");
+  if (!file.type.startsWith("image/")) throw new Error(gpI18n.t("media.notImage"));
+  if (file.size > MAX_SOURCE_BYTES) throw new Error(gpI18n.t("media.tooBig"));
   let src;
   try {
     src = await decode(file);
   } catch {
-    throw new Error("Не удалось прочитать картинку");
+    throw new Error(gpI18n.t("media.readFailed"));
   }
   try {
     const attempts: [number, number][] = [
@@ -66,14 +67,14 @@ export async function compressImage(file: Blob): Promise<{ blob: Blob; width: nu
       canvas.width = w;
       canvas.height = h;
       const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas недоступен");
+      if (!ctx) throw new Error(gpI18n.t("media.noCanvas"));
       src.draw(ctx, w, h);
       let blob = await canvasToBlob(canvas, "image/webp", q);
       // Safari < 17 silently falls back to PNG for unsupported types — use JPEG there.
       if (!blob || blob.type !== "image/webp") blob = await canvasToBlob(canvas, "image/jpeg", Math.min(0.85, q + 0.02));
       if (blob && blob.size <= MAX_UPLOAD_BYTES) return { blob, width: w, height: h };
     }
-    throw new Error("Картинка слишком большая даже после сжатия");
+    throw new Error(gpI18n.t("media.tooBigAfter"));
   } finally {
     src.close();
   }
@@ -91,7 +92,7 @@ export async function uploadPlanImage(file: Blob, context: MediaContext, date: s
   } catch (e) {
     // An API build without the media route answers a bare 404.
     if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
-      throw new ApiError({ status: 404, message: "Загрузка скриншотов включится после обновления сервера", body: e.body, method: e.method, url: e.url });
+      throw new ApiError({ status: 404, message: gpI18n.t("media.uploadsNotDeployed"), body: e.body, method: e.method, url: e.url });
     }
     throw e;
   }

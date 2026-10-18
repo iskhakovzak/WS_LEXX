@@ -17,6 +17,7 @@ import {
 } from "./lib/security/http";
 import { shutdownConnectionClose } from "./lib/security/lifecycle";
 import { captureFailedResponse, captureServerError } from "./lib/errorTracking";
+import { rateLimitedBody } from "./lib/rateLimits";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const isProduction = config.isProduction;
@@ -74,7 +75,7 @@ const guestLimiter = rateLimit({
   limit: 60,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { error: "Слишком много запросов, попробуйте позже", code: "RATE_LIMITED" },
+  message: rateLimitedBody,
 });
 app.use("/api/auth/guest", guestLimiter);
 
@@ -84,7 +85,7 @@ const initPasswordsLimiter = rateLimit({
   limit: 10,
   standardHeaders: "draft-7",
   legacyHeaders: false,
-  message: { error: "Слишком много попыток, попробуйте позже", code: "RATE_LIMITED" },
+  message: rateLimitedBody,
 });
 app.use("/api/auth/init-passwords", initPasswordsLimiter);
 

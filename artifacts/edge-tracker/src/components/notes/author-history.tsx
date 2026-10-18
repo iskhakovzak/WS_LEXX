@@ -18,6 +18,7 @@ import {
 } from "./author-model";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { notesI18n } from "@/i18n/ns/notes";
 
 function monthKey(d: string) {
   return fmtDate(d.slice(0, 10), "monthYear");
@@ -40,6 +41,8 @@ export function AuthorHistory({
   onDelete: (note: AuthorNote) => void;
   canEdit: boolean;
 }) {
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [query, setQuery] = React.useState("");
   const [moodFilter, setMoodFilter] = React.useState<string | null>(null);
   const [preview, setPreview] = React.useState<AuthorNote | null>(null);
@@ -107,7 +110,7 @@ export function AuthorHistory({
 
   if (loading && notes.length === 0) {
     return (
-      <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка истории">
+      <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("author.history.loading")}>
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}</div>
         <Skeleton className="h-44 rounded-2xl" />
         {[0, 1, 2].map((i) => <Skeleton key={i} className="h-20 rounded-2xl" />)}
@@ -117,7 +120,7 @@ export function AuthorHistory({
   if (error) {
     return (
       <Panel>
-        <EmptyState icon={BookOpen} title="Не удалось загрузить историю" action={<Button variant="outline" onClick={onRetry}>Повторить</Button>} />
+        <EmptyState icon={BookOpen} title={t("historyLoadFailed")} action={<Button variant="outline" onClick={onRetry}>{tc("actions.retry")}</Button>} />
       </Panel>
     );
   }
@@ -126,9 +129,9 @@ export function AuthorHistory({
       <Panel>
         <EmptyState
           icon={BookOpen}
-          title="История пока пуста"
-          description="Первая сводка появится здесь сразу после сохранения. Пиши каждый торговый день — серия и тренд настроения посчитаются сами."
-          action={canEdit ? <Button onClick={() => onOpenInEditor(today)}>Написать сводку за сегодня</Button> : undefined}
+          title={t("author.history.emptyTitle")}
+          description={t("author.history.emptyDescription")}
+          action={canEdit ? <Button onClick={() => onOpenInEditor(today)}>{t("author.history.writeToday")}</Button> : undefined}
         />
       </Panel>
     );
@@ -137,24 +140,24 @@ export function AuthorHistory({
   return (
     <div className="flex flex-col gap-4">
       <StatGrid>
-        <StatCard label="Записей" value={stats.total} icon={BookOpen} hint="за всё время" />
+        <StatCard label={t("author.history.entries")} value={stats.total} icon={BookOpen} hint={t("author.history.allTime")} />
         <StatCard
-          label="Серия"
-          value={commonI18n.t("units.days", { count: stats.streak })}
+          label={t("author.history.streak")}
+          value={tc("units.days", { count: stats.streak })}
           icon={Flame}
           tone={stats.streak >= 5 ? "up" : "neutral"}
-          hint="торговых дней подряд"
+          hint={t("author.history.streakHint")}
         />
         <StatCard
-          label="Настроение"
+          label={t("author.history.mood")}
           value={avgMood ? <span className="inline-flex items-center gap-2">{avgMood.emoji}<span className="text-base font-medium">{avgMood.label}</span></span> : "—"}
-          hint="в среднем за 20 записей"
+          hint={t("author.history.moodHint")}
         />
-        <StatCard label="С AI-версией" value={stats.ai} icon={Sparkles} hint={stats.total ? `${Math.round((stats.ai / stats.total) * 100)}% записей` : undefined} />
+        <StatCard label={t("author.history.withAi")} value={stats.ai} icon={Sparkles} hint={stats.total ? t("author.history.aiShare", { pct: Math.round((stats.ai / stats.total) * 100) }) : undefined} />
       </StatGrid>
 
       {chart.length >= 2 && (
-        <Panel title="Тренд настроения" description="Последние записи, от раздражения до уверенности">
+        <Panel title={t("author.history.moodTrend")} description={t("author.history.moodTrendDescription")}>
           <div className="h-40 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={chart} margin={{ top: 8, right: 8, bottom: 0, left: -24 }}>
@@ -172,7 +175,7 @@ export function AuthorHistory({
                   contentStyle={CHART_TOOLTIP}
                   formatter={(_v: number, _n: string, item: { payload?: { score: number } }) => {
                     const m = MOODS.find((x) => x.score === item.payload?.score);
-                    return [m ? `${m.emoji} ${m.label}` : "—", "Настроение"];
+                    return [m ? `${m.emoji} ${m.label}` : "—", t("author.history.mood")];
                   }}
                   labelFormatter={(d: string) => fmtDate(d, "weekdayDayMonthLong")}
                 />
@@ -191,19 +194,19 @@ export function AuthorHistory({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); e.currentTarget.blur(); } }}
-            placeholder="Поиск по сводкам: тикер, сетап, слово…"
-            aria-label="Поиск по сводкам"
+            placeholder={t("author.history.searchPlaceholder")}
+            aria-label={t("searchNotes")}
             className="pl-10 pr-16"
           />
           {query ? (
-            <button type="button" onClick={() => setQuery("")} aria-label="Очистить поиск" className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
+            <button type="button" onClick={() => setQuery("")} aria-label={tc("actions.clearSearch")} className="absolute right-2 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground">
               <X className="h-4 w-4" />
             </button>
           ) : (
             <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>
           )}
         </div>
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Фильтр по настроению">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("author.history.moodFilterAria")}>
           {MOODS.map((m) => (
             <FilterChip key={m.value} active={moodFilter === m.value} onClick={() => setMoodFilter(moodFilter === m.value ? null : m.value)}>
               <span aria-hidden="true">{m.emoji}</span>
@@ -215,11 +218,11 @@ export function AuthorHistory({
 
       {filtered.length === 0 ? (
         <Panel>
-          <EmptyState icon={Search} title="Ничего не найдено" description="Попробуй другое слово или сбрось фильтр настроения." />
+          <EmptyState icon={Search} title={tc("states.nothingFound")} description={t("author.history.notFoundDescription")} />
         </Panel>
       ) : (
         <div className="flex flex-col gap-5">
-          {query && <p className="text-xs text-muted-foreground" aria-live="polite">Найдено: {filtered.length}</p>}
+          {query && <p className="text-xs text-muted-foreground" aria-live="polite">{t("author.history.found", { count: filtered.length })}</p>}
           {groups.map((g) => (
             <section key={g.month} className="flex flex-col gap-2">
               <h3 className="px-1 text-sm font-semibold capitalize text-foreground">{g.month}</h3>
@@ -247,7 +250,7 @@ export function AuthorHistory({
                               {n.refined_text && <Pill tone="accent">AI</Pill>}
                               {filled.length > 0 && (
                                 <span className="text-xs text-muted-foreground">
-                                  {filled.length}/{SECTIONS.length} блоков
+                                  {t("author.blocksCount", { filled: filled.length, total: SECTIONS.length })}
                                 </span>
                               )}
                             </div>
@@ -259,17 +262,17 @@ export function AuthorHistory({
                         {canEdit && (
                           <DropdownMenu>
                             <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label={`Действия с записью за ${fmtDate(d, "dayMonth")}`}>
+                              <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 data-[state=open]:opacity-100" aria-label={t("author.history.rowActions", { date: fmtDate(d, "dayMonth") })}>
                                 <MoreHorizontal className="h-4 w-4" />
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem onSelect={() => onOpenInEditor(d)}>
-                                <PenLine className="mr-2 h-4 w-4" />Открыть в редакторе
+                                <PenLine className="mr-2 h-4 w-4" />{t("openInEditor")}
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem className="text-down focus:text-down" onSelect={() => onDelete(n)}>
-                                <Trash2 className="mr-2 h-4 w-4" />Удалить
+                                <Trash2 className="mr-2 h-4 w-4" />{tc("actions.delete")}
                               </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
@@ -291,14 +294,14 @@ export function AuthorHistory({
               <SheetHeader>
                 <SheetTitle className="first-letter:uppercase">{fmtDate(preview.note_date, "weekdayDayMonthLong")}</SheetTitle>
                 <SheetDescription>
-                  {moodOf(preview.mood) ? `${moodOf(preview.mood)!.emoji} ${moodOf(preview.mood)!.label}` : "Настроение не отмечено"}
+                  {moodOf(preview.mood) ? `${moodOf(preview.mood)!.emoji} ${moodOf(preview.mood)!.label}` : t("author.history.noMood")}
                 </SheetDescription>
               </SheetHeader>
               <div className="mt-4 flex flex-col gap-4">
                 {preview.refined_text && (
-                  <div className="glass-field inline-flex self-start p-1" role="group" aria-label="Версия записи">
-                    <button type="button" aria-pressed={!showAi} onClick={() => setShowAi(false)} className={cn("min-h-8 rounded-full px-3 text-sm", !showAi ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>Оригинал</button>
-                    <button type="button" aria-pressed={showAi} onClick={() => setShowAi(true)} className={cn("min-h-8 rounded-full px-3 text-sm", showAi ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>AI-версия</button>
+                  <div className="glass-field inline-flex self-start p-1" role="group" aria-label={t("author.history.versionAria")}>
+                    <button type="button" aria-pressed={!showAi} onClick={() => setShowAi(false)} className={cn("min-h-8 rounded-full px-3 text-sm", !showAi ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>{t("original")}</button>
+                    <button type="button" aria-pressed={showAi} onClick={() => setShowAi(true)} className={cn("min-h-8 rounded-full px-3 text-sm", showAi ? "bg-primary-solid text-primary-foreground" : "text-muted-foreground")}>{t("aiVersion")}</button>
                   </div>
                 )}
                 {showAi && preview.refined_text ? (
@@ -308,7 +311,7 @@ export function AuthorHistory({
                 )}
                 {canEdit && (
                   <Button className="gap-1.5 self-start" onClick={() => { const d = preview.note_date.slice(0, 10); setPreview(null); onOpenInEditor(d); }}>
-                    <PenLine className="h-4 w-4" />Открыть в редакторе
+                    <PenLine className="h-4 w-4" />{t("openInEditor")}
                   </Button>
                 )}
               </div>

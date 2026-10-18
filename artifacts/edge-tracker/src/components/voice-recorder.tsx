@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { recordingToWav } from "@/lib/audio-wav";
+import { voiceI18n } from "@/i18n/ns/voice";
 
 
 const BAR_COUNT = 12;
@@ -23,11 +24,11 @@ function extFor(mime: string): string {
 
 function micErrorMessage(e: unknown): string {
   const name = (e as { name?: string })?.name;
-  if (name === "NotAllowedError" || name === "SecurityError") return "Доступ к микрофону запрещён. Разрешите его в настройках сайта в браузере.";
-  if (name === "NotFoundError" || name === "OverconstrainedError") return "Микрофон не найден. Подключите микрофон и попробуйте снова.";
-  if (name === "NotReadableError" || name === "AbortError") return "Микрофон занят другим приложением.";
-  if (name === "NotSupportedError") return "Браузер не поддерживает запись звука.";
-  return "Не удалось включить микрофон.";
+  if (name === "NotAllowedError" || name === "SecurityError") return voiceI18n.t("recorder.micDenied");
+  if (name === "NotFoundError" || name === "OverconstrainedError") return voiceI18n.t("recorder.micNotFound");
+  if (name === "NotReadableError" || name === "AbortError") return voiceI18n.t("recorder.micBusy");
+  if (name === "NotSupportedError") return voiceI18n.t("recorder.unsupported");
+  return voiceI18n.t("recorder.micFailed");
 }
 
 
@@ -46,6 +47,7 @@ interface VoiceRecorderProps {
 
 export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, dailyFeedId, className, label, maxDurationSec = 300 }: VoiceRecorderProps) {
   const { toast } = useToast();
+  const { t } = voiceI18n.useT();
   const [recording, setRecording] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [duration, setDuration] = useState(0);
@@ -116,8 +118,8 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
   const startRecording = useCallback(async () => {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       toast({
-        title: "Запись недоступна",
-        description: window.isSecureContext === false ? "Запись звука работает только по HTTPS." : "Браузер не поддерживает запись звука.",
+        title: voiceI18n.t("recorder.unavailable"),
+        description: voiceI18n.t(window.isSecureContext === false ? "recorder.httpsOnly" : "recorder.unsupported"),
         variant: "destructive",
       });
       return;
@@ -151,7 +153,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
         const dur = Math.round((Date.now() - startTimeRef.current) / 1000);
         if (blob.size === 0 || Date.now() - startTimeRef.current < 600) {
           setDuration(0);
-          toast({ title: "Запись слишком короткая", description: "Удерживайте запись хотя бы секунду." });
+          toast({ title: voiceI18n.t("recorder.tooShort"), description: voiceI18n.t("recorder.tooShortHint") });
           return;
         }
         setUploading(true);
@@ -170,7 +172,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             const res = await http.raw("/api/voice-notes/transcribe", { method: "POST", body: formData });
             const data = await res.json();
             if (data.transcript) onTranscript(data.transcript);
-            else toast({ title: "Речь не распознана", description: "Попробуйте говорить ближе к микрофону." });
+            else toast({ title: voiceI18n.t("recorder.noSpeech"), description: voiceI18n.t("recorder.noSpeechHint") });
           } else {
             formData.append("userId", userId!);
             if (tradeId) formData.append("tradeId", String(tradeId));
@@ -182,7 +184,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             onUploaded?.();
           }
         } catch (e) {
-          toast({ title: "Ошибка записи", description: humanizeApiError(e, "Не удалось обработать запись"), variant: "destructive" });
+          toast({ title: voiceI18n.t("recorder.error"), description: humanizeApiError(e, voiceI18n.t("recorder.processFailed")), variant: "destructive" });
         } finally {
           setUploading(false);
           setDuration(0);
@@ -202,7 +204,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
       // Release the mic if it was granted but the recorder couldn't start.
       stream?.getTracks().forEach((t) => t.stop());
       activeStreamRef.current = null;
-      toast({ title: "Микрофон недоступен", description: micErrorMessage(e), variant: "destructive" });
+      toast({ title: voiceI18n.t("recorder.micUnavailable"), description: micErrorMessage(e), variant: "destructive" });
     }
   }, [userId, tradeId, dailyFeedId, onTranscript, onUploaded, startWaveform, stopWaveform, toast]);
 
@@ -237,7 +239,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
 
   const formatDuration = (s: number) => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
   // Announced once per state change (not every second) so screen readers know recording started/stopped.
-  const liveText = uploading ? "Запись остановлена, идёт расшифровка" : recording ? "Идёт запись. Esc — отменить" : "";
+  const liveText = uploading ? t("recorder.liveUploading") : recording ? t("recorder.liveRecording") : "";
   const live = <span className="sr-only" aria-live="polite">{liveText}</span>;
   const nearLimit = recording && maxDurationSec > 0 && maxDurationSec - duration <= 15;
 
@@ -250,7 +252,7 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
           className={cn("inline-flex min-h-8 items-center gap-2 rounded-full bg-primary/12 px-3 text-xs font-medium text-primary", className)}
         >
           <Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />
-          Расшифровываем…
+          {t("recorder.transcribing")}
         </span>
         {live}
       </>
@@ -283,8 +285,8 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
           <button
             type="button"
             onClick={cancelRecording}
-            aria-label="Отменить запись (Esc)"
-            title="Отменить (Esc)"
+            aria-label={t("recorder.cancelAria")}
+            title={t("recorder.cancelTitle")}
             className="grid h-7 w-7 place-items-center rounded-full text-down/90 transition-colors hover:bg-down/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -293,12 +295,12 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
             type="button"
             onClick={stopRecording}
             autoFocus
-            aria-label={`Остановить и расшифровать (${formatDuration(duration)})`}
-            title="Остановить и расшифровать"
+            aria-label={t("recorder.stopAria", { duration: formatDuration(duration) })}
+            title={t("recorder.stopTitle")}
             className="inline-flex h-7 items-center gap-1 rounded-full bg-down px-2.5 text-xs font-semibold text-primary-foreground transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <Square className="h-3 w-3 fill-current" aria-hidden="true" />
-            Стоп
+            {t("recorder.stop")}
           </button>
         </span>
         {live}
@@ -309,10 +311,10 @@ export function VoiceRecorder({ onTranscript, onUploaded, userId, tradeId, daily
   return (
     <>
       <button
-        aria-label={label ? undefined : "Начать голосовую запись"}
+        aria-label={label ? undefined : t("recorder.startAria")}
         type="button"
         onClick={startRecording}
-        title="Голосовая запись — надиктуйте, текст появится автоматически"
+        title={t("recorder.startTitle")}
         className={cn(
           "chip inline-flex min-h-8 min-w-8 items-center justify-center gap-1.5 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
           label ? "px-3" : "px-0",

@@ -19,6 +19,7 @@ import { applyLang, getLang, getVersion, notify, subscribe, type LangSource } fr
 
 export * from "./core";
 export { getLang, onLangChange, LANG_STORAGE_KEY, LANG_PENDING_KEY, type LangSource } from "./state";
+export { liveLabels } from "./live-labels";
 
 type Loader = () => Promise<{ default: Dict }>;
 export type NamespaceLoaders = Record<Exclude<Lang, "ru">, Loader>;

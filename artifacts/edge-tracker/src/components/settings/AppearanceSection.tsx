@@ -6,11 +6,15 @@ import { Kbd } from "@/components/ui/kbd";
 import { useTheme, type Theme } from "@/contexts/theme-context";
 import { cn } from "@/lib/utils";
 import { Callout } from "./shared";
+import { visibleSections } from "./SettingsNav";
+import { useAuth } from "@/contexts/auth-context";
+import { settingsI18n } from "@/i18n/ns/settings";
+import { commonI18n } from "@/i18n/ns/common";
 
-const THEMES: { id: Theme; label: string; hint: string; icon: React.ElementType; selectors: string[] }[] = [
-  { id: "dark", label: "Тёмная", hint: "Графит, максимальный контраст для графиков", icon: Moon, selectors: [":root", ".dark"] },
-  { id: "dim", label: "Сумеречная", hint: "Мягче для долгих сессий вечером", icon: CloudMoon, selectors: [":root", ".dark", ".dim"] },
-  { id: "light", label: "Светлая", hint: "Для дневного света и печати", icon: Sun, selectors: [":root"] },
+const THEMES: { id: Theme; icon: React.ElementType; selectors: string[] }[] = [
+  { id: "dark", icon: Moon, selectors: [":root", ".dark"] },
+  { id: "dim", icon: CloudMoon, selectors: [":root", ".dark", ".dim"] },
+  { id: "light", icon: Sun, selectors: [":root"] },
 ];
 
 /**
@@ -95,7 +99,11 @@ function ThemePreview({ tokens }: { tokens: React.CSSProperties }) {
 }
 
 export function AppearanceSection() {
+  const { t: ts } = settingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const { theme, cycleTheme } = useTheme();
+  const { can } = useAuth();
+  const sectionCount = Math.min(9, visibleSections(can).length);
   // ThemeContext only exposes cycleTheme; step through the cycle until the chosen theme is applied.
   const [target, setTarget] = useState<Theme | null>(null);
   useEffect(() => {
@@ -117,8 +125,8 @@ export function AppearanceSection() {
 
   return (
     <div className="flex flex-col gap-4">
-      <Panel title="Тема интерфейса" description="Применяется сразу и синхронизируется с вашим профилем на всех устройствах" icon={Palette}>
-        <div role="radiogroup" aria-label="Тема интерфейса" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <Panel title={ts("appearance.title")} description={ts("appearance.description")} icon={Palette}>
+        <div role="radiogroup" aria-label={ts("appearance.title")} className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {THEMES.map((t, idx) => {
             const active = (target ?? theme) === t.id;
             return (
@@ -139,9 +147,9 @@ export function AppearanceSection() {
                 <div className="flex items-start justify-between gap-2 px-1 pb-1">
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 text-sm font-semibold text-foreground">
-                      <t.icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t.label}
+                      <t.icon className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {tc(`theme.${t.id}`)}
                     </div>
-                    <p className="mt-0.5 text-xs text-muted-foreground">{t.hint}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{ts(`appearance.${t.id}Hint`)}</p>
                   </div>
                   <span className={cn("grid h-5 w-5 shrink-0 place-items-center rounded-full border", active ? "border-transparent bg-primary-solid text-primary-foreground" : "border-border")}>
                     {active && <Check className="h-3 w-3" aria-hidden="true" />}
@@ -153,14 +161,14 @@ export function AppearanceSection() {
         </div>
       </Panel>
 
-      <Panel title="Горячие клавиши настроек" description="Работают, когда курсор не в поле ввода">
+      <Panel title={ts("appearance.hotkeys")} description={ts("appearance.hotkeysDesc")}>
         <ul className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
-          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">Поиск по настройкам</span><Kbd>/</Kbd></li>
-          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">Перейти к разделу</span><span className="flex gap-1"><Kbd>1</Kbd>–<Kbd>7</Kbd></span></li>
-          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">Навигация по разделам</span><span className="flex gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd></span></li>
-          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">Закрыть панель / очистить поиск</span><Kbd>Esc</Kbd></li>
+          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">{ts("appearance.keySearch")}</span><Kbd>/</Kbd></li>
+          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">{ts("appearance.keySection")}</span><span className="flex gap-1"><Kbd>1</Kbd>–<Kbd>{sectionCount}</Kbd></span></li>
+          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">{ts("appearance.keyNav")}</span><span className="flex gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd></span></li>
+          <li className="flex items-center justify-between gap-3 rounded-xl bg-[var(--glass-bg)] px-3 py-2"><span className="text-muted-foreground">{ts("appearance.keyClose")}</span><Kbd>Esc</Kbd></li>
         </ul>
-        <Callout className="mt-3">Анимации интерфейса автоматически отключаются, если в системе включено «Уменьшить движение».</Callout>
+        <Callout className="mt-3">{ts("appearance.reducedMotion")}</Callout>
       </Panel>
     </div>
   );

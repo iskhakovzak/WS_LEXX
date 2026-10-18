@@ -13,8 +13,9 @@ import {
 } from "./api";
 import { LineCanvas, monthTicks, downloadCanvasPng, type LineSeries } from "./line-canvas";
 import { divergingCell, strategyColor, tokenColor, useDark, yearColor } from "./palette";
-import { fmtCount, fmtRate, fmtRatio, fmtUsd, fmtWeekday, pluralRu } from "@/lib/format";
+import { fmtRate, fmtRatio, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { officeI18n } from "@/i18n/ns/officeStats";
 
 export type Ctx = { unit: Unit; view: OfficeView; focus: YearView; isAdmin: boolean };
 
@@ -24,12 +25,13 @@ const TONE_CLASS: Record<Insight["tone"], string> = {
 };
 
 export function InsightsStrip({ insights }: { insights: Insight[] }) {
+  const { t } = officeI18n.useT();
   if (!insights.length) return null;
   return (
-    <section aria-label="Главное" className="glass-panel rounded-2xl p-[var(--panel-p)]">
-      <div className="mb-2.5 flex items-center gap-2 text-sm font-semibold text-foreground">
-        <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Главное
-        <span className="text-xs font-normal text-muted-foreground">считается автоматически по правилам, без ИИ</span>
+    <section aria-label={t("insights.title")} className="glass-panel rounded-2xl p-[var(--panel-p)]">
+      <div className="mb-2.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-sm font-semibold text-foreground">
+        <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("insights.title")}
+        <span className="text-xs font-normal text-muted-foreground">{t("insights.hint")}</span>
       </div>
       <ul className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
         {insights.map((i) => {
@@ -62,7 +64,8 @@ export function sameDayValue(y: YearView | undefined, doy: number): number | nul
 
 export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; onJump: (id: string) => void }) {
   const { focus, unit, view, isAdmin } = ctx;
-  const t = focus.totals;
+  const { t } = officeI18n.useT();
+  const tot = focus.totals;
   const last = focus.days[focus.days.length - 1];
   const prevY = view.years.find((y) => y.year === focus.year - 1);
   const yoy = last ? sameDayValue(prevY, last.doy) : null;
@@ -71,17 +74,17 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
   const worst = ranked.length > 1 && ranked[ranked.length - 1].net < 0 ? ranked[ranked.length - 1] : null;
   const pace = focus.pace;
   const goalShare = pace && pace.goal > 0 ? pace.actual / pace.goal : null;
-  const greenShare = t.tradingDays ? t.greenDays / t.tradingDays : null;
+  const greenShare = tot.tradingDays ? tot.greenDays / tot.tradingDays : null;
   const st = focus.streaks.current;
   return (
     <StatGrid cols={4} min="9rem">
       <StatCard
-        label={`Нетто ${focus.year}`}
-        value={fmtV(t.net, unit)}
-        tone={toneOf(t.net)}
-        delta={yoy != null && prevY ? `${fmtV(t.net - yoy, unit)} к ${prevY.year}` : undefined}
-        deltaTone={yoy != null ? toneOf(t.net - yoy) : undefined}
-        hint={`${fmtNum(t.trades)} ${pluralRu(t.trades, "сделка", "сделки", "сделок")} · ${t.tradingDays} дн.`}
+        label={t("kpi.netYear", { year: focus.year })}
+        value={fmtV(tot.net, unit)}
+        tone={toneOf(tot.net)}
+        delta={yoy != null && prevY ? t("kpi.vsYear", { value: fmtV(tot.net - yoy, unit), year: prevY.year }) : undefined}
+        deltaTone={yoy != null ? toneOf(tot.net - yoy) : undefined}
+        hint={t("kpi.tradesDays", { trades: commonI18n.t("units.trades", { count: tot.trades }), days: commonI18n.t("time.daysShort", { count: tot.tradingDays }) })}
         spark={focus.days.map((d) => d.cum)}
       />
       <div className="glass-panel flex h-full min-h-[104px] min-w-0 items-center gap-3 rounded-2xl p-4">
@@ -91,66 +94,66 @@ export function KpiRow({ ctx, period, onJump }: { ctx: Ctx; period: PeriodView; 
           stroke={5}
           tone={pace?.status === "behind" ? "warn" : "up"}
           label={fmtRate(goalShare)}
-          ariaLabel="Выполнение годовой цели"
+          ariaLabel={t("kpi.goalAria")}
         />
         <div className="min-w-0">
-          <p className="truncate text-xs text-muted-foreground">Цель {focus.year}: +{focus.goalPct}%</p>
+          <p className="truncate text-xs text-muted-foreground">{t("kpi.goalOf", { year: focus.year, pct: focus.goalPct })}</p>
           {pace ? (
             <>
               <p className={cn("text-sm font-semibold", pace.status === "behind" ? "text-warn" : "text-up")}>
-                {pace.status === "done" ? "Цель выполнена" : pace.status === "ahead" ? `Опережение ${fmtV(Math.abs(pace.gap), unit, { signed: false })}` : `Отставание ${fmtV(Math.abs(pace.gap), unit, { signed: false })}`}
+                {pace.status === "done" ? t("kpi.goalDone") : t(pace.status === "ahead" ? "kpi.ahead" : "kpi.behind", { value: fmtV(Math.abs(pace.gap), unit, { signed: false }) })}
               </p>
               <p className="truncate text-xs text-muted-foreground">
-                {pace.status === "done" ? `итог ${fmtV(pace.actual, unit)}` : `нужно ${fmtV(pace.needPerMonth, unit)} / мес`}
+                {pace.status === "done" ? t("kpi.total", { value: fmtV(pace.actual, unit) }) : t("kpi.needPerMonth", { value: fmtV(pace.needPerMonth, unit) })}
               </p>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">{isAdmin ? "Укажите капитал, чтобы считать цель" : "Капитал за год не указан"}</p>
+            <p className="text-xs text-muted-foreground">{isAdmin ? t("kpi.setCapitalForGoal") : t("kpi.capitalNotSet")}</p>
           )}
         </div>
       </div>
       <StatCard
-        label="Лучшая стратегия"
+        label={t("kpi.bestStrategy")}
         value={best ? best.key : "—"}
         tone={best ? "up" : "neutral"}
-        hint={best ? `${fmtParen(best.net, unit)} · ${fmtShare(best.netShare)} результата` : "нет прибыльных"}
+        hint={best ? t("kpi.bestHint", { net: fmtParen(best.net, unit), share: fmtShare(best.netShare) }) : t("kpi.noProfitable")}
         onClick={() => onJump("strategies")}
       />
       <StatCard
-        label="Худшая стратегия"
+        label={t("kpi.worstStrategy")}
         value={worst ? worst.key : "—"}
         tone={worst ? "down" : "neutral"}
-        hint={worst ? `${fmtParen(worst.net, unit)} · WR ${fmtShare(worst.winRate)}` : "все в плюсе"}
+        hint={worst ? `${fmtParen(worst.net, unit)} · WR ${fmtShare(worst.winRate)}` : t("kpi.allPositive")}
         onClick={() => onJump("strategies")}
       />
       <StatCard
-        label="Сделок за период"
+        label={t("kpi.tradesPeriod")}
         value={fmtNum(period.totals.trades)}
         valueTitle={commonI18n.t("units.trades", { count: period.totals.trades })}
         hint={`WR ${fmtShare(period.totals.winRate)} · PF ${fmtRatio(period.totals.profitFactor)}`}
       />
       {isAdmin && period.totals.volume != null ? (
-        <StatCard label="Объём офиса" value={fmtNum(period.totals.volume)} valueTitle={`${fmtCount(period.totals.volume)} акций`} hint="акций за период" />
+        <StatCard label={t("kpi.volume")} value={fmtNum(period.totals.volume)} valueTitle={t("kpi.volumeShares", { count: period.totals.volume })} hint={t("kpi.volumeHint")} />
       ) : (
         <StatCard
-          label="Средний день"
+          label={t("kpi.avgDay")}
           value={fmtV(period.totals.avgDay, unit)}
           tone={toneOf(period.totals.avgDay)}
-          hint={`${period.totals.tradingDays} торговых дней`}
+          hint={commonI18n.t("units.tradingDays", { count: period.totals.tradingDays })}
         />
       )}
       <StatCard
-        label="Зелёные дни"
+        label={t("kpi.greenDays")}
         value={fmtShare(greenShare)}
         tone={greenShare != null && greenShare >= 0.5 ? "up" : "neutral"}
-        hint={st ? `${Math.abs(st)} ${st > 0 ? "в плюсе" : "в минусе"} подряд` : `${t.greenDays} из ${t.tradingDays}`}
+        hint={st ? t(st > 0 ? "kpi.greenStreak" : "kpi.redStreak", { count: Math.abs(st) }) : t("kpi.ofTotal", { value: tot.greenDays, total: tot.tradingDays })}
         onClick={() => onJump("risk")}
       />
       <StatCard
-        label="Макс. просадка"
+        label={t("kpi.maxDrawdown")}
         value={fmtV(focus.drawdown.max, unit)}
         tone={focus.drawdown.max < 0 ? "down" : "neutral"}
-        hint={focus.drawdown.recoveryDays != null ? `восстановление ${focus.drawdown.recoveryDays} дн.` : focus.drawdown.max < 0 ? "ещё не восстановлена" : "просадок не было"}
+        hint={focus.drawdown.recoveryDays != null ? t("kpi.recovered", { count: focus.drawdown.recoveryDays }) : focus.drawdown.max < 0 ? t("kpi.notRecovered") : t("kpi.noDrawdown")}
         onClick={() => onJump("risk")}
       />
     </StatGrid>
@@ -170,6 +173,7 @@ export function useYearSeries(view: OfficeView, focusYear: number, pick: (y: Yea
 
 export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: string) => void }) {
   const { view, focus, unit } = ctx;
+  const { t } = officeI18n.useT();
   const ref = React.useRef<HTMLDivElement | null>(null);
   const series = useYearSeries(view, focus.year, (y) => y.days.map((d) => ({ x: d.doy, y: d.cum, date: d.date })));
   const dayBy = React.useMemo(() => new Map(view.years.flatMap((y) => y.days.map((d) => [d.date, d] as const))), [view]);
@@ -183,8 +187,8 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
   }, []);
   return (
     <Panel
-      title="Общий результат офиса"
-      description="нарастающим итогом по дням года · линия на каждый год · пунктир — цель и ровный темп к ней"
+      title={t("chart.title")}
+      description={t("chart.desc")}
       icon={TrendingUp}
       fill
       className="lg:col-span-8"
@@ -192,23 +196,23 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
         <Button
           variant="ghost"
           size="sm"
-          title="Картинка с заголовком и легендой — для чата или отчёта"
+          title={t("chart.pngTitle")}
           onClick={() => downloadCanvasPng(ref.current, `office-net-${focus.year}-${unit}.png`, {
-            title: "Общий результат офиса",
-            subtitle: `нарастающим итогом · ${unit === "usd" ? "$" : "% от капитала"} · на ${fmtDay(focus.days[focus.days.length - 1]?.date)} ${focus.year}`,
+            title: t("chart.title"),
+            subtitle: t("chart.pngSubtitle", { unit: unit === "usd" ? "$" : t("chart.unitPct"), date: fmtDay(focus.days[focus.days.length - 1]?.date), year: focus.year }),
             legend: [
               ...series.map((s) => ({ label: s.label, color: s.color })),
-              ...(focus.goal != null ? [{ label: `цель ${fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined })}`, color: tokenColor("--foreground", "#888"), dashed: true }] : []),
+              ...(focus.goal != null ? [{ label: t("chart.goalLegend", { value: fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined }) }), color: tokenColor("--foreground", "#888"), dashed: true }] : []),
             ],
           })}
-          aria-label="Скачать график PNG"
+          aria-label={t("chart.pngAria")}
         >
           <Download className="h-4 w-4" /> PNG
         </Button>
       )}
     >
       {series.length === 0 ? (
-        <EmptyState icon={TrendingUp} title={`За ${focus.year} сделок нет`} description="Как только появятся закрытые сделки, здесь будет кривая офиса." />
+        <EmptyState icon={TrendingUp} title={t("states.noTradesYear", { year: focus.year })} description={t("chart.emptyDesc")} />
       ) : (
         <div ref={ref} className="flex flex-col gap-2">
           <LineCanvas
@@ -216,17 +220,17 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
             xMin={0}
             xMax={366}
             xTicks={monthTicks()}
-            goal={focus.goal != null ? { y: focus.goal, label: `Цель ${fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined })}`, pace: true } : null}
+            goal={focus.goal != null ? { y: focus.goal, label: t("chart.goalLine", { value: fmtV(focus.goal, unit, { digits: unit === "pct" ? 0 : undefined }) }), pace: true } : null}
             fmtY={fmtY}
             height={h}
             endLabels
-            ariaLabel={`Нетто офиса нарастающим итогом, ${series.map((s) => s.label).join(" и ")}`}
+            ariaLabel={t("chart.aria", { years: series.map((s) => s.label).join(t("chart.yearsJoin")) })}
             onPick={(r) => r.point && onPickDay(r.point.date)}
             renderTooltip={(_x, rows) => {
               const head = rows[0]?.point;
               return (
                 <div className="flex flex-col gap-1">
-                  {head && <p className="font-medium text-foreground">{fmtDay(head.date)} · {head.x}-й день года</p>}
+                  {head && <p className="font-medium text-foreground">{t("chart.dayOfYear", { date: fmtDay(head.date), n: head.x })}</p>}
                   {rows.map((r) => {
                     const d = r.point ? dayBy.get(r.point.date) : undefined;
                     return (
@@ -241,7 +245,7 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
                       </div>
                     );
                   })}
-                  <p className="pt-0.5 text-2xs text-muted-foreground">Нажмите — разбор дня офиса</p>
+                  <p className="pt-0.5 text-2xs text-muted-foreground">{t("chart.clickHint")}</p>
                 </div>
               );
             }}
@@ -250,9 +254,9 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
             {series.map((s) => (
               <span key={s.key} className="inline-flex items-center gap-1.5"><span className="h-0.5 w-4 rounded-full" style={{ background: s.color }} aria-hidden="true" />{s.label}</span>
             ))}
-            {focus.goal != null && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t border-dashed border-foreground/60" aria-hidden="true" />цель {focus.year}</span>}
+            {focus.goal != null && <span className="inline-flex items-center gap-1.5"><span className="w-4 border-t border-dashed border-foreground/60" aria-hidden="true" />{t("chart.goalOfYear", { year: focus.year })}</span>}
             {view.years.filter((y) => !y.hasData && y.year < focus.year).map((y) => (
-              <span key={y.year} className="italic">{y.year}: {y.capitalMissing ? "капитал не указан" : "нет сделок"}</span>
+              <span key={y.year} className="italic">{y.year}: {y.capitalMissing ? t("chart.capitalMissing") : t("states.noTradesShort")}</span>
             ))}
           </div>
         </div>
@@ -263,12 +267,13 @@ export function GeneralChart({ ctx, onPickDay }: { ctx: Ctx; onPickDay: (date: s
 
 export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | null; onClear: () => void }) {
   const { unit, view } = ctx;
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const day: DayPoint | undefined = React.useMemo(() => (date ? view.years.flatMap((y) => y.days).find((d) => d.date === date) : undefined), [date, view]);
   if (!date || !day) {
     return (
-      <Panel title="День офиса" icon={CalendarDays} fill>
-        <EmptyState compact icon={MousePointerClick} title="Выберите день" description="Нажмите на точку графика или клетку календаря — здесь появится результат офиса за день по стратегиям." />
+      <Panel title={t("day.title")} icon={CalendarDays} fill>
+        <EmptyState compact icon={MousePointerClick} title={t("day.pick")} description={t("day.pickDesc")} />
       </Panel>
     );
   }
@@ -279,11 +284,11 @@ export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | nul
       title={fmtDayLong(day.date)}
       icon={CalendarDays}
       fill
-      actions={<Button variant="ghost" size="sm" onClick={onClear}>Сбросить</Button>}
+      actions={<Button variant="ghost" size="sm" onClick={onClear}>{commonI18n.t("actions.reset")}</Button>}
     >
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
         <span className={cn("whitespace-nowrap text-2xl font-semibold tabular-nums", day.v >= 0 ? "text-up" : "text-down")}>{fmtV(day.v, unit)}</span>
-        <span className="text-xs text-muted-foreground">{commonI18n.t("units.trades", { count: day.trades })} · с начала года {fmtV(day.cum, unit)}</span>
+        <span className="text-xs text-muted-foreground">{t("day.ytd", { trades: commonI18n.t("units.trades", { count: day.trades }), value: fmtV(day.cum, unit) })}</span>
       </div>
       <ul className="mt-3 flex flex-col gap-1.5">
         {parts.map((p) => (
@@ -302,23 +307,24 @@ export function DayDetail({ ctx, date, onClear }: { ctx: Ctx; date: string | nul
 
 export function PacePanel({ ctx }: { ctx: Ctx }) {
   const { focus, unit, isAdmin } = ctx;
+  const { t } = officeI18n.useT();
   const p = focus.pace;
   return (
-    <Panel title={`Темп к цели +${focus.goalPct}%`} icon={Flag} fill>
+    <Panel title={t("pace.title", { pct: focus.goalPct })} icon={Flag} fill>
       {!p ? (
-        <p className="text-sm text-muted-foreground">{isAdmin ? "Укажите капитал офиса за год в блоке «Капитал и цель» — тогда появится темп." : `Партнёры ещё не указали капитал за ${focus.year}.`}</p>
+        <p className="text-sm text-muted-foreground">{isAdmin ? t("pace.noCapitalAdmin") : t("pace.noCapitalMember", { year: focus.year })}</p>
       ) : (
         <div className="flex flex-col gap-3">
-          <div className="relative h-3 rounded-full bg-[var(--glass-bg)]" role="img" aria-label={`Сейчас ${fmtV(p.actual, unit)}, по плану ${fmtV(p.expected, unit)}, цель ${fmtV(p.goal, unit)}`}>
+          <div className="relative h-3 rounded-full bg-[var(--glass-bg)]" role="img" aria-label={t("pace.aria", { actual: fmtV(p.actual, unit), expected: fmtV(p.expected, unit), goal: fmtV(p.goal, unit) })}>
             <span className={cn("absolute inset-y-0 left-0 rounded-full", p.actual >= p.expected ? "bg-up" : "bg-warn")} style={{ width: `${Math.max(0, Math.min(100, (p.actual / p.goal) * 100))}%` }} />
-            <span className="absolute -top-1 h-5 w-0.5 rounded-full bg-foreground/70" style={{ left: `${Math.min(100, p.elapsed * 100)}%` }} title="Ровный темп на сегодня" />
+            <span className="absolute -top-1 h-5 w-0.5 rounded-full bg-foreground/70" style={{ left: `${Math.min(100, p.elapsed * 100)}%` }} title={t("pace.evenPace")} />
           </div>
           <dl className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm">
-            <dt className="text-muted-foreground">Сейчас</dt><dd className={cn("text-right font-semibold tabular-nums", p.actual >= 0 ? "text-up" : "text-down")}>{fmtV(p.actual, unit)}</dd>
-            <dt className="text-muted-foreground">По плану на сегодня</dt><dd className="text-right tabular-nums">{fmtV(p.expected, unit)}</dd>
-            <dt className="text-muted-foreground">{p.gap >= 0 ? "Опережение" : "Отставание"}</dt><dd className={cn("text-right font-medium tabular-nums", p.gap >= 0 ? "text-up" : "text-warn")}>{fmtV(Math.abs(p.gap), unit, { signed: false })}</dd>
-            {p.status !== "done" && (<><dt className="text-muted-foreground">Нужно в месяц</dt><dd className="text-right font-medium tabular-nums">{fmtV(p.needPerMonth, unit)}</dd></>)}
-            {p.projected != null && (<><dt className="text-muted-foreground">Прогноз на год</dt><dd className={cn("text-right tabular-nums", p.projected >= p.goal ? "text-up" : "text-muted-foreground")}>{fmtV(p.projected, unit)}</dd></>)}
+            <dt className="text-muted-foreground">{t("pace.now")}</dt><dd className={cn("text-right font-semibold tabular-nums", p.actual >= 0 ? "text-up" : "text-down")}>{fmtV(p.actual, unit)}</dd>
+            <dt className="text-muted-foreground">{t("pace.planToday")}</dt><dd className="text-right tabular-nums">{fmtV(p.expected, unit)}</dd>
+            <dt className="text-muted-foreground">{p.gap >= 0 ? t("pace.ahead") : t("pace.behind")}</dt><dd className={cn("text-right font-medium tabular-nums", p.gap >= 0 ? "text-up" : "text-warn")}>{fmtV(Math.abs(p.gap), unit, { signed: false })}</dd>
+            {p.status !== "done" && (<><dt className="text-muted-foreground">{t("pace.needPerMonth")}</dt><dd className="text-right font-medium tabular-nums">{fmtV(p.needPerMonth, unit)}</dd></>)}
+            {p.projected != null && (<><dt className="text-muted-foreground">{t("pace.projected")}</dt><dd className={cn("text-right tabular-nums", p.projected >= p.goal ? "text-up" : "text-muted-foreground")}>{fmtV(p.projected, unit)}</dd></>)}
           </dl>
         </div>
       )}
@@ -329,6 +335,7 @@ export function PacePanel({ ctx }: { ctx: Ctx }) {
 /** Daily heatmap calendar (Mon–Fri × weeks) of the focus year + month tiles. */
 export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx: Ctx; selected: string | null; onPickDay: (d: string) => void; onPickMonth: (m: number) => void }) {
   const { focus, unit } = ctx;
+  const { t } = officeI18n.useT();
   const byDate = React.useMemo(() => new Map(focus.days.map((d) => [d.date, d])), [focus]);
   const max = React.useMemo(() => {
     const vals = focus.days.map((d) => Math.abs(d.v)).sort((a, b) => a - b);
@@ -355,9 +362,9 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
   const monthMax = Math.max(1e-9, ...focus.months.map((m) => Math.abs(m.v ?? 0)));
   const shownMonths = new Set<number>();
   return (
-    <Panel title={`Календарь ${focus.year}`} description="каждая клетка — торговый день офиса · цвет — результат дня · нажмите на день или месяц" icon={CalendarDays}>
+    <Panel title={t("calendar.title", { year: focus.year })} description={t("calendar.desc")} icon={CalendarDays}>
       {!focus.hasData ? (
-        <EmptyState compact icon={CalendarDays} title="Нет торговых дней" />
+        <EmptyState compact icon={CalendarDays} title={t("states.noTradingDays")} />
       ) : (
         <div className="flex flex-col gap-4">
           <div className="overflow-x-auto pb-1">
@@ -365,7 +372,7 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
               className="grid min-w-[620px] gap-[3px]"
               style={{ gridTemplateColumns: `1.5rem repeat(${weeks.length}, minmax(9px, 1fr))` }}
               role="grid"
-              aria-label={`Календарь торговых дней ${focus.year}`}
+              aria-label={t("calendar.aria", { year: focus.year })}
             >
               <span />
               {weeks.map((w) => {
@@ -386,8 +393,8 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                         type="button"
                         disabled={!d}
                         onClick={() => d && onPickDay(ymd)}
-                        title={d ? `${fmtDay(ymd)} · ${fmtV(d.v, unit)} · ${d.trades} сд.` : `${fmtDay(ymd)} · нет сделок`}
-                        aria-label={d ? `${fmtDay(ymd)}: ${fmtV(d.v, unit)}` : `${fmtDay(ymd)}: нет сделок`}
+                        title={d ? t("calendar.dayTitle", { date: fmtDay(ymd), value: fmtV(d.v, unit), trades: commonI18n.t("units.trades", { count: d.trades }) }) : t("calendar.dayNoTrades", { date: fmtDay(ymd) })}
+                        aria-label={d ? t("calendar.dayAria", { date: fmtDay(ymd), value: fmtV(d.v, unit) }) : t("calendar.dayAriaEmpty", { date: fmtDay(ymd) })}
                         className={cn(
                           "aspect-square w-full max-w-[22px] rounded-[3px] transition-transform enabled:hover:scale-125 disabled:cursor-default",
                           selected === ymd && "ring-2 ring-foreground ring-offset-1 ring-offset-background",
@@ -401,9 +408,9 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
             </div>
           </div>
           <div className="flex items-center gap-2 text-2xs text-muted-foreground">
-            <span>минус</span>
+            <span>{t("calendar.minus")}</span>
             {[-1, -0.5, -0.15, 0.15, 0.5, 1].map((k) => <span key={k} className="h-2.5 w-2.5 rounded-[3px]" style={{ background: divergingCell(k, 1) }} aria-hidden="true" />)}
-            <span>плюс</span>
+            <span>{t("calendar.plus")}</span>
           </div>
           <div className="grid grid-cols-3 gap-2 min-[640px]:grid-cols-4 min-[1024px]:grid-cols-6 min-[1400px]:grid-cols-12">
             {focus.months.map((m) => (
@@ -413,7 +420,7 @@ export function CalendarHeatmap({ ctx, selected, onPickDay, onPickMonth }: { ctx
                 disabled={!m.days}
                 onClick={() => onPickMonth(m.month)}
                 className="tile tile-interactive press flex min-w-0 flex-col gap-0.5 p-2 text-left disabled:opacity-50"
-                title={m.days ? `${monthLong(m.month - 1)}: ${fmtV(m.v, unit)} · ${m.green} зел. / ${m.red} красн. дней — открыть месяц` : `${monthLong(m.month - 1)}: нет сделок`}
+                title={m.days ? t("calendar.monthTitle", { month: monthLong(m.month - 1), value: fmtV(m.v, unit), green: m.green, red: m.red }) : t("calendar.monthEmpty", { month: monthLong(m.month - 1) })}
               >
                 <span className="text-2xs uppercase tracking-wide text-muted-foreground">{monthShort(m.month - 1)}</span>
                 <span className={cn("truncate text-sm font-semibold tabular-nums", (m.v ?? 0) > 0 ? "text-up" : (m.v ?? 0) < 0 ? "text-down" : "text-muted-foreground")}>{m.days ? fmtMonthTile(m.v, unit) : "—"}</span>

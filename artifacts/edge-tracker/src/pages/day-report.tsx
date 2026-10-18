@@ -15,8 +15,10 @@ import {
   fmtDayLong, fmtDayShort, isTradingDay, isYmd, lastTradingDay, shiftTradingDay, useDayReport, useMarketHolidays,
   type DayReport,
 } from "@/components/day-report/api";
-import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtRate, fmtUsd, localeTag } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { dayReportI18n } from "@/i18n/ns/dayReport";
+import { shellI18n } from "@/i18n/ns/shell";
 import {
   BreakdownPanel, ComparisonPanel, EquityPanel, LeaksPanel, LinksPanel, PlanPanel, StrengthsPanel, SummaryBento, TimelinePanel,
 } from "@/components/day-report/sections";
@@ -122,45 +124,46 @@ export default function DayReportPage() {
   const traders = React.useMemo(() => {
     const list = [...(doc?.traders ?? [])];
     if (trader && !list.includes(trader)) list.push(trader);
-    return list.sort((a, b) => a.localeCompare(b, "ru"));
+    return list.sort((a, b) => a.localeCompare(b, localeTag()));
   }, [doc?.traders, trader]);
 
   const nonTrading = holidays ? !isTradingDay(date, holidays) : false;
+  const t = dayReportI18n.t;
 
   const header = (
     <PageHeader
-      title="Разбор дня"
-      description={`${trader ?? "—"} · ${fmtDayLong(date)} · деньги нетто, время ET`}
+      title={shellI18n.t("nav.dayReport")}
+      description={t("page.desc", { trader: trader ?? "—", date: fmtDayLong(date) })}
       icon={ClipboardList}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {isCurator && (
-            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders} self={me} className="w-44" ariaLabel="Трейдер" />
+            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders} self={me} className="w-44" ariaLabel={commonI18n.t("fields.trader")} />
           )}
           <Button type="button" variant="outline" size="sm" disabled={!doc} onClick={() => window.print()}>
-            <Printer className="h-4 w-4" aria-hidden="true" /> Печать / PDF
+            <Printer className="h-4 w-4" aria-hidden="true" /> {t("page.print")}
           </Button>
         </div>
       }
     >
       <div className="flex flex-wrap items-center gap-2" data-print-hide>
-        <Button type="button" variant="outline" size="icon" aria-label="Предыдущий торговый день (←)" onClick={() => go(shiftTradingDay(date, -1, holidays))}>
+        <Button type="button" variant="outline" size="icon" aria-label={t("page.prev")} title={t("page.prev")} onClick={() => go(shiftTradingDay(date, -1, holidays))}>
           <ChevronLeft className="h-4 w-4" aria-hidden="true" />
         </Button>
         <Input
           type="date"
-          aria-label="Дата"
+          aria-label={t("page.date")}
           value={date}
           max={today}
           onChange={(e) => go(e.target.value)}
           className="h-9 w-[11.5rem] rounded-full tabular-nums"
         />
-        <Button type="button" variant="outline" size="icon" aria-label="Следующий торговый день (→)" disabled={!canNext} onClick={() => go(nextDay)}>
+        <Button type="button" variant="outline" size="icon" aria-label={t("page.next")} title={t("page.next")} disabled={!canNext} onClick={() => go(nextDay)}>
           <ChevronRight className="h-4 w-4" aria-hidden="true" />
         </Button>
-        {date !== today && <Button type="button" variant="ghost" size="sm" onClick={() => go(today)}>Последний торговый день</Button>}
-        {nonTrading && <Pill tone="warn">выходной / праздник — биржа закрыта</Pill>}
-        {q.isFetching && <span className="text-xs text-muted-foreground" aria-live="polite">обновление…</span>}
+        {date !== today && <Button type="button" variant="ghost" size="sm" onClick={() => go(today)}>{t("page.latest")}</Button>}
+        {nonTrading && <Pill tone="warn">{t("page.nonTrading")}</Pill>}
+        {q.isFetching && <span className="text-xs text-muted-foreground" aria-live="polite">{t("page.refreshing")}</span>}
       </div>
     </PageHeader>
   );
@@ -169,7 +172,7 @@ export default function DayReportPage() {
     return (
       <Page>
         {header}
-        <Panel><EmptyState icon={Lock} title="Разбор дня доступен после входа" description="Гостевой режим не видит сделки трейдеров. Войдите как трейдер или куратор." /></Panel>
+        <Panel><EmptyState icon={Lock} title={t("page.guestTitle")} description={t("page.guestDesc")} /></Panel>
       </Page>
     );
   }
@@ -193,20 +196,22 @@ export default function DayReportPage() {
 
 function headline(doc: DayReport): string {
   const s = doc.summary;
+  const t = dayReportI18n.t;
   const parts = [
     commonI18n.t("units.trades", { count: s.trades }),
-    `нетто ${fmtUsd(s.net, { signed: true })}`,
-    doc.leaks.length ? `${doc.leaks.length} утеч. ≈ ${fmtUsd(-doc.leaksTotalUsd)}` : "без утечек по правилам",
+    t("page.net", { amount: fmtUsd(s.net, { signed: true }) }),
+    doc.leaks.length ? t("page.leaks", { count: doc.leaks.length, amount: fmtUsd(-doc.leaksTotalUsd) }) : t("page.noLeaks"),
   ];
-  if (doc.comparison.betterThanPct != null) parts.push(`лучше ${fmtRate(doc.comparison.betterThanPct)} из ${doc.comparison.days} дней`);
+  if (doc.comparison.betterThanPct != null) parts.push(t("page.betterThan", { pct: fmtRate(doc.comparison.betterThanPct), days: doc.comparison.days }));
   return parts.join(" · ");
 }
 
 function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
+  const { t } = dayReportI18n.useT();
   return (
     <div data-day-report className={stale ? "flex flex-col gap-4 opacity-70 transition-opacity sm:gap-5" : "flex flex-col gap-4 transition-opacity sm:gap-5"}>
-      <p data-print-title className="hidden text-lg font-semibold">Разбор дня — {doc.trader} · {fmtDayLong(doc.date)}</p>
-      <section aria-label="Итоги дня" className="flex flex-col gap-3">
+      <p data-print-title className="hidden text-lg font-semibold">{t("page.printTitle", { trader: doc.trader, date: fmtDayLong(doc.date) })}</p>
+      <section aria-label={t("page.summaryAria")} className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">{headline(doc)}</p>
         <SummaryBento doc={doc} />
       </section>
@@ -225,8 +230,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
       </div>
       <LinksPanel doc={doc} />
       <p className="text-2xs text-muted-foreground">
-        Нетто = брутто − |комиссии|. День = дата закрытия по Нью-Йорку. Время входа/выхода — по исполнениям брокера.
-        Сравнение — последние {doc.comparison.days || 20} торговых дней со сделками. Сформировано {fmtDate(doc.generatedAt, "shortDateTime")}.
+        {t("page.footnote", { days: doc.comparison.days || 20, date: fmtDate(doc.generatedAt, "shortDateTime") })}
       </p>
     </div>
   );
@@ -234,12 +238,13 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
 
 function EmptyDay({ doc, onGo }: { doc: DayReport; onGo: (d: string) => void }) {
   const { prevTradeDate, nextTradeDate } = doc.nav;
+  const { t } = dayReportI18n.useT();
   return (
     <Panel>
       <EmptyState
         icon={CalendarSearch}
-        title="В этот день сделок не было"
-        description={prevTradeDate || nextTradeDate ? "Ближайшие дни со сделками:" : "У трейдера пока нет сделок в журнале."}
+        title={t("page.emptyTitle")}
+        description={prevTradeDate || nextTradeDate ? t("page.emptyNearby") : t("page.emptyNone")}
         action={
           <div className="flex flex-wrap justify-center gap-2">
             {prevTradeDate && <Button type="button" variant="outline" onClick={() => onGo(prevTradeDate)}><ChevronLeft className="h-4 w-4" aria-hidden="true" /> {fmtDayShort(prevTradeDate)}</Button>}
@@ -253,7 +258,7 @@ function EmptyDay({ doc, onGo }: { doc: DayReport; onGo: (d: string) => void }) 
 
 function ReportSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка разбора дня">
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label={dayReportI18n.t("page.loadingAria")}>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-24 rounded-2xl" />)}
       </div>

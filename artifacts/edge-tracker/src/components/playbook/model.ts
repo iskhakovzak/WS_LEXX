@@ -10,7 +10,9 @@ import {
   screenshotUrlsToString,
   screenshotNotesToString,
 } from "@/components/screenshot-fields";
-import { fmtDate } from "@/lib/format";
+import { fmtRelative } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookI18n, type SetupSourceKey, type TimeOfDayKey } from "@/i18n/ns/playbook";
 
 export type PlaybookEntry = {
   id: number; name: string; folder: string | null; setupType: string | null; conditions: string | null;
@@ -89,11 +91,14 @@ export function spaceTabOf(e: PlaybookEntry, v: ViewerLike): SpaceTab {
 /* ---------- examples (playbook_examples) ---------- */
 
 export type Tier = 1 | 2 | 3;
-export const TIERS: { tier: Tier; label: string; short: string; hint: string; tone: Tone }[] = [
-  { tier: 1, label: "Tier 1 · Эталон", short: "T1", hint: "Показательная: всё по плану — так и надо", tone: "up" },
-  { tier: 2, label: "Tier 2 · Хорошая", short: "T2", hint: "По сетапу, но с отклонениями", tone: "accent" },
-  { tier: 3, label: "Tier 3 · На разбор", short: "T3", hint: "Учебная ошибка: что пошло не так, чего не повторять", tone: "down" },
-];
+type TierMeta = { tier: Tier; readonly label: string; short: string; readonly hint: string; tone: Tone };
+/** Label/hint are getters: read at render time in the current UI language. */
+const tierRow = (tier: Tier, tone: Tone): TierMeta => ({
+  tier, short: `T${tier}`, tone,
+  get label() { return playbookI18n.t(`tier.t${tier}.label`); },
+  get hint() { return playbookI18n.t(`tier.t${tier}.hint`); },
+});
+export const TIERS: TierMeta[] = [tierRow(1, "up"), tierRow(2, "accent"), tierRow(3, "down")];
 export const tierMeta = (t: number) => TIERS.find((x) => x.tier === t) ?? TIERS[1];
 
 export type SetupExample = {
@@ -141,21 +146,49 @@ export type SetupStats = {
   firstDate: string | null; lastDate: string | null;
 };
 
-export const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
-export const TIME_OF_DAY_OPTIONS = ["Премаркет", "Открытие 9:30–10:00", "Утро 10:00–11:30", "Обед 11:30–14:00", "Закрытие 14:00–16:00", "Весь день"];
+/** Horizon code → label (getters: current UI language). */
+export const HORIZON_LABEL: Record<string, string> = {
+  get intraday() { return commonI18n.t("trading.intraday"); },
+  get overnight() { return commonI18n.t("trading.overnight"); },
+  get swing() { return commonI18n.t("trading.swing"); },
+};
+
+const TIME_OF_DAY_KEYS: TimeOfDayKey[] = ["premarket", "open", "morning", "lunch", "close", "allDay"];
+/** Stored values of the suggestions: the RU texts, identical in every language (data, not UI; older rows hold them). */
+const TIME_OF_DAY_VALUE: Record<TimeOfDayKey, string> = {
+  premarket: "Премаркет", open: "Открытие 9:30–10:00", morning: "Утро 10:00–11:30", // i18n-ignore (stored values)
+  lunch: "Обед 11:30–14:00", close: "Закрытие 14:00–16:00", allDay: "Весь день", // i18n-ignore (stored values)
+};
+/** Time-of-day suggestions: `value` is stored (same in every language), `label` is shown in the UI language. */
+export function timeOfDayOptions(): { value: string; label: string }[] {
+  return TIME_OF_DAY_KEYS.map((k) => ({ value: TIME_OF_DAY_VALUE[k], label: playbookI18n.t(`timeOfDay.${k}`) }));
+}
+/** A stored time of day as shown: a known suggestion follows the UI language, free text is user content. */
+export function timeOfDayLabel(stored: string | null | undefined): string {
+  if (!stored) return "";
+  const k = TIME_OF_DAY_KEYS.find((key) => TIME_OF_DAY_VALUE[key] === stored);
+  return k ? playbookI18n.t(`timeOfDay.${k}`) : stored;
+}
 
 export type StructuredKey =
   | "contextText" | "triggerText" | "entryText" | "stopText" | "targetsText" | "managementText" | "invalidationText" | "idealConditions";
 /** Structured card fields in display order. */
-export const STRUCTURED: { key: StructuredKey; label: string; placeholder: string; tone: Tone }[] = [
-  { key: "contextText", label: "Контекст", placeholder: "Рынок, катализатор, почему бумага в игре", tone: "accent" },
-  { key: "triggerText", label: "Триггер", placeholder: "Что должно произойти, чтобы появилась точка входа", tone: "accent" },
-  { key: "entryText", label: "Вход", placeholder: "Где и как входим, размер", tone: "up" },
-  { key: "stopText", label: "Стоп", placeholder: "Где стоп и почему именно там", tone: "down" },
-  { key: "targetsText", label: "Цели", placeholder: "Уровни частичной и полной фиксации", tone: "warn" },
-  { key: "managementText", label: "Сопровождение", placeholder: "Перенос стопа, добор, частичные выходы", tone: "purple" },
-  { key: "invalidationText", label: "Инвалидация", placeholder: "Когда идея сломана и сетап больше не валиден", tone: "down" },
-  { key: "idealConditions", label: "Идеальные условия", placeholder: "Объём, RVOL, float, время, состояние рынка", tone: "neutral" },
+type StructuredField = { key: StructuredKey; readonly label: string; readonly placeholder: string; tone: Tone };
+/** Label/placeholder are getters: read at render time in the current UI language. */
+const structuredRow = (key: StructuredKey, tone: Tone): StructuredField => ({
+  key, tone,
+  get label() { return playbookI18n.t(`structured.${key}.label`); },
+  get placeholder() { return playbookI18n.t(`structured.${key}.placeholder`); },
+});
+export const STRUCTURED: StructuredField[] = [
+  structuredRow("contextText", "accent"),
+  structuredRow("triggerText", "accent"),
+  structuredRow("entryText", "up"),
+  structuredRow("stopText", "down"),
+  structuredRow("targetsText", "warn"),
+  structuredRow("managementText", "purple"),
+  structuredRow("invalidationText", "down"),
+  structuredRow("idealConditions", "neutral"),
 ];
 
 export const moneyTone = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
@@ -282,7 +315,7 @@ export function formToBody(data: FormData, folder: string | null, trader: string
   };
 }
 
-export const SETUP_GROUPS: { label: string; items: string[] }[] = [
+export const SETUP_GROUPS: { readonly label: string; items: string[] }[] = [
   { label: "SMB Capital Core 20", items: ["Opening Drive", "Second Day Play", "Opening Consolidation", "Gap and Go", "Flag / Pennant", "Breakout Trade", "Explosive Move", "Flipping", "Fade Trade", "Stuffed Trade", "Bounce Trade", "Biotech Fade", "Support Play", "Pullback Trade", "2D VWAP Trade", "Relative Strength Trade", "Fundamental / Catalyst Trade", "IPO Trade", "IPO Day Trade", "Secondary Offering Trade", "Special Dividend Trade"] },
   { label: "SMB Advanced", items: ["Dr. S Trade", "Market Play", "Scalp Trade", "Opening Volatility Collapse", "Big Bid / Catalyst Trade", "ABCD Pattern"] },
   { label: "Gap plays", items: ["Gap", "Gap Up", "Gap Down", "Gap and Go Long", "Gap and Go Short", "Gap Fill", "Earnings Gap Up", "Earnings Gap Down", "Earnings Gap Down Short"] },
@@ -295,12 +328,15 @@ export const SETUP_GROUPS: { label: string; items: string[] }[] = [
   { label: "Auction / Order Flow / OPG / IMBX / MOC", items: ["OPG", "OPG Gap Fade", "OPG Momentum", "Imbalance", "Opening Imbalance (OPG)", "IMBX Long", "IMBX Short", "IMBX Fade", "IMBX + VWAP", "MOC", "MOC Imbalance", "MOC Fade", "MOC Pin Risk", "Closing Cross Play", "Liquidity Sweep", "Dark Pool Print"] },
   { label: "Prop Desk Specialty", items: ["Halt & Resume", "Sympathy Play", "Sector Rotation Play", "Earnings Drift (PEAD)", "Pre-Earnings Run", "Post-Earnings Continuation", "Basket Trade", "Hedged Swing", "Macro Play"] },
   // "other" is a stored code (migration 0014), shown through i18n: dataCodes setupType.other.
-  { label: "Прочее", items: ["other"] },
+  { get label() { return playbookI18n.t("setupGroupOther"); }, items: ["other"] },
 ];
 
-export const SOURCE_LABELS: Record<string, string> = {
-  trade: "Сделка", research: "Ресёрч", dailyfeed: "Дневная лента", event: "Событие", watchlist: "Вотчлист", trade_idea: "Идея",
-};
+const SOURCE_KEYS: SetupSourceKey[] = ["trade", "research", "dailyfeed", "event", "watchlist", "trade_idea"];
+/** source_type code → label (getters: current UI language). Unknown codes are absent (callers fall back to the code). */
+export const SOURCE_LABELS: Record<string, string> = Object.defineProperties(
+  {} as Record<string, string>,
+  Object.fromEntries(SOURCE_KEYS.map((k) => [k, { enumerable: true, get: () => playbookI18n.t(`source.${k}`) }])),
+);
 
 /** Tone of a setup-type pill (direction/family at a glance). */
 export function setupTone(type: string | null | undefined): Tone {
@@ -316,14 +352,18 @@ export function setupTone(type: string | null | undefined): Tone {
 
 /** Folder colours: stored on the server as an index into the legacy 12-colour palette; mapped to tokens here. */
 // Class names are written out literally so Tailwind's scanner picks them up.
-type FolderSwatch = { label: string; text: string; bg: string };
-const SWATCH_AMBER: FolderSwatch = { label: "Янтарный", text: "text-[hsl(var(--chart-3))]", bg: "bg-[hsl(var(--chart-3))]" };
-const SWATCH_GREEN: FolderSwatch = { label: "Зелёный", text: "text-[hsl(var(--chart-2))]", bg: "bg-[hsl(var(--chart-2))]" };
-const SWATCH_BLUE: FolderSwatch = { label: "Голубой", text: "text-[hsl(var(--chart-1))]", bg: "bg-[hsl(var(--chart-1))]" };
-const SWATCH_RED: FolderSwatch = { label: "Красный", text: "text-[hsl(var(--chart-4))]", bg: "bg-[hsl(var(--chart-4))]" };
-const SWATCH_PURPLE: FolderSwatch = { label: "Фиолетовый", text: "text-[hsl(var(--chart-5))]", bg: "bg-[hsl(var(--chart-5))]" };
-const SWATCH_ACCENT: FolderSwatch = { label: "Синий", text: "text-primary", bg: "bg-primary" };
-const SWATCH_GREY: FolderSwatch = { label: "Серый", text: "text-muted-foreground", bg: "bg-muted-foreground" };
+type FolderSwatch = { readonly label: string; text: string; bg: string };
+type SwatchName = "amber" | "green" | "blue" | "red" | "purple" | "accent" | "grey";
+const swatch = (name: SwatchName, text: string, bg: string): FolderSwatch => ({
+  text, bg, get label() { return playbookI18n.t(`swatch.${name}`); },
+});
+const SWATCH_AMBER: FolderSwatch = swatch("amber", "text-[hsl(var(--chart-3))]", "bg-[hsl(var(--chart-3))]");
+const SWATCH_GREEN: FolderSwatch = swatch("green", "text-[hsl(var(--chart-2))]", "bg-[hsl(var(--chart-2))]");
+const SWATCH_BLUE: FolderSwatch = swatch("blue", "text-[hsl(var(--chart-1))]", "bg-[hsl(var(--chart-1))]");
+const SWATCH_RED: FolderSwatch = swatch("red", "text-[hsl(var(--chart-4))]", "bg-[hsl(var(--chart-4))]");
+const SWATCH_PURPLE: FolderSwatch = swatch("purple", "text-[hsl(var(--chart-5))]", "bg-[hsl(var(--chart-5))]");
+const SWATCH_ACCENT: FolderSwatch = swatch("accent", "text-primary", "bg-primary");
+const SWATCH_GREY: FolderSwatch = swatch("grey", "text-muted-foreground", "bg-muted-foreground");
 /** Index → swatch. Legacy indices 6–10 (pink, indigo, yellow, orange, teal) fold onto the nearest token. */
 export const FOLDER_SWATCHES: FolderSwatch[] = [
   SWATCH_AMBER, SWATCH_GREEN, SWATCH_BLUE, SWATCH_RED, SWATCH_PURPLE, SWATCH_ACCENT,
@@ -376,16 +416,11 @@ export function isSameLocalDay(iso: string | null | undefined, ref: Date = new D
   return d.getFullYear() === ref.getFullYear() && d.getMonth() === ref.getMonth() && d.getDate() === ref.getDate();
 }
 
+/** "5 minutes ago" in the UI language (null for a missing/invalid date). */
 export function timeAgo(iso: string | null | undefined): string | null {
   if (!iso) return null;
-  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
-  if (!Number.isFinite(diff)) return null;
-  if (diff < 60) return "только что";
-  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-  const days = Math.floor(diff / 86400);
-  if (days < 30) return `${days} дн назад`;
-  return fmtDate(iso, "dayMonth");
+  if (!Number.isFinite(new Date(iso).getTime())) return null;
+  return fmtRelative(iso);
 }
 
 

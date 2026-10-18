@@ -1,11 +1,12 @@
 import { pool } from "@workspace/db";
 import { logger } from "./logger";
 import { RULE_CATALOG } from "./rulesCatalog";
-import { evalRule, NO_LIMITS, type RiskLimits, type RuleRow, type SelfMark, type TradeForRule } from "./rulesEval";
+import { evalRule, NO_LIMITS, selfCheckReason, type RiskLimits, type RuleRow, type SelfMark, type TradeForRule } from "./rulesEval";
+import { RULE_LIST_SEP, violationMsgParams, type ViolationMsg } from "./rulesI18n";
 import { mapTradeRow, sortTrades, type ExecRow } from "./rulesTrades";
 import { closeDateSql, horizonSql, netPnlSql, num, resultSql, signedRSql } from "./tradeMath";
 import { addDays, nyDate } from "./tradingDate";
-import { isNotifiableViolationDay, uniqueRecipients, violationDedupKey, violationNotice, type ViolationItem } from "./notifyEventsCore";
+import { isNotifiableViolationDay, preview, uniqueRecipients, violationDedupKey, violationNotice, type ViolationItem } from "./notifyEventsCore";
 import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
 
 /**
@@ -25,7 +26,8 @@ import { planStaleViolations, STALE_PLAN_COLUMNS } from "./violationArchive";
  *   lib/notifyEvents: in the background, once per violation key.
  */
 
-export { evalRule, evalSelfCheck, NO_LIMITS, notionalOf, riskOf } from "./rulesEval";
+export { evalRule, evalSelfCheck, NO_LIMITS, notionalOf, riskOf, selfCheckReason } from "./rulesEval";
+export { violationMessage } from "./rulesI18n";
 export type { RuleKind, RuleThreshold, RuleRow, RiskLimits, TradeForRule, ViolationDraft, SelfMark, Severity } from "./rulesEval";
 
 export interface RuleField {
@@ -238,7 +240,7 @@ export function ensureRulesSchema(): Promise<void> {
 }
 ensureRulesSchema().catch((err) => logger.warn({ err }, "rules: ensure schema failed at init"));
 
-type FreshViolation = ViolationItem & { ruleId: number; key: string };
+type FreshViolation = ViolationItem & { ruleId: number; key: string; msg?: ViolationMsg };
 
 async function upsertDrafts(
   rule: RuleRow,
@@ -260,11 +262,11 @@ async function upsertDrafts(
                details = EXCLUDED.details, day = EXCLUDED.day, cost_net = EXCLUDED.cost_net,
                archived_at = NULL, archived_reason = NULL
          RETURNING (xmax = 0) AS inserted`,
-        [trader, rule.id, d.tradeId, d.severity, d.message, d.details, d.key, d.day, d.costNet],
+        [trader, rule.id, d.tradeId, d.severity, d.message, { ...d.details, msg: d.msg }, d.key, d.day, d.costNet],
       );
       written++;
       if (rows[0]?.inserted && isNotifiableViolationDay(d.day, since)) {
-        fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, severity: d.severity });
+        fresh.push({ ruleId: rule.id, key: d.key, ruleName: rule.name, message: d.message, msg: d.msg, severity: d.severity });
       }
     } catch (e: any) {
       logger.warn({ error: e.message, ruleId: rule.id }, "rule_violations upsert failed");
@@ -301,6 +303,25 @@ async function applyStalePlan(rows: readonly any[]): Promise<number> {
 }
 
 /**
+ * Params of a rule_violation notification (rendered per reader by lib/notificationRenderers/rules.ts); the RU
+ * title/message from violationNotice stay stored as the fallback. Same cut-offs as violationNotice.
+ */
+function violationNoticeParams(trader: string, items: readonly FreshViolation[], forStaff: boolean): Record<string, string | number> {
+  if (items.length === 1) {
+    const v = items[0];
+    return { variant: forStaff ? "oneStaff" : "one", rule: preview(v.ruleName, 60), trader, message: v.message, ...violationMsgParams(v.msg) };
+  }
+  const rules = [...new Set(items.map((v) => v.ruleName))];
+  return {
+    variant: forStaff ? "manyStaff" : "many",
+    count: items.length,
+    ruleList: rules.slice(0, 3).map((r) => preview(r, 40)).join(RULE_LIST_SEP),
+    more: Math.max(0, rules.length - 3),
+    trader,
+  };
+}
+
+/**
  * rule_violation to the trader and their assigned staff (fallback: curators/admins) for violations the scan just
  * created. Background + claimOnce per violation key, so re-scans and concurrent syncs never repeat a notification.
  */
@@ -315,11 +336,12 @@ function notifyNewViolations(trader: string, fresh: readonly FreshViolation[]): 
       const link = `/rules?tab=violations&trader=${encodeURIComponent(trader)}`;
       const base = { type: "rule_violation", source: "rules", link, entityType: "rule_violation", entityId: trader } as const;
       const own = violationNotice(trader, claimed, false);
-      if (own) await notifyUser({ ...base, userName: trader, title: own.title, message: own.message, severity: own.severity });
+      if (own) await notifyUser({ ...base, userName: trader, title: own.title, message: own.message, severity: own.severity, params: violationNoticeParams(trader, claimed, false) });
       const staffNotice = violationNotice(trader, claimed, true);
       if (!staffNotice) return;
+      const staffParams = violationNoticeParams(trader, claimed, true);
       for (const name of uniqueRecipients(await staffOrFallback(trader), trader)) {
-        await notifyUser({ ...base, userName: name, title: staffNotice.title, message: staffNotice.message, severity: staffNotice.severity });
+        await notifyUser({ ...base, userName: name, title: staffNotice.title, message: staffNotice.message, severity: staffNotice.severity, params: staffParams });
       }
     }),
   );
@@ -351,12 +373,13 @@ export async function syncSelfCheckViolation(ruleId: number, trader: string, day
   await ensureRulesSchema();
   const key = `d:${trader}:${day}`;
   if (ok === false) {
+    const selfReason = selfCheckReason(note);
     await pool.query(
       `INSERT INTO rule_violations (trader, rule_id, trade_id, severity, message, details, dedup_key, day, cost_net)
        VALUES ($1, $2, NULL, 'medium', $3, $4, $5, $6, NULL)
        ON CONFLICT (rule_id, dedup_key) DO UPDATE SET message = EXCLUDED.message, details = EXCLUDED.details,
          archived_at = NULL, archived_reason = NULL`,
-      [trader, ruleId, note ? `Отмечено «нарушил»: ${note}` : "Отмечено «нарушил» в журнале", { selfCheck: true }, key, day],
+      [trader, ruleId, selfReason.message, { selfCheck: true, msg: selfReason.msg }, key, day],
     );
   } else {
     const { rows } = await pool.query<any>(`SELECT ${STALE_PLAN_COLUMNS} FROM rule_violations WHERE rule_id = $1 AND dedup_key = $2`, [ruleId, key]);

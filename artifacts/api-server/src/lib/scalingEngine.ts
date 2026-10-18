@@ -10,7 +10,13 @@
  *   win rate = W / (W + L) (BE excluded); PF = Σ⁺ / |Σ⁻| (null, never ∞); money is net of fees;
  *   drawdown = peak-to-trough of the cumulative series.
  * Money metrics come from broker rows (source = 'propreports') when the trader has any; otherwise from the journal.
+ *
+ * Texts (metric labels, notes, rule results, reasons) come from the server `scaling` namespace in `lang` (default RU).
+ * Recommendation reasons are also returned as data (`reasonItems`, rendered again per reader by renderReason) so a
+ * stored proposal can be shown in any language.
  */
+import { scalingT } from "../i18n/ns";
+import { formatCountFor, type Lang, } from "../i18n";
 
 export type RuleKind = "promote" | "demote";
 export type Op = ">=" | ">" | "<=" | "<" | "=";
@@ -43,31 +49,42 @@ export interface MetricMeta {
   hint: string;
 }
 
-export const METRICS: readonly MetricMeta[] = [
-  { key: "trades", label: "Закрытых сделок", unit: "count", higherIsBetter: true, hint: "Количество закрытых сделок в окне" },
-  { key: "net_pnl", label: "P&L нетто", unit: "usd", higherIsBetter: true, hint: "Σ (pnl − комиссии) по закрытым сделкам; брокерские данные при наличии" },
-  { key: "net_r", label: "Сумма R", unit: "r", higherIsBetter: true, hint: "Σ signed R по закрытым сделкам" },
-  { key: "profit_factor", label: "Profit factor", unit: "x", higherIsBetter: true, hint: "Σ прибыль / |Σ убыток| ($ при наличии, иначе R); нет убытков ⇒ нет данных" },
-  { key: "win_rate", label: "Win rate", unit: "pct", higherIsBetter: true, hint: "Прибыльные / (прибыльные + убыточные), BE не учитываются" },
-  { key: "expectancy_r", label: "Ожидание, R", unit: "r", higherIsBetter: true, hint: "Средний signed R на закрытую сделку" },
-  { key: "green_weeks", label: "Зелёных недель подряд", unit: "weeks", higherIsBetter: true, hint: "Подряд идущие недели с положительным нетто (текущая неполная неделя учитывается, только если она в плюсе)" },
-  { key: "green_days_pct", label: "Доля зелёных дней", unit: "pct", higherIsBetter: true, hint: "Дни в плюсе / дни с закрытыми сделками" },
-  { key: "max_dd_usd", label: "Макс. просадка, $", unit: "usd", higherIsBetter: false, hint: "Пик-впадина накопленного нетто P&L в окне (по дням)" },
-  { key: "max_dd_pct", label: "Просадка, % от лимита", unit: "pct", higherIsBetter: false, hint: "Макс. просадка окна / лимит макс. просадки (из лимитов трейдера или тира)" },
-  { key: "limit_breaches", label: "Нарушений лимитов", unit: "count", higherIsBetter: false, hint: "Дни с убытком больше дневного лимита + недели больше недельного" },
-  { key: "red_streak", label: "Красных дней подряд", unit: "days", higherIsBetter: false, hint: "Текущая серия убыточных дней" },
-  { key: "discipline", label: "Дисциплина (оценка)", unit: "score", higherIsBetter: true, hint: "Средняя оценка «дисциплина» куратора за недели окна (1–10)" },
-  { key: "rating_overall", label: "Общая оценка", unit: "score", higherIsBetter: true, hint: "Средняя общая оценка куратора за недели окна (1–10)" },
-  { key: "violations", label: "Нарушений правил и ошибок", unit: "count", higherIsBetter: false, hint: "Записи rule_violations + trading_errors в окне" },
+const METRIC_DEFS: readonly Omit<MetricMeta, "label" | "hint">[] = [
+  { key: "trades", unit: "count", higherIsBetter: true },
+  { key: "net_pnl", unit: "usd", higherIsBetter: true },
+  { key: "net_r", unit: "r", higherIsBetter: true },
+  { key: "profit_factor", unit: "x", higherIsBetter: true },
+  { key: "win_rate", unit: "pct", higherIsBetter: true },
+  { key: "expectancy_r", unit: "r", higherIsBetter: true },
+  { key: "green_weeks", unit: "weeks", higherIsBetter: true },
+  { key: "green_days_pct", unit: "pct", higherIsBetter: true },
+  { key: "max_dd_usd", unit: "usd", higherIsBetter: false },
+  { key: "max_dd_pct", unit: "pct", higherIsBetter: false },
+  { key: "limit_breaches", unit: "count", higherIsBetter: false },
+  { key: "red_streak", unit: "days", higherIsBetter: false },
+  { key: "discipline", unit: "score", higherIsBetter: true },
+  { key: "rating_overall", unit: "score", higherIsBetter: true },
+  { key: "violations", unit: "count", higherIsBetter: false },
 ];
+
+/** Metric registry with labels / hints in `lang`. */
+export function metricsMeta(lang: Lang = "ru"): MetricMeta[] {
+  const t = scalingT.tFor(lang);
+  return METRIC_DEFS.map((m) => ({ ...m, label: t(`metric.${m.key}.label`), hint: t(`metric.${m.key}.hint`) }));
+}
+
+/** RU registry (kept for older imports). */
+export const METRICS: readonly MetricMeta[] = metricsMeta("ru");
 
 export const METRIC_BY_KEY: Record<MetricKey, MetricMeta> = Object.fromEntries(METRICS.map((m) => [m.key, m])) as Record<MetricKey, MetricMeta>;
 export const OPS: readonly Op[] = [">=", ">", "<=", "<", "="];
-export const UNITS: readonly { key: Unit; label: string }[] = [
-  { key: "abs", label: "абсолютное значение" },
-  { key: "x_daily_limit", label: "× дневной лимит убытка" },
-  { key: "pct_account", label: "% от размера счёта" },
-];
+const UNIT_KEYS: readonly Unit[] = ["abs", "x_daily_limit", "pct_account"];
+/** Threshold units with labels in `lang`. */
+export function unitsMeta(lang: Lang = "ru"): { key: Unit; label: string }[] {
+  return UNIT_KEYS.map((key) => ({ key, label: scalingT.tFor(lang)(`unit.${key}`) }));
+}
+/** RU list (kept for older imports). */
+export const UNITS: readonly { key: Unit; label: string }[] = unitsMeta("ru");
 
 export interface Tier {
   key: string;
@@ -141,8 +158,14 @@ export interface MetricValue {
   value: number | null;
   /** Which series produced the number ("$" vs "R" fallbacks). */
   basis?: "usd" | "r";
+  /** Why the value is what it is (rendered in the requested language). */
   note?: string;
+  /** The same note as data (scaling namespace `note.<code>`; `ratings` takes `noteCount`). */
+  noteCode?: NoteCode;
+  noteCount?: number;
 }
+
+export type NoteCode = "noLimits" | "broker" | "journal" | "noMoney" | "noLosses" | "noTrades" | "byR" | "byUsd" | "noDdLimit" | "noRatings" | "ratings";
 
 export interface WindowMetrics {
   windowDays: number;
@@ -172,7 +195,20 @@ export interface RuleResult {
   /** 0..1 progress towards passing (1 = passes). */
   progress: number;
   text: string;
+  /** Why the threshold is not defined (status "na" without a threshold). */
+  naReason?: "noDailyLimit" | "noAccount";
+  /** Custom rule label typed by a curator (null → the metric label in the reader's language). */
+  customLabel: string | null;
 }
+
+/** A recommendation reason as data (rendered per reader by renderReason). */
+export type ReasonItem =
+  | { code: "tierMissing"; tier: string }
+  | { code: "noTier" | "noLowerTier" | "topTier" | "noPromoteRules" | "manual" }
+  | { code: "manualWith"; comment: string }
+  | { code: "allMet"; count: number }
+  | { code: "missing"; missing: number; total: number }
+  | { code: "rule"; rule: Pick<RuleResult, "metric" | "op" | "threshold" | "actual" | "customLabel" | "naReason" | "unit"> & { noteCode?: NoteCode; noteCount?: number } };
 
 export type Action = "promote" | "hold" | "demote" | "assign";
 
@@ -190,6 +226,8 @@ export interface Evaluation {
     action: Action;
     toTier: Tier | null;
     reasons: string[];
+    /** The reasons as data (store these; render with renderReason). */
+    reasonItems: ReasonItem[];
     /** Set when demotion rules fire but there is no lower tier. */
     warning: boolean;
   };
@@ -266,7 +304,8 @@ function avg(xs: number[]): number | null {
 
 // ─── metrics ────────────────────────────────────────────────────────────────
 
-export function computeWindowMetrics(input: TraderInput, tier: Tier | null, windowDays: number): WindowMetrics {
+export function computeWindowMetrics(input: TraderInput, tier: Tier | null, windowDays: number, lang: Lang = "ru"): WindowMetrics {
+  const tn = scalingT.tFor(lang);
   const today = input.today;
   const from = windowStart(today, windowDays);
   const all = input.trades.filter((t) => YMD.test(t.date) && t.date >= from && t.date <= today);
@@ -335,7 +374,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
   const ddLimit = limits?.maxDrawdown ?? tier?.maxDrawdown ?? null;
 
   let breaches: number | null = null;
-  let breachNote: string | undefined;
+  let breachNote: NoteCode | undefined;
   if (hasMoney) {
     breaches = 0;
     if (dailyLimit != null && dailyLimit > 0) for (const v of dayNet.values()) if (-v > dailyLimit) breaches++;
@@ -344,7 +383,7 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
       for (const [d, v] of dayNet) sumBy(wk, mondayOf(d), v);
       for (const v of wk.values()) if (-v > weeklyLimit) breaches++;
     }
-    if ((dailyLimit == null || dailyLimit <= 0) && (weeklyLimit == null || weeklyLimit <= 0)) breachNote = "лимиты не заданы";
+    if ((dailyLimit == null || dailyLimit <= 0) && (weeklyLimit == null || weeklyLimit <= 0)) breachNote = "noLimits";
   }
 
   const ddUsd = hasMoney ? maxDrawdownAbs(days.map((d) => dayNet.get(d) ?? 0)) : null;
@@ -361,27 +400,32 @@ export function computeWindowMetrics(input: TraderInput, tier: Tier | null, wind
     : (negR < 0 ? posR / Math.abs(negR) : null);
   const decided = wins + losses;
 
-  const v = (key: MetricKey, value: number | null, extra: Partial<MetricValue> = {}): MetricValue => ({
-    key,
-    value: value == null || !Number.isFinite(value) ? null : r2(value),
-    ...extra,
-  });
+  const v = (key: MetricKey, value: number | null, extra: { basis?: "usd" | "r"; note?: NoteCode; noteCount?: number } = {}): MetricValue => {
+    const { note, noteCount, ...rest } = extra;
+    const out: MetricValue = { key, value: value == null || !Number.isFinite(value) ? null : r2(value), ...rest };
+    if (note) {
+      out.noteCode = note;
+      out.note = note === "ratings" ? tn("note.ratings", { count: noteCount ?? 0 }) : tn(`note.${note}`);
+      if (noteCount != null) out.noteCount = noteCount;
+    }
+    return out;
+  };
 
   const values: Record<MetricKey, MetricValue> = {
     trades: v("trades", sorted.length),
-    net_pnl: v("net_pnl", hasMoney ? net : null, { basis: "usd", note: hasMoney ? (moneySource === "propreports" ? "по данным брокера" : "по журналу") : "нет данных по $" }),
+    net_pnl: v("net_pnl", hasMoney ? net : null, { basis: "usd", note: hasMoney ? (moneySource === "propreports" ? "broker" : "journal") : "noMoney" }),
     net_r: v("net_r", rCount ? sumR : null, { basis: "r" }),
-    profit_factor: v("profit_factor", pf, { basis, note: pf == null ? (sorted.length ? "нет убыточных сделок" : "нет сделок") : basis === "r" ? "по R" : "по $" }),
+    profit_factor: v("profit_factor", pf, { basis, note: pf == null ? (sorted.length ? "noLosses" : "noTrades") : basis === "r" ? "byR" : "byUsd" }),
     win_rate: v("win_rate", decided ? (wins / decided) * 100 : null),
     expectancy_r: v("expectancy_r", rCount ? sumR / rCount : null, { basis: "r" }),
     green_weeks: v("green_weeks", days.length ? greenWeeks : null, { basis }),
     green_days_pct: v("green_days_pct", days.length ? (greenDays / days.length) * 100 : null, { basis }),
-    max_dd_usd: v("max_dd_usd", ddUsd, { basis: "usd", note: hasMoney ? undefined : "нет данных по $" }),
-    max_dd_pct: v("max_dd_pct", ddPct, { basis: "usd", note: ddUsd == null ? "нет данных по $" : ddLimit == null || ddLimit <= 0 ? "лимит просадки не задан" : undefined }),
-    limit_breaches: v("limit_breaches", breaches, { basis: "usd", note: breaches == null ? "нет данных по $" : breachNote }),
+    max_dd_usd: v("max_dd_usd", ddUsd, { basis: "usd", note: hasMoney ? undefined : "noMoney" }),
+    max_dd_pct: v("max_dd_pct", ddPct, { basis: "usd", note: ddUsd == null ? "noMoney" : ddLimit == null || ddLimit <= 0 ? "noDdLimit" : undefined }),
+    limit_breaches: v("limit_breaches", breaches, { basis: "usd", note: breaches == null ? "noMoney" : breachNote }),
     red_streak: v("red_streak", days.length ? redStreak : null, { basis }),
-    discipline: v("discipline", discipline, { note: discipline == null ? "нет оценок куратора" : `${ratingRows.length} оценок` }),
-    rating_overall: v("rating_overall", overall, { note: overall == null ? "нет оценок куратора" : undefined }),
+    discipline: v("discipline", discipline, discipline == null ? { note: "noRatings" } : { note: "ratings", noteCount: ratingRows.length }),
+    rating_overall: v("rating_overall", overall, { note: overall == null ? "noRatings" : undefined }),
     violations: v("violations", violations),
   };
 
@@ -426,39 +470,82 @@ export function progressOf(actual: number, op: Op, threshold: number): number {
   return 0;
 }
 
-export function formatMetric(key: MetricKey, value: number | null): string {
+/** A metric value for people. Money / R / ratios keep the trading format in every language; counts use the locale grouping. */
+export function formatMetric(key: MetricKey, value: number | null, lang: Lang = "ru"): string {
   if (value == null) return "—";
   const u = METRIC_BY_KEY[key].unit;
   switch (u) {
-    case "usd": return `${value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("ru-RU", { maximumFractionDigits: 0 })}`;
+    case "usd": return `${value < 0 ? "−" : ""}$${Math.abs(value).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
     case "r": return `${value > 0 ? "+" : value < 0 ? "−" : ""}${Math.abs(value).toFixed(2)}R`;
     case "pct": return `${value.toFixed(0)}%`;
     case "x": return `${value.toFixed(2)}×`;
     case "score": return `${value.toFixed(1)}/10`;
-    default: return value.toLocaleString("ru-RU", { maximumFractionDigits: 0 });
+    default: return formatCountFor(lang, Math.round(value));
   }
 }
 
-export function ruleLabel(rule: Pick<Rule, "label" | "metric">): string {
-  return rule.label?.trim() || METRIC_BY_KEY[rule.metric]?.label || rule.metric;
+/** Custom rule label, else the metric label in `lang`. */
+export function ruleLabel(rule: Pick<Rule, "label" | "metric">, lang: Lang = "ru"): string {
+  return rule.label?.trim() || scalingT.tryFor(lang, `metric.${rule.metric}.label`) || rule.metric;
 }
 
-function evaluateRule(rule: Rule, metrics: WindowMetrics, limits: LimitsInput | null, tier: Tier | null): RuleResult {
+/** Text of a rule result in `lang` (also used to re-render stored reasons). */
+export function ruleText(
+  r: Pick<RuleResult, "metric" | "op" | "threshold" | "actual" | "customLabel" | "naReason"> & { noteCode?: NoteCode; noteCount?: number },
+  lang: Lang = "ru",
+): string {
+  const t = scalingT.tFor(lang);
+  const label = ruleLabel({ label: r.customLabel, metric: r.metric }, lang);
+  if (r.threshold == null) return t("rule.na", { label, why: t(r.naReason === "noAccount" ? "rule.noAccount" : "rule.noDailyLimit") });
+  if (r.actual == null) {
+    const note = r.noteCode ? (r.noteCode === "ratings" ? t("note.ratings", { count: r.noteCount ?? 0 }) : t(`note.${r.noteCode}`)) : t("note.noData");
+    return t("rule.noValue", { label, note });
+  }
+  return t("rule.value", { label, actual: formatMetric(r.metric, r.actual, lang), op: r.op, threshold: formatMetric(r.metric, r.threshold, lang) });
+}
+
+function evaluateRule(rule: Rule, metrics: WindowMetrics, limits: LimitsInput | null, tier: Tier | null, lang: Lang): RuleResult {
   const mv = metrics.values[rule.metric];
   const actual = mv?.value ?? null;
   const threshold = resolveThreshold(rule, limits, tier);
-  const label = ruleLabel(rule);
-  const base = { ruleId: rule.id, kind: rule.kind, metric: rule.metric, label, op: rule.op, threshold, rawValue: rule.value, unit: rule.unit, windowDays: rule.windowDays, actual, basis: mv?.basis };
+  const label = ruleLabel(rule, lang);
+  const customLabel = rule.label?.trim() || null;
+  const base = { ruleId: rule.id, kind: rule.kind, metric: rule.metric, label, op: rule.op, threshold, rawValue: rule.value, unit: rule.unit, windowDays: rule.windowDays, actual, basis: mv?.basis, customLabel };
+  const note = { noteCode: mv?.noteCode, noteCount: mv?.noteCount };
   if (threshold == null) {
-    return { ...base, status: "na", progress: 0, text: `${label}: порог не определён (${rule.unit === "x_daily_limit" ? "нет дневного лимита" : "нет размера счёта"})` };
+    const naReason = rule.unit === "x_daily_limit" ? "noDailyLimit" as const : "noAccount" as const;
+    return { ...base, status: "na", progress: 0, naReason, text: ruleText({ ...base, ...note, naReason }, lang) };
   }
   if (actual == null) {
-    return { ...base, status: "na", progress: 0, text: `${label}: ${mv?.note ?? "нет данных"}` };
+    return { ...base, status: "na", progress: 0, text: ruleText({ ...base, ...note }, lang) };
   }
   const pass = compare(actual, rule.op, threshold);
-  const text = `${label}: ${formatMetric(rule.metric, actual)} (нужно ${rule.op} ${formatMetric(rule.metric, threshold)})`;
-  return { ...base, status: pass ? "pass" : "fail", progress: progressOf(actual, rule.op, threshold), text };
+  return { ...base, status: pass ? "pass" : "fail", progress: progressOf(actual, rule.op, threshold), text: ruleText({ ...base, ...note }, lang) };
 }
+
+/** A recommendation reason in `lang`. */
+export function renderReason(item: ReasonItem, lang: Lang = "ru"): string {
+  const t = scalingT.tFor(lang);
+  switch (item.code) {
+    case "tierMissing": return t("reason.tierMissing", { tier: item.tier });
+    case "manualWith": return t("reason.manualWith", { comment: item.comment });
+    case "allMet": return t("reason.allMet", { count: item.count });
+    case "missing": return t("reason.missing", { missing: item.missing, total: item.total });
+    case "rule": return ruleText(item.rule, lang);
+    default: return t(`reason.${item.code}`);
+  }
+}
+
+/** Stored reasons (legacy strings or ReasonItem objects) → texts in `lang`. */
+export function renderStoredReasons(raw: unknown, lang: Lang = "ru"): string[] {
+  if (!Array.isArray(raw)) return [];
+  return raw.map((x) => (x && typeof x === "object" && typeof (x as { code?: unknown }).code === "string" ? renderReason(x as ReasonItem, lang) : String(x)));
+}
+
+const ruleItem = (r: RuleResult): ReasonItem => ({
+  code: "rule",
+  rule: { metric: r.metric, op: r.op, threshold: r.threshold, actual: r.actual, customLabel: r.customLabel, naReason: r.naReason, unit: r.unit },
+});
 
 // ─── evaluation ─────────────────────────────────────────────────────────────
 
@@ -466,7 +553,7 @@ export function sortTiers(tiers: Tier[]): Tier[] {
   return [...tiers].sort((a, b) => a.order - b.order || a.key.localeCompare(b.key));
 }
 
-export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[]): Evaluation {
+export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[], lang: Lang = "ru"): Evaluation {
   const tiers = sortTiers(tiersIn);
   const idx = input.tierKey ? tiers.findIndex((t) => t.key === input.tierKey) : -1;
   const tier = idx >= 0 ? tiers[idx] : null;
@@ -475,11 +562,11 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
 
   const applicable = rules.filter((r) => r.enabled && (r.tierKey == null || r.tierKey === input.tierKey));
   const windowsNeeded = new Set<number>([20, ...applicable.map((r) => Math.max(1, Math.round(r.windowDays)))]);
-  const windows = [...windowsNeeded].sort((a, b) => a - b).map((n) => computeWindowMetrics(input, tier, n));
+  const windows = [...windowsNeeded].sort((a, b) => a - b).map((n) => computeWindowMetrics(input, tier, n, lang));
   const byWindow = new Map(windows.map((w) => [w.windowDays, w]));
 
   const results = applicable
-    .map((r) => evaluateRule(r, byWindow.get(Math.max(1, Math.round(r.windowDays)))!, input.limits, tier))
+    .map((r) => evaluateRule(r, byWindow.get(Math.max(1, Math.round(r.windowDays)))!, input.limits, tier, lang))
     .sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "promote" ? -1 : 1));
 
   const promote = results.filter((r) => r.kind === "promote");
@@ -490,13 +577,13 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
 
   let action: Action = "hold";
   let toTier: Tier | null = null;
-  const reasons: string[] = [];
+  const reasonItems: ReasonItem[] = [];
   let warning = false;
 
   if (!tier) {
     action = "assign";
     toTier = tiers[0] ?? null;
-    reasons.push(input.tierKey ? `Тир «${input.tierKey}» не найден в лестнице` : "Тир не назначен — начните с первой ступени");
+    reasonItems.push(input.tierKey ? { code: "tierMissing", tier: input.tierKey } : { code: "noTier" });
   } else if (triggered.length) {
     if (prevTier) {
       action = "demote";
@@ -504,22 +591,23 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
     } else {
       action = "hold";
       warning = true;
-      reasons.push("Сработали правила понижения, но ниже тира нет — нужен разбор с куратором");
+      reasonItems.push({ code: "noLowerTier" });
     }
-    for (const r of triggered) reasons.push(r.text);
+    for (const r of triggered) reasonItems.push(ruleItem(r));
   } else if (promote.length && missing.length === 0) {
     if (nextTier) {
       action = "promote";
       toTier = nextTier;
-      reasons.push(`Все ${promote.length} условий повышения выполнены`);
+      reasonItems.push({ code: "allMet", count: promote.length });
     } else {
-      reasons.push("Все условия выполнены — это верхний тир");
+      reasonItems.push({ code: "topTier" });
     }
   } else if (!promote.length) {
-    reasons.push("Нет активных правил повышения для этого тира");
+    reasonItems.push({ code: "noPromoteRules" });
   } else {
-    reasons.push(`Не выполнено ${missing.length} из ${promote.length} условий повышения`);
+    reasonItems.push({ code: "missing", missing: missing.length, total: promote.length });
   }
+  const reasons = reasonItems.map((it) => renderReason(it, lang));
 
   return {
     trader: input.trader,
@@ -530,7 +618,7 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
     prevTier,
     rules: results,
     windows,
-    recommendation: { action, toTier, reasons, warning },
+    recommendation: { action, toTier, reasons, reasonItems, warning },
     progress: promote.length ? promotePassed / promote.length : null,
     promotePassed,
     promoteTotal: promote.length,
@@ -541,25 +629,27 @@ export function evaluateTrader(input: TraderInput, tiersIn: Tier[], rules: Rule[
 
 // ─── defaults (seeded on first run, curator-editable afterwards) ────────────
 
+// Seed data (written to the DB once, curator-editable afterwards): tier names, descriptions and rule labels are
+// stored user content, not UI text.
 export const DEFAULT_TIERS: Tier[] = [
-  { key: "trainee", name: "Стажёр", order: 1, accountSize: 10_000, dailyLossLimit: 150, weeklyLossLimit: 400, maxDrawdown: 800, maxRiskPerTrade: 50, maxPositionUsd: 10_000, maxOvernightExposure: 0, maxOpenPositions: 2, allowOvernight: false, allowSwing: false, description: "Симулятор / минимальный размер" },
-  { key: "junior", name: "Джун", order: 2, accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000, maxRiskPerTrade: 100, maxPositionUsd: 25_000, maxOvernightExposure: 5_000, maxOpenPositions: 3, allowOvernight: false, allowSwing: false, description: "Интрадей, малый лот" },
-  { key: "trader", name: "Трейдер", order: 3, accountSize: 50_000, dailyLossLimit: 600, weeklyLossLimit: 1_800, maxDrawdown: 4_000, maxRiskPerTrade: 200, maxPositionUsd: 50_000, maxOvernightExposure: 20_000, maxOpenPositions: 5, allowOvernight: true, allowSwing: false, description: "Интрадей + овернайт" },
-  { key: "senior", name: "Сеньор", order: 4, accountSize: 100_000, dailyLossLimit: 1_200, weeklyLossLimit: 3_500, maxDrawdown: 8_000, maxRiskPerTrade: 400, maxPositionUsd: 100_000, maxOvernightExposure: 50_000, maxOpenPositions: 8, allowOvernight: true, allowSwing: true, description: "Полный BP, свинг" },
-  { key: "lead", name: "Лид", order: 5, accountSize: 250_000, dailyLossLimit: 2_500, weeklyLossLimit: 7_000, maxDrawdown: 15_000, maxRiskPerTrade: 800, maxPositionUsd: 250_000, maxOvernightExposure: 120_000, maxOpenPositions: 12, allowOvernight: true, allowSwing: true, description: "Максимальный BP, менторство" },
+  { key: "trainee", name: "Стажёр", order: 1, accountSize: 10_000, dailyLossLimit: 150, weeklyLossLimit: 400, maxDrawdown: 800, maxRiskPerTrade: 50, maxPositionUsd: 10_000, maxOvernightExposure: 0, maxOpenPositions: 2, allowOvernight: false, allowSwing: false, description: "Симулятор / минимальный размер" }, // i18n-ignore (seed data)
+  { key: "junior", name: "Джун", order: 2, accountSize: 25_000, dailyLossLimit: 300, weeklyLossLimit: 900, maxDrawdown: 2_000, maxRiskPerTrade: 100, maxPositionUsd: 25_000, maxOvernightExposure: 5_000, maxOpenPositions: 3, allowOvernight: false, allowSwing: false, description: "Интрадей, малый лот" }, // i18n-ignore (seed data)
+  { key: "trader", name: "Трейдер", order: 3, accountSize: 50_000, dailyLossLimit: 600, weeklyLossLimit: 1_800, maxDrawdown: 4_000, maxRiskPerTrade: 200, maxPositionUsd: 50_000, maxOvernightExposure: 20_000, maxOpenPositions: 5, allowOvernight: true, allowSwing: false, description: "Интрадей + овернайт" }, // i18n-ignore (seed data)
+  { key: "senior", name: "Сеньор", order: 4, accountSize: 100_000, dailyLossLimit: 1_200, weeklyLossLimit: 3_500, maxDrawdown: 8_000, maxRiskPerTrade: 400, maxPositionUsd: 100_000, maxOvernightExposure: 50_000, maxOpenPositions: 8, allowOvernight: true, allowSwing: true, description: "Полный BP, свинг" }, // i18n-ignore (seed data)
+  { key: "lead", name: "Лид", order: 5, accountSize: 250_000, dailyLossLimit: 2_500, weeklyLossLimit: 7_000, maxDrawdown: 15_000, maxRiskPerTrade: 800, maxPositionUsd: 250_000, maxOvernightExposure: 120_000, maxOpenPositions: 12, allowOvernight: true, allowSwing: true, description: "Максимальный BP, менторство" }, // i18n-ignore (seed data)
 ];
 
 export const DEFAULT_RULES: Omit<Rule, "id">[] = [
-  { kind: "promote", metric: "trades", op: ">=", value: 40, unit: "abs", windowDays: 20, tierKey: null, label: "Минимум сделок за 20 дней", enabled: true },
-  { kind: "promote", metric: "green_weeks", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Зелёных недель подряд", enabled: true },
-  { kind: "promote", metric: "net_pnl", op: ">=", value: 5, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "P&L нетто ≥ 5 дневных лимитов", enabled: true },
-  { kind: "promote", metric: "profit_factor", op: ">=", value: 1.3, unit: "abs", windowDays: 20, tierKey: null, label: "Profit factor", enabled: true },
-  { kind: "promote", metric: "max_dd_pct", op: "<", value: 50, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка меньше половины лимита", enabled: true },
-  { kind: "promote", metric: "limit_breaches", op: "=", value: 0, unit: "abs", windowDays: 20, tierKey: null, label: "Без нарушений лимитов", enabled: true },
-  { kind: "promote", metric: "discipline", op: ">=", value: 7, unit: "abs", windowDays: 20, tierKey: null, label: "Оценка дисциплины", enabled: true },
-  { kind: "demote", metric: "limit_breaches", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Три и более нарушений лимитов", enabled: true },
-  { kind: "demote", metric: "max_dd_pct", op: ">=", value: 100, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка достигла лимита", enabled: true },
-  { kind: "demote", metric: "net_pnl", op: "<=", value: -3, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "Убыток ≥ 3 дневных лимитов", enabled: true },
-  { kind: "demote", metric: "discipline", op: "<", value: 4, unit: "abs", windowDays: 20, tierKey: null, label: "Дисциплина ниже 4", enabled: true },
-  { kind: "demote", metric: "red_streak", op: ">=", value: 5, unit: "abs", windowDays: 20, tierKey: null, label: "Пять красных дней подряд", enabled: true },
+  { kind: "promote", metric: "trades", op: ">=", value: 40, unit: "abs", windowDays: 20, tierKey: null, label: "Минимум сделок за 20 дней", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "green_weeks", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Зелёных недель подряд", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "net_pnl", op: ">=", value: 5, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "P&L нетто ≥ 5 дневных лимитов", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "profit_factor", op: ">=", value: 1.3, unit: "abs", windowDays: 20, tierKey: null, label: "Profit factor", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "max_dd_pct", op: "<", value: 50, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка меньше половины лимита", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "limit_breaches", op: "=", value: 0, unit: "abs", windowDays: 20, tierKey: null, label: "Без нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
+  { kind: "promote", metric: "discipline", op: ">=", value: 7, unit: "abs", windowDays: 20, tierKey: null, label: "Оценка дисциплины", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "limit_breaches", op: ">=", value: 3, unit: "abs", windowDays: 20, tierKey: null, label: "Три и более нарушений лимитов", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "max_dd_pct", op: ">=", value: 100, unit: "abs", windowDays: 20, tierKey: null, label: "Просадка достигла лимита", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "net_pnl", op: "<=", value: -3, unit: "x_daily_limit", windowDays: 20, tierKey: null, label: "Убыток ≥ 3 дневных лимитов", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "discipline", op: "<", value: 4, unit: "abs", windowDays: 20, tierKey: null, label: "Дисциплина ниже 4", enabled: true }, // i18n-ignore (seed data)
+  { kind: "demote", metric: "red_streak", op: ">=", value: 5, unit: "abs", windowDays: 20, tierKey: null, label: "Пять красных дней подряд", enabled: true }, // i18n-ignore (seed data)
 ];

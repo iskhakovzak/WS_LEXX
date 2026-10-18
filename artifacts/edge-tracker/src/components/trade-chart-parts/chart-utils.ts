@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import type { UTCTimestamp, Time } from "lightweight-charts";
 import { fmtDate } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 
 export type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 
@@ -92,15 +93,22 @@ export function fmtEtDateTimeSec(v: Date | string | number | null | undefined): 
 export function fmtDuration(seconds: number | null | undefined): string {
   if (seconds == null || !Number.isFinite(seconds)) return "—";
   const s = Math.max(0, Math.round(seconds));
-  if (s < 60) return `${s} с`;
-  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return r ? `${m} мин ${r} с` : `${m} мин`; }
-  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return m ? `${h} ч ${String(m).padStart(2, "0")} мин` : `${h} ч`; }
+  const t = chartI18n.t;
+  if (s < 60) return t("dur.s", { s });
+  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return r ? t("dur.ms", { m, s: r }) : t("dur.m", { m }); }
+  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60); return m ? t("dur.hm", { h, m: String(m).padStart(2, "0") }) : t("dur.h", { h }); }
   const d = Math.floor(s / 86400), h = Math.round((s % 86400) / 3600);
-  return h ? `${d} дн ${h} ч` : `${d} дн`;
+  return h ? t("dur.dh", { d, h }) : t("dur.d", { d });
 }
 
 export type EtSession = "premarket" | "regular" | "postmarket" | "closed";
-export const ET_SESSION_LABEL: Record<EtSession, string> = { premarket: "премаркет", regular: "основная сессия", postmarket: "постмаркет", closed: "вне торгов" };
+/** Session names in the UI language (getters: every read follows the current language). */
+export const ET_SESSION_LABEL: Readonly<Record<EtSession, string>> = {
+  get premarket() { return chartI18n.t("session.premarket"); },
+  get regular() { return chartI18n.t("session.regular"); },
+  get postmarket() { return chartI18n.t("session.postmarket"); },
+  get closed() { return chartI18n.t("session.closed"); },
+};
 /** Session of an instant by New York wall clock: 04:00–09:30 premarket, 09:30–16:00 regular, 16:00–20:00 postmarket. */
 export function sessionOfEt(v: Date | string | number | null | undefined): EtSession | null {
   const d = v == null ? null : v instanceof Date ? v : typeof v === "number" ? new Date(v * 1000) : new Date(v);

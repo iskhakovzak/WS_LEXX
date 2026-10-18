@@ -8,6 +8,8 @@
  */
 import { normHeader, parseNum, round4 } from "./csv";
 import { FEE_KEYS, FEE_LABEL_RU, type FeeBreakdown, type RoundTrip } from "./types";
+import { propreportsT } from "../../i18n/ns";
+import type { Lang } from "../../i18n";
 
 /** Header spellings that are NOT fees (identity / price / qty columns) — never treated as a fee even if numeric. */
 export const NON_FEE_HEADERS = new Set([
@@ -90,10 +92,10 @@ export function detectFeeColumns(header: string[], rows: string[][], mapped: Set
   return out;
 }
 
-export function feeLabel(key: string, settings?: FeeSettings | null): string {
+export function feeLabel(key: string, settings?: FeeSettings | null, lang: Lang = "ru"): string {
   const custom = settings?.columns[key]?.label;
   if (custom) return custom;
-  return (FEE_LABEL_RU as Record<string, string>)[key] ?? key.replace(/_/g, " ");
+  return propreportsT.tryFor(lang, `fee.${key}`) ?? (FEE_LABEL_RU as Record<string, string>)[key] ?? key.replace(/_/g, " ");
 }
 
 // ─── settings ───────────────────────────────────────────────────────────────

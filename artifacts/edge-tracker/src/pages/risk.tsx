@@ -16,17 +16,14 @@ import { MyRiskView } from "@/components/risk/my-risk-view";
 import { OvernightView } from "@/components/risk/overnight-view";
 import { riskKeys } from "@/components/risk/use-risk";
 import { useAgo, useStoredState } from "@/components/risk/primitives";
+import { riskI18n } from "@/i18n/ns/risk";
+import { commonI18n } from "@/i18n/ns/common";
 
 type View = "desk" | "overnight" | "me";
 const VIEWS: readonly View[] = ["desk", "overnight", "me"];
 
-const TITLES: Record<View, { title: string; description: string }> = {
-  desk: { title: "Риск-деск", description: "Кто ближе всего к стопу: лимиты дня, недели и просадки, P&L нетто, экспозиция и овернайт" },
-  overnight: { title: "Овернайт и свинг", description: "Что уходит через закрытие: котировки, катализаторы, гэп-риск и концентрация" },
-  me: { title: "Мой риск", description: "Сколько осталось до стопа сегодня и на неделе, мой день и нарушения" },
-};
-
 export default function RiskPage() {
+  const { t } = riskI18n.useT();
   const { user, isCurator } = useAuth();
   const signedIn = !!user && user.role !== "guest";
   const me = signedIn ? user!.traderName : null;
@@ -51,29 +48,28 @@ export default function RiskPage() {
     qc.invalidateQueries({ queryKey: riskKeys.all });
   }, [qc]);
 
-  const meta = TITLES[view];
 
   return (
     <Page>
       <PageHeader
-        title={meta.title}
-        description={meta.description}
+        title={t(`page.title.${view}`)}
+        description={t(`page.desc.${view}`)}
         icon={view === "overnight" ? Moon : ShieldAlert}
         actions={
           signedIn ? (
             <>
               {ago && <span className="hidden text-xs text-muted-foreground sm:inline" aria-live="polite">{ago}</span>}
-              <Button variant="outline" size="icon" onClick={refresh} aria-label="Обновить данные риска" disabled={fetching}>
+              <Button variant="outline" size="icon" onClick={refresh} aria-label={t("page.refreshAria")} disabled={fetching}>
                 <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
               </Button>
               <Segmented
-                ariaLabel="Режим риск-деска"
+                ariaLabel={t("page.viewAria")}
                 value={view}
                 onChange={setView}
                 options={[
-                  ...(isCurator ? [{ value: "desk", label: "Деск" }] : []),
-                  { value: "overnight", label: "Овернайт и свинг" },
-                  ...(me ? [{ value: "me", label: "Мой риск" }] : []),
+                  ...(isCurator ? [{ value: "desk", label: commonI18n.t("trading.desk") }] : []),
+                  { value: "overnight", label: t("page.title.overnight") },
+                  ...(me ? [{ value: "me", label: t("page.title.me") }] : []),
                 ]}
               />
             </>
@@ -83,7 +79,7 @@ export default function RiskPage() {
 
       {!signedIn ? (
         <Panel>
-          <EmptyState icon={ShieldAlert} title="Войдите, чтобы увидеть риск" description="Риск-деск доступен трейдерам и кураторам." />
+          <EmptyState icon={ShieldAlert} title={t("page.signInTitle")} description={t("page.signInDesc")} />
         </Panel>
       ) : view === "desk" && isCurator ? (
         <DeskView onUpdatedAt={setUpdatedAt} focusTrader={focusTrader} focusTab={focusTab} onShowOvernight={() => setView("overnight")} />
@@ -93,7 +89,7 @@ export default function RiskPage() {
         <MyRiskView trader={me} onUpdatedAt={setUpdatedAt} canEditLimits={isCurator} />
       ) : (
         <Panel>
-          <EmptyState icon={ShieldAlert} title="У вашего аккаунта нет имени трейдера" description="Личный риск доступен только трейдерам; кураторам — деск и овернайт." />
+          <EmptyState icon={ShieldAlert} title={t("page.noTraderTitle")} description={t("page.noTraderDesc")} />
         </Panel>
       )}
     </Page>

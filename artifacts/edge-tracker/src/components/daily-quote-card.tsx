@@ -10,6 +10,8 @@ import { Segmented } from "@/components/ds";
 import { http } from "@/lib/api/http";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
+import { getLang } from "@/i18n";
 import { WidgetShell, IconAction, WidgetError, useStoredState } from "@/components/widgets/widget-kit";
 
 type Lang = "ru" | "uz" | "uk" | "en";
@@ -18,9 +20,9 @@ const LANGS = ["ru", "uz", "uk", "en"] as const;
 const CATS = ["trading", "psychology"] as const;
 
 const LANG_LABELS: Record<Lang, { short: string; full: string }> = {
-  ru: { short: "RU", full: "Русский" },
+  ru: { short: "RU", full: "Русский" }, // i18n-ignore (native language name)
   uz: { short: "UZ", full: "Oʻzbek" },
-  uk: { short: "UK", full: "Українська" },
+  uk: { short: "UK", full: "Українська" }, // i18n-ignore (native language name)
   en: { short: "EN", full: "English" },
 };
 
@@ -55,6 +57,7 @@ function pick(q: QuoteRow, cat: Cat, lang: Lang): string {
 
 /** Last 14 days of quotes in the current language/category. */
 function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
+  const { t } = marketWidgetsI18n.useT();
   const [open, setOpen] = useState(false);
   const recent = useQuery<QuoteRow[]>({
     queryKey: ["daily-quote-recent"],
@@ -65,11 +68,11 @@ function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <IconAction icon={History} label="Архив цитат" />
+        <IconAction icon={History} label={t("quote.archive")} />
       </PopoverTrigger>
       <PopoverContent align="end" className="w-[min(22rem,calc(100vw-2rem))] p-0">
         <div className="border-b border-border/60 px-4 py-2.5 text-sm font-semibold">
-          Архив · {cat === "trading" ? "Трейдинг" : "Психология"}
+          {t("quote.archiveTitle", { cat: t(cat === "trading" ? "quote.trading" : "quote.psychology") })}
         </div>
         <div className="max-h-[min(30rem,65dvh)] overflow-y-auto overscroll-contain px-4 py-2">
           {recent.isLoading ? (
@@ -77,9 +80,9 @@ function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
               {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}
             </div>
           ) : recent.isError ? (
-            <WidgetError message="Архив недоступен" onRetry={() => recent.refetch()} />
+            <WidgetError message={t("quote.archiveUnavailable")} onRetry={() => recent.refetch()} />
           ) : (recent.data ?? []).length === 0 ? (
-            <p className="py-2 text-sm text-muted-foreground">Архив пуст.</p>
+            <p className="py-2 text-sm text-muted-foreground">{t("quote.archiveEmpty")}</p>
           ) : (
             <ul className="divide-y divide-border/40">
               {(recent.data ?? []).map((q) => {
@@ -100,10 +103,13 @@ function ArchivePopover({ lang, cat }: { lang: Lang; cat: Cat }) {
 }
 
 export function DailyQuoteCard() {
+  const { t } = marketWidgetsI18n.useT();
   const { isCurator } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [lang, setLang] = useStoredState<Lang>("daily_quote_lang", "ru", LANGS);
+  // First visit: the quote follows the interface language; the reader's own pick is remembered after that.
+  const uiLang = getLang();
+  const [lang, setLang] = useStoredState<Lang>("daily_quote_lang", uiLang === "en" || uiLang === "uz" ? uiLang : "ru", LANGS);
   const [cat, setCat] = useStoredState<Cat>("daily_quote_cat", "trading", CATS);
   const [copied, setCopied] = useState(false);
 
@@ -127,17 +133,17 @@ export function DailyQuoteCard() {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getGetTodayDailyQuoteQueryKey() });
         queryClient.invalidateQueries({ queryKey: ["daily-quote-recent"] });
-        toast({ title: "Цитата обновлена", description: "AI сгенерировал новую пару на сегодня." });
+        toast({ title: marketWidgetsI18n.t("quote.updated"), description: marketWidgetsI18n.t("quote.updatedText") });
       },
       onError: (e: any) => {
-        toast({ title: "Не удалось обновить", description: e?.message || "AI недоступен", variant: "destructive" });
+        toast({ title: marketWidgetsI18n.t("quote.updateFailed"), description: e?.message || marketWidgetsI18n.t("quote.aiUnavailable"), variant: "destructive" });
       },
     },
   } as any);
 
   if (isLoading) {
     return (
-      <div className="glass-panel rounded-2xl p-4" aria-busy="true" aria-label="Загрузка цитаты дня">
+      <div className="glass-panel rounded-2xl p-4" aria-busy="true" aria-label={t("quote.loading")}>
         <Skeleton className="mb-3 h-3.5 w-32" />
         <Skeleton className="mb-2 h-4 w-full" />
         <Skeleton className="h-4 w-3/4" />
@@ -147,8 +153,8 @@ export function DailyQuoteCard() {
 
   if (isError || !data) {
     return (
-      <WidgetShell icon={Quote} title="Цитата дня">
-        <WidgetError message="Не удалось загрузить цитату" onRetry={() => refetch()} />
+      <WidgetShell icon={Quote} title={t("quote.title")}>
+        <WidgetError message={t("quote.loadFailed")} onRetry={() => refetch()} />
       </WidgetShell>
     );
   }
@@ -170,22 +176,22 @@ export function DailyQuoteCard() {
   return (
     <WidgetShell
       icon={Quote}
-      title="Цитата дня"
+      title={t("quote.title")}
       actions={
         <>
           <Segmented<Lang>
-            ariaLabel="Язык цитаты"
+            ariaLabel={t("quote.langAria")}
             size="sm"
             value={lang}
             onChange={setLang}
             options={LANGS.map((l) => ({ value: l, label: <span title={LANG_LABELS[l].full} data-testid={`button-quote-lang-${l}`}>{LANG_LABELS[l].short}</span> }))}
           />
-          <IconAction icon={copied ? Check : Copy} label={copied ? "Скопировано" : "Скопировать цитату"} onClick={copy} />
+          <IconAction icon={copied ? Check : Copy} label={copied ? t("quote.copied") : t("quote.copy")} onClick={copy} />
           <ArchivePopover lang={lang} cat={cat} />
           {isCurator && (
             <IconAction
               icon={RefreshCw}
-              label="Сгенерировать новую цитату"
+              label={t("quote.regenerate")}
               spinning={regenerate.isPending}
               disabled={regenerate.isPending}
               onClick={() => regenerate.mutate()}
@@ -197,14 +203,14 @@ export function DailyQuoteCard() {
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:gap-4">
         <Segmented<Cat>
-          ariaLabel="Категория цитаты"
+          ariaLabel={t("quote.catAria")}
           size="sm"
           value={cat}
           onChange={setCat}
           className="self-start"
           options={[
-            { value: "trading", label: <span className="inline-flex items-center gap-1" data-testid="button-quote-cat-trading"><TrendingUp className="h-3 w-3" aria-hidden="true" />Трейдинг</span> },
-            { value: "psychology", label: <span className="inline-flex items-center gap-1" data-testid="button-quote-cat-psychology"><Brain className="h-3 w-3" aria-hidden="true" />Психология</span> },
+            { value: "trading", label: <span className="inline-flex items-center gap-1" data-testid="button-quote-cat-trading"><TrendingUp className="h-3 w-3" aria-hidden="true" />{t("quote.trading")}</span> },
+            { value: "psychology", label: <span className="inline-flex items-center gap-1" data-testid="button-quote-cat-psychology"><Brain className="h-3 w-3" aria-hidden="true" />{t("quote.psychology")}</span> },
           ]}
         />
         <figure className="min-w-0 flex-1">

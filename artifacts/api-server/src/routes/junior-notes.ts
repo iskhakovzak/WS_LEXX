@@ -15,6 +15,8 @@ import {
   reviewTraderFilter, scoreTrend, type ContextTradeRow, type JuniorNotesViewer, type ReviewScope,
 } from "../lib/juniorReview";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { aiAnswerLanguage } from "../i18n/ai";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 const AI_MODEL = "claude-sonnet-4-6";
@@ -63,15 +65,16 @@ function ensureSchema(): Promise<void> {
 const SECTION_KEYS = ["free", "plan", "intraday", "overnight", "swing", "mistakes", "lessons", "focus"] as const;
 type SectionKey = (typeof SECTION_KEYS)[number];
 type Sections = Partial<Record<SectionKey, string>>;
+/** Headings inside the stored flat text (search / AI / older clients) — stored data, kept in Russian. */
 const SECTION_TITLES: Record<SectionKey, string> = {
   free: "",
-  plan: "План",
-  intraday: "Сделки — интрадей",
-  overnight: "Сделки — овернайт",
-  swing: "Сделки — свинг",
-  mistakes: "Ошибки",
-  lessons: "Уроки",
-  focus: "Фокус на завтра",
+  plan: "План", // i18n-ignore (stored text heading)
+  intraday: "Сделки — интрадей", // i18n-ignore (stored text heading)
+  overnight: "Сделки — овернайт", // i18n-ignore (stored text heading)
+  swing: "Сделки — свинг", // i18n-ignore (stored text heading)
+  mistakes: "Ошибки", // i18n-ignore (stored text heading)
+  lessons: "Уроки", // i18n-ignore (stored text heading)
+  focus: "Фокус на завтра", // i18n-ignore (stored text heading)
 };
 const MAX_SECTION_LEN = 6000;
 
@@ -204,7 +207,7 @@ async function requireNotesReader(
   const ctx = await reviewCtx(req);
   if (!ctx) { sendError(res, unauthorized()); return false; }
   if (!canReadJuniorNotes(viewerOf(ctx), ctx.scope, trader)) {
-    res.status(403).json({ error: "Сводки трейдера видят он сам, его куратор или наставник", code: "FORBIDDEN" });
+    sendError(res, new AppError("NOTES_ACCESS"));
     return false;
   }
   return true;
@@ -212,11 +215,11 @@ async function requireNotesReader(
 
 /** Sends 401/403 and returns null unless the caller reviews someone. */
 async function requireReviewer(
-  req: import("express").Request, res: import("express").Response, message = "Только для кураторов и наставников",
+  req: import("express").Request, res: import("express").Response, code: "REVIEWER_ONLY" | "RATE_REVIEWER_ONLY" = "REVIEWER_ONLY",
 ): Promise<ReviewCtx | null> {
   const ctx = await reviewCtx(req);
   if (!ctx) { sendError(res, unauthorized()); return null; }
-  if (ctx.scope.kind === "none") { res.status(403).json({ error: message, code: "FORBIDDEN" }); return null; }
+  if (ctx.scope.kind === "none") { sendError(res, new AppError(code)); return null; }
   return ctx;
 }
 
@@ -289,6 +292,7 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
   const ctx = await requireReviewer(req, res);
   if (!ctx) return;
   const date = (req.query["date"] as string | undefined) || todayNy();
+  const lang = langOf(req);
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const filter = reviewTraderFilter(ctx.scope, mineOnly(req.query["scope"]));
   const from = addDays(date, -90);
@@ -340,6 +344,7 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
     // «Ошибки» of structured notes; legacy free-form notes are scanned whole.
     const repeated = repeatedMistakes(
       notes.slice(0, 20).map((n) => ({ note_date: n.note_date, text: n.has_sections ? n.mistakes : n.raw_text })),
+      { lang },
     );
     const unreviewed14 = notes.filter((n) => n.note_date > last14 && !n.reviewed_at).length;
     const missed = missedRun(dates, date, 10);
@@ -351,7 +356,7 @@ router.get("/junior-notes/overview", requireAuth, asyncHandler(async (req, res):
       everWrote: notes.length > 0,
       trend,
       repeated,
-    });
+    }, lang);
     return {
       trader,
       mine: mine.has(trader),
@@ -419,7 +424,7 @@ router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, re
   const note = noteRows[0];
   if (!note) throw notFound();
   if (ctx.guest || (note.trader !== ctx.me && !canReviewTrader(ctx.scope, note.trader, ctx.me))) {
-    res.status(403).json({ error: "Контекст сводки доступен куратору или наставнику этого трейдера", code: "FORBIDDEN" });
+    sendError(res, new AppError("NOTES_ACCESS"));
     return;
   }
   const { trader, note_date: date } = note;
@@ -482,6 +487,7 @@ router.get("/junior-notes/:id/context", requireAuth, asyncHandler(async (req, re
     trend: scoreTrend(hist, 10),
     repeated: repeatedMistakes(
       hist.slice(0, 20).map((n) => ({ note_date: n.note_date, text: n.sections ? sec(n, "mistakes") : n.raw_text })),
+      { lang: langOf(req) },
     ),
     streak: streakEndingAt(new Set(hist.map((n) => n.note_date)), date),
   });
@@ -548,7 +554,7 @@ router.put("/junior-notes", asyncHandler(async (req, res): Promise<void> => {
   const sections = parseSections((req.body as { sections?: unknown }).sections);
   const date = note_date || todayNy();
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
-  if (date > addDays(todayNy(), 1)) { res.status(400).json({ error: "Нельзя писать сводку за будущую дату" }); return; }
+  if (date > addDays(todayNy(), 1)) throw new AppError("DAY_IN_FUTURE");
   const text = sections ? composeSections(sections) : (typeof raw_text === "string" ? raw_text : "").trim().slice(0, 40_000);
   const { rows } = await pool.query(
     `INSERT INTO junior_notes (trader, note_date, raw_text, mood, sections, updated_at)
@@ -593,7 +599,7 @@ router.patch("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> =
  */
 router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<void> => {
   await ensureSchema();
-  const ctx = await requireReviewer(req, res, "Оценивать сводки может куратор или наставник");
+  const ctx = await requireReviewer(req, res, "RATE_REVIEWER_ONLY");
   if (!ctx) return;
   const curator = ctx.me;
   const id = Number(req.params["id"]);
@@ -601,7 +607,7 @@ router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<v
   const owner = await pool.query<{ trader: string }>(`SELECT trader FROM junior_notes WHERE id = $1`, [id]);
   if (!owner.rows[0]) throw notFound();
   if (!canReviewTrader(ctx.scope, owner.rows[0].trader, ctx.me)) {
-    res.status(403).json({ error: "Можно оценивать только сводки своих джунов", code: "FORBIDDEN" });
+    sendError(res, new AppError("OWN_JUNIORS_ONLY"));
     return;
   }
   const body = req.body as { feedback?: unknown; score?: unknown };
@@ -609,7 +615,7 @@ router.post("/junior-notes/:id/review", asyncHandler(async (req, res): Promise<v
   let score: number | null = null;
   if (body.score != null && body.score !== "") {
     const n = Number(body.score);
-    if (!Number.isInteger(n) || n < 1 || n > 5) { res.status(400).json({ error: "Оценка должна быть от 1 до 5" }); return; }
+    if (!Number.isInteger(n) || n < 1 || n > 5) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
     score = n;
   }
   const clear = !feedback && score == null;
@@ -656,7 +662,7 @@ router.post("/junior-notes/reminders", asyncHandler(async (req, res): Promise<vo
   const message = typeof body.message === "string" && body.message.trim() ? body.message.trim().slice(0, 300) : null;
   if (!trader) throw badRequest("TRADER_REQUIRED");
   if (!canReviewTrader(ctx.scope, trader, ctx.me)) {
-    res.status(403).json({ error: "Напоминать можно только своим джунам", code: "FORBIDDEN" });
+    sendError(res, new AppError("OWN_JUNIORS_ONLY"));
     return;
   }
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [trader]);
@@ -700,7 +706,7 @@ router.delete("/junior-notes/:id", asyncHandler(async (req, res): Promise<void> 
 router.post("/junior-notes/improve", aiTextLimiter, asyncHandler(async (req, res): Promise<void> => {
   const trader = req.authUser!.name;
   const { text, note_id, note_date } = req.body as { text: string; note_id?: number; note_date?: string };
-  if (!text?.trim()) { res.status(400).json({ error: "text required" }); return; }
+  if (!text?.trim()) throw new AppError("COMMENT_EMPTY");
 
   const date = isIsoDate(note_date) ? note_date : todayNy();
   const tradesRes = await pool.query(
@@ -708,12 +714,13 @@ router.post("/junior-notes/improve", aiTextLimiter, asyncHandler(async (req, res
      FROM trades t WHERE t.trader = $1 AND t.date = $2 AND t.deleted_at IS NULL ORDER BY t.created_at LIMIT 10`,
     [trader, date],
   );
-  const tradesContext = tradesRes.rows.length > 0
-    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map((t: any) =>
+  const tradesContext = tradesRes.rows.length > 0 // i18n-ignore (AI prompt context)
+    ? `\nТрейды ${trader} за ${date}:\n${tradesRes.rows.map((t: any) => // i18n-ignore (AI prompt context)
         `- ${t.ticker}: ${t.result}${t.pnl_net != null ? ` | PnL нетто: $${t.pnl_net}` : ""}${t.r_signed != null ? ` | R: ${t.r_signed}` : ""}${t.setup ? ` | Сетап: ${t.setup}` : ""}`
       ).join("\n")}`
     : "";
 
+  // i18n-ignore-next (AI prompt — model input; the answer language follows the reader)
   const prompt = `Ты — ментор для начинающих трейдеров. Трейдер ${trader} написал сводку о своём торговом дне. Твоя задача — помочь структурировать мысли, задать направляющие вопросы и поддержать обучение.
 ${tradesContext}
 
@@ -734,7 +741,8 @@ ${text.slice(0, 3000)}
 
 **🎯 Фокус на завтра** — конкретный фокус
 
-Пиши кратко, по-деловому, от первого лица. Сохраняй тикеры и цифры из оригинала.`;
+Пиши кратко, по-деловому, от первого лица. Сохраняй тикеры и цифры из оригинала.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);
@@ -766,9 +774,7 @@ router.post("/junior-notes/team-summary", asyncHandler(async (req, res): Promise
   if (!ctx) return;
   const raw = (req.body as { note_ids?: unknown }).note_ids;
   const note_ids = Array.isArray(raw) ? raw.map(Number).filter(n => Number.isInteger(n) && n > 0).slice(0, 100) : [];
-  if (note_ids.length === 0) {
-    res.status(400).json({ error: "Выбери хотя бы одну запись" }); return;
-  }
+  if (note_ids.length === 0) throw new AppError("SELECT_AT_LEAST_ONE");
   const { rows } = await pool.query(
     `SELECT trader, TO_CHAR(note_date, 'YYYY-MM-DD') AS note_date, raw_text, refined_text, mood
      FROM junior_notes WHERE id = ANY($1) ORDER BY trader, note_date`,
@@ -776,12 +782,13 @@ router.post("/junior-notes/team-summary", asyncHandler(async (req, res): Promise
   );
   // Mentors summarise only their own mentees' notes.
   const scoped = rows.filter((n: { trader: string }) => ctx.scope.kind === "desk" || canReviewTrader(ctx.scope, n.trader, ctx.me));
-  if (scoped.length === 0) { res.status(400).json({ error: "Записи не найдены" }); return; }
+  if (scoped.length === 0) throw new AppError("NOT_FOUND", 400);
 
-  const notesText = scoped.map((n: any) =>
+  const notesText = scoped.map((n: any) => // i18n-ignore (AI prompt context)
     `### ${n.trader} (${n.note_date}${n.mood ? `, настроение: ${n.mood}` : ""})\n${n.refined_text || n.raw_text}`
   ).join("\n\n");
 
+  // i18n-ignore-next (AI prompt — model input)
   const prompt = `Ты — куратор начинающих трейдеров. Создай общую сводку по записям джунов за день.
 
 ЗАПИСИ ДЖУНОВ:
@@ -799,7 +806,8 @@ ${notesText.slice(0, 8000)}
 
 **📋 Рекомендации куратора** — конкретные задачи и фокусы на следующий день для группы
 
-Пиши конкретно, ссылайся на реальные примеры. Не придумывай ничего, чего нет в записях. На русском.`;
+Пиши конкретно, ссылайся на реальные примеры. Не придумывай ничего, чего нет в записях.
+${aiAnswerLanguage(langOf(req))}`;
 
   const ctrl = new AbortController();
   const t = setTimeout(() => ctrl.abort(), AI_TIMEOUT_MS);

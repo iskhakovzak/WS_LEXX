@@ -5,6 +5,7 @@ import { http, ApiError } from "@/lib/api/http";
 import { isNotFound, nullIfMissing } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
 import { useAuth } from "@/contexts/auth-context";
+import { playbookI18n } from "@/i18n/ns/playbook";
 import type {
   ActivityItem, FolderSetting, PickerTrade, PlaybookEntry, SetupExample, SetupStats, SetupSummary, ViewerLike,
 } from "./model";
@@ -128,7 +129,7 @@ export function usePlaybookViewer(): ViewerLike & { mayShare: boolean; live: boo
 
 /** 404 from a route that only exists after the API restart → a readable message. */
 export function notLiveMessage(e: unknown): string | null {
-  return e instanceof ApiError && e.status === 404 && !e.field("error") ? "Функция включится после обновления сервера" : null;
+  return e instanceof ApiError && e.status === 404 && !e.field("error") ? playbookI18n.t("notLive") : null;
 }
 
 export function useSetupExamples(id: number | null, enabled = true) {

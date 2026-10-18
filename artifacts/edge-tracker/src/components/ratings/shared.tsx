@@ -2,8 +2,8 @@ import * as React from "react";
 import { ArrowDown, ArrowUp, Minus, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { toneOf, toneText, type Tone } from "@/components/ds";
-
-const MINUS = "−";
+import { fmtNum } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
 
 // Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
@@ -58,7 +58,7 @@ export function Sparkline({
   if (values.length < 2) {
     return (
       <span className={cn("inline-flex items-center text-2xs text-muted-foreground", className)} style={{ width, height }}>
-        {values.length === 1 ? "1 точка" : "—"}
+        {values.length === 1 ? ratingsI18n.t("shared.onePoint") : "—"}
       </span>
     );
   }
@@ -83,7 +83,7 @@ export function Sparkline({
       viewBox={`0 0 ${width} ${height}`}
       className={cn("shrink-0 overflow-visible", className)}
       role="img"
-      aria-label={label ?? `Тренд: ${values.map((v) => v.toFixed(1)).join(", ")}`}
+      aria-label={label ?? ratingsI18n.t("shared.trendAria", { values: values.map((v) => fmtNum(v, 1)).join(", ") })}
     >
       <defs>
         <linearGradient id={gid} x1="0" x2="0" y1="0" y2="1">
@@ -102,7 +102,7 @@ export function Sparkline({
 export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: boolean }) {
   if (isNew) {
     return (
-      <span className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary" title="Новый в рейтинге">
+      <span className="inline-flex items-center gap-0.5 text-2xs font-medium text-primary" title={ratingsI18n.t("shared.newInRating")}>
         <Sparkles className="h-3 w-3" aria-hidden="true" />
         new
       </span>
@@ -110,7 +110,7 @@ export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: bool
   }
   if (delta == null || delta === 0) {
     return (
-      <span className="inline-flex items-center text-muted-foreground" aria-label="Без изменений" title="Без изменений">
+      <span className="inline-flex items-center text-muted-foreground" aria-label={ratingsI18n.t("shared.noChange")} title={ratingsI18n.t("shared.noChange")}>
         <Minus className="h-3 w-3" aria-hidden="true" />
       </span>
     );
@@ -119,8 +119,8 @@ export function RankDelta({ delta, isNew }: { delta: number | null; isNew?: bool
   return (
     <span
       className={cn("inline-flex items-center gap-0.5 text-2xs font-semibold tabular-nums", up ? "text-up" : "text-down")}
-      aria-label={up ? `Поднялся на ${delta}` : `Опустился на ${-delta}`}
-      title={up ? `+${delta} позиц.` : `${MINUS}${-delta} позиц.`}
+      aria-label={up ? ratingsI18n.t("shared.rankUp", { count: delta }) : ratingsI18n.t("shared.rankDown", { count: -delta })}
+      title={up ? ratingsI18n.t("shared.rankUpTitle", { count: delta }) : ratingsI18n.t("shared.rankDownTitle", { count: -delta })}
     >
       {up ? <ArrowUp className="h-3 w-3" aria-hidden="true" /> : <ArrowDown className="h-3 w-3" aria-hidden="true" />}
       {Math.abs(delta)}
@@ -139,7 +139,7 @@ export function StreakBadge({ value, className }: { value: number; className?: s
         win ? "bg-up/15 text-up" : "bg-down/15 text-down",
         className,
       )}
-      title={win ? `${value} побед подряд` : `${-value} убытков подряд`}
+      title={win ? ratingsI18n.t("shared.winStreak", { count: value }) : ratingsI18n.t("shared.lossStreak", { count: -value })}
     >
       {win ? `W${value}` : `L${-value}`}
     </span>
@@ -156,7 +156,7 @@ export function ScoreBar({ value, max = 10, showValue = true, className }: { val
       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]" role="presentation">
         <div className={cn("h-full rounded-full transition-[width] duration-200", bg)} style={{ width: `${pct}%` }} />
       </div>
-      {showValue && <span className={cn("w-7 text-right text-xs font-semibold tabular-nums", toneText(tone))}>{value.toFixed(1)}</span>}
+      {showValue && <span className={cn("w-7 text-right text-xs font-semibold tabular-nums", toneText(tone))}>{fmtNum(value, 1)}</span>}
     </div>
   );
 }
@@ -170,7 +170,9 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
     <div
       className={cn("flex h-1.5 overflow-hidden rounded-full bg-[var(--glass-hover-bg)]", className)}
       role="img"
-      aria-label={`Прибыль ${wins}, убыток ${losses}, безубыток ${be}${open ? `, открыто ${open}` : ""}`}
+      aria-label={open
+        ? ratingsI18n.t("shared.outcomeAriaOpen", { wins, losses, be, open })
+        : ratingsI18n.t("shared.outcomeAria", { wins, losses, be })}
     >
       <div className="bg-up" style={{ width: seg(wins) }} />
       <div className="bg-[hsl(var(--chart-3))]" style={{ width: seg(be) }} />

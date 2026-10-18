@@ -18,6 +18,7 @@ import { DataSection } from "@/components/settings/DataSection";
 import { IntegrationsSection } from "@/components/settings/IntegrationsSection";
 import { useTeam } from "@/components/settings/team-api";
 import { isTypingTarget } from "@/components/settings/shared";
+import { settingsI18n } from "@/i18n/ns/settings";
 
 const LS_SECTION = "ws_lexx_settings_section";
 
@@ -34,6 +35,7 @@ function readInitialSection(): SectionId {
 
 export default function Settings() {
   const { can, user } = useAuth();
+  const { t } = settingsI18n.useT();
   const reduceMotion = useReducedMotion();
   const sections = useMemo(() => visibleSections(can), [can]);
   const canSeeTeam = can("users.read.team");
@@ -100,13 +102,13 @@ export default function Settings() {
   const badges: Partial<Record<SectionId, React.ReactNode>> = {
     ...(unassigned > 0 ? { team: <Pill tone="down" className="text-2xs">{unassigned}</Pill> } : {}),
     ...(profile && !profile.telegramLinked
-      ? { integrations: <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-3))]" aria-label="Telegram не подключён" /> }
+      ? { integrations: <span className="h-2 w-2 rounded-full bg-[hsl(var(--chart-3))]" aria-label={t("page.telegramNotLinked")} /> }
       : {}),
   };
 
   return (
     <Page>
-      <PageHeader title="Настройки" description="Профиль, торговые параметры, уведомления и команда" icon={SettingsIcon} />
+      <PageHeader title={t("page.title")} description={t("page.description")} icon={SettingsIcon} />
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-[260px_minmax(0,1fr)] lg:gap-5 xl:grid-cols-[296px_minmax(0,1fr)]">
         <aside className="min-w-0">

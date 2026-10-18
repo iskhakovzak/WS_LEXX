@@ -13,6 +13,8 @@ import { cn } from "@/lib/utils";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { MISTAKE_CATEGORIES, RULE_PREFIX, SEVERITY, SEVERITY_ORDER } from "./constants";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import type { DisciplineTrade, Mistake, MistakePrefill, Rule, Severity } from "./types";
 
@@ -37,6 +39,7 @@ export function MistakeDialog({
   trades: DisciplineTrade[];
   onSaved: () => void;
 }) {
+  const { t } = rulesI18n.useT();
   const { toast } = useToast();
   const [category, setCategory] = useState("");
   const [custom, setCustom] = useState("");
@@ -51,7 +54,7 @@ export function MistakeDialog({
   const [catError, setCatError] = useState<string | null>(null);
 
   const ruleCats = useMemo(() => rules.filter((r) => r.enabled).map((r) => `${RULE_PREFIX}${r.name}`), [rules]);
-  const presetLabels = useMemo(() => new Set([...MISTAKE_CATEGORIES.map((c) => c.label), ...ruleCats]), [ruleCats]);
+  const presetLabels = useMemo(() => new Set([...MISTAKE_CATEGORIES.map((c) => c.value), ...ruleCats]), [ruleCats]);
 
   useEffect(() => {
     if (!open) return;
@@ -73,7 +76,7 @@ export function MistakeDialog({
       const isPreset = !cat || presetLabels.has(cat);
       setCategory(isPreset ? cat : "");
       setCustom(isPreset ? "" : cat);
-      setSeverity(p.severity ?? (MISTAKE_CATEGORIES.find((c) => c.label === cat)?.severity ?? "medium"));
+      setSeverity(p.severity ?? (MISTAKE_CATEGORIES.find((c) => c.value === cat)?.severity ?? "medium"));
       setSeverityTouched(!!p.severity);
       setTradeId(p.tradeId ? String(p.tradeId) : NO_TRADE);
       setTicker(p.ticker ?? "");
@@ -107,7 +110,7 @@ export function MistakeDialog({
   const errorType = (custom.trim() || category).trim();
 
   async function save() {
-    if (!errorType) { setCatError("Выберите категорию или впишите свою"); return; }
+    if (!errorType) { setCatError(t("mistake.needCategory")); return; }
     setSaving(true);
     const body: Record<string, unknown> = {
       errorType,
@@ -121,15 +124,15 @@ export function MistakeDialog({
       if (editing) {
         body.resolved = resolved ? "yes" : "no";
         await http.patch(`/api/errors/${editing.id}`, body);
-        toast({ title: "Запись обновлена" });
+        toast({ title: t("mistake.updated") });
       } else {
         await http.post(`/api/errors`, { ...body, trader });
-        toast({ title: "Ошибка записана", description: "Разберите её, когда будет время — добавьте урок." });
+        toast({ title: t("mistake.logged"), description: t("mistake.loggedHint") });
       }
       onSaved();
       onOpenChange(false);
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, editing ? "Не удалось сохранить" : "Не удалось записать ошибку"), variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, editing ? commonI18n.t("states.saveFailed") : t("mistake.logFailed")), variant: "destructive" });
     } finally {
       setSaving(false);
     }
@@ -144,23 +147,23 @@ export function MistakeDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{editing ? "Редактировать запись" : "Я нарушил правило"}</DialogTitle>
+          <DialogTitle>{editing ? t("mistake.editTitle") : t("mistake.newTitle")}</DialogTitle>
           <DialogDescription>
-            {editing ? "Уточните детали, урок и статус разбора." : "Быстрая запись: категория — и готово. Детали можно добавить позже."}
+            {editing ? t("mistake.editDesc") : t("mistake.newDesc")}
           </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           <fieldset className="flex flex-col gap-2">
-            <legend className="mb-2 text-sm font-medium">Что произошло</legend>
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Категории ошибок">
+            <legend className="mb-2 text-sm font-medium">{t("mistake.what")}</legend>
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("mistake.catsAria")}>
               {MISTAKE_CATEGORIES.map((c) => (
                 <button
-                  key={c.label}
+                  key={c.code}
                   type="button"
                   title={c.hint}
-                  aria-pressed={category === c.label && !custom}
-                  onClick={() => pickCategory(c.label, c.severity)}
+                  aria-pressed={category === c.value && !custom}
+                  onClick={() => pickCategory(c.value, c.severity)}
                   className="chip min-h-8 px-3 text-xs font-medium"
                 >
                   {c.label}
@@ -169,8 +172,8 @@ export function MistakeDialog({
             </div>
             {ruleCats.length > 0 && (
               <div className="flex flex-col gap-1.5">
-                <span className="micro-label">Мои правила</span>
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label="Мои правила">
+                <span className="micro-label">{t("mistake.myRules")}</span>
+                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("mistake.myRules")}>
                   {ruleCats.map((c) => (
                     <button
                       key={c}
@@ -186,12 +189,12 @@ export function MistakeDialog({
               </div>
             )}
             <div className="flex flex-col gap-1">
-              <Label htmlFor="mistake-custom" className="text-xs text-muted-foreground">Или своя категория</Label>
+              <Label htmlFor="mistake-custom" className="text-xs text-muted-foreground">{t("mistake.custom")}</Label>
               <Input
                 id="mistake-custom"
                 value={custom}
                 maxLength={80}
-                placeholder="Например: торговал уставшим"
+                placeholder={t("mistake.customPlaceholder")}
                 aria-invalid={!!catError || undefined}
                 aria-describedby={catError ? "mistake-cat-error" : undefined}
                 onChange={(e) => { setCatError(null); setCustom(e.target.value); }}
@@ -201,9 +204,9 @@ export function MistakeDialog({
           </fieldset>
 
           <div className="flex flex-col gap-1.5">
-            <span className="text-sm font-medium" id="mistake-sev-label">Серьёзность</span>
+            <span className="text-sm font-medium" id="mistake-sev-label">{t("mistake.severity")}</span>
             <Segmented
-              ariaLabel="Серьёзность"
+              ariaLabel={t("mistake.severity")}
               size="sm"
               value={severity}
               onChange={(v) => { setSeverity(v); setSeverityTouched(true); }}
@@ -213,11 +216,11 @@ export function MistakeDialog({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1">
-              <Label htmlFor="mistake-trade" className="text-sm font-medium">Сделка</Label>
+              <Label htmlFor="mistake-trade" className="text-sm font-medium">{t("mistake.trade")}</Label>
               <Select value={tradeId} onValueChange={setTradeId}>
-                <SelectTrigger id="mistake-trade"><SelectValue placeholder="Без сделки" /></SelectTrigger>
+                <SelectTrigger id="mistake-trade"><SelectValue placeholder={t("mistake.noTrade")} /></SelectTrigger>
                 <SelectContent className="max-h-72">
-                  <SelectItem value={NO_TRADE}>Без сделки</SelectItem>
+                  <SelectItem value={NO_TRADE}>{t("mistake.noTrade")}</SelectItem>
                   {tradeOptions.map((t) => (
                     <SelectItem key={t.id} value={String(t.id)}>
                       <span className="font-medium">{t.ticker}</span>
@@ -228,7 +231,7 @@ export function MistakeDialog({
               </Select>
             </div>
             <div className="flex flex-col gap-1">
-              <Label htmlFor="mistake-ticker" className={cn("text-sm font-medium", tradeId !== NO_TRADE && "opacity-60")}>Тикер</Label>
+              <Label htmlFor="mistake-ticker" className={cn("text-sm font-medium", tradeId !== NO_TRADE && "opacity-60")}>{commonI18n.t("trading.ticker")}</Label>
               <Input
                 id="mistake-ticker"
                 value={tradeId !== NO_TRADE ? (tradeOptions.find((t) => String(t.id) === tradeId)?.ticker ?? ticker) : ticker}
@@ -242,27 +245,27 @@ export function MistakeDialog({
           </div>
 
           <div className="flex flex-col gap-1">
-            <Label htmlFor="mistake-desc" className="text-sm font-medium">Подробности</Label>
-            <Textarea id="mistake-desc" rows={2} value={description} maxLength={4000} placeholder="Контекст: что видел, что почувствовал, что сделал" onChange={(e) => setDescription(e.target.value)} />
+            <Label htmlFor="mistake-desc" className="text-sm font-medium">{t("mistake.details")}</Label>
+            <Textarea id="mistake-desc" rows={2} value={description} maxLength={4000} placeholder={t("mistake.detailsPlaceholder")} onChange={(e) => setDescription(e.target.value)} />
           </div>
           <div className="flex flex-col gap-1">
-            <Label htmlFor="mistake-lesson" className="text-sm font-medium">Урок</Label>
-            <Textarea id="mistake-lesson" rows={2} value={lesson} maxLength={4000} placeholder="Что сделаю иначе в следующий раз" onChange={(e) => setLesson(e.target.value)} />
+            <Label htmlFor="mistake-lesson" className="text-sm font-medium">{t("mistake.lesson")}</Label>
+            <Textarea id="mistake-lesson" rows={2} value={lesson} maxLength={4000} placeholder={t("log.lessonPlaceholder")} onChange={(e) => setLesson(e.target.value)} />
           </div>
           {editing && (
             <div className="flex items-center gap-2">
               <Switch id="mistake-resolved" checked={resolved} onCheckedChange={setResolved} />
-              <Label htmlFor="mistake-resolved" className="cursor-pointer text-sm">Разобрано</Label>
+              <Label htmlFor="mistake-resolved" className="cursor-pointer text-sm">{t("mistake.reviewed")}</Label>
             </div>
           )}
         </div>
 
         <DialogFooter className="gap-2 sm:items-center">
           <span className="hidden text-xs text-muted-foreground sm:mr-auto sm:inline-flex sm:items-center sm:gap-1">
-            <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> — сохранить
+            <Kbd>Ctrl</Kbd>+<Kbd>Enter</Kbd> {t("mistake.ctrlEnter")}
           </span>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
-          <Button onClick={save} disabled={saving}>{saving ? "Сохранение…" : editing ? "Сохранить" : "Записать"}</Button>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
+          <Button onClick={save} disabled={saving}>{saving ? commonI18n.t("states.saving") : editing ? commonI18n.t("actions.save") : t("mistake.log")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

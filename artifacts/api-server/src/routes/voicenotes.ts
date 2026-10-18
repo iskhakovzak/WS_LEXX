@@ -10,7 +10,7 @@ import multer from "multer";
 import type { Request, Response, NextFunction, RequestHandler } from "express";
 import { isGuest } from "../lib/auth";
 import { transcribeLimiter, voiceNoteLimiter } from "../lib/rateLimits";
-import { badRequest, forbidden, unauthorized } from "../lib/http";
+import { AppError, badRequest, forbidden, sendError, unauthorized } from "../lib/http";
 
 function isStaff(req: Request): boolean {
   const role = req.authUser?.role;
@@ -76,9 +76,9 @@ const upload = {
   single: (field: string): RequestHandler => (req: Request, res: Response, next: NextFunction) => {
     uploader.single(field)(req, res, (err: unknown) => {
       if (!err) return next();
-      const msg = err instanceof Error ? err.message : "upload failed";
-      const code = msg === "REJECTED_MIME" ? 415 : msg.toLowerCase().includes("file too large") ? 413 : 400;
-      res.status(code).json({ error: msg === "REJECTED_MIME" ? "Only audio uploads are allowed" : msg });
+      // REJECTED_MIME → 415; multer errors (size, field…) → the error middleware (413 TOO_LARGE / 400 UPLOAD_ERROR).
+      if (err instanceof Error && err.message === "REJECTED_MIME") { sendError(res, new AppError("AUDIO_TYPE", 415)); return; }
+      next(err);
     });
   },
 };
@@ -98,10 +98,7 @@ async function uploadAudioToStorage(buffer: Buffer, mimeType: string): Promise<s
 }
 
 router.post("/voice-notes/transcribe", transcribeLimiter, upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
-  if (!req.file) {
-    res.status(400).json({ error: "No audio file provided" });
-    return;
-  }
+  if (!req.file) throw new AppError("AUDIO_REQUIRED");
   const mimeType = req.file.mimetype || "audio/webm";
   let transcript = "";
   try {
@@ -113,41 +110,25 @@ router.post("/voice-notes/transcribe", transcribeLimiter, upload.single("audio")
 }));
 
 router.post("/voice-notes", voiceNoteLimiter, upload.single("audio"), asyncHandler(async (req, res): Promise<void> => {
-  if (!req.file) {
-    res.status(400).json({ error: "No audio file provided" });
-    return;
-  }
+  if (!req.file) throw new AppError("AUDIO_REQUIRED");
 
   const { userId, tradeId, dailyFeedId, durationSec } = req.body;
-  if (!userId || typeof userId !== "string" || !userId.trim()) {
-    res.status(400).json({ error: "userId is required" });
-    return;
-  }
-  if (!canActAs(req, userId.trim())) {
-    res.status(403).json({ error: "Нельзя сохранять заметки от имени другого трейдера" });
-    return;
-  }
-  if (durationSec != null && durationSec !== "" && (!Number.isFinite(Number(durationSec)) || Number(durationSec) < 0 || Number(durationSec) > 3600)) {
-    res.status(400).json({ error: "durationSec must be 0..3600" });
-    return;
-  }
+  if (!userId || typeof userId !== "string" || !userId.trim()) throw new AppError("TRADER_REQUIRED");
+  if (!canActAs(req, userId.trim())) throw new AppError("OWN_DATA_ONLY");
+  if (durationSec != null && durationSec !== "" && (!Number.isFinite(Number(durationSec)) || Number(durationSec) < 0 || Number(durationSec) > 3600)) throw new AppError("INVALID_FIELD", undefined, { field: "durationSec" });
   const mimeType = req.file.mimetype || "audio/webm";
   const buffer = req.file.buffer;
 
   const parsedTradeId = tradeId ? Number(tradeId) : null;
   const parsedDailyFeedId = dailyFeedId ? Number(dailyFeedId) : null;
-  if (!parsedTradeId && !parsedDailyFeedId) {
-    res.status(400).json({ error: "At least one of tradeId or dailyFeedId is required" });
-    return;
-  }
+  if (!parsedTradeId && !parsedDailyFeedId) throw new AppError("FIELD_REQUIRED", undefined, { field: "tradeId / dailyFeedId" });
 
   let audioUrl: string;
   try {
     audioUrl = await uploadAudioToStorage(buffer, mimeType);
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
-    res.status(500).json({ error: `Storage upload failed: ${msg}` });
-    return;
+    throw new AppError("STORAGE_FAILED", 500);
   }
 
   let transcript = "";
@@ -172,15 +153,9 @@ router.post("/voice-notes", voiceNoteLimiter, upload.single("audio"), asyncHandl
 router.get("/voice-notes", asyncHandler(async (req, res): Promise<void> => {
   const { userId, tradeId, dailyFeedId } = req.query as Record<string, string>;
 
-  if (!userId) {
-    res.status(400).json({ error: "userId is required" });
-    return;
-  }
+  if (!userId) throw new AppError("TRADER_REQUIRED");
 
-  if ((tradeId && !Number.isInteger(Number(tradeId))) || (dailyFeedId && !Number.isInteger(Number(dailyFeedId)))) {
-    res.status(400).json({ error: "tradeId/dailyFeedId must be integers" });
-    return;
-  }
+  if ((tradeId && !Number.isInteger(Number(tradeId))) || (dailyFeedId && !Number.isInteger(Number(dailyFeedId)))) throw new AppError("INVALID_FIELD", undefined, { field: "tradeId" });
   // Voice notes are personal: a trader lists only their own, staff anyone's, guests nothing.
   if (req.authUser && !canActAs(req, userId)) { res.json([]); return; }
 
@@ -197,14 +172,11 @@ router.delete("/voice-notes/:id", asyncHandler(async (req, res): Promise<void> =
   if (isNaN(id)) throw badRequest("INVALID_ID");
 
   const { userId } = req.query as Record<string, string>;
-  if (!userId) {
-    res.status(400).json({ error: "userId is required" });
-    return;
-  }
+  if (!userId) throw new AppError("TRADER_REQUIRED");
 
   const [existing] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
-  if (!existing) { res.status(404).json({ error: "Voice note not found" }); return; }
-  if (existing.userId !== userId || !canActAs(req, existing.userId)) { res.status(403).json({ error: "Not authorized to delete this voice note" }); return; }
+  if (!existing) throw new AppError("VOICE_NOTE_NOT_FOUND");
+  if (existing.userId !== userId || !canActAs(req, existing.userId)) throw new AppError("AUTHOR_OR_STAFF_ONLY");
 
   await db.delete(voiceNotesTable).where(eq(voiceNotesTable.id, id));
   res.sendStatus(204);
@@ -220,9 +192,9 @@ router.get("/voice-notes/:id/audio-url", asyncHandler(async (req, res): Promise<
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   if (!req.authUser) throw unauthorized();
-  if (!mediaSecret()) { res.status(503).json({ error: "Media tokens are not configured (JWT_SECRET)" }); return; }
+  if (!mediaSecret()) throw new AppError("NOT_CONFIGURED", undefined, { what: "JWT_SECRET" });
   const [note] = await db.select({ id: voiceNotesTable.id, userId: voiceNotesTable.userId }).from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
-  if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
+  if (!note) throw new AppError("VOICE_NOTE_NOT_FOUND");
   if (!canActAs(req, note.userId)) throw forbidden();
   const { token, expiresAt } = signMediaToken(id);
   res.setHeader("Cache-Control", "no-store");
@@ -241,7 +213,7 @@ router.get("/voice-notes/:id/audio", asyncHandler(async (req, res): Promise<void
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
 
   const [note] = await db.select().from(voiceNotesTable).where(eq(voiceNotesTable.id, id));
-  if (!note) { res.status(404).json({ error: "Voice note not found" }); return; }
+  if (!note) throw new AppError("VOICE_NOTE_NOT_FOUND");
 
   const byToken = verifyMediaToken(id, req.query.media_token);
   if (!byToken) {
@@ -259,7 +231,7 @@ router.get("/voice-notes/:id/audio", asyncHandler(async (req, res): Promise<void
     res.redirect(302, signedUrl);
   } catch (e) {
     if (e instanceof ObjectNotFoundError) {
-      res.status(404).json({ error: "Audio file not found in storage" });
+      throw new AppError("VOICE_NOTE_NOT_FOUND");
     } else {
       throw e;
     }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { http, ApiError } from "@/lib/api/http";
 import { compressImage, imageFilesFrom } from "@/components/game-plan/media";
+import { playbookI18n } from "@/i18n/ns/playbook";
 
 /**
  * Playbook screenshots (setup card + example trades): same approach as game-plan media —
@@ -26,7 +27,7 @@ export async function uploadPlaybookImage(file: Blob, playbookId: number): Promi
   } catch (e) {
     // An API build without the media route answers a bare 404.
     if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
-      throw new ApiError({ status: 404, message: "Скриншоты включатся после обновления сервера", body: e.body, method: e.method, url: e.url });
+      throw new ApiError({ status: 404, message: playbookI18n.t("mediaNotLive"), body: e.body, method: e.method, url: e.url });
     }
     throw e;
   }

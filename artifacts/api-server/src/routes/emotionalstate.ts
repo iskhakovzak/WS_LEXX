@@ -6,6 +6,7 @@ import { requirePersonalAccess } from "../lib/auth";
 import { readinessScore, isValidYmd, addDaysYmd } from "../lib/weeklyPsychologyReport";
 import { netPnl, normResult, signedR } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
+import { AppError } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -36,10 +37,7 @@ router.get("/emotional-state/by-date", asyncHandler(async (req, res): Promise<vo
   const userId = await resolveUserId(req, res, req.query.userId);
   if (!userId) return;
   const date = (req.query.date as string | undefined)?.trim();
-  if (!date) {
-    res.status(400).json({ error: "date is required" });
-    return;
-  }
+  if (!date) throw new AppError("INVALID_DATE");
   const [row] = await db
     .select()
     .from(emotionalStateLogTable)
@@ -221,10 +219,7 @@ router.post("/emotional-state", asyncHandler(async (req, res): Promise<void> => 
   const userId = await resolveUserId(req, res, body.userId, "write");
   if (!userId) return;
   const { date } = body;
-  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-    res.status(400).json({ error: "date (YYYY-MM-DD) is required" });
-    return;
-  }
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new AppError("INVALID_DATE");
   const bool = (v: unknown) => v === true || v === "true" || v === 1;
   const sleepWell = bool(body.sleepWell);
   const stressed = bool(body.stressed);
@@ -232,10 +227,7 @@ router.post("/emotional-state", asyncHandler(async (req, res): Promise<void> => 
   const focused = bool(body.focused);
   const anxious = bool(body.anxious);
   const revenge = bool(body.revenge);
-  if (body.freeText != null && typeof body.freeText !== "string") {
-    res.status(400).json({ error: "freeText must be a string" });
-    return;
-  }
+  if (body.freeText != null && typeof body.freeText !== "string") throw new AppError("INVALID_FIELD", undefined, { field: "freeText" });
   const freeText = typeof body.freeText === "string" && body.freeText.trim() ? body.freeText.slice(0, 2000) : null;
 
   const existing = await db

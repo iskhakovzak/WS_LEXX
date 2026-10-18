@@ -38,7 +38,7 @@ import {
   parseFillsCsv, isFillsCsv, parseTradesReportBuffer, reportTradesToRoundTrips,
   buildRoundTrips, summarizeTrips, planSync, applySync, listPending, mergePending, keepPendingSeparate, dismissPending,
   loadAccountMappings, getConfiguredClient, effectiveGroupId, isConfigured, statusConfig, schedulerStatus, PropReportsError,
-  getSettings, setSetting, feeLabel, orderedFeeKeys, type DetectedFeeColumn, type IntegrationSettings, type TradesReportDiagnostics,
+  getSettings, setSetting, feeLabel, orderedFeeKeys, type DetectedFeeColumn, type IntegrationSettings, type TradesReportDiagnostics, type ConnectionState,
   performanceSheetRows, isPerformanceReport, parsePerformanceRows, performanceFileMeta,
   savePerformanceReport, listPerformanceReports, getPerformanceReport, deletePerformanceReport, traderForAccount,
   type RoundTrip, type SyncPlan,
@@ -47,7 +47,9 @@ import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { syncNotice, unmatchedNotice, type SyncCounts } from "../lib/notifyEventsCore";
-import { AppError, notFound } from "../lib/http";
+import { AppError, errorMessage, notFound, sendErrorWith } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { propreportsT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
@@ -62,13 +64,13 @@ async function viewer(req: Request): Promise<{ name: string; staff: boolean }> {
   return { name: req.authUser!.name, staff: await can(req, "propreports.read.team") };
 }
 
-function badRequest(res: Response, parsed: z.SafeParseError<unknown>): void {
-  res.status(400).json({ error: "Некорректный запрос", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
+function badRequest(_res: Response, parsed: z.SafeParseError<unknown>): never {
+  throw parsed.error;
 }
 
-const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Ожидается дата YYYY-MM-DD");
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 
-const NOT_CONFIGURED = { error: "PropReports API не настроено: задайте PROPREPORTS_DOMAIN и PROPREPORTS_TOKEN (или PROPREPORTS_USER + PROPREPORTS_PASSWORD) в .env.local и перезапустите сервер" };
+const notConfigured = () => new AppError("PROPREPORTS_NOT_CONFIGURED");
 
 const ALLOWED_EXT = new Set([".csv", ".txt", ".xls", ".xlsx"]);
 const uploader = multer({
@@ -76,15 +78,14 @@ const uploader = multer({
   limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter: (_req, file, cb) => {
     const ext = (file.originalname.match(/\.[a-z0-9]+$/i)?.[0] ?? "").toLowerCase();
-    if (!ALLOWED_EXT.has(ext)) return cb(new Error("Допустимы только файлы .csv, .txt, .xls, .xlsx"));
+    if (!ALLOWED_EXT.has(ext)) return cb(new AppError("FILE_TYPE", 400, { types: ".csv, .txt, .xls, .xlsx" }));
     cb(null, true);
   },
 });
 const uploadFile: RequestHandler = (req, res, next) => {
   uploader.single("file")(req, res, (err: unknown) => {
     if (!err) return next();
-    const msg = err instanceof Error ? err.message : "upload failed";
-    res.status(msg.toLowerCase().includes("file too large") ? 413 : 400).json({ error: msg });
+    next(err); // AppError (file type) / multer errors → the error middleware
   });
 };
 
@@ -94,19 +95,19 @@ const uploadFile: RequestHandler = (req, res, next) => {
  * trader — to the actor, plus the trader's staff when the actor is a trader importing their own file.
  * Background only: never delays or fails the import response.
  */
-function notifySyncOutcome(opts: { actor: string; actorIsStaff: boolean; label: string; context: string | null; result: SyncCounts & { runId: number }; unmapped: string[] }): void {
+function notifySyncOutcome(opts: { actor: string; actorIsStaff: boolean; kind: "import" | "sync"; context: string | null; result: SyncCounts & { runId: number }; unmapped: string[] }): void {
   inBackground("propreports.sync", async () => {
-    const n = syncNotice(opts.result, opts.label, opts.context);
+    const n = syncNotice(opts.result, opts.kind, opts.context);
     await notifyUser({
       userName: opts.actor, type: "sync", source: "propreports", severity: n.severity,
-      title: n.title, message: n.message, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
+      params: n.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
     });
     const u = unmatchedNotice(opts.unmapped);
     if (u) {
       const recipients = opts.actorIsStaff ? [opts.actor] : [opts.actor, ...(await staffOrFallback(opts.actor))];
       await notifyUsers(recipients, {
         type: "sync_unmatched", source: "propreports", actor: opts.actorIsStaff ? null : opts.actor,
-        title: u.title, message: u.message, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
+        params: u.params, link: notifLinks.integrations(), entityType: "propreports_run", entityId: opts.result.runId || null,
       });
     }
   });
@@ -152,8 +153,14 @@ function tripView(t: RoundTrip) {
 
 export interface FeeColumnView { key: string; header: string | null; label: string; known: boolean; heuristic: boolean; include: boolean; lastSeenAt: string | null; customLabel: string | null }
 
+/** Connection state with our own error text re-rendered in `lang` (upstream texts stay as received). */
+function connectionView<T extends ConnectionState>(conn: T, lang: Lang): T {
+  if (!conn.errorKey || lang === "ru") return conn;
+  return { ...conn, error: propreportsT.tryFor(lang, conn.errorKey, conn.errorParams) ?? conn.error };
+}
+
 /** Union of detected and configured fee columns, in canonical order, for the «Комиссии» block. */
-function feeColumnsView(settings: IntegrationSettings): FeeColumnView[] {
+function feeColumnsView(settings: IntegrationSettings, lang: Lang = "ru"): FeeColumnView[] {
   const keys = new Set<string>([...settings.fees.detected.map((c) => c.key), ...Object.keys(settings.fees.columns)]);
   return orderedFeeKeys(keys).map((key) => {
     const d = settings.fees.detected.find((c) => c.key === key);
@@ -161,7 +168,7 @@ function feeColumnsView(settings: IntegrationSettings): FeeColumnView[] {
     return {
       key,
       header: c?.header ?? d?.header ?? null,
-      label: c?.label || feeLabel(key, settings.fees),
+      label: c?.label || feeLabel(key, settings.fees, lang),
       known: c?.known ?? d?.known ?? false,
       heuristic: c?.heuristic ?? d?.heuristic ?? false,
       include: c?.include !== false,
@@ -202,7 +209,9 @@ function runView(r: any) {
 
 router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  const cfg = statusConfig();
+  const lang = langOf(req);
+  const tw = propreportsT.tFor(lang);
+  const cfg = statusConfig(lang);
   const accounts = (await loadAccountMappings()).filter((a) => v.staff || a.trader === v.name);
   const pendingCount = await pool.query(`SELECT COUNT(*)::int AS n FROM propreports_pending_trades WHERE $1::text IS NULL OR trader = $1`, [v.staff ? null : v.name]);
   const imported = await pool.query(
@@ -217,35 +226,35 @@ router.get("/propreports/status", requireAuth, asyncHandler(async (req, res) => 
   const last = v.staff ? await lastRun() : null;
   const okRuns = await pool.query(`SELECT COUNT(*)::int AS n FROM propreports_sync_runs WHERE status IN ('ok', 'partial')`);
   const unmappedAccounts = accounts.filter((a) => !a.trader).map((a) => a.account);
-  const feeView = feeColumnsView(settings);
+  const feeView = feeColumnsView(settings, lang);
   const group = effectiveGroupId(settings.groupId);
-  const conn = settings.connection;
+  const conn = connectionView(settings.connection, lang);
   const wizard = {
     env: {
       ok: cfg.configured,
-      detail: cfg.configured ? `${cfg.domain} · ${cfg.authMode === "token" ? "токен API" : "логин/пароль"}` : `В .env.local не задано: ${cfg.missing.join(", ")}`,
+      detail: cfg.configured ? tw("wizard.env.ok", { domain: String(cfg.domain), auth: tw(cfg.authMode === "token" ? "wizard.env.token" : "wizard.env.login") }) : tw("wizard.env.missing", { vars: cfg.missing.join(", ") }),
     },
     connection: {
       ok: conn.ok === true,
       detail: conn.ok === true
-        ? `${conn.mode === "v2" ? "API v2 (токен)" : "legacy-логин"}${conn.version ? ` · версия ${conn.version}` : ""}`
-        : conn.ok === false ? `Ошибка: ${conn.error ?? "неизвестно"}` : "Не проверено",
+        ? `${tw(conn.mode === "v2" ? "wizard.connection.v2" : "wizard.connection.legacy")}${conn.version ? tw("wizard.connection.version", { version: conn.version }) : ""}`
+        : conn.ok === false ? tw("wizard.connection.error", { error: conn.error ?? tw("wizard.connection.unknown") }) : tw("wizard.connection.unchecked"),
     },
     accounts: {
       ok: accounts.length > 0 && unmappedAccounts.length === 0 && settings.unmatched.length === 0,
       detail: accounts.length === 0
-        ? "Счета ещё не добавлены"
-        : `${accounts.filter((a) => a.trader).length}/${accounts.length} привязано${unmappedAccounts.length ? ` · без трейдера: ${unmappedAccounts.length}` : ""}${settings.unmatched.length ? ` · несопоставлено: ${settings.unmatched.length}` : ""}`,
+        ? tw("wizard.accounts.none")
+        : `${tw("wizard.accounts.linked", { linked: accounts.filter((a) => a.trader).length, total: accounts.length })}${unmappedAccounts.length ? tw("wizard.accounts.noTrader", { n: unmappedAccounts.length }) : ""}${settings.unmatched.length ? tw("wizard.accounts.unmatched", { n: settings.unmatched.length }) : ""}`,
     },
     fees: {
       ok: !!settings.fees.confirmedAt,
       detail: feeView.length
-        ? `${feeView.length} колонок, учитываются ${feeView.filter((c) => c.include).length}${settings.fees.confirmedAt ? " · подтверждено" : " · не подтверждено"}`
-        : "Колонки появятся после первого импорта/синка",
+        ? `${tw("wizard.fees.columns", { count: feeView.length, included: feeView.filter((c) => c.include).length })}${tw(settings.fees.confirmedAt ? "wizard.fees.confirmed" : "wizard.fees.unconfirmed")}`
+        : tw("wizard.fees.empty"),
     },
     firstSync: {
       ok: imported.rows[0].n > 0 || okRuns.rows[0].n > 0,
-      detail: imported.rows[0].n > 0 ? `${imported.rows[0].n} сделок из брокера` : "Ещё не было ни одного импорта",
+      detail: imported.rows[0].n > 0 ? tw("wizard.firstSync.trades", { count: imported.rows[0].n }) : tw("wizard.firstSync.none"),
     },
   };
   res.json({
@@ -289,7 +298,7 @@ const accountsBody = z.object({
 
 router.put("/propreports/accounts", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.configure", null, "Только куратор может менять привязку счетов"))) return;
+  if (!(await requireCap(req, res, "propreports.configure", null, "STAFF_ONLY"))) return;
   const parsed = accountsBody.safeParse(req.body);
   if (!parsed.success) return badRequest(res, parsed);
   const traders = [...new Set(parsed.data.accounts.map((a) => a.trader).filter((t): t is string => !!t))];
@@ -297,7 +306,7 @@ router.put("/propreports/accounts", requireAuth, asyncHandler(async (req, res) =
     const { rows } = await pool.query(`SELECT name FROM users WHERE name = ANY($1::text[]) AND active = true`, [traders]);
     const known = new Set(rows.map((r: any) => r.name));
     const unknown = traders.filter((t) => !known.has(t));
-    if (unknown.length) { res.status(400).json({ error: `Неизвестные трейдеры: ${unknown.join(", ")}` }); return; }
+    if (unknown.length) throw new AppError("UNKNOWN_USER", undefined, { name: unknown.join(", ") });
   }
   const client = await pool.connect();
   try {
@@ -338,26 +347,26 @@ router.put("/propreports/accounts", requireAuth, asyncHandler(async (req, res) =
 
 router.delete("/propreports/accounts/:id", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.configure", null, "Только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.configure", null, "STAFF_ONLY"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const { rowCount } = await pool.query(`DELETE FROM propreports_accounts WHERE id = $1`, [id]);
-  if (!rowCount) { res.status(404).json({ error: "Счёт не найден" }); return; }
+  if (!rowCount) throw new AppError("ACCOUNT_NOT_FOUND");
   await logAudit({ actor: v.name, action: "propreports.accounts.delete", targetType: "propreports_accounts", targetId: String(id) });
   res.json({ ok: true });
 }));
 
 router.post("/propreports/accounts/refresh", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.configure", null, "Только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.configure", null, "STAFF_ONLY"))) return;
   const client = await getConfiguredClient();
-  if (!client) { res.status(503).json(NOT_CONFIGURED); return; }
+  if (!client) throw notConfigured();
   let list;
   try {
     list = await client.accounts();
   } catch (e) {
-    res.status(e instanceof PropReportsError && e.status ? 502 : 500).json({ error: e instanceof Error ? e.message : String(e) });
-    return;
+    req.log?.warn({ err: e }, "propreports accounts failed");
+    throw new AppError("UPSTREAM_FAILED", e instanceof PropReportsError && e.status ? 502 : 500);
   }
   for (const a of list) {
     await pool.query(
@@ -386,29 +395,29 @@ const importFields = z.object({
  */
 async function handlePerformanceImport(req: Request, res: Response, v: { name: string; staff: boolean }, dryRun: boolean, fields: z.infer<typeof importFields>, rows: unknown[][]): Promise<void> {
   const file = req.file!;
-  const report = parsePerformanceRows(rows);
-  if (!report.totals) { res.status(400).json({ error: "Не удалось прочитать отчёт Trade Performance", issues: report.issues.slice(0, 20) }); return; }
+  const report = parsePerformanceRows(rows, langOf(req));
+  if (!report.totals) { sendErrorWith(res, new AppError("REPORT_PARSE_FAILED"), { issues: report.issues.slice(0, 20) }); return; }
   const meta = performanceFileMeta(file.originalname);
   const account = fields.account?.trim() || meta.account;
-  if (!account) { res.status(400).json({ error: "Не удалось определить брокерский счёт по имени файла — укажите поле account" }); return; }
+  if (!account) throw new AppError("REPORT_ACCOUNT_UNKNOWN");
   const periodFrom = fields.periodFrom ?? meta.periodFrom;
   const periodTo = fields.periodTo ?? meta.periodTo;
-  if (!periodFrom || !periodTo) { res.status(400).json({ error: "Не удалось определить период отчёта по имени файла — укажите periodFrom и periodTo" }); return; }
+  if (!periodFrom || !periodTo) throw new AppError("REPORT_PERIOD_UNKNOWN");
   const mapped = await traderForAccount(account);
   const trader = fields.trader?.trim() || mapped.trader || null;
-  if (!v.staff && trader !== v.name) { res.status(403).json({ error: "Этот счёт не сопоставлен с вами — обратитесь к куратору" }); return; }
+  if (!v.staff && trader !== v.name) throw new AppError("ACCOUNT_NOT_YOURS");
   if (trader) {
     const { rows: u } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [trader]);
-    if (!u.length) { res.status(400).json({ error: `Трейдер «${trader}» не найден` }); return; }
+    if (!u.length) throw new AppError("TRADER_NOT_FOUND", 400);
   }
   const base = {
     kind: "performance" as const, fileName: file.originalname, account, trader, traderSource: fields.trader?.trim() ? "manual" : mapped.trader ? `mapping:${mapped.how}` : null,
     periodFrom, periodTo, summary: report.summary, issues: report.issues.slice(0, 20),
     bySide: report.bySide, byTime: report.byTime, byWeekday: report.byWeekday, perTradeAverages: report.perTradeAverages, symbols: report.bySymbol.length,
-    note: "Это агрегированный отчёт: сделки в журнал из него не создаются. Для сделок нужен экспорт Trades или Fills.",
+    note: propreportsT.tFor(langOf(req))("perfNote"),
   };
   if (dryRun) { res.json({ dryRun: true, ...base }); return; }
-  if (!trader) { res.status(400).json({ error: "Выберите трейдера, которому принадлежит счёт", ...base }); return; }
+  if (!trader) { sendErrorWith(res, new AppError("TRADER_REQUIRED"), { ...base }); return; }
   const saved = await savePerformanceReport({ account, trader, periodFrom, periodTo, fileName: file.originalname, uploadedBy: v.name, report });
   res.json({ dryRun: false, ...base, reportId: saved.row.id, replaced: saved.replaced, uploadedAt: saved.row.uploadedAt });
 }
@@ -419,7 +428,7 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
   const parsed = importFields.safeParse(req.body ?? {});
   if (!parsed.success) return badRequest(res, parsed);
   const file = req.file;
-  if (!file) { res.status(400).json({ error: "Файл не передан (поле file)" }); return; }
+  if (!file) throw new AppError("FILE_REQUIRED");
   const ext = (file.originalname.match(/\.[a-z0-9]+$/i)?.[0] ?? "").toLowerCase();
 
   let trips: RoundTrip[] = [];
@@ -437,10 +446,10 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
   }
   const wantFills = parsed.data.kind === "fills" || (parsed.data.kind === "auto" && text != null && isFillsCsv(text));
   if (wantFills) {
-    if (text == null) { res.status(400).json({ error: "Fills ожидается в формате CSV" }); return; }
+    if (text == null) throw new AppError("FILLS_CSV_REQUIRED");
     kind = "fills";
-    const p = parseFillsCsv(text);
-    if (!p.fills.length) { res.status(400).json({ error: "В файле не найдено ни одной сделки (fills)", issues: p.issues.slice(0, 20), columns: p.columns }); return; }
+    const p = parseFillsCsv(text, langOf(req));
+    if (!p.fills.length) { sendErrorWith(res, new AppError("XLS_NO_TRADES"), { issues: p.issues.slice(0, 20), columns: p.columns }); return; }
     const built = buildRoundTrips(p.fills);
     trips = built.trips;
     feeColumns = p.feeColumns;
@@ -453,11 +462,11 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     kind = "trades";
     // The Trades export has no account column; PropReports names the file "<account>-<from>-to-<to>-trades.xls".
     const account = parsed.data.account?.trim() || performanceFileMeta(file.originalname).account || "";
-    if (!account) { res.status(400).json({ error: "Для отчёта Trades укажите брокерский счёт (account): в файле нет колонки счёта, а в имени файла номер не найден" }); return; }
+    if (!account) throw new AppError("REPORT_ACCOUNT_UNKNOWN");
     let report;
     const diag: TradesReportDiagnostics = {};
-    try { report = parseTradesReportBuffer(file.buffer, diag); } catch (e) { res.status(400).json({ error: `Не удалось прочитать файл: ${e instanceof Error ? e.message : String(e)}` }); return; }
-    if (!report.length) { res.status(400).json({ error: "Не распознан ни один ряд отчёта Trades (ожидаются колонки Opened, Closed, Held, Symbol, Type, Entry, Exit, Qty, Gross … Net)" }); return; }
+    try { report = parseTradesReportBuffer(file.buffer, diag); } catch (e) { throw new AppError("REPORT_PARSE_FAILED", 400, undefined, e instanceof Error ? e.message : String(e)); }
+    if (!report.length) throw new AppError("TRADES_REPORT_EMPTY");
     trips = reportTradesToRoundTrips(report, account);
     feeColumns = diag.feeColumns ?? [];
     Object.assign(diagnostics, { reportRows: report.length, feesByType: report.some((r) => r.fees) });
@@ -469,7 +478,7 @@ router.post("/propreports/import", requireAuth, uploadFile, asyncHandler(async (
     return;
   }
   const result = await applySync(plan, { actor: v.name, source: "file", fileName: file.originalname, feeColumns, details: { kind, ...diagnostics, issues: undefined, orphanFills: undefined, columns: undefined } });
-  notifySyncOutcome({ actor: v.name, actorIsStaff: v.staff, label: "Импорт", context: file.originalname, result, unmapped: plan.unmappedAccounts });
+  notifySyncOutcome({ actor: v.name, actorIsStaff: v.staff, kind: "import", context: file.originalname, result, unmapped: plan.unmappedAccounts });
   res.status(result.errors && !result.inserted && !result.updated ? 500 : 200).json({ ...result, kind, counts: plan.counts, unmappedAccounts: plan.unmappedAccounts, ...diagnostics });
 }));
 
@@ -480,21 +489,21 @@ const syncBody = z.object({
   to: ymd,
   dryRun: z.boolean().optional(),
   accountIds: z.array(z.string().trim().min(1).max(32)).max(100).optional(),
-}).refine((b) => b.from <= b.to, { message: "from должно быть ≤ to", path: ["to"] });
+}).refine((b) => b.from <= b.to, { message: "from must be ≤ to", path: ["to"] });
 
 router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.sync", null, "Запуск синхронизации доступен только куратору"))) return;
-  if (!isConfigured()) { res.status(503).json(NOT_CONFIGURED); return; }
+  if (!(await requireCap(req, res, "propreports.sync", null, "STAFF_ONLY"))) return;
+  if (!isConfigured()) throw notConfigured();
   const parsed = syncBody.safeParse(req.body);
   if (!parsed.success) return badRequest(res, parsed);
   const { from, to, dryRun, accountIds } = parsed.data;
   const days = (Date.parse(to) - Date.parse(from)) / 86_400_000;
-  if (days > 92) { res.status(400).json({ error: "Диапазон не больше 92 дней за один запуск" }); return; }
+  if (days > 92) throw new AppError("RANGE_TOO_LONG", undefined, { max: 92 });
   const client = (await getConfiguredClient())!;
   let pulled;
   try {
-    pulled = await client.fills(from, to, accountIds?.length ? { accountIds } : {});
+    pulled = await client.fills(from, to, accountIds?.length ? { accountIds, lang: langOf(req) } : { lang: langOf(req) });
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!dryRun) {
@@ -503,8 +512,8 @@ router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
         [from, to, v.name, msg],
       );
     }
-    res.status(502).json({ error: msg });
-    return;
+    req.log?.warn({ err: e }, "propreports fills failed");
+    throw new AppError("UPSTREAM_FAILED");
   }
   const built = buildRoundTrips(pulled.fills);
   const plan = await planSync(built.trips);
@@ -514,7 +523,7 @@ router.post("/propreports/sync", requireAuth, asyncHandler(async (req, res) => {
     return;
   }
   const result = await applySync(plan, { actor: v.name, source: "api", dateFrom: from, dateTo: to, feeColumns: pulled.feeColumns, details: { fills: pulled.fills.length, orphanCount: built.orphanFills.length, accountIds: accountIds ?? null, groupId: client.defaultGroupId } });
-  notifySyncOutcome({ actor: v.name, actorIsStaff: v.staff, label: "Синхронизация", context: from === to ? from : `${from} — ${to}`, result, unmapped: plan.unmappedAccounts });
+  notifySyncOutcome({ actor: v.name, actorIsStaff: v.staff, kind: "sync", context: from === to ? from : `${from} — ${to}`, result, unmapped: plan.unmappedAccounts });
   res.status(result.errors && !result.inserted && !result.updated ? 500 : 200).json({ ...result, counts: plan.counts, unmappedAccounts: plan.unmappedAccounts, ...diagnostics });
 }));
 
@@ -541,28 +550,28 @@ router.get("/propreports/reconcile", requireAuth, asyncHandler(async (req, res) 
 
 router.post("/propreports/reconcile/:tradeId/merge", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.sync", null, "Объединять сделки может только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.sync", null, "STAFF_ONLY"))) return;
   const tradeId = Number(req.params.tradeId);
   const parsed = z.object({ pendingId: z.number().int().positive() }).safeParse(req.body);
-  if (!Number.isInteger(tradeId) || !parsed.success) { res.status(400).json({ error: "Нужны tradeId и pendingId" }); return; }
+  if (!Number.isInteger(tradeId) || !parsed.success) throw new AppError("FIELD_REQUIRED", undefined, { field: "tradeId, pendingId" });
   const out = await mergePending(parsed.data.pendingId, tradeId, v.name);
-  if (!out.ok) { res.status(out.status).json({ error: out.error }); return; }
+  if (!out.ok) throw new AppError(out.code, out.status);
   res.json({ ok: true, tradeId: out.tradeId });
 }));
 
 router.post("/propreports/reconcile/pending/:id/keep", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.sync", null, "Только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.sync", null, "STAFF_ONLY"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const out = await keepPendingSeparate(id, v.name);
-  if (!out.ok) { res.status(out.status).json({ error: out.error }); return; }
+  if (!out.ok) throw new AppError(out.code, out.status);
   res.json({ ok: true, tradeId: out.tradeId });
 }));
 
 router.delete("/propreports/reconcile/pending/:id", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.sync", null, "Только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.sync", null, "STAFF_ONLY"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
   const ok = await dismissPending(id, v.name);
@@ -586,7 +595,7 @@ router.get("/propreports/daily", requireAuth, asyncHandler(async (req, res) => {
   if (!q.success) return badRequest(res, q);
   let trader = q.data.trader || null;
   if (!v.staff) {
-    if (trader && trader !== v.name) { res.status(403).json({ error: "Можно смотреть только свои данные" }); return; }
+    if (trader && trader !== v.name) throw new AppError("OWN_DATA_ONLY");
     trader = v.name;
   }
   const to = q.data.to ?? nyDate();
@@ -627,21 +636,25 @@ router.get("/propreports/daily", requireAuth, asyncHandler(async (req, res) => {
 
 router.get("/propreports/check", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!v.staff) { res.status(403).json({ error: "Только куратор" }); return; }
+  if (!v.staff) throw new AppError("STAFF_ONLY");
   const client = await getConfiguredClient();
-  if (!client) { res.status(503).json({ ...NOT_CONFIGURED, connection: { checkedAt: new Date().toISOString(), ok: false, mode: null, version: null, error: NOT_CONFIGURED.error } }); return; }
+  if (!client) {
+    const err = notConfigured();
+    sendErrorWith(res, err, { connection: { checkedAt: new Date().toISOString(), ok: false, mode: null, version: null, error: errorMessage(err.code, langOf(req)) } });
+    return;
+  }
   const result = await client.checkConnection(); // read-only: action=version
   await logAudit({ actor: v.name, action: "propreports.check", details: { ok: result.ok, mode: result.mode, version: result.version } });
-  res.json(result);
+  res.json(connectionView(result, langOf(req)));
 }));
 
 router.get("/propreports/groups", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!v.staff) { res.status(403).json({ error: "Только куратор" }); return; }
+  if (!v.staff) throw new AppError("STAFF_ONLY");
   const settings = await getSettings();
   const effective = effectiveGroupId(settings.groupId);
   const client = await getConfiguredClient();
-  if (!client) { res.status(503).json({ ...NOT_CONFIGURED, groups: [], effective }); return; }
+  if (!client) { sendErrorWith(res, notConfigured(), { groups: [], effective }); return; }
   try {
     const groups = await client.groups();
     res.json({ groups, source: "api", effective });
@@ -652,18 +665,20 @@ router.get("/propreports/groups", requireAuth, asyncHandler(async (req, res) => 
       const names = [...new Set(list.flatMap((a) => a.groups))].sort();
       res.json({ groups: names.map((name) => ({ groupId: null, name })), source: "accounts", effective, warning: e instanceof Error ? e.message : String(e) });
     } catch (e2) {
-      res.status(502).json({ error: e2 instanceof Error ? e2.message : String(e2), groups: [], effective });
+      req.log?.warn({ err: e2 }, "propreports groups failed");
+      sendErrorWith(res, new AppError("UPSTREAM_FAILED"), { groups: [], effective });
     }
   }
 }));
 
-router.get("/propreports/settings", requireAuth, asyncHandler(async (_req, res) => {
+router.get("/propreports/settings", requireAuth, asyncHandler(async (req, res) => {
   const settings = await getSettings();
-  res.json({ groupId: settings.groupId, effective: effectiveGroupId(settings.groupId), feeColumns: feeColumnsView(settings), feesConfirmedAt: settings.fees.confirmedAt, unmatched: settings.unmatched, connection: settings.connection });
+  const lang = langOf(req);
+  res.json({ groupId: settings.groupId, effective: effectiveGroupId(settings.groupId), feeColumns: feeColumnsView(settings, lang), feesConfirmedAt: settings.fees.confirmedAt, unmatched: settings.unmatched, connection: connectionView(settings.connection, lang) });
 }));
 
 const settingsBody = z.object({
-  groupId: z.string().trim().regex(/^-?\d{1,12}$/, "groupId — число").nullable().optional(),
+  groupId: z.string().trim().regex(/^-?\d{1,12}$/, "groupId must be a number").nullable().optional(),
   fees: z.object({
     columns: z.record(z.string().min(1).max(64), z.object({ include: z.boolean(), label: z.string().trim().max(60).nullable().optional() })).optional(),
     confirm: z.boolean().optional(),
@@ -673,7 +688,7 @@ const settingsBody = z.object({
 
 router.put("/propreports/settings", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.configure", null, "Только куратор"))) return;
+  if (!(await requireCap(req, res, "propreports.configure", null, "STAFF_ONLY"))) return;
   const parsed = settingsBody.safeParse(req.body ?? {});
   if (!parsed.success) return badRequest(res, parsed);
   const settings = await getSettings();
@@ -688,7 +703,7 @@ router.put("/propreports/settings", requireAuth, asyncHandler(async (req, res) =
   if (parsed.data.unmatched) await setSetting("unmatched", [...new Set(parsed.data.unmatched)]);
   await logAudit({ actor: v.name, action: "propreports.settings.update", details: { groupId: parsed.data.groupId, feeKeys: Object.keys(parsed.data.fees?.columns ?? {}), confirm: parsed.data.fees?.confirm ?? false } });
   const fresh = await getSettings();
-  res.json({ groupId: fresh.groupId, effective: effectiveGroupId(fresh.groupId), feeColumns: feeColumnsView(fresh), feesConfirmedAt: fresh.fees.confirmedAt, unmatched: fresh.unmatched, connection: fresh.connection });
+  res.json({ groupId: fresh.groupId, effective: effectiveGroupId(fresh.groupId), feeColumns: feeColumnsView(fresh, langOf(req)), feesConfirmedAt: fresh.fees.confirmedAt, unmatched: fresh.unmatched, connection: connectionView(fresh.connection, langOf(req)) });
 }));
 
 // ─── Trade Performance reports (aggregate broker statistics) ────────────────
@@ -704,7 +719,7 @@ router.get("/propreports/performance", requireAuth, asyncHandler(async (req, res
   if (!q.success) return badRequest(res, q);
   let trader = q.data.trader || null;
   if (!v.staff) {
-    if (trader && trader !== v.name) { res.status(403).json({ error: "Можно смотреть только свои данные" }); return; }
+    if (trader && trader !== v.name) throw new AppError("OWN_DATA_ONLY");
     trader = v.name;
   }
   const reports = await listPerformanceReports({ trader, account: q.data.account || null });
@@ -722,17 +737,17 @@ router.get("/propreports/performance/:id", requireAuth, asyncHandler(async (req,
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new AppError("INVALID_ID");
   const row = await getPerformanceReport(id);
-  if (!row || (!v.staff && row.traderName !== v.name)) { res.status(404).json({ error: "Отчёт не найден" }); return; }
+  if (!row || (!v.staff && row.traderName !== v.name)) throw new AppError("DOC_NOT_FOUND");
   res.json(row);
 }));
 
 router.delete("/propreports/performance/:id", requireAuth, asyncHandler(async (req, res) => {
   const v = await viewer(req);
-  if (!(await requireCap(req, res, "propreports.sync", null, "Удаление доступно только куратору"))) return;
+  if (!(await requireCap(req, res, "propreports.sync", null, "STAFF_ONLY"))) return;
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw new AppError("INVALID_ID");
   const ok = await deletePerformanceReport(id, v.name);
-  if (!ok) { res.status(404).json({ error: "Отчёт не найден" }); return; }
+  if (!ok) throw new AppError("DOC_NOT_FOUND");
   res.json({ ok: true });
 }));
 

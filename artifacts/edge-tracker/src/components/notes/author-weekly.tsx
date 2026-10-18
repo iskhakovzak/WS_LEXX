@@ -14,6 +14,8 @@ import {
 } from "./author-model";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { http } from "@/lib/api/http";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
 
 export function AuthorWeeklyCard({
   trader,
@@ -34,6 +36,7 @@ export function AuthorWeeklyCard({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
   const [open, setOpen] = React.useState(false);
   const week = weekStartOf(date);
   const today = localToday();
@@ -56,10 +59,10 @@ export function AuthorWeeklyCard({
     mutationFn: () => http.post<WeeklySummary>(`/api/author-notes/weekly-summary`, { week_start: week }),
     onSuccess: (data) => {
       qc.setQueryData(AN_KEYS.weekly(trader, week), data);
-      toast({ title: "Сводка недели готова" });
+      toast({ title: t("author.weekly.ready") });
       setOpen(true);
     },
-    onError: (e: Error) => toast({ title: "Не удалось собрать сводку", description: e.message, variant: "destructive" }),
+    onError: (e: Error) => toast({ title: t("author.weekly.failed"), description: e.message, variant: "destructive" }),
   });
 
   const summary = q.data;
@@ -70,12 +73,12 @@ export function AuthorWeeklyCard({
 
   return (
     <Panel
-      title="Неделя"
+      title={t("author.weekly.title")}
       description={`${fmtDate(week, "dayMonth")} — ${fmtDate(addDays(week, 6), "dayMonth")}`}
       icon={BarChart3}
     >
       <div className="flex flex-col gap-3">
-        <div className="grid grid-cols-7 gap-1" role="group" aria-label="Дни недели">
+        <div className="grid grid-cols-7 gap-1" role="group" aria-label={t("author.weekly.daysAria")}>
           {days.map((d) => {
             const n = byDate.get(d);
             const mood = moodOf(n?.mood);
@@ -88,7 +91,7 @@ export function AuthorWeeklyCard({
                 disabled={future}
                 onClick={() => onPickDate(d)}
                 aria-pressed={d === selectedDate}
-                aria-label={`${fmtDate(d, "dayMonth")}${has ? ", есть запись" : ", нет записи"}${mood ? `, ${mood.label}` : ""}`}
+                aria-label={`${t(has ? "author.weekly.dayHasNote" : "author.weekly.dayNoNote", { date: fmtDate(d, "dayMonth") })}${mood ? `, ${mood.label}` : ""}`}
                 className={cn(
                   "flex min-h-14 flex-col items-center justify-center gap-0.5 rounded-xl text-xs transition-colors",
                   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-40",
@@ -104,7 +107,7 @@ export function AuthorWeeklyCard({
           })}
         </div>
         <div className="flex items-baseline justify-between gap-2 text-sm">
-          <span className="text-muted-foreground">Записей за неделю</span>
+          <span className="text-muted-foreground">{t("author.weekly.writtenWeek")}</span>
           <span className="font-semibold tabular-nums">
             {written}
             <span className="text-muted-foreground"> / {Math.max(weekdaysSoFar, 1)}</span>
@@ -115,8 +118,8 @@ export function AuthorWeeklyCard({
           <Skeleton className="h-20 w-full rounded-xl" />
         ) : q.isError ? (
           <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-            Не удалось загрузить сводку
-            <Button variant="ghost" size="sm" onClick={() => q.refetch()}>Повторить</Button>
+            {t("noteLoadFailed")}
+            <Button variant="ghost" size="sm" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>
           </div>
         ) : summary ? (
           <button
@@ -132,11 +135,11 @@ export function AuthorWeeklyCard({
             ) : (
               <span className="line-clamp-3 text-sm text-foreground/90">{summary.summary.replace(/\*\*/g, "")}</span>
             )}
-            <span className="text-xs text-primary">Открыть разбор недели</span>
+            <span className="text-xs text-primary">{t("author.weekly.openReview")}</span>
           </button>
         ) : (
           <p className="text-sm text-muted-foreground">
-            AI-разбор недели ещё не собран. Он найдёт повторяющиеся паттерны в твоих записях и сделках.
+            {t("author.weekly.none")}
           </p>
         )}
 
@@ -147,10 +150,10 @@ export function AuthorWeeklyCard({
             className="gap-1.5 self-start"
             onClick={generate}
             disabled={gen.isPending || written === 0}
-            title={written === 0 ? "Нет записей за эту неделю" : undefined}
+            title={written === 0 ? t("author.weekly.noEntries") : undefined}
           >
             {gen.isPending ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
-            {gen.isPending ? "AI анализирует неделю…" : summary ? "Пересобрать разбор" : "Собрать разбор недели"}
+            {gen.isPending ? t("author.weekly.analyzing") : summary ? t("author.weekly.rebuild") : t("author.weekly.build")}
           </Button>
         )}
       </div>
@@ -158,10 +161,10 @@ export function AuthorWeeklyCard({
       <Sheet open={open && !!summary} onOpenChange={setOpen}>
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
-            <SheetTitle>Разбор недели</SheetTitle>
+            <SheetTitle>{t("author.weekly.reviewTitle")}</SheetTitle>
             <SheetDescription>
               {fmtDate(week, "dayMonth")} — {fmtDate(addDays(week, 6), "dayMonth")}
-              {summary ? ` · собран ${fmtDate(summary.created_at, "short")}` : ""}
+              {summary ? ` · ${t("author.weekly.builtOn", { date: fmtDate(summary.created_at, "short") })}` : ""}
             </SheetDescription>
           </SheetHeader>
           {summary && (

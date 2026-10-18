@@ -8,6 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
+import { voiceI18n } from "@/i18n/ns/voice";
+import { commonI18n } from "@/i18n/ns/common";
 
 // ─── authenticated audio sources ──────────────────────────────────────────────
 // <audio src> cannot send the Authorization header. GET /api/voice-notes/:id/audio-url returns a URL with a
@@ -106,6 +108,7 @@ function Highlight({ text, query }: { text: string; query: string }) {
 }
 
 function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
+  const { t } = voiceI18n.useT();
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -287,7 +290,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
         <button
           type="button"
           onClick={togglePlay}
-          aria-label={playing ? "Пауза" : "Воспроизвести голосовую заметку"}
+          aria-label={playing ? t("player.pause") : t("player.play")}
           className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-primary text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)] transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
           {loading && !playing ? (
@@ -303,11 +306,11 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
           <div
             role="slider"
             tabIndex={0}
-            aria-label="Позиция воспроизведения"
+            aria-label={t("player.position")}
             aria-valuemin={0}
             aria-valuemax={Math.round(duration) || 0}
             aria-valuenow={Math.round(currentTime)}
-            aria-valuetext={`${formatDuration(currentTime)} из ${formatDuration(duration)}`}
+            aria-valuetext={t("player.positionText", { current: formatDuration(currentTime), total: formatDuration(duration) })}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -343,7 +346,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
           <button
             type="button"
             onClick={cycleSpeed}
-            aria-label={`Скорость воспроизведения ${speed}×, нажмите чтобы изменить`}
+            aria-label={t("player.speed", { speed })}
             className="chip min-h-8 min-w-[3.25rem] px-2 text-xs font-semibold tabular-nums"
           >
             {speed}×
@@ -352,7 +355,7 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
             <button
               type="button"
               onClick={() => seekTo(0)}
-              aria-label="В начало"
+              aria-label={t("player.toStart")}
               className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />
@@ -364,18 +367,18 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
       {playError && (
         <div role="alert" className="mt-2 flex items-center gap-1.5 text-xs text-down">
           <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          Не удалось воспроизвести — файл недоступен
+          {t("player.playFailed")}
         </div>
       )}
 
       {hasTranscript ? (
         <div className="mt-2.5 border-t border-[var(--glass-border)] pt-2.5">
           <div className="flex items-center justify-between gap-2">
-            <span className="micro-label">Расшифровка</span>
+            <span className="micro-label">{t("player.transcript")}</span>
             <button
               type="button"
               onClick={copyTranscript}
-              aria-label="Скопировать расшифровку"
+              aria-label={t("player.copyTranscript")}
               className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               {copied ? <Check className="h-3.5 w-3.5 text-up" aria-hidden="true" /> : <Copy className="h-3.5 w-3.5" aria-hidden="true" />}
@@ -392,12 +395,12 @@ function VoiceNoteItem({ note, query }: { note: VoiceNote; query: string }) {
               className="mt-1 inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
             >
               <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", expanded && "rotate-180")} aria-hidden="true" />
-              {expanded ? "Свернуть" : "Показать полностью"}
+              {expanded ? commonI18n.t("actions.collapse") : t("player.showFull")}
             </button>
           )}
         </div>
       ) : (
-        <p className="mt-2 text-2xs text-muted-foreground">Расшифровки нет</p>
+        <p className="mt-2 text-2xs text-muted-foreground">{t("player.noTranscript")}</p>
       )}
     </div>
   );
@@ -413,6 +416,7 @@ interface VoiceNotePlayerProps {
 }
 
 export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, className }: VoiceNotePlayerProps) {
+  const { t } = voiceI18n.useT();
   const [query, setQuery] = useState("");
   const { data: notes = [], isLoading, isError, refetch } = useQuery<VoiceNote[]>({
     queryKey: ["voice-notes", tradeId, userId, refreshKey],
@@ -437,15 +441,15 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
     return (
       <div role="alert" className={cn("flex items-center gap-2 py-1 text-xs text-down", className)}>
         <AlertCircle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-        <span>Не удалось загрузить голосовые заметки</span>
-        <button type="button" onClick={() => refetch()} className="font-medium text-primary hover:underline">Повторить</button>
+        <span>{t("player.loadFailed")}</span>
+        <button type="button" onClick={() => refetch()} className="font-medium text-primary hover:underline">{commonI18n.t("actions.retry")}</button>
       </div>
     );
   }
 
   if (isLoading) {
     return (
-      <div className={cn("space-y-2 py-1", className)} aria-busy="true" aria-label="Загрузка голосовых заметок">
+      <div className={cn("space-y-2 py-1", className)} aria-busy="true" aria-label={t("player.loading")}>
         <Skeleton className="h-3 w-40" />
         <Skeleton className="h-16 w-full rounded-xl" />
       </div>
@@ -456,7 +460,7 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
     if (!showEmpty) return null;
     return (
       <div className={cn("flex items-center gap-2 text-xs text-muted-foreground", className)}>
-        <Mic className="h-3.5 w-3.5" aria-hidden="true" /> Голосовых заметок к сделке нет
+        <Mic className="h-3.5 w-3.5" aria-hidden="true" /> {t("player.empty")}
       </div>
     );
   }
@@ -466,19 +470,19 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
           <Mic className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-          Голосовые заметки
+          {t("player.title")}
           <Pill tone="accent">{notes.length}</Pill>
           {totalSec > 0 && <span className="text-xs font-normal tabular-nums text-muted-foreground">{formatDuration(totalSec)}</span>}
         </div>
         {notes.length >= 3 && notes.some((n) => n.transcript) && (
           <label className="glass-field flex min-h-8 items-center gap-1.5 px-3">
             <Search className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-            <span className="sr-only">Поиск по расшифровкам</span>
+            <span className="sr-only">{t("player.search")}</span>
             <input
               type="search"
               value={query}
               onChange={onQuery}
-              placeholder="Поиск по расшифровкам"
+              placeholder={t("player.search")}
               className="w-40 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground"
             />
           </label>
@@ -489,7 +493,7 @@ export function VoiceNotePlayer({ tradeId, userId, refreshKey, showEmpty, classN
           <VoiceNoteItem key={note.id} note={note} query={query} />
         ))}
         {filtered.length === 0 && (
-          <p className="text-xs text-muted-foreground">Ничего не найдено по «{query}»</p>
+          <p className="text-xs text-muted-foreground">{t("player.notFound", { query })}</p>
         )}
       </div>
     </div>

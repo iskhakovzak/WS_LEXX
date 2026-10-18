@@ -17,6 +17,9 @@ import { ReviewStatusPill } from "@/components/weekly-review/collab";
 import { CuratorView, TraderView } from "@/components/weekly-review/audience-views";
 import { PartnersView } from "@/components/weekly-review/partners-view";
 import { PersonSelect } from "@/components/people/person-select";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { shellI18n } from "@/i18n/ns/shell";
+import { localeTag } from "@/lib/format";
 
 type View = "trader" | "curator" | "partners";
 const VIEWS: View[] = ["trader", "curator", "partners"];
@@ -68,13 +71,11 @@ function writeParams(view: View | null, trader: string | null, week: string) {
   window.history.replaceState(window.history.state, "", window.location.pathname + (qs ? `?${qs}` : ""));
 }
 
-const TABS = [
-  { value: "trader" as const, label: "Трейдеру", icon: UserRound },
-  { value: "curator" as const, label: "Куратору", icon: GraduationCap },
-  { value: "partners" as const, label: "Партнёрам", icon: Briefcase },
-];
+const TAB_ICONS = { trader: UserRound, curator: GraduationCap, partners: Briefcase } as const;
 
 export default function WeeklyReviewPage() {
+  const { t } = weeklyI18n.useT();
+  const tabs = VIEWS.map((v) => ({ value: v, label: t(`page.tabs.${v}`), icon: TAB_ICONS[v] }));
   const { user, isCurator, can, dbUsers } = useAuth();
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const staff = isCurator || can("journal.review");
@@ -103,16 +104,16 @@ export default function WeeklyReviewPage() {
   const traders = React.useMemo(() => {
     const list = dbUsers.filter((u) => u.active && !u.banned && (u.role === "trader" || u.name === trader || u.name === me));
     if (trader && !list.some((u) => u.name === trader)) list.push({ id: -1, name: trader, role: "trader", active: true, theme: "default" } as (typeof dbUsers)[number]);
-    return list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    return list.sort((a, b) => a.name.localeCompare(b.name, localeTag()));
   }, [dbUsers, trader, me]);
 
   const copy = async (md: boolean) => {
     if (!doc) return;
     try {
       await navigator.clipboard.writeText(reviewToText(doc, md));
-      toast({ title: md ? "Скопировано как Markdown" : "Скопировано как текст", description: `${weekLabel(doc.week.key)} · ${doc.trader}` });
+      toast({ title: md ? t("page.copiedMd") : t("page.copiedText"), description: `${weekLabel(doc.week.key)} · ${doc.trader}` });
     } catch {
-      toast({ title: "Не удалось скопировать", description: "Браузер не дал доступ к буферу обмена.", variant: "destructive" });
+      toast({ title: t("page.copyFailed"), description: t("page.copyFailedDesc"), variant: "destructive" });
     }
   };
 
@@ -121,62 +122,62 @@ export default function WeeklyReviewPage() {
 
   const weekNav = (
     <div className="flex items-center gap-1" data-print-hide>
-      <Button type="button" variant="outline" size="icon" aria-label="Предыдущая неделя" onClick={() => setWeek(shiftWeek(week, -1))}>
+      <Button type="button" variant="outline" size="icon" aria-label={t("page.prevWeek")} title={t("page.prevWeek")} onClick={() => setWeek(shiftWeek(week, -1))}>
         <ChevronLeft className="h-4 w-4" aria-hidden="true" />
       </Button>
       <span className="glass-field inline-flex min-h-9 min-w-[13rem] items-center justify-center gap-2 px-3 text-sm font-medium tabular-nums">
         <CalendarRange className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
         {weekLabel(week)}
-        {week === today && <Pill tone="accent">текущая</Pill>}
+        {week === today && <Pill tone="accent">{t("page.current")}</Pill>}
       </span>
-      <Button type="button" variant="outline" size="icon" aria-label="Следующая неделя" disabled={isFuture} onClick={() => setWeek(shiftWeek(week, 1))}>
+      <Button type="button" variant="outline" size="icon" aria-label={t("page.nextWeek")} title={t("page.nextWeek")} disabled={isFuture} onClick={() => setWeek(shiftWeek(week, 1))}>
         <ChevronRight className="h-4 w-4" aria-hidden="true" />
       </Button>
-      {week !== today && <Button type="button" variant="ghost" size="sm" onClick={() => setWeek(today)}>К текущей</Button>}
+      {week !== today && <Button type="button" variant="ghost" size="sm" onClick={() => setWeek(today)}>{t("page.toCurrent")}</Button>}
     </div>
   );
 
   const description = !perTrader
-    ? "Деск за неделю: результат, риск и главные выводы"
+    ? t("page.descDesk")
     : trader
-      ? `${trader} · ${doc ? `${fmtDay(doc.week.start)} — ${fmtDay(doc.week.end, true)}` : weekLabel(week)} · Пн–Пт, дата закрытия по Нью-Йорку`
-      : "Итоги недели, советы и цель на следующую";
+      ? t("page.descTrader", { trader, range: doc ? `${fmtDay(doc.week.start)} — ${fmtDay(doc.week.end, true)}` : weekLabel(week) })
+      : t("page.descDefault");
 
   const header = (
     <PageHeader
-      title="Отчёт недели"
+      title={shellI18n.t("nav.weeklyReview")}
       description={description}
       icon={FileText}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
           {staff && perTrader && (
-            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders.map((u) => u.name)} className="w-44" ariaLabel="Трейдер" />
+            <PersonSelect value={trader ?? ""} onValueChange={(v) => setTrader(v)} options={traders.map((u) => u.name)} className="w-44" ariaLabel={t("page.traderAria")} />
           )}
           {perTrader && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="outline" size="sm" disabled={!doc}><ClipboardCopy className="h-4 w-4" aria-hidden="true" /> Скопировать</Button>
+                <Button type="button" variant="outline" size="sm" disabled={!doc}><ClipboardCopy className="h-4 w-4" aria-hidden="true" /> {t("page.copy")}</Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => void copy(false)}>Как текст</DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => void copy(true)}>Как Markdown</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copy(false)}>{t("page.asText")}</DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void copy(true)}>{t("page.asMarkdown")}</DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           )}
           <Button type="button" variant="outline" size="sm" disabled={perTrader && !doc} onClick={() => window.print()}>
-            <Printer className="h-4 w-4" aria-hidden="true" /> Печать / PDF
+            <Printer className="h-4 w-4" aria-hidden="true" /> {t("page.print")}
           </Button>
         </div>
       }
     >
-      {staff && <SectionTabs ariaLabel="Для кого отчёт" tabs={TABS} value={effectiveView} onChange={setView} />}
+      {staff && <SectionTabs ariaLabel={t("page.tabsAria")} tabs={tabs} value={effectiveView} onChange={setView} />}
       <div className="flex flex-wrap items-center justify-between gap-2">
         {weekNav}
         {perTrader && doc && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground" data-print-hide>
             <ReviewStatusPill status={doc.review?.status ?? "none"} />
-            {doc.review?.reviewedAt && <span>разобрано {fmtDay(doc.review.reviewedAt.slice(0, 10))}</span>}
-            {q.isFetching && <span aria-live="polite">обновление…</span>}
+            {doc.review?.reviewedAt && <span>{t("page.reviewedOn", { date: fmtDay(doc.review.reviewedAt.slice(0, 10)) })}</span>}
+            {q.isFetching && <span aria-live="polite">{t("page.refreshing")}</span>}
           </div>
         )}
       </div>
@@ -187,7 +188,7 @@ export default function WeeklyReviewPage() {
     return (
       <Page>
         {header}
-        <Panel><EmptyState icon={Lock} title="Отчёт доступен после входа" description="Гостевой режим видит только общие разделы. Войдите как трейдер или куратор." /></Panel>
+        <Panel><EmptyState icon={Lock} title={t("page.loginTitle")} description={t("page.loginDesc")} /></Panel>
       </Page>
     );
   }
@@ -206,7 +207,7 @@ export default function WeeklyReviewPage() {
         ) : (
           <div className={q.isPlaceholderData ? "opacity-70 transition-opacity duration-[var(--dur-2)]" : "transition-opacity duration-[var(--dur-2)]"}>
             <p data-print-title className="mb-3 hidden text-lg font-semibold">
-              Отчёт недели {weekLabel(doc.week.key)} — {doc.trader}{effectiveView === "curator" ? " · для куратора" : ""}
+              {t(effectiveView === "curator" ? "page.printTitleCurator" : "page.printTitle", { week: weekLabel(doc.week.key), trader: doc.trader })}
             </p>
             {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
           </div>
@@ -218,7 +219,7 @@ export default function WeeklyReviewPage() {
 
 function ReportSkeleton() {
   return (
-    <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label="Загрузка отчёта">
+    <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={weeklyI18n.t("page.loading")}>
       <StatGridSkeleton count={5} />
       <div className="grid gap-[var(--grid-gap)] lg:grid-cols-12">
         <PanelSkeleton height={260} className="lg:col-span-7" />

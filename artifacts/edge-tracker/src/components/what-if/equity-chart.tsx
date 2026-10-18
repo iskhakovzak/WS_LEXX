@@ -2,17 +2,17 @@ import { useMemo } from "react";
 import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AXIS, CHART_TOOLTIP_STYLE, GRID } from "@/components/analytics-page/metrics";
-import { fmtUsd } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 import type { DayResult, EquityPoint } from "./api";
 
-const MONTHS = ["янв", "фев", "мар", "апр", "май", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 function shortDay(d: string): string {
-  const [, m, dd] = d.split("-");
-  return `${Number(dd)} ${MONTHS[Number(m) - 1] ?? m}`;
+  return fmtDate(d, "dayMonth");
 }
 
-export const SERIES_BASE = "Как было";
-export const SERIES_SCENARIO = "Как стало";
+/** Series data keys (codes); the legend / tooltip names come from the whatIf namespace. */
+export const SERIES_BASE = "base";
+export const SERIES_SCENARIO = "scenario";
 
 /** Base and scenario equity on one day axis (the scenario is carried forward on days it has no trades). */
 export function mergeEquity(base: EquityPoint[], scenario: EquityPoint[], hasScenario: boolean) {
@@ -26,9 +26,10 @@ export function mergeEquity(base: EquityPoint[], scenario: EquityPoint[], hasSce
 
 /** One large chart: «как было» (muted) vs «как стало» (accent). Fixed height so nothing jumps while recomputing. */
 export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }: { base: EquityPoint[]; scenario: EquityPoint[]; hasScenario: boolean; height?: number; /** Click on a day → e.g. open its report. */ onDay?: (day: string) => void }) {
-  const data = useMemo(() => mergeEquity(base, scenario, hasScenario), [base, scenario, hasScenario]);
+  const { t } = whatIfI18n.useT();
+  const data = useMemo(() => mergeEquity(base, scenario, hasScenario), [base, scenario, hasScenario, t]); // eslint-disable-line react-hooks/exhaustive-deps -- labels follow the language
   return (
-    <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? "Клик — отчёт за день" : undefined} role="img" aria-label={hasScenario ? "Кривая капитала: как было и как стало" : "Кривая капитала по факту"}>
+    <div style={{ height }} className={onDay ? "cursor-pointer" : undefined} title={onDay ? t("chart.clickDay") : undefined} role="img" aria-label={hasScenario ? t("chart.ariaBoth") : t("chart.ariaFact")}>
       {data.length ? (
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart
@@ -48,14 +49,14 @@ export function EquityChart({ base, scenario, hasScenario, height = 340, onDay }
             <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => fmtUsd(v, { signed: true, decimals: "auto" })} labelFormatter={(_, p) => (p?.[0]?.payload?.day as string) ?? ""} />
             <Legend verticalAlign="top" align="right" height={28} iconType="plainline" />
             <ReferenceLine y={0} stroke={GRID} />
-            <Line type="monotone" dataKey={SERIES_BASE} stroke="hsl(var(--muted-foreground))" dot={false} strokeWidth={1.5} strokeDasharray={hasScenario ? "4 3" : undefined} isAnimationActive={false} />
+            <Line type="monotone" dataKey={SERIES_BASE} name={t("chart.base")} stroke="hsl(var(--muted-foreground))" dot={false} strokeWidth={1.5} strokeDasharray={hasScenario ? "4 3" : undefined} isAnimationActive={false} />
             {hasScenario && (
-              <Area type="monotone" dataKey={SERIES_SCENARIO} stroke="hsl(var(--primary))" strokeWidth={2.25} fill="url(#sim-scenario-fill)" dot={false} isAnimationActive={false} connectNulls />
+              <Area type="monotone" dataKey={SERIES_SCENARIO} name={t("chart.scenario")} stroke="hsl(var(--primary))" strokeWidth={2.25} fill="url(#sim-scenario-fill)" dot={false} isAnimationActive={false} connectNulls />
             )}
           </ComposedChart>
         </ResponsiveContainer>
       ) : (
-        <p className="grid h-full place-items-center text-sm text-muted-foreground">Нет закрытых сделок за период</p>
+        <p className="grid h-full place-items-center text-sm text-muted-foreground">{t("chart.noTrades")}</p>
       )}
     </div>
   );
@@ -75,9 +76,11 @@ function binTick(i: number): string {
   return short(BIN_EDGES[i]);
 }
 function binLabel(i: number): string {
-  if (i === 0) return `меньше ${fmtUsd(BIN_EDGES[0], { signed: true, decimals: "auto" })}`;
-  if (i === BIN_EDGES.length) return `больше ${fmtUsd(BIN_EDGES[BIN_EDGES.length - 1], { signed: true, decimals: "auto" })}`;
-  return `от ${fmtUsd(BIN_EDGES[i - 1], { signed: true, decimals: "auto" })} до ${fmtUsd(BIN_EDGES[i], { signed: true, decimals: "auto" })}`;
+  const t = whatIfI18n.t;
+  const u = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
+  if (i === 0) return t("chart.binLess", { value: u(BIN_EDGES[0]) });
+  if (i === BIN_EDGES.length) return t("chart.binMore", { value: u(BIN_EDGES[BIN_EDGES.length - 1]) });
+  return t("chart.binRange", { from: u(BIN_EDGES[i - 1]), to: u(BIN_EDGES[i]) });
 }
 function binOf(v: number): number {
   let i = 0;
@@ -87,6 +90,7 @@ function binOf(v: number): number {
 
 /** Histogram of daily net results, base next to scenario. */
 export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResult[]; scenario: DayResult[]; hasScenario: boolean }) {
+  const { t } = whatIfI18n.useT();
   const data = useMemo(() => {
     const bins = Array.from({ length: BIN_EDGES.length + 1 }, (_, i) => ({ i, tick: binTick(i), label: binLabel(i), [SERIES_BASE]: 0, [SERIES_SCENARIO]: 0, neg: i <= BIN_EDGES.indexOf(0) }));
     for (const d of base) bins[binOf(d.net)][SERIES_BASE]++;
@@ -95,7 +99,7 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
     let last = bins.length - 1;
     while (last > 0 && !bins[last][SERIES_BASE] && !bins[last][SERIES_SCENARIO]) last--;
     return first < 0 ? [] : bins.slice(first, last + 1);
-  }, [base, scenario, hasScenario]);
+  }, [base, scenario, hasScenario, t]); // eslint-disable-line react-hooks/exhaustive-deps -- bin labels follow the language
   return (
     <div className="h-[220px]">
       {data.length ? (
@@ -104,20 +108,21 @@ export function DailyHistogram({ base, scenario, hasScenario }: { base: DayResul
             <CartesianGrid stroke={GRID} vertical={false} />
             <XAxis dataKey="tick" {...AXIS} interval={0} fontSize={12} />
             <YAxis {...AXIS} allowDecimals={false} width={32} />
-            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => `${v} дн.`} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
+            <Tooltip contentStyle={CHART_TOOLTIP_STYLE} formatter={(v: number) => t("chart.days", { count: v })} labelFormatter={(_, p) => (p?.[0]?.payload?.label as string) ?? ""} />
             <Legend />
-            <Bar dataKey={SERIES_BASE} isAnimationActive={false} radius={[4, 4, 0, 0]}>
+            <Bar dataKey={SERIES_BASE} name={t("chart.base")} isAnimationActive={false} radius={[4, 4, 0, 0]}>
               {data.map((d) => <Cell key={d.i} fill={d.neg ? "hsl(var(--down) / 0.4)" : "hsl(var(--up) / 0.4)"} />)}
             </Bar>
             {hasScenario && (
-              <Bar dataKey={SERIES_SCENARIO} isAnimationActive={false} radius={[4, 4, 0, 0]}>
+              <Bar dataKey={SERIES_SCENARIO} name={t("chart.scenario")} isAnimationActive={false} radius={[4, 4, 0, 0]}>
                 {data.map((d) => <Cell key={d.i} fill={d.neg ? "hsl(var(--down))" : "hsl(var(--up))"} />)}
               </Bar>
             )}
           </BarChart>
         </ResponsiveContainer>
       ) : (
-        <p className="grid h-full place-items-center text-sm text-muted-foreground">Нет данных</p>
+        <p className="grid h-full place-items-center text-sm text-muted-foreground">{t("fees.noData")}</p>
+
       )}
     </div>
   );

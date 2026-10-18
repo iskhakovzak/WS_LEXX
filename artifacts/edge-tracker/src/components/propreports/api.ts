@@ -4,7 +4,8 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ApiError, http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
-import { fmtPrice as fmtPriceBase } from "@/lib/format";
+import { fmtDate, fmtPrice as fmtPriceBase, fmtRelative } from "@/lib/format";
+import { propreportsI18n } from "@/i18n/ns/propreports";
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type Session = "premarket" | "regular" | "postmarket";
@@ -13,13 +14,14 @@ export type PlanAction = "insert" | "update" | "unchanged" | "adopt" | "conflict
 
 export const FEE_KEYS = ["comm", "ecn", "sec", "orf", "taf", "nfa", "cat", "nscc", "acc", "clr", "misc"] as const;
 export type FeeKey = (typeof FEE_KEYS)[number];
-export const FEE_LABEL: Record<string, string> = {
-  comm: "Комиссия", ecn: "ECN", sec: "SEC", orf: "ORF", taf: "TAF", nfa: "NFA", cat: "CAT", nscc: "NSCC", acc: "Access", clr: "Клиринг", misc: "Прочее",
+/** Broker fee codes shown as is in every language; word labels (comm, clr, misc) come from propreportsI18n `fee.*`. */
+const FEE_CODE_LABEL: Record<string, string> = {
+  ecn: "ECN", sec: "SEC", orf: "ORF", taf: "TAF", nfa: "NFA", cat: "CAT", nscc: "NSCC", acc: "Access",
   exfee: "ExFee", finra: "FINRA", route: "Route", locate: "Locate", borrow: "Borrow", nasdaq: "Nasdaq", pass: "Pass-thru",
 };
 /** Label for any fee key (unknown columns keep their broker name). */
 export function feeLabel(key: string): string {
-  return FEE_LABEL[key] ?? key.replace(/_/g, " ").replace(/^w/, (c) => c.toUpperCase());
+  return propreportsI18n.tryT(`fee.${key}`) ?? FEE_CODE_LABEL[key] ?? key.replace(/_/g, " ").replace(/^w/, (c) => c.toUpperCase());
 }
 /** Known keys first (in FEE_KEYS order), then the rest alphabetically. */
 export function orderedFeeKeys(fees: Record<string, number>): string[] {
@@ -135,6 +137,8 @@ export type PerformancePreview = {
   periodFrom: string; periodTo: string; summary: PerfSummary; issues: string[]; bySide: PerformanceReport["bySide"]; byTime: PerfRow[]; byWeekday: PerfRow[];
   perTradeAverages: PerTradeAverage[]; symbols: number; note: string; reportId?: number; replaced?: boolean; uploadedAt?: string;
 };
+/** /integrations sections (`?tab=`). */
+export type IntegrationsTab = "setup" | "import" | "performance" | "accounts" | "reconcile" | "history";
 export type ImportKind = "auto" | "fills" | "trades" | "performance";
 export type ImportResponse = Preview | ApplyResult | PerformancePreview;
 export function isPerformanceResponse(r: ImportResponse): r is PerformancePreview {
@@ -278,30 +282,28 @@ export function useDismissPending() {
 export function fmtPrice(v: number | null | undefined): string {
   return fmtPriceBase(v, { decimals: v != null && Math.abs(v) >= 100 ? 2 : 4, trim: true });
 }
+/** «5 min ago» in the UI language; «ещё не было» when there is no date. Call at render time. */
 export function agoText(iso: string | null | undefined): string {
-  if (!iso) return "ещё не было";
-  const ms = Date.now() - Date.parse(iso);
-  if (!Number.isFinite(ms)) return iso;
-  const m = Math.round(ms / 60_000);
-  if (m < 1) return "только что";
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 48) return `${h} ч назад`;
-  return `${Math.round(h / 24)} дн назад`;
+  if (!iso) return propreportsI18n.t("never");
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return iso;
+  // Older than a month: the date reads better than «2 months ago».
+  if (Date.now() - t >= 30 * 86_400_000) return fmtDate(t, "dayMonth");
+  return fmtRelative(Math.min(t, Date.now()), { style: "short" });
 }
+/** «in 15 min» in the UI language («now» once the moment has passed). */
 export function untilText(iso: string | null | undefined): string {
   if (!iso) return "—";
-  const ms = Date.parse(iso) - Date.now();
-  if (!Number.isFinite(ms) || ms <= 0) return "сейчас";
-  const m = Math.round(ms / 60_000);
-  return m < 60 ? `через ${m} мин` : `через ${Math.round(m / 60)} ч`;
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "—";
+  return fmtRelative(Math.max(t, Date.now()), { style: "short" });
 }
 
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
-export const SESSION_LABEL: Record<Session, string> = { premarket: "Премаркет", regular: "Сессия", postmarket: "Постмаркет" };
-export const ACTION_LABEL: Record<PlanAction, string> = { insert: "Новая", update: "Обновится", unchanged: "Без изменений", adopt: "Привяжется", conflict: "На сверку", skip: "Пропуск" };
-export const REASON_LABEL: Record<string, string> = { unmapped: "счёт не привязан", inactive: "счёт выключен", forbidden: "чужой счёт", deleted: "сделка удалена в журнале" };
-export const FIELD_LABEL: Record<string, string> = {
-  ticker: "Тикер", date: "Дата", side: "Сторона", entry: "Вход", exit: "Выход", qty: "Объём", fees: "Комиссии", pnl: "Gross P&L", result: "Результат",
-  session: "Сессия", horizon: "Горизонт", exitDate: "Дата выхода", holdTime: "Удержание", brokerAccount: "Счёт",
-};
+// Display labels for codes (call at render time; unknown codes show as is).
+export const horizonLabel = (h: string) => propreportsI18n.tryT(`horizon.${h}`) ?? h;
+export const sessionLabel = (s: string) => propreportsI18n.tryT(`session.${s}`) ?? s;
+export const actionLabel = (a: string) => propreportsI18n.tryT(`action.${a}`) ?? a;
+export const reasonLabel = (r: string) => propreportsI18n.tryT(`reason.${r}`) ?? r;
+export const fieldLabel = (f: string) => propreportsI18n.tryT(`field.${f}`) ?? f;
+export const resultLabel = (r: string) => propreportsI18n.tryT(`result.${r}`) ?? r;
+export const runStatusLabel = (s: string) => propreportsI18n.tryT(`runStatus.${s}`) ?? s;

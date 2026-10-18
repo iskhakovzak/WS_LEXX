@@ -13,7 +13,7 @@ import { QueryError } from "@/components/query-error";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
-import { fmtCount, fmtRate } from "@/lib/format";
+import { fmtRate } from "@/lib/format";
 import {
   runSourceScan, useAddToPlan, useAddToWatchlist, useAnalystFeed, useFirmStats, useFirmWeight, useMyDays, useMyPlanTickers,
   useOpenPositions, useQuotes, useReactionSummaries, useWatchlistTickers,
@@ -30,6 +30,9 @@ import {
   ptChangePct, sessionWindow, shortDay, watchlistCatalyst,
   type FeedAction, type Filters, type OpenPosition, type SavedView, type SortKey,
 } from "@/components/analyst/lib";
+import { humanizeApiError } from "@/lib/api/errors";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
 
 type SortState = { key: SortKey; dir: SortDir };
 const DEFAULT_SORT: SortState = { key: "time", dir: "desc" };
@@ -60,16 +63,18 @@ function sortRows(rows: Row[], s: SortState): Row[] {
   return out;
 }
 
-const HOTKEYS: [string, string][] = [
-  ["/", "поиск"],
-  ["T", "только к сессии"],
-  ["M", "мои тикеры"],
-  ["J / K", "следующая / предыдущая строка"],
-  ["Enter", "история и реакция"],
-  ["W", "в вотчлист"],
-  ["P", "в мой план дня"],
-  ["Esc", "сбросить фильтры"],
-];
+/** Key → hotkey label key (labels resolved at render). */
+const HOTKEYS = [
+  ["/", "search"],
+  ["T", "session"],
+  ["M", "mine"],
+  ["J / K", "rows"],
+  ["Enter", "open"],
+  ["W", "watch"],
+  ["P", "plan"],
+  ["Esc", "reset"],
+] as const;
+const tf = analystI18n.t;
 
 export default function AnalystActionsPage() {
   const { canEdit, isCurator, isAdmin, user } = useAuth();
@@ -248,9 +253,9 @@ export default function AnalystActionsPage() {
       {
         onSuccess: () => {
           setAdded((s) => new Set(s).add(t));
-          toast({ title: `${t} в вотчлисте`, description: watchlistCatalyst(a) });
+          toast({ title: tf("page.inWatchlist", { ticker: t }), description: watchlistCatalyst(a) });
         },
-        onError: (e) => toast({ title: "Не удалось добавить в вотчлист", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+        onError: (e) => toast({ title: tf("page.watchFailed"), description: humanizeApiError(e), variant: "destructive" }),
         onSettled: () => setAddingWatch(null),
       },
     );
@@ -268,11 +273,11 @@ export default function AnalystActionsPage() {
         onSuccess: (r) => {
           setPlanned((s) => new Set(s).add(t));
           toast({
-            title: r.already ? `${t} уже в плане` : `${t} в моём плане на ${shortDay(win.sessionDay)}`,
-            description: r.already ? undefined : "Уровни и сценарий — в разделе «План дня».",
+            title: r.already ? tf("page.alreadyInPlan", { ticker: t }) : tf("page.inMyPlan", { ticker: t, date: shortDay(win.sessionDay) }),
+            description: r.already ? undefined : tf("page.planHint"),
           });
         },
-        onError: (e) => toast({ title: "Не удалось добавить в план", description: e instanceof Error ? e.message : undefined, variant: "destructive" }),
+        onError: (e) => toast({ title: tf("page.planFailed"), description: humanizeApiError(e), variant: "destructive" }),
         onSettled: () => setAddingPlan(null),
       },
     );
@@ -297,9 +302,9 @@ export default function AnalystActionsPage() {
     try {
       const r = await runSourceScan();
       qc.invalidateQueries({ queryKey: ["analyst-actions"] });
-      toast({ title: "Скан завершён", description: `Новых записей: ${r.rowsInserted} · ${(r.durationMs / 1000).toFixed(0)} с` });
+      toast({ title: tf("page.scanDone"), description: tf("page.scanResult", { count: r.rowsInserted, seconds: (r.durationMs / 1000).toFixed(0) }) });
     } catch (e) {
-      toast({ title: "Скан не удался", description: e instanceof Error ? e.message : "Попробуйте ещё раз", variant: "destructive" });
+      toast({ title: tf("page.scanFailed"), description: humanizeApiError(e, commonI18n.t("states.tryAgain")), variant: "destructive" });
     } finally {
       setScanning(false);
     }
@@ -357,21 +362,22 @@ export default function AnalystActionsPage() {
       if (document.querySelector("[role=dialog],[data-radix-popper-content-wrapper]")) return;
       const k = e.key.toLowerCase();
       const row = focusedIndex >= 0 ? tableRows[focusedIndex] : undefined;
-      if (k === "t" || k === "е") { e.preventDefault(); setFilters({ todayOnly: !filters.todayOnly }); }
-      else if (k === "m" || k === "ь") { e.preventDefault(); setFilters({ mineOnly: !filters.mineOnly }); }
-      else if (k === "j" || k === "k" || k === "о" || k === "л" || k === "arrowdown" || k === "arrowup") {
+      // Russian-layout twins of the hotkeys (Е=T, Ь=M, О=J, Л=K, Ц=W, З=P) — key codes, not UI copy.
+      if (k === "t" || k === "е") { e.preventDefault(); setFilters({ todayOnly: !filters.todayOnly }); } // i18n-ignore
+      else if (k === "m" || k === "ь") { e.preventDefault(); setFilters({ mineOnly: !filters.mineOnly }); } // i18n-ignore
+      else if (k === "j" || k === "k" || k === "о" || k === "л" || k === "arrowdown" || k === "arrowup") { // i18n-ignore
         if (!tableRows.length) return;
         // Arrow keys only drive the table when a row is already focused (they still scroll the page otherwise).
         if ((k === "arrowdown" || k === "arrowup") && focusedIndex < 0) return;
         e.preventDefault();
-        const down = k === "j" || k === "о" || k === "arrowdown";
+        const down = k === "j" || k === "о" || k === "arrowdown"; // i18n-ignore
         const next = focusedIndex < 0 ? 0 : Math.max(0, Math.min(tableRows.length - 1, focusedIndex + (down ? 1 : -1)));
         setFocusedIndex(next);
         if (focusedIndex < 0) tableRef.current?.scrollIntoView({ block: "start", behavior: "auto" });
         scrollRowIntoView(tableRef.current, next);
       } else if (e.key === "Enter" && row) { e.preventDefault(); setSheetTicker(row.a.ticker); }
-      else if ((k === "w" || k === "ц") && row) { if (!row.watched) { e.preventDefault(); addToWatch(row.a); } }
-      else if ((k === "p" || k === "з") && row) { if (!inPlan(row.a.ticker)) { e.preventDefault(); addToPlan(row.a); } }
+      else if ((k === "w" || k === "ц") && row) { if (!row.watched) { e.preventDefault(); addToWatch(row.a); } } // i18n-ignore
+      else if ((k === "p" || k === "з") && row) { if (!inPlan(row.a.ticker)) { e.preventDefault(); addToPlan(row.a); } } // i18n-ignore
       else if (e.key === "Escape") {
         if (focusedIndex >= 0) setFocusedIndex(-1);
         else if (hasFilters) resetFilters();
@@ -381,60 +387,60 @@ export default function AnalystActionsPage() {
     return () => window.removeEventListener("keydown", onKey);
   }, [sheetTicker, firmsOpen, filters.todayOnly, filters.mineOnly, setFilters, hasFilters, resetFilters, tableRows, focusedIndex, addToWatch, addToPlan, inPlan]);
 
-  const periodLabel = PERIODS.find((p) => p.value === filters.period)?.label ?? `${period}д`;
-  const scopeLabel = traderName ? traderName : "вся команда";
+  const periodLabel = PERIODS.find((p) => p.value === filters.period)?.label ?? tf("period.d", { count: period });
+  const scopeLabel = traderName ? traderName : tf("page.wholeTeam");
   const sheetRow = sheetTicker ? sheetTicker.toUpperCase() : null;
 
   /* ── render ─────────────────────────────────────────────────────────── */
   return (
     <Page>
       <PageHeader
-        title="Рейтинги аналитиков"
-        description="Что вышло к сессии, как бумага обычно реагирует и что из этого важно именно вам"
+        title={tf("page.title")}
+        description={tf("page.description")}
         icon={Award}
         meta={
           <>
             <UpdatedAgo at={feed.dataUpdatedAt} />
-            <span>Время — Нью-Йорк (ET)</span>
+            <span>{tf("page.timeNy")}</span>
           </>
         }
         actions={
           <>
-            <Button variant="ghost" size="icon" onClick={() => feed.refetch()} disabled={feed.isFetching} aria-label="Обновить ленту" title="Обновить">
+            <Button variant="ghost" size="icon" onClick={() => feed.refetch()} disabled={feed.isFetching} aria-label={tf("page.refreshAria")} title={commonI18n.t("actions.refresh")}>
               <RefreshCw className={cn(feed.isFetching && "motion-safe:animate-spin")} aria-hidden="true" />
             </Button>
-            <Button variant="ghost" size="icon" onClick={exportCsv} disabled={!tableRows.length} aria-label="Экспорт CSV" title="Экспорт текущей выборки в CSV">
+            <Button variant="ghost" size="icon" onClick={exportCsv} disabled={!tableRows.length} aria-label={tf("page.exportAria")} title={tf("page.exportTitle")}>
               <Download aria-hidden="true" />
             </Button>
             <Tooltip>
               <TooltipTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Горячие клавиши">
+                <Button variant="ghost" size="icon" aria-label={tf("page.hotkeysAria")}>
                   <HelpCircle aria-hidden="true" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent side="bottom" className="w-64">
                 <div className="flex flex-col gap-1.5 py-0.5">
-                  <span className="text-xs font-semibold text-foreground">Горячие клавиши</span>
+                  <span className="text-xs font-semibold text-foreground">{tf("page.hotkeysAria")}</span>
                   {HOTKEYS.map(([k, label]) => (
                     <span key={k} className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                      {label} <Kbd>{k}</Kbd>
+                      {tf(`page.hotkeys.${label}`)} <Kbd>{k}</Kbd>
                     </span>
                   ))}
                 </div>
               </TooltipContent>
             </Tooltip>
-            <Button variant="outline" onClick={() => setFirmsOpen(true)}>Фирмы</Button>
+            <Button variant="outline" onClick={() => setFirmsOpen(true)}>{tf("page.firms")}</Button>
             {(isCurator || isAdmin || canEdit) && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label="Ещё действия">
+                  <Button variant="ghost" size="icon" aria-label={commonI18n.t("actions.moreActions")}>
                     {scanning ? <Loader2 className="motion-safe:animate-spin" aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-64">
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Источники: Yahoo, Seeking Alpha, Nasdaq, RSS</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{tf("page.sources")}</DropdownMenuLabel>
                   <DropdownMenuItem disabled={scanning} onSelect={() => { void handleScan(); }}>
-                    <Zap className="h-4 w-4" aria-hidden="true" /> {scanning ? "Сканирую…" : "Скан источников (1–3 мин)"}
+                    <Zap className="h-4 w-4" aria-hidden="true" /> {scanning ? tf("page.scanning") : tf("page.scan")}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -446,35 +452,35 @@ export default function AnalystActionsPage() {
       {/* ── KPIs ── */}
       <StatGrid cols={3}>
         <StatCard
-          label="К сессии"
+          label={tf("page.kpiSession")}
           icon={Sunrise}
           tone="accent"
           loading={feed.isLoading}
           value={kpi.since}
-          hint={`▲${kpi.up} ▼${kpi.down} · ${kpi.pre} в премаркет · ${win.label}`}
+          hint={tf("page.kpiSessionHint", { up: kpi.up, down: kpi.down, pre: kpi.pre, window: win.label })}
           onClick={() => setFilters({ todayOnly: !filters.todayOnly })}
         />
         <StatCard
-          label="В моих тикерах · к сессии"
+          label={tf("page.kpiMine")}
           icon={UserRound}
           tone={kpi.mine ? "warn" : "neutral"}
           loading={feed.isLoading}
           value={kpi.mine}
           hint={
             myTickers.size === 0
-              ? "вотчлист и тикеры, которые вы торговали"
+              ? tf("page.kpiMineEmpty")
               : kpi.mine
-                ? `${kpi.mineTickers} тик.${kpi.heldHit ? ` · ${kpi.heldHit} с позицией` : ""} · всего моих ${myTickers.size}`
-                : `из ${myTickers.size} моих тикеров — ничего`
+                ? `${tf("page.kpiMineHit", { tickers: kpi.mineTickers })}${kpi.heldHit ? tf("page.kpiMineHeld", { count: kpi.heldHit }) : ""}${tf("page.kpiMineTotal", { count: myTickers.size })}`
+                : tf("page.kpiMineNone", { count: myTickers.size })
           }
           onClick={() => setFilters({ mineOnly: !filters.mineOnly, todayOnly: !filters.mineOnly ? true : filters.todayOnly })}
         />
         <StatCard
-          label={`Баланс рейтингов · ${periodLabel}`}
+          label={tf("page.kpiBalance", { period: periodLabel })}
           tone={kpi.pUp - kpi.pDown > 0 ? "up" : kpi.pUp - kpi.pDown < 0 ? "down" : "neutral"}
           loading={feed.isLoading}
           value={`${kpi.pUp - kpi.pDown > 0 ? "+" : kpi.pUp - kpi.pDown < 0 ? "−" : ""}${Math.abs(kpi.pUp - kpi.pDown)}`}
-          hint={`▲${kpi.pUp} ▼${kpi.pDown}${kpi.raisedShare != null ? ` · PT повышают ${fmtRate(kpi.raisedShare)}` : ""}`}
+          hint={`▲${kpi.pUp} ▼${kpi.pDown}${kpi.raisedShare != null ? tf("page.kpiRaised", { value: fmtRate(kpi.raisedShare) }) : ""}`}
           spark={kpi.spark.length > 1 ? kpi.spark : undefined}
           onClick={() => setFilters({ type: "moves" })}
         />
@@ -497,7 +503,7 @@ export default function AnalystActionsPage() {
           onAddWatch={watchRow}
           onAddPlan={planRow}
         />
-        <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label="Моя статистика и фирмы">
+        <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label={tf("page.asideAria")}>
           <MyDaysPanel data={myDays.data} isLoading={myDays.isLoading} scopeLabel={scopeLabel} />
           {firmWeight.data ? (
             <FirmWeightPanel
@@ -522,7 +528,7 @@ export default function AnalystActionsPage() {
       </div>
 
       {/* ── feed ── */}
-      <Panel icon={ListFilter} title="Лента действий" description={`${periodLabel} · ${fmtCount(typeCounts.all)} действий в выборке`}>
+      <Panel icon={ListFilter} title={tf("page.feed")} description={tf("page.feedDescription", { period: periodLabel, actions: tf("firms.actionsCount", { count: typeCounts.all }) })}>
         <div className="flex flex-col gap-3">
           <FiltersBar
             filters={filters}
@@ -555,29 +561,29 @@ export default function AnalystActionsPage() {
               items.length === 0 ? (
                 <EmptyState
                   icon={Award}
-                  title="За период действий нет"
+                  title={tf("page.emptyTitle")}
                   description={filters.minCapB > 0 && !filters.includeUnknownCap
-                    ? `Фильтр «кап. от $${filters.minCapB}B» скрывает тикеры без данных о капитализации.`
-                    : "Расширьте период или запустите скан источников в меню «Ещё»."}
+                    ? tf("page.emptyCap", { value: filters.minCapB })
+                    : tf("page.emptyText")}
                   action={filters.minCapB > 0 && !filters.includeUnknownCap
-                    ? <Button variant="outline" onClick={() => setFilters({ includeUnknownCap: true })}>Включить без капитализации</Button>
-                    : <Button variant="outline" onClick={() => setFilters({ period: "30" })}>Показать 30 дней</Button>}
+                    ? <Button variant="outline" onClick={() => setFilters({ includeUnknownCap: true })}>{tf("page.includeUnknown")}</Button>
+                    : <Button variant="outline" onClick={() => setFilters({ period: "30" })}>{tf("page.show30")}</Button>}
                 />
               ) : filters.todayOnly && !windowItems.length ? (
                 <EmptyState
                   icon={Sunrise}
-                  title="К этой сессии новых действий пока нет"
-                  description={`Ничего не вышло ${win.label}. Утренние апгрейды обычно появляются с 6:00 до 9:30 ET.`}
-                  action={<Button variant="outline" onClick={() => setFilters({ todayOnly: false })}>Показать весь период</Button>}
+                  title={tf("page.sessionEmptyTitle")}
+                  description={tf("page.sessionEmptyText", { window: win.label })}
+                  action={<Button variant="outline" onClick={() => setFilters({ todayOnly: false })}>{tf("page.showAllPeriod")}</Button>}
                 />
               ) : (
                 <EmptyState
                   icon={SearchX}
-                  title="Ничего не найдено"
+                  title={commonI18n.t("states.nothingFound")}
                   description={filters.mineOnly && myTickers.size === 0
-                    ? "«Мои тикеры» — вотчлист, открытые позиции и тикеры, которые вы торговали за год. Пока таких нет."
-                    : "Под фильтры не попало ни одного действия."}
-                  action={<Button variant="outline" onClick={resetFilters}>Сбросить фильтры</Button>}
+                    ? tf("page.mineEmpty")
+                    : tf("page.filtersEmpty")}
+                  action={<Button variant="outline" onClick={resetFilters}>{commonI18n.t("actions.resetFilters")}</Button>}
                 />
               )
             ) : (
@@ -603,8 +609,7 @@ export default function AnalystActionsPage() {
             )}
           </div>
           <p className="text-xs text-muted-foreground">
-            Yahoo помечает апгрейд/даунгрейд только при смене уровня рейтинга; большинство событий — обновления таргета.
-            Реакция и вес считаются по дневным свечам за 2 года и догружаются постепенно.
+            {tf("page.footnote")}
           </p>
         </div>
       </Panel>

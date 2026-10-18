@@ -6,6 +6,8 @@ import { TtlCache } from "../lib/hotCache";
 import { netPnl as netPnlOf, normResult, signedR } from "../lib/tradeMath";
 import { addDays, nyDate } from "../lib/tradingDate";
 import { badRequest, forbidden } from "../lib/http";
+import { psychologyT } from "../lib/behaviorI18n";
+import { langOf, type Lang } from "../i18n";
 
 const psychologyCache = new TtlCache<string, unknown>(3 * 60 * 1000);
 
@@ -20,15 +22,6 @@ function isLoss(result: unknown) {
   return normResult(result) === "loss";
 }
 
-const STATE_LABEL_RU: Record<string, string> = {
-  focused: "в фокусе",
-  stressed: "стресс",
-  tilted: "тильт",
-  revenge: "реванш",
-  anxious: "тревога",
-  sleepWell: "выспался",
-  normal: "обычное",
-};
 
 type TradeRow = typeof tradesTable.$inferSelect;
 /** Prop-desk columns (horizon/fees/riskUsd) — widened so this compiles against older built db typings too. */
@@ -114,14 +107,18 @@ type Comparison = {
 
 const fmtR = (v: number) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(2)}R`;
 
-/** Compare two trade groups and describe the difference in plain Russian. Null if too small. */
+type Phrase = { label: string; withLabel: string; withoutLabel: string; lead: string; contrast: string };
+
+/** Compare two trade groups and describe the difference in plain words (in `lang`). Null if too small. */
 function compareGroups(
   key: string,
-  label: string,
-  phrase: { withLabel: string; withoutLabel: string; lead: string; contrast: string },
+  phrase: Phrase,
   a: TradeRow[],
   b: TradeRow[],
+  lang: Lang,
 ): Comparison | null {
+  const label = phrase.label;
+  const t = psychologyT.tFor(lang);
   if (a.length < 2 || b.length < 2) return null;
   const w = aggregate(a);
   const wo = aggregate(b);
@@ -137,38 +134,34 @@ function compareGroups(
   const impact = Math.round(effect * Math.sqrt(minN) * 100) / 100;
   const parts: string[] = [];
   if (dWr != null) {
-    const dir = dWr > 0 ? "выше" : dWr < 0 ? "ниже" : "такой же, как";
-    parts.push(`винрейт ${dir}${dWr !== 0 ? ` на ${Math.abs(dWr)} п.п.` : ""} — ${Math.round(w.winRate! * 100)}% против ${Math.round(wo.winRate! * 100)}% ${phrase.contrast}`);
+    const wr = { pp: Math.abs(dWr), a: Math.round(w.winRate! * 100), b: Math.round(wo.winRate! * 100), contrast: phrase.contrast };
+    parts.push(t(dWr > 0 ? "compare.wrHigher" : dWr < 0 ? "compare.wrLower" : "compare.wrSame", wr));
   }
   if (dR != null && w.avgR != null && wo.avgR != null) {
-    parts.push(`средний результат ${fmtR(w.avgR)} против ${fmtR(wo.avgR)} на сделку${dWr == null ? ` ${phrase.contrast}` : ""}`);
+    const rp = { a: fmtR(w.avgR), b: fmtR(wo.avgR) };
+    parts.push(dWr == null ? t("compare.rContrast", { ...rp, contrast: phrase.contrast }) : t("compare.r", rp));
   }
-  let text = `${phrase.lead} ${parts.join("; ")}`;
-  text += `. Выборка: ${a.length} и ${b.length} сделок.`;
+  const text = t("compare.text", { lead: phrase.lead, parts: parts.join("; "), na: a.length, nb: b.length });
   return {
     key, label, withLabel: phrase.withLabel, withoutLabel: phrase.withoutLabel,
     with: w, without: wo, deltaWinRatePp: dWr, deltaR: dR, impact, confidence: confidenceOf(minN), text,
   };
 }
 
-const FACTOR_PHRASES: Record<string, { label: string; withLabel: string; withoutLabel: string; lead: string; contrast: string }> = {
-  sleepWell: { label: "Сон", withLabel: "Выспался", withoutLabel: "Не выспался", lead: "Когда вы высыпаетесь,", contrast: "в дни недосыпа" },
-  focused: { label: "Фокус", withLabel: "В фокусе", withoutLabel: "Без фокуса", lead: "В дни, когда вы в фокусе,", contrast: "в остальные дни" },
-  stressed: { label: "Стресс", withLabel: "Стресс", withoutLabel: "Без стресса", lead: "В дни со стрессом", contrast: "в спокойные дни" },
-  anxious: { label: "Тревога", withLabel: "Тревога", withoutLabel: "Без тревоги", lead: "В тревожные дни", contrast: "в остальные дни" },
-  tilted: { label: "Тильт", withLabel: "Тильт", withoutLabel: "Без тильта", lead: "В дни с тильтом", contrast: "в дни без него" },
-  revenge: { label: "Реванш", withLabel: "Желание отыграться", withoutLabel: "Без реванша", lead: "Когда хочется отыграться,", contrast: "в обычные дни" },
-};
+/** Phrases of a check-in factor / behaviour comparison in `lang` (psychology.factors.* / psychology.behavior.*). */
+function phraseOf(group: "factors" | "behavior", key: string, lang: Lang): Phrase {
+  const tr = (f: string) => psychologyT.tryFor(lang, `${group}.${key}.${f}`) ?? key;
+  return { label: tr("label"), withLabel: tr("withLabel"), withoutLabel: tr("withoutLabel"), lead: tr("lead"), contrast: tr("contrast") };
+}
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 const TICKER_RE = /^[A-Za-z0-9.\-]{1,12}$/;
 
 router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void> => {
   const userId = (req.query.userId as string | undefined)?.trim();
-  if (!userId) {
-    res.status(400).json({ error: "userId is required" });
-    return;
-  }
+  if (!userId) throw badRequest("TRADER_REQUIRED");
+  const lang = langOf(req);
+  const t = psychologyT.tFor(lang);
   // Emotional check-ins are personal: traders may only read their own analytics.
   const viewer = req.authUser;
   if (viewer && !["curator", "admin"].includes(viewer.role) && viewer.name !== userId) {
@@ -184,26 +177,19 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   const setup = q("setup");
   const horizon = q("horizon").toLowerCase();
   if (horizon && !["intraday", "overnight", "swing"].includes(horizon)) {
-    res.status(400).json({ error: "horizon must be intraday, overnight or swing" });
-    return;
+    throw badRequest("INVALID_FIELD", { field: "horizon", allowed: ["intraday", "overnight", "swing"] }, { field: "horizon" });
   }
-  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) {
-    res.status(400).json({ error: "from/to must be YYYY-MM-DD" });
-    return;
-  }
+  if ((from && !DATE_RE.test(from)) || (to && !DATE_RE.test(to))) throw badRequest("INVALID_DATE");
   if (side && side !== "long" && side !== "short") {
-    res.status(400).json({ error: "side must be long or short" });
-    return;
+    throw badRequest("INVALID_FIELD", { field: "side", allowed: ["long", "short"] }, { field: "side" });
   }
   if (ticker && !TICKER_RE.test(ticker)) {
     throw badRequest("INVALID_TICKER");
   }
-  if (setup.length > 120) {
-    res.status(400).json({ error: "setup is too long" });
-    return;
-  }
+  if (setup.length > 120) throw badRequest("INVALID_FIELD", { field: "setup" }, { field: "setup" });
 
-  const CACHE_KEY = `psychology:${userId}:${from}:${to}:${side}:${ticker}:${setup}:${horizon}`;
+  // Generated texts depend on the language → it is part of the cache key.
+  const CACHE_KEY = `psychology:${lang}:${userId}:${from}:${to}:${side}:${ticker}:${setup}:${horizon}`;
   const cached = psychologyCache.get(CACHE_KEY);
   if (cached) { res.json(cached); return; }
 
@@ -330,10 +316,9 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   // Factor comparisons: among trades on days with a check-in, factor present vs absent.
   const factors: Comparison[] = [];
   for (const key of STATE_KEYS) {
-    const p = FACTOR_PHRASES[key];
-    const withF = tradesWithCheckin.filter((t) => !!stateOf(t)?.[key]);
-    const withoutF = tradesWithCheckin.filter((t) => !stateOf(t)?.[key]);
-    const c = compareGroups(key, p.label, p, withF, withoutF);
+    const withF = tradesWithCheckin.filter((x) => !!stateOf(x)?.[key]);
+    const withoutF = tradesWithCheckin.filter((x) => !stateOf(x)?.[key]);
+    const c = compareGroups(key, phraseOf("factors", key, lang), withF, withoutF, lang);
     if (c) factors.push(c);
   }
 
@@ -360,33 +345,17 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
     });
     (ordered.length >= 3 ? busyDays : calmDays).push(...ordered);
   }
-  const afterLossCmp = compareGroups(
-    "afterLoss", "После убытка",
-    { withLabel: "После убытка", withoutLabel: "Остальные", lead: "Сделки, открытые в тот же день после убыточной,", contrast: "у остальных" },
-    afterLoss, firstOrAfterWin,
-  );
+  const afterLossCmp = compareGroups("afterLoss", phraseOf("behavior", "afterLoss", lang), afterLoss, firstOrAfterWin, lang);
   if (afterLossCmp) behavior.push(afterLossCmp);
-  const busyCmp = compareGroups(
-    "overtrading", "Много сделок за день",
-    { withLabel: "3+ сделки в день", withoutLabel: "1–2 сделки в день", lead: "В дни, когда вы делаете 3 и больше сделок,", contrast: "в дни с 1–2 сделками" },
-    busyDays, calmDays,
-  );
+  const busyCmp = compareGroups("overtrading", phraseOf("behavior", "overtrading", lang), busyDays, calmDays, lang);
   if (busyCmp) behavior.push(busyCmp);
   const highConv = allTrades.filter((t) => (t.conviction ?? 0) >= 4);
   const lowConv = allTrades.filter((t) => t.conviction != null && t.conviction <= 3);
-  const convCmp = compareGroups(
-    "conviction", "Высокая убеждённость",
-    { withLabel: "Убеждённость 4–5★", withoutLabel: "1–3★", lead: "В сделках с убеждённостью 4–5★", contrast: "при 1–3★" },
-    highConv, lowConv,
-  );
+  const convCmp = compareGroups("conviction", phraseOf("behavior", "conviction", lang), highConv, lowConv, lang);
   if (convCmp) behavior.push(convCmp);
   const topGrade = allTrades.filter((t) => t.confidenceGrade === "A+" || t.confidenceGrade === "A");
   const lowGrade = allTrades.filter((t) => t.confidenceGrade === "B" || t.confidenceGrade === "C");
-  const gradeCmp = compareGroups(
-    "grade", "Оценка A/A+",
-    { withLabel: "Оценка A/A+", withoutLabel: "Оценка B/C", lead: "В сделках с оценкой A/A+", contrast: "у сделок B/C" },
-    topGrade, lowGrade,
-  );
+  const gradeCmp = compareGroups("grade", phraseOf("behavior", "grade", lang), topGrade, lowGrade, lang);
   if (gradeCmp) behavior.push(gradeCmp);
 
   // Correlations: P&L where filled, R as fallback (local data often has no P&L).
@@ -409,10 +378,10 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   const ranked: RankedInsight[] = [...factors, ...behavior].map((c) => {
     const dWr = c.deltaWinRatePp ?? 0; // compareGroups guarantees deltaR or deltaWinRatePp
     const signed = c.deltaR ?? dWr / 50;
-    const metric = c.deltaR != null ? fmtR(c.deltaR) : `${dWr > 0 ? "+" : dWr < 0 ? "−" : ""}${Math.abs(dWr)} п.п.`;
+    const metric = c.deltaR != null ? fmtR(c.deltaR) : t("compare.pp", { value: `${dWr > 0 ? "+" : dWr < 0 ? "−" : ""}${Math.abs(dWr)}` });
     return {
       id: c.key,
-      title: `${c.withLabel}: ${metric} ${c.deltaR != null ? "на сделку" : "к винрейту"}`,
+      title: t(c.deltaR != null ? "compare.titleR" : "compare.titleWr", { label: c.withLabel, metric }),
       text: c.text,
       tone: Math.abs(signed) < 0.05 ? "neutral" as const : signed > 0 ? "up" as const : "down" as const,
       impact: c.impact,
@@ -425,8 +394,8 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   if (allTrades.length >= 3 && coveragePct < 0.5) {
     ranked.push({
       id: "coverage",
-      title: "Мало чек-инов",
-      text: `Утренний чек-ин есть только для ${Math.round(coveragePct * 100)}% сделок (${tradesWithCheckin.length} из ${allTrades.length}). Заполняйте его каждый торговый день — тогда сон, стресс и фокус можно будет сравнить с результатом.`,
+      title: t("coverage.title"),
+      text: t("coverage.text", { pct: Math.round(coveragePct * 100), n: tradesWithCheckin.length, total: allTrades.length }),
       tone: "neutral",
       impact: 0,
       sample: tradesWithCheckin.length,
@@ -438,9 +407,11 @@ router.get("/analytics/psychology", asyncHandler(async (req, res): Promise<void>
   const insights: string[] = ranked.filter((i) => i.id !== "coverage").slice(0, 5).map((i) => i.text);
   if (bestEmotionalState) {
     const bs = stateEntries.find((s) => s.state === bestEmotionalState);
-    if (bs && bs.winRate != null) insights.push(`Лучшее состояние для вас: ${STATE_LABEL_RU[bestEmotionalState] ?? bestEmotionalState} (WR ${Math.round(bs.winRate * 100)}%)`);
+    if (bs && bs.winRate != null) {
+      insights.push(t("bestState", { state: psychologyT.tryFor(lang, `states.${bestEmotionalState}`) ?? bestEmotionalState, wr: Math.round(bs.winRate * 100) }));
+    }
   }
-  if (insights.length === 0) insights.push("Накопите больше данных (минимум 2 сделки в каждой группе сравнения) для появления инсайтов");
+  if (insights.length === 0) insights.push(t("noData"));
 
   const emotionalImpactArray = Object.entries(emotionalImpact)
     .map(([emotion, stats]) => ({ emotion, ...stats }))

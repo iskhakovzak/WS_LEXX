@@ -9,6 +9,9 @@ import { cn } from "@/lib/utils";
 import { num } from "./lib";
 import { OptTerm, type OptTermKey } from "./glossary";
 
+/** Rich text from a translated template — the shared helper (i18n/rich.tsx), re-exported for old imports. */
+export { rich } from "@/i18n/rich";
+
 /** "?" icon with a tooltip; focusable for keyboard users. */
 export function Hint({ text }: { text: string }) {
   return (
@@ -74,7 +77,7 @@ export function NumField({
   return (
     <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <div className="flex min-h-5 items-center gap-1">
-        <Label htmlFor={id} className="truncate text-xs font-normal text-muted-foreground">{label}</Label>
+        <Label htmlFor={id} className="truncate text-xs font-normal text-muted-foreground" title={typeof label === "string" ? label : undefined}>{label}</Label>
         {term && <OptTerm term={term} />}
         {hint && <Hint text={hint} />}
       </div>
@@ -173,7 +176,7 @@ export function MetricTile({
         {hint && <Hint text={hint} />}
       </div>
       <div className={cn("truncate text-lg font-semibold tabular-nums tracking-tight", tone)}>{value}</div>
-      {sub && <div className="truncate text-2xs text-muted-foreground">{sub}</div>}
+      {sub && <div className="line-clamp-2 break-words text-2xs text-muted-foreground" title={typeof sub === "string" ? sub : undefined}>{sub}</div>}
     </div>
   );
 }

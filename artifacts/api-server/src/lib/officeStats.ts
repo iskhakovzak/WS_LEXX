@@ -32,20 +32,20 @@
  * (share counts hint at position size), no per-trader rows. Admins (partners) get both views plus traders.
  */
 
+import { insightsT } from "../i18n/ns";
+import { localeTagFor, type Lang } from "../i18n";
+
 // ─── Strategies ─────────────────────────────────────────────────────────────────────────────────────────────
 
 export const STRATEGIES = ["OPG", "OPGtoDAY", "Day", "MOC", "AfterMarket", "Overnight", "OPT"] as const;
 export type Strategy = (typeof STRATEGIES)[number];
 
-export const STRATEGY_RULES_RU: Record<Strategy, string> = {
-  OPG: "Вход в премаркете или на открывающем аукционе (до 09:31), выход до 10:00",
-  OPGtoDAY: "Вход на открытии (премаркет / аукцион до 09:31), позиция удержана в день — выход после 10:00",
-  Day: "Внутридневная сделка: вход после 09:31 и до 15:50, выход до закрывающего аукциона",
-  MOC: "Закрывающий аукцион: вход после публикации дисбалансов (с 15:50) или выход в аукционе 15:59:30–16:01",
-  AfterMarket: "Постмаркет: вход после 16:00 или выход внутридневной позиции после 16:01",
-  Overnight: "Позиция перенесена через закрытие сессии (выход на следующий день или позже)",
-  OPT: "Опционы: символ контракта в формате OCC (например, AAPL261016C00230000)",
-};
+/** Strategy rule text in `lang` (insights namespace `rule.*`). */
+export function strategyRule(key: Strategy, lang: Lang = "ru"): string {
+  return insightsT.tFor(lang)(`rule.${key}`);
+}
+/** RU rules (kept for older imports). */
+export const STRATEGY_RULES_RU = Object.fromEntries(STRATEGIES.map((k) => [k, strategyRule(k)])) as Record<Strategy, string>;
 
 const hms = (h: number, m: number, s = 0) => h * 3600 + m * 60 + s;
 
@@ -562,10 +562,18 @@ export function buildYear(valued: Valued[], setting: YearSetting, unit: Unit, to
   };
 }
 
-const WEEKDAY_RU = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"];
+/** Short weekday names Mon..Sun in `lang` (Intl). */
+function weekdayLabels(lang: Lang): string[] {
+  const f = new Intl.DateTimeFormat(localeTagFor(lang), { weekday: "short", timeZone: "UTC" });
+  // 2026-10-12 is a Monday.
+  return Array.from({ length: 7 }, (_, i) => {
+    const s = f.format(new Date(Date.UTC(2026, 9, 12 + i, 12)));
+    return s.charAt(0).toUpperCase() + s.slice(1);
+  });
+}
 /** Entry-time buckets: pre-market, 30-minute slots of the regular session, post-market. */
 export const TIME_BUCKETS: { key: string; label: string; fromSec: number | null }[] = (() => {
-  const out: { key: string; label: string; fromSec: number | null }[] = [{ key: "pre", label: "Премаркет", fromSec: null }];
+  const out: { key: string; label: string; fromSec: number | null }[] = [{ key: "pre", label: insightsT.tFor("ru")("bucket.pre"), fromSec: null }];
   const pad = (n: number) => String(n).padStart(2, "0");
   for (let s = RTH_OPEN_SEC; s < RTH_CLOSE_SEC; s += 1800) {
     const a = `${Math.floor(s / 3600)}:${pad((s % 3600) / 60)}`;
@@ -573,7 +581,7 @@ export const TIME_BUCKETS: { key: string; label: string; fromSec: number | null 
     const b = `${Math.floor(e / 3600)}:${pad((e % 3600) / 60)}`;
     out.push({ key: `t${s}`, label: `${a}–${b}`, fromSec: s });
   }
-  out.push({ key: "post", label: "Постмаркет", fromSec: null });
+  out.push({ key: "post", label: insightsT.tFor("ru")("bucket.post"), fromSec: null });
   return out;
 })();
 
@@ -642,11 +650,13 @@ function traderRows(trades: Valued[], officeDays: string[], officeNet: number): 
   }).sort((a, b) => b.net - a.net || b.trades - a.trades);
 }
 
-export function buildPeriod(valued: Valued[], from: string, to: string, opts: { traders: boolean }): PeriodView {
+export function buildPeriod(valued: Valued[], from: string, to: string, opts: { traders: boolean; lang?: Lang }): PeriodView {
+  const lang: Lang = opts.lang ?? "ru";
+  const bucketLabel = (b: { key: string; label: string }) => (b.key === "pre" || b.key === "post" ? insightsT.tFor(lang)(`bucket.${b.key}`) : b.label);
   const trades = valued.filter((t) => t.day >= from && t.day <= to);
   const dv = dailyValues(trades);
   const totals = totalsOf(trades, dv);
-  const timeOfDay: TimeBucket[] = TIME_BUCKETS.map((b) => ({ ...b, v: 0, trades: 0, wins: 0, losses: 0, winRate: null }));
+  const timeOfDay: TimeBucket[] = TIME_BUCKETS.map((b) => ({ ...b, label: bucketLabel(b), v: 0, trades: 0, wins: 0, losses: 0, winRate: null }));
   const tIdx = new Map(timeOfDay.map((b, i) => [b.key, i]));
   for (const t of trades) {
     const k = timeBucketKey(t.entrySec, t.session);
@@ -656,7 +666,7 @@ export function buildPeriod(valued: Valued[], from: string, to: string, opts: { 
     if (t.result === "win") b.wins++; else if (t.result === "loss") b.losses++;
   }
   for (const b of timeOfDay) { b.v = round(b.v); b.winRate = b.wins + b.losses ? round(b.wins / (b.wins + b.losses), 4) : null; }
-  const weekday: WeekdayRow[] = WEEKDAY_RU.slice(0, 5).map((label, i) => ({ weekday: i, label, v: 0, days: 0, green: 0, avg: null }));
+  const weekday: WeekdayRow[] = weekdayLabels(lang).slice(0, 5).map((label, i) => ({ weekday: i, label, v: 0, days: 0, green: 0, avg: null }));
   for (const d of dv) {
     const w = weekday[weekdayOf(d.date)];
     if (!w) continue;
@@ -681,9 +691,12 @@ export function buildPrev(valued: Valued[], from: string, to: string): PrevPerio
   return { from, to, totals, strategies: strategyRows(trades, totals.net).map((s) => ({ key: s.key, net: s.net })) };
 }
 
-// ─── Insights (deterministic, plain Russian — never an AI call) ─────────────────────────────────────────────
+// ─── Insights (deterministic, in the reader's language — never an AI call) ──────────────────────────────────
 
-const MONTH_RU = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+/** Stand-alone month name (1–12) in `lang`, lower-case like inside a sentence. */
+function monthName(month: number, lang: Lang): string {
+  return new Intl.DateTimeFormat(localeTagFor(lang), { month: "long", timeZone: "UTC" }).format(new Date(Date.UTC(2026, month - 1, 15))).toLowerCase();
+}
 
 export function fmtUnit(v: number, unit: Unit, signed = true): string {
   const sign = v > 0 ? (signed ? "+" : "") : v < 0 ? "−" : "";
@@ -692,12 +705,9 @@ export function fmtUnit(v: number, unit: Unit, signed = true): string {
   return `${sign}$${Math.round(a).toLocaleString("en-US")}`;
 }
 const pctOf = (x: number) => `${Math.round(x * 100)}%`;
-const plural = (n: number, one: string, few: string, many: string) => {
-  const a = Math.abs(n) % 100, b = a % 10;
-  return a > 10 && a < 20 ? many : b > 1 && b < 5 ? few : b === 1 ? one : many;
-};
 
-export function buildInsights(view: Omit<OfficeView, "insights">, today: string): Insight[] {
+export function buildInsights(view: Omit<OfficeView, "insights">, today: string, lang: Lang = "ru"): Insight[] {
+  const t = insightsT.tFor(lang);
   const out: Insight[] = [];
   const unit = view.unit;
   const p = view.period;
@@ -709,11 +719,11 @@ export function buildInsights(view: Omit<OfficeView, "insights">, today: string)
     .map((s) => ({ s, k: s.netShare! / s.volumeShare! }))
     .sort((a, b) => b.k - a.k)[0];
   if (eff && eff.k >= 1.5) {
-    out.push({ key: `eff-${eff.s.key}`, tone: "up", text: `${eff.s.key} даёт ${pctOf(eff.s.netShare!)} результата при ${pctOf(eff.s.volumeShare!)} объёма` });
+    out.push({ key: `eff-${eff.s.key}`, tone: "up", text: t("insight.eff", { strategy: eff.s.key, net: pctOf(eff.s.netShare!), volume: pctOf(eff.s.volumeShare!) }) });
   }
   // 2. A strategy that eats volume and loses.
   const drag = p.strategies.filter((s) => s.net < 0 && (s.volumeShare ?? 0) >= 0.1).sort((a, b) => a.net - b.net)[0];
-  if (drag) out.push({ key: `drag-${drag.key}`, tone: "down", text: `${drag.key} в минусе (${fmtUnit(drag.net, unit)}) при ${pctOf(drag.volumeShare!)} объёма офиса` });
+  if (drag) out.push({ key: `drag-${drag.key}`, tone: "down", text: t("insight.drag", { strategy: drag.key, value: fmtUnit(drag.net, unit), volume: pctOf(drag.volumeShare!) }) });
 
   // 3. Negative months in a row per strategy (latest year).
   if (year) {
@@ -721,37 +731,37 @@ export function buildInsights(view: Omit<OfficeView, "insights">, today: string)
     for (const s of year.strategies) {
       let n = 0;
       for (let m = lastMonth - 1; m >= 0; m--) { const v = s.monthly[m]; if (v != null && v < 0) n++; else break; }
-      if (n >= 2) out.push({ key: `neg-${s.key}`, tone: "warn", text: `${s.key} в минусе ${n} ${plural(n, "месяц", "месяца", "месяцев")} подряд` });
+      if (n >= 2) out.push({ key: `neg-${s.key}`, tone: "warn", text: t("insight.negMonths", { strategy: s.key, count: n }) });
     }
   }
   // 4. Goal pace.
   if (year?.pace && year.goal != null) {
     const pc = year.pace;
     const goalTxt = unit === "pct" ? `+${year.goalPct}%` : fmtUnit(year.goal, unit);
-    if (pc.status === "done") out.push({ key: "pace", tone: "up", text: `Цель ${year.year} (${goalTxt}) уже выполнена: ${fmtUnit(pc.actual, unit)}` });
-    else if (pc.status === "ahead") out.push({ key: "pace", tone: "up", text: `Офис опережает темп к цели ${goalTxt} на ${fmtUnit(Math.abs(pc.gap), unit, false)}` });
-    else out.push({ key: "pace", tone: "warn", text: `До цели ${goalTxt} нужно ${fmtUnit(pc.needPerMonth, unit)} в месяц — отставание от темпа ${fmtUnit(Math.abs(pc.gap), unit, false)}` });
+    if (pc.status === "done") out.push({ key: "pace", tone: "up", text: t("insight.goalDone", { year: year.year, goal: goalTxt, value: fmtUnit(pc.actual, unit) }) });
+    else if (pc.status === "ahead") out.push({ key: "pace", tone: "up", text: t("insight.goalAhead", { goal: goalTxt, value: fmtUnit(Math.abs(pc.gap), unit, false) }) });
+    else out.push({ key: "pace", tone: "warn", text: t("insight.goalBehind", { goal: goalTxt, need: fmtUnit(pc.needPerMonth, unit), gap: fmtUnit(Math.abs(pc.gap), unit, false) }) });
   }
   // 5. Current streak.
   if (year && year.year === yearOf(today) && Math.abs(year.streaks.current) >= 3) {
     const n = Math.abs(year.streaks.current);
     out.push(year.streaks.current > 0
-      ? { key: "streak", tone: "up", text: `${n} ${plural(n, "зелёный день", "зелёных дня", "зелёных дней")} подряд` }
-      : { key: "streak", tone: "down", text: `${n} ${plural(n, "красный день", "красных дня", "красных дней")} подряд` });
+      ? { key: "streak", tone: "up", text: t("insight.greenStreak", { count: n }) }
+      : { key: "streak", tone: "down", text: t("insight.redStreak", { count: n }) });
   }
   // 6. Drawdown now.
   if (year && year.drawdown.current < 0 && year.drawdown.currentDays >= 3) {
     const d = year.drawdown;
-    out.push({ key: "dd", tone: "warn", text: `Офис ниже пика на ${fmtUnit(-d.current, unit, false)} уже ${d.currentDays} ${plural(d.currentDays, "торговый день", "торговых дня", "торговых дней")}` });
+    out.push({ key: "dd", tone: "warn", text: t("insight.drawdown", { value: fmtUnit(-d.current, unit, false), count: d.currentDays }) });
   }
   // 7. Best time of day.
   const pos = p.timeOfDay.filter((b) => b.v > 0);
   const posSum = pos.reduce((a, b) => a + b.v, 0);
   const bestT = [...pos].sort((a, b) => b.v - a.v)[0];
-  if (bestT && posSum > 0 && bestT.v / posSum >= 0.25) out.push({ key: "time", tone: "neutral", text: `Лучшее время входа — ${bestT.label}: ${pctOf(bestT.v / posSum)} прибыли` });
+  if (bestT && posSum > 0 && bestT.v / posSum >= 0.25) out.push({ key: "time", tone: "neutral", text: t("insight.bestTime", { bucket: bestT.label, share: pctOf(bestT.v / posSum) }) });
   // 8. Ticker concentration.
   const tt = p.tickers.top[0];
-  if (tt && tt.share != null && tt.share >= 0.2) out.push({ key: "ticker", tone: "neutral", text: `${tt.ticker} — ${pctOf(tt.share)} всей прибыли периода` });
+  if (tt && tt.share != null && tt.share >= 0.2) out.push({ key: "ticker", tone: "neutral", text: t("insight.ticker", { ticker: tt.ticker, share: pctOf(tt.share) }) });
   // 9. YoY to the same day.
   if (year && view.years.length > 1) {
     const prevY = view.years.find((y) => y.year === year.year - 1 && y.hasData);
@@ -761,14 +771,14 @@ export function buildInsights(view: Omit<OfficeView, "insights">, today: string)
       const was = ref ? ref.cum : 0;
       out.push({
         key: "yoy", tone: last.cum >= was ? "up" : "down",
-        text: `К этому дню ${prevY.year} было ${fmtUnit(was, unit)}, в ${year.year} — ${fmtUnit(last.cum, unit)}`,
+        text: t("insight.yoy", { prevYear: prevY.year, was: fmtUnit(was, unit), year: year.year, now: fmtUnit(last.cum, unit) }),
       });
     }
   }
   // 10. Best month.
   if (year) {
     const best = [...year.months].filter((m) => m.v != null && m.v > 0).sort((a, b) => (b.v ?? 0) - (a.v ?? 0))[0];
-    if (best) out.push({ key: "month", tone: "up", text: `Лучший месяц ${year.year} — ${MONTH_RU[best.month - 1]}: ${fmtUnit(best.v!, unit)}` });
+    if (best) out.push({ key: "month", tone: "up", text: t("insight.bestMonth", { year: year.year, month: monthName(best.month, lang), value: fmtUnit(best.v!, unit) }) });
   }
   return out.slice(0, 8);
 }
@@ -783,6 +793,8 @@ export interface ViewOptions {
   to: string;
   today: string;
   traders: boolean;
+  /** Language of labels and insights (default RU). */
+  lang?: Lang;
 }
 
 export function settingFor(settings: Map<number, YearSetting>, year: number): YearSetting {
@@ -792,10 +804,10 @@ export function settingFor(settings: Map<number, YearSetting>, year: number): Ye
 export function buildOfficeView(trades: OfficeTrade[], o: ViewOptions): OfficeView {
   const valued = toValued(trades, o.unit, o.settings);
   const years = [...o.years].sort((a, b) => a - b).map((y) => buildYear(valued, settingFor(o.settings, y), o.unit, o.today));
-  const period = buildPeriod(valued, o.from, o.to, { traders: o.traders });
+  const period = buildPeriod(valued, o.from, o.to, { traders: o.traders, lang: o.lang });
   const prev = buildPrev(valued, shiftYear(o.from, -1), shiftYear(o.to, -1));
   const base = { unit: o.unit, years, period, prev };
-  return { ...base, insights: buildInsights(base, o.today) };
+  return { ...base, insights: buildInsights(base, o.today, o.lang ?? "ru") };
 }
 
 /** Keys that never reach a member: absolute volume (position size) and per-trader rows. */

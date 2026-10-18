@@ -4,6 +4,8 @@
  * GET /api/training/pool|task, the recently played keys (not repeated) and the chart-lab URL of a picked task.
  */
 
+import { chartLabI18n } from "@/i18n/ns/chartLab";
+
 export type TaskSource = "mine" | "desk" | "day";
 /** Coarsest bars a task may have: "1m" — only days with 1-minute bars, "5m" — 1m or 5m, "any" — hourly too. */
 export type TaskRes = "1m" | "5m" | "any";
@@ -43,8 +45,17 @@ export const TASK_RECENT_MAX = 40;
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const TICKER = /^[A-Z][A-Z0-9.\-]{0,10}$/;
 
-export const SOURCE_LABEL: Record<TaskSource, string> = { mine: "Мои сделки", desk: "Сделки деска", day: "Любой тикер-день" };
-export const RES_LABEL: Record<TaskRes, string> = { "1m": "1 мин", "5m": "до 5 мин", any: "любые" };
+/** Labels in the UI language (getters: every read follows the current language). */
+export const SOURCE_LABEL: Readonly<Record<TaskSource, string>> = {
+  get mine() { return chartLabI18n.t("tasks.source.mine"); },
+  get desk() { return chartLabI18n.t("tasks.source.desk"); },
+  get day() { return chartLabI18n.t("tasks.source.day"); },
+};
+export const RES_LABEL: Readonly<Record<TaskRes, string>> = {
+  get "1m"() { return chartLabI18n.t("tasks.res.1m"); },
+  get "5m"() { return chartLabI18n.t("tasks.res.5m"); },
+  get any() { return chartLabI18n.t("tasks.res.any"); },
+};
 
 export function normTicker(v: string): string {
   return v.trim().toUpperCase();
@@ -130,10 +141,11 @@ export function taskUrl(t: Pick<PickedTask, "kind" | "tradeId" | "ticker" | "dat
 /** Message for an empty pool, in the words of the current settings. */
 export function noTasksMessage(s: TaskSettings, c: PoolCounts | null | undefined): string {
   const total = c?.total ?? 0;
+  const t = chartLabI18n.t;
   if (!total) {
-    if (s.source === "mine") return activeFilterCount(s) ? "Под эти фильтры твоих сделок нет — ослабь фильтры или возьми сделки деска." : "У тебя пока нет закрытых сделок — возьми сделки деска или любой тикер-день.";
-    return "Под эти фильтры задач нет — ослабь фильтры.";
+    if (s.source === "mine") return activeFilterCount(s) ? t("tasks.none.mineFiltered") : t("tasks.none.mineEmpty");
+    return t("tasks.none.filtered");
   }
-  if (s.res === "1m") return `С 1-минутками задач нет (всего ${total}) — выбери «до 5 мин»: 1-минутки Yahoo хранит только 7 дней.`;
-  return `С минутными барами задач нет — только ${c?.["60m"] ?? 0} с часовыми. Выбери «любые» или другой источник: 5-минутки есть за последние 60 дней.`;
+  if (s.res === "1m") return t("tasks.none.only1m", { total, res: RES_LABEL["5m"] });
+  return t("tasks.none.onlyHourly", { count: c?.["60m"] ?? 0, res: RES_LABEL.any });
 }

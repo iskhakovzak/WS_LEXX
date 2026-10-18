@@ -4,11 +4,12 @@ import { EmptyState, Panel, Pill, toneOf, toneText } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { useEodStatus, type EodStatus } from "@/components/eod/eod-api";
-import { MOOD_LABELS } from "./DayJournalEditor";
+import { MOOD_LABELS } from "./vocab";
 import { type JournalEntry, hasReview } from "./use-journal-days";
 import { netPnl, type Trade } from "./utils";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtUsd, localeTag } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { journalI18n } from "@/i18n/ns/journal";
 
 type TradeLike = Trade;
 
@@ -18,7 +19,6 @@ type Row = {
 };
 
 const STATUS_ICON = { open: LockOpen, closed: Lock, reviewed: CheckCheck } as const;
-const STATUS_TEXT: Record<EodStatus, string> = { open: "не закрыт", closed: "ждёт проверки", reviewed: "проверен" };
 
 /**
  * Curator «Вся команда» for one day: per trader — result, journal reflection, day closed / reviewed.
@@ -34,6 +34,7 @@ export function TeamDay({
   isLoading: boolean;
   onPick: (trader: string) => void;
 }) {
+  const { t } = journalI18n.useT();
   const statusQ = useEodStatus(date, "", date <= today);
 
   const rows = useMemo<Row[]>(() => {
@@ -58,7 +59,7 @@ export function TeamDay({
     }
     for (const e of entries) get(e.trader).entry = e;
     const rank = (r: Row) => (r.trades > 0 && r.status !== "closed" && r.status !== "reviewed" ? 0 : r.status === "closed" ? 1 : 2);
-    return Array.from(m.values()).sort((a, b) => rank(a) - rank(b) || a.trader.localeCompare(b.trader, "ru"));
+    return Array.from(m.values()).sort((a, b) => rank(a) - rank(b) || a.trader.localeCompare(b.trader, localeTag()));
   }, [trades, statusQ.data, entries]);
 
   const notClosed = rows.filter((r) => r.trades > 0 && (r.status === "open" || r.status == null)).length;
@@ -66,18 +67,20 @@ export function TeamDay({
 
   return (
     <Panel
-      title="Команда за день"
+      title={t("team.title")}
       icon={Users}
       description={
         rows.length
-          ? `${fmtDate(date, "dayMonth")} · разборов ${reviewed}/${rows.length}${notClosed ? ` · не закрыли день: ${notClosed}` : ""}`
+          ? notClosed
+            ? t("team.descNotClosed", { date: fmtDate(date, "dayMonth"), reviewed, total: rows.length, count: notClosed })
+            : t("team.desc", { date: fmtDate(date, "dayMonth"), reviewed, total: rows.length })
           : fmtDate(date, "dayMonth")
       }
     >
       {isLoading ? (
         <div className="space-y-2">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}</div>
       ) : rows.length === 0 ? (
-        <EmptyState icon={Users} title="В этот день никто не торговал" compact />
+        <EmptyState icon={Users} title={t("team.empty")} compact />
       ) : (
         <ul className="space-y-1.5">
           {rows.map((r) => {
@@ -97,23 +100,23 @@ export function TeamDay({
                         <span className={cn("font-semibold", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true, decimals: "auto" })}</span>
                         <span className="block text-muted-foreground">{commonI18n.t("units.trades", { count: r.trades })}</span>
                       </>
-                    ) : <span className="text-muted-foreground">без сделок</span>}
+                    ) : <span className="text-muted-foreground">{t("team.noTrades")}</span>}
                   </span>
                   <span className="min-w-0">
                     {filled ? (
                       <span className="flex min-w-0 items-center gap-1.5">
                         <NotebookPen className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
                         {r.entry?.mood != null && <span className="shrink-0 text-muted-foreground">{MOOD_LABELS[r.entry.mood - 1]} ·</span>}
-                        <span className="truncate text-foreground/90">{r.entry?.lessons || r.entry?.mistakes || r.entry?.well || "разбор заполнен"}</span>
+                        <span className="truncate text-foreground/90" title={r.entry?.lessons || r.entry?.mistakes || r.entry?.well || undefined}>{r.entry?.lessons || r.entry?.mistakes || r.entry?.well || t("team.reviewFilled")}</span>
                       </span>
                     ) : (
-                      <span className="text-muted-foreground">{r.trades > 0 ? "разбор не заполнен" : r.entry?.plan.trim() ? "есть план" : "—"}</span>
+                      <span className="text-muted-foreground">{r.trades > 0 ? t("team.reviewMissing") : r.entry?.plan.trim() ? t("team.hasPlan") : "—"}</span>
                     )}
                   </span>
                   <span className="flex items-center gap-1.5">
                     {r.status && (
                       <Pill tone={r.status === "reviewed" ? "up" : r.status === "closed" ? "accent" : r.trades > 0 ? "warn" : "neutral"}>
-                        <Icon className="h-3 w-3" aria-hidden="true" />{STATUS_TEXT[r.status]}{r.status === "reviewed" && r.score != null ? ` · ${r.score}/5` : ""}
+                        <Icon className="h-3 w-3" aria-hidden="true" />{t(`team.status.${r.status}`)}{r.status === "reviewed" && r.score != null ? ` · ${r.score}/5` : ""}
                       </Pill>
                     )}
                   </span>

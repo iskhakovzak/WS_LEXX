@@ -36,7 +36,7 @@ export const ATR_FALLBACK_PCT = 0.03;
 
 export function isShort(side: string | null | undefined): boolean {
   const s = String(side ?? "").trim().toLowerCase();
-  return s.startsWith("s") || s.startsWith("ш"); // short / шорт
+  return s.startsWith("s") || s.startsWith("ш"); // i18n-ignore: parses broker side spelled «шорт» (data, not UI)
 }
 
 /** +1 for long, −1 for short. */
@@ -191,13 +191,16 @@ export type Concentration = {
   correlatedLongs: CorrelatedGroup[];
 };
 
+/** Bucket key of positions without a sector (display: risk «overnight.conc.noSector»). */
+export const NO_SECTOR = "";
+
 export function concentration(positions: BookPosition[], quotes: Record<string, BookQuote | undefined>, sectors: Record<string, string | null | undefined> = {}): Concentration {
   const rows = positions.map((p) => {
     const m = markPosition(p, quotes[p.ticker.toUpperCase()]);
     const mv = m.marketValueUsd ?? 0;
     const d = dir(p.side);
     const sector = p.sector ?? sectors[p.ticker.toUpperCase()] ?? null;
-    return { p, mv, d, sector: sector && sector.trim() ? sector : "Без сектора" };
+    return { p, mv, d, sector: sector && sector.trim() ? sector : NO_SECTOR };
   });
   const gross = r2(rows.reduce((s, x) => s + x.mv, 0));
   const longUsd = r2(rows.filter((x) => x.d > 0).reduce((s, x) => s + x.mv, 0));
@@ -238,7 +241,7 @@ export function concentration(positions: BookPosition[], quotes: Record<string, 
         pctOfGross: gross > 0 ? r2((longs.reduce((s, x) => s + x.mv, 0) / gross) * 100) : 0,
       };
     })
-    .filter((g) => g.count >= 2 && g.sector !== "Без сектора")
+    .filter((g) => g.count >= 2 && g.sector !== NO_SECTOR)
     .sort((a, b) => b.longUsd - a.longUsd);
   return {
     grossUsd: gross,

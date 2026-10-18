@@ -19,6 +19,7 @@ import { execSpanJoin } from "../lib/execSpan";
 import { nyDate } from "../lib/tradingDate";
 import { buildDayReport, toDayTrade, type DailyNet } from "../lib/dayReport";
 import { badRequest, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -139,7 +140,7 @@ router.get("/day-report", asyncHandler(async (req, res) => {
     trades,
     history,
     dailyLossLimit: limit.value,
-    options: { revengeMin: q.revengeMin },
+    options: { revengeMin: q.revengeMin, lang: langOf(req) },
   });
 
   res.json({

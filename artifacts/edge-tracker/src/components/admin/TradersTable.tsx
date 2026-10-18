@@ -17,24 +17,18 @@ import {
 } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { ActivityStrip } from "./ActivityStrip";
-import { ROLE_LABEL, downloadCsv, isTypingTarget, timeAgo, type DeskPulse, type PulseUser } from "./api";
+import { downloadCsv, isTypingTarget, roleLabel, timeAgo, type DeskPulse, type PulseUser } from "./api";
 import { useUserActions } from "./useUserActions";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 import { fmtDate } from "@/lib/format";
-
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
+import { adminI18n } from "@/i18n/ns/admin";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type TraderFilter = "all" | "traders" | "staff" | "nojournal" | "violations" | "stale" | "banned";
 
-const FILTERS: { value: TraderFilter; label: string }[] = [
-  { value: "all", label: "Все" },
-  { value: "traders", label: "Трейдеры" },
-  { value: "staff", label: "Кураторы и админы" },
-  { value: "nojournal", label: "Без журнала сегодня" },
-  { value: "violations", label: "С нарушениями" },
-  { value: "stale", label: "Не заходили 3+ дн" },
-  { value: "banned", label: "Забанены" },
-];
+const FILTERS: readonly TraderFilter[] = ["all", "traders", "staff", "nojournal", "violations", "stale", "banned"];
+/** Signal filters: shown only when they match someone (or are selected) — fewer chips at once. */
+const SIGNAL_FILTERS = new Set<TraderFilter>(["nojournal", "violations", "stale", "banned"]);
 
 const STALE_MS = 3 * 86_400_000;
 const isStale = (u: PulseUser) => !u.lastSeen || Date.now() - Date.parse(u.lastSeen) > STALE_MS;
@@ -69,45 +63,49 @@ function roleTone(role: string): Tone {
 export type RiskStatus = "breach" | "warn" | "ok" | "no_limits";
 
 function RiskPill({ status }: { status: RiskStatus | undefined }) {
+  const { t } = adminI18n.useT();
   if (!status) return <span className="text-muted-foreground">—</span>;
-  if (status === "breach") return <Pill tone="down" dot>Лимит превышен</Pill>;
-  if (status === "warn") return <Pill tone="warn" dot>Близко к лимиту</Pill>;
-  if (status === "ok") return <Pill tone="up">В норме</Pill>;
-  return <Pill tone="neutral">Без лимитов</Pill>;
+  if (status === "breach") return <Pill tone="down" dot>{t("activity.risk.breach")}</Pill>;
+  if (status === "warn") return <Pill tone="warn" dot>{t("activity.risk.warn")}</Pill>;
+  if (status === "ok") return <Pill tone="up">{t("activity.risk.ok")}</Pill>;
+  return <Pill tone="neutral">{t("activity.risk.none")}</Pill>;
 }
 
 function StatusPill({ u }: { u: PulseUser }) {
-  if (u.banned) return <Pill tone="down" dot>Забанен</Pill>;
-  if (!u.active) return <Pill tone="neutral">Неактивен</Pill>;
-  if (u.activeToday) return <Pill tone="up" dot>Сегодня в работе</Pill>;
-  if (isStale(u)) return <Pill tone="warn">Давно не заходил</Pill>;
-  return <Pill tone="neutral">Не сегодня</Pill>;
+  const { t } = adminI18n.useT();
+  if (u.banned) return <Pill tone="down" dot>{t("activity.status.banned")}</Pill>;
+  if (!u.active) return <Pill tone="neutral">{t("activity.status.inactive")}</Pill>;
+  if (u.activeToday) return <Pill tone="up" dot>{t("activity.status.today")}</Pill>;
+  if (isStale(u)) return <Pill tone="warn">{t("activity.status.stale")}</Pill>;
+  return <Pill tone="neutral">{t("activity.status.notToday")}</Pill>;
 }
 
 function StreakCell({ u, journalAvailable }: { u: PulseUser; journalAvailable: boolean }) {
+  const { t } = adminI18n.useT();
   if (!journalAvailable) return <span className="text-muted-foreground">—</span>;
   return (
     <span className="inline-flex items-center gap-1.5">
       <span className={cn("inline-flex items-center gap-1 font-semibold tabular-nums", u.notesStreak >= 3 ? "text-[hsl(var(--chart-3))]" : "text-foreground")}>
         {u.notesStreak >= 3 && <Flame className="h-3.5 w-3.5" aria-hidden="true" />}
         {u.notesStreak}
-        <span className="sr-only"> дн подряд</span>
+        <span className="sr-only">{t("activity.streakSr")}</span>
       </span>
       {u.journalToday
-        ? <Pill tone="up" className="px-1.5">сегодня ✓</Pill>
-        : u.role === "trader" && !u.banned ? <Pill tone="warn" className="px-1.5">нет записи</Pill> : null}
+        ? <Pill tone="up" className="px-1.5">{t("activity.journalToday")}</Pill>
+        : u.role === "trader" && !u.banned ? <Pill tone="warn" className="px-1.5">{t("activity.noEntry")}</Pill> : null}
     </span>
   );
 }
 
 function ViolationsCell({ u, available }: { u: PulseUser; available: boolean }) {
+  const { t } = adminI18n.useT();
   if (!available) return <span className="text-muted-foreground">—</span>;
   if (u.violationsTotal === 0) return <span className="text-muted-foreground tabular-nums">0</span>;
   return (
     <span className="inline-flex items-center justify-end gap-1.5 tabular-nums">
       {u.violationsWeek > 0
-        ? <Pill tone={u.violationsHighWeek > 0 ? "down" : "warn"}>{u.violationsWeek} за 7д</Pill>
-        : <span className="text-muted-foreground">0 за 7д</span>}
+        ? <Pill tone={u.violationsHighWeek > 0 ? "down" : "warn"}>{t("activity.violationsWeek", { count: u.violationsWeek })}</Pill>
+        : <span className="text-muted-foreground">{t("activity.violationsWeek", { count: 0 })}</span>}
       <span className="text-xs text-muted-foreground">/ {u.violationsTotal}</span>
     </span>
   );
@@ -146,6 +144,7 @@ export function TradersTable({
     onFilterChange?.(f);
     try { localStorage.setItem(FILTER_KEY, f); } catch { /* ignore */ }
   };
+  const { t } = adminI18n.useT();
   const [q, setQ] = useState("");
   const [openName, setOpenName] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -165,7 +164,7 @@ export function TradersTable({
   const users = pulse?.users ?? [];
   const counts = useMemo(() => {
     const c = {} as Record<TraderFilter, number>;
-    for (const f of FILTERS) c[f.value] = users.filter((u) => matches(u, f.value)).length;
+    for (const f of FILTERS) c[f] = users.filter((u) => matches(u, f)).length;
     return c;
   }, [users]);
   const aliases = usePeopleAliases();
@@ -178,10 +177,10 @@ export function TradersTable({
 
   const exportCsv = () => {
     downloadCsv(
-      ["Имя", "Роль", "Статус", "Последний визит", "Сделок сегодня", "Сделок за 7д", "Последний день сделок", "Журнал сегодня", "Серия журнала", "Журнал за 30д", "Нарушений сегодня", "Нарушений за 7д", "Нарушений всего"],
+      (["name", "role", "status", "lastSeen", "today", "week", "lastTrade", "journalToday", "streak", "journal30", "violationsToday", "violationsWeek", "violationsTotal"] as const).map((k) => t(`activity.csv.${k}`)),
       rows.map((u) => [
-        u.name, ROLE_LABEL[u.role] ?? u.role, u.banned ? "забанен" : u.active ? "активен" : "неактивен",
-        u.lastSeen ?? "", u.tradesToday, u.tradesWeek, u.lastTradeDate ?? "", u.journalToday ? "да" : "нет",
+        u.name, roleLabel(u.role), u.banned ? t("activity.csv.banned") : u.active ? t("activity.csv.active") : t("activity.csv.inactive"),
+        u.lastSeen ?? "", u.tradesToday, u.tradesWeek, u.lastTradeDate ?? "", commonI18n.t(u.journalToday ? "yes" : "no").toLowerCase(),
         u.notesStreak, u.journal30, u.violationsToday, u.violationsWeek, u.violationsTotal,
       ]),
       `desk-activity-${pulse?.date ?? "today"}.csv`,
@@ -199,7 +198,7 @@ export function TradersTable({
             variant="ghost"
             size="icon"
             className="h-8 w-8 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 data-[state=open]:opacity-100"
-            aria-label={`Действия: ${u.name}`}
+            aria-label={t("people.menu.aria", { name: u.name })}
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal />
@@ -207,15 +206,15 @@ export function TradersTable({
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
           <DropdownMenuLabel className="text-xs text-muted-foreground">{u.name}</DropdownMenuLabel>
-          <DropdownMenuItem onSelect={() => setOpenName(u.name)}><UserCog /> Карточка трейдера</DropdownMenuItem>
-          {canTouch && <DropdownMenuItem onSelect={() => actions.setPassword(u)}><KeyRound /> Задать пароль</DropdownMenuItem>}
+          <DropdownMenuItem onSelect={() => setOpenName(u.name)}><UserCog /> {t("activity.menu.card")}</DropdownMenuItem>
+          {canTouch && <DropdownMenuItem onSelect={() => actions.setPassword(u)}><KeyRound /> {t("activity.menu.password")}</DropdownMenuItem>}
           {canTouch && !isSelf && (
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger><Users /> Роль: {ROLE_LABEL[u.role] ?? u.role}</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger><Users /> {t("people.menu.role", { name: roleLabel(u.role) })}</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup value={u.role} onValueChange={(role) => { if (role !== u.role) actions.changeRole(u, role); }}>
                   {(isAdmin ? (["trader", "curator", "admin"] as const) : (["trader", "curator"] as const)).map((r) => (
-                    <DropdownMenuRadioItem key={r} value={r}>{ROLE_LABEL[r]}</DropdownMenuRadioItem>
+                    <DropdownMenuRadioItem key={r} value={r}>{roleLabel(r)}</DropdownMenuRadioItem>
                   ))}
                 </DropdownMenuRadioGroup>
               </DropdownMenuSubContent>
@@ -223,10 +222,10 @@ export function TradersTable({
           )}
           <DropdownMenuSeparator />
           {u.banned ? (
-            <DropdownMenuItem onSelect={() => actions.unban(u)}><UserCheck /> Разбанить</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => actions.unban(u)}><UserCheck /> {t("activity.menu.unban")}</DropdownMenuItem>
           ) : (
             <DropdownMenuItem disabled={!canBan} onSelect={() => actions.ban(u)} className="text-down focus:text-down">
-              <Ban /> {canBan ? "Забанить…" : isSelf ? "Нельзя забанить себя" : "Бан недоступен"}
+              <Ban /> {canBan ? t("activity.menu.ban") : isSelf ? t("activity.menu.cantSelf") : t("activity.menu.banUnavailable")}
             </DropdownMenuItem>
           )}
         </DropdownMenuContent>
@@ -240,8 +239,8 @@ export function TradersTable({
 
   return (
     <Panel
-      title="Активность команды"
-      description={pulse ? `Сегодня ${pulse.date} · полоса — сделки за 14 дней, точка — запись в журнале` : undefined}
+      title={t("activity.title")}
+      description={pulse ? t("activity.description", { date: pulse.date }) : undefined}
       icon={Users}
       actions={
         <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}>
@@ -258,16 +257,16 @@ export function TradersTable({
               value={q}
               onChange={(e) => setQ(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Escape") { setQ(""); (e.target as HTMLInputElement).blur(); } }}
-              placeholder="Поиск по имени"
-              aria-label="Поиск по имени"
+              placeholder={t("activity.searchPlaceholder")}
+              aria-label={t("activity.searchPlaceholder")}
               className="pl-9 pr-10"
             />
             <Kbd className="absolute right-3 top-1/2 -translate-y-1/2">/</Kbd>
           </div>
-          <div className="scrollbar-none -mx-1 flex gap-1.5 overflow-x-auto px-1" role="group" aria-label="Фильтр пользователей">
-            {FILTERS.map((f) => (
-              <FilterChip key={f.value} active={filter === f.value} onClick={() => setFilter(f.value)} count={counts[f.value]} className="shrink-0">
-                {f.label}
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("activity.filterAria")}>
+            {FILTERS.filter((f) => !SIGNAL_FILTERS.has(f) || counts[f] > 0 || filter === f).map((f) => (
+              <FilterChip key={f} active={filter === f} onClick={() => setFilter(f)} count={counts[f]} className="shrink-0">
+                {t(`activity.filter.${f}`)}
               </FilterChip>
             ))}
           </div>
@@ -276,32 +275,32 @@ export function TradersTable({
         {error ? (
           <QueryError error={error} onRetry={onRetry} />
         ) : isLoading ? (
-          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Загрузка">
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label={commonI18n.t("states.loading")}>
             {Array.from({ length: 6 }).map((_, i) => <Skeleton key={i} className="h-12 w-full rounded-xl" />)}
           </div>
         ) : rows.length === 0 ? (
           <EmptyState
             icon={Users}
-            title={users.length === 0 ? "Пользователей нет" : "Никого по этому фильтру"}
-            description={users.length === 0 ? "Создать учётку можно в «Настройках»." : "Смените фильтр или очистите поиск."}
-            action={users.length > 0 ? <Button variant="outline" size="sm" onClick={() => { setQ(""); setFilter("all"); }}>Показать всех</Button> : undefined}
+            title={users.length === 0 ? t("people.emptyNone") : t("people.emptyFiltered")}
+            description={users.length === 0 ? t("activity.emptyNoneHint") : t("people.emptyFilteredHint")}
+            action={users.length > 0 ? <Button variant="outline" size="sm" onClick={() => { setQ(""); setFilter("all"); }}>{t("people.showAll")}</Button> : undefined}
           />
         ) : (
           <>
             {/* Desktop table */}
-            <DataTable className="hidden md:block" maxHeight="65vh" ariaLabel="Таблица активности команды">
+            <DataTable className="hidden md:block" maxHeight="65vh" ariaLabel={t("activity.tableAria")}>
               <table>
                 <thead>
                   <tr>
-                    <SortableTh {...thProps("name")}>Трейдер</SortableTh>
-                    <SortableTh {...thProps("lastSeen")}>Последний визит</SortableTh>
-                    <SortableTh {...thProps("today")} align="right">Сегодня</SortableTh>
-                    <SortableTh {...thProps("week")} align="right">За 7 дней</SortableTh>
-                    <th scope="col">14 дней</th>
-                    {riskStatus && <th scope="col">Риск</th>}
-                    <SortableTh {...thProps("streak")}>Серия журнала</SortableTh>
-                    <SortableTh {...thProps("violations")} align="right">Нарушения</SortableTh>
-                    <th scope="col"><span className="sr-only">Действия</span></th>
+                    <SortableTh {...thProps("name")}>{t("activity.col.trader")}</SortableTh>
+                    <SortableTh {...thProps("lastSeen")}>{t("activity.col.lastSeen")}</SortableTh>
+                    <SortableTh {...thProps("today")} align="right">{t("activity.col.today")}</SortableTh>
+                    <SortableTh {...thProps("week")} align="right">{t("activity.col.week")}</SortableTh>
+                    <th scope="col">{t("activity.col.days14")}</th>
+                    {riskStatus && <th scope="col">{t("activity.col.risk")}</th>}
+                    <SortableTh {...thProps("streak")}>{t("activity.col.streak")}</SortableTh>
+                    <SortableTh {...thProps("violations")} align="right">{t("activity.col.violations")}</SortableTh>
+                    <th scope="col"><span className="sr-only">{t("people.col.actions")}</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -316,9 +315,9 @@ export function TradersTable({
                       <td>
                         <div className="flex min-w-0 items-center gap-2">
                           <span className="truncate font-medium text-foreground">{u.name}</span>
-                          {u.name === actor && <span className="text-2xs text-muted-foreground">(вы)</span>}
-                          {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{ROLE_LABEL[u.role] ?? u.role}</Pill>}
-                          {u.banned && <Pill tone="down">бан</Pill>}
+                          {u.name === actor && <span className="text-2xs text-muted-foreground">{t("you")}</span>}
+                          {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>}
+                          {u.banned && <Pill tone="down">{t("activity.banTag")}</Pill>}
                         </div>
                       </td>
                       <td>
@@ -348,7 +347,7 @@ export function TradersTable({
                     <button type="button" onClick={() => setOpenName(u.name)} className="min-w-0 text-left">
                       <div className="flex flex-wrap items-center gap-1.5">
                         <span className="truncate font-medium">{u.name}</span>
-                        {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{ROLE_LABEL[u.role] ?? u.role}</Pill>}
+                        {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{timeAgo(u.lastSeen)}</div>
                     </button>
@@ -356,10 +355,10 @@ export function TradersTable({
                   </div>
                   <ActivityStrip days={days} trades={u.tradeStrip} journal={journalAvailable ? u.journalStrip : undefined} />
                   <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
-                    <span><span className="text-muted-foreground">Сегодня </span><b className="tabular-nums">{u.tradesToday}</b></span>
-                    <span><span className="text-muted-foreground">7д </span><b className="tabular-nums">{u.tradesWeek}</b></span>
+                    <span><span className="text-muted-foreground">{t("activity.mobileToday")}</span><b className="tabular-nums">{u.tradesToday}</b></span>
+                    <span><span className="text-muted-foreground">{t("activity.mobileWeek")}</span><b className="tabular-nums">{u.tradesWeek}</b></span>
                     <StreakCell u={u} journalAvailable={journalAvailable} />
-                    {violationsAvailable && u.violationsWeek > 0 && <Pill tone="warn">{u.violationsWeek} наруш. за 7д</Pill>}
+                    {violationsAvailable && u.violationsWeek > 0 && <Pill tone="warn">{t("activity.mobileViolations", { count: u.violationsWeek })}</Pill>}
                   </div>
                 </li>
               ))}
@@ -405,6 +404,7 @@ function TraderSheet({
   onClose: () => void;
   actions: ReturnType<typeof useUserActions>;
 }) {
+  const { t } = adminI18n.useT();
   const isSelf = u?.name === actor;
   const canBan = !!u && !isSelf && u.role !== "admin" && (isAdmin || u.role !== "curator");
   const canTouch = !!u && (isAdmin || u.role !== "admin");
@@ -418,11 +418,11 @@ function TraderSheet({
             <SheetHeader className="gap-2 border-b border-[var(--glass-border)] p-5 text-left">
               <div className="flex flex-wrap items-center gap-2">
                 <SheetTitle className="text-lg">{u.name}</SheetTitle>
-                <Pill tone={roleTone(u.role)}>{ROLE_LABEL[u.role] ?? u.role}</Pill>
+                <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>
                 <StatusPill u={u} />
               </div>
               <SheetDescription>
-                Последний визит: {timeAgo(u.lastSeen)}{u.lastSeen ? ` · ${fmtDate(u.lastSeen, "shortDateTimeSeconds")}` : ""}
+                {t("activity.sheet.lastSeen", { ago: timeAgo(u.lastSeen) })}{u.lastSeen ? ` · ${fmtDate(u.lastSeen, "shortDateTimeSeconds")}` : ""}
               </SheetDescription>
             </SheetHeader>
 
@@ -430,65 +430,65 @@ function TraderSheet({
               {u.banned && (
                 <div className="flex items-start gap-2 rounded-xl bg-down/10 p-3 text-sm text-down">
                   <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
-                  <span>Забанен{u.bannedReason ? `: ${u.bannedReason}` : ""}</span>
+                  <span>{u.bannedReason ? t("activity.sheet.bannedReason", { reason: u.bannedReason }) : t("activity.sheet.banned")}</span>
                 </div>
               )}
 
               <div className="grid grid-cols-3 gap-2">
                 <div className="glass-panel rounded-xl p-3">
-                  <div className="text-xs text-muted-foreground">Сегодня</div>
+                  <div className="text-xs text-muted-foreground">{t("activity.sheet.today")}</div>
                   <div className="text-2xl font-semibold tabular-nums">{u.tradesToday}</div>
-                  <div className="text-2xs text-muted-foreground">сделок</div>
+                  <div className="text-2xs text-muted-foreground">{t("activity.sheet.tradesWord", { count: u.tradesToday })}</div>
                 </div>
                 <div className="glass-panel rounded-xl p-3">
-                  <div className="text-xs text-muted-foreground">За 7 дней</div>
+                  <div className="text-xs text-muted-foreground">{t("activity.sheet.week")}</div>
                   <div className="text-2xl font-semibold tabular-nums">{u.tradesWeek}</div>
-                  <div className="text-2xs text-muted-foreground">сделок</div>
+                  <div className="text-2xs text-muted-foreground">{t("activity.sheet.tradesWord", { count: u.tradesWeek })}</div>
                 </div>
                 <div className="glass-panel flex flex-col items-center justify-center rounded-xl p-3">
-                  <ProgressRing value={journalPct * 100} tone={journalPct >= 0.8 ? "up" : journalPct >= 0.4 ? "warn" : "down"} label={u.journal30} ariaLabel={`Журнал за 30 дней: ${u.journal30} дн`} />
-                  <div className="mt-1 text-2xs text-muted-foreground">журнал 30д</div>
+                  <ProgressRing value={journalPct * 100} tone={journalPct >= 0.8 ? "up" : journalPct >= 0.4 ? "warn" : "down"} label={u.journal30} ariaLabel={t("activity.sheet.journal30Aria", { count: u.journal30 })} />
+                  <div className="mt-1 text-2xs text-muted-foreground">{t("activity.sheet.journal30")}</div>
                 </div>
               </div>
 
               <section className="flex flex-col gap-2">
-                <h3 className="micro-label">Последние 14 дней</h3>
+                <h3 className="micro-label">{t("activity.sheet.last14")}</h3>
                 <ActivityStrip days={days} trades={u.tradeStrip} journal={journalAvailable ? u.journalStrip : undefined} />
               </section>
 
               <section className="flex flex-col">
-                <h3 className="micro-label mb-1">Дисциплина</h3>
-                {risk !== undefined && <StatRow label="Риск-лимиты сегодня" value={<RiskPill status={risk ?? undefined} />} />}
-                <StatRow label="Последний день со сделками" value={u.lastTradeDate ?? "—"} />
-                {journalAvailable && <StatRow label="Журнал сегодня" value={u.journalToday ? "заполнен" : "нет записи"} tone={u.journalToday ? "up" : u.role === "trader" ? "warn" : "neutral"} />}
-                {journalAvailable && <StatRow label="Серия журнала" value={`${u.notesStreak} дн`} />}
+                <h3 className="micro-label mb-1">{t("activity.sheet.discipline")}</h3>
+                {risk !== undefined && <StatRow label={t("activity.sheet.riskToday")} value={<RiskPill status={risk ?? undefined} />} />}
+                <StatRow label={t("activity.sheet.lastTradeDay")} value={u.lastTradeDate ?? "—"} />
+                {journalAvailable && <StatRow label={t("activity.sheet.journalToday")} value={u.journalToday ? t("activity.sheet.filled") : t("activity.noEntry")} tone={u.journalToday ? "up" : u.role === "trader" ? "warn" : "neutral"} />}
+                {journalAvailable && <StatRow label={t("activity.sheet.streak")} value={t("activity.sheet.days", { count: u.notesStreak })} />}
                 {violationsAvailable && (
                   <>
-                    <StatRow label="Нарушений сегодня" value={u.violationsToday} tone={u.violationsToday > 0 ? "down" : "neutral"} />
-                    <StatRow label="Нарушений за 7 дней" value={`${u.violationsWeek}${u.violationsHighWeek ? ` (${u.violationsHighWeek} высокой важности)` : ""}`} tone={u.violationsWeek > 0 ? "warn" : "neutral"} />
-                    <StatRow label="Нарушений всего" value={u.violationsTotal} />
+                    <StatRow label={t("activity.sheet.violationsToday")} value={u.violationsToday} tone={u.violationsToday > 0 ? "down" : "neutral"} />
+                    <StatRow label={t("activity.sheet.violationsWeek")} value={u.violationsHighWeek ? t("activity.sheet.violationsHigh", { count: u.violationsWeek, high: u.violationsHighWeek }) : u.violationsWeek} tone={u.violationsWeek > 0 ? "warn" : "neutral"} />
+                    <StatRow label={t("activity.sheet.violationsTotal")} value={u.violationsTotal} />
                   </>
                 )}
-                <StatRow label="В команде с" value={u.createdAt ? fmtDate(u.createdAt, "short") : "—"} />
+                <StatRow label={t("activity.sheet.since")} value={u.createdAt ? fmtDate(u.createdAt, "short") : "—"} />
               </section>
 
               <section className="flex flex-wrap gap-2">
-                <Button asChild variant="outline" size="sm"><Link href="/journal"><BookOpen /> Журнал</Link></Button>
-                <Button asChild variant="outline" size="sm"><Link href="/error-tracker"><CalendarCheck /> Правила и нарушения</Link></Button>
-                <Button asChild variant="outline" size="sm"><Link href="/ratings"><Flame /> Рейтинги</Link></Button>
+                <Button asChild variant="outline" size="sm"><Link href="/journal"><BookOpen /> {t("activity.sheet.journal")}</Link></Button>
+                <Button asChild variant="outline" size="sm"><Link href="/error-tracker"><CalendarCheck /> {t("activity.sheet.rules")}</Link></Button>
+                <Button asChild variant="outline" size="sm"><Link href="/ratings"><Flame /> {t("activity.sheet.ratings")}</Link></Button>
               </section>
 
               <section className="flex flex-col gap-2 border-t border-[var(--glass-border)] pt-4">
-                <h3 className="micro-label">Управление</h3>
+                <h3 className="micro-label">{t("activity.sheet.manage")}</h3>
                 <div className="flex flex-wrap gap-2">
-                  {canTouch && <Button variant="outline" size="sm" onClick={() => actions.setPassword(u)}><KeyRound /> Пароль</Button>}
+                  {canTouch && <Button variant="outline" size="sm" onClick={() => actions.setPassword(u)}><KeyRound /> {t("activity.sheet.password")}</Button>}
                   {canTouch && !isSelf && (isAdmin ? (["trader", "curator", "admin"] as const) : (["trader", "curator"] as const)).filter((r) => r !== u.role).map((r) => (
-                    <Button key={r} variant="outline" size="sm" onClick={() => actions.changeRole(u, r)}><UserCog /> Сделать: {ROLE_LABEL[r].toLowerCase()}</Button>
+                    <Button key={r} variant="outline" size="sm" onClick={() => actions.changeRole(u, r)}><UserCog /> {t("activity.sheet.makeRole", { role: roleLabel(r).toLowerCase() })}</Button>
                   ))}
                   {u.banned ? (
-                    <Button variant="outline" size="sm" onClick={() => actions.unban(u)}><UserCheck /> Разбанить</Button>
+                    <Button variant="outline" size="sm" onClick={() => actions.unban(u)}><UserCheck /> {t("activity.sheet.unban")}</Button>
                   ) : (
-                    <Button variant="destructive" size="sm" disabled={!canBan} onClick={() => actions.ban(u)}><Ban /> Забанить</Button>
+                    <Button variant="destructive" size="sm" disabled={!canBan} onClick={() => actions.ban(u)}><Ban /> {t("activity.sheet.ban")}</Button>
                   )}
                 </div>
               </section>

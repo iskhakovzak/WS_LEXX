@@ -9,7 +9,7 @@ import { resolveActor } from "../lib/permissions";
 import { canModifyOwnedRow } from "../lib/accessRules";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
 import { nyDate } from "../lib/tradingDate";
-import { badRequest, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -46,10 +46,11 @@ function parseId(raw: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 /** Returns an error message when a price field is present but not a non-negative number. */
+/** The field name when the price is not a non-negative number, else null. */
 function invalidPrice(v: unknown, label: string): string | null {
   if (v === undefined || v === null || v === "") return null;
   const n = Number(String(v).replace(",", "."));
-  return Number.isFinite(n) && n >= 0 && n < 1e8 ? null : `${label} must be a non-negative number`;
+  return Number.isFinite(n) && n >= 0 && n < 1e8 ? null : label;
 }
 function priceOrNull(v: unknown): string | null {
   if (v === undefined || v === null || v === "") return null;
@@ -255,8 +256,8 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   const ids = Array.isArray(b.ids)
     ? Array.from(new Set(b.ids.map((v) => Number(v)).filter((n) => Number.isInteger(n) && n > 0)))
     : [];
-  if (!ids.length) { res.status(400).json({ error: "ids required" }); return; }
-  if (ids.length > 200) { res.status(400).json({ error: "too many ids (max 200)" }); return; }
+  if (!ids.length) throw new AppError("IDS_REQUIRED");
+  if (ids.length > 200) throw new AppError("TOO_MANY", undefined, { field: "ids", max: 200 });
   const action = String(b.action ?? "");
   // Soft delete / restore remove a shared row for everyone → only rows the caller created (staff: any).
   // Workflow flags (status / inplay / list) stay open to every member (watchlist.manage). Rows the caller may
@@ -270,13 +271,12 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
     denied = ids.filter((id) => owners.some((r) => r.id === id) && !allowed.has(id));
     ids.splice(0, ids.length, ...ids.filter((id) => allowed.has(id)));
     if (!ids.length) {
-      res.status(403).json({ error: "Удалять и восстанавливать можно только свои тикеры", code: "NOT_OWNER", denied });
-      return;
+      throw new AppError("NOT_OWNER", 403, undefined, { denied });
     }
   }
   if (action === "status") {
     const status = normalizeStatus(b.status);
-    if (!status) { res.status(400).json({ error: "invalid status" }); return; }
+    if (!status) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
     const rows = await db.update(watchlistTable).set({ status })
       .where(and(inArray(watchlistTable.id, ids), isNull(watchlistTable.deletedAt))).returning({ id: watchlistTable.id });
     res.json({ success: true, count: rows.length });
@@ -290,13 +290,13 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   }
   if (action === "inplay") {
     const flag = parseInPlay(b.inPlay);
-    if (flag === undefined || flag === "invalid") { res.status(400).json({ error: "inPlay must be boolean" }); return; }
+    if (flag === undefined || flag === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "inPlay" });
     try {
       const count = await writeInPlay(ids, flag);
       res.json({ success: true, count });
     } catch (err) {
       logger.warn({ err }, "watchlist bulk inplay failed");
-      res.status(503).json({ error: "in_play is not available yet (migrations pending)" });
+      throw new AppError("NOT_AVAILABLE_YET");
     }
     return;
   }
@@ -308,17 +308,17 @@ router.post("/watchlist/bulk", asyncHandler(async (req, res): Promise<void> => {
   }
   if (action === "list") {
     const list = parseList(b.list);
-    if (list === undefined || list === "invalid") { res.status(400).json({ error: "list must be today | swing | watch" }); return; }
+    if (list === undefined || list === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "list" });
     try {
       const count = await writeList(ids, list);
       res.json({ success: true, count });
     } catch (err) {
       logger.warn({ err }, "watchlist bulk list failed");
-      res.status(503).json({ error: "list is not available yet" });
+      throw new AppError("NOT_AVAILABLE_YET");
     }
     return;
   }
-  res.status(400).json({ error: "invalid action" });
+  throw new AppError("INVALID_FIELD", undefined, { field: "action" });
 }));
 
 const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,11}$/;
@@ -354,7 +354,7 @@ router.post("/watchlist/quick", asyncHandler(async (req, res): Promise<void> => 
   const b = (req.body ?? {}) as Record<string, unknown>;
   const raw = Array.isArray(b.tickers) ? b.tickers : typeof b.tickers === "string" ? b.tickers.split(/[\s,;]+/) : [];
   const list = parseList(b.list);
-  if (list === "invalid") { res.status(400).json({ error: "list must be today | swing | watch" }); return; }
+  if (list === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "list" });
   const seen = new Set<string>();
   const valid: string[] = [];
   const invalid: string[] = [];
@@ -364,8 +364,8 @@ router.post("/watchlist/quick", asyncHandler(async (req, res): Promise<void> => 
     seen.add(t);
     if (TICKER_RE.test(t)) valid.push(t); else invalid.push(t.slice(0, 16));
   }
-  if (!valid.length) { res.status(400).json({ error: "no valid tickers", invalid }); return; }
-  if (valid.length > QUICK_MAX) { res.status(400).json({ error: `too many tickers (max ${QUICK_MAX})` }); return; }
+  if (!valid.length) throw new AppError("INVALID_TICKER", 400, undefined, { invalid });
+  if (valid.length > QUICK_MAX) throw new AppError("TOO_MANY", undefined, { field: "tickers", max: QUICK_MAX });
 
   const existingRows = await db.select({ id: watchlistTable.id, ticker: watchlistTable.ticker, status: watchlistTable.status }).from(watchlistTable)
     .where(and(inArray(watchlistTable.ticker, valid), isNull(watchlistTable.deletedAt)));
@@ -410,13 +410,13 @@ router.post("/watchlist", asyncHandler(async (req, res): Promise<void> => {
   if (!ticker || !String(ticker).trim()) throw badRequest("TICKER_REQUIRED");
   const tickerUp = String(ticker).trim().toUpperCase();
   if (!TICKER_RE.test(tickerUp)) throw badRequest("INVALID_TICKER");
-  if (status != null && status !== "" && !normalizeStatus(status)) { res.status(400).json({ error: "invalid status" }); return; }
+  if (status != null && status !== "" && !normalizeStatus(status)) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
   // One active row per ticker: point the client at the existing one instead of creating a duplicate.
   const [dup] = await db.select({ id: watchlistTable.id }).from(watchlistTable)
     .where(and(eq(watchlistTable.ticker, tickerUp), isNull(watchlistTable.deletedAt))).limit(1);
-  if (dup) { res.status(409).json({ error: `${tickerUp} уже в вотчлисте`, id: dup.id }); return; }
+  if (dup) throw new AppError("ALREADY_IN_WATCHLIST", 409, { ticker: tickerUp }, { id: dup.id });
   const priceErr = invalidPrice(targetPrice, "targetPrice") ?? invalidPrice(stopPrice, "stopPrice");
-  if (priceErr) { res.status(400).json({ error: priceErr }); return; }
+  if (priceErr) throw new AppError("INVALID_FIELD", 400, { field: priceErr });
   const sectorStr = sector ? String(sector) : null;
   const catalystStr = catalyst ? String(catalyst) : null;
   const numOrNull = (v: unknown) => (v !== undefined && v !== null && v !== "" ? String(v) : null);
@@ -470,20 +470,20 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
   if (id == null) throw badRequest("INVALID_ID");
   const b = req.body as Record<string, unknown>;
   const { ticker, catalyst, targetPrice, stopPrice, status, notes, sector, tags } = b;
-  if (status != null && status !== "" && !normalizeStatus(status)) { res.status(400).json({ error: "invalid status" }); return; }
+  if (status != null && status !== "" && !normalizeStatus(status)) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
   if (ticker && String(ticker).trim()) {
     const up = String(ticker).trim().toUpperCase();
     if (!TICKER_RE.test(up)) throw badRequest("INVALID_TICKER");
     const [dup] = await db.select({ id: watchlistTable.id }).from(watchlistTable)
       .where(and(eq(watchlistTable.ticker, up), isNull(watchlistTable.deletedAt))).limit(1);
-    if (dup && dup.id !== id) { res.status(409).json({ error: `${up} уже в вотчлисте`, id: dup.id }); return; }
+    if (dup && dup.id !== id) throw new AppError("ALREADY_IN_WATCHLIST", 409, { ticker: up }, { id: dup.id });
   }
   const priceErr = invalidPrice(targetPrice, "targetPrice") ?? invalidPrice(stopPrice, "stopPrice");
-  if (priceErr) { res.status(400).json({ error: priceErr }); return; }
+  if (priceErr) throw new AppError("INVALID_FIELD", 400, { field: priceErr });
   const inPlayFlag = parseInPlay(b.inPlay);
-  if (inPlayFlag === "invalid") { res.status(400).json({ error: "inPlay must be boolean" }); return; }
+  if (inPlayFlag === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "inPlay" });
   const listFlag = parseList(b.list);
-  if (listFlag === "invalid") { res.status(400).json({ error: "list must be today | swing | watch" }); return; }
+  if (listFlag === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "list" });
   const numOrNull = (v: unknown) => (v !== undefined && v !== null && v !== "" ? String(v) : null);
   const patch = {
     ticker: ticker && String(ticker).trim() ? String(ticker).trim().toUpperCase() : undefined,
@@ -524,16 +524,14 @@ router.patch("/watchlist/:id", asyncHandler(async (req, res): Promise<void> => {
       await writeList([id], listFlag);
     } catch (err) {
       logger.warn({ err, id }, "watchlist patch: list write failed");
-      res.status(503).json({ error: "list is not available yet" });
-      return;
+      throw new AppError("NOT_AVAILABLE_YET");
     }
   } else if (inPlayFlag !== undefined) {
     try {
       await writeInPlay([id], inPlayFlag);
     } catch (err) {
       logger.warn({ err, id }, "watchlist patch: in_play write failed");
-      res.status(503).json({ error: "in_play is not available yet (migrations pending)" });
-      return;
+      throw new AppError("NOT_AVAILABLE_YET");
     }
   }
 
@@ -576,7 +574,7 @@ let scoreAllRunning = false;
 
 router.post("/watchlist/score-all", asyncHandler(async (req, res): Promise<void> => {
   if (!requireMember(req, res)) return;
-  if (scoreAllRunning) { res.status(409).json({ error: "Пересчёт уже идёт" }); return; }
+  if (scoreAllRunning) throw new AppError("SYNC_RUNNING");
   scoreAllRunning = true;
   try {
     const rows = await db.select().from(watchlistTable).where(isNull(watchlistTable.deletedAt))

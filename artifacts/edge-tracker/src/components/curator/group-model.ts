@@ -4,6 +4,8 @@
  */
 import { prepareQuery, searchItems, type MatchResult, type PreparedQuery } from "@workspace/text-search";
 import type { TraderSignal } from "./api";
+import { localeTag } from "@/lib/format";
+import { curatorI18n } from "@/i18n/ns/curator";
 
 /** "all" — every group as sections; "none" — «Без куратора»; any other value — that curator's name. */
 export type GroupKey = string;
@@ -109,7 +111,7 @@ export function buildGroups(list: readonly TraderSignal[], curators: readonly st
     if (arr) arr.push(s); else by.set(c, [s]);
   }
   for (const c of curators) if (!by.has(c)) by.set(c, []);
-  const names = [...by.keys()].sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, "ru")));
+  const names = [...by.keys()].sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, localeTag())));
   const out: Group[] = names.map((c) => ({ key: c, curator: c, traders: by.get(c)! }));
   out.push({ key: NO_CURATOR, curator: null, traders: none });
   return out;
@@ -139,14 +141,18 @@ export const GROUP_SORT = {
 } as const;
 export type GroupSortKey = keyof typeof GROUP_SORT;
 
-export const CSV_HEAD = ["Трейдер", "Латиницей", "Куратор", "Тир", "Этап", "Сегодня $", "Сделок сегодня", "Неделя $", "Месяц $", "Сделок за месяц",
-  "Нарушений за неделю", "Нарушений без разбора", "Ждут разбора", "Последняя сделка", "Последняя активность", "Риск", "Следующий шаг"];
+const CSV_COLS = ["trader", "latin", "curator", "tier", "stage", "today", "todayTrades", "week", "month", "monthTrades",
+  "violationsWeek", "violationsUnreviewed", "pending", "lastTrade", "lastActivity", "risk", "next"] as const;
+/** CSV header in the current language (call when exporting). */
+export function csvHead(): string[] {
+  return CSV_COLS.map((k) => curatorI18n.t(`group.csv.${k}`));
+}
 
 export function csvRow(s: TraderSignal): (string | number | null)[] {
   return [
     s.trader, s.nameLatin ?? "", s.curator ?? "", s.tierName ?? "", s.stage.label ?? "",
     s.risk.todayTrades ? s.risk.todayPnl : null, s.risk.todayTrades, s.risk.weekPnl, s.month?.pnl ?? null, s.month?.trades ?? null,
     breachesWeek(s), s.breaches.unreviewed, pendingReviews(s), s.lastTradeDate ?? "", s.lastActivityAt ?? "",
-    s.risk.hasLimits ? s.risk.label : "Без лимитов", s.nextAction.label,
+    s.risk.hasLimits ? s.risk.label : curatorI18n.t("noLimits"), s.nextAction.label,
   ];
 }

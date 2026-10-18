@@ -21,6 +21,8 @@
  */
 
 import { insightFor, type PatternInsight } from "./behaviorInsights";
+import { behaviorT, fmtDurFor } from "./behaviorI18n";
+import { DEFAULT_LANG, type Lang } from "../i18n";
 
 export type BehaviorResult = "win" | "loss" | "be" | "open" | null;
 
@@ -95,7 +97,8 @@ export type PatternReport = {
   insight: PatternInsight;
 };
 
-export type Bucket = { label: string; n: number; net: number | null; avgNet: number | null; winRate: number | null };
+/** `key` is a stable code of the bucket (hour / minutes-after-loss curves); `label` is in the reader's language. */
+export type Bucket = { key?: string; label: string; n: number; net: number | null; avgNet: number | null; winRate: number | null };
 
 export type DisciplineDay = {
   date: string;
@@ -209,10 +212,11 @@ const DEFAULTS: Required<BehaviorOptions> = {
   morningEndMin: 660,
 };
 
-export const DISCIPLINE_FORMULA =
-  "Индекс дисциплины дня = 100 − штрафы: реванш −10 за сделку (макс −30), мартингейл −10 за сделку (макс −20), " +
-  "овертрейдинг −5 за каждую сделку сверх нормы (макс −20), тильт-кластер −15 за кластер (макс −30), " +
-  "отыгрыш после красного утра −10 за день, эйфория −5 за сделку (макс −10). Итог ограничен 0…100.";
+/** How the daily discipline index is computed (text for the UI), in `lang`. */
+export function disciplineFormulaFor(lang: Lang = DEFAULT_LANG): string {
+  return behaviorT.tFor(lang)("formula");
+}
+export const DISCIPLINE_FORMULA = disciplineFormulaFor(DEFAULT_LANG);
 
 /* ─── Утилиты ─────────────────────────────────────────────────────────────── */
 
@@ -277,15 +281,16 @@ export function parseHoldText(text: string | null | undefined): number | null {
   const clock = /^(\d{1,3}):(\d{2})(?::(\d{2}))?$/.exec(s);
   if (clock) return Number(clock[1]) * 60 + Number(clock[2]) + (clock[3] ? Number(clock[3]) / 60 : 0);
   let total = 0, matched = false;
-  const re = /(\d+(?:\.\d+)?)\s*(d|д|дн|h|ч|m|min|мин|м|s|sec|сек|с)\b/g;
+  // Input parsing (journal hold text in RU / EN / UZ), not UI text.
+  const re = /(\d+(?:\.\d+)?)\s*(d|day|days|kun|д|дн|h|hr|soat|ч|m|min|daq|daqiqa|мин|м|s|sec|son|soniya|сек|с)\b/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(s)) !== null) {
     matched = true;
     const v = Number(m[1]);
     const u = m[2];
-    if (u === "d" || u === "д" || u === "дн") total += v * 1440;
-    else if (u === "h" || u === "ч") total += v * 60;
-    else if (u === "s" || u === "sec" || u === "сек" || u === "с") total += v / 60;
+    if (u === "d" || u === "day" || u === "days" || u === "kun" || u === "д" || u === "дн") total += v * 1440; // i18n-ignore (input units)
+    else if (u === "h" || u === "hr" || u === "soat" || u === "ч") total += v * 60; // i18n-ignore (input units)
+    else if (u === "s" || u === "sec" || u === "son" || u === "soniya" || u === "сек" || u === "с") total += v / 60; // i18n-ignore (input units)
     else total += v;
   }
   if (matched) return total;
@@ -334,7 +339,8 @@ type PatternDraft = {
   title: string;
   description: string;
   rule: string;
-  flagged: { trade: BehaviorTrade; note: string }[];
+  /** `same` / `sizeUp`: revenge amplifiers (counted from flags, never from the note text). */
+  flagged: { trade: BehaviorTrade; note: string; same?: boolean; sizeUp?: boolean }[];
   baseline: BehaviorTrade[];
   baselineLabel: string;
   extra?: Record<string, number | string | null>;
@@ -387,7 +393,7 @@ function trendOf(trades: BehaviorTrade[], base: number | null, noCost: boolean, 
   return { recent, prior, direction };
 }
 
-function buildPattern(d: PatternDraft, total: number, grossProfit: number, tc: TrendCtx, opts: Required<BehaviorOptions>): PatternReport {
+function buildPattern(d: PatternDraft, total: number, grossProfit: number, tc: TrendCtx, opts: Required<BehaviorOptions>, lang: Lang): PatternReport {
   const trades = d.flagged.map((f) => f.trade);
   const { sum: net } = sumNet(trades);
   const a = avgNet(trades);
@@ -426,13 +432,15 @@ function buildPattern(d: PatternDraft, total: number, grossProfit: number, tc: T
     weekly,
     extra: d.extra ?? {},
     trend: trendOf(trades, base, !!d.noCost, tc),
-    insight: insightFor({ key: d.key, extra: d.extra ?? {}, opts }),
+    insight: insightFor({ key: d.key, extra: d.extra ?? {}, opts }, lang),
   };
 }
 
 /* ─── Детекторы ────────────────────────────────────────────────────────────── */
 
 type Ctx = {
+  lang: Lang;
+  t: ReturnType<typeof behaviorT.tFor>;
   trades: BehaviorTrade[];
   byDay: Map<string, BehaviorTrade[]>;
   opts: Required<BehaviorOptions>;
@@ -455,23 +463,23 @@ function detectRevenge(c: Ctx): PatternDraft {
           const n0 = notional(lastLoss), n1 = notional(t);
           const sizeUp = n0 != null && n1 != null && n0 > 0 && n1 / n0 >= 1.25;
           const same = t.ticker === lastLoss.ticker;
-          const parts = [`${gap < 1 ? "<1" : Math.round(gap)} мин после убытка ${lastLoss.ticker} (${fmtUsd(lastLoss.net)})`];
-          if (same) parts.push("тот же тикер");
-          if (sizeUp) parts.push(`размер ×${(n1! / n0!).toFixed(1)}`);
-          flagged.push({ trade: t, note: parts.join(", ") });
+          const parts = [c.t("patterns.revenge.note", { gap: gap < 1 ? "<1" : Math.round(gap), ticker: lastLoss.ticker, net: fmtUsd(lastLoss.net) })];
+          if (same) parts.push(c.t("patterns.revenge.sameTicker"));
+          if (sizeUp) parts.push(c.t("patterns.revenge.sizeUp", { ratio: (n1! / n0!).toFixed(1) }));
+          flagged.push({ trade: t, note: parts.join(", "), same, sizeUp });
           flaggedIds.add(t.id);
         }
       }
       if (t.result === "loss") lastLoss = t;
     }
   }
-  const sameTicker = flagged.filter((f) => f.note.includes("тот же тикер")).length;
-  const sizeUp = flagged.filter((f) => f.note.includes("размер ×")).length;
+  const sameTicker = flagged.filter((f) => f.same).length;
+  const sizeUp = flagged.filter((f) => f.sizeUp).length;
   return {
-    key: "revenge", title: "Реванш-трейдинг",
-    description: `Новая сделка меньше чем через ${c.opts.revengeMin} мин после убыточной.`,
-    rule: `Вход < ${c.opts.revengeMin} мин после выхода из убыточной сделки того же дня. Усилители: тот же тикер, размер ≥ ×1.25.`,
-    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: "остальные сделки",
+    key: "revenge", title: c.t("patterns.revenge.title"),
+    description: c.t("patterns.revenge.description", { min: c.opts.revengeMin }),
+    rule: c.t("patterns.revenge.rule", { min: c.opts.revengeMin }),
+    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: c.t("patterns.revenge.baseline"),
     extra: { sameTicker, sizeUp },
   };
 }
@@ -490,7 +498,8 @@ function detectMartingale(c: Ctx): PatternDraft {
           chain++;
           if (chain === 1) chains++;
           longestChain = Math.max(longestChain, chain);
-          flagged.push({ trade: t, note: `размер ×${(n1 / n0).toFixed(1)} после убытка ${prev.ticker} (${fmtUsd(prev.net)})${chain > 1 ? `, ${chain}-я ступень` : ""}` });
+          const np = { ratio: (n1 / n0).toFixed(1), ticker: prev.ticker, net: fmtUsd(prev.net) };
+          flagged.push({ trade: t, note: chain > 1 ? c.t("patterns.martingale.step", { ...np, n: chain }) : c.t("patterns.martingale.note", np) });
           flaggedIds.add(t.id);
         } else chain = 0;
       } else chain = 0;
@@ -498,10 +507,10 @@ function detectMartingale(c: Ctx): PatternDraft {
     }
   }
   return {
-    key: "martingale", title: "Рост размера после убытка",
-    description: "Следующая сделка после убыточной заметно крупнее (мартингейл).",
-    rule: `Нотионал сделки ≥ ×${c.opts.martingaleRatio} нотионала предыдущей убыточной сделки в тот же день.`,
-    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: "остальные сделки",
+    key: "martingale", title: c.t("patterns.martingale.title"),
+    description: c.t("patterns.martingale.description"),
+    rule: c.t("patterns.martingale.rule", { ratio: c.opts.martingaleRatio }),
+    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: c.t("patterns.martingale.baseline"),
     extra: { chains, longestChain },
   };
 }
@@ -515,16 +524,16 @@ function detectOvertrading(c: Ctx): PatternDraft {
     busyDays++;
     day.forEach((t, i) => {
       if (i + 1 > c.tradesPerDayNorm) {
-        flagged.push({ trade: t, note: `сделка №${i + 1} при норме ${c.tradesPerDayNorm} (в этот день ${day.length})` });
+        flagged.push({ trade: t, note: c.t("patterns.overtrading.note", { no: i + 1, norm: c.tradesPerDayNorm, total: day.length }) });
         flaggedIds.add(t.id);
       }
     });
   }
   return {
-    key: "overtrading", title: "Овертрейдинг",
-    description: "Сделки сверх личной нормы в дни, когда их заметно больше обычного.",
-    rule: `Норма = медиана сделок/день + ${c.opts.overtradingK}·MAD = ${c.tradesPerDayNorm}. В паттерн попадают сделки с номером выше нормы.`,
-    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: "сделки в пределах нормы",
+    key: "overtrading", title: c.t("patterns.overtrading.title"),
+    description: c.t("patterns.overtrading.description"),
+    rule: c.t("patterns.overtrading.rule", { k: c.opts.overtradingK, norm: c.tradesPerDayNorm }),
+    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: c.t("patterns.overtrading.baseline"),
     extra: { busyDays, norm: c.tradesPerDayNorm, medianPerDay: c.medianTradesPerDay },
   };
 }
@@ -535,15 +544,15 @@ function detectFatigue(c: Ctx): PatternDraft {
   const flagged: PatternDraft["flagged"] = [];
   for (const day of c.byDay.values()) {
     day.forEach((t, i) => {
-      if (i + 1 > cut) flagged.push({ trade: t, note: `сделка №${i + 1} из ${day.length} за день` });
+      if (i + 1 > cut) flagged.push({ trade: t, note: c.t("patterns.fatigue.note", { no: i + 1, total: day.length }) });
       else early.push(t);
     });
   }
   return {
-    key: "fatigue", title: "Усталость к концу дня",
-    description: "Поздние сделки дня (после медианного количества) против первых.",
-    rule: `Сделки с номером > ${cut} (медиана сделок/день, округлённая вверх) сравниваются с первыми ${cut} сделками дня.`,
-    flagged, baseline: early, baselineLabel: `первые ${cut} сделок дня`,
+    key: "fatigue", title: c.t("patterns.fatigue.title"),
+    description: c.t("patterns.fatigue.description"),
+    rule: c.t("patterns.fatigue.rule", { cut }),
+    flagged, baseline: early, baselineLabel: c.t("patterns.fatigue.baseline", { cut }),
     extra: { cut },
   };
 }
@@ -563,15 +572,15 @@ function detectChase(c: Ctx): PatternDraft {
     const red = mNet != null && mNet <= -threshold;
     if (red) redMornings++;
     for (const t of later) {
-      if (red) flagged.push({ trade: t, note: `утро ${fmtUsd(mNet)}, вход в ${fmtMin(t.entryMin)}` });
+      if (red) flagged.push({ trade: t, note: c.t("patterns.chase.note", { net: fmtUsd(mNet), time: fmtMin(t.entryMin) }) });
       else baseline.push(t);
     }
   }
   return {
-    key: "chase", title: "Отыгрыш после красного утра",
-    description: "Сделки после 11:00 в дни, когда утро закрыто с заметным убытком.",
-    rule: `Утро = входы до ${fmtMin(c.opts.morningEndMin)}; «красное» — нетто утра ≤ −${round2(threshold)} $ (медиана |дневного нетто|). Сравнение с дневными сделками в остальные дни.`,
-    flagged, baseline, baselineLabel: "сделки после 11:00 в обычные дни",
+    key: "chase", title: c.t("patterns.chase.title"),
+    description: c.t("patterns.chase.description"),
+    rule: c.t("patterns.chase.rule", { time: fmtMin(c.opts.morningEndMin), usd: round2(threshold) }),
+    flagged, baseline, baselineLabel: c.t("patterns.chase.baseline"),
     extra: { threshold: round2(threshold), redMornings },
   };
 }
@@ -606,7 +615,7 @@ function detectTilt(c: Ctx): PatternDraft {
       while (k < day.length && taken < 5) {
         const a = day[k];
         if (!flaggedIds.has(a.id)) {
-          flagged.push({ trade: a, note: `после ${streak} убытков подряд, пауза ≈${g < 1 ? "<1" : Math.round(g)} мин (норма ${gapRef == null ? "—" : Math.round(gapRef)})` });
+          flagged.push({ trade: a, note: c.t("patterns.tilt.note", { streak, gap: g < 1 ? "<1" : Math.round(g), norm: gapRef == null ? "—" : Math.round(gapRef) }) });
           flaggedIds.add(a.id);
         }
         taken++;
@@ -618,10 +627,10 @@ function detectTilt(c: Ctx): PatternDraft {
     }
   }
   return {
-    key: "tilt", title: "Тильт-кластеры",
-    description: "Серия из трёх и более убытков подряд, после которой сделки идут заметно чаще обычного.",
-    rule: `≥3 убытка подряд в один день, затем медианная пауза до следующих сделок < 50% обычной паузы (${gapRef == null ? "—" : Math.round(gapRef) + " мин"}). Помечаются сделки после кластера до первого выигрыша (макс. 5).`,
-    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: "остальные сделки",
+    key: "tilt", title: c.t("patterns.tilt.title"),
+    description: c.t("patterns.tilt.description"),
+    rule: c.t("patterns.tilt.rule", { gap: gapRef == null ? "—" : c.t("patterns.tilt.gapMin", { n: Math.round(gapRef) }) }),
+    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: c.t("patterns.tilt.baseline"),
     extra: { clusters },
   };
 }
@@ -636,18 +645,18 @@ function detectDisposition(c: Ctx): PatternDraft {
   const flagged: PatternDraft["flagged"] = [];
   const baseline: BehaviorTrade[] = [];
   for (const t of losers) {
-    if (t.holdMin! > limit) flagged.push({ trade: t, note: `удержание ${fmtDur(t.holdMin)} при медиане прибыльных ${fmtDur(medW)}` });
+    if (t.holdMin! > limit) flagged.push({ trade: t, note: c.t("patterns.disposition.note", { hold: fmtDurFor(c.lang, t.holdMin), med: fmtDurFor(c.lang, medW) }) });
     else baseline.push(t);
   }
   const ratio = avgW && avgL ? avgL / avgW : null;
   const effect = ratio != null && ratio >= 1.25;
   return {
-    key: "disposition", title: "Пересиживание убытков",
+    key: "disposition", title: c.t("patterns.disposition.title"),
     description: effect
-      ? "Убыточные сделки держатся дольше прибыльных (эффект диспозиции)."
-      : `Эффекта нет: убыточные держатся ${ratio == null ? "—" : "×" + ratio.toFixed(2)} от прибыльных (порог ×1.25) — стоимость не считается.`,
-    rule: `Эффект есть, если среднее удержание убыточных ≥ 1.25 × прибыльных. Тогда убыточные с удержанием > 2 × медианы прибыльных (${fmtDur(medW)}) сравниваются с остальными убыточными — оценка, т.к. долгие убытки крупнее сами по себе.`,
-    flagged, baseline, baselineLabel: "убыточные сделки с обычным удержанием",
+      ? c.t("patterns.disposition.description")
+      : c.t("patterns.disposition.descriptionNone", { ratio: ratio == null ? "—" : "×" + ratio.toFixed(2) }),
+    rule: c.t("patterns.disposition.rule", { med: fmtDurFor(c.lang, medW) }),
+    flagged, baseline, baselineLabel: c.t("patterns.disposition.baseline"),
     noCost: !effect,
     extra: {
       avgHoldWinMin: avgW == null ? null : round2(avgW),
@@ -663,15 +672,15 @@ function detectFirstTrade(c: Ctx): PatternDraft {
   const rest: BehaviorTrade[] = [];
   for (const day of c.byDay.values()) {
     day.forEach((t, i) => {
-      if (i === 0) flagged.push({ trade: t, note: `первая сделка дня${t.entryMin != null ? ` в ${fmtMin(t.entryMin)}` : ""}` });
+      if (i === 0) flagged.push({ trade: t, note: t.entryMin != null ? c.t("patterns.firstTrade.noteAt", { time: fmtMin(t.entryMin) }) : c.t("patterns.firstTrade.note") });
       else rest.push(t);
     });
   }
   return {
-    key: "firstTrade", title: "Первая сделка дня",
-    description: "Первая сделка каждого дня против всех остальных.",
-    rule: "Первая по времени входа сделка дня сравнивается с остальными сделками.",
-    flagged, baseline: rest, baselineLabel: "остальные сделки дня",
+    key: "firstTrade", title: c.t("patterns.firstTrade.title"),
+    description: c.t("patterns.firstTrade.description"),
+    rule: c.t("patterns.firstTrade.rule"),
+    flagged, baseline: rest, baselineLabel: c.t("patterns.firstTrade.baseline"),
   };
 }
 
@@ -689,7 +698,7 @@ function detectEuphoria(c: Ctx): PatternDraft {
       if (lastBig && lastBig.exitAt != null && t.entryAt != null) {
         const gap = minutesBetween(lastBig.exitAt, t.entryAt);
         if (gap >= 0 && gap < c.opts.euphoriaMin) {
-          flagged.push({ trade: t, note: `${gap < 1 ? "<1" : Math.round(gap)} мин после крупного выигрыша ${lastBig.ticker} (${fmtUsd(lastBig.net)})` });
+          flagged.push({ trade: t, note: c.t("patterns.euphoria.note", { gap: gap < 1 ? "<1" : Math.round(gap), ticker: lastBig.ticker, net: fmtUsd(lastBig.net) }) });
           flaggedIds.add(t.id);
         }
       }
@@ -697,49 +706,72 @@ function detectEuphoria(c: Ctx): PatternDraft {
     }
   }
   return {
-    key: "euphoria", title: "Эйфория после выигрыша",
-    description: "Сделки вскоре после крупного выигрыша.",
-    rule: `Крупный выигрыш ≥ ${round2(big)} $ (max(2 × средний выигрыш, 75-й процентиль)). Вход < ${c.opts.euphoriaMin} мин после его закрытия.`,
-    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: "остальные сделки",
+    key: "euphoria", title: c.t("patterns.euphoria.title"),
+    description: c.t("patterns.euphoria.description"),
+    rule: c.t("patterns.euphoria.rule", { usd: round2(big), min: c.opts.euphoriaMin }),
+    flagged, baseline: c.trades.filter((t) => !flaggedIds.has(t.id)), baselineLabel: c.t("patterns.euphoria.baseline"),
     extra: { bigWinThreshold: round2(big), bigWins },
   };
 }
 
 /* ─── Кривые ───────────────────────────────────────────────────────────────── */
 
-function bucketize(groups: Map<string, BehaviorTrade[]>, order: string[]): Bucket[] {
-  return order.map((label) => {
-    const list = groups.get(label) ?? [];
+type BucketDef = { key: string; label: string };
+
+function bucketize(groups: Map<string, BehaviorTrade[]>, order: readonly BucketDef[]): Bucket[] {
+  return order.map(({ key, label }) => {
+    const list = groups.get(key) ?? [];
     const { sum } = sumNet(list);
     const a = avgNet(list);
-    return { label, n: list.length, net: sum, avgNet: a == null ? null : round2(a), winRate: winRateOf(list) };
+    return { key, label, n: list.length, net: sum, avgNet: a == null ? null : round2(a), winRate: winRateOf(list) };
   });
 }
 
-const TRADE_NO_BUCKETS = ["1", "2", "3", "4", "5", "6–8", "9+"];
+const TRADE_NO_BUCKETS: readonly BucketDef[] = ["1", "2", "3", "4", "5", "6–8", "9+"].map((k) => ({ key: k, label: k }));
 function tradeNoBucket(i: number): string {
   if (i <= 5) return String(i);
   return i <= 8 ? "6–8" : "9+";
 }
 
-const AFTER_LOSS_BUCKETS = ["0–2 мин", "2–5 мин", "5–10 мин", "10–20 мин", "20–60 мин", "60+ мин", "не после убытка"];
-function afterLossBucket(gapMin: number | null): string {
-  if (gapMin == null) return "не после убытка";
-  if (gapMin < 2) return "0–2 мин";
-  if (gapMin < 5) return "2–5 мин";
-  if (gapMin < 10) return "5–10 мин";
-  if (gapMin < 20) return "10–20 мин";
-  if (gapMin < 60) return "20–60 мин";
-  return "60+ мин";
+/** Minutes since the last losing exit: codes (stable) → labels in `lang`. */
+const AFTER_LOSS_KEYS = ["0-2", "2-5", "5-10", "10-20", "20-60", "60+", "none"] as const;
+function afterLossBucketsFor(lang: Lang): BucketDef[] {
+  const t = behaviorT.tFor(lang);
+  return AFTER_LOSS_KEYS.map((key) => {
+    if (key === "none") return { key, label: t("buckets.notAfterLoss") };
+    if (key === "60+") return { key, label: t("buckets.minPlus", { from: 60 }) };
+    const [from, to] = key.split("-");
+    return { key, label: t("buckets.minRange", { from, to }) };
+  });
+}
+function afterLossBucket(gapMin: number | null): (typeof AFTER_LOSS_KEYS)[number] {
+  if (gapMin == null) return "none";
+  if (gapMin < 2) return "0-2";
+  if (gapMin < 5) return "2-5";
+  if (gapMin < 10) return "5-10";
+  if (gapMin < 20) return "10-20";
+  if (gapMin < 60) return "20-60";
+  return "60+";
 }
 
-const HOUR_BUCKETS = ["до 9:30", "9:30", "10", "11", "12", "13", "14", "15", "16+"];
-function hourBucket(min: number): string {
-  if (min < 570) return "до 9:30";
+/** Entry hour buckets (NY): codes "pre" | "9:30" | "10" … "15" | "16+"; only "pre" has a translated label. */
+const HOUR_KEYS = ["pre", "9:30", "10", "11", "12", "13", "14", "15", "16+"] as const;
+function hourBucketKey(min: number): string {
+  if (min < 570) return "pre";
   if (min < 600) return "9:30";
   if (min >= 960) return "16+";
   return String(Math.floor(min / 60));
 }
+const hourLabelFor = (key: string, lang: Lang) => (key === "pre" ? behaviorT.tFor(lang)("buckets.preOpen") : key);
+/** Hour bucket labels in `lang` (setups-auto matrix uses the labels as keys of one response). */
+export function hourBucketsFor(lang: Lang = DEFAULT_LANG): string[] {
+  return HOUR_KEYS.map((k) => hourLabelFor(k, lang));
+}
+/** Label of the hour bucket of an entry minute, in `lang`. */
+function hourBucket(min: number, lang: Lang = DEFAULT_LANG): string {
+  return hourLabelFor(hourBucketKey(min), lang);
+}
+const HOUR_BUCKETS: string[] = hourBucketsFor(DEFAULT_LANG);
 
 /* ─── Индекс дисциплины ───────────────────────────────────────────────────── */
 
@@ -799,7 +831,7 @@ type Detection = {
 };
 
 /** Нормы трейдера + все детекторы (общая часть отчёта и ленты дня). */
-function detect(input: BehaviorTrade[], options: BehaviorOptions): Detection {
+function detect(input: BehaviorTrade[], options: BehaviorOptions, lang: Lang = DEFAULT_LANG): Detection {
   const opts: Required<BehaviorOptions> = { ...DEFAULTS, ...stripUndefined(options) };
   // Открытые сделки не участвуют в оценке результата, но учитываются в частоте.
   const trades = input.filter((t) => t.result !== "open");
@@ -819,7 +851,7 @@ function detect(input: BehaviorTrade[], options: BehaviorOptions): Detection {
   }
   const medianGapMin = gaps.length ? median(gaps) : null;
 
-  const ctx: Ctx = { trades, byDay, opts, medianGapMin, tradesPerDayNorm, medianTradesPerDay };
+  const ctx: Ctx = { lang, t: behaviorT.tFor(lang), trades, byDay, opts, medianGapMin, tradesPerDayNorm, medianTradesPerDay };
   const drafts = new Map<PatternKey, PatternDraft>();
   for (const d of [
     detectRevenge(ctx), detectMartingale(ctx), detectOvertrading(ctx), detectFatigue(ctx), detectChase(ctx),
@@ -828,14 +860,15 @@ function detect(input: BehaviorTrade[], options: BehaviorOptions): Detection {
   return { opts, trades, byDay, ctx, drafts, madTradesPerDay };
 }
 
-export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions = {}): BehaviorReport {
-  const { opts, trades, byDay, ctx, drafts, madTradesPerDay } = detect(input, options);
+/** The behaviour report; all texts (patterns, notes, insights, buckets, profile) in `lang`. */
+export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions = {}, lang: Lang = DEFAULT_LANG): BehaviorReport {
+  const { opts, trades, byDay, ctx, drafts, madTradesPerDay } = detect(input, options, lang);
   const { medianGapMin, tradesPerDayNorm, medianTradesPerDay } = ctx;
 
   let grossProfit = 0, grossLoss = 0;
   for (const t of trades) if (t.net != null) { if (t.net > 0) grossProfit += t.net; else grossLoss += t.net; }
   const tc = trendCtxOf(byDay);
-  const patterns = [...drafts.values()].map((d) => buildPattern(d, trades.length, grossProfit, tc, opts));
+  const patterns = [...drafts.values()].map((d) => buildPattern(d, trades.length, grossProfit, tc, opts, lang));
   const order: Record<Severity, number> = { high: 0, medium: 1, low: 2, none: 3 };
   patterns.sort((a, b) => order[a.severity] - order[b.severity] || (a.cost ?? 0) - (b.cost ?? 0));
 
@@ -852,7 +885,7 @@ export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions
       const b = afterLossBucket(gap);
       (byAfterLoss.get(b) ?? byAfterLoss.set(b, []).get(b)!).push(t);
       if (t.entryMin != null) {
-        const h = hourBucket(t.entryMin);
+        const h = hourBucketKey(t.entryMin);
         (byHour.get(h) ?? byHour.set(h, []).get(h)!).push(t);
       }
       if (t.result === "loss" && t.exitAt != null) lastLossExit = t.exitAt;
@@ -874,7 +907,7 @@ export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions
   const losers = trades.filter((t) => t.result === "loss" && t.holdMin != null);
   const dates = [...byDay.keys()];
   const { sum: net, n: withPnl } = sumNet(trades);
-  const byHourBuckets = bucketize(byHour, HOUR_BUCKETS);
+  const byHourBuckets = bucketize(byHour, HOUR_KEYS.map((k) => ({ key: k, label: hourLabelFor(k, lang) })));
   const disciplineAvg = discipline.length ? round2(discipline.reduce((s, d) => s + d.score, 0) / discipline.length) : null;
 
   return {
@@ -900,13 +933,13 @@ export function analyzeBehavior(input: BehaviorTrade[], options: BehaviorOptions
     },
     patterns,
     byTradeNumber: bucketize(byNo, TRADE_NO_BUCKETS),
-    byMinutesAfterLoss: bucketize(byAfterLoss, AFTER_LOSS_BUCKETS),
+    byMinutesAfterLoss: bucketize(byAfterLoss, afterLossBucketsFor(lang)),
     byHour: byHourBuckets,
     discipline,
     disciplineWeekly,
-    disciplineFormula: DISCIPLINE_FORMULA,
+    disciplineFormula: disciplineFormulaFor(lang),
     disciplineAvg,
-    profile: buildProfile({ trades, byDay, drafts, patterns, byHour: byHourBuckets, discipline, disciplineAvg, tc, medianTradesPerDay }),
+    profile: buildProfile({ trades, byDay, drafts, patterns, byHour: byHourBuckets, discipline, disciplineAvg, tc, medianTradesPerDay, lang }),
   };
 }
 
@@ -922,6 +955,7 @@ function buildProfile(a: {
   disciplineAvg: number | null;
   tc: TrendCtx;
   medianTradesPerDay: number;
+  lang: Lang;
 }): TraderProfile {
   const { trades } = a;
   // Стиль: по медиане удержания, доле скальпов (< 2 мин) и доле переносов через ночь.
@@ -932,12 +966,12 @@ function buildProfile(a: {
   let style: TraderProfile["style"]["key"] = "unknown";
   if (carryShare >= 0.3) style = "swing";
   else if (medianHold != null) style = medianHold < 5 || (scalpShare ?? 0) >= 0.5 ? "scalper" : "intraday";
-  const STYLE_LABEL = { scalper: "Скальпер", intraday: "Интрадей", swing: "Свинг / позиционный", unknown: "Стиль не определён" } as const;
+  const t = behaviorT.tFor(a.lang);
   const styleDesc = style === "unknown"
-    ? "Нет времени удержания — стиль не определить."
-    : `медиана удержания ${fmtDur(medianHold)}, ${a.medianTradesPerDay} сделок/день (медиана)` +
-      (scalpShare != null ? `, скальпов < 2 мин ${Math.round(scalpShare * 100)}%` : "") +
-      (carryShare > 0 ? `, переносов через ночь ${Math.round(carryShare * 100)}%` : "");
+    ? t("style.unknownDesc")
+    : t("style.desc", { hold: fmtDurFor(a.lang, medianHold), perDay: a.medianTradesPerDay }) +
+      (scalpShare != null ? t("style.scalps", { pct: Math.round(scalpShare * 100) }) : "") +
+      (carryShare > 0 ? t("style.carry", { pct: Math.round(carryShare * 100) }) : "");
 
   // Лучший / худший час: только часы с достаточной выборкой.
   const minHourN = Math.max(8, Math.round(trades.length * 0.03));
@@ -995,7 +1029,7 @@ function buildProfile(a: {
 
   return {
     style: {
-      key: style, label: STYLE_LABEL[style], description: styleDesc,
+      key: style, label: t(`style.${style}`), description: styleDesc,
       medianHoldMin: medianHold == null ? null : round2(medianHold),
       tradesPerDay: a.medianTradesPerDay,
       scalpShare: scalpShare == null ? null : round2(scalpShare),
@@ -1032,8 +1066,8 @@ const BREAKDOWN_KEYS: PatternKey[] = ["revenge", "tilt", "martingale", "euphoria
  * Сделки одного дня по времени с накопленным нетто и маркерами паттернов. Нормы (сделок/день, пауза,
  * порог крупного выигрыша…) считаются по всему `input` — route подаёт тот же период, что и отчёт.
  */
-export function dayTimeline(input: BehaviorTrade[], date: string, options: BehaviorOptions = {}): DayTimeline {
-  const { opts, byDay, ctx, drafts } = detect(input, options);
+export function dayTimeline(input: BehaviorTrade[], date: string, options: BehaviorOptions = {}, lang: Lang = DEFAULT_LANG): DayTimeline {
+  const { opts, byDay, ctx, drafts } = detect(input, options, lang);
   const day = byDay.get(date) ?? [];
   const ids = new Set(day.map((t) => t.id));
   const flags = new Map<number, TimelineFlag[]>();
@@ -1099,12 +1133,6 @@ function fmtUsd(v: number | null): string {
 function fmtMin(min: number | null): string {
   if (min == null) return "—";
   return `${Math.floor(min / 60)}:${String(Math.floor(min % 60)).padStart(2, "0")}`;
-}
-function fmtDur(min: number | null): string {
-  if (min == null) return "—";
-  if (min < 1) return `${Math.round(min * 60)} с`;
-  if (min < 60) return `${Math.round(min)} мин`;
-  return `${Math.floor(min / 60)} ч ${Math.round(min % 60)} мин`;
 }
 function stripUndefined<T extends object>(o: T): Partial<T> {
   const out: Partial<T> = {};

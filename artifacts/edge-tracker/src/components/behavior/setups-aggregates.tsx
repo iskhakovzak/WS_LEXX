@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { winRateTone, type SetupAggregate } from "./api";
 import { fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
 
 const ACCESSORS = {
   setup: (r: SetupAggregate) => r.setup,
@@ -23,13 +24,14 @@ const ACCESSORS = {
 } as const;
 
 function verdict(g: SetupAggregate, smallN: number): { label: string; tone: Tone; title: string } {
-  if (g.n < 5) return { label: "мало данных", tone: "neutral", title: "Меньше 5 сделок" };
+  const t = behaviorI18n.t;
+  if (g.n < 5) return { label: t("aggregates.few"), tone: "neutral", title: t("aggregates.fewTitle") };
   const ci = g.expectancyCI;
-  if (ci && ci.low > 0) return { label: "edge", tone: "up", title: "Весь 95% интервал ожидания выше нуля" };
-  if (ci && ci.high < 0) return { label: "утечка", tone: "down", title: "Весь 95% интервал ожидания ниже нуля" };
-  if (g.expectancy != null && g.expectancy > 0) return { label: g.n < smallN ? "плюс, n мало" : "плюс, не значимо", tone: "neutral", title: "Ожидание положительное, но интервал захватывает ноль" };
-  if (g.expectancy != null && g.expectancy < 0) return { label: g.n < smallN ? "минус, n мало" : "минус, не значимо", tone: "neutral", title: "Ожидание отрицательное, но интервал захватывает ноль" };
-  return { label: "около нуля", tone: "neutral", title: "" };
+  if (ci && ci.low > 0) return { label: t("aggregates.edge"), tone: "up", title: t("aggregates.edgeTitle") };
+  if (ci && ci.high < 0) return { label: t("aggregates.leak"), tone: "down", title: t("aggregates.leakTitle") };
+  if (g.expectancy != null && g.expectancy > 0) return { label: g.n < smallN ? t("aggregates.plusFew") : t("aggregates.plusNs"), tone: "neutral", title: t("aggregates.plusTitle") };
+  if (g.expectancy != null && g.expectancy < 0) return { label: g.n < smallN ? t("aggregates.minusFew") : t("aggregates.minusNs"), tone: "neutral", title: t("aggregates.minusTitle") };
+  return { label: t("aggregates.zero"), tone: "neutral", title: "" };
 }
 
 /** Горизонтальная шкала интервала: точка — оценка, полоса — 95% интервал, вертикаль — ноль. */
@@ -56,22 +58,22 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
   }, [groups]);
 
   if (!groups.length) {
-    return <EmptyState icon={Layers} title="Пока нет предложений" description={pending > 0 ? `Не посчитано ${commonI18n.t("units.trades", { count: pending })} — нажмите «Посчитать всё».` : "Нет закрытых сделок за период."} />;
+    return <EmptyState icon={Layers} title={behaviorI18n.t("aggregates.empty")} description={pending > 0 ? behaviorI18n.t("aggregates.emptyPending", { trades: commonI18n.t("units.trades", { count: pending }) }) : behaviorI18n.t("aggregates.emptyNone")} />;
   }
   return (
     <div className="flex flex-col gap-2">
-      <DataTable maxHeight="56vh" ariaLabel="Агрегаты по сетапу">
+      <DataTable maxHeight="56vh" ariaLabel={behaviorI18n.t("aggregates.aria")}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("setup")}>Сетап</SortableTh>
+              <SortableTh {...thProps("setup")}>{behaviorI18n.t("aggregates.col.setup")}</SortableTh>
               <SortableTh {...thProps("n")} align="right">n</SortableTh>
-              <SortableTh {...thProps("expectancy")} align="right">Ожидание / сделку · 95% ДИ</SortableTh>
-              <SortableTh {...thProps("winRate")} align="right">Win rate · 95% ДИ</SortableTh>
-              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+              <SortableTh {...thProps("expectancy")} align="right">{behaviorI18n.t("aggregates.col.expectancy")}</SortableTh>
+              <SortableTh {...thProps("winRate")} align="right">{behaviorI18n.t("aggregates.col.winRate")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right">{behaviorI18n.t("aggregates.col.net")}</SortableTh>
               <SortableTh {...thProps("profitFactor")} align="right">PF</SortableTh>
-              <SortableTh {...thProps("avgConfidence")} align="right">Уверенность</SortableTh>
-              <th scope="col">Вердикт</th>
+              <SortableTh {...thProps("avgConfidence")} align="right">{behaviorI18n.t("aggregates.col.confidence")}</SortableTh>
+              <th scope="col">{behaviorI18n.t("aggregates.col.verdict")}</th>
             </tr>
           </thead>
           <tbody>
@@ -83,26 +85,26 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
                 <tr key={g.setup}>
                   <td className="font-medium">
                     {g.accepted > 0 ? (
-                      <Link href={links.trades({ setup: g.setup })} className="underline-offset-2 hover:underline" title={`Принято в ${commonI18n.t("units.trades", { count: g.accepted })} — открыть в журнале`}>{g.setup}</Link>
+                      <Link href={links.trades({ setup: g.setup })} className="underline-offset-2 hover:underline" title={behaviorI18n.t("aggregates.acceptedTitle", { trades: commonI18n.t("units.trades", { count: g.accepted }) })}>{g.setup}</Link>
                     ) : g.setup}
-                    {g.accepted > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">принято {g.accepted}</span>}
+                    {g.accepted > 0 && <span className="ml-1 text-xs font-normal text-muted-foreground">{behaviorI18n.t("aggregates.accepted", { count: g.accepted })}</span>}
                   </td>
                   <td className="text-right tabular-nums">
                     {g.n}
-                    {small && <Pill tone="neutral" className="ml-1" title={`Меньше ${smallSample} сделок: интервалы широкие, выводы ненадёжны`}>n&lt;{smallSample}</Pill>}
+                    {small && <Pill tone="neutral" className="ml-1" title={behaviorI18n.t("aggregates.smallTitle", { n: smallSample })}>n&lt;{smallSample}</Pill>}
                   </td>
-                  <td className="text-right tabular-nums" title={g.expectancyCI ? `95% бутстрап-интервал: ${fmtUsd(g.expectancyCI.low, { signed: true, decimals: "auto" })} … ${fmtUsd(g.expectancyCI.high, { signed: true, decimals: "auto" })}` : "Интервал не определён (n < 2)"}>
+                  <td className="text-right tabular-nums" title={g.expectancyCI ? behaviorI18n.t("aggregates.bootCi", { lo: fmtUsd(g.expectancyCI.low, { signed: true, decimals: "auto" }), hi: fmtUsd(g.expectancyCI.high, { signed: true, decimals: "auto" }) }) : behaviorI18n.t("aggregates.noCi")}>
                     <span className={toneText(toneOf(g.expectancy))}>{fmtUsd(g.expectancy, { signed: true, decimals: "auto" })}</span>
                     {g.expectancyCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtUsd(g.expectancyCI.low, { signed: true, compact: true })}; {fmtUsd(g.expectancyCI.high, { signed: true, compact: true })}]</span>}
                     <CiBar value={g.expectancy} ci={g.expectancyCI} lo={lo} hi={hi} />
                   </td>
-                  <td className="text-right tabular-nums" title={g.winRateCI ? `Интервал Уилсона: ${fmtRate(g.winRateCI.low)} … ${fmtRate(g.winRateCI.high)} (W/(W+L), BE не считаются)` : undefined}>
+                  <td className="text-right tabular-nums" title={g.winRateCI ? behaviorI18n.t("aggregates.wilson", { lo: fmtRate(g.winRateCI.low), hi: fmtRate(g.winRateCI.high) }) : undefined}>
                     <span className={toneText(winRateTone(g.winRate, decided))}>{fmtRate(g.winRate)}</span>
                     {g.winRateCI && <span className="ml-1 text-xs text-muted-foreground">[{fmtRate(g.winRateCI.low)}–{fmtRate(g.winRateCI.high)}]</span>}
                     <div className="text-xs text-muted-foreground">{g.wins}/{g.losses}{g.be ? `/${g.be}` : ""}</div>
                   </td>
                   <td className={cn("text-right tabular-nums", toneText(toneOf(g.net)))}>{fmtUsd(g.net, { signed: true, decimals: "auto" })}</td>
-                  <td className="text-right tabular-nums" title={g.profitFactor == null ? "PF не определён: нет убыточных сделок или нет P&L" : undefined}>{fmtRatio(g.profitFactor)}</td>
+                  <td className="text-right tabular-nums" title={g.profitFactor == null ? behaviorI18n.t("aggregates.pfUndefined") : undefined}>{fmtRatio(g.profitFactor)}</td>
                   <td className="text-right tabular-nums">{g.avgConfidence == null ? "—" : `${Math.round(g.avgConfidence * 100)}%`}</td>
                   <td><Pill tone={v.tone} dot title={v.title}>{v.label}</Pill></td>
                 </tr>
@@ -112,8 +114,8 @@ export function SetupsAggregates({ groups, covered, pending, smallSample = 20 }:
         </table>
       </DataTable>
       <p className="text-xs text-muted-foreground">
-        Покрыто {commonI18n.t("units.trades", { count: covered })}{pending > 0 ? `, не посчитано ${pending}` : ""}. Ожидание — средний нетто на сделку, интервал — бутстрап 2000 выборок;
-        win rate = W/(W+L) с интервалом Уилсона. «Edge»/«утечка» — только если весь интервал по одну сторону от нуля. Отклонённые предложения исключены.
+        {behaviorI18n.t("aggregates.covered", { trades: commonI18n.t("units.trades", { count: covered }) })}{pending > 0 ? behaviorI18n.t("aggregates.notCovered", { count: pending }) : ""}{behaviorI18n.t("aggregates.footnote")}
+
       </p>
     </div>
   );

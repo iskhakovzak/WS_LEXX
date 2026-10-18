@@ -3,13 +3,14 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { pool } from "@workspace/db";
 import { isReadableExampleTrade, loadMoneyViewer } from "../lib/playbookAccess";
 import { redactExecutions, redactStructure } from "../lib/playbookPrivacy";
-import { ROLE_LABEL_RU } from "../lib/tradeStructure";
+import { roleLabel } from "../lib/tradeStructure";
+import { langOf } from "../i18n";
 import { refreshTradeStructures, structureForTrade } from "../lib/tradeStructureStore";
 import { structureSummary } from "../lib/tradeStructure";
 import { logger } from "../lib/logger";
 import { can, resolveActor } from "../lib/permissions";
 import { canReadTradeExecutions } from "../lib/accessRules";
-import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -118,8 +119,7 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
   if (mode === "write") {
     const own = owner === actor.name && (await can(req, "trades.write.own", { trader: owner }));
     if (actor.guest || !(own || (await can(req, "trades.write.any", { trader: owner })))) {
-      res.status(403).json({ error: "Можно изменять исполнения только своих трейдов" });
-      return false;
+      throw new AppError("OWN_TRADES_ONLY");
     }
     return { trader: owner };
   }
@@ -127,8 +127,7 @@ async function assertTradeAccess(req: Request, res: Response, tradeId: number, m
   const teamAllowed = !isOwn && !actor.guest && (await can(req, "trades.read.team", { trader: owner }));
   const readableExample = !isOwn && !teamAllowed && !actor.guest && (await isReadableExampleTrade(req, tradeId));
   if (!canReadTradeExecutions(actor, owner, { teamAllowed, readableExample })) {
-    res.status(403).json({ error: "Можно просматривать исполнения только своих трейдов" });
-    return false;
+    throw new AppError("OWN_TRADES_ONLY");
   }
   return { trader: owner };
 }
@@ -151,7 +150,7 @@ router.get(
       [tradeId]
     );
     // Structure is computed on read (always matches the fills); the stored copy only feeds lists and back-fills.
-    const computed = await structureForTrade(tradeId).catch((e) => {
+    const computed = await structureForTrade(tradeId, undefined, langOf(req)).catch((e) => {
       logger.warn({ err: e instanceof Error ? e.message : String(e), tradeId }, "trade structure failed");
       return null;
     });
@@ -168,7 +167,7 @@ router.get(
         note: r.note,
         sortOrder: r.sort_order,
         role: s?.role ?? null,
-        roleLabel: s ? ROLE_LABEL_RU[s.role] : null,
+        roleLabel: s ? roleLabel(s.role, langOf(req)) : null,
         roleInferred: s?.inferred ?? false,
         legIndex: s?.legIndex ?? null,
       };
@@ -177,7 +176,7 @@ router.get(
     // unless the viewer is staff.
     const viewer = await loadMoneyViewer(req);
     const structure = computed
-      ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats) } }, viewer, access.trader), siblings: computed.siblings }
+      ? { ...redactStructure({ legs: computed.structure.legs, stats: { ...computed.structure.stats, summary: structureSummary(computed.structure.stats, langOf(req)) } }, viewer, access.trader), siblings: computed.siblings }
       : null;
     res.json({ tradeId, executions: redactExecutions(data, viewer, access.trader), structure });
   })
@@ -245,8 +244,7 @@ router.post(
     }
     const parsed = parseCreateBody(req.body);
     if (!parsed.ok) {
-      res.status(400).json({ error: parsed.error });
-      return;
+      throw new AppError("VALIDATION", 400, undefined, parsed.error);
     }
     if (!(await assertTradeAccess(req, res, tradeId))) return;
     const v = parsed.value;

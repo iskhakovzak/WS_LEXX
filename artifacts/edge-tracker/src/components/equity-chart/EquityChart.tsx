@@ -27,8 +27,10 @@ import { aggregate, derive, windowStats, type EquityAgg } from "./model";
 import { EquityEngine, type HoverInfo, type ViewMode } from "./engine";
 import { candleText } from "./render";
 import { EquityTooltip, candleTitle } from "./tooltip";
+import { equityChartI18n } from "@/i18n/ns/equityChart";
+import { commonI18n } from "@/i18n/ns/common";
 import {
-  PRESETS, ensureVisible, fullView, indexFrom, presetUseful, presetView, rangeView, visibleRange, type Preset, type View,
+  presets, ensureVisible, fullView, indexFrom, presetUseful, presetView, rangeView, visibleRange, type Preset, type View,
 } from "./viewport";
 
 export interface EquityPeriodControl<T extends string> {
@@ -64,15 +66,12 @@ interface Prefs { mode: ViewMode; agg: EquityAgg; preset: Preset; panes: Panes }
 const DEFAULTS: Prefs = { mode: "candles", agg: "day", preset: "all", panes: { pnl: false, dd: true, nav: true, marks: true } };
 const NAV_MIN_BARS = 12;
 
-const AGG_OPTIONS: { value: EquityAgg; label: string }[] = [
-  { value: "day", label: "День" },
-  { value: "week", label: "Нед" },
-  { value: "month", label: "Мес" },
-];
+const AGGS: readonly EquityAgg[] = ["day", "week", "month"];
 
 export function EquityChart<T extends string = string>({
   days, unit, trader, height = 380, storageKey, period, defaults, showSummary = true, empty, className,
 }: EquityChartProps<T>) {
+  const { t: te } = equityChartI18n.useT();
   const [, navigate] = useLocation();
   const themeVersion = useThemeVersion();
   const base = { ...DEFAULTS, ...defaults, panes: { ...DEFAULTS.panes, ...defaults?.panes } };
@@ -232,7 +231,9 @@ export function EquityChart<T extends string = string>({
     const eng = engineRef.current;
     const v1 = visible[1];
     const cur = selected >= 0 ? selected : -1;
-    switch (e.key) {
+    // Zoom keys by physical key too, so they work on any keyboard layout.
+    const key = e.code === "Equal" || e.code === "NumpadAdd" ? "+" : e.code === "Minus" || e.code === "NumpadSubtract" ? "-" : e.code === "Digit0" || e.code === "Numpad0" ? "0" : e.key;
+    switch (key) {
       case "ArrowLeft": e.preventDefault(); step(cur < 0 ? v1 : cur - 1); break;
       case "ArrowRight": e.preventDefault(); step(cur < 0 ? v1 : cur + 1); break;
       case "Home": e.preventDefault(); step(0); break;
@@ -252,22 +253,22 @@ export function EquityChart<T extends string = string>({
   const all = React.useMemo(() => windowStats(bars, 0, n - 1), [bars, n]);
   const hoverBar = hover ? bars[hover.index] ?? null : null;
   const selBar = selected >= 0 ? bars[selected] ?? null : null;
-  const unitLabel = unit === "r" ? "R" : unit === "gross" ? "брутто, $" : "нетто, $";
-  const aggWord = agg === "week" ? ["неделя", "недели", "недель"] : agg === "month" ? ["месяц", "месяца", "месяцев"] : ["день", "дня", "дней"];
+  const unitLabel = te(`unit.${unit === "r" ? "r" : unit === "gross" ? "gross" : "net"}`);
+  const barsText = (count: number) => commonI18n.t(agg === "week" ? "units.weeks" : agg === "month" ? "units.months" : "units.days", { count });
   const presetValue: Preset | "custom" = custom ? "custom" : presetPref;
   const fillH = height === "fill";
 
   const srSummary = all
-    ? `Кривая капитала, ${unitLabel}: итог ${fmtValue(all.result, unit)} за ${all.bars} ${aggWord[2]}` +
-      (derived.best >= 0 ? `; лучший — ${candleTitle(bars[derived.best], agg)}, ${fmtValue(bars[derived.best].value, unit)}` : "") +
-      (derived.worst >= 0 ? `; худший — ${candleTitle(bars[derived.worst], agg)}, ${fmtValue(bars[derived.worst].value, unit)}` : "") +
-      `; макс. просадка ${fmtValue(derived.maxDrawdown, unit)}.`
+    ? te("sr.summary", { unit: unitLabel, result: fmtValue(all.result, unit), bars: barsText(all.bars) }) +
+      (derived.best >= 0 ? te("sr.best", { title: candleTitle(bars[derived.best], agg), value: fmtValue(bars[derived.best].value, unit) }) : "") +
+      (derived.worst >= 0 ? te("sr.worst", { title: candleTitle(bars[derived.worst], agg), value: fmtValue(bars[derived.worst].value, unit) }) : "") +
+      te("sr.drawdown", { value: fmtValue(derived.maxDrawdown, unit) })
     : "";
 
   if (!days.length) {
     return (
       <div className={cn("flex min-w-0 flex-col", fillH && "flex-1", className)}>
-        {empty ?? <EmptyState compact icon={CandlestickChart} title="Нет закрытых сделок" description={`Кривая строится по сделкам с ${unit === "r" ? "R" : "P&L"}.`} />}
+        {empty ?? <EmptyState compact icon={CandlestickChart} title={te("empty.title")} description={te("empty.description", { metric: unit === "r" ? "R" : "P&L" })} />}
       </div>
     );
   }
@@ -276,53 +277,53 @@ export function EquityChart<T extends string = string>({
     <div className={cn("@container flex min-w-0 flex-col gap-2.5", fillH && "min-h-0 flex-1", className)}>
       <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
         <Segmented<ViewMode>
-          size="sm" ariaLabel="Вид кривой" value={mode} onChange={setMode}
+          size="sm" ariaLabel={te("modeAria")} value={mode} onChange={setMode}
           options={[
-            { value: "candles", label: <><CandlestickChart className="h-3.5 w-3.5" aria-hidden="true" /><span className="@max-2xl:sr-only">Свечи</span></> },
-            { value: "line", label: <><LineIcon className="h-3.5 w-3.5" aria-hidden="true" /><span className="@max-2xl:sr-only">Линия</span></> },
+            { value: "candles", label: <><CandlestickChart className="h-3.5 w-3.5" aria-hidden="true" /><span className="@max-2xl:sr-only">{te("candles")}</span></> },
+            { value: "line", label: <><LineIcon className="h-3.5 w-3.5" aria-hidden="true" /><span className="@max-2xl:sr-only">{te("line")}</span></> },
           ]}
         />
-        <Segmented<EquityAgg> size="sm" ariaLabel="Свеча — день, неделя или месяц" value={agg} onChange={(v) => { setDrill(null); setAgg(v); }} options={AGG_OPTIONS} />
+        <Segmented<EquityAgg> size="sm" ariaLabel={te("aggAria")} value={agg} onChange={(v) => { setDrill(null); setAgg(v); }} options={AGGS.map((a) => ({ value: a, label: te(`agg.${a}`) }))} />
         {period ? (
-          <Segmented<T> size="sm" ariaLabel="Период" value={period.value} onChange={period.onChange} options={period.options} />
+          <Segmented<T> size="sm" ariaLabel={te("periodAria")} value={period.value} onChange={period.onChange} options={period.options} />
         ) : (
           <Segmented<Preset | "custom">
-            size="sm" ariaLabel="Окно просмотра" value={presetValue} onChange={(v) => v !== "custom" && applyPreset(v)}
-            options={PRESETS.map((p) => ({ value: p.value, label: <span title={p.title}>{p.label}</span>, disabled: !presetUseful(tos, p.value) }))}
+            size="sm" ariaLabel={te("windowAria")} value={presetValue} onChange={(v) => v !== "custom" && applyPreset(v)}
+            options={presets().map((p) => ({ value: p.value, label: <span title={p.title}>{p.label}</span>, disabled: !presetUseful(tos, p.value) }))}
           />
         )}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button type="button" variant="ghost" size="sm" className="h-8 rounded-full px-2.5 text-xs" aria-label="Панели графика">
-              <SlidersHorizontal aria-hidden="true" /><span className="@max-2xl:sr-only">Панели</span>
+            <Button type="button" variant="ghost" size="sm" className="h-8 rounded-full px-2.5 text-xs" aria-label={te("panesAria")}>
+              <SlidersHorizontal aria-hidden="true" /><span className="@max-2xl:sr-only">{te("panes")}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-60">
-            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Под графиком</DropdownMenuLabel>
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{te("below")}</DropdownMenuLabel>
             <DropdownMenuCheckboxItem checked={panes.pnl} onCheckedChange={(v) => setPanes({ ...panes, pnl: v === true })}>
-              P&L по {agg === "week" ? "неделям" : agg === "month" ? "месяцам" : "дням"}
+              {te(`pnlBy.${agg}`)}
             </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem checked={panes.dd} onCheckedChange={(v) => setPanes({ ...panes, dd: v === true })}>Просадка от пика</DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem checked={panes.nav} disabled={n < NAV_MIN_BARS} onCheckedChange={(v) => setPanes({ ...panes, nav: v === true })}>Навигатор</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem checked={panes.dd} onCheckedChange={(v) => setPanes({ ...panes, dd: v === true })}>{te("ddPane")}</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem checked={panes.nav} disabled={n < NAV_MIN_BARS} onCheckedChange={(v) => setPanes({ ...panes, nav: v === true })}>{te("navigator")}</DropdownMenuCheckboxItem>
             <DropdownMenuSeparator />
-            <DropdownMenuCheckboxItem checked={panes.marks} onCheckedChange={(v) => setPanes({ ...panes, marks: v === true })}>Пик и отметки</DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem checked={panes.marks} onCheckedChange={(v) => setPanes({ ...panes, marks: v === true })}>{te("marks")}</DropdownMenuCheckboxItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={resetZoom}>Показать всё</DropdownMenuItem>
+            <DropdownMenuItem onSelect={resetZoom}>{te("showAll")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
 
         {showSummary && win && (
           <dl className="ml-auto flex flex-wrap items-baseline gap-x-4 gap-y-1 text-xs tabular-nums text-muted-foreground" aria-live="off">
-            <div className="flex items-baseline gap-1.5" title={`Видимое окно: ${rangeRu(win.from, win.to)}`}>
+            <div className="flex items-baseline gap-1.5" title={te("visibleWindow", { range: rangeRu(win.from, win.to) })}>
               <dt className="@max-2xl:sr-only">{rangeRu(win.from, win.to)}</dt>
               <dd className={cn("text-sm font-semibold", win.result > 0 ? "text-up" : win.result < 0 ? "text-down" : "text-foreground")}>{fmtValue(win.result, unit)}</dd>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <dt>В плюс</dt>
+              <dt>{te("green")}</dt>
               <dd className="text-foreground"><span className="text-up">{win.green}</span>/{win.bars}</dd>
             </div>
             <div className="flex items-baseline gap-1.5">
-              <dt>Просадка</dt>
+              <dt>{te("drawdown")}</dt>
               <dd className={win.maxDrawdown < 0 ? "text-down" : "text-foreground"}>{fmtValue(win.maxDrawdown, unit)}</dd>
             </div>
           </dl>
@@ -331,9 +332,9 @@ export function EquityChart<T extends string = string>({
           <Link
             href={weekHref(drill.from, trader)}
             className={cn("inline-flex h-8 items-center gap-1 rounded-full px-3 text-xs font-medium text-primary hover:bg-primary/10", !(showSummary && win) && "ml-auto")}
-            title={`Отчёт недели ${rangeRu(drill.from, drill.to)}`}
+            title={te("weekReportTitle", { range: rangeRu(drill.from, drill.to) })}
           >
-            Отчёт недели <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+            {te("weekReport")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
           </Link>
         )}
       </div>
@@ -342,8 +343,8 @@ export function EquityChart<T extends string = string>({
         ref={wrapRef}
         tabIndex={0}
         role="group"
-        aria-roledescription="интерактивный график"
-        aria-label={`${srSummary} Стрелки — по ${agg === "day" ? "дням" : agg === "week" ? "неделям" : "месяцам"}, Enter — ${agg === "day" ? "разбор дня" : "раскрыть по дням"}, плюс и минус — масштаб, 0 — всё.`}
+        aria-roledescription={te("sr.roledesc")}
+        aria-label={`${srSummary} ${te(`sr.keys.${agg}`)}`}
         aria-keyshortcuts="ArrowLeft ArrowRight Home End Enter + - 0 Escape"
         onKeyDown={onKeyDown}
         onBlur={() => setSelected(-1)}
@@ -363,7 +364,7 @@ export function EquityChart<T extends string = string>({
         {hint && (
           <div className="pointer-events-none absolute inset-x-0 top-1/3 z-raised flex justify-center" aria-hidden="true">
             <span className="glass-thick rounded-full border border-border/70 px-3 py-1.5 text-xs text-foreground shadow-lg">
-              Ctrl + колесо — масштаб · перетащите — сдвиг
+              {te("zoomHint")}
             </span>
           </div>
         )}
@@ -371,11 +372,11 @@ export function EquityChart<T extends string = string>({
       </div>
 
       <p className="hidden flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground @lg:flex">
-        <span>Перетащите — сдвиг</span>
-        <span>Ctrl + колесо — масштаб</span>
-        <span>Двойной клик — всё</span>
-        <span>Клик по {agg === "day" ? "дню — разбор дня" : agg === "week" ? "неделе — по дням и отчёт недели" : "месяцу — по дням"}</span>
-        {mode === "candles" && <span className="ml-auto max-w-full @max-3xl:hidden">Свеча: тело — начало → конец {agg === "day" ? "дня" : agg === "week" ? "недели" : "месяца"}, фитили — лучшая и худшая точка, {unitLabel}</span>}
+        <span>{te("help.drag")}</span>
+        <span>{te("help.wheel")}</span>
+        <span>{te("help.dbl")}</span>
+        <span>{te(`help.click.${agg}`)}</span>
+        {mode === "candles" && <span className="ml-auto max-w-full @max-3xl:hidden">{te(`help.candle.${agg}`, { unit: unitLabel })}</span>}
       </p>
     </div>
   );

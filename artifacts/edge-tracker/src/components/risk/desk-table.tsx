@@ -6,7 +6,10 @@ import { Button } from "@/components/ui/button";
 import type { DeskRow } from "./use-risk";
 import { rankLevel, riskScore, worstUsage, type RankInput, type RankLevel, type TraderExposure } from "./risk-math";
 import { LevelBadge, UsageCell, tierLabel } from "./primitives";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
+import { riskI18n } from "@/i18n/ns/risk";
+import { commonI18n } from "@/i18n/ns/common";
+import { alertLabel, stopMessage, stopStateLabel } from "./labels";
 
 export type DeskTableRow = {
   row: DeskRow;
@@ -41,10 +44,10 @@ export function toTableRows(rows: DeskRow[], exposure: Map<string, TraderExposur
 function statusDetail(t: DeskTableRow): string | null {
   const r = t.row;
   if (t.level === "none") return null;
-  if (r.halted) return r.stop.label.toLowerCase();
+  if (r.halted) return stopStateLabel(r.stop.state);
   const top = r.alerts[0];
-  if (top) return `${top.label.toLowerCase()}${top.pct != null ? ` ${Math.round(top.pct)}%` : ""}`;
-  if (r.stop.dailyRemainingUsd != null) return `ещё ${fmtUsd(r.stop.dailyRemainingUsd, { decimals: 0 })} до стопа`;
+  if (top) return [alertLabel(top), top.pct != null ? fmtPct(top.pct, { decimals: 0, signed: false }) : null].filter(Boolean).join(" ");
+  if (r.stop.dailyRemainingUsd != null) return riskI18n.t("table.leftToStop", { amount: fmtUsd(r.stop.dailyRemainingUsd, { decimals: 0 }) });
   return null;
 }
 
@@ -63,31 +66,35 @@ const ddmm = (d: string) => fmtDate(d.slice(0, 10), "dayMonthNumeric");
 
 export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (trader: string) => void }) {
   const { rows: sorted, thProps } = useTableSort(rows, ACCESSORS, "risk");
+  const { t } = riskI18n.useT();
+  const c = commonI18n.t;
+  const short = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 });
 
   return (
-    <DataTable ariaLabel="Трейдеры по риску" density="comfortable">
+    <DataTable ariaLabel={t("desk.tradersTitle")} density="comfortable">
       <table>
         <thead>
           <tr>
-            <SortableTh {...thProps("trader")}>Трейдер</SortableTh>
-            <SortableTh {...thProps("risk")}>Статус</SortableTh>
-            <SortableTh {...thProps("daily")}>День</SortableTh>
-            <SortableTh {...thProps("weekly")}>Неделя</SortableTh>
-            <SortableTh {...thProps("drawdown")}>Просадка</SortableTh>
-            <SortableTh {...thProps("pnl")} align="right">P&L сегодня</SortableTh>
-            <SortableTh {...thProps("gross")} align="right">Позиции</SortableTh>
-            <SortableTh {...thProps("overnight")} align="right">Овернайт</SortableTh>
-            <th scope="col">Топ-тикер</th>
-            <th scope="col" className="w-12"><span className="sr-only">Карточка</span></th>
+            <SortableTh {...thProps("trader")}>{c("fields.trader")}</SortableTh>
+            <SortableTh {...thProps("risk")}>{c("fields.status")}</SortableTh>
+            <SortableTh {...thProps("daily")}>{c("time.day")}</SortableTh>
+            <SortableTh {...thProps("weekly")}>{c("time.week")}</SortableTh>
+            <SortableTh {...thProps("drawdown")}>{c("trading.drawdown")}</SortableTh>
+            <SortableTh {...thProps("pnl")} align="right">{t("table.pnlToday")}</SortableTh>
+            <SortableTh {...thProps("gross")} align="right">{t("table.positions")}</SortableTh>
+            <SortableTh {...thProps("overnight")} align="right">{c("trading.overnight")}</SortableTh>
+            <th scope="col">{t("table.topTicker")}</th>
+            <th scope="col" className="w-12"><span className="sr-only">{t("table.card")}</span></th>
           </tr>
         </thead>
         <tbody>
-          {sorted.map((t) => {
-            const r = t.row;
+          {sorted.map((row) => {
+            const r = row.row;
             const L = r.limits;
-            const e = t.exposure;
+            const e = row.exposure;
             const pnl = r.today.pnlNet;
-            const detail = statusDetail(t);
+            const detail = statusDetail(row);
+            const message = row.level === "none" ? undefined : stopMessage(r, L);
             const todayLoss = Math.max(0, -(pnl ?? 0));
             const weekLoss = Math.max(0, -(r.week.pnlNet ?? 0));
             const overnightBad = L != null && !L.allowOvernight && (e?.overnightCount ?? r.today.carriedTonight) > 0;
@@ -98,8 +105,8 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 onClick={() => onOpen(r.trader)}
                 className={cn(
                   "cursor-pointer",
-                  t.level === "stop" && "bg-down/[0.06]",
-                  t.level === "near" && "bg-warn/[0.06]",
+                  row.level === "stop" && "bg-down/[0.06]",
+                  row.level === "near" && "bg-warn/[0.06]",
                 )}
               >
                 <td>
@@ -110,41 +117,43 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                   >
                     {r.trader}
                   </button>
-                  <div className="text-xs text-muted-foreground">{tierLabel(L?.tier) ?? "без тира"}</div>
+                  <div className="text-xs text-muted-foreground">{tierLabel(L?.tier) ?? c("tiers.noTier")}</div>
                 </td>
                 <td>
-                  <LevelBadge level={t.level} />
-                  {detail && <div className="mt-0.5 max-w-[150px] truncate text-xs text-muted-foreground" title={r.stop.message}>{detail}</div>}
+                  <LevelBadge level={row.level} />
+                  {detail && (
+                    <div className={cn("mt-0.5 max-w-[170px] truncate text-xs", row.level === "stop" ? "text-down" : "text-muted-foreground")} title={message ?? detail}>{detail}</div>
+                  )}
                 </td>
-                <td><UsageCell label={`${r.trader}, дневной лимит`} pct={r.stop.dailyPct} used={todayLoss} limit={L?.dailyLossLimit} /></td>
-                <td><UsageCell label={`${r.trader}, недельный лимит`} pct={r.stop.weeklyPct} used={weekLoss} limit={L?.weeklyLossLimit} /></td>
-                <td><UsageCell label={`${r.trader}, макс. просадка`} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
+                <td><UsageCell label={t("table.usageDaily", { name: r.trader })} pct={r.stop.dailyPct} used={todayLoss} limit={L?.dailyLossLimit} /></td>
+                <td><UsageCell label={t("table.usageWeekly", { name: r.trader })} pct={r.stop.weeklyPct} used={weekLoss} limit={L?.weeklyLossLimit} /></td>
+                <td><UsageCell label={t("table.usageDrawdown", { name: r.trader })} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
                 <td className="text-right">
                   <div className={cn("font-semibold", pnl == null ? "text-muted-foreground" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "")}>
                     {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : "—"}
                   </div>
                   <div className="text-xs text-muted-foreground">
-                    {r.today.trades ? `${r.today.trades} сд.` : r.lastTradeDate ? `посл. ${ddmm(r.lastTradeDate)}` : "нет сделок"}
+                    {r.today.trades ? c("units.tradesShort", { count: r.today.trades }) : r.lastTradeDate ? t("table.lastTrade", { date: ddmm(r.lastTradeDate) }) : t("table.noTrades")}
                   </div>
                 </td>
                 <td className="text-right">
                   {e && e.count > 0 ? (
                     <>
-                      <div className="font-medium">{e.count} · {fmtUsd(e.grossUsd, { decimals: 0, compact: 10_000 })}</div>
-                      <div className="text-xs text-muted-foreground">
-                        лонг {fmtUsd(e.longUsd, { decimals: 0, compact: 10_000 })} / шорт {fmtUsd(e.shortUsd, { decimals: 0, compact: 10_000 })}
+                      <div className="font-medium">{e.count} · {short(e.grossUsd)}</div>
+                      <div className="whitespace-nowrap text-xs text-muted-foreground">
+                        {t("table.longShort", { long: short(e.longUsd), short: short(e.shortUsd) })}
                       </div>
                     </>
                   ) : (
-                    <span className="text-xs text-muted-foreground">нет</span>
+                    <span className="text-xs text-muted-foreground">{t("table.none")}</span>
                   )}
                 </td>
                 <td className="text-right">
                   {e && e.overnightCount > 0 ? (
-                    <span className={cn("inline-flex items-center gap-1 font-medium", overnightBad && "text-down")} title={overnightBad ? "Овернайт запрещён лимитами" : undefined}>
+                    <span className={cn("inline-flex items-center gap-1 font-medium", overnightBad && "text-down")} title={overnightBad ? t("table.overnightForbidden") : undefined}>
                       <Moon className="h-3 w-3" aria-hidden="true" />
                       {e.overnightCount} · {fmtUsd(e.overnightUsd, { decimals: 0, compact: 10_000 })}
-                      {overnightBad && <span className="sr-only">овернайт запрещён</span>}
+                      {overnightBad && <span className="sr-only">{t("table.overnightForbidden")}</span>}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
@@ -152,7 +161,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                 </td>
                 <td>
                   {e?.topTicker ? (
-                    <span className={cn("text-xs", concentrated ? "font-medium text-warn" : "text-muted-foreground")} title={concentrated ? "Больше половины экспозиции в одном тикере" : undefined}>
+                    <span className={cn("text-xs", concentrated ? "font-medium text-warn" : "text-muted-foreground")} title={concentrated ? t("table.concentrated") : undefined}>
                       {e.topTicker} {Math.round(e.topTickerPct ?? 0)}%
                     </span>
                   ) : (
@@ -164,8 +173,8 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    aria-label={`Карточка трейдера ${r.trader}`}
-                    title="Карточка трейдера"
+                    aria-label={t("table.cardAria", { name: r.trader })}
+                    title={t("table.cardTitle")}
                     onClick={(ev) => { ev.stopPropagation(); onOpen(r.trader); }}
                   >
                     <PanelRight className="h-4 w-4" aria-hidden="true" />

@@ -17,7 +17,10 @@ import { MarkReadButton, ReadStatusPanel } from "@/components/game-plan/read-sta
 import { HistoryPanel } from "@/components/game-plan/history-panel";
 import { PlanEditorSheet } from "@/components/game-plan/plan-editor-sheet";
 import { HORIZON, dateObj, gpApi, gpKeys, isIsoDate, nyToday, shiftTradingDay, type Horizon } from "@/components/game-plan/types";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtRelative, fmtUsd } from "@/lib/format";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { shellI18n } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 
 type HorizonFilter = "all" | Horizon;
 type View = "desk" | "my" | "traders";
@@ -46,7 +49,7 @@ function isTypingTarget(t: EventTarget | null) {
   return el.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(el.tagName) || !!el.closest("[role=dialog]");
 }
 
-/** "обновлено N сек назад" — re-renders every 15s. */
+/** "updated N min ago" in the UI language — re-renders every 15s. */
 function useAgo(ts: number) {
   const [, tick] = useState(0);
   useEffect(() => {
@@ -54,13 +57,11 @@ function useAgo(ts: number) {
     return () => window.clearInterval(id);
   }, []);
   if (!ts) return "";
-  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
-  if (s < 10) return "обновлено только что";
-  if (s < 60) return `обновлено ${s} сек назад`;
-  return `обновлено ${Math.round(s / 60)} мин назад`;
+  return gpI18n.t("page.updatedAgo", { ago: fmtRelative(ts) });
 }
 
 export default function GamePlanPage() {
+  const { t } = gpI18n.useT();
   const { isCurator, user, can } = useAuth();
   const isTrader = !!user && user.role !== "guest" && !isCurator;
   const me = user && user.role !== "guest" ? user.traderName : null;
@@ -128,9 +129,9 @@ export default function GamePlanPage() {
       } else if (e.key === "ArrowRight") {
         e.preventDefault();
         go(shiftTradingDay(date, 1));
-      } else if (e.key === "t" || e.key === "T" || e.key === "е" || e.key === "Е") {
+      } else if (e.key === "t" || e.key === "T" || e.key === "е" || e.key === "Е") { // i18n-ignore (RU keyboard layout)
         go(today);
-      } else if ((e.key === "e" || e.key === "E" || e.key === "у" || e.key === "У") && isCurator && view === "desk") {
+      } else if ((e.key === "e" || e.key === "E" || e.key === "у" || e.key === "У") && isCurator && view === "desk") { // i18n-ignore (RU keyboard layout)
         e.preventDefault();
         setEditorOpen(true);
       } else if (e.key === "/") {
@@ -161,25 +162,25 @@ export default function GamePlanPage() {
   return (
     <Page>
       <PageHeader
-        title="План дня"
+        title={shellI18n.t("nav.gamePlan")}
         icon={Compass}
-        description={`Премаркет-брифинг деска · ${ago || "время ET"}`}
+        description={t("page.description", { ago: ago || t("page.timeEt") })}
         actions={
           <>
-            <nav aria-label="Выбор дня" className="glass-field inline-flex items-center gap-0.5 p-1">
+            <nav aria-label={t("page.dayNav")} className="glass-field inline-flex items-center gap-0.5 p-1">
               <Button
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                title="Предыдущий торговый день (←)"
-                aria-label="Предыдущий торговый день"
+                title={t("page.prevDayKey")}
+                aria-label={t("page.prevDay")}
                 onClick={() => go(shiftTradingDay(date, -1))}
               >
                 <ChevronLeft aria-hidden="true" />
               </Button>
               <Popover open={calOpen} onOpenChange={setCalOpen}>
                 <PopoverTrigger asChild>
-                  <Button variant="ghost" size="sm" className="min-w-[132px] tabular-nums" aria-label={`Выбрать дату, сейчас ${longDate(date)}`}>
+                  <Button variant="ghost" size="sm" className="min-w-[132px] tabular-nums" aria-label={t("page.pickDate", { date: longDate(date) })}>
                     <CalendarDays aria-hidden="true" />
                     {shortDate}
                   </Button>
@@ -202,22 +203,22 @@ export default function GamePlanPage() {
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8"
-                title="Следующий торговый день (→)"
-                aria-label="Следующий торговый день"
+                title={t("page.nextDayKey")}
+                aria-label={t("page.nextDay")}
                 onClick={() => go(shiftTradingDay(date, 1))}
               >
                 <ChevronRight aria-hidden="true" />
               </Button>
             </nav>
             {!isToday && (
-              <Button variant="outline" size="sm" onClick={() => go(today)} title={sessionAhead ? "Ближайший торговый день (T)" : "Сегодня (T)"}>
-                {sessionAhead ? "Ближайшая сессия" : "Сегодня"}
+              <Button variant="outline" size="sm" onClick={() => go(today)} title={sessionAhead ? t("page.nextSessionKey") : t("page.todayKey")}>
+                {sessionAhead ? t("page.nextSession") : commonI18n.t("time.today")}
               </Button>
             )}
             {isCurator && view === "desk" && plan && (
-              <Button className="bg-primary-solid" onClick={() => setEditorOpen(true)} title="Редактировать план деска (E)">
+              <Button className="bg-primary-solid" onClick={() => setEditorOpen(true)} title={t("page.editDeskKey")}>
                 <Pencil aria-hidden="true" />
-                Редактировать
+                {t("page.edit")}
               </Button>
             )}
           </>
@@ -225,14 +226,14 @@ export default function GamePlanPage() {
       >
         {(canMine || canTeam) && (
           <Segmented<View>
-            ariaLabel="Раздел плана"
+            ariaLabel={t("page.viewAria")}
             size="sm"
             value={view}
             onChange={setView}
             options={[
-              { value: "desk", label: "План деска" },
-              ...(canMine ? [{ value: "my" as View, label: "Мой план" }] : []),
-              ...(canTeam ? [{ value: "traders" as View, label: "Трейдеры" }] : []),
+              { value: "desk", label: t("page.views.desk") },
+              ...(canMine ? [{ value: "my" as View, label: t("page.views.my") }] : []),
+              ...(canTeam ? [{ value: "traders" as View, label: t("page.views.traders") }] : []),
             ]}
           />
         )}
@@ -253,31 +254,31 @@ export default function GamePlanPage() {
             <Panel>
               <EmptyState
                 icon={FileText}
-                title={isToday ? (sessionAhead ? `План на ${fmtDate(dateObj(date), "weekdayDayMonthLong")} ещё не опубликован` : "План на сегодня ещё не опубликован") : date > today ? `План на ${fmtDate(dateObj(date), "dayMonthLong")} ещё не опубликован` : `План на ${fmtDate(dateObj(date), "dayMonthLong")} не публиковался`}
+                title={isToday ? (sessionAhead ? t("page.notPublishedOn", { date: fmtDate(dateObj(date), "weekdayDayMonthLong") }) : t("page.notPublishedToday")) : date > today ? t("page.notPublishedOn", { date: fmtDate(dateObj(date), "dayMonthLong") }) : t("page.neverPublished", { date: fmtDate(dateObj(date), "dayMonthLong") })}
                 description={
                   isCurator
-                    ? "Соберите брифинг: взгляд на рынок, уровни SPY/QQQ, тикеры в игре и риск-режим. Можно продублировать прошлый план."
+                    ? t("page.emptyCurator")
                     : isToday
-                      ? "Куратор публикует план до открытия (9:30 ET). Страница обновится сама."
-                      : "Выберите другой день или откройте последний опубликованный план."
+                      ? t("page.emptyToday")
+                      : t("page.emptyOther")
                 }
                 action={
                   <div className="flex flex-wrap justify-center gap-2">
                     {isCurator && (
                       <Button className="bg-primary-solid" onClick={() => setEditorOpen(true)}>
                         <Plus aria-hidden="true" />
-                        Создать план
+                        {t("page.createPlan")}
                       </Button>
                     )}
                     {!isCurator && canMine && (
                       <Button className="bg-primary-solid" onClick={() => setView("my")}>
                         <Plus aria-hidden="true" />
-                        Написать свой план
+                        {t("page.writeMine")}
                       </Button>
                     )}
                     {data?.prevDate && (
                       <Button variant="outline" onClick={() => go(data.prevDate!)}>
-                        Последний план · {shortDay(data.prevDate)}
+                        {t("page.lastPlan", { date: shortDay(data.prevDate) })}
                       </Button>
                     )}
                   </div>
@@ -294,7 +295,7 @@ export default function GamePlanPage() {
                   ) : isCurator ? (
                     <Pill tone="neutral" className="px-3 py-1 text-sm">
                       <Users className="h-3.5 w-3.5" aria-hidden="true" />
-                      {plan.readCount} прочитали
+                      {t("page.readCount", { count: plan.readCount })}
                     </Pill>
                   ) : null
                 }
@@ -305,16 +306,16 @@ export default function GamePlanPage() {
               <section aria-labelledby="gp-inplay" className="flex flex-col gap-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h2 id="gp-inplay" className="text-base font-semibold">
-                    В игре <span className="tabular-nums text-muted-foreground">{counts.all}</span>
+                    {t("page.inPlay")} <span className="tabular-nums text-muted-foreground">{counts.all}</span>
                   </h2>
                   {counts.all > 0 && (
                     <Segmented<HorizonFilter>
-                      ariaLabel="Фильтр по горизонту"
+                      ariaLabel={t("page.hzFilter")}
                       size="sm"
                       value={hz}
                       onChange={setHz}
                       options={[
-                        { value: "all", label: "Все", count: counts.all },
+                        { value: "all", label: t("page.all"), count: counts.all },
                         ...(Object.keys(HORIZON) as Horizon[]).map((k) => ({
                           value: k,
                           label: HORIZON[k].label,
@@ -327,7 +328,7 @@ export default function GamePlanPage() {
                 </div>
                 {counts.all === 0 ? (
                   <Panel>
-                    <p className="text-sm text-muted-foreground">В плане нет тикеров — день без явных катализаторов, работаем от индексов.</p>
+                    <p className="text-sm text-muted-foreground">{t("page.noTickers")}</p>
                   </Panel>
                 ) : (
                   <div className="grid gap-[var(--grid-gap)] md:grid-cols-2 2xl:grid-cols-3">
@@ -341,20 +342,20 @@ export default function GamePlanPage() {
           )}
         </div>
 
-        <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label="Риск, ознакомление и история">
+        <aside className="flex min-w-0 flex-col gap-[var(--grid-gap)]" aria-label={t("page.asideAria")}>
           {plan && (plan.riskNotes || plan.maxLossUsd != null || plan.maxTrades != null) && (
-            <Panel title="Риск на день" icon={ShieldAlert} className="ring-1 ring-[hsl(var(--chart-3)/0.35)]">
+            <Panel title={t("doc.risk")} icon={ShieldAlert} className="ring-1 ring-[hsl(var(--chart-3)/0.35)]">
               {(plan.maxLossUsd != null || plan.maxTrades != null) && (
                 <dl className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   {plan.maxLossUsd != null && (
                     <div className="flex gap-1.5">
-                      <dt className="text-muted-foreground">Макс. убыток</dt>
+                      <dt className="text-muted-foreground">{t("doc.maxLoss")}</dt>
                       <dd className="font-semibold tabular-nums">{fmtUsd(plan.maxLossUsd, { decimals: 0 })}</dd>
                     </div>
                   )}
                   {plan.maxTrades != null && (
                     <div className="flex gap-1.5">
-                      <dt className="text-muted-foreground">Макс. сделок</dt>
+                      <dt className="text-muted-foreground">{t("doc.maxTrades")}</dt>
                       <dd className="font-semibold tabular-nums">{plan.maxTrades}</dd>
                     </div>
                   )}
@@ -384,7 +385,7 @@ export default function GamePlanPage() {
 
 function BriefingSkeleton() {
   return (
-    <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка плана">
+    <div className="flex flex-col gap-4" aria-busy="true" aria-label={gpI18n.t("page.loadingPlan")}>
       <div className="glass-panel flex flex-col gap-4 rounded-2xl p-5">
         <Skeleton className="h-4 w-28 rounded-full" />
         <Skeleton className="h-6 w-64 rounded-full" />

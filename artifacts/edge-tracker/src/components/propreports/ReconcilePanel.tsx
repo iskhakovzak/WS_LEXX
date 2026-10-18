@@ -16,27 +16,31 @@ import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { isNotFound } from "@/lib/api/errors";
 import {
-  FEE_ROUNDING_LABEL, discrepanciesCsv, downloadText, useReconcile,
+  feeRoundingLabel, discrepanciesCsv, downloadText, useReconcile,
   type Compare, type CompareStatus, type DayRow, type Issue, type ReportCheck, type Severity,
 } from "./reconcile-api";
 import { PersonSelect } from "@/components/people/person-select";
 import { fmtUsd } from "@/lib/format";
+import { propreportsI18n } from "@/i18n/ns/propreports";
+import { commonI18n } from "@/i18n/ns/common";
 
 const ALL = "__all__";
 
 const toneOfMoney = (v: number | null | undefined): Tone => (v == null || Math.abs(v) < 0.005 ? "neutral" : v > 0 ? "up" : "down");
 
-const STATUS_META: Record<Severity, { icon: string; label: string; tone: Tone; text: string }> = {
-  ok: { icon: "✓", label: "сходится", tone: "up", text: "text-up" },
-  warn: { icon: "⚠", label: "расхождение < $1", tone: "warn", text: "text-[hsl(var(--chart-3))]" },
-  error: { icon: "✗", label: "серьёзное расхождение", tone: "down", text: "text-down" },
+const STATUS_META: Record<Severity, { icon: string; tone: Tone; text: string }> = {
+  ok: { icon: "✓", tone: "up", text: "text-up" },
+  warn: { icon: "⚠", tone: "warn", text: "text-[hsl(var(--chart-3))]" },
+  error: { icon: "✗", tone: "down", text: "text-down" },
 };
 
 function StatusMark({ status, className }: { status: CompareStatus; className?: string }) {
-  if (status === "na") return <span className={cn("text-muted-foreground", className)} aria-label="нет данных для сравнения">—</span>;
+  const { t } = propreportsI18n.useT();
+  if (status === "na") return <span className={cn("text-muted-foreground", className)} aria-label={t("reconcile.status.na")}>—</span>;
   const m = STATUS_META[status];
+  const label = t(`reconcile.status.${status}`);
   return (
-    <span className={cn("font-semibold", m.text, className)} role="img" aria-label={m.label} title={m.label}>
+    <span className={cn("font-semibold", m.text, className)} role="img" aria-label={label} title={label}>
       {m.icon}
     </span>
   );
@@ -51,6 +55,7 @@ function issueHref(i: Issue): string | null {
 }
 
 function IssueItem({ issue, trader }: { issue: Issue; trader: string | null }) {
+  const { t } = propreportsI18n.useT();
   const href = issueHref(issue);
   return (
     <li className="flex items-start gap-2 rounded-xl border border-border/50 px-3 py-2 text-sm">
@@ -58,16 +63,16 @@ function IssueItem({ issue, trader }: { issue: Issue; trader: string | null }) {
       <div className="min-w-0 flex-1">
         <div className="text-foreground">{issue.message}</div>
         <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-          {issue.cause === "fee_rounding" && <Pill tone="accent" title={issue.hint}>{FEE_ROUNDING_LABEL}</Pill>}
-          {issue.diff != null && <span className="tabular-nums">разница {fmtUsd(issue.diff, { signed: true })}</span>}
+          {issue.cause === "fee_rounding" && <Pill tone="accent" title={issue.hint}>{feeRoundingLabel()}</Pill>}
+          {issue.diff != null && <span className="tabular-nums">{t("reconcile.diff", { value: fmtUsd(issue.diff, { signed: true }) })}</span>}
           {href && (
             <Link href={href} className="text-primary underline-offset-2 hover:underline">
-              {issue.tradeIds.length === 1 ? `сделка #${issue.tradeIds[0]}` : issue.tradeIds.length > 1 ? `сделки (${issue.tradeIds.length})` : issue.ticker ? `сделки ${issue.ticker}` : "сделки дня"}
+              {issue.tradeIds.length === 1 ? t("reconcile.trade", { id: issue.tradeIds[0]! }) : issue.tradeIds.length > 1 ? t("reconcile.tradesN", { count: issue.tradeIds.length }) : issue.ticker ? t("reconcile.tradesTicker", { ticker: issue.ticker }) : t("reconcile.tradesDay")}
             </Link>
           )}
           {issue.date && (
             <Link href={links.journalDay(issue.date, issue.trader ?? trader ?? undefined)} className="text-primary underline-offset-2 hover:underline">
-              журнал {issue.date}
+              {t("reconcile.journalDate", { date: issue.date })}
             </Link>
           )}
         </div>
@@ -78,6 +83,7 @@ function IssueItem({ issue, trader }: { issue: Issue; trader: string | null }) {
 }
 
 function CompareTable({ rows, caption }: { rows: Compare[]; caption: string }) {
+  const { t } = propreportsI18n.useT();
   if (!rows.length) return null;
   const isCount = (k: string) => k === "trades" || k === "wins" || k === "losses";
   return (
@@ -85,7 +91,7 @@ function CompareTable({ rows, caption }: { rows: Compare[]; caption: string }) {
       <table>
         <caption className="sr-only">{caption}</caption>
         <thead>
-          <tr><th scope="col">Показатель</th><th scope="col" className="text-right">Журнал</th><th scope="col" className="text-right">Брокер</th><th scope="col" className="text-right">Разница</th><th scope="col">Статус</th></tr>
+          <tr><th scope="col">{t("reconcile.compare.metric")}</th><th scope="col" className="text-right">{t("reconcile.compare.journal")}</th><th scope="col" className="text-right">{t("reconcile.compare.broker")}</th><th scope="col" className="text-right">{t("reconcile.compare.diff")}</th><th scope="col">{t("reconcile.compare.status")}</th></tr>
         </thead>
         <tbody>
           {rows.map((c) => (
@@ -97,7 +103,7 @@ function CompareTable({ rows, caption }: { rows: Compare[]; caption: string }) {
               <td>
                 <span className="inline-flex items-center gap-2">
                   <StatusMark status={c.status} />
-                  {c.cause === "fee_rounding" ? <Pill tone="accent">{FEE_ROUNDING_LABEL}</Pill> : c.note ? <span className="text-xs text-muted-foreground">{c.note}</span> : null}
+                  {c.cause === "fee_rounding" ? <Pill tone="accent">{feeRoundingLabel()}</Pill> : c.note ? <span className="text-xs text-muted-foreground">{c.note}</span> : null}
                 </span>
               </td>
             </tr>
@@ -109,27 +115,28 @@ function CompareTable({ rows, caption }: { rows: Compare[]; caption: string }) {
 }
 
 function ReportBlock({ rep }: { rep: ReportCheck }) {
+  const { t } = propreportsI18n.useT();
   const badGroups = rep.groups.filter((g) => g.status !== "ok");
   return (
     <div className="grid gap-3">
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <StatusMark status={rep.status} />
-        <span className="font-medium">Отчёт Trade Performance</span>
-        <span className="text-muted-foreground">счёт {rep.account ?? "—"} · {rep.periodFrom} — {rep.periodTo}</span>
+        <span className="font-medium">{t("reconcile.report")}</span>
+        <span className="text-muted-foreground">{t("reconcile.reportMeta", { account: rep.account ?? "—", from: rep.periodFrom, to: rep.periodTo })}</span>
       </div>
-      <CompareTable rows={rep.compares} caption="Итоги журнала против отчёта брокера" />
+      <CompareTable rows={rep.compares} caption={t("reconcile.totalsCaption")} />
       {rep.feeTypes.length > 0 && (
         <details className="rounded-xl border border-border/50 px-3 py-2">
-          <summary className="cursor-pointer text-sm">Комиссии по типам ({rep.feeTypes.filter((c) => c.status !== "ok").length} расх.)</summary>
-          <p className="mt-1 text-xs text-muted-foreground">Брокер: средняя комиссия на сделку × число сделок (оценка).</p>
-          <div className="mt-2"><CompareTable rows={rep.feeTypes} caption="Комиссии по типам" /></div>
+          <summary className="cursor-pointer text-sm">{t("reconcile.feeTypes", { count: rep.feeTypes.filter((c) => c.status !== "ok").length })}</summary>
+          <p className="mt-1 text-xs text-muted-foreground">{t("reconcile.feeTypesNote")}</p>
+          <div className="mt-2"><CompareTable rows={rep.feeTypes} caption={t("reconcile.feeTypesCaption")} /></div>
         </details>
       )}
       <div className="text-xs text-muted-foreground">
-        Проверено групп (сторона / день недели / символ): {rep.groups.length}, расходится: {badGroups.length}
-        {rep.symbolsMissingInJournal.length > 0 && <> · нет в журнале: {rep.symbolsMissingInJournal.join(", ")}</>}
-        {rep.symbolsMissingInReport.length > 0 && <> · нет у брокера: {rep.symbolsMissingInReport.join(", ")}</>}
-        {rep.manualInPeriod.trades > 0 && <> · ручных сделок в периоде: {rep.manualInPeriod.trades} ({fmtUsd(rep.manualInPeriod.net, { signed: true })})</>}
+        {t("reconcile.groups", { count: rep.groups.length, bad: badGroups.length })}
+        {rep.symbolsMissingInJournal.length > 0 && <> · {t("reconcile.missingJournal", { list: rep.symbolsMissingInJournal.join(", ") })}</>}
+        {rep.symbolsMissingInReport.length > 0 && <> · {t("reconcile.missingBroker", { list: rep.symbolsMissingInReport.join(", ") })}</>}
+        {rep.manualInPeriod.trades > 0 && <> · {t("reconcile.manualInPeriod", { count: rep.manualInPeriod.trades, net: fmtUsd(rep.manualInPeriod.net, { signed: true }) })}</>}
       </div>
     </div>
   );
@@ -151,20 +158,21 @@ const DAY_ACCESSORS = {
 };
 
 function DayDetails({ day, issues, trader }: { day: DayRow; issues: Issue[]; trader: string | null }) {
+  const { t } = propreportsI18n.useT();
   return (
     <div className="grid gap-3 py-2">
       <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
-        <span>Источник брокера: {day.brokerSource === "report-days" ? "дневные итоги отчёта" : day.brokerSource === "snapshot" ? "снимок PropReports в сделках" : "нет"}</span>
-        <span>С исполнениями: {day.fills.withFills} · без: {day.fills.withoutFills}</span>
-        {day.manual.trades > 0 && <span>Ручные: {day.manual.trades} сд., нетто {fmtUsd(day.manual.net, { signed: true })} (не входят в сверку с брокером)</span>}
-        <Link href={links.trades({ date: day.date })} className="text-primary hover:underline">Сделки дня</Link>
-        <Link href={links.journalDay(day.date, trader ?? undefined)} className="text-primary hover:underline">Журнал дня</Link>
+        <span>{t("reconcile.brokerSource", { source: day.brokerSource === "report-days" ? t("reconcile.srcReport") : day.brokerSource === "snapshot" ? t("reconcile.srcSnapshot") : t("reconcile.srcNone") })}</span>
+        <span>{t("reconcile.dayFills", { with: day.fills.withFills, without: day.fills.withoutFills })}</span>
+        {day.manual.trades > 0 && <span>{t("reconcile.dayManual", { count: day.manual.trades, net: fmtUsd(day.manual.net, { signed: true }) })}</span>}
+        <Link href={links.trades({ date: day.date })} className="text-primary hover:underline">{t("reconcile.dayTrades")}</Link>
+        <Link href={links.journalDay(day.date, trader ?? undefined)} className="text-primary hover:underline">{t("reconcile.dayJournal")}</Link>
       </div>
-      {day.compares.length > 0 && <CompareTable rows={day.compares} caption={`Сверка за ${day.date}`} />}
+      {day.compares.length > 0 && <CompareTable rows={day.compares} caption={t("reconcile.dayCaption", { date: day.date })} />}
       {issues.length > 0 ? (
         <ul className="grid gap-2">{issues.map((i) => <IssueItem key={i.id} issue={i} trader={trader} />)}</ul>
       ) : (
-        <p className="text-xs text-muted-foreground">Расхождений за день нет.</p>
+        <p className="text-xs text-muted-foreground">{t("reconcile.dayNoIssues")}</p>
       )}
     </div>
   );
@@ -172,6 +180,7 @@ function DayDetails({ day, issues, trader }: { day: DayRow; issues: Issue[]; tra
 
 export function ReconcilePanel({ trader: traderProp, compact = false }: { trader?: string; compact?: boolean }) {
   const { isCurator, isAdmin, dbUsers, user } = useAuth();
+  const { t, lang } = propreportsI18n.useT();
   const staff = isCurator || isAdmin;
   const [picked, setPicked] = React.useState<string>(traderProp ?? (staff ? ALL : user?.traderName ?? ""));
   React.useEffect(() => { if (traderProp) setPicked(traderProp); }, [traderProp]);
@@ -186,12 +195,12 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
   const data = q.data;
 
   const issueById = React.useMemo(() => new Map((data?.issues ?? []).map((i) => [i.id, i])), [data]);
-  const traders = React.useMemo(() => dbUsers.filter((u) => u.active && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")), [dbUsers]);
+  const traders = React.useMemo(() => dbUsers.filter((u) => u.active && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, lang)), [dbUsers, lang]);
   const scopeName = data?.scope ?? trader;
 
   const exportCsv = () => {
     if (!data) return;
-    downloadText(`сверка-${scopeName ?? "деск"}-${from || "все"}-${to || "все"}.csv`.replace(/[\\/:*?"<>|\s]+/g, "_"), discrepanciesCsv(data.issues));
+    downloadText(t("reconcile.fileName", { scope: scopeName ?? t("reconcile.fileDesk"), from: from || t("reconcile.fileAll"), to: to || t("reconcile.fileAll") }).replace(/[\\/:*?"<>|\s]+/g, "_"), discrepanciesCsv(data.issues));
   };
 
   const toggle = (date: string) => setOpen((s) => { const n = new Set(s); if (n.has(date)) n.delete(date); else n.add(date); return n; });
@@ -203,7 +212,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
 
   const pill = s ? (
     <Pill tone={statusTone} dot title={s.discrepancies ? `✗ ${s.counts.error} · ⚠ ${s.counts.warn}` : undefined}>
-      {s.discrepancies === 0 ? "Данные сходятся с брокером" : s.label}
+      {s.discrepancies === 0 ? t("reconcile.allMatch") : s.label}
     </Pill>
   ) : null;
 
@@ -212,10 +221,10 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
       {pill}
       {!compact && (
         <>
-          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data || !s?.discrepancies} aria-label="Скачать расхождения в CSV">
+          <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!data || !s?.discrepancies} aria-label={t("reconcile.csvAria")}>
             <Download className="mr-1 h-4 w-4" aria-hidden="true" /> CSV
           </Button>
-          <Button type="button" variant="ghost" size="icon" onClick={() => q.refetch()} disabled={q.isFetching} aria-label="Пересчитать сверку">
+          <Button type="button" variant="ghost" size="icon" onClick={() => q.refetch()} disabled={q.isFetching} aria-label={t("reconcile.recalc")}>
             <RefreshCw className={cn("h-4 w-4", q.isFetching && "animate-spin")} aria-hidden="true" />
           </Button>
         </>
@@ -229,8 +238,8 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
 
   return (
     <Panel
-      title="Сверка с брокером"
-      description={compact ? undefined : "Журнал против PropReports: по дням, итогам отчёта, комиссиям, исполнениям и дублям. ✓ ≤ $0.01 · ⚠ < $1 · ✗ серьёзное"}
+      title={t("reconcile.title")}
+      description={compact ? undefined : t("reconcile.description")}
       icon={Scale}
       actions={actions}
       aria-busy={q.isFetching}
@@ -239,95 +248,95 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
         <div className="mb-4 flex flex-wrap items-end gap-3">
           {staff && !traderProp && (
             <div className="grid gap-1">
-              <label className="text-xs text-muted-foreground" id="rc-trader-label">Трейдер</label>
-              <PersonSelect value={picked} onValueChange={setPicked} allValue={ALL} allLabel="Весь деск" options={traders} ariaLabel="Трейдер" className="h-9 w-48" />
+              <label className="text-xs text-muted-foreground" id="rc-trader-label">{t("reconcile.trader")}</label>
+              <PersonSelect value={picked} onValueChange={setPicked} allValue={ALL} allLabel={commonI18n.t("fields.wholeDesk")} options={traders} ariaLabel={t("reconcile.trader")} className="h-9 w-48" />
             </div>
           )}
           <div className="grid gap-1">
-            <label htmlFor="rc-from" className="text-xs text-muted-foreground">С (NY дата закрытия)</label>
+            <label htmlFor="rc-from" className="text-xs text-muted-foreground">{t("reconcile.from")}</label>
             <Input id="rc-from" type="date" value={from} max={to || undefined} onChange={(e) => setFrom(e.target.value)} className="h-9 w-40" />
           </div>
           <div className="grid gap-1">
-            <label htmlFor="rc-to" className="text-xs text-muted-foreground">По</label>
+            <label htmlFor="rc-to" className="text-xs text-muted-foreground">{t("reconcile.to")}</label>
             <Input id="rc-to" type="date" value={to} min={from || undefined} onChange={(e) => setTo(e.target.value)} className="h-9 w-40" />
           </div>
-          {(from || to) && <Button type="button" variant="ghost" size="sm" onClick={() => { setFrom(""); setTo(""); }}>Весь период</Button>}
+          {(from || to) && <Button type="button" variant="ghost" size="sm" onClick={() => { setFrom(""); setTo(""); }}>{t("reconcile.allPeriod")}</Button>}
         </div>
       )}
 
       {q.isLoading ? (
-        <div className="grid gap-3" aria-label="Загрузка сверки"><Skeleton className="h-20 w-full" /><Skeleton className="h-40 w-full" /></div>
+        <div className="grid gap-3" aria-label={t("reconcile.loadingAria")}><Skeleton className="h-20 w-full" /><Skeleton className="h-40 w-full" /></div>
       ) : q.isError ? (
         <EmptyState
           icon={Scale}
-          title={isNotFound(q.error) ? "Сверка ещё не подключена на сервере" : "Не удалось выполнить сверку"}
+          title={isNotFound(q.error) ? t("reconcile.notConnected") : t("reconcile.failed")}
           description={q.error instanceof Error ? q.error.message : String(q.error)}
-          action={<Button type="button" variant="outline" size="sm" onClick={() => q.refetch()}>Повторить</Button>}
+          action={<Button type="button" variant="outline" size="sm" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>}
         />
       ) : !data || !s || s.tradesChecked === 0 ? (
-        <EmptyState icon={Scale} title="Нет сделок для сверки" description="Импортируйте отчёт Trades или исполнения PropReports на странице интеграций — сверка появится автоматически." />
+        <EmptyState icon={Scale} title={t("reconcile.noTrades")} description={t("reconcile.noTradesHint")} />
       ) : compact ? (
         <div className="grid gap-3">
           <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-4">
-            <div><div className="text-xs text-muted-foreground">Нетто журнала</div><div className={cn("font-semibold tabular-nums", toneOfMoney(s.journal.net) === "up" ? "text-up" : toneOfMoney(s.journal.net) === "down" ? "text-down" : "")}>{fmtUsd(s.journal.net, { signed: true })}</div></div>
-            <div><div className="text-xs text-muted-foreground">Нетто брокера</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Разница</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.diff, { signed: true }) : "—"}</div></div>
-            <div><div className="text-xs text-muted-foreground">Дней с расхождениями</div><div className="font-semibold tabular-nums">{s.daysWithIssues} / {s.days}</div></div>
+            <div><div className="text-xs text-muted-foreground">{t("reconcile.journalNet")}</div><div className={cn("font-semibold tabular-nums", toneOfMoney(s.journal.net) === "up" ? "text-up" : toneOfMoney(s.journal.net) === "down" ? "text-down" : "")}>{fmtUsd(s.journal.net, { signed: true })}</div></div>
+            <div><div className="text-xs text-muted-foreground">{t("reconcile.brokerNet")}</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"}</div></div>
+            <div><div className="text-xs text-muted-foreground">{t("reconcile.diffLabel")}</div><div className="font-semibold tabular-nums">{repNet ? fmtUsd(repNet.diff, { signed: true }) : "—"}</div></div>
+            <div><div className="text-xs text-muted-foreground">{t("reconcile.daysWithIssues")}</div><div className="font-semibold tabular-nums">{s.daysWithIssues} / {s.days}</div></div>
           </div>
           {issues.length > 0 && <ul className="grid gap-2">{issues.slice(0, 4).map((i) => <IssueItem key={i.id} issue={i} trader={scopeName} />)}</ul>}
-          {issues.length > 4 && <p className="text-xs text-muted-foreground">…и ещё {issues.length - 4}. Полная сверка — на странице интеграций.</p>}
+          {issues.length > 4 && <p className="text-xs text-muted-foreground">{t("reconcile.more", { count: issues.length - 4 })}</p>}
         </div>
       ) : (
         <div className="grid gap-5">
           <StatGrid>
-            <StatCard label="Нетто журнала (брокерские сделки)" value={fmtUsd(s.journal.net, { signed: true })} tone={toneOfMoney(s.journal.net)} hint={`брутто ${fmtUsd(s.journal.gross)} · комиссии ${fmtUsd(s.journal.fees)}`} />
-            <StatCard label="Нетто по отчёту брокера" value={repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"} hint={rep ? `${rep.periodFrom} — ${rep.periodTo}` : "отчёт Trade Performance не загружен"} />
+            <StatCard label={t("reconcile.journalNetFull")} value={fmtUsd(s.journal.net, { signed: true })} tone={toneOfMoney(s.journal.net)} hint={t("reconcile.journalHint", { gross: fmtUsd(s.journal.gross), fees: fmtUsd(s.journal.fees) })} />
+            <StatCard label={t("reconcile.brokerNetFull")} value={repNet ? fmtUsd(repNet.broker, { signed: true }) : "—"} hint={rep ? `${rep.periodFrom} — ${rep.periodTo}` : t("reconcile.noReport")} />
             <StatCard
-              label="Разница с брокером"
+              label={t("reconcile.diffBroker")}
               value={repNet ? fmtUsd(repNet.diff, { signed: true }) : "—"}
               tone={!repNet || repNet.status === "ok" ? "neutral" : repNet.status === "error" ? "down" : "warn"}
-              hint={repNet?.cause === "fee_rounding" ? FEE_ROUNDING_LABEL : repNet?.note}
+              hint={repNet?.cause === "fee_rounding" ? feeRoundingLabel() : repNet?.note}
             />
-            <StatCard label="Проверено" value={`${s.tradesChecked} сд.`} hint={`${s.days} дн. · с fills ${s.fills.withFills} · без ${s.fills.withoutFills}${s.manual.trades ? ` · ручных ${s.manual.trades}` : ""}`} />
+            <StatCard label={t("reconcile.checked")} value={t("reconcile.checkedValue", { count: s.tradesChecked })} hint={s.manual.trades ? t("reconcile.checkedHintManual", { days: s.days, with: s.fills.withFills, without: s.fills.withoutFills, manual: s.manual.trades }) : t("reconcile.checkedHint", { days: s.days, with: s.fills.withFills, without: s.fills.withoutFills })} />
           </StatGrid>
 
           {s.roundingIssues > 0 && (
             <p className="rounded-xl border border-border/50 px-3 py-2 text-xs text-muted-foreground">
-              <Pill tone="accent">{FEE_ROUNDING_LABEL}</Pill>{" "}
-              {s.roundingIssues} из {s.discrepancies} расхождений укладываются в $0.01 × число сделок: при импорте PropReports комиссии округляются до центов по каждой сделке. После исправления импорта и повторного импорта они исчезнут.
+              <Pill tone="accent">{feeRoundingLabel()}</Pill>{" "}
+              {t("reconcile.rounding", { count: s.roundingIssues, total: s.discrepancies })}
             </p>
           )}
 
           {data.reports.length > 0 ? (
             data.reports.map((r) => <ReportBlock key={r.reportId} rep={r} />)
           ) : (
-            <p className="text-xs text-muted-foreground">Отчёт Trade Performance не загружен — итоги сверяются только со снимками PropReports в сделках. Загрузите отчёт на /integrations.</p>
+            <p className="text-xs text-muted-foreground">{t("reconcile.noReportText")}</p>
           )}
 
           <section aria-labelledby="rc-days-title" className="grid gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id="rc-days-title" className="text-sm font-semibold">По дням <span className="font-normal text-muted-foreground">({s.daysWithIssues} из {s.days} с расхождениями)</span></h3>
+              <h3 id="rc-days-title" className="text-sm font-semibold">{t("reconcile.byDays")} <span className="font-normal text-muted-foreground">{t("reconcile.byDaysCount", { bad: s.daysWithIssues, total: s.days })}</span></h3>
               <label className="flex items-center gap-2 text-xs text-muted-foreground">
-                <input type="checkbox" checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} /> только с расхождениями
+                <input type="checkbox" checked={onlyBad} onChange={(e) => setOnlyBad(e.target.checked)} /> {t("reconcile.onlyBad")}
               </label>
             </div>
             {days.length === 0 ? (
-              <p className="text-xs text-muted-foreground">{onlyBad ? "Все дни сходятся ✓" : "Нет дней в периоде."}</p>
+              <p className="text-xs text-muted-foreground">{onlyBad ? t("reconcile.allDaysOk") : t("reconcile.noDays")}</p>
             ) : (
-              <DataTable maxHeight="75vh" ariaLabel="Сверка по дням">
+              <DataTable maxHeight="75vh" ariaLabel={t("reconcile.daysAria")}>
                 <table>
                   <thead>
                     <tr>
-                      <th scope="col" className="w-8"><span className="sr-only">Раскрыть</span></th>
-                      <SortableTh {...daySort.thProps("date")}>Дата</SortableTh>
-                      <SortableTh {...daySort.thProps("status")}>Статус</SortableTh>
-                      <SortableTh {...daySort.thProps("trades")} align="right">Сделок</SortableTh>
-                      <SortableTh {...daySort.thProps("gross")} align="right">Брутто</SortableTh>
-                      <SortableTh {...daySort.thProps("fees")} align="right">Комиссии</SortableTh>
-                      <SortableTh {...daySort.thProps("net")} align="right">Нетто журнала</SortableTh>
-                      <SortableTh {...daySort.thProps("brokerNet")} align="right">Нетто брокера</SortableTh>
-                      <SortableTh {...daySort.thProps("diff")} align="right">Разница</SortableTh>
-                      <SortableTh {...daySort.thProps("manual")} align="right">Ручные</SortableTh>
+                      <th scope="col" className="w-8"><span className="sr-only">{t("reconcile.expand")}</span></th>
+                      <SortableTh {...daySort.thProps("date")}>{t("reconcile.col.date")}</SortableTh>
+                      <SortableTh {...daySort.thProps("status")}>{t("reconcile.col.status")}</SortableTh>
+                      <SortableTh {...daySort.thProps("trades")} align="right">{t("reconcile.col.trades")}</SortableTh>
+                      <SortableTh {...daySort.thProps("gross")} align="right">{t("reconcile.col.gross")}</SortableTh>
+                      <SortableTh {...daySort.thProps("fees")} align="right">{t("reconcile.col.fees")}</SortableTh>
+                      <SortableTh {...daySort.thProps("net")} align="right">{t("reconcile.col.net")}</SortableTh>
+                      <SortableTh {...daySort.thProps("brokerNet")} align="right">{t("reconcile.col.brokerNet")}</SortableTh>
+                      <SortableTh {...daySort.thProps("diff")} align="right">{t("reconcile.col.diff")}</SortableTh>
+                      <SortableTh {...daySort.thProps("manual")} align="right">{t("reconcile.col.manual")}</SortableTh>
                     </tr>
                   </thead>
                   <tbody>
@@ -339,7 +348,7 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
                         <React.Fragment key={d.date}>
                           <tr className="cursor-pointer" onClick={() => toggle(d.date)}>
                             <td>
-                              <button type="button" className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--glass-bg)]" aria-expanded={isOpen} aria-label={`${isOpen ? "Свернуть" : "Раскрыть"} ${d.date}`} onClick={(e) => { e.stopPropagation(); toggle(d.date); }}>
+                              <button type="button" className="grid h-6 w-6 place-items-center rounded hover:bg-[var(--glass-bg)]" aria-expanded={isOpen} aria-label={isOpen ? t("reconcile.collapseDay", { date: d.date }) : t("reconcile.expandDay", { date: d.date })} onClick={(e) => { e.stopPropagation(); toggle(d.date); }}>
                                 {isOpen ? <ChevronDown className="h-4 w-4" aria-hidden="true" /> : <ChevronRight className="h-4 w-4" aria-hidden="true" />}
                               </button>
                             </td>
@@ -369,21 +378,21 @@ export function ReconcilePanel({ trader: traderProp, compact = false }: { trader
 
           <section aria-labelledby="rc-issues-title" className="grid gap-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 id="rc-issues-title" className="text-sm font-semibold">Расхождения <span className="font-normal text-muted-foreground">(✗ {s.counts.error} · ⚠ {s.counts.warn})</span></h3>
-              <div className="flex gap-1" role="group" aria-label="Фильтр расхождений">
+              <h3 id="rc-issues-title" className="text-sm font-semibold">{t("reconcile.issues")} <span className="font-normal text-muted-foreground">(✗ {s.counts.error} · ⚠ {s.counts.warn})</span></h3>
+              <div className="flex gap-1" role="group" aria-label={t("reconcile.issuesFilterAria")}>
                 {(["all", "error", "warn"] as const).map((f) => (
                   <Button key={f} type="button" size="sm" variant={issueFilter === f ? "secondary" : "ghost"} aria-pressed={issueFilter === f} onClick={() => setIssueFilter(f)}>
-                    {f === "all" ? "Все" : f === "error" ? "✗ серьёзные" : "⚠ мелкие"}
+                    {t(`reconcile.filter.${f}`)}
                   </Button>
                 ))}
               </div>
             </div>
             {issues.length === 0 ? (
-              <p className="text-xs text-muted-foreground">Нет расхождений ✓</p>
+              <p className="text-xs text-muted-foreground">{t("reconcile.noIssues")}</p>
             ) : (
               <ul className="grid max-h-[75vh] gap-2 overflow-auto pr-1">{issues.slice(0, 300).map((i) => <IssueItem key={i.id} issue={i} trader={scopeName} />)}</ul>
             )}
-            {(issues.length > 300 || data.issuesTruncated) && <p className="text-xs text-muted-foreground">Показаны первые 300 — полный список в CSV.</p>}
+            {(issues.length > 300 || data.issuesTruncated) && <p className="text-xs text-muted-foreground">{t("reconcile.first300")}</p>}
           </section>
         </div>
       )}

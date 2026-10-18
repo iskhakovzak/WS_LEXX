@@ -5,7 +5,7 @@ import { asyncHandler } from "../lib/asyncHandler";
 import { requireMember, scopeTrader, canAccessTrade, GUEST_SCOPE } from "../lib/auth";
 import { can } from "../lib/permissions";
 import { z } from "zod";
-import { badRequest, idParam, notFound, route, unauthorized } from "../lib/http";
+import { badRequest, conflict, forbidden, idParam, notFound, route, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -91,11 +91,9 @@ router.post("/checklist-responses", asyncHandler(async (req, res): Promise<void>
   if (!requireMember(req, res)) return;
   const me = req.authUser!;
   const { ticker, tradeDate, trader, tradeId, responses, passed } = req.body as Record<string, unknown>;
-  if (!ticker || typeof ticker !== "string" || !tradeDate || typeof tradeDate !== "string") {
-    res.status(400).json({ error: "Нужны ticker и tradeDate" }); return;
-  }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) { res.status(400).json({ error: "tradeDate должен быть в формате YYYY-MM-DD" }); return; }
-  if (!responses) { res.status(400).json({ error: "Нужны ответы (responses)" }); return; }
+  if (!ticker || typeof ticker !== "string") throw badRequest("TICKER_REQUIRED");
+  if (!tradeDate || typeof tradeDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) throw badRequest("INVALID_DATE");
+  if (!responses) throw badRequest("CHECKLIST_RESPONSES_REQUIRED");
   const wanted = typeof trader === "string" && trader.trim() ? trader.trim() : "";
   const staff = !!wanted && wanted !== me.name && (await can(req, "trades.write.any", { trader: wanted }));
   const owner = staff ? wanted : me.name;
@@ -104,7 +102,7 @@ router.post("/checklist-responses", asyncHandler(async (req, res): Promise<void>
     if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) throw badRequest("INVALID_ID");
     const access = await canAccessTrade(req, tradeId);
     if (access === null) throw notFound("TRADE_NOT_FOUND");
-    if (!access) { res.status(403).json({ error: "Это не ваша сделка", code: "FORBIDDEN" }); return; }
+    if (!access) throw forbidden(undefined, "TRADE_FORBIDDEN");
     linkedTradeId = tradeId;
   }
   const responsesStr = typeof responses === "string" ? responses : JSON.stringify(responses);
@@ -148,23 +146,23 @@ router.patch("/checklist-responses/:id/link", asyncHandler(async (req, res): Pro
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const { tradeId } = req.body as Record<string, unknown>;
-  if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) { res.status(400).json({ error: "Нужен tradeId" }); return; }
+  if (typeof tradeId !== "number" || !Number.isInteger(tradeId)) throw badRequest("INVALID_ID");
   const [existing] = await db
     .select({ id: preTradeChecklistResponsesTable.id, trader: preTradeChecklistResponsesTable.trader, tradeId: preTradeChecklistResponsesTable.tradeId })
     .from(preTradeChecklistResponsesTable)
     .where(eq(preTradeChecklistResponsesTable.id, id))
     .limit(1);
-  if (!existing) { res.status(404).json({ error: "Чек-лист не найден" }); return; }
+  if (!existing) throw notFound("CHECKLIST_NOT_FOUND");
   const staff = await can(req, "trades.write.any", existing.trader ? { trader: existing.trader } : undefined);
   if (!staff && existing.trader && existing.trader !== req.authUser!.name) {
-    res.status(403).json({ error: "Это не ваш чек-лист", code: "FORBIDDEN" }); return;
+    throw forbidden(undefined, "CHECKLIST_FORBIDDEN");
   }
   if (existing.tradeId != null && existing.tradeId !== tradeId) {
-    res.status(409).json({ error: "Этот чек-лист уже привязан к другой сделке", code: "CHECKLIST_ALREADY_LINKED" }); return;
+    throw conflict("CHECKLIST_ALREADY_LINKED");
   }
   const access = await canAccessTrade(req, tradeId);
   if (access === null) throw notFound("TRADE_NOT_FOUND");
-  if (!access) { res.status(403).json({ error: "Это не ваша сделка", code: "FORBIDDEN" }); return; }
+  if (!access) throw forbidden(undefined, "TRADE_FORBIDDEN");
   const [row] = await db.update(preTradeChecklistResponsesTable)
     .set({ tradeId, ...(existing.trader ? {} : { trader: req.authUser!.name }) })
     .where(eq(preTradeChecklistResponsesTable.id, id))

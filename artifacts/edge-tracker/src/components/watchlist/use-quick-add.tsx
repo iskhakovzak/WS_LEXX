@@ -10,6 +10,8 @@ import { http } from "@/lib/api/http";
 import { KEYS, STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { LIST_LABELS, isListName, type ListName, type WatchlistItem } from "./lib";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** ticker → working list of the non-archived rows of the shared watchlist. */
 export function useWatchlistIndex(enabled = true) {
@@ -41,12 +43,12 @@ export function useQuickAddToWatchlist() {
       await http.post("/api/watchlist/quick", { tickers: [t], list });
       await qc.invalidateQueries({ queryKey: KEYS.watchlist() });
       toast({
-        title: `${t} → вотчлист «${LIST_LABELS[list]}»`,
-        action: <ToastAction altText="Открыть в вотчлисте" onClick={() => navigate(links.watchlist(t))}>Открыть</ToastAction>,
+        title: watchlistI18n.t("toast.quickAdded", { ticker: t, list: LIST_LABELS[list] }),
+        action: <ToastAction altText={watchlistI18n.t("toast.openInWatchlist")} onClick={() => navigate(links.watchlist(t))}>{commonI18n.t("actions.open")}</ToastAction>,
       });
       return true;
     } catch (e) {
-      toast({ title: `Не удалось добавить ${t}`, description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: watchlistI18n.t("toast.quickAddFailed", { ticker: t }), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
       return false;
     } finally {
       setBusy(null);

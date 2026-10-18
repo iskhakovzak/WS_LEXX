@@ -2,6 +2,8 @@ import { useQuery, useQueryClient, type QueryClient } from "@tanstack/react-quer
 import { ApiError, http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
+import { commonI18n } from "@/i18n/ns/common";
+import { settingsI18n } from "@/i18n/ns/settings";
 
 export type TeamMember = {
   id: number;
@@ -23,10 +25,11 @@ export type TeamMember = {
 
 export type AssignmentField = "assignedCurator" | "assignedRiskManager" | "assignedMentor";
 
-export const ASSIGNMENT_FIELDS: { key: AssignmentField; label: string; short: string }[] = [
-  { key: "assignedCurator", label: "Куратор", short: "Куратор" },
-  { key: "assignedRiskManager", label: "Риск-менеджер", short: "Риск" },
-  { key: "assignedMentor", label: "Ментор", short: "Ментор" },
+/** Assignment columns; labels follow the UI language (getters). */
+export const ASSIGNMENT_FIELDS: { key: AssignmentField; readonly label: string; readonly short: string }[] = [
+  { key: "assignedCurator", get label() { return commonI18n.t("roles.curator"); }, get short() { return settingsI18n.t("team.curatorShort"); } },
+  { key: "assignedRiskManager", get label() { return commonI18n.t("roles.riskManager"); }, get short() { return settingsI18n.t("team.riskShort"); } },
+  { key: "assignedMentor", get label() { return commonI18n.t("roles.mentor"); }, get short() { return settingsI18n.t("team.mentorShort"); } },
 ];
 
 export const TEAM_QUERY_KEY = ["users", "team"] as const;
@@ -95,7 +98,7 @@ export async function setUserActive(id: number, active: boolean): Promise<void> 
     if (active) await http.patch(`/api/users/${id}`, { active: true });
     else await http.del(`/api/users/${id}`, {});
   } catch (e) {
-    if (active && e instanceof ApiError && /no fields/i.test(e.message)) throw new Error("Сервер ещё не поддерживает повторную активацию — нужен деплой API");
+    if (active && e instanceof ApiError && /no fields/i.test(e.message)) throw new Error(settingsI18n.t("team.reactivateUnsupported"));
     throw e;
   }
 }

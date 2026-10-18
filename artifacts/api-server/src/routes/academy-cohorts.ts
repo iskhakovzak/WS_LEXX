@@ -47,14 +47,17 @@ import { closeDateSql, num, resultSql } from "../lib/tradeMath";
 import { logger } from "../lib/logger";
 import {
   ACTION_STATUSES, ATTENDANCE_STATUSES, CHECKIN_AFTER_MIN, CHECKIN_BEFORE_MIN, COHORT_FORMATS, COMPARATORS, ENROLLMENT_STATUSES,
-  ENROLLMENT_STATUS_LABELS, GOAL_STATUSES, LATE_GRACE_MIN, METRICS, METRIC_KEYS, NY_TZ, RECURRENCES, SESSION_KINDS, SESSION_MODES,
-  STAGES, STAGE_LABELS,
+  GOAL_STATUSES, LATE_GRACE_MIN, METRICS, METRIC_KEYS, NY_TZ, RECURRENCES, SESSION_KINDS, SESSION_MODES,
+  STAGES, enrollmentStatusLabelFor, metricsFor, stageLabelFor,
   dateInTz, describeGoal, describeRule, evaluateCheckin, evaluateGoal, goalTransition, isOccurrence, isValidTimeZone, lagReasons,
   lagScore, mergeSummaries, nextOccurrence, occurrenceAt, occurrences, summarizeAttendance,
   type AttendanceStatus, type AttendanceSummary, type Comparator, type EnrollmentStatus, type GoalEval, type GoalStatus, type IdpTrade,
   type MetricKey, type SessionRule, type Stage,
 } from "../lib/academyCohorts";
-import { AppError, notFound, sendError, unauthorized } from "../lib/http";
+import { AppError, conflict, forbidden, notFound, sendError, unauthorized, type ErrorCode } from "../lib/http";
+import { ruCohorts } from "../lib/academyI18n";
+import { DEMO, DEMO_URL } from "../lib/academyCohortsDemo";
+import { langOf, type Lang, type Params } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -244,13 +247,14 @@ function needMember(v: Viewer, res: Response): v is Viewer & { me: string } {
 
 function needStaff(v: Viewer, res: Response): v is Viewer & { me: string } {
   if (!needMember(v, res)) return false;
-  if (!v.staff) { res.status(403).json({ error: "Только для наставников (куратор / админ)" }); return false; }
+  if (!v.staff) { sendError(res, new AppError("STAFF_ONLY")); return false; }
   return true;
 }
 
-function badRequest(res: Response, err: z.ZodError | string): void {
-  const msg = typeof err === "string" ? err : err.issues.map((i) => `${i.path.join(".") || "body"}: ${i.message}`).join("; ");
-  res.status(400).json({ error: msg });
+/** 400 with an error code (text translated by the middleware), or VALIDATION with the zod issues in `details`. */
+function badRequest(res: Response, err: z.ZodError | ErrorCode, params?: Params): void {
+  if (typeof err === "string") { sendError(res, new AppError(err, 400, params)); return; }
+  sendError(res, new AppError("VALIDATION", 400, undefined, err.issues.map((i) => ({ path: i.path.join(".") || "body", message: i.message }))));
 }
 
 function idParam(req: Request): number | null {
@@ -264,12 +268,12 @@ function qs(req: Request, k: string): string | undefined {
   return typeof s === "string" && s.trim() !== "" ? s.trim() : undefined;
 }
 
-const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "дата YYYY-MM-DD").refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)), "некорректная дата");
-const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "время HH:MM");
-const tz = z.string().trim().refine(isValidTimeZone, "неизвестный часовой пояс");
+const ymd = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "date YYYY-MM-DD").refine((s) => !Number.isNaN(Date.parse(`${s}T00:00:00Z`)), "invalid date");
+const hhmm = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "time HH:MM");
+const tz = z.string().trim().refine(isValidTimeZone, "unknown time zone");
 const name = z.string().trim().min(1).max(120);
 const urlField = z.string().trim().max(500).nullable().optional()
-  .refine((s) => s == null || s === "" || safeHttpUrl(s) != null, "ссылка должна начинаться с http(s)://");
+  .refine((s) => s == null || s === "" || safeHttpUrl(s) != null, "the link must start with http(s)://");
 const cleanUrl = (s: string | null | undefined): string | null => (s ? safeHttpUrl(s) : null);
 const nullableText = (max: number) => z.string().trim().max(max).nullable().optional();
 
@@ -316,11 +320,11 @@ type EnrollmentRow = {
   id: number; cohort_id: number; user_name: string; stage: string; status: string; joined_on: string; note: string;
   created_at: Date; updated_at: Date; archived_at: Date | null;
 };
-function mapEnrollment(r: EnrollmentRow) {
+function mapEnrollment(r: EnrollmentRow, lang: Lang = "ru") {
   const stage = (STAGES as readonly string[]).includes(r.stage) ? (r.stage as Stage) : "trainee";
   const status = (ENROLLMENT_STATUSES as readonly string[]).includes(r.status) ? (r.status as EnrollmentStatus) : "active";
   return {
-    id: r.id, cohortId: r.cohort_id, userName: r.user_name, stage, stageLabel: STAGE_LABELS[stage], status, statusLabel: ENROLLMENT_STATUS_LABELS[status],
+    id: r.id, cohortId: r.cohort_id, userName: r.user_name, stage, stageLabel: stageLabelFor(stage, lang), status, statusLabel: enrollmentStatusLabelFor(status, lang),
     joinedOn: r.joined_on, note: r.note, createdAt: r.created_at, updatedAt: r.updated_at, archivedAt: r.archived_at,
   };
 }
@@ -343,14 +347,14 @@ function ruleOf(s: SessionRow): SessionRule {
     timezone: isValidTimeZone(s.timezone) ? s.timezone : NY_TZ,
   };
 }
-function mapSession(s: SessionRow, nowMs = Date.now()) {
+function mapSession(s: SessionRow, lang: Lang = "ru", nowMs = Date.now()) {
   const rule = ruleOf(s);
   const next = s.archived_at ? null : nextOccurrence(rule, nowMs);
   return {
     id: s.id, cohortId: s.cohort_id, title: s.title, kind: s.kind, recurrence: rule.recurrence, weekdays: rule.weekdays,
     startDate: s.start_date, endDate: s.end_date, startTime: s.start_time, durationMin: s.duration_min, timezone: rule.timezone,
     mode: s.mode, room: s.room, meetingUrl: s.meeting_url, host: s.host, description: s.description, archivedAt: s.archived_at,
-    ruleText: describeRule(rule),
+    ruleText: describeRule(rule, lang),
     next: next ? { date: next.date, startUtc: new Date(next.startMs).toISOString(), endUtc: new Date(next.endMs).toISOString() } : null,
   };
 }
@@ -373,7 +377,7 @@ async function loadSessions(cohortIds: number[], includeArchived = false): Promi
 }
 
 /** Вхождения в [from, to] (даты в зоне занятия). Для архивных занятий — только до момента архивации. */
-function expand(sessions: SessionRow[], cohortNames: Map<number, string>, from: string, to: string): OccView[] {
+function expand(sessions: SessionRow[], cohortNames: Map<number, string>, from: string, to: string, lang: Lang = "ru"): OccView[] {
   const out: OccView[] = [];
   for (const s of sessions) {
     const rule = ruleOf(s);
@@ -384,7 +388,7 @@ function expand(sessions: SessionRow[], cohortNames: Map<number, string>, from: 
         sessionId: s.id, cohortId: s.cohort_id, cohortName: cohortNames.get(s.cohort_id) ?? "", title: s.title, kind: s.kind, mode: s.mode,
         room: s.room, meetingUrl: s.meeting_url, host: s.host, description: s.description, date: o.date,
         startUtc: new Date(o.startMs).toISOString(), endUtc: new Date(o.endMs).toISOString(), timezone: rule.timezone, startTimeLocal: rule.startTime,
-        ruleText: describeRule(rule), startMs: o.startMs, endMs: o.endMs,
+        ruleText: describeRule(rule, lang), startMs: o.startMs, endMs: o.endMs,
       });
     }
   }
@@ -501,13 +505,14 @@ type GoalRow = {
 };
 
 export type GoalView = ReturnType<typeof mapGoal>;
-function mapGoal(g: GoalRow, ev: GoalEval) {
+function mapGoal(g: GoalRow, ev: GoalEval, lang: Lang = "ru") {
   const metric = (METRIC_KEYS as readonly string[]).includes(g.metric) ? (g.metric as MetricKey) : "manual";
   const comparator = (COMPARATORS as readonly string[]).includes(g.comparator) ? (g.comparator as Comparator) : METRICS[metric].comparator;
+  const defs = metricsFor(lang);
   return {
-    id: g.id, student: g.student, title: g.title, metric, metricLabel: METRICS[metric].label, unit: METRICS[metric].unit, comparator,
+    id: g.id, student: g.student, title: g.title, metric, metricLabel: defs[metric].label, unit: defs[metric].unit, comparator,
     target: Number(g.target), window: g.window_n, startDate: g.start_date, dueOn: g.due_on, status: g.status as GoalStatus,
-    manualProgress: g.manual_progress, note: g.note, formula: describeGoal({ metric, target: Number(g.target), comparator, window: g.window_n }),
+    manualProgress: g.manual_progress, note: g.note, formula: describeGoal({ metric, target: Number(g.target), comparator, window: g.window_n }, lang),
     achievedAt: g.achieved_at, missedAt: g.missed_at, createdBy: g.created_by, createdAt: g.created_at,
     eval: ev,
   };
@@ -517,7 +522,7 @@ function mapGoal(g: GoalRow, ev: GoalEval) {
  * Цели студента с пересчитанным прогрессом. Активные цели переводятся в achieved / missed (одной UPDATE … WHERE status='active',
  * поэтому уведомление уходит ровно один раз): студенту и его наставникам.
  */
-async function goalsFor(student: string, actor: string | null): Promise<GoalView[]> {
+async function goalsFor(student: string, actor: string | null, lang: Lang = "ru"): Promise<GoalView[]> {
   const { rows } = await pool.query<GoalRow>(
     `SELECT ${GOAL_COLS} FROM academy_idp_goals g WHERE g.student = $1 AND g.archived_at IS NULL
       ORDER BY (g.status = 'active') DESC, g.due_on NULLS LAST, g.id`,
@@ -536,6 +541,7 @@ async function goalsFor(student: string, actor: string | null): Promise<GoalView
     const ev = evaluateGoal(
       { metric, target: Number(g.target), comparator, window: g.window_n, startDate: g.start_date, dueOn: g.due_on, manualProgress: g.manual_progress },
       { trades, journalDates, today },
+      lang,
     );
     const next = goalTransition(g.status as GoalStatus, ev, g.due_on, today);
     if (g.status === "active") {
@@ -552,19 +558,17 @@ async function goalsFor(student: string, actor: string | null): Promise<GoalView
         g.status = next;
         if (next === "achieved") g.achieved_at = new Date(); else g.missed_at = new Date();
         mentors ??= await mentorsOf(student);
-        const title = next === "achieved" ? "Цель ИПР достигнута" : "Срок цели ИПР истёк";
-        const message = next === "achieved"
-          ? `${student}: «${g.title}» — выполнено (${ev.detail})`
-          : `${student}: «${g.title}» — срок ${g.due_on} прошёл, цель не достигнута (${ev.detail})`;
+        // Text as data (lib/notificationRenderers/academyCohorts.ts): the detail is re-rendered per reader from detailMsg.
+        const params = { student, title: g.title, due: g.due_on ?? "", detailMsg: JSON.stringify(ev.detailMsg) };
         const type = next === "achieved" ? "academy_goal_achieved" : "academy_goal_missed";
         const severity = next === "achieved" ? "info" : "warn";
-        await notifySafe({ userName: student, type, title, message, severity, link: "/academy/my", entityType: "academy_goal", entityId: g.id, actor, source: "academy" });
+        await notifySafe({ userName: student, type, params, severity, link: "/academy/my", entityType: "academy_goal", entityId: g.id, actor, source: "academy" });
         for (const m of mentors) {
-          await notifySafe({ userName: m, type, title, message, severity, link: `/academy/mentor?student=${encodeURIComponent(student)}`, entityType: "academy_goal", entityId: g.id, actor, source: "academy" });
+          await notifySafe({ userName: m, type, params, severity, link: `/academy/mentor?student=${encodeURIComponent(student)}`, entityType: "academy_goal", entityId: g.id, actor, source: "academy" });
         }
       }
     }
-    out.push(mapGoal(g, ev));
+    out.push(mapGoal(g, ev, lang));
   }
   return out;
 }
@@ -593,10 +597,10 @@ async function notifyOverdueActions(students: string[]): Promise<void> {
     [students, today],
   );
   for (const r of rows) {
-    const message = `${r.student}: договорённость «${r.title}» просрочена (срок ${r.due_on})`;
-    await notifySafe({ userName: r.student, type: "academy_action_overdue", title: "Договорённость просрочена", message, severity: "warn", link: "/academy/my", entityType: "academy_action", entityId: r.id, source: "academy" });
+    const params = { student: r.student, title: r.title, due: r.due_on };
+    await notifySafe({ userName: r.student, type: "academy_action_overdue", params, severity: "warn", link: "/academy/my", entityType: "academy_action", entityId: r.id, source: "academy" });
     for (const m of await mentorsOf(r.student)) {
-      await notifySafe({ userName: m, type: "academy_action_overdue", title: "Договорённость просрочена", message, severity: "warn", link: `/academy/mentor?student=${encodeURIComponent(r.student)}`, entityType: "academy_action", entityId: r.id, source: "academy" });
+      await notifySafe({ userName: m, type: "academy_action_overdue", params, severity: "warn", link: `/academy/mentor?student=${encodeURIComponent(r.student)}`, entityType: "academy_action", entityId: r.id, source: "academy" });
     }
   }
 }
@@ -634,6 +638,7 @@ export async function changeEnrollment(
   patch: { stage?: Stage; status?: EnrollmentStatus; joinedOn?: string; note?: string },
   actor: string | null,
   historyNote = "",
+  lang: Lang = "ru",
 ): Promise<ReturnType<typeof mapEnrollment> | null> {
   await ensureAcademyCohortTables();
   const client = await pool.connect();
@@ -658,13 +663,15 @@ export async function changeEnrollment(
       );
     }
     await client.query("COMMIT");
-    const after = mapEnrollment(upd.rows[0]);
+    const after = mapEnrollment(upd.rows[0], lang);
     if (changed && before.user_name !== actor) {
-      const parts: string[] = [];
-      if (stage !== before.stage) parts.push(`ступень: ${STAGE_LABELS[before.stage as Stage] ?? before.stage} → ${after.stageLabel}`);
-      if (status !== before.status) parts.push(`статус: ${ENROLLMENT_STATUS_LABELS[before.status as EnrollmentStatus] ?? before.status} → ${after.statusLabel}`);
+      // Codes as data: stage / status names are rendered in the reader's language (notificationRenderers/academyCohorts.ts).
       await notifySafe({
-        userName: before.user_name, type: "academy_stage_change", title: "Изменение в обучении", message: parts.join("; ") + (historyNote ? ` — ${historyNote}` : ""),
+        userName: before.user_name, type: "academy_stage_change",
+        params: {
+          fromStage: stage !== before.stage ? before.stage : null, toStage: stage !== before.stage ? stage : null,
+          fromStatus: status !== before.status ? before.status : null, toStatus: status !== before.status ? status : null, note: historyNote || null,
+        },
         link: "/academy/my", entityType: "academy_enrollment", entityId: enrollmentId, actor, source: "academy",
       });
     }
@@ -735,8 +742,8 @@ router.post("/academy/cohorts", asyncHandler(async (req, res) => {
   const p = cohortBody.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
-  if (b.startsOn && b.endsOn && b.endsOn < b.startsOn) return badRequest(res, "Дата окончания раньше даты начала");
-  if (b.mentor && !(await userExists(b.mentor))) return badRequest(res, `Пользователь «${b.mentor}» не найден`);
+  if (b.startsOn && b.endsOn && b.endsOn < b.startsOn) return badRequest(res, "DATE_RANGE_INVALID");
+  if (b.mentor && !(await userExists(b.mentor))) return void sendError(res, notFound("USER_NOT_FOUND"));
   try {
     const { rows } = await pool.query<CohortRow>(
       `INSERT INTO academy_cohorts (name, format, mentor, starts_on, ends_on, timezone, description, room, meeting_url, created_by)
@@ -745,7 +752,7 @@ router.post("/academy/cohorts", asyncHandler(async (req, res) => {
     );
     res.status(201).json(mapCohort(rows[0]));
   } catch (err: any) {
-    if (err?.code === "23505") { res.status(409).json({ error: "Когорта с таким названием уже есть" }); return; }
+    if (err?.code === "23505") { sendError(res, conflict("COHORT_NAME_TAKEN")); return; }
     throw err;
   }
 }));
@@ -758,7 +765,7 @@ router.post("/academy/cohorts/seed-demo", asyncHandler(async (req, res) => {
 
 router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<CohortRow>(`SELECT ${COHORT_COLS} FROM academy_cohorts c WHERE c.id = $1`, [id]);
   const c = rows[0];
   if (!c) throw notFound("COHORT_NOT_FOUND");
@@ -768,11 +775,11 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   }
   const enr = await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.cohort_id = $1 AND e.archived_at IS NULL ORDER BY e.status = 'active' DESC, e.user_name`, [id]);
-  const enrollments = enr.rows.map(mapEnrollment);
+  const enrollments = enr.rows.map((r) => mapEnrollment(r, langOf(req)));
   // Студент видит состав когорты, но посещаемость — только свою.
   const statsFor = v.staff ? enrollments : enrollments.filter((e) => e.userName === v.me);
   const att = await cohortAttendance(id, statsFor.map((e) => ({ name: e.userName, joinedOn: e.joinedOn })));
-  const sessions = (await loadSessions([id])).map((s) => mapSession(s));
+  const sessions = (await loadSessions([id])).map((s) => mapSession(s, langOf(req)));
   const history = v.staff
     ? (await pool.query(
         `SELECT id, enrollment_id AS "enrollmentId", user_name AS "userName", from_stage AS "fromStage", to_stage AS "toStage",
@@ -791,11 +798,11 @@ router.get("/academy/cohorts/:id", asyncHandler(async (req, res) => {
 
 router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = cohortBody.partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
-  if (b.mentor && !(await userExists(b.mentor))) return badRequest(res, `Пользователь «${b.mentor}» не найден`);
+  if (b.mentor && !(await userExists(b.mentor))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const sets: string[] = [];
   const params: unknown[] = [id];
   const set = (col: string, val: unknown) => { params.push(val); sets.push(`${col} = $${params.length}`); };
@@ -808,16 +815,16 @@ router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
   if (b.description !== undefined) set("description", b.description);
   if (b.room !== undefined) set("room", b.room || null);
   if (b.meetingUrl !== undefined) set("meeting_url", cleanUrl(b.meetingUrl));
-  if (!sets.length) return badRequest(res, "Нечего менять");
+  if (!sets.length) return badRequest(res, "NO_FIELDS");
   try {
     const { rows } = await pool.query<CohortRow>(
       `UPDATE academy_cohorts c SET ${sets.join(", ")}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, params);
     if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
     const r = rows[0];
-    if (r.starts_on && r.ends_on && r.ends_on < r.starts_on) { res.status(400).json({ error: "Дата окончания раньше даты начала" }); return; }
+    if (r.starts_on && r.ends_on && r.ends_on < r.starts_on) return badRequest(res, "DATE_RANGE_INVALID");
     res.json(mapCohort(r));
   } catch (err: any) {
-    if (err?.code === "23505") { res.status(409).json({ error: "Когорта с таким названием уже есть" }); return; }
+    if (err?.code === "23505") { sendError(res, conflict("COHORT_NAME_TAKEN")); return; }
     throw err;
   }
 }));
@@ -825,14 +832,14 @@ router.patch("/academy/cohorts/:id", asyncHandler(async (req, res) => {
 for (const [path, archive] of [["archive", true], ["restore", false]] as const) {
   router.post(`/academy/cohorts/:id/${path}`, asyncHandler(async (req, res) => {
     const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-    const id = idParam(req); if (!id) return badRequest(res, "id");
+    const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
     try {
       const { rows } = await pool.query<CohortRow>(
         `UPDATE academy_cohorts c SET archived_at = ${archive ? "NOW()" : "NULL"}, updated_at = NOW() WHERE c.id = $1 RETURNING ${COHORT_COLS}`, [id]);
       if (!rows[0]) { sendError(res, notFound("COHORT_NOT_FOUND")); return; }
       res.json(mapCohort(rows[0]));
     } catch (err: any) {
-      if (err?.code === "23505") { res.status(409).json({ error: "Активная когорта с таким названием уже есть — переименуйте её" }); return; }
+      if (err?.code === "23505") { sendError(res, conflict("COHORT_NAME_TAKEN_ACTIVE")); return; }
       throw err;
     }
   }));
@@ -854,7 +861,7 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
   const p = enrollBody.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
-  if (!(await userExists(b.userName))) return badRequest(res, `Пользователь «${b.userName}» не найден или неактивен`);
+  if (!(await userExists(b.userName))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const c = await pool.query<{ name: string }>(`SELECT name FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
   if (!c.rows[0]) throw notFound("COHORT_NOT_FOUND");
   try {
@@ -867,19 +874,18 @@ router.post("/academy/enrollments", asyncHandler(async (req, res) => {
     const e = rows[0];
     await pool.query(
       `INSERT INTO academy_enrollment_history (enrollment_id, cohort_id, user_name, from_stage, to_stage, from_status, to_status, changed_by, note)
-       VALUES ($1, $2, $3, NULL, $4, NULL, $5, $6, 'Зачисление')`,
-      [e.id, e.cohort_id, e.user_name, e.stage, e.status, v.me],
+       VALUES ($1, $2, $3, NULL, $4, NULL, $5, $6, $7)`,
+      [e.id, e.cohort_id, e.user_name, e.stage, e.status, v.me, ruCohorts.history.enrolled],
     );
     if (e.user_name !== v.me) {
       await notifySafe({
-        userName: e.user_name, type: "academy_enrolled", title: "Вы зачислены в когорту",
-        message: `Когорта «${c.rows[0].name}», ступень «${STAGE_LABELS[e.stage as Stage]}»`, link: "/academy/my",
+        userName: e.user_name, type: "academy_enrolled", params: { cohort: String(c.rows[0].name), stage: e.stage }, link: "/academy/my",
         entityType: "academy_enrollment", entityId: e.id, actor: v.me, source: "academy",
       });
     }
-    res.status(201).json(mapEnrollment(e));
+    res.status(201).json(mapEnrollment(e, langOf(req)));
   } catch (err: any) {
-    if (err?.code === "23505") { res.status(409).json({ error: `${b.userName} уже в этой когорте` }); return; }
+    if (err?.code === "23505") { sendError(res, conflict("ALREADY_ENROLLED", undefined, { user: b.userName })); return; }
     throw err;
   }
 }));
@@ -894,32 +900,32 @@ const enrollPatch = z.object({
 
 router.patch("/academy/enrollments/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = enrollPatch.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const { reason, ...patch } = p.data;
-  const e = await changeEnrollment(id, patch, v.me, reason ?? "");
+  const e = await changeEnrollment(id, patch, v.me, reason ?? "", langOf(req));
   if (!e) throw notFound();
   res.json(e);
 }));
 
 router.post("/academy/enrollments/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<EnrollmentRow>(
     `UPDATE academy_enrollments e SET archived_at = NOW(), updated_at = NOW() WHERE e.id = $1 AND e.archived_at IS NULL RETURNING ${ENR_COLS}`, [id]);
   if (!rows[0]) throw notFound();
   await pool.query(
     `INSERT INTO academy_enrollment_history (enrollment_id, cohort_id, user_name, from_stage, to_stage, from_status, to_status, changed_by, note)
-     VALUES ($1, $2, $3, $4, $4, $5, $5, $6, 'Убран из когорты (архив)')`,
-    [id, rows[0].cohort_id, rows[0].user_name, rows[0].stage, rows[0].status, v.me],
+     VALUES ($1, $2, $3, $4, $4, $5, $5, $6, $7)`,
+    [id, rows[0].cohort_id, rows[0].user_name, rows[0].stage, rows[0].status, v.me, ruCohorts.history.archived],
   );
-  res.json(mapEnrollment(rows[0]));
+  res.json(mapEnrollment(rows[0], langOf(req)));
 }));
 
 router.get("/academy/enrollments/:id/history", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const own = await pool.query<{ user_name: string }>(`SELECT user_name FROM academy_enrollments WHERE id = $1`, [id]);
   if (!own.rows[0] || (!v.staff && own.rows[0].user_name !== v.me)) throw notFound();
   const { rows } = await pool.query(
@@ -949,11 +955,11 @@ const sessionBody = z.object({
   description: z.string().max(4000).optional(),
 });
 
-function sessionProblems(b: { recurrence?: string; endDate?: string | null; startDate?: string; mode?: string; room?: string | null; meetingUrl?: string | null }): string | null {
-  if (b.endDate && b.startDate && b.endDate < b.startDate) return "Дата окончания повторов раньше даты начала";
-  if (b.mode === "office" && !b.room) return "Для офлайн-занятия укажите аудиторию / место";
-  if (b.mode === "online" && !b.meetingUrl) return "Для онлайн-занятия укажите ссылку (Zoom / Meet)";
-  if (b.mode === "hybrid" && (!b.room || !b.meetingUrl)) return "Для гибридного занятия нужны и аудитория, и ссылка";
+function sessionProblems(b: { recurrence?: string; endDate?: string | null; startDate?: string; mode?: string; room?: string | null; meetingUrl?: string | null }): ErrorCode | null {
+  if (b.endDate && b.startDate && b.endDate < b.startDate) return "DATE_RANGE_INVALID";
+  if (b.mode === "office" && !b.room) return "SESSION_ROOM_REQUIRED";
+  if (b.mode === "online" && !b.meetingUrl) return "SESSION_URL_REQUIRED";
+  if (b.mode === "hybrid" && (!b.room || !b.meetingUrl)) return "SESSION_ROOM_URL_REQUIRED";
   return null;
 }
 
@@ -962,16 +968,16 @@ router.get("/academy/sessions", asyncHandler(async (req, res) => {
   const today = nyDate();
   const from = qs(req, "from") ?? today;
   const to = qs(req, "to") ?? addDays(from, 13);
-  if (!ymd.safeParse(from).success || !ymd.safeParse(to).success || to < from) return badRequest(res, "from/to");
-  if (addDays(from, 92) < to) return badRequest(res, "Диапазон не больше 92 дней");
+  if (!ymd.safeParse(from).success || !ymd.safeParse(to).success || to < from) return badRequest(res, "INVALID_DATE");
+  if (addDays(from, 92) < to) return badRequest(res, "RANGE_TOO_LONG", { max: 92 });
   const cohortId = qs(req, "cohortId") ? Number(qs(req, "cohortId")) : null;
   let cohorts = (await visibleCohorts(v, false)).map((c) => c.id);
   if (cohortId) cohorts = cohorts.filter((c) => c === cohortId);
   const names = await cohortNameMap(cohorts);
   const sessions = await loadSessions(cohorts);
-  const occ = expand(sessions, names, addDays(from, -1), addDays(to, 1))
+  const occ = expand(sessions, names, addDays(from, -1), addDays(to, 1), langOf(req))
     .filter((o) => dateInTz(o.startMs, NY_TZ) >= from && dateInTz(o.startMs, NY_TZ) <= to);
-  res.json({ from, to, serverNow: new Date().toISOString(), sessions: sessions.map((s) => mapSession(s)), occurrences: occ.map(stripMs) });
+  res.json({ from, to, serverNow: new Date().toISOString(), sessions: sessions.map((s) => mapSession(s, langOf(req))), occurrences: occ.map(stripMs) });
 }));
 
 router.post("/academy/sessions", asyncHandler(async (req, res) => {
@@ -983,7 +989,7 @@ router.post("/academy/sessions", asyncHandler(async (req, res) => {
   if (problem) return badRequest(res, problem);
   const c = await pool.query(`SELECT 1 FROM academy_cohorts WHERE id = $1 AND archived_at IS NULL`, [b.cohortId]);
   if (!c.rows.length) throw notFound("COHORT_NOT_FOUND");
-  if (b.host && !(await userExists(b.host))) return badRequest(res, `Пользователь «${b.host}» не найден`);
+  if (b.host && !(await userExists(b.host))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const { rows } = await pool.query<SessionRow>(
     `INSERT INTO academy_sessions (cohort_id, title, kind, recurrence, weekdays, start_date, end_date, start_time, duration_min, timezone, mode, room, meeting_url, host, description, created_by)
      VALUES ($1, $2, $3, $4, $5::smallint[], $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
@@ -991,12 +997,12 @@ router.post("/academy/sessions", asyncHandler(async (req, res) => {
     [b.cohortId, b.title, b.kind, b.recurrence, b.recurrence === "weekly" ? b.weekdays : [], b.startDate, b.endDate ?? null, b.startTime, b.durationMin,
       b.timezone, b.mode, b.room || null, cleanUrl(b.meetingUrl), b.host ?? null, b.description ?? "", v.me],
   );
-  res.status(201).json(mapSession(rows[0]));
+  res.status(201).json(mapSession(rows[0], langOf(req)));
 }));
 
 router.patch("/academy/sessions/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = sessionBody.omit({ cohortId: true }).partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const cur = await pool.query<SessionRow>(`SELECT ${SES_COLS} FROM academy_sessions s WHERE s.id = $1 AND s.archived_at IS NULL`, [id]);
@@ -1009,7 +1015,7 @@ router.patch("/academy/sessions/:id", asyncHandler(async (req, res) => {
   };
   const problem = sessionProblems(merged);
   if (problem) return badRequest(res, problem);
-  if (b.host && !(await userExists(b.host))) return badRequest(res, `Пользователь «${b.host}» не найден`);
+  if (b.host && !(await userExists(b.host))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const sets: string[] = [];
   const params: unknown[] = [id];
   const set = (col: string, val: unknown, cast = "") => { params.push(val); sets.push(`${col} = $${params.length}${cast}`); };
@@ -1027,17 +1033,17 @@ router.patch("/academy/sessions/:id", asyncHandler(async (req, res) => {
   if (b.meetingUrl !== undefined) set("meeting_url", merged.meetingUrl);
   if (b.host !== undefined) set("host", b.host);
   if (b.description !== undefined) set("description", b.description);
-  if (!sets.length) return badRequest(res, "Нечего менять");
+  if (!sets.length) return badRequest(res, "NO_FIELDS");
   const { rows } = await pool.query<SessionRow>(`UPDATE academy_sessions s SET ${sets.join(", ")}, updated_at = NOW() WHERE s.id = $1 RETURNING ${SES_COLS}`, params);
-  res.json(mapSession(rows[0]));
+  res.json(mapSession(rows[0], langOf(req)));
 }));
 
 router.post("/academy/sessions/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<SessionRow>(`UPDATE academy_sessions s SET archived_at = NOW(), updated_at = NOW() WHERE s.id = $1 AND s.archived_at IS NULL RETURNING ${SES_COLS}`, [id]);
   if (!rows[0]) throw notFound("SESSION_NOT_FOUND");
-  res.json(mapSession(rows[0]));
+  res.json(mapSession(rows[0], langOf(req)));
 }));
 
 async function sessionById(id: number): Promise<SessionRow | null> {
@@ -1047,12 +1053,12 @@ async function sessionById(id: number): Promise<SessionRow | null> {
 
 router.get("/academy/sessions/:id/roster", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const s = await sessionById(id);
   if (!s) throw notFound("SESSION_NOT_FOUND");
   const rule = ruleOf(s);
   const date = qs(req, "date") ?? dateInTz(Date.now(), rule.timezone);
-  if (!isOccurrence(rule, date)) return badRequest(res, `${date} — не день этого занятия (${describeRule(rule)})`);
+  if (!isOccurrence(rule, date)) return badRequest(res, "NOT_SESSION_DAY", { date });
   const occ = occurrenceAt(rule, date);
   const enr = await pool.query<EnrollmentRow>(
     `SELECT ${ENR_COLS} FROM academy_enrollments e WHERE e.cohort_id = $1 AND e.archived_at IS NULL AND e.status IN ('active','paused') AND e.joined_on <= $2::date
@@ -1062,12 +1068,12 @@ router.get("/academy/sessions/:id/roster", asyncHandler(async (req, res) => {
        FROM academy_attendance WHERE session_id = $1 AND occurrence_date = $2::date`, [id, date]);
   const byUser = new Map(att.rows.map((r) => [r.user_name, r]));
   res.json({
-    session: mapSession(s),
+    session: mapSession(s, langOf(req)),
     occurrence: { date, startUtc: new Date(occ.startMs).toISOString(), endUtc: new Date(occ.endMs).toISOString() },
     roster: enr.rows.map((e) => {
       const a = byUser.get(e.user_name);
       return {
-        enrollment: mapEnrollment(e),
+        enrollment: mapEnrollment(e, langOf(req)),
         status: (a?.status as AttendanceStatus | undefined) ?? null, source: a?.source ?? null, checkedInAt: a?.checked_in_at ?? null,
         markedBy: a?.marked_by ?? null, note: a?.note ?? "",
       };
@@ -1089,11 +1095,11 @@ router.post("/academy/attendance", asyncHandler(async (req, res) => {
   const s = await sessionById(b.sessionId);
   if (!s) throw notFound("SESSION_NOT_FOUND");
   const rule = ruleOf(s);
-  if (!isOccurrence(rule, b.date)) return badRequest(res, `${b.date} — не день этого занятия`);
+  if (!isOccurrence(rule, b.date)) return badRequest(res, "NOT_SESSION_DAY", { date: b.date });
   const occ = occurrenceAt(rule, b.date);
   // Заранее можно отметить только «уважительная причина»; присутствие/пропуск — когда занятие уже началось.
   const started = Date.now() >= occ.startMs - CHECKIN_BEFORE_MIN * 60000;
-  if (!started && b.marks.some((m) => m.status !== "excused")) return badRequest(res, "Занятие ещё не началось — заранее можно отметить только уважительную причину");
+  if (!started && b.marks.some((m) => m.status !== "excused")) return badRequest(res, "SESSION_NOT_STARTED");
   const enrolled = await pool.query<{ user_name: string }>(
     `SELECT user_name FROM academy_enrollments WHERE cohort_id = $1 AND archived_at IS NULL AND user_name = ANY($2::text[])`,
     [s.cohort_id, b.marks.map((m) => m.userName)]);
@@ -1121,25 +1127,21 @@ router.post("/academy/checkin", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const s = await sessionById(p.data.sessionId);
   if (!s || s.archived_at) throw notFound("SESSION_NOT_FOUND");
-  if (s.mode === "office") { res.status(400).json({ error: "Это офлайн-занятие — отметку ставит наставник в аудитории", code: "OFFICE_ONLY" }); return; }
+  if (s.mode === "office") return badRequest(res, "OFFICE_ONLY");
   const enr = await pool.query<{ id: number }>(
     `SELECT id FROM academy_enrollments WHERE cohort_id = $1 AND user_name = $2 AND archived_at IS NULL AND status = 'active'`, [s.cohort_id, v.me]);
-  if (!enr.rows.length) { res.status(403).json({ error: "Вы не числитесь в когорте этого занятия", code: "NOT_ENROLLED" }); return; }
+  if (!enr.rows.length) throw forbidden(undefined, "NOT_ENROLLED");
   const rule = ruleOf(s);
   const nowMs = Date.now();
   const date = p.data.date ?? dateInTz(nowMs, rule.timezone);
-  if (!isOccurrence(rule, date)) { res.status(400).json({ error: "Сегодня этого занятия нет", code: "NO_OCCURRENCE" }); return; }
+  if (!isOccurrence(rule, date)) return badRequest(res, "NO_OCCURRENCE");
   const occ = occurrenceAt(rule, date);
   const verdict = evaluateCheckin(occ.startMs, nowMs);
   if (!verdict.ok) {
-    res.status(409).json({
-      error: verdict.reason === "too_early"
-        ? `Отметка откроется за ${CHECKIN_BEFORE_MIN} мин до начала`
-        : `Окно отметки закрылось через ${CHECKIN_AFTER_MIN} мин после начала — обратитесь к наставнику`,
-      code: verdict.reason === "too_early" ? "TOO_EARLY" : "TOO_LATE",
-      opensAt: new Date(verdict.opensMs).toISOString(), closesAt: new Date(verdict.closesMs).toISOString(), serverNow: new Date(nowMs).toISOString(),
-    });
-    return;
+    const early = verdict.reason === "too_early";
+    throw conflict(early ? "TOO_EARLY" : "TOO_LATE",
+      { opensAt: new Date(verdict.opensMs).toISOString(), closesAt: new Date(verdict.closesMs).toISOString(), serverNow: new Date(nowMs).toISOString() },
+      { min: early ? CHECKIN_BEFORE_MIN : CHECKIN_AFTER_MIN });
   }
   const existing = await pool.query<AttRow>(
     `SELECT session_id, occurrence_date::text AS occurrence_date, user_name, status, source, checked_in_at, marked_by, note
@@ -1197,7 +1199,7 @@ const meetingBody = z.object({
   student: name,
   mentor: name.optional(),
   cohortId: z.number().int().positive().nullable().optional(),
-  metAt: z.string().refine((s) => !Number.isNaN(Date.parse(s)), "metAt: ISO-время"),
+  metAt: z.string().refine((s) => !Number.isNaN(Date.parse(s)), "metAt: ISO time"),
   durationMin: z.number().int().min(5).max(480).nullable().optional(),
   format: z.enum(["office", "online"]).default("office"),
   agenda: z.string().max(4000).default(""),
@@ -1214,8 +1216,8 @@ async function insertAction(student: string, a: z.infer<typeof actionInput>, mee
   );
   if (a.owner === "student" && student !== actor) {
     await notifySafe({
-      userName: student, type: "academy_action_assigned", title: "Новая договорённость с наставником",
-      message: `«${a.title}»${a.dueOn ? ` — срок ${a.dueOn}` : ""}`, link: "/academy/my", entityType: "academy_action", entityId: rows[0].id, actor, source: "academy",
+      userName: student, type: "academy_action_assigned", params: { title: a.title, due: a.dueOn ?? null },
+      link: "/academy/my", entityType: "academy_action", entityId: rows[0].id, actor, source: "academy",
     });
   }
   return rows[0];
@@ -1244,9 +1246,9 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
   const p = meetingBody.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
-  if (!(await userExists(b.student))) return badRequest(res, `Пользователь «${b.student}» не найден`);
+  if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const mentor = b.mentor ?? v.me;
-  if (mentor !== v.me && !(await userExists(mentor))) return badRequest(res, `Пользователь «${mentor}» не найден`);
+  if (mentor !== v.me && !(await userExists(mentor))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const { rows } = await pool.query<MeetRow>(
     `INSERT INTO academy_one_on_ones (student, mentor, cohort_id, met_at, duration_min, format, agenda, notes, private_notes, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING ${MEET_COLS.replace(/m\./g, "")}`,
@@ -1259,7 +1261,7 @@ router.post("/academy/one-on-ones", asyncHandler(async (req, res) => {
 
 router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = meetingBody.omit({ student: true, actionItems: true }).partial().safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
@@ -1274,17 +1276,17 @@ router.patch("/academy/one-on-ones/:id", asyncHandler(async (req, res) => {
   if (b.agenda !== undefined) set("agenda", b.agenda);
   if (b.notes !== undefined) set("notes", b.notes);
   if (b.privateNotes !== undefined) set("private_notes", b.privateNotes);
-  if (!sets.length) return badRequest(res, "Нечего менять");
+  if (!sets.length) return badRequest(res, "NO_FIELDS");
   const { rows } = await pool.query<MeetRow>(`UPDATE academy_one_on_ones m SET ${sets.join(", ")}, updated_at = NOW() WHERE m.id = $1 AND m.archived_at IS NULL RETURNING ${MEET_COLS}`, params);
-  if (!rows[0]) { res.status(404).json({ error: "Встреча не найдена" }); return; }
+  if (!rows[0]) throw notFound("MEETING_NOT_FOUND");
   res.json(mapMeeting(rows[0], true));
 }));
 
 router.post("/academy/one-on-ones/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<MeetRow>(`UPDATE academy_one_on_ones m SET archived_at = NOW(), updated_at = NOW() WHERE m.id = $1 AND m.archived_at IS NULL RETURNING ${MEET_COLS}`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Встреча не найдена" }); return; }
+  if (!rows[0]) throw notFound("MEETING_NOT_FOUND");
   res.json(mapMeeting(rows[0], true));
 }));
 
@@ -1303,14 +1305,14 @@ router.post("/academy/action-items", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
   const p = actionInput.extend({ student: name, meetingId: z.number().int().positive().nullable().optional() }).safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
-  if (!(await userExists(p.data.student))) return badRequest(res, `Пользователь «${p.data.student}» не найден`);
+  if (!(await userExists(p.data.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const row = await insertAction(p.data.student, p.data, p.data.meetingId ?? null, v.me);
   res.status(201).json(mapAction(row));
 }));
 
 router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needMember(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = z.object({
     status: z.enum(ACTION_STATUSES).optional(), title: z.string().trim().min(2).max(300).optional(), dueOn: ymd.nullable().optional(),
     owner: z.enum(["student", "mentor"]).optional(),
@@ -1318,11 +1320,11 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
   if (!p.success) return badRequest(res, p.error);
   const cur = await pool.query<ActionRow>(`SELECT ${ACT_COLS} FROM academy_action_items a WHERE a.id = $1 AND a.archived_at IS NULL`, [id]);
   const a = cur.rows[0];
-  if (!a || (!v.staff && a.student !== v.me)) { res.status(404).json({ error: "Договорённость не найдена" }); return; }
+  if (!a || (!v.staff && a.student !== v.me)) throw notFound("ACTION_NOT_FOUND");
   const b = p.data;
   // Студент может только отметить выполнение своей договорённости (open ⇄ done); правки — наставнику.
   if (!v.staff && (b.title !== undefined || b.dueOn !== undefined || b.owner !== undefined || b.status === "dropped")) {
-    res.status(403).json({ error: "Студент может только отметить выполнение" }); return;
+    throw new AppError("ACTION_STUDENT_DONE_ONLY");
   }
   const sets: string[] = [];
   const params: unknown[] = [id];
@@ -1331,30 +1333,31 @@ router.patch("/academy/action-items/:id", asyncHandler(async (req, res) => {
   if (b.title !== undefined) set("title", b.title);
   if (b.dueOn !== undefined) { set("due_on", b.dueOn); sets.push("overdue_notified_at = NULL"); }
   if (b.owner !== undefined) set("owner", b.owner);
-  if (!sets.length) return badRequest(res, "Нечего менять");
+  if (!sets.length) return badRequest(res, "NO_FIELDS");
   const { rows } = await pool.query<ActionRow>(`UPDATE academy_action_items a SET ${sets.join(", ")}, updated_at = NOW() WHERE a.id = $1 RETURNING ${ACT_COLS}`, params);
   res.json(mapAction(rows[0]));
 }));
 
 router.post("/academy/action-items/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<ActionRow>(`UPDATE academy_action_items a SET archived_at = NOW(), updated_at = NOW() WHERE a.id = $1 AND a.archived_at IS NULL RETURNING ${ACT_COLS}`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Договорённость не найдена" }); return; }
+  if (!rows[0]) throw notFound("ACTION_NOT_FOUND");
   res.json(mapAction(rows[0]));
 }));
 
 /* ═══ ИПР ═══════════════════════════════════════════════════════════════════ */
 
-router.get("/academy/idp/metrics", asyncHandler(async (_req, res) => {
-  res.json({ metrics: METRIC_KEYS.map((k) => METRICS[k]) });
+router.get("/academy/idp/metrics", asyncHandler(async (req, res) => {
+  const defs = metricsFor(langOf(req));
+  res.json({ metrics: METRIC_KEYS.map((k) => defs[k]) });
 }));
 
 router.get("/academy/idp", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v) return;
   if (!v.me) { res.json({ goals: [] }); return; }
   const student = v.staff ? qs(req, "student") ?? v.me : v.me;
-  res.json({ student, goals: await goalsFor(student, v.me) });
+  res.json({ student, goals: await goalsFor(student, v.me, langOf(req)) });
 }));
 
 const goalBody = z.object({
@@ -1375,10 +1378,10 @@ router.post("/academy/idp", asyncHandler(async (req, res) => {
   const p = goalBody.safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const b = p.data;
-  if (!(await userExists(b.student))) return badRequest(res, `Пользователь «${b.student}» не найден`);
+  if (!(await userExists(b.student))) return void sendError(res, notFound("USER_NOT_FOUND"));
   const def = METRICS[b.metric];
   const start = b.startDate ?? nyDate();
-  if (b.dueOn && b.dueOn < start) return badRequest(res, "Срок раньше даты начала");
+  if (b.dueOn && b.dueOn < start) return badRequest(res, "DATE_RANGE_INVALID");
   const { rows } = await pool.query<{ id: number }>(
     `INSERT INTO academy_idp_goals (student, title, metric, comparator, target, window_n, start_date, due_on, manual_progress, note, created_by)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) RETURNING id`,
@@ -1388,28 +1391,28 @@ router.post("/academy/idp", asyncHandler(async (req, res) => {
   );
   if (b.student !== v.me) {
     await notifySafe({
-      userName: b.student, type: "academy_goal_assigned", title: "Новая цель в ИПР",
-      message: `«${b.title}» — ${describeGoal({ metric: b.metric, target: b.target ?? def.defaultTarget, comparator: b.comparator ?? def.comparator, window: b.window ?? def.defaultWindow })}${b.dueOn ? `, срок ${b.dueOn}` : ""}`,
+      userName: b.student, type: "academy_goal_assigned",
+      params: { title: b.title, metric: b.metric, target: b.target ?? def.defaultTarget, comparator: b.comparator ?? def.comparator, window: b.window ?? def.defaultWindow ?? null, due: b.dueOn ?? null },
       link: "/academy/my", entityType: "academy_goal", entityId: rows[0].id, actor: v.me, source: "academy",
     });
   }
-  const goals = await goalsFor(b.student, v.me);
+  const goals = await goalsFor(b.student, v.me, langOf(req));
   res.status(201).json(goals.find((g) => g.id === rows[0].id) ?? { id: rows[0].id });
 }));
 
 router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needMember(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const p = goalBody.omit({ student: true, metric: true }).partial().extend({ status: z.enum(GOAL_STATUSES).optional() }).safeParse(req.body ?? {});
   if (!p.success) return badRequest(res, p.error);
   const cur = await pool.query<GoalRow>(`SELECT ${GOAL_COLS} FROM academy_idp_goals g WHERE g.id = $1 AND g.archived_at IS NULL`, [id]);
   const g = cur.rows[0];
-  if (!g || (!v.staff && g.student !== v.me)) { res.status(404).json({ error: "Цель не найдена" }); return; }
+  if (!g || (!v.staff && g.student !== v.me)) throw notFound("GOAL_NOT_FOUND");
   const b = p.data;
   if (!v.staff) {
     // Студент может отмечать прогресс только своих ручных целей.
     const keys = Object.keys(b);
-    if (g.metric !== "manual" || keys.some((k) => k !== "manualProgress")) { res.status(403).json({ error: "Студент может менять только прогресс ручной цели" }); return; }
+    if (g.metric !== "manual" || keys.some((k) => k !== "manualProgress")) throw new AppError("GOAL_STUDENT_MANUAL_ONLY");
   }
   const sets: string[] = [];
   const params: unknown[] = [id];
@@ -1424,21 +1427,21 @@ router.patch("/academy/idp/:id", asyncHandler(async (req, res) => {
   if (b.note !== undefined) set("note", b.note);
   if (b.status !== undefined) {
     // Вручную: отменить или вернуть в работу (achieved/missed ставит пересчёт).
-    if (b.status !== "cancelled" && b.status !== "active") return badRequest(res, "Вручную можно поставить только «отменена» или «активна»");
+    if (b.status !== "cancelled" && b.status !== "active") return badRequest(res, "GOAL_STATUS_MANUAL");
     set("status", b.status);
     if (b.status === "active") sets.push("achieved_at = NULL", "missed_at = NULL");
   }
-  if (!sets.length) return badRequest(res, "Нечего менять");
+  if (!sets.length) return badRequest(res, "NO_FIELDS");
   await pool.query(`UPDATE academy_idp_goals SET ${sets.join(", ")}, updated_at = NOW() WHERE id = $1`, params);
-  const goals = await goalsFor(g.student, v.me);
+  const goals = await goalsFor(g.student, v.me, langOf(req));
   res.json(goals.find((x) => x.id === id) ?? null);
 }));
 
 router.post("/academy/idp/:id/archive", asyncHandler(async (req, res) => {
   const v = await enter(req, res); if (!v || !needStaff(v, res)) return;
-  const id = idParam(req); if (!id) return badRequest(res, "id");
+  const id = idParam(req); if (!id) return badRequest(res, "INVALID_ID");
   const { rows } = await pool.query<{ id: number }>(`UPDATE academy_idp_goals SET archived_at = NOW(), updated_at = NOW() WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id]);
-  if (!rows[0]) { res.status(404).json({ error: "Цель не найдена" }); return; }
+  if (!rows[0]) throw notFound("GOAL_NOT_FOUND");
   res.json({ id, archived: true });
 }));
 
@@ -1470,7 +1473,7 @@ router.get("/academy/my", asyncHandler(async (req, res) => {
     [user],
   );
   const enrollments = enrRows.map((r) => ({
-    ...mapEnrollment(r),
+    ...mapEnrollment(r, langOf(req)),
     cohort: {
       id: r.cohort_id, name: r.c_name, format: r.c_format, mentor: r.c_mentor, startsOn: r.c_starts_on, endsOn: r.c_ends_on, timezone: r.c_timezone,
       description: r.c_description, room: r.c_room, meetingUrl: r.c_meeting_url,
@@ -1480,8 +1483,8 @@ router.get("/academy/my", asyncHandler(async (req, res) => {
   const names = new Map(enrollments.map((e) => [e.cohortId, e.cohort.name]));
   const sessions = await loadSessions(activeCohorts);
   const todayNy = nyDate(new Date(nowMs));
-  const upcoming = expand(sessions, names, addDays(todayNy, -1), addDays(todayNy, 14)).filter((o) => o.endMs > nowMs).slice(0, 30);
-  const recentOcc = expand(sessions, names, addDays(todayNy, -14), addDays(todayNy, 1)).filter((o) => o.endMs <= nowMs).slice(-20);
+  const upcoming = expand(sessions, names, addDays(todayNy, -1), addDays(todayNy, 14), langOf(req)).filter((o) => o.endMs > nowMs).slice(0, 30);
+  const recentOcc = expand(sessions, names, addDays(todayNy, -14), addDays(todayNy, 1), langOf(req)).filter((o) => o.endMs <= nowMs).slice(-20);
   const marks = await attendanceStateFor(user, [...recentOcc, ...upcoming]);
   const activeSet = new Set(enrollments.filter((e) => e.status === "active").map((e) => e.cohortId));
   const upcomingView = upcoming.map((o) => {
@@ -1507,7 +1510,7 @@ router.get("/academy/my", asyncHandler(async (req, res) => {
     attByCohort.push({ cohortId: e.cohortId, cohortName: e.cohort.name, ...(a.get(user) ?? { all: summarizeAttendance([]), last30: summarizeAttendance([]) }) });
   }
   const [goals, actionItems, meetings] = await Promise.all([
-    goalsFor(user, v.me),
+    goalsFor(user, v.me, langOf(req)),
     actionsFor([user]),
     pool.query<MeetRow>(`SELECT ${MEET_COLS} FROM academy_one_on_ones m WHERE m.student = $1 AND m.archived_at IS NULL ORDER BY m.met_at DESC LIMIT 10`, [user]),
   ]);
@@ -1567,10 +1570,10 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
     for (const s of students) { const j = await loadJournalDates(s); if (j.length) lastJournal.set(s, j[j.length - 1]); }
   }
   const goalsByStudent = new Map<string, GoalView[]>();
-  for (const s of students) goalsByStudent.set(s, await goalsFor(s, v.me));
+  for (const s of students) goalsByStudent.set(s, await goalsFor(s, v.me, langOf(req)));
 
   const rows = enr.map((e) => {
-    const en = mapEnrollment(e);
+    const en = mapEnrollment(e, langOf(req));
     const a = att.get(`${e.cohort_id}|${e.user_name}`) ?? { all: summarizeAttendance([]), last30: summarizeAttendance([]) };
     const goals = goalsByStudent.get(e.user_name) ?? [];
     const myActions = actions.filter((x) => x.student === e.user_name);
@@ -1579,7 +1582,7 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
       today, stage: en.stage, status: en.status, joinedOn: e.joined_on, attendance: a.last30.total ? a.last30 : a.all,
       overdueActions: myActions.filter((x) => x.overdue).length, missedGoals: goals.filter((g) => g.status === "missed").length, atRiskGoals: atRisk,
       lastTradeDate: lastTrade.get(e.user_name) ?? null, lastJournalDate: lastJournal.get(e.user_name) ?? null,
-    });
+    }, langOf(req));
     return {
       enrollment: en, cohortName: names.get(e.cohort_id) ?? "", attendance: a.all, attendance30: a.last30,
       goals: {
@@ -1600,7 +1603,7 @@ router.get("/academy/mentor", asyncHandler(async (req, res) => {
 
   // Сегодняшние занятия (по дате NY) + сколько отмечено
   const sessions = await loadSessions(cohortIds);
-  const todays = expand(sessions, names, addDays(today, -1), addDays(today, 1)).filter((o) => dateInTz(o.startMs, NY_TZ) === today);
+  const todays = expand(sessions, names, addDays(today, -1), addDays(today, 1), langOf(req)).filter((o) => dateInTz(o.startMs, NY_TZ) === today);
   const todaysView = [];
   for (const o of todays) {
     const expected = enr.filter((e) => e.cohort_id === o.cohortId && e.joined_on <= o.date).length;
@@ -1651,7 +1654,6 @@ export async function seedDemo(actor: string | null): Promise<Record<string, unk
   const created: Record<string, number> = { cohorts: 0, enrollments: 0, sessions: 0, attendance: 0, meetings: 0, actionItems: 0, goals: 0 };
   const skippedUsers = new Set<string>();
   const today = nyDate();
-  const DEMO_URL = "https://meet.example.com/ws-lexx-demo"; // демо-заглушка (зарезервированный домен), заменить на реальную ссылку Zoom/Meet
 
   async function cohort(nameC: string, format: string, mentor: string | null, room: string | null, url: string | null, description: string): Promise<number> {
     const ex = await pool.query<{ id: number }>(`SELECT id FROM academy_cohorts WHERE name = $1 AND archived_at IS NULL`, [nameC]);
@@ -1672,7 +1674,7 @@ export async function seedDemo(actor: string | null): Promise<Record<string, unk
       [cohortId, user, stage, joinedOn, actor]);
     await pool.query(
       `INSERT INTO academy_enrollment_history (enrollment_id, cohort_id, user_name, from_stage, to_stage, from_status, to_status, changed_by, note)
-       VALUES ($1, $2, $3, NULL, $4, NULL, 'active', $5, 'Зачисление (демо)')`, [rows[0].id, cohortId, user, stage, actor]);
+       VALUES ($1, $2, $3, NULL, $4, NULL, 'active', $5, $6)`, [rows[0].id, cohortId, user, stage, actor, DEMO.historyNote]);
     created.enrollments++;
   }
   async function session(cohortId: number, s: { title: string; kind: string; recurrence: string; weekdays?: number[]; startDate: string; startTime: string; durationMin: number; mode: string; room?: string | null; url?: string | null; host: string | null; description: string }): Promise<number> {
@@ -1737,65 +1739,29 @@ export async function seedDemo(actor: string | null): Promise<Record<string, unk
     }
   }
 
-  const anton = pick("Антон");
-  const orif = pick("Ориф");
-  const office = await cohort("Офис — осень 2026", "office", anton, "Переговорная «Уолл-стрит», 3 этаж", null,
-    "Очная группа в офисе: премаркет-брифинг каждый торговый день, разбор недели по пятницам, лекции по риску и плейбуку.");
-  const remote = await cohort("Удалённо — осень 2026", "remote", orif, null, DEMO_URL,
-    "Удалённая группа (разные часовые пояса): все занятия онлайн, самоотметка в окне −10…+15 мин от начала.");
+  // Demo data lives in lib/academyCohortsDemo.ts (seed rows: user content afterwards).
+  const mentorOf = { office: pick(DEMO.mentors.office), remote: pick(DEMO.mentors.remote) };
+  const office = await cohort(DEMO.cohorts.office.name, DEMO.cohorts.office.format, mentorOf.office, DEMO.cohorts.office.room, DEMO.cohorts.office.url, DEMO.cohorts.office.description);
+  const remote = await cohort(DEMO.cohorts.remote.name, DEMO.cohorts.remote.format, mentorOf.remote, DEMO.cohorts.remote.room, DEMO.cohorts.remote.url, DEMO.cohorts.remote.description);
+  const cohortId = { office, remote };
 
-  await enroll(office, "Закир", "trainee", "2026-09-01");
-  await enroll(office, "Артур", "junior", "2026-09-01");
-  await enroll(office, "Рахматулло", "trainee", "2026-09-15");
-  await enroll(office, "Ориф", "trader", "2026-09-01");
-  await enroll(remote, "Умид", "trainee", "2026-09-01");
-  await enroll(remote, "Максат", "junior", "2026-09-08");
-
-  const oBrief = await session(office, { title: "Премаркет-брифинг", kind: "briefing", recurrence: "weekdays", startDate: "2026-09-01", startTime: "09:00", durationMin: 25, mode: "office", room: "Переговорная «Уолл-стрит», 3 этаж", host: anton, description: "Гэпы, катализаторы дня, план на открытие, уровни по Big 7." });
-  const oReview = await session(office, { title: "Разбор недели", kind: "review", recurrence: "weekly", weekdays: [5], startDate: "2026-09-04", startTime: "16:30", durationMin: 60, mode: "office", room: "Переговорная «Уолл-стрит», 3 этаж", host: anton, description: "Лучшие и худшие сделки недели, статистика по комиссиям и дисциплине." });
-  await session(office, { title: "Лекция: риск и размер позиции", kind: "lecture", recurrence: "none", startDate: "2026-10-21", startTime: "17:00", durationMin: 90, mode: "hybrid", room: "Переговорная «Уолл-стрит», 3 этаж", url: DEMO_URL, host: anton, description: "Риск на сделку, дневной стоп, расчёт размера от стопа; разбор реальных примеров." });
-  const rBrief = await session(remote, { title: "Премаркет-брифинг (онлайн)", kind: "briefing", recurrence: "weekdays", startDate: "2026-09-01", startTime: "09:00", durationMin: 25, mode: "online", url: DEMO_URL, host: orif, description: "Тот же брифинг для удалённой группы. Отметьтесь кнопкой в «Моё обучение» за 10 мин до начала." });
-  await session(remote, { title: "Разбор недели (онлайн)", kind: "review", recurrence: "weekly", weekdays: [5], startDate: "2026-09-04", startTime: "16:30", durationMin: 60, mode: "online", url: DEMO_URL, host: orif, description: "Скриншоты сделок недели — в обсуждения до 16:00 ET." });
-  await session(remote, { title: "Q&A с наставником", kind: "workshop", recurrence: "none", startDate: "2026-10-22", startTime: "12:00", durationMin: 45, mode: "online", url: DEMO_URL, host: orif, description: "Вопросы по платформе, хоткеям и плейбуку." });
-
-  await marks(oBrief, { "Закир": ["present", "present", "late", "present", "present"], "Артур": ["present"], "Рахматулло": ["absent", "absent", "present", "late", "absent"], "Ориф": ["present", "late"] }, anton);
-  await marks(oReview, { "Закир": ["present"], "Артур": ["present"], "Рахматулло": ["absent"], "Ориф": ["present"] }, anton);
-  await marks(rBrief, { "Умид": ["present", "late", "present"], "Максат": ["excused", "present", "absent", "present"] }, orif);
-
-  await goal("Ориф", { title: "Комиссии меньше половины брутто", metric: "fee_share", target: 50, comparator: "lt", window: 10, startDate: "2026-10-01", dueOn: "2026-11-27" });
-  await goal("Ориф", { title: "Не больше 3 убыточных сделок подряд", metric: "loss_streak", target: 3, comparator: "lte", window: 10, startDate: "2026-10-01", dueOn: "2026-11-27" });
-  await goal("Ориф", { title: "Винрейт ≥ 50 % на 100 сделках", metric: "win_rate", target: 50, comparator: "gte", window: 100, startDate: "2026-10-01", dueOn: "2026-12-18" });
-  await goal("Ориф", { title: "10 дней дневника с разбором", metric: "journal_days", target: 10, comparator: "gte", window: null, startDate: "2026-10-01", dueOn: "2026-11-13" });
-  await goal("Ориф", { title: "Конспект по своему лучшему сетапу в плейбук", metric: "manual", target: 100, comparator: "gte", window: null, startDate: "2026-10-01", dueOn: "2026-11-06", manualProgress: 40 });
-  await goal("Закир", { title: "20 торговых дней на симуляторе", metric: "trading_days", target: 20, comparator: "gte", window: null, startDate: "2026-09-01", dueOn: "2026-11-30" });
-  await goal("Закир", { title: "10 дней дневника с разбором", metric: "journal_days", target: 10, comparator: "gte", window: null, startDate: "2026-10-01", dueOn: "2026-11-13" });
-  await goal("Умид", { title: "Не больше 3 убыточных сделок подряд", metric: "loss_streak", target: 3, comparator: "lte", window: 10, startDate: "2026-10-01", dueOn: "2026-12-01" });
-
-  await meeting("Ориф", anton, "2026-10-12T21:00:00.000Z", {
-    format: "office",
-    agenda: "Итоги сентября; комиссии съедают прибыль на мелких тикерах; план на октябрь.",
-    notes: "Доля комиссий за последние недели высокая — много сделок с маленьким ходом. Договорились резать сделки с ожидаемым ходом < 10 центов.",
-    privateNotes: "Готов к увеличению лимита, если комиссии < 50 % брутто 2 недели подряд.",
-    actions: [
-      { title: "Не открывать сделки с ожидаемым ходом меньше 10 центов", dueOn: "2026-10-30", owner: "student" },
-      { title: "Заполнять дневник каждый торговый день", dueOn: "2026-10-16", owner: "student" },
-      { title: "Подготовить сравнение тарифов ECN для Орифа", dueOn: "2026-10-23", owner: "mentor" },
-    ],
-  });
-  await meeting("Рахматулло", anton, "2026-10-09T20:30:00.000Z", {
-    format: "office",
-    agenda: "Пропуски брифингов; режим дня.",
-    notes: "Пропускает утренние брифинги. Договорились приходить к 08:50 ET.",
-    privateNotes: "",
-    actions: [{ title: "Быть на брифинге к 08:50 ET всю неделю", dueOn: "2026-10-16", owner: "student" }],
-  });
-  await meeting("Умид", orif, "2026-10-14T13:45:00.000Z", {
-    format: "online",
-    agenda: "Онлайн-созвон: настройка платформы, хоткеи.",
-    notes: "Хоткеи настроены, первая неделя на симуляторе без серий убытков > 3.",
-    privateNotes: "",
-    actions: [{ title: "Пройти урок по хоткеям и сдать тест", dueOn: "2026-10-24", owner: "student", status: "done" }],
-  });
+  for (const e of DEMO.enrollments) await enroll(cohortId[e.cohort], e.user, e.stage, e.joinedOn);
+  const sessionIds: Record<string, number> = {};
+  for (const x of DEMO.sessions) {
+    sessionIds[x.key] = await session(cohortId[x.cohort], {
+      title: x.title, kind: x.kind, recurrence: x.recurrence, weekdays: x.weekdays, startDate: x.startDate, startTime: x.startTime, durationMin: x.durationMin,
+      mode: x.mode, room: x.room ?? null, url: x.url ?? null, host: mentorOf[x.cohort], description: x.description,
+    });
+  }
+  for (const m of DEMO.marks) await marks(sessionIds[m.session], m.pattern, mentorOf[m.mentor]);
+  for (const g of DEMO.goals) {
+    const { student, ...rest } = g;
+    await goal(student, rest);
+  }
+  for (const m of DEMO.meetings) {
+    await meeting(m.student, mentorOf[m.mentor], m.metAt, { format: m.format, agenda: m.agenda, notes: m.notes, privateNotes: m.privateNotes, actions: m.actions });
+  }
+  void DEMO_URL;
 
   return { ok: true, cohorts: { office, remote }, created, skippedUsers: [...skippedUsers] };
 }

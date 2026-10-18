@@ -2,21 +2,23 @@ import { useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, LayoutDashboard, ListChecks, BookOpen, Lightbulb, Eye, Compass, Target, CalendarDays, FlaskConical, NotebookPen, ShieldAlert, type LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { shellI18n, type NavKey } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 
-type Dest = { href: string; label: string; icon: LucideIcon; keys: string[]; chip?: boolean };
+type Dest = { href: string; nav: NavKey | "research"; icon: LucideIcon; keys: string[]; chip?: boolean };
 
 // Main sections + loose keywords so a mistyped / outdated URL can suggest the right place.
 const DESTS: Dest[] = [
-  { href: "/", label: "Дашборд", icon: LayoutDashboard, keys: ["dashboard", "home", "main", "today", "dash"] },
-  { href: "/game-plan", label: "Гейм-план", icon: Target, keys: ["game-plan", "gameplan", "plan", "premarket"], chip: true },
-  { href: "/trades", label: "Сделки", icon: ListChecks, keys: ["trades", "trade", "deal", "sdelki", "positions"], chip: true },
-  { href: "/playbook", label: "Плейбук", icon: BookOpen, keys: ["playbook", "setup", "setups", "play"], chip: true },
-  { href: "/trade-ideas", label: "Идеи", icon: Lightbulb, keys: ["trade-ideas", "ideas", "idea"], chip: true },
-  { href: "/watchlist", label: "Вотчлист", icon: Eye, keys: ["watchlist", "watch", "list"], chip: true },
-  { href: "/events", label: "Катализаторы", icon: CalendarDays, keys: ["events", "event", "calendar", "earnings"] },
-  { href: "/research", label: "Архив исследований", icon: FlaskConical, keys: ["research", "study"] },
-  { href: "/journal", label: "Дневник", icon: NotebookPen, keys: ["journal", "diary", "notes"] },
-  { href: "/risk", label: "Риск-деск", icon: ShieldAlert, keys: ["risk", "limits"] },
+  { href: "/", nav: "dashboard", icon: LayoutDashboard, keys: ["dashboard", "home", "main", "today", "dash"] },
+  { href: "/game-plan", nav: "gamePlan", icon: Target, keys: ["game-plan", "gameplan", "plan", "premarket"], chip: true },
+  { href: "/trades", nav: "trades", icon: ListChecks, keys: ["trades", "trade", "deal", "sdelki", "positions"], chip: true },
+  { href: "/playbook", nav: "playbook", icon: BookOpen, keys: ["playbook", "setup", "setups", "play"], chip: true },
+  { href: "/trade-ideas", nav: "ideas", icon: Lightbulb, keys: ["trade-ideas", "ideas", "idea"], chip: true },
+  { href: "/watchlist", nav: "watchlist", icon: Eye, keys: ["watchlist", "watch", "list"], chip: true },
+  { href: "/events", nav: "events", icon: CalendarDays, keys: ["events", "event", "calendar", "earnings"] },
+  { href: "/research", nav: "research", icon: FlaskConical, keys: ["research", "study"] },
+  { href: "/journal", nav: "journal", icon: NotebookPen, keys: ["journal", "diary", "notes"] },
+  { href: "/risk", nav: "risk", icon: ShieldAlert, keys: ["risk", "limits"] },
 ];
 
 function score(path: string, d: Dest) {
@@ -34,6 +36,9 @@ function score(path: string, d: Dest) {
 
 export default function NotFound() {
   const [location] = useLocation();
+  const { t } = shellI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const label = (d: Dest) => (d.nav === "research" ? t("titles.research") : t(`nav.${d.nav}`));
   const canGoBack = typeof window !== "undefined" && window.history.length > 1;
 
   const suggestion = useMemo(() => {
@@ -48,9 +53,9 @@ export default function NotFound() {
           <Compass className="h-6 w-6" aria-hidden="true" />
         </span>
         <p className="mt-4 text-5xl font-semibold tabular-nums tracking-tight text-foreground">404</p>
-        <h1 className="mt-1 text-lg font-semibold text-foreground">Страница не найдена</h1>
+        <h1 className="mt-1 text-lg font-semibold text-foreground">{t("titles.notFound")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Ссылка устарела или в адресе опечатка.
+          {t("notFound.lead")}
         </p>
         <p className="mx-auto mt-3 max-w-full truncate rounded-full bg-[var(--glass-bg)] px-3 py-1 text-xs text-muted-foreground" title={location}>
           {location}
@@ -65,8 +70,8 @@ export default function NotFound() {
               <suggestion.icon className="h-4 w-4" aria-hidden="true" />
             </span>
             <span className="min-w-0">
-              <span className="block text-xs text-muted-foreground">Возможно, вы искали</span>
-              <span className="block text-sm font-semibold text-foreground">{suggestion.label}</span>
+              <span className="block text-xs text-muted-foreground">{t("notFound.maybe")}</span>
+              <span className="block text-sm font-semibold text-foreground">{label(suggestion)}</span>
             </span>
           </Link>
         )}
@@ -75,18 +80,18 @@ export default function NotFound() {
           {canGoBack && (
             <Button type="button" variant="outline" onClick={() => window.history.back()}>
               <ArrowLeft aria-hidden="true" />
-              Назад
+              {tc("actions.back")}
             </Button>
           )}
           <Button asChild variant={suggestion ? "outline" : "default"}>
             <Link href="/">
               <LayoutDashboard aria-hidden="true" />
-              На дашборд
+              {t("notFound.toDashboard")}
             </Link>
           </Button>
         </div>
 
-        <nav aria-label="Разделы" className="mt-6 border-t border-[var(--glass-border)] pt-4">
+        <nav aria-label={t("notFound.sections")} className="mt-6 border-t border-[var(--glass-border)] pt-4">
           <ul className="flex flex-wrap justify-center gap-1.5">
             {DESTS.filter((d) => d.chip).map((d) => (
               <li key={d.href}>
@@ -95,7 +100,7 @@ export default function NotFound() {
                   className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <d.icon className="h-3.5 w-3.5" aria-hidden="true" />
-                  {d.label}
+                  {label(d)}
                 </Link>
               </li>
             ))}

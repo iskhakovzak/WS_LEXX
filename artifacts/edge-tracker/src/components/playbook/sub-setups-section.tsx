@@ -15,6 +15,8 @@ import { invalidatePlaybook } from "./api";
 import { http } from "@/lib/api/http";
 import { ConfidenceMeter, DocSection, EdgeMini, InlineError, SetupTypePill } from "./setup-bits";
 import { searchHaystack, type PlaybookEntry, type SetupSummary } from "./model";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookSetupI18n } from "@/i18n/ns/playbookSetup";
 
 export function SubSetupsSection({
   entry, allEntries, summary, onOpen, onCreateChild,
@@ -25,6 +27,7 @@ export function SubSetupsSection({
   onOpen: (id: number) => void;
   onCreateChild: () => void;
 }) {
+  const { t } = playbookSetupI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user, canEdit } = useAuth();
@@ -48,7 +51,7 @@ export function SubSetupsSection({
     },
     onError: (_e, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(["playbook-children", entry.id], ctx.prev);
-      toast({ title: "Не удалось изменить отметку «проверено»", variant: "destructive" });
+      toast({ title: t("variants.reviewFailed"), variant: "destructive" });
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: ["playbook-children", entry.id] });
@@ -71,7 +74,7 @@ export function SubSetupsSection({
       invalidatePlaybook(qc, child.id);
       return true;
     } catch (e: any) {
-      toast({ title: parentId ? "Не удалось вложить сетап" : "Не удалось открепить сетап", description: e?.message, variant: "destructive" });
+      toast({ title: parentId ? t("variants.nestFailed") : t("variants.detachFailed"), description: e?.message, variant: "destructive" });
       return false;
     }
   }
@@ -80,26 +83,26 @@ export function SubSetupsSection({
 
   return (
     <DocSection
-      title={<>Варианты {children.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{reviewedCount}/{children.length} проверено</span>}</>}
+      title={<>{t("variants.title")} {children.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{t("variants.reviewedOf", { reviewed: reviewedCount, total: children.length })}</span>}</>}
       icon={GitBranch}
       actions={
         <WriteOnly>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="sm" variant="outline" className="h-8"><Plus className="h-4 w-4" aria-hidden="true" /> Вариант</Button>
+              <Button size="sm" variant="outline" className="h-8"><Plus className="h-4 w-4" aria-hidden="true" /> {t("variants.add")}</Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={onCreateChild}>Создать новый вариант</DropdownMenuItem>
-              <DropdownMenuItem onSelect={() => setPickOpen(true)}>Вложить существующий сетап…</DropdownMenuItem>
+              <DropdownMenuItem onSelect={onCreateChild}>{t("variants.createNew")}</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => setPickOpen(true)}>{t("variants.nestExisting")}</DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
         </WriteOnly>
       }
     >
       {isLoading && <Skeleton className="h-10 rounded-xl" />}
-      {isError && <InlineError text="Не удалось загрузить варианты." onRetry={() => refetch()} />}
+      {isError && <InlineError text={t("variants.loadFailed")} onRetry={() => refetch()} />}
       {!isLoading && !isError && children.length === 0 && (
-        <p className="text-sm text-muted-foreground">Вариации сетапа (другой рынок, таймфрейм, тип катализатора) можно хранить как дочерние.</p>
+        <p className="text-sm text-muted-foreground">{t("variants.empty")}</p>
       )}
       {children.length > 0 && (
         <ul className="-mx-2 space-y-0.5">
@@ -107,7 +110,8 @@ export function SubSetupsSection({
             <li key={c.id} className="group flex items-center gap-1 rounded-xl px-1 hover:bg-[var(--glass-hover-bg)]">
               {canEdit ? (
                 <IconAction
-                  aria-label={c.reviewed ? `Снять отметку «проверено» с ${c.name}` : `Отметить ${c.name} как проверенный`}
+                  aria-label={c.reviewed ? t("variants.unmark", { name: c.name }) : t("variants.mark", { name: c.name })}
+                  title={c.reviewed ? t("variants.unmark", { name: c.name }) : t("variants.mark", { name: c.name })}
                   aria-pressed={c.reviewed}
                   onClick={() => reviewedMut.mutate({ id: c.id, reviewed: !c.reviewed })}
                   className={c.reviewed ? "text-up hover:text-up" : undefined}
@@ -115,7 +119,7 @@ export function SubSetupsSection({
                   {c.reviewed ? <CheckCircle2 /> : <Circle />}
                 </IconAction>
               ) : (
-                <span className="grid h-8 w-8 shrink-0 place-items-center" role="img" aria-label={c.reviewed ? "Проверено" : "Не проверено"}>
+                <span className="grid h-8 w-8 shrink-0 place-items-center" role="img" aria-label={c.reviewed ? t("view.reviewed") : t("view.notReviewed")}>
                   {c.reviewed ? <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> : <Circle className="h-4 w-4 text-muted-foreground" aria-hidden="true" />}
                 </span>
               )}
@@ -137,8 +141,9 @@ export function SubSetupsSection({
               )}
               <WriteOnly>
                 <IconAction
-                  aria-label={`Открепить ${c.name}`}
-                  onClick={async () => { if (await setParent(c, null)) toast({ title: `«${c.name}» откреплён`, description: "Сетап снова на верхнем уровне" }); }}
+                  aria-label={t("variants.detach", { name: c.name })}
+                  title={t("variants.detach", { name: c.name })}
+                  onClick={async () => { if (await setParent(c, null)) toast({ title: t("variants.detached", { name: c.name }), description: t("variants.detachedDesc") }); }}
                   className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
                 >
                   <Unlink />
@@ -153,20 +158,20 @@ export function SubSetupsSection({
       <Dialog open={pickOpen} onOpenChange={(v) => { setPickOpen(v); if (!v) setSearch(""); }}>
         <DialogContent className="flex max-h-[85dvh] max-w-2xl flex-col">
           <DialogHeader>
-            <DialogTitle>Вложить существующий сетап</DialogTitle>
-            <DialogDescription>Он станет вариантом «{entry.name}».</DialogDescription>
+            <DialogTitle>{t("variants.nestTitle")}</DialogTitle>
+            <DialogDescription>{t("variants.nestDesc", { name: entry.name })}</DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Поиск сетапа" placeholder="Название, тег, тикер, условия" className="pl-9" autoFocus />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} aria-label={t("variants.searchAria")} placeholder={t("variants.searchPlaceholder")} className="pl-9" autoFocus />
           </div>
           <div className="-mx-2 min-h-0 flex-1 overflow-y-auto">
-            {available.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">{search ? "Ничего не найдено" : "Нет доступных сетапов"}</p>}
+            {available.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">{search ? commonI18n.t("states.nothingFound") : t("variants.noneAvailable")}</p>}
             {available.slice(0, 200).map((e) => (
               <button
                 key={e.id}
                 type="button"
-                onClick={async () => { if (await setParent(e, entry.id)) { setPickOpen(false); setSearch(""); toast({ title: `«${e.name}» вложен` }); } }}
+                onClick={async () => { if (await setParent(e, entry.id)) { setPickOpen(false); setSearch(""); toast({ title: t("variants.nested", { name: e.name }) }); } }}
                 className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-sm hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >
                 <span className="min-w-0 flex-1 truncate font-medium">{e.name}</span>

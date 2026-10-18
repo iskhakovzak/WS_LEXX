@@ -8,6 +8,7 @@ import { http } from "@/lib/api/http";
 import { invalidateTradeDependents } from "@/lib/query-keys";
 import { dayHref } from "@/lib/period-links";
 import { fmtMonth } from "@/lib/format";
+import { behaviorI18n } from "@/i18n/ns/behavior";
 
 /* ─── Типы: поведение ─────────────────────────────────────────────────────── */
 
@@ -514,10 +515,11 @@ export function dayReportHref(date: string, trader?: string | null): string {
 
 export function fmtMinutes(min: number | null | undefined): string {
   if (min == null || !Number.isFinite(min)) return "—";
-  if (min < 1) return `${Math.round(min * 60)} с`;
-  if (min < 60) return `${Math.round(min)} мин`;
-  if (min < 1440) return `${Math.floor(min / 60)} ч ${Math.round(min % 60)} мин`;
-  return `${(min / 1440).toFixed(1)} д`;
+  const t = behaviorI18n.t;
+  if (min < 1) return t("dur.seconds", { count: Math.round(min * 60) });
+  if (min < 60) return t("dur.minutes", { count: Math.round(min) });
+  if (min < 1440) return t("dur.hm", { h: Math.floor(min / 60), m: Math.round(min % 60) });
+  return t("dur.days", { value: (min / 1440).toFixed(1) });
 }
 
 export function fmtClock(entryMin: number | null | undefined): string {
@@ -532,13 +534,21 @@ export function monthLabel(ym: string): string {
   return `${i >= 0 && i < 12 ? fmtMonth(i, "short") : m} ${y.slice(2)}`;
 }
 
-export const SEVERITY_LABEL: Record<Severity, string> = { none: "не стоит денег", low: "низкая", medium: "средняя", high: "высокая" };
+/** Record whose values are read at access time (labels follow the UI language). */
+function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(o, k, { get: () => label(k), enumerable: true });
+  return o;
+}
+
+export const SEVERITY_LABEL: Record<Severity, string> = liveLabels(["none", "low", "medium", "high"] as const, (k) => behaviorI18n.t(`severity.${k}`));
 export const SEVERITY_TONE: Record<Severity, "neutral" | "warn" | "down" | "accent"> = { none: "neutral", low: "neutral", medium: "warn", high: "down" };
 
-export const PATTERN_SHORT: Record<PatternKey, string> = {
-  revenge: "реванш", martingale: "мартингейл", overtrading: "овертрейдинг", tilt: "тильт", chase: "отыгрыш",
-  euphoria: "эйфория", fatigue: "усталость", disposition: "пересиживание", firstTrade: "первая сделка",
-};
+export const PATTERN_SHORT: Record<PatternKey, string> = liveLabels(
+  ["revenge", "martingale", "overtrading", "tilt", "chase", "euphoria", "fatigue", "disposition", "firstTrade"] as const,
+  (k) => behaviorI18n.t(`pattern.${k}`),
+);
+
 
 /** Тон маркера паттерна на ленте и в чипах. */
 export const PATTERN_TONE: Record<PatternKey, "down" | "warn" | "purple" | "accent" | "neutral"> = {

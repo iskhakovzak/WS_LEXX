@@ -12,7 +12,9 @@ import {
   rollToWeekday, splitByOfferingDays, summarize,
   type Bar, type FilingEvent, type Reaction, type Session, type TradeLite,
 } from "../lib/offeringReaction";
-import { badRequest, unauthorized } from "../lib/http";
+import { AppError, badRequest, unauthorized } from "../lib/http";
+import { offeringsT } from "../i18n/ns";
+import { langOf, type Lang } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -60,6 +62,8 @@ export type Offering = {
   sector: string | null;
   rating: number;
   ratingFactors: string[];
+  /** ratingFactors as data (offerings namespace `rating.*`), re-rendered per request language. */
+  ratingFactorItems?: FactorItem[];
   status: "upcoming" | "priced" | "trading" | "withdrawn" | "filed";
   source: "nasdaq" | "edgar";
   // ── Dilution-dashboard fields (additive) ──
@@ -82,6 +86,8 @@ export type Offering = {
   dilutionRisk: number;
   riskLevel: RiskLevel;
   riskFactors: string[];
+  /** riskFactors as data (offerings namespace `risk.*`). */
+  riskFactorItems?: FactorItem[];
   // ── Intraday-trader fields (additive, optional: filled by augmentOfferings) ──
   /** SEC acceptance time, New York wall clock ("2026-10-15 16:31"). */
   acceptedAt?: string | null;
@@ -115,7 +121,25 @@ export type IpoCalendarItem = {
   exchange: string | null;
 };
 
-type OfferingBase = Omit<Offering, "rating" | "ratingFactors" | "dilutionRisk" | "riskLevel" | "riskFactors">;
+type OfferingBase = Omit<Offering, "rating" | "ratingFactors" | "ratingFactorItems" | "dilutionRisk" | "riskLevel" | "riskFactors" | "riskFactorItems">;
+
+/** A factor as data: key in the `offerings` namespace + params. */
+export type FactorItem = { k: string; p?: Record<string, string | number> };
+const factorText = (it: FactorItem, lang: Lang) => offeringsT.tryFor(lang, it.k, it.p) ?? it.k;
+/** Re-render the factor texts of every offering in a payload in `lang` (cached payloads hold the data items). */
+function localizeOfferings<T>(payload: T, lang: Lang): T {
+  if (lang === "ru" || !payload || typeof payload !== "object") return payload;
+  const p = payload as unknown as { offerings?: Offering[] };
+  if (!Array.isArray(p.offerings)) return payload;
+  return {
+    ...payload,
+    offerings: p.offerings.map((o) => ({
+      ...o,
+      ...(o.ratingFactorItems ? { ratingFactors: o.ratingFactorItems.map((it) => factorText(it, lang)) } : {}),
+      ...(o.riskFactorItems ? { riskFactors: o.riskFactorItems.map((it) => factorText(it, lang)) } : {}),
+    })),
+  } as T;
+}
 
 const EMPTY_EXTRA = {
   form: null, filingUrl: null, cik: null, exchange: null, priceRange: null,
@@ -221,38 +245,38 @@ const BOND_ISSUERS = new Set([
  * Dilution risk 0–100 for holders (overnight/swing) and short-side ideas:
  * size vs market cap, structure (ATM / shelf / warrants / registered direct), cap size, price vs offer.
  */
-function computeRisk(o: OfferingBase): { dilutionRisk: number; riskLevel: RiskLevel; riskFactors: string[] } {
+function computeRisk(o: OfferingBase): { dilutionRisk: number; riskLevel: RiskLevel; riskFactors: string[]; riskFactorItems: FactorItem[] } {
   let s = 15;
-  const f: string[] = [];
+  const f: FactorItem[] = [];
   const pct = Math.max(o.offerPctOfMcap ?? 0, o.dilutionPct ?? 0);
-  if (pct > 30) { s += 40; f.push(`Размер ${pct.toFixed(0)}% от капитализации`); }
-  else if (pct > 15) { s += 28; f.push(`Размер ${pct.toFixed(0)}% от капитализации`); }
-  else if (pct > 7) { s += 15; f.push(`Размер ${pct.toFixed(1)}% от капитализации`); }
-  else if (pct > 3) { s += 6; f.push(`Размер ${pct.toFixed(1)}% от капитализации`); }
+  if (pct > 30) { s += 40; f.push({ k: "risk.size", p: { pct: pct.toFixed(0) } }); }
+  else if (pct > 15) { s += 28; f.push({ k: "risk.size", p: { pct: pct.toFixed(0) } }); }
+  else if (pct > 7) { s += 15; f.push({ k: "risk.size", p: { pct: pct.toFixed(1) } }); }
+  else if (pct > 3) { s += 6; f.push({ k: "risk.size", p: { pct: pct.toFixed(1) } }); }
 
-  if (o.kind === "ATM") { s += 15; f.push("ATM — продажи в рынок по ходу торгов"); }
+  if (o.kind === "ATM") { s += 15; f.push({ k: "risk.atm" }); }
   else if (o.kind === "S-3") {
-    if (o.form?.toUpperCase().includes("ASR")) { s -= 10; f.push("Автошелф WKSI — крупный эмитент"); }
-    else { s += 10; f.push("Новый шелф — будущий навес предложения"); }
-  } else if (o.kind === "S-1" && o.currentPrice != null) { s += 18; f.push("S-1 у торгуемой компании — нет доступа к S-3"); }
+    if (o.form?.toUpperCase().includes("ASR")) { s -= 10; f.push({ k: "risk.wksi" }); }
+    else { s += 10; f.push({ k: "risk.newShelf" }); }
+  } else if (o.kind === "S-1" && o.currentPrice != null) { s += 18; f.push({ k: "risk.s1" }); }
 
-  if (o.babyShelf) { s += 6; f.push("Baby shelf: капитализация < $75M"); }
+  if (o.babyShelf) { s += 6; f.push({ k: "risk.babyShelf" }); }
   if (o.marketCapM != null) {
-    if (o.marketCapM < 50) { s += 20; f.push(`Микрокап $${o.marketCapM.toFixed(0)}M`); }
-    else if (o.marketCapM < 300) { s += 10; f.push(`Смолкап $${o.marketCapM.toFixed(0)}M`); }
-    else if (o.marketCapM > 10_000) { s -= 15; f.push("Мегакап — разводнение несущественно"); }
+    if (o.marketCapM < 50) { s += 20; f.push({ k: "risk.micro", p: { cap: o.marketCapM.toFixed(0) } }); }
+    else if (o.marketCapM < 300) { s += 10; f.push({ k: "risk.small", p: { cap: o.marketCapM.toFixed(0) } }); }
+    else if (o.marketCapM > 10_000) { s -= 15; f.push({ k: "risk.mega" }); }
   }
-  if (o.dealFlags.includes("Варранты")) { s += 12; f.push("Сделка с варрантами — навес на будущее"); }
+  if (o.dealFlags.includes("warrants")) { s += 12; f.push({ k: "risk.warrants" }); }
   if (o.dealFlags.includes("Pre-funded")) s += 5;
-  if (o.dealFlags.includes("Registered direct") || o.dealFlags.includes("Best efforts")) { s += 10; f.push("Registered direct / best efforts — слабый спрос"); }
-  if (o.sellerType === "insiders" || o.sellerType === "mixed") { s += 5; f.push("Часть акций продают инсайдеры"); }
+  if (o.dealFlags.includes("Registered direct") || o.dealFlags.includes("Best efforts")) { s += 10; f.push({ k: "risk.direct" }); }
+  if (o.sellerType === "insiders" || o.sellerType === "mixed") { s += 5; f.push({ k: "risk.insiders" }); }
   if (o.priceChangePct != null && o.offerPrice != null) {
-    if (o.priceChangePct > 20) { s += 8; f.push(`Цена на ${o.priceChangePct.toFixed(0)}% выше оффера — риск отката к нему`); }
-    else if (o.priceChangePct < -10) { f.push(`Сделка «сломана»: ${o.priceChangePct.toFixed(0)}% к офферу`); }
+    if (o.priceChangePct > 20) { s += 8; f.push({ k: "risk.aboveOffer", p: { pct: o.priceChangePct.toFixed(0) } }); }
+    else if (o.priceChangePct < -10) { f.push({ k: "risk.broken", p: { pct: o.priceChangePct.toFixed(0) } }); }
   }
   const dilutionRisk = Math.max(0, Math.min(100, Math.round(s)));
   const riskLevel: RiskLevel = dilutionRisk >= 60 ? "high" : dilutionRisk >= 35 ? "medium" : "low";
-  return { dilutionRisk, riskLevel, riskFactors: f };
+  return { dilutionRisk, riskLevel, riskFactors: f.map((it) => factorText(it, "ru")), riskFactorItems: f };
 }
 
 function finalize(base: OfferingBase): Offering {
@@ -269,68 +293,68 @@ function finalize(base: OfferingBase): Offering {
     babyShelfLimitM: babyShelf && base.marketCapM != null ? +(base.marketCapM / 3).toFixed(1) : null,
   };
   const { rating, factors } = computeRating(withDerived);
-  return { ...withDerived, rating, ratingFactors: factors, ...computeRisk(withDerived) };
+  return { ...withDerived, rating, ratingFactors: factors.map((it) => factorText(it, "ru")), ratingFactorItems: factors, ...computeRisk(withDerived) };
 }
 
-function computeRating(o: OfferingBase): { rating: number; factors: string[] } {
+function computeRating(o: OfferingBase): { rating: number; factors: FactorItem[] } {
   let score = 50;
-  const factors: string[] = [];
+  const factors: FactorItem[] = [];
 
   // Price vs offer — biggest signal
   if (o.priceChangePct !== null) {
-    if (o.priceChangePct > 30) { score += 25; factors.push(`+${o.priceChangePct.toFixed(1)}% от оффера — мощный старт`); }
-    else if (o.priceChangePct > 15) { score += 18; factors.push(`+${o.priceChangePct.toFixed(1)}% от цены размещения`); }
-    else if (o.priceChangePct > 5) { score += 10; factors.push(`+${o.priceChangePct.toFixed(1)}% от цены размещения`); }
-    else if (o.priceChangePct >= -5) { factors.push(`${o.priceChangePct.toFixed(1)}% — у цены размещения`); }
-    else if (o.priceChangePct < -20) { score -= 25; factors.push(`${o.priceChangePct.toFixed(1)}% — значительно ниже оффера`); }
-    else if (o.priceChangePct < -10) { score -= 15; factors.push(`${o.priceChangePct.toFixed(1)}% — ниже цены размещения`); }
-    else { score -= 6; factors.push(`${o.priceChangePct.toFixed(1)}% — слабый старт`); }
+    if (o.priceChangePct > 30) { score += 25; factors.push({ k: "rating.strongStart", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else if (o.priceChangePct > 15) { score += 18; factors.push({ k: "rating.aboveOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else if (o.priceChangePct > 5) { score += 10; factors.push({ k: "rating.aboveOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else if (o.priceChangePct >= -5) { factors.push({ k: "rating.atOffer", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else if (o.priceChangePct < -20) { score -= 25; factors.push({ k: "rating.farBelow", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else if (o.priceChangePct < -10) { score -= 15; factors.push({ k: "rating.below", p: { pct: o.priceChangePct.toFixed(1) } }); }
+    else { score -= 6; factors.push({ k: "rating.weakStart", p: { pct: o.priceChangePct.toFixed(1) } }); }
   }
 
   // Dilution
   if (o.dilutionPct !== null) {
-    if (o.dilutionPct > 40) { score -= 18; factors.push(`Критическое разводнение ${o.dilutionPct.toFixed(1)}%`); }
-    else if (o.dilutionPct > 20) { score -= 10; factors.push(`Высокое разводнение ${o.dilutionPct.toFixed(1)}%`); }
-    else if (o.dilutionPct > 10) { score -= 4; factors.push(`Умеренное разводнение ${o.dilutionPct.toFixed(1)}%`); }
-    else if (o.dilutionPct < 5 && o.dilutionPct > 0) { score += 8; factors.push(`Низкое разводнение ${o.dilutionPct.toFixed(1)}%`); }
+    if (o.dilutionPct > 40) { score -= 18; factors.push({ k: "rating.dilCritical", p: { pct: o.dilutionPct.toFixed(1) } }); }
+    else if (o.dilutionPct > 20) { score -= 10; factors.push({ k: "rating.dilHigh", p: { pct: o.dilutionPct.toFixed(1) } }); }
+    else if (o.dilutionPct > 10) { score -= 4; factors.push({ k: "rating.dilModerate", p: { pct: o.dilutionPct.toFixed(1) } }); }
+    else if (o.dilutionPct < 5 && o.dilutionPct > 0) { score += 8; factors.push({ k: "rating.dilLow", p: { pct: o.dilutionPct.toFixed(1) } }); }
   }
 
   // Who sells
-  if (o.sellerType === "insiders") { score -= 22; factors.push("Продают инсайдеры — сильный негативный сигнал"); }
-  else if (o.sellerType === "mixed") { score -= 10; factors.push("Смешанный: компания + инсайдеры"); }
-  else if (o.sellerType === "company") { score += 10; factors.push("Только компания — привлечение капитала"); }
+  if (o.sellerType === "insiders") { score -= 22; factors.push({ k: "rating.insiders" }); }
+  else if (o.sellerType === "mixed") { score -= 10; factors.push({ k: "rating.mixed" }); }
+  else if (o.sellerType === "company") { score += 10; factors.push({ k: "rating.company" }); }
 
   // Volume relative
   if (o.relVol !== null) {
-    if (o.relVol > 5) { score += 15; factors.push(`Объём ${o.relVol.toFixed(1)}x — экстремальный интерес`); }
-    else if (o.relVol > 3) { score += 10; factors.push(`Объём ${o.relVol.toFixed(1)}x от среднего`); }
-    else if (o.relVol > 1.5) { score += 5; factors.push(`Объём ${o.relVol.toFixed(1)}x от среднего`); }
-    else if (o.relVol < 0.5) { score -= 10; factors.push("Слабый объём — нет интереса"); }
+    if (o.relVol > 5) { score += 15; factors.push({ k: "rating.volExtreme", p: { x: o.relVol.toFixed(1) } }); }
+    else if (o.relVol > 3) { score += 10; factors.push({ k: "rating.volHigh", p: { x: o.relVol.toFixed(1) } }); }
+    else if (o.relVol > 1.5) { score += 5; factors.push({ k: "rating.volHigh", p: { x: o.relVol.toFixed(1) } }); }
+    else if (o.relVol < 0.5) { score -= 10; factors.push({ k: "rating.volLow" }); }
   }
 
   // Offering type
-  if (o.type === "IPO") { score += 5; factors.push("IPO — первичный листинг"); }
-  else if (o.type === "Bought Deal") { score += 8; factors.push("Bought Deal — гарантировано андеррайтером"); }
-  else if (o.type === "ATM") { score -= 12; factors.push("ATM — постоянное давление на цену"); }
-  else if (o.type === "SPAC") { score -= 5; factors.push("SPAC — повышенный риск"); }
+  if (o.type === "IPO") { score += 5; factors.push({ k: "rating.ipo" }); }
+  else if (o.type === "Bought Deal") { score += 8; factors.push({ k: "rating.bought" }); }
+  else if (o.type === "ATM") { score -= 12; factors.push({ k: "rating.atm" }); }
+  else if (o.type === "SPAC") { score -= 5; factors.push({ k: "rating.spac" }); }
 
   // Underwriter quality
   const tier = uwTier(o.underwriter);
-  if (tier === 1) { score += 8; factors.push(`Андеррайтер 1-го уровня: ${o.underwriter}`); }
-  else if (tier === 2) { score += 4; factors.push(`Андеррайтер 2-го уровня: ${o.underwriter}`); }
+  if (tier === 1) { score += 8; factors.push({ k: "rating.uw1", p: { name: String(o.underwriter) } }); }
+  else if (tier === 2) { score += 4; factors.push({ k: "rating.uw2", p: { name: String(o.underwriter) } }); }
 
   // Lockup
   if (o.lockupDays !== null) {
-    if (o.lockupDays < 60) { score -= 8; factors.push(`Очень короткий локап ${o.lockupDays}д — риск продажи`); }
-    else if (o.lockupDays <= 90) { score -= 4; factors.push(`Короткий локап ${o.lockupDays}д`); }
-    else if (o.lockupDays >= 180) { score += 3; factors.push(`Стандартный локап ${o.lockupDays}д`); }
+    if (o.lockupDays < 60) { score -= 8; factors.push({ k: "rating.lockShortest", p: { days: o.lockupDays } }); }
+    else if (o.lockupDays <= 90) { score -= 4; factors.push({ k: "rating.lockShort", p: { days: o.lockupDays } }); }
+    else if (o.lockupDays >= 180) { score += 3; factors.push({ k: "rating.lockStandard", p: { days: o.lockupDays } }); }
   }
 
   // Deal size
   if (o.dealSizeM !== null) {
-    if (o.dealSizeM > 1000) { score += 10; factors.push(`Крупная сделка $${(o.dealSizeM / 1000).toFixed(1)}B`); }
-    else if (o.dealSizeM > 200) { score += 6; factors.push(`Сделка $${o.dealSizeM.toFixed(0)}M`); }
-    else if (o.dealSizeM < 15) { score -= 6; factors.push(`Маленькая сделка $${o.dealSizeM.toFixed(0)}M`); }
+    if (o.dealSizeM > 1000) { score += 10; factors.push({ k: "rating.dealBig", p: { b: (o.dealSizeM / 1000).toFixed(1) } }); }
+    else if (o.dealSizeM > 200) { score += 6; factors.push({ k: "rating.deal", p: { m: o.dealSizeM.toFixed(0) } }); }
+    else if (o.dealSizeM < 15) { score -= 6; factors.push({ k: "rating.dealSmall", p: { m: o.dealSizeM.toFixed(0) } }); }
   }
 
   return { rating: Math.max(0, Math.min(100, Math.round(score))), factors };
@@ -806,11 +830,11 @@ function parseFilingDocument(html: string): {
   const flagZone = plain.slice(0, 12000);
   const flags: string[] = [];
   if (/pre-?funded\s+warrants?/i.test(flagZone)) flags.push("Pre-funded");
-  if (/(?:common|accompanying|series\s+[a-z])\s+warrants?|warrants?\s+to\s+purchase/i.test(flagZone)) flags.push("Варранты");
+  if (/(?:common|accompanying|series\s+[a-z])\s+warrants?|warrants?\s+to\s+purchase/i.test(flagZone)) flags.push("warrants");
   if (/registered\s+direct/i.test(flagZone)) flags.push("Registered direct");
   if (/best[\s-]+efforts/i.test(flagZone)) flags.push("Best efforts");
-  if (/concurrent\s+private\s+placement/i.test(flagZone)) flags.push("Частное размещение");
-  if (/convertible\s+preferred/i.test(flagZone)) flags.push("Конверт. префы");
+  if (/concurrent\s+private\s+placement/i.test(flagZone)) flags.push("private_placement");
+  if (/convertible\s+preferred/i.test(flagZone)) flags.push("convertible_preferred");
 
   return { offerPrice, sharesOffered, dealSizeM, underwriter, sellerType, lockupDays, sharesOutstandingBefore, isAtm, isDebt, isPreliminary, flags };
 }
@@ -1223,10 +1247,7 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
     : todayNy();
 
   // Validate: the value is interpolated into upstream URLs and cache keys.
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(Date.parse(day + "T00:00:00Z"))) {
-    res.status(400).json({ error: "Invalid day, expected YYYY-MM-DD" });
-    return;
-  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || isNaN(Date.parse(day + "T00:00:00Z"))) throw new AppError("INVALID_DATE");
 
   // Drop expired entries so the per-day cache doesn't grow unbounded.
   for (const [k, v] of cache) {
@@ -1237,7 +1258,7 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
   const cached = cache.get(cacheKey);
   const force = req.query.force === "1" && (!cached || Date.now() - cached.ts > 60_000);
   if (!force && cached && Date.now() - cached.ts < CACHE_TTL) {
-    res.json(cached.data);
+    res.json(localizeOfferings(cached.data, langOf(req)));
     return;
   }
 
@@ -1288,11 +1309,12 @@ router.get("/offerings/watch", asyncHandler(async (req, res): Promise<void> => {
     };
     // An incomplete payload lives ~90 s so the next poll picks up the warmed caches.
     cache.set(cacheKey, { data: payload, ts: complete ? Date.now() : Date.now() - CACHE_TTL + 90_000 });
-    res.json(payload);
+    res.json(localizeOfferings(payload, langOf(req)));
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
     logger.warn({ day, error: msg }, "Offerings watch error");
-    res.status(502).json({ error: "Failed to fetch offerings data", message: msg });
+    if (e instanceof AppError) throw e;
+    throw new AppError("UPSTREAM_FAILED");
   }
 }));
 
@@ -1312,9 +1334,9 @@ router.get("/offerings/ticker/:ticker", asyncHandler(async (req, res): Promise<v
   if (hit && Date.now() - hit.ts < INSIDER_TTL) { res.json(hit.data); return; }
 
   const cik = await cikForTicker(ticker);
-  if (!cik) { res.status(404).json({ error: "Тикер не найден в SEC" }); return; }
+  if (!cik) throw new AppError("TICKER_NOT_IN_SEC");
   const subs = await getSubmissions(cik);
-  if (!subs) { res.status(502).json({ error: "SEC недоступен" }); return; }
+  if (!subs) throw new AppError("UPSTREAM_FAILED");
 
   const recent = subs.filings?.recent ?? {};
   const forms = recent.form ?? [];
@@ -1380,7 +1402,7 @@ router.get("/offerings/insiders", asyncHandler(async (req, res): Promise<void> =
   if (!req.authUser) throw unauthorized();
   const tickers = Array.from(new Set(String(req.query.tickers ?? "")
     .split(",").map((t) => t.trim().toUpperCase()).filter((t) => TICKER_RE.test(t)))).slice(0, 8);
-  if (!tickers.length) { res.status(400).json({ error: "tickers required" }); return; }
+  if (!tickers.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "tickers" });
 
   const results = await mapLimit(tickers, 2, async (t) => {
     const cik = await cikForTicker(t);
@@ -1688,11 +1710,11 @@ type HistoryPayload = {
 const HISTORY_TTL = 12 * 3600_000;
 const historyMem = new Map<string, { data: HistoryPayload; ts: number }>();
 
-async function buildHistory(ticker: string): Promise<HistoryPayload | { error: string; status: number }> {
+async function buildHistory(ticker: string): Promise<HistoryPayload | { error: "TICKER_NOT_IN_SEC" | "UPSTREAM_FAILED"; status: number }> {
   const cik = await cikForTicker(ticker);
-  if (!cik) return { error: "Тикер не найден в SEC", status: 404 };
+  if (!cik) return { error: "TICKER_NOT_IN_SEC", status: 404 };
   const subs = await getSubmissions(cik);
-  if (!subs) return { error: "SEC недоступен", status: 502 };
+  if (!subs) return { error: "UPSTREAM_FAILED", status: 502 };
   const today = nyDate();
   const since = shiftDay(today, -3 * 365);
   const yearAgo = shiftDay(today, -365);
@@ -1741,7 +1763,7 @@ router.get("/offerings/history/:ticker", asyncHandler(async (req, res): Promise<
   if (db && db.data.barsOk) { historyMem.set(ticker, db); res.json(db.data); return; }
 
   const built = await buildHistory(ticker);
-  if ("error" in built) { res.status(built.status).json({ error: built.error }); return; }
+  if ("error" in built) throw new AppError(built.error, built.status);
   if (built.barsOk) {
     if (historyMem.size > 300) historyMem.clear();
     historyMem.set(ticker, { data: built, ts: Date.now() });
@@ -1794,7 +1816,7 @@ async function megaCapMap(tickers: string[]): Promise<Map<string, number>> {
 
 router.get("/offerings/my-stats", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderParam(req, "trades.read.team", req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
+  if (!scope.ok) throw scope.appError;
   const trader = scope.trader;
   if (!trader) throw badRequest("TRADER_REQUIRED");
   const window: 0 | 1 = req.query.window === "1" ? 1 : 0;

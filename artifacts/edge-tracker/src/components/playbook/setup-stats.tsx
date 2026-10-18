@@ -12,11 +12,14 @@ import { EmptyState, SortableTh, Sparkline, StatCard, StatGrid, toneText, useTab
 import { winrateTone } from "@/components/playbook-sub/bits";
 import { cn } from "@/lib/utils";
 import { notLiveMessage, useSetupStats } from "./api";
-import { DocSection, REDACTED_AGG_HINT, RedactedHint } from "./setup-bits";
+import { DocSection, RedactedHint } from "./setup-bits";
 import { HORIZON_LABEL, moneyTone, type SetupSummary, type SlotStat, type UsdStats } from "./model";
-import { fmtDate, fmtR, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
-const slotLabel = (s: string) => (s === "pre" ? "Премаркет" : s === "post" ? "После закрытия" : `${s}–${endOf(s)}`);
+const et = playbookExamplesI18n.t; // called at render time only
+const slotLabel = (s: string) => (s === "pre" ? et("stats.slotPre") : s === "post" ? et("stats.slotPost") : `${s}–${endOf(s)}`);
 function endOf(s: string) {
   const [h, m] = s.split(":").map(Number);
   const t = h * 60 + m + 30;
@@ -25,6 +28,7 @@ function endOf(s: string) {
 const wrTone = (u: UsdStats): Tone => (u.winrate == null ? "neutral" : winrateTone(u.winrate, u.wins + u.losses));
 
 export function SetupStatsPanel({ setupId, summary, children }: { setupId: number; summary?: SetupSummary; children?: React.ReactNode }) {
+  const { t } = playbookExamplesI18n.useT();
   const q = useSetupStats(setupId);
 
   if (q.isLoading) {
@@ -43,13 +47,13 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
       return (
         <div className="flex flex-col gap-[var(--grid-gap)]">
           <StatGrid cols={4}>
-            <StatCard label="Сделок" value={summary.tradeCount} hint={`${summary.wins}W · ${summary.losses}L`} />
+            <StatCard label={t("stats.trades")} value={summary.tradeCount} hint={`${summary.wins}W · ${summary.losses}L`} />
             <StatCard label="Win rate" value={fmtRate(summary.winrate)} hint="W / (W + L)" />
-            <StatCard label="P&L нетто" value={fmtUsd(summary.netPnl, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} />
-            <StatCard label="Ожидание, $" value={fmtUsd(summary.netPnl != null && summary.tradeCount ? summary.netPnl / summary.tradeCount : null, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} hint="на сделку" />
+            <StatCard label={t("stats.netPnl")} value={fmtUsd(summary.netPnl, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} />
+            <StatCard label={t("stats.expectancyUsd")} value={fmtUsd(summary.netPnl != null && summary.tradeCount ? summary.netPnl / summary.tradeCount : null, { signed: true, decimals: 0 })} tone={moneyTone(summary.netPnl)} hint={t("stats.perTrade")} />
           </StatGrid>
-          {summary.redacted && <RedactedHint text={REDACTED_AGG_HINT} />}
-          <p className="text-xs text-muted-foreground">Лучшие часы, кривая и разбивка по тикерам появятся после перезапуска API.</p>
+          {summary.redacted && <RedactedHint agg />}
+          <p className="text-xs text-muted-foreground">{t("stats.notLiveHint")}</p>
           {children}
         </div>
       );
@@ -59,9 +63,9 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         <div className="glass-panel rounded-2xl">
           <EmptyState
             icon={BarChart3}
-            title={live ? "Статистика включится после обновления сервера" : "Не удалось загрузить статистику"}
+            title={live ? t("stats.notLive") : t("stats.loadFailed")}
             description={live ? undefined : (q.error as Error)?.message}
-            action={live ? undefined : <Button variant="outline" onClick={() => q.refetch()}>Повторить</Button>}
+            action={live ? undefined : <Button variant="outline" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>}
           />
         </div>
         {children}
@@ -76,8 +80,8 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
         <div className="glass-panel rounded-2xl">
           <EmptyState
             icon={BarChart3}
-            title="По сетапу ещё нет сделок"
-            description="Сделки подтягиваются автоматически. Привяжите их к сетапу — через «Добавить примеры» или из карточки сделки — и здесь появится edge в $."
+            title={t("stats.emptyTitle")}
+            description={t("stats.emptyDesc")}
           />
         </div>
         {children}
@@ -97,83 +101,85 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      {redacted && <RedactedHint text={REDACTED_AGG_HINT} className="px-1" />}
+      {redacted && <RedactedHint agg className="px-1" />}
       {redacted ? (
         <StatGrid cols={4}>
-          <StatCard label="Средний R" value={fmtR(s.edge?.avgR)} tone={curveTone} hint={`${s.count} ${s.count < 10 ? "· мало для выводов" : "сделок"}`} spark={curve.length > 1 ? curve : undefined} term="avgR" />
+          <StatCard label={t("stats.avgR")} value={fmtR(s.edge?.avgR)} tone={curveTone} hint={s.count < 10 ? t("stats.fewTrades", { count: s.count }) : t("stats.tradesN", { count: s.count })} spark={curve.length > 1 ? curve : undefined} term="avgR" />
           <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
-          <StatCard label="Ожидание" value={fmtR(expR)} tone={moneyTone(expR)} hint={hasR ? `R на сделку · R есть у ${s.edge.rCount}` : "нет R — нужен стоп"} term="expectancy" />
+          <StatCard label={t("stats.expectancy")} value={fmtR(expR)} tone={moneyTone(expR)} hint={hasR ? t("stats.rPerTrade", { count: s.edge.rCount }) : t("stats.noR")} term="expectancy" />
           <StatCard label="PF (R)" value={s.edge?.profitFactor == null ? "—" : s.edge.profitFactor.toFixed(2)} hint="ΣR⁺ / |ΣR⁻|" term="pf" />
         </StatGrid>
       ) : (
       <StatGrid cols={4}>
-        <StatCard label="P&L нетто" value={fmtUsd(u.net, { signed: true, decimals: 0 })} tone={moneyTone(u.net)} hint={`${u.n} ${small ? "· мало для выводов" : "сделок"}`} spark={curve.length > 1 ? curve : undefined} />
+        <StatCard label={t("stats.netPnl")} value={fmtUsd(u.net, { signed: true, decimals: 0 })} tone={moneyTone(u.net)} hint={small ? t("stats.fewTrades", { count: u.n }) : t("stats.tradesN", { count: u.n })} spark={curve.length > 1 ? curve : undefined} />
         <StatCard label="Win rate" value={fmtRate(u.winrate)} tone={wrTone(u)} hint={`${u.wins}W · ${u.losses}L`} term="winrate" />
-        <StatCard label="Ожидание" value={fmtUsd(u.expectancy, { signed: true, decimals: 2 })} tone={moneyTone(u.expectancy)} hint="$ на сделку" term="expectancy" />
+        <StatCard label={t("stats.expectancy")} value={fmtUsd(u.expectancy, { signed: true, decimals: 2 })} tone={moneyTone(u.expectancy)} hint={t("stats.usdPerTrade")} term="expectancy" />
         <StatCard
           label="Payoff"
           value={u.payoff == null ? "—" : u.payoff.toFixed(2)}
-          hint={`ср. плюс ${fmtUsd(u.avgWin, { signed: true, decimals: 0 })} · минус ${fmtUsd(u.avgLoss, { signed: true, decimals: 0 })}`}
+          hint={t("stats.payoffHint", { win: fmtUsd(u.avgWin, { signed: true, decimals: 0 }), loss: fmtUsd(u.avgLoss, { signed: true, decimals: 0 }) })}
         />
       </StatGrid>
       )}
 
       {s.recent.n >= 5 && u.n >= 25 && s.recent.expectancy != null && u.expectancy != null && s.recent.expectancy < u.expectancy - Math.abs(u.expectancy) && (
         <p className="rounded-xl border border-[hsl(var(--chart-3)/0.3)] bg-[hsl(var(--chart-3)/0.1)] px-3 py-2 text-sm text-[hsl(var(--chart-3))]">
-          Edge проседает: последние {s.recent.n} {pluralRu(s.recent.n, "сделка", "сделки", "сделок")} дают {fmtUsd(s.recent.expectancy, { signed: true, decimals: 2 })} на сделку против {fmtUsd(u.expectancy, { signed: true, decimals: 2 })} за всю историю.
+          {t("stats.decay", { count: s.recent.n, recent: fmtUsd(s.recent.expectancy, { signed: true, decimals: 2 }), all: fmtUsd(u.expectancy, { signed: true, decimals: 2 }) })}
         </p>
       )}
 
       <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
-        <DocSection title="Лучшее время входа (ET)" icon={Clock}>
+        <DocSection title={t("stats.bestTime")} icon={Clock}>
           {s.slots.length === 0 ? (
-            <p className="text-sm text-muted-foreground">Нет времени входа у сделок — появится, когда подтянутся исполнения.</p>
+            <p className="text-sm text-muted-foreground">{t("stats.noTimes")}</p>
           ) : (
             <>
               {s.bestSlots.length > 0 && (
                 <p className="mb-3 text-sm text-foreground">
-                  Лучше всего работает: {s.bestSlots.map((b) => <strong key={b.slot} className="font-semibold">{slotLabel(b.slot)}</strong>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ", ", el] : [el]), [])}
+                  {t("stats.bestWorks")} {s.bestSlots.map((b) => <strong key={b.slot} className="font-semibold">{slotLabel(b.slot)}</strong>).reduce<React.ReactNode[]>((acc, el, i) => (i ? [...acc, ", ", el] : [el]), [])}
                 </p>
               )}
               <ul className="flex flex-col gap-1">
                 {s.slots.map((sl) => <SlotRow key={sl.slot} sl={sl} maxN={maxSlotN} best={s.bestSlots.some((b) => b.slot === sl.slot)} />)}
               </ul>
               {s.timeCoverage != null && s.timeCoverage < 0.95 && (
-                <p className="mt-2 text-xs text-muted-foreground">Время входа известно у {Math.round(s.timeCoverage * 100)}% сделок.</p>
+                <p className="mt-2 text-xs text-muted-foreground">{t("stats.timeCoverage", { pct: Math.round(s.timeCoverage * 100) })}</p>
               )}
             </>
           )}
         </DocSection>
 
-        <DocSection title={redacted ? "Кривая R по дням" : "Кривая P&L по дням"} icon={BarChart3} actions={s.firstDate ? <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(s.firstDate, "dayMonthNumeric")} — {fmtDate(s.lastDate, "dayMonthNumeric")}</span> : undefined}>
+        <DocSection title={redacted ? t("stats.curveR") : t("stats.curvePnl")} icon={BarChart3} actions={s.firstDate ? <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(s.firstDate, "dayMonthNumeric")} — {fmtDate(s.lastDate, "dayMonthNumeric")}</span> : undefined}>
           {curve.length > 1 ? (
-            <Sparkline data={curve} width={560} height={140} tone={curveTone} baseline={0} className="h-36 w-full" ariaLabel={redacted ? "Накопленный R" : "Накопленный P&L нетто"} />
+            <Sparkline data={curve} width={560} height={140} tone={curveTone} baseline={0} className="h-36 w-full" ariaLabel={redacted ? t("stats.cumR") : t("stats.cumPnl")} />
           ) : (
-            <p className="text-sm text-muted-foreground">{redacted && !hasR ? "Кривая в R появится у сделок со стопом." : "Нужно хотя бы два торговых дня."}</p>
+            <p className="text-sm text-muted-foreground">{redacted && !hasR ? t("stats.curveRSoon") : t("stats.needTwoDays")}</p>
           )}
           {!redacted && (
           <dl className="mt-3 grid grid-cols-3 gap-2 text-sm">
-            <Mini label="Лучшая" value={fmtUsd(u.best, { signed: true, decimals: 0 })} tone={moneyTone(u.best)} />
-            <Mini label="Худшая" value={fmtUsd(u.worst, { signed: true, decimals: 0 })} tone={moneyTone(u.worst)} />
-            <Mini label="Просадка" value={s.edge?.maxDrawdown != null ? fmtUsd(-Math.abs(s.edge.maxDrawdown), { signed: true, decimals: 0 }) : "—"} tone={s.edge?.maxDrawdown ? "down" : "neutral"} />
+            <Mini label={t("stats.best")} value={fmtUsd(u.best, { signed: true, decimals: 0 })} tone={moneyTone(u.best)} />
+            <Mini label={t("stats.worst")} value={fmtUsd(u.worst, { signed: true, decimals: 0 })} tone={moneyTone(u.worst)} />
+            <Mini label={t("stats.drawdown")} value={s.edge?.maxDrawdown != null ? fmtUsd(-Math.abs(s.edge.maxDrawdown), { signed: true, decimals: 0 }) : "—"} tone={s.edge?.maxDrawdown ? "down" : "neutral"} />
           </dl>
           )}
         </DocSection>
       </div>
 
       <div className="grid gap-[var(--grid-gap)] 2xl:grid-cols-2">
-        <DocSection title="Тикеры">
-          <UsdTable head="Тикер" rows={s.tickers.map((t) => ({ key: t.ticker, label: t.ticker, u: t }))} />
+        <DocSection title={t("stats.tickers")}>
+          <UsdTable head={t("stats.ticker")} rows={s.tickers.map((x) => ({ key: x.ticker, label: x.ticker, u: x }))} />
         </DocSection>
-        <DocSection title={s.traders ? "Трейдеры и горизонт" : "Горизонт"}>
-          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable head="Трейдер" rows={s.traders.map((t) => ({ key: t.trader, label: t.trader, u: t }))} /></div>}
-          <UsdTable head="Горизонт" rows={Object.entries(s.byHorizon).map(([k, v]) => ({ key: k, label: HORIZON_LABEL[k] ?? k, u: v }))} />
+        <DocSection title={s.traders ? t("stats.tradersHorizon") : t("stats.horizon")}>
+          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable head={t("stats.trader")} rows={s.traders.map((x) => ({ key: x.trader, label: x.trader, u: x }))} /></div>}
+          <UsdTable head={t("stats.horizon")} rows={Object.entries(s.byHorizon).map(([k, v]) => ({ key: k, label: HORIZON_LABEL[k] ?? k, u: v }))} />
         </DocSection>
       </div>
 
       {hasR && (
         <p className="px-1 text-xs text-muted-foreground">
-          В R (где есть стоп): средний {fmtR(s.edge.avgR)} по {s.edge.rCount} сделкам{s.edge.profitFactor != null ? ` · PF ${s.edge.profitFactor.toFixed(2)}` : ""}.
+          {s.edge.profitFactor != null
+            ? t("stats.inRPf", { avg: fmtR(s.edge.avgR), count: s.edge.rCount, pf: s.edge.profitFactor.toFixed(2) })
+            : t("stats.inR", { avg: fmtR(s.edge.avgR), count: s.edge.rCount })}.
         </p>
       )}
       {children}
@@ -193,11 +199,11 @@ function Mini({ label, value, tone }: { label: string; value: string; tone: Tone
 function SlotRow({ sl, maxN, best }: { sl: SlotStat; maxN: number; best: boolean }) {
   return (
     <li className="grid grid-cols-[132px_minmax(0,1fr)_56px_80px] items-center gap-2 text-sm">
-      <span className={cn("tabular-nums", best ? "font-semibold text-foreground" : "text-muted-foreground")}>{slotLabel(sl.slot)}</span>
+      <span className={cn("truncate tabular-nums", best ? "font-semibold text-foreground" : "text-muted-foreground")} title={slotLabel(sl.slot)}>{slotLabel(sl.slot)}</span>
       <span className="h-1.5 overflow-hidden rounded-full bg-[hsl(var(--border))]" aria-hidden="true">
         <span className={cn("block h-full rounded-full", sl.net == null ? "bg-[hsl(var(--muted-foreground)/0.45)]" : sl.net >= 0 ? "bg-up" : "bg-down")} style={{ width: `${(sl.n / maxN) * 100}%` }} />
       </span>
-      <span className="text-right text-xs tabular-nums text-muted-foreground" title="Сделок · win rate">{sl.n} · {fmtRate(sl.winrate)}</span>
+      <span className="text-right text-xs tabular-nums text-muted-foreground" title={et("stats.slotTitle")}>{sl.n} · {fmtRate(sl.winrate)}</span>
       <span className={cn("text-right tabular-nums", toneText(moneyTone(sl.net)))}>{fmtUsd(sl.net, { signed: true, decimals: 0 })}</span>
     </li>
   );
@@ -223,10 +229,10 @@ function UsdTable({ rows: data, head }: { rows: UsdRow[]; head: string }) {
         <thead className="sticky top-0 z-raised bg-surface-solid">
           <tr className="text-xs text-muted-foreground [&_th]:py-1 [&_th]:font-medium">
             <SortableTh {...thProps("label")}>{head}</SortableTh>
-            <SortableTh {...thProps("n")} align="right">Сделок</SortableTh>
+            <SortableTh {...thProps("n")} align="right">{et("stats.colTrades")}</SortableTh>
             <SortableTh {...thProps("winrate")} align="right">WR</SortableTh>
-            <SortableTh {...thProps("exp")} align="right">$ / сделка</SortableTh>
-            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+            <SortableTh {...thProps("exp")} align="right">{et("stats.colPerTrade")}</SortableTh>
+            <SortableTh {...thProps("net")} align="right">{et("stats.colNet")}</SortableTh>
           </tr>
         </thead>
         <tbody>

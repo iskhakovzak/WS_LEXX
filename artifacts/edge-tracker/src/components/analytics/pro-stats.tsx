@@ -5,10 +5,14 @@ import { Panel, StatCard, StatRow, Pill, EmptyState, toneOf, toneText, type Tone
 import { cn } from "@/lib/utils";
 import {
   type Metric, type EdgeStats, type OhlcTotals, type ClosureStats, type PeriodExtremes, type PeriodPoint,
-  type WeekSummary, fmtMonthKey,
+  type WeekSummary, fmtMonthKey, fmtIsoWeekKey,
 } from "@/lib/analytics-pro";
 import { fmtVal } from "./pro-format";
-import { fmtDate, fmtRate, fmtRatio, pluralRu } from "@/lib/format";
+import { fmtDate, fmtRate, fmtRatio } from "@/lib/format";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
+import { commonI18n } from "@/i18n/ns/common";
+
+const tp = analyticsProI18n.t;
 
 /* ── KPI strip ────────────────────────────────────────────────────────── */
 
@@ -19,25 +23,25 @@ export function KpiGrid({
   const greenRate = ohlc.totalDays ? ohlc.profitDays / ohlc.totalDays : null;
   const streak = edge.dayStreak;
   const streakText = streak.length && streak.kind !== "flat"
-    ? `серия: ${streak.length} ${streak.kind === "up" ? "в плюс" : "в минус"}`
-    : `${ohlc.profitDays} из ${ohlc.totalDays}`;
+    ? tp(streak.kind === "up" ? "kpi.streak" : "kpi.streakLoss", { count: streak.length })
+    : tp("kpi.ofDays", { value: ohlc.profitDays, total: ohlc.totalDays });
   const noVal = edge.count === 0;
   return (
     <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
       <StatCard
-        label="Итог"
+        label={tp("kpi.total")}
         value={noVal ? "—" : fmtVal(metric, edge.total, { sign: true })}
         tone={toneOf(edge.total)}
-        hint={`${edge.count} из ${totalTrades} ${pluralRu(totalTrades, "сделки", "сделок", "сделок")} с ${metric === "r" ? "R" : "P&L"}`}
+        hint={tp("kpi.totalHint", { count: edge.count, trades: tp("page.trades", { count: totalTrades }), unit: metric === "r" ? "R" : "P&L" })}
       />
       <StatCard
-        label="Ожидание на сделку"
+        label={tp("kpi.expectancy")}
         value={fmtVal(metric, edge.expectancy, { sign: true })}
         tone={toneOf(edge.expectancy)}
-        hint="средний результат"
+        hint={tp("kpi.expectancyHint")}
       />
       <StatCard
-        label="Доля прибыльных"
+        label={tp("kpi.winRate")}
         value={fmtRate(edge.winRate)}
         tone={edge.winRate == null ? "neutral" : edge.winRate >= 0.5 ? "up" : "down"}
         hint={noVal ? undefined : `${edge.wins} / ${edge.losses}`}
@@ -51,16 +55,16 @@ export function KpiGrid({
           : undefined}
       />
       <StatCard
-        label="Дни в плюс"
+        label={tp("kpi.greenDays")}
         value={fmtRate(greenRate)}
         tone={greenRate == null ? "neutral" : greenRate >= 0.5 ? "up" : "down"}
         hint={streakText}
       />
       <StatCard
-        label="Макс. просадка"
+        label={tp("kpi.maxDd")}
         value={noVal ? "—" : fmtVal(metric, edge.maxDrawdown, { sign: true })}
         tone={edge.maxDrawdown < 0 ? "down" : "neutral"}
-        hint="от пика капитала"
+        hint={tp("kpi.fromPeak")}
       />
     </div>
   );
@@ -74,15 +78,15 @@ export function ExtremesPanel({
   ext, metric, onJump,
 }: { ext: PeriodExtremes; metric: Metric; onJump: (kind: JumpKind, key: string) => void }) {
   const cols: { kind: JumpKind; title: string; best: PeriodPoint | null; worst: PeriodPoint | null }[] = [
-    { kind: "day", title: "День", best: ext.bestDay, worst: ext.worstDay },
-    { kind: "week", title: "Неделя", best: ext.bestWeek, worst: ext.worstWeek },
-    { kind: "month", title: "Месяц", best: ext.bestMonth, worst: ext.worstMonth },
+    { kind: "day", title: tp("extremes.kind.day"), best: ext.bestDay, worst: ext.worstDay },
+    { kind: "week", title: tp("extremes.kind.week"), best: ext.bestWeek, worst: ext.worstWeek },
+    { kind: "month", title: tp("extremes.kind.month"), best: ext.bestMonth, worst: ext.worstMonth },
   ];
   const empty = cols.every((c) => !c.best && !c.worst);
   return (
-    <Panel icon={Trophy} title="Лучшие и худшие периоды" description="Клик — открыть в календаре">
+    <Panel icon={Trophy} title={tp("extremes.title")} description={tp("extremes.hint")}>
       {empty ? (
-        <EmptyState title="Пока нечего сравнивать" description="Нужны сделки с заполненным результатом." className="py-8" />
+        <EmptyState title={tp("extremes.empty")} description={tp("extremes.emptyHint")} className="py-8" />
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {cols.map((c) => (
@@ -102,12 +106,12 @@ function ExtremeTile({
   kind, p, tone, metric, onJump,
 }: { kind: JumpKind; p: PeriodPoint | null; tone: Tone; metric: Metric; onJump: (kind: JumpKind, key: string) => void }) {
   const Icon = tone === "up" ? ArrowUpRight : ArrowDownRight;
-  const what = tone === "up" ? "Лучший" : "Худший";
+
   if (!p) {
     return (
       <div className="flex min-h-[64px] items-center gap-2 rounded-xl border border-dashed border-border/70 px-3 text-xs text-muted-foreground">
         <Icon className="h-4 w-4" aria-hidden="true" />
-        {tone === "up" ? "Нет периодов в плюс" : "Нет периодов в минус"}
+        {tone === "up" ? tp("extremes.noUp") : tp("extremes.noDown")}
       </div>
     );
   }
@@ -119,14 +123,14 @@ function ExtremeTile({
         "lift flex min-h-[64px] items-center gap-3 rounded-xl border border-border/60 px-3 py-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         tone === "up" ? "bg-up/10" : "bg-down/10",
       )}
-      aria-label={`${what} период (${kind === "day" ? "день" : kind === "week" ? "неделя" : "месяц"}): ${p.label}, ${fmtVal(metric, p.net, { sign: true })}. Открыть в календаре`}
+      aria-label={tp(tone === "up" ? "extremes.bestAria" : "extremes.worstAria", { kind: tp(`extremes.kind.${kind}`).toLowerCase(), label: p.label, value: fmtVal(metric, p.net, { sign: true }) })}
     >
       <span className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full", tone === "up" ? "bg-up/15 text-up" : "bg-down/15 text-down")}>
         <Icon className="h-4 w-4" aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1">
         <span className={cn("block text-lg font-semibold tabular-nums leading-tight", toneText(tone))}>{fmtVal(metric, p.net, { sign: true })}</span>
-        <span className="block truncate text-xs text-muted-foreground">{p.label} · {p.trades} сд.</span>
+        <span className="block truncate text-xs text-muted-foreground" title={p.label}>{p.label} · {commonI18n.t("units.tradesShort", { count: p.trades })}</span>
       </span>
     </button>
   );
@@ -136,30 +140,30 @@ function ExtremeTile({
 
 export function WeeksPanel({ weeks, metric }: { weeks: WeekSummary[]; metric: Metric }) {
   return (
-    <Panel icon={CalendarRange} title="Последние недели" description="Текущая и две предыдущие">
+    <Panel icon={CalendarRange} title={tp("weeks.title")} description={tp("weeks.hint")}>
       <ul className="flex flex-col gap-2">
         {weeks.map((w) => (
           <li key={w.label} className="rounded-xl border border-border/60 bg-[var(--glass-bg)] px-3 py-2.5">
             <div className="flex items-baseline justify-between gap-2">
               <div className="min-w-0">
                 <span className="text-sm font-medium">{w.label}</span>
-                <span className="ml-2 text-xs tabular-nums text-muted-foreground">{w.range}</span>
+                <span className="ml-2 whitespace-nowrap text-xs tabular-nums text-muted-foreground">{w.range}</span>
               </div>
-              <span className={cn("text-base font-semibold tabular-nums", w.tradingDays ? toneText(toneOf(w.totalNet)) : "text-muted-foreground")}>
+              <span className={cn("shrink-0 whitespace-nowrap text-base font-semibold tabular-nums", w.tradingDays ? toneText(toneOf(w.totalNet)) : "text-muted-foreground")}>
                 {w.tradingDays ? fmtVal(metric, w.totalNet, { sign: true }) : "—"}
               </span>
             </div>
             {w.tradingDays > 0 ? (
               <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs">
-                <Pill tone="neutral">{w.tradingDays} дн.</Pill>
-                <Pill tone="up">{w.profitDays} в плюс</Pill>
-                <Pill tone="down">{w.lossDays} в минус</Pill>
+                <Pill tone="neutral">{tp("weeks.days", { count: w.tradingDays })}</Pill>
+                <Pill tone="up">{tp("weeks.up", { count: w.profitDays })}</Pill>
+                <Pill tone="down">{tp("weeks.down", { count: w.lossDays })}</Pill>
                 <span className="ml-auto tabular-nums text-muted-foreground">
-                  в среднем {fmtVal(metric, w.avgDayNet, { compact: true, sign: true })}/день
+                  {tp("weeks.avg", { value: fmtVal(metric, w.avgDayNet, { compact: true, sign: true }) })}
                 </span>
               </div>
             ) : (
-              <p className="mt-1 text-xs text-muted-foreground">Сделок не было</p>
+              <p className="mt-1 text-xs text-muted-foreground">{tp("weeks.none")}</p>
             )}
           </li>
         ))}
@@ -170,10 +174,6 @@ export function WeeksPanel({ weeks, metric }: { weeks: WeekSummary[]; metric: Me
 
 /* ── Trading days info: grouped stat list ─────────────────────────────── */
 
-function fmtIsoWeek(k: string): string {
-  const m = k.match(/^(\d{4})-W(\d+)$/);
-  return m ? `${Number(m[2])}-я неделя ${m[1]}` : k;
-}
 
 type InfoRow = { name: string; value: string; tone?: Tone };
 
@@ -189,62 +189,62 @@ export function TradingDaysInfo({
   const v = (x: number | null | undefined, sign = true) => fmtVal(metric, x, { sign });
   const groups: { title: string; rows: InfoRow[] }[] = useMemo(() => [
     {
-      title: "Итоги",
+      title: tp("info.group.totals"),
       rows: [
-        { name: "Итог", value: v(ohlc.totalNet), tone: toneOf(ohlc.totalNet) },
-        { name: "Сумма дней в плюс", value: v(totalNetGained), tone: toneOf(totalNetGained) },
-        { name: "Сумма дней в минус", value: v(totalNetLost), tone: toneOf(totalNetLost) },
-        { name: "Торговых дней", value: String(ohlc.totalDays) },
-        { name: "Средний результат дня", value: v(ohlc.netPerDay), tone: toneOf(ohlc.netPerDay) },
-        { name: "Ожидание на сделку", value: v(edge.expectancy), tone: toneOf(edge.expectancy) },
-        { name: "Макс. просадка", value: v(edge.maxDrawdown), tone: toneOf(edge.maxDrawdown) },
+        { name: tp("info.row.total"), value: v(ohlc.totalNet), tone: toneOf(ohlc.totalNet) },
+        { name: tp("info.row.gained"), value: v(totalNetGained), tone: toneOf(totalNetGained) },
+        { name: tp("info.row.lost"), value: v(totalNetLost), tone: toneOf(totalNetLost) },
+        { name: tp("info.row.tradingDays"), value: String(ohlc.totalDays) },
+        { name: tp("info.row.avgDay"), value: v(ohlc.netPerDay), tone: toneOf(ohlc.netPerDay) },
+        { name: tp("info.row.expectancy"), value: v(edge.expectancy), tone: toneOf(edge.expectancy) },
+        { name: tp("info.row.maxDd"), value: v(edge.maxDrawdown), tone: toneOf(edge.maxDrawdown) },
       ],
     },
     {
-      title: "Дни",
+      title: tp("info.group.days"),
       rows: [
-        { name: "Дней в плюс", value: `${ohlc.profitDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.profitDays / ohlc.totalDays)}` : ""}`, tone: "up" },
-        { name: "Дней в минус", value: `${ohlc.lossDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.lossDays / ohlc.totalDays)}` : ""}`, tone: "down" },
-        { name: "Лучший результат дня", value: ohlc.maxDayProfit > 0 ? v(ohlc.maxDayProfit) : "—", tone: "up" },
-        { name: "Худший результат дня", value: ohlc.maxDayLoss < 0 ? v(ohlc.maxDayLoss) : "—", tone: "down" },
-        { name: "Средний день в плюс", value: v(ohlc.avgDayProfit), tone: toneOf(ohlc.avgDayProfit) },
-        { name: "Средний день в минус", value: v(ohlc.avgDayLoss), tone: toneOf(ohlc.avgDayLoss) },
-        { name: "Доля сильных дней", value: ohlc.avgHighFixRate == null ? "—" : fmtRate(ohlc.avgHighFixRate, 1) },
+        { name: tp("info.row.upDays"), value: `${ohlc.profitDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.profitDays / ohlc.totalDays)}` : ""}`, tone: "up" },
+        { name: tp("info.row.downDays"), value: `${ohlc.lossDays}${ohlc.totalDays ? ` · ${fmtRate(ohlc.lossDays / ohlc.totalDays)}` : ""}`, tone: "down" },
+        { name: tp("info.row.bestDayResult"), value: ohlc.maxDayProfit > 0 ? v(ohlc.maxDayProfit) : "—", tone: "up" },
+        { name: tp("info.row.worstDayResult"), value: ohlc.maxDayLoss < 0 ? v(ohlc.maxDayLoss) : "—", tone: "down" },
+        { name: tp("info.row.avgUpDay"), value: v(ohlc.avgDayProfit), tone: toneOf(ohlc.avgDayProfit) },
+        { name: tp("info.row.avgDownDay"), value: v(ohlc.avgDayLoss), tone: toneOf(ohlc.avgDayLoss) },
+        { name: tp("info.row.strongDays"), value: ohlc.avgHighFixRate == null ? "—" : fmtRate(ohlc.avgHighFixRate, 1) },
       ],
     },
     {
-      title: "Серии",
+      title: tp("info.group.streaks"),
       rows: [
-        { name: "Дней в плюс подряд (макс.)", value: String(ohlc.maxProfitDaysRow) },
-        { name: "Дней в минус подряд (макс.)", value: String(ohlc.maxLossDaysRow) },
-        { name: "Недель в плюс подряд (макс.)", value: String(ohlc.maxProfitWeekRow) },
-        { name: "Недель в минус подряд (макс.)", value: String(ohlc.maxLossWeekRow) },
-        { name: "Месяцев в плюс подряд (макс.)", value: String(ohlc.maxProfitMonthRow) },
-        { name: "Месяцев в минус подряд (макс.)", value: String(ohlc.maxLossMonthRow) },
+        { name: tp("info.row.upDaysRow"), value: String(ohlc.maxProfitDaysRow) },
+        { name: tp("info.row.downDaysRow"), value: String(ohlc.maxLossDaysRow) },
+        { name: tp("info.row.upWeeksRow"), value: String(ohlc.maxProfitWeekRow) },
+        { name: tp("info.row.downWeeksRow"), value: String(ohlc.maxLossWeekRow) },
+        { name: tp("info.row.upMonthsRow"), value: String(ohlc.maxProfitMonthRow) },
+        { name: tp("info.row.downMonthsRow"), value: String(ohlc.maxLossMonthRow) },
         {
-          name: "Текущая серия дней",
-          value: edge.dayStreak.length && edge.dayStreak.kind !== "flat" ? `${edge.dayStreak.length} ${edge.dayStreak.kind === "up" ? "в плюс" : "в минус"}` : "—",
+          name: tp("info.row.currentStreak"),
+          value: edge.dayStreak.length && edge.dayStreak.kind !== "flat" ? tp(edge.dayStreak.kind === "up" ? "info.streakUp" : "info.streakDown", { count: edge.dayStreak.length }) : "—",
           tone: edge.dayStreak.kind === "up" ? "up" : edge.dayStreak.kind === "down" ? "down" : "neutral",
         },
       ],
     },
     {
-      title: "Рекорды",
+      title: tp("info.group.records"),
       rows: [
-        { name: "Лучший месяц", value: ohlc.bestMonth ? `${fmtMonthKey(ohlc.bestMonth.key)} · ${v(ohlc.bestMonth.value)}` : "—" },
-        { name: "Лучшая неделя", value: ohlc.bestWeek ? `${fmtIsoWeek(ohlc.bestWeek.range)} · ${v(ohlc.bestWeek.value)}` : "—" },
-        { name: "Лучший день", value: ohlc.bestDay ? `${fmtDate(ohlc.bestDay.date, "long")} · ${v(ohlc.bestDay.value)}` : "—" },
-        { name: "Лучшая сделка", value: ohlc.bestTrade ? `${ohlc.bestTrade.ticker} · ${fmtDate(ohlc.bestTrade.date, "long")} · ${v(ohlc.bestTrade.value)}` : "—" },
+        { name: tp("info.row.bestMonth"), value: ohlc.bestMonth ? `${fmtMonthKey(ohlc.bestMonth.key)} · ${v(ohlc.bestMonth.value)}` : "—" },
+        { name: tp("info.row.bestWeek"), value: ohlc.bestWeek ? `${fmtIsoWeekKey(ohlc.bestWeek.range)} · ${v(ohlc.bestWeek.value)}` : "—" },
+        { name: tp("info.row.bestDay"), value: ohlc.bestDay ? `${fmtDate(ohlc.bestDay.date, "long")} · ${v(ohlc.bestDay.value)}` : "—" },
+        { name: tp("info.row.bestTrade"), value: ohlc.bestTrade ? `${ohlc.bestTrade.ticker} · ${fmtDate(ohlc.bestTrade.date, "long")} · ${v(ohlc.bestTrade.value)}` : "—" },
       ],
     },
     {
-      title: "Закрытия",
+      title: tp("info.group.closures"),
       rows: [
-        { name: "Сделок со стопом", value: String(closure.stopLossOpenings) },
-        { name: "Закрыто в плюс", value: `${closure.closedPositive}${ofClosed(closure.closedPositive)}`, tone: "up" },
-        { name: "Закрыто в ноль", value: `${closure.closedFlat}${ofClosed(closure.closedFlat)}` },
-        { name: "Закрыто в минус", value: `${closure.closedNegative}${ofClosed(closure.closedNegative)}`, tone: "down" },
-        { name: "Серий из 3+ убытков подряд", value: String(closure.lostThreePlusInRow), tone: closure.lostThreePlusInRow > 0 ? "down" : "neutral" },
+        { name: tp("info.row.withStop"), value: String(closure.stopLossOpenings) },
+        { name: tp("info.row.closedUp"), value: `${closure.closedPositive}${ofClosed(closure.closedPositive)}`, tone: "up" },
+        { name: tp("info.row.closedFlat"), value: `${closure.closedFlat}${ofClosed(closure.closedFlat)}` },
+        { name: tp("info.row.closedDown"), value: `${closure.closedNegative}${ofClosed(closure.closedNegative)}`, tone: "down" },
+        { name: tp("info.row.loss3"), value: String(closure.lostThreePlusInRow), tone: closure.lostThreePlusInRow > 0 ? "down" : "neutral" },
       ],
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -258,7 +258,7 @@ export function TradingDaysInfo({
   return (
     <Panel
       icon={ListChecks}
-      title="Сводка по торговым дням"
+      title={tp("info.title")}
       actions={
         <div className="relative w-40 sm:w-52">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -266,15 +266,16 @@ export function TradingDaysInfo({
             type="search"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Найти показатель"
-            aria-label="Поиск по показателям"
+            placeholder={tp("info.find")}
+            aria-label={tp("info.findAria")}
             className="h-8 pl-8 text-xs"
           />
         </div>
       }
     >
       {visible.length === 0 ? (
-        <p className="py-6 text-center text-sm text-muted-foreground">Ничего не найдено по «{q}»</p>
+        <p className="py-6 text-center text-sm text-muted-foreground">{tp("info.nothing", { q })}</p>
+
       ) : (
         <div className="grid grid-cols-1 gap-x-8 gap-y-4 md:grid-cols-2 lg:grid-cols-1 2xl:grid-cols-2">
           {visible.map((g) => (

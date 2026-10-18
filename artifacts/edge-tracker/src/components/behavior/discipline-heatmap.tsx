@@ -7,11 +7,16 @@ import * as React from "react";
 import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { PATTERN_SHORT, type DisciplineDay, type PatternKey } from "./api";
-import { fmtDate, fmtUsd } from "@/lib/format";
+import { fmtDate, fmtMonth, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
 
-const MONTHS = ["Янв", "Фев", "Мар", "Апр", "Май", "Июн", "Июл", "Авг", "Сен", "Окт", "Ноя", "Дек"];
-const WD = ["Пн", "Вт", "Ср", "Чт", "Пт"];
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+/** «Янв» / «Jan» — short month in the UI language. */
+const monthShort = (m: number) => cap(fmtMonth(m, "short")).replace(".", "");
+/** Mon–Fri heads in the UI language (1 = Monday). */
+const weekdayHeads = () => [1, 2, 3, 4, 5].map((d) => cap(fmtWeekday(d, "short")));
+const tb = behaviorI18n.t;
 
 
 function cellBg(score: number): string {
@@ -45,7 +50,7 @@ function buildMonths(days: DisciplineDay[]): MonthGrid[] {
       touched = true;
     }
     if (touched) weeks.push(week);
-    out.push({ key: `${y}-${m}`, label: `${MONTHS[m]} ${String(y).slice(2)}`, weeks });
+    out.push({ key: `${y}-${m}`, label: `${monthShort(m)} ${String(y).slice(2)}`, weeks });
     m++;
     if (m > 11) { m = 0; y++; }
   }
@@ -67,13 +72,13 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <Pill tone={avg == null ? "neutral" : avg >= 85 ? "up" : avg >= 65 ? "warn" : "down"} title="Средний индекс по торговым дням периода">
-          средний индекс {avg == null ? "—" : Math.round(avg)}
+        <Pill tone={avg == null ? "neutral" : avg >= 85 ? "up" : avg >= 65 ? "warn" : "down"} title={tb("heatmap.avgTitle")}>
+          {tb("heatmap.avg", { value: avg == null ? "—" : Math.round(avg) })}
         </Pill>
-        <span>{commonI18n.t("units.trades", { count: totalTrades })} за {days.length} дн.</span>
+        <span>{tb("heatmap.tradesDays", { trades: commonI18n.t("units.trades", { count: totalTrades }), days: days.length })}</span>
         {worst.length > 0 && (
           <span className="flex flex-wrap items-center gap-1">
-            <span>худшие:</span>
+            <span>{tb("heatmap.worst")}</span>
             {worst.map((d) => (
               <button
                 key={d.date}
@@ -81,7 +86,7 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
                 onClick={() => onSelect(d.date)}
                 aria-pressed={selected === d.date}
                 className={cn("rounded-full px-2 py-0.5 tabular-nums transition-colors duration-[var(--dur-1)] hover:text-foreground", selected === d.date ? "bg-primary/12 text-foreground" : "bg-[var(--glass-bg)]")}
-                title={`${d.date}: индекс ${d.score}, нетто ${fmtUsd(d.net, { signed: true, compact: true })}`}
+                title={tb("heatmap.worstTitle", { date: fmtDate(d.date, "medium"), score: d.score, net: fmtUsd(d.net, { signed: true, compact: true }) })}
               >
                 {fmtDate(d.date, "dayMonthNumeric")} · {d.score}
               </button>
@@ -95,9 +100,9 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
         </span>
       </div>
 
-      <div className="flex gap-4 overflow-x-auto pb-1" role="group" aria-label="Индекс дисциплины по дням">
+      <div className="flex gap-4 overflow-x-auto pb-1" role="group" aria-label={tb("heatmap.aria")}>
         <div className="sticky left-0 z-raised flex shrink-0 flex-col gap-1 bg-[var(--sticky-bg)] pr-1 pt-5 text-xs text-muted-foreground">
-          {WD.map((w) => <span key={w} className="h-5 leading-5">{w}</span>)}
+          {weekdayHeads().map((w) => <span key={w} className="h-5 leading-5">{w}</span>)}
         </div>
         {months.map((mo) => (
           <div key={mo.key} className="shrink-0">
@@ -109,7 +114,7 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
                     if (day === undefined) return <span key={di} className="h-5 w-5" aria-hidden="true" />;
                     if (day === null) return <span key={di} className="h-5 w-5 rounded-md bg-muted/30" aria-hidden="true" />;
                     const pen = Object.entries(day.penalties).filter(([, v]) => (v ?? 0) > 0);
-                    const title = `${day.date}: индекс ${day.score}, ${commonI18n.t("units.trades", { count: day.trades })}, нетто ${fmtUsd(day.net, { signed: true, compact: true })}${pen.length ? "; штрафы: " + pen.map(([k, v]) => `${PATTERN_SHORT[k as PatternKey]} −${v}`).join(", ") : ""}`;
+                    const title = `${tb("heatmap.dayTitle", { date: fmtDate(day.date, "medium"), score: day.score, trades: commonI18n.t("units.trades", { count: day.trades }), net: fmtUsd(day.net, { signed: true, compact: true }) })}${pen.length ? tb("heatmap.penalties", { list: pen.map(([k, v]) => `${PATTERN_SHORT[k as PatternKey]} −${v}`).join(", ") }) : ""}`;
                     const isSel = selected === day.date;
                     return (
                       <button
@@ -135,7 +140,8 @@ export const DisciplineHeatmap = React.memo(function DisciplineHeatmap({
       </div>
 
       <details className="text-xs text-muted-foreground">
-        <summary className="cursor-pointer select-none hover:text-foreground">Как считается индекс</summary>
+        <summary className="cursor-pointer select-none hover:text-foreground">{tb("heatmap.how")}</summary>
+
         <p className="mt-1 leading-relaxed">{formula}</p>
       </details>
     </div>

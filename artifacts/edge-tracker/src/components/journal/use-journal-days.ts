@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { http, ApiError } from "@/lib/api/http";
 import { nullIfMissing } from "@/lib/api/errors";
+import { journalI18n } from "@/i18n/ns/journal";
 
 /**
  * Day journal storage. Uses the server (/api/journal/days) when the route is available,
@@ -191,7 +192,7 @@ async function putServer(e: JournalEntry): Promise<{ entry: JournalEntry; mode: 
   } catch (err) {
     if (err instanceof ApiError && err.status === 409 && err.body && typeof err.body === "object") {
       const current = err.field<Partial<JournalEntry> & { trader: string; date: string }>("current");
-      throw new JournalConflict(err.field<string>("error") ?? "Запись изменена в другой вкладке", current ? normalize(current) : null);
+      throw new JournalConflict(err.field<string>("error") ?? journalI18n.t("editor.conflictTitle"), current ? normalize(current) : null);
     }
     throw err;
   }

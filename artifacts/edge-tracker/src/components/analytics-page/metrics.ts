@@ -6,6 +6,7 @@ import {
   horizonOf as horizonOfTrade, maxDrawdown as maxDrawdownOf, type Horizon,
 } from "@/lib/trade-math";
 import { fmtNum, fmtWeekday } from "@/lib/format";
+import { analyticsI18n } from "@/i18n/ns/analytics";
 
 /*
  * All R / P&L numbers on the analytics page come from @/lib/trade-math (signedR, netPnl …) — the one
@@ -37,7 +38,9 @@ export const DEFAULT_FILTERS: AnalyticsFilters = {
   period: "all", trader: "", setup: "", ticker: "", side: "", horizon: "", account: "", source: "",
 };
 
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+export const HORIZONS: Horizon[] = ["intraday", "overnight", "swing"];
+/** "Интрадей" / "Intraday" — read at call time. */
+export const horizonLabel = (h: Horizon): string => analyticsI18n.t(`horizon.${h}`);
 
 /** Holding horizon; a missing value means intraday (legacy trades). */
 export function horizonOf(t: Trade): Horizon {
@@ -54,13 +57,11 @@ export function sourceOf(t: Trade): "manual" | "propreports" {
   return s === "propreports" ? "propreports" : "manual";
 }
 
-export const PERIOD_OPTIONS: { value: Period; label: string }[] = [
-  { value: "7d", label: "7 дн" },
-  { value: "30d", label: "30 дн" },
-  { value: "90d", label: "90 дн" },
-  { value: "ytd", label: "С начала года" },
-  { value: "all", label: "Всё время" },
-];
+export const PERIODS: Period[] = ["7d", "30d", "90d", "ytd", "all"];
+/** Period options for a Segmented — call in render (labels follow the UI language). */
+export function periodOptions(): { value: Period; label: string }[] {
+  return PERIODS.map((value) => ({ value, label: analyticsI18n.t(`period.${value}`) }));
+}
 
 export function isoDay(d: Date): string {
   const y = d.getFullYear();
@@ -272,9 +273,10 @@ export function computeStats(trades: Trade[]): Stats {
 export type Reliability = { level: "low" | "medium" | "high"; label: string; hint: string };
 
 export function reliability(n: number): Reliability {
-  if (n < 5) return { level: "low", label: "Мало данных", hint: `Всего ${n} сд. — вывод может быть случайностью` };
-  if (n < 20) return { level: "medium", label: "Предварительно", hint: `${n} сд. — тенденция есть, но нужна проверка` };
-  return { level: "high", label: "Надёжно", hint: `${n} сд. — достаточная выборка` };
+  const t = analyticsI18n.t;
+  if (n < 5) return { level: "low", label: t("reliability.low"), hint: t("reliability.lowHint", { n }) };
+  if (n < 20) return { level: "medium", label: t("reliability.medium"), hint: t("reliability.mediumHint", { n }) };
+  return { level: "high", label: t("reliability.high"), hint: t("reliability.highHint", { n }) };
 }
 
 /* ───────────────────────── Streaks / equity / drawdown ───────────────────────── */
@@ -360,73 +362,93 @@ export type DimensionKey =
   | "horizon" | "holdDays" | "setup" | "tag" | "time" | "session" | "weekday" | "hold" | "price" | "gap" | "event" | "side" | "ticker" | "trader"
   | "grade" | "conviction" | "cap" | "float" | "account" | "source";
 
+/**
+ * Group keys are stable codes (bucket ids) or user data (setup, tag, ticker, trader, account names). Keys that start
+ * with "~" are the "nothing known" buckets (no setup, no time, …): they are listed but never picked as a leader.
+ * Display text comes from `labelOf(key)` at call time, so it follows the UI language.
+ */
 type Dimension = {
   key: DimensionKey;
-  label: string;
+  readonly label: string;
   /** Group keys for a trade (multi for tags). */
   keys: (t: Trade) => string[];
+  /** Display text of a key; default: the key itself (user data). */
+  labelOf?: (key: string) => string;
   /** Natural order for ordinal dimensions; undefined = sort by sample size. */
   order?: string[];
   /** Global filter this dimension can drill into. */
   drill?: "setup" | "ticker" | "side" | "trader" | "horizon" | "account" | "source";
-  emptyHint?: string;
+  readonly emptyHint?: string;
   /** Only these trades enter the breakdown (e.g. multi-day holds). */
   scope?: (t: Trade) => boolean;
-  scopeLabel?: string;
+  readonly scopeLabel?: string;
 };
 
-const SESSION_LABEL: Record<string, string> = {
-  premarket: "Премаркет", pre: "Премаркет", regular: "Основная сессия", rth: "Основная сессия",
-  afterhours: "Постмаркет", "after-hours": "Постмаркет", after: "Постмаркет", postmarket: "Постмаркет",
+const t = analyticsI18n.t;
+/** The "nothing known" bucket of every dimension. */
+export const NONE = "~none";
+export const isEmptyKey = (k: string) => k.startsWith("~");
+
+const SESSION_CODE: Record<string, "premarket" | "regular" | "afterhours"> = {
+  premarket: "premarket", pre: "premarket", regular: "regular", rth: "regular",
+  afterhours: "afterhours", "after-hours": "afterhours", after: "afterhours", postmarket: "afterhours",
 };
-const EVENT_LABEL: Record<string, string> = {
-  earnings: "Отчётность", news: "Новости", other: "Другое", fda: "FDA", offering: "Размещение",
-  guidance: "Прогноз", macro: "Макро", ipo: "IPO",
-};
+const EVENT_CODES = ["earnings", "news", "other", "fda", "offering", "guidance", "macro", "ipo"] as const;
+type EventCode = (typeof EVENT_CODES)[number];
+const isEventCode = (s: string): s is EventCode => (EVENT_CODES as readonly string[]).includes(s);
+
 /** "Пн" (capitalised short weekday in the UI language); 0 = Sunday. */
 const weekdayLabel = (d: number) => { const s = fmtWeekday(d, "short"); return s.charAt(0).toUpperCase() + s.slice(1); };
-const HOLD_ORDER = ["До 5 мин", "5–15 мин", "15–60 мин", "1–4 ч", "Больше 4 ч", "Не указано"];
-const PRICE_ORDER = ["До $5", "$5–20", "$20–50", "$50–100", "$100–300", "Больше $300", "Нет цены"];
-const GAP_ORDER = ["Гэп вверх", "Гэп вниз", "Другой гэп", "Без гэпа"];
-const HOLD_DAYS_ORDER = ["1 день", "2–3 дня", "4–7 дней", "8–20 дней", "Больше 20 дней", "Дата выхода не указана"];
 
-function holdDaysBucket(t: Trade): string {
-  const d = holdDays(t);
-  if (d == null) return "Дата выхода не указана";
-  if (d <= 1) return "1 день";
-  if (d <= 3) return "2–3 дня";
-  if (d <= 7) return "4–7 дней";
-  if (d <= 20) return "8–20 дней";
-  return "Больше 20 дней";
+const HOLD_ORDER = ["lt5", "m5_15", "m15_60", "h1_4", "gt4h", NONE] as const;
+const PRICE_ORDER = ["lt5", "p5_20", "p20_50", "p50_100", "p100_300", "gt300", NONE] as const;
+const GAP_ORDER = ["up", "down", "other", "~nogap"] as const;
+const HOLD_DAYS_ORDER = ["d1", "d2_3", "d4_7", "d8_20", "gt20", NONE] as const;
+const CAP_ORDER = ["nano", "micro", "small", "mid", "large", NONE] as const;
+const FLOAT_ORDER = ["lt10", "f10_50", "f50_200", "f200_1b", "gt1b", NONE] as const;
+type HoldCode = Exclude<(typeof HOLD_ORDER)[number], typeof NONE>;
+type PriceCode = Exclude<(typeof PRICE_ORDER)[number], typeof NONE>;
+type HoldDaysCode = Exclude<(typeof HOLD_DAYS_ORDER)[number], typeof NONE>;
+type CapCode = Exclude<(typeof CAP_ORDER)[number], typeof NONE>;
+type FloatCode = Exclude<(typeof FLOAT_ORDER)[number], typeof NONE>;
+
+function holdDaysBucket(tr: Trade): string {
+  const d = holdDays(tr);
+  if (d == null) return NONE;
+  if (d <= 1) return "d1";
+  if (d <= 3) return "d2_3";
+  if (d <= 7) return "d4_7";
+  if (d <= 20) return "d8_20";
+  return "gt20";
 }
 
-function holdBucket(t: Trade): string {
-  const m = parseHoldMinutes(t.holdTime);
-  if (m == null) return "Не указано";
-  if (m < 5) return "До 5 мин";
-  if (m < 15) return "5–15 мин";
-  if (m < 60) return "15–60 мин";
-  if (m < 240) return "1–4 ч";
-  return "Больше 4 ч";
+function holdBucket(tr: Trade): string {
+  const m = parseHoldMinutes(tr.holdTime);
+  if (m == null) return NONE;
+  if (m < 5) return "lt5";
+  if (m < 15) return "m5_15";
+  if (m < 60) return "m15_60";
+  if (m < 240) return "h1_4";
+  return "gt4h";
 }
 
-function priceBucket(t: Trade): string {
-  const p = Number(t.entry);
-  if (t.entry == null || !Number.isFinite(p) || p <= 0) return "Нет цены";
-  if (p < 5) return "До $5";
-  if (p < 20) return "$5–20";
-  if (p < 50) return "$20–50";
-  if (p < 100) return "$50–100";
-  if (p < 300) return "$100–300";
-  return "Больше $300";
+function priceBucket(tr: Trade): string {
+  const p = Number(tr.entry);
+  if (tr.entry == null || !Number.isFinite(p) || p <= 0) return NONE;
+  if (p < 5) return "lt5";
+  if (p < 20) return "p5_20";
+  if (p < 50) return "p20_50";
+  if (p < 100) return "p50_100";
+  if (p < 300) return "p100_300";
+  return "gt300";
 }
 
-function gapBucket(t: Trade): string {
-  const tags = tagsOf(t).map((s) => s.toLowerCase());
-  if (tags.some((s) => s.includes("gap up") || s.includes("gap and go long"))) return "Гэп вверх";
-  if (tags.some((s) => s.includes("gap down") || s.includes("gap and go short"))) return "Гэп вниз";
-  if (tags.some((s) => s.includes("gap"))) return "Другой гэп";
-  return "Без гэпа";
+function gapBucket(tr: Trade): string {
+  const tags = tagsOf(tr).map((s) => s.toLowerCase());
+  if (tags.some((s) => s.includes("gap up") || s.includes("gap and go long"))) return "up";
+  if (tags.some((s) => s.includes("gap down") || s.includes("gap and go short"))) return "down";
+  if (tags.some((s) => s.includes("gap"))) return "other";
+  return "~nogap";
 }
 
 /** "652 M", "45,43B", "632m", "28.5" (bare ⇒ millions) → dollars; null when unparsable. */
@@ -441,85 +463,121 @@ export function parseMoneyText(raw: string | null | undefined): number | null {
   return v * mult;
 }
 
-const CAP_ORDER = ["Нано < $50M", "Микро $50–300M", "Малая $300M–2B", "Средняя $2–10B", "Крупная > $10B", "Нет капитализации"];
-export function capBucket(t: Trade): string {
-  const v = parseMoneyText(t.marketCap);
-  if (v == null) return "Нет капитализации";
-  if (v < 50e6) return "Нано < $50M";
-  if (v < 300e6) return "Микро $50–300M";
-  if (v < 2e9) return "Малая $300M–2B";
-  if (v < 10e9) return "Средняя $2–10B";
-  return "Крупная > $10B";
+/** Market-cap bucket code (nano … large, or "~none"). */
+export function capBucket(tr: Trade): string {
+  const v = parseMoneyText(tr.marketCap);
+  if (v == null) return NONE;
+  if (v < 50e6) return "nano";
+  if (v < 300e6) return "micro";
+  if (v < 2e9) return "small";
+  if (v < 10e9) return "mid";
+  return "large";
 }
-const FLOAT_ORDER = ["Флоат < 10M", "10–50M", "50–200M", "200M–1B", "Больше 1B", "Нет флоата"];
-export function floatBucket(t: Trade): string {
-  const v = parseMoneyText(t.float);
-  if (v == null) return "Нет флоата";
-  if (v < 10e6) return "Флоат < 10M";
-  if (v < 50e6) return "10–50M";
-  if (v < 200e6) return "50–200M";
-  if (v < 1e9) return "200M–1B";
-  return "Больше 1B";
+/** Float bucket code (lt10 … gt1b, or "~none"). */
+export function floatBucket(tr: Trade): string {
+  const v = parseMoneyText(tr.float);
+  if (v == null) return NONE;
+  if (v < 10e6) return "lt10";
+  if (v < 50e6) return "f10_50";
+  if (v < 200e6) return "f50_200";
+  if (v < 1e9) return "f200_1b";
+  return "gt1b";
 }
-const GRADE_ORDER = ["A+", "A", "B", "C", "Без оценки"];
-const CONVICTION_ORDER = ["5 — максимум", "4", "3", "2", "1 — минимум", "Не указана"];
+const GRADE_ORDER = ["A+", "A", "B", "C", NONE];
+const CONVICTION_ORDER = ["5", "4", "3", "2", "1", NONE];
+
+const label = (none: string, map?: (k: string) => string) => (k: string) => (k === NONE ? none : map ? map(k) : k);
 
 export const DIMENSIONS: Dimension[] = [
-  { key: "horizon", label: "Горизонт", keys: (t) => [HORIZON_LABEL[horizonOf(t)]],
-    order: ["Интрадей", "Овернайт", "Свинг"], drill: "horizon" },
-  { key: "holdDays", label: "Дни удержания", keys: (t) => [holdDaysBucket(t)], order: HOLD_DAYS_ORDER,
-    scope: (t) => horizonOf(t) !== "intraday", scopeLabel: "только овернайт и свинг",
-    emptyHint: "Нет переносимых сделок (овернайт / свинг) в выбранных фильтрах." },
-  { key: "setup", label: "Сетап", keys: (t) => [t.setup?.trim() || "Без сетапа"], drill: "setup",
-    emptyHint: "У сделок не указан сетап — заполняйте поле «Сетап», или смотрите разрез «Теги»." },
-  { key: "tag", label: "Теги", keys: (t) => { const g = tagsOf(t); return g.length ? g : ["Без тегов"]; } },
-  { key: "time", label: "Время дня", keys: (t) => [TIME_BUCKETS.find((b) => b.id === timeBucketFor(t))?.label ?? "без времени"],
-    order: TIME_BUCKETS.map((b) => b.label),
-    emptyHint: "В сделках нет времени входа — используйте разрез «Сессия»." },
-  { key: "session", label: "Сессия", keys: (t) => [SESSION_LABEL[(t.session ?? "").toLowerCase()] ?? (t.session || "Не указана")],
-    order: ["Премаркет", "Основная сессия", "Постмаркет"] },
-  { key: "weekday", label: "День недели", keys: (t) => { const d = dayOfWeek(t); return [d >= 0 ? weekdayLabel(d) : "—"]; },
-    get order() { return [1, 2, 3, 4, 5, 6, 0].map(weekdayLabel); } },
-  { key: "hold", label: "Удержание (интрадей)", keys: (t) => [holdBucket(t)], order: HOLD_ORDER,
-    scope: (t) => horizonOf(t) === "intraday", scopeLabel: "только интрадей" },
-  { key: "price", label: "Цена входа", keys: (t) => [priceBucket(t)], order: PRICE_ORDER },
-  { key: "gap", label: "Гэп", keys: (t) => [gapBucket(t)], order: GAP_ORDER },
-  { key: "event", label: "Катализатор", keys: (t) => [EVENT_LABEL[(t.eventType ?? "").toLowerCase()] ?? (t.eventType || "Не указан")] },
-  { key: "side", label: "Направление", keys: (t) => [sideOf(t) === "long" ? "Лонг" : sideOf(t) === "short" ? "Шорт" : "Не указано"],
-    order: ["Лонг", "Шорт", "Не указано"], drill: "side" },
-  { key: "grade", label: "Оценка сетапа", keys: (t) => [t.confidenceGrade?.trim() || "Без оценки"], order: GRADE_ORDER,
-    emptyHint: "Ставьте оценку A+/A/B/C в карточке сделки — появится разрез по качеству сетапа." },
-  { key: "conviction", label: "Уверенность", order: CONVICTION_ORDER,
-    keys: (t) => [t.conviction == null ? "Не указана" : t.conviction >= 5 ? "5 — максимум" : t.conviction <= 1 ? "1 — минимум" : String(t.conviction)] },
-  { key: "cap", label: "Капитализация", keys: (t) => [capBucket(t)], order: CAP_ORDER },
-  { key: "float", label: "Флоат", keys: (t) => [floatBucket(t)], order: FLOAT_ORDER },
-  { key: "ticker", label: "Тикер", keys: (t) => [(t.ticker ?? "—").toUpperCase()], drill: "ticker" },
-  { key: "trader", label: "Трейдер", keys: (t) => [t.trader || "Не указан"], drill: "trader" },
-  { key: "account", label: "Счёт", keys: (t) => [accountOf(t) || "Без счёта"], drill: "account",
-    emptyHint: "Счёт появляется у сделок, загруженных от брокера." },
-  { key: "source", label: "Источник", keys: (t) => [sourceOf(t) === "propreports" ? "PropReports" : "Вручную"], order: ["PropReports", "Вручную"], drill: "source" },
+  { key: "horizon", get label() { return t("dim.horizon"); }, keys: (tr) => [horizonOf(tr)],
+    labelOf: (k) => (HORIZONS as string[]).includes(k) ? horizonLabel(k as Horizon) : k,
+    order: HORIZONS, drill: "horizon" },
+  { key: "holdDays", get label() { return t("dim.holdDays"); }, keys: (tr) => [holdDaysBucket(tr)], order: [...HOLD_DAYS_ORDER],
+    labelOf: (k) => (k === NONE ? t("bucket.noExitDate") : t(`bucket.holdDays.${k as HoldDaysCode}`)),
+    scope: (tr) => horizonOf(tr) !== "intraday", get scopeLabel() { return t("dimScope.multiDay"); },
+    get emptyHint() { return t("dimEmpty.holdDays"); } },
+  { key: "setup", get label() { return t("dim.setup"); }, keys: (tr) => [tr.setup?.trim() || NONE], drill: "setup",
+    get labelOf() { return label(t("bucket.noSetup")); },
+    get emptyHint() { return t("dimEmpty.setup"); } },
+  { key: "tag", get label() { return t("dim.tag"); }, keys: (tr) => { const g = tagsOf(tr); return g.length ? g : [NONE]; },
+    get labelOf() { return label(t("bucket.noTags")); } },
+  { key: "time", get label() { return t("dim.time"); },
+    keys: (tr) => { const id = timeBucketFor(tr); return [id === "unknown" ? NONE : id]; },
+    labelOf: (k) => (k === NONE ? t("bucket.noTime") : TIME_BUCKETS.find((b) => b.id === k)?.label ?? k),
+    order: [...TIME_BUCKETS.filter((b) => b.id !== "unknown").map((b) => b.id as string), NONE],
+    get emptyHint() { return t("dimEmpty.time"); } },
+  { key: "session", get label() { return t("dim.session"); },
+    keys: (tr) => { const s = (tr.session ?? "").trim(); return [s ? SESSION_CODE[s.toLowerCase()] ?? s : NONE]; },
+    labelOf: (k) => (k === NONE ? t("bucket.notSetF") : k === "premarket" || k === "regular" || k === "afterhours" ? t(`bucket.session.${k}`) : k),
+    order: ["premarket", "regular", "afterhours"] },
+  { key: "weekday", get label() { return t("dim.weekday"); }, keys: (tr) => { const d = dayOfWeek(tr); return [d >= 0 ? String(d) : NONE]; },
+    labelOf: (k) => (k === NONE ? "—" : weekdayLabel(Number(k))),
+    order: ["1", "2", "3", "4", "5", "6", "0", NONE] },
+  { key: "hold", get label() { return t("dim.hold"); }, keys: (tr) => [holdBucket(tr)], order: [...HOLD_ORDER],
+    labelOf: (k) => (k === NONE ? t("bucket.notSet") : t(`bucket.hold.${k as HoldCode}`)),
+    scope: (tr) => horizonOf(tr) === "intraday", get scopeLabel() { return t("dimScope.intraday"); } },
+  { key: "price", get label() { return t("dim.price"); }, keys: (tr) => [priceBucket(tr)], order: [...PRICE_ORDER],
+    labelOf: (k) => (k === NONE ? t("bucket.noPrice") : t(`bucket.price.${k as PriceCode}`)) },
+  { key: "gap", get label() { return t("dim.gap"); }, keys: (tr) => [gapBucket(tr)], order: [...GAP_ORDER],
+    labelOf: (k) => (k === "~nogap" ? t("bucket.gap.none") : k === "up" || k === "down" || k === "other" ? t(`bucket.gap.${k}`) : k) },
+  { key: "event", get label() { return t("dim.event"); },
+    keys: (tr) => { const e = (tr.eventType ?? "").trim(); return [!e ? NONE : isEventCode(e.toLowerCase()) ? e.toLowerCase() : e]; },
+    labelOf: (k) => (k === NONE ? t("bucket.notSetM") : isEventCode(k) ? t(`bucket.event.${k}`) : k) },
+  { key: "side", get label() { return t("dim.side"); }, keys: (tr) => [sideOf(tr) || NONE],
+    labelOf: (k) => (k === "long" || k === "short" ? t(`bucket.side.${k}`) : t("bucket.notSet")),
+    order: ["long", "short", NONE], drill: "side" },
+  { key: "grade", get label() { return t("dim.grade"); }, keys: (tr) => [tr.confidenceGrade?.trim() || NONE], order: GRADE_ORDER,
+    get labelOf() { return label(t("bucket.noGrade")); },
+    get emptyHint() { return t("dimEmpty.grade"); } },
+  { key: "conviction", get label() { return t("dim.conviction"); }, order: CONVICTION_ORDER,
+    keys: (tr) => [tr.conviction == null ? NONE : String(Math.max(1, Math.min(5, Math.round(tr.conviction))))],
+    labelOf: (k) => (k === NONE ? t("bucket.notSetF") : k === "5" ? t("bucket.conviction.max") : k === "1" ? t("bucket.conviction.min") : k) },
+  { key: "cap", get label() { return t("dim.cap"); }, keys: (tr) => [capBucket(tr)], order: [...CAP_ORDER],
+    labelOf: (k) => (k === NONE ? t("bucket.noCap") : t(`bucket.cap.${k as CapCode}`)) },
+  { key: "float", get label() { return t("dim.float"); }, keys: (tr) => [floatBucket(tr)], order: [...FLOAT_ORDER],
+    labelOf: (k) => (k === NONE ? t("bucket.noFloat") : t(`bucket.float.${k as FloatCode}`)) },
+  { key: "ticker", get label() { return t("dim.ticker"); }, keys: (tr) => [(tr.ticker ?? "—").toUpperCase()], drill: "ticker" },
+  { key: "trader", get label() { return t("dim.trader"); }, keys: (tr) => [tr.trader || NONE], drill: "trader",
+    get labelOf() { return label(t("bucket.notSetM")); } },
+  { key: "account", get label() { return t("dim.account"); }, keys: (tr) => [accountOf(tr) || NONE], drill: "account",
+    get labelOf() { return label(t("bucket.noAccount")); },
+    get emptyHint() { return t("dimEmpty.account"); } },
+  { key: "source", get label() { return t("dim.source"); }, keys: (tr) => [sourceOf(tr) === "propreports" ? "propreports" : "~manual"],
+    labelOf: (k) => (k === "propreports" ? "PropReports" : t("bucket.manual")), order: ["propreports", "~manual"], drill: "source" },
 ];
 
-export type GroupRow = Stats & { key: string; share: number };
+export function dimensionOf(key: DimensionKey): Dimension {
+  return DIMENSIONS.find((d) => d.key === key)!;
+}
+
+/** Display text of a group key of a dimension (follows the UI language). */
+export function groupLabel(dimKey: DimensionKey, key: string): string {
+  const d = dimensionOf(dimKey);
+  return d.labelOf ? d.labelOf(key) : key;
+}
+
+export type GroupRow = Stats & { key: string; label: string; share: number };
 
 export function scopedTrades(trades: Trade[], dimKey: DimensionKey): Trade[] {
-  const dim = DIMENSIONS.find((d) => d.key === dimKey)!;
+  const dim = dimensionOf(dimKey);
   return dim.scope ? trades.filter(dim.scope) : trades;
 }
 
 export function breakdown(allTrades: Trade[], dimKey: DimensionKey): GroupRow[] {
-  const dim = DIMENSIONS.find((d) => d.key === dimKey)!;
+  const dim = dimensionOf(dimKey);
   const trades = scopedTrades(allTrades, dimKey);
   const groups = new Map<string, Trade[]>();
-  for (const t of trades) {
-    for (const k of dim.keys(t)) {
+  for (const tr of trades) {
+    for (const k of dim.keys(tr)) {
       if (!groups.has(k)) groups.set(k, []);
-      groups.get(k)!.push(t);
+      groups.get(k)!.push(tr);
     }
   }
-  const rows = [...groups.entries()].map(([key, g]) => ({ key, share: trades.length ? g.length / trades.length : 0, ...computeStats(g) }));
+  const rows = [...groups.entries()].map(([key, g]) => ({
+    key, label: dim.labelOf ? dim.labelOf(key) : key, share: trades.length ? g.length / trades.length : 0, ...computeStats(g),
+  }));
   if (dim.order) rows.sort((a, b) => idx(dim.order!, a.key) - idx(dim.order!, b.key));
-  else rows.sort((a, b) => b.n - a.n || a.key.localeCompare(b.key));
+  else rows.sort((a, b) => b.n - a.n || a.label.localeCompare(b.label));
   return rows;
 }
 
@@ -531,29 +589,29 @@ function idx(order: string[], k: string) {
 /** The single key a drillable row maps to in the global filter. */
 export function drillValue(dimKey: DimensionKey, rowKey: string): string | null {
   switch (dimKey) {
-    case "setup": return rowKey === "Без сетапа" ? "__none__" : rowKey;
+    case "setup": return rowKey === NONE ? "__none__" : rowKey;
     case "ticker": return rowKey === "—" ? null : rowKey;
-    case "trader": return rowKey === "Не указан" ? null : rowKey;
-    case "side": return rowKey === "Лонг" ? "long" : rowKey === "Шорт" ? "short" : null;
-    case "horizon": return (Object.keys(HORIZON_LABEL) as Horizon[]).find((h) => HORIZON_LABEL[h] === rowKey) ?? null;
-    case "account": return rowKey === "Без счёта" ? null : rowKey;
-    case "source": return rowKey === "PropReports" ? "propreports" : rowKey === "Вручную" ? "manual" : null;
+    case "trader": return rowKey === NONE ? null : rowKey;
+    case "side": return rowKey === "long" || rowKey === "short" ? rowKey : null;
+    case "horizon": return (HORIZONS as string[]).includes(rowKey) ? rowKey : null;
+    case "account": return rowKey === NONE ? null : rowKey;
+    case "source": return rowKey === "propreports" ? "propreports" : rowKey === "~manual" ? "manual" : null;
     default: return null;
   }
 }
 
 /** Strongest and weakest groups across all dimensions (n ≥ minN), by avg R or win rate. */
 export function edgeLeaders(trades: Trade[], useR: boolean, minN = 3) {
-  const all: { dim: string; key: string; n: number; score: number; stats: Stats }[] = [];
+  const all: { dimKey: DimensionKey; dim: string; key: string; label: string; n: number; score: number; stats: Stats }[] = [];
   for (const d of DIMENSIONS) {
     if (d.key === "trader" || d.key === "ticker") continue;
     const scoped = scopedTrades(trades, d.key);
     for (const row of breakdown(trades, d.key)) {
       if (row.n < minN || row.n === scoped.length) continue;
-      if (/^(Без|Не указан|Нет |без времени|Вручную)/.test(row.key)) continue;
+      if (isEmptyKey(row.key)) continue;
       const score = useR ? row.avgR : row.winRate;
       if (score == null) continue;
-      all.push({ dim: d.label, key: row.key, n: row.n, score, stats: row });
+      all.push({ dimKey: d.key, dim: d.label, key: row.key, label: row.label, n: row.n, score, stats: row });
     }
   }
   const best = [...all].sort((a, b) => b.score - a.score || b.n - a.n).slice(0, 3);

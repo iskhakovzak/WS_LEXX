@@ -3,7 +3,8 @@ import { CalendarClock, LineChart, Pin, Repeat } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UpcomingByTicker } from "./research-preview";
 import { Highlight, confidenceTone, noteConfidence, formatDay, noteDay, splitTags, splitTickers, type ResearchNote, type SearchHit } from "./research-utils";
-import { fmtDate } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { researchI18n } from "@/i18n/ns/research";
 
 const BAR: Record<string, string> = {
   up: "bg-up",
@@ -39,6 +40,7 @@ export const ResearchRow = memo(function ResearchRow({
   onSelect: (id: number) => void;
   onTogglePin: (id: number) => void;
 }) {
+  const { t: tr } = researchI18n.useT();
   const tickers = splitTickers(r.ticker);
   const tags = splitTags(r.tags);
   const conf = noteConfidence(r);
@@ -69,14 +71,14 @@ export const ResearchRow = memo(function ResearchRow({
             </span>
             <span className="flex shrink-0 items-center gap-2 text-xs tabular-nums">
               {ev && (
-                <span className="inline-flex items-center gap-0.5 text-muted-foreground" title={`Сделок по паттерну: ${ev.tradeCount}${ev.winRate != null ? ` · win rate ${Math.round(ev.winRate)}%` : ""}${ev.netPnl != null ? ` · нетто $${Math.round(ev.netPnl)}` : ""}`}>
+                <span className="inline-flex items-center gap-0.5 text-muted-foreground" title={`${tr("row.evidenceTitle", { count: ev.tradeCount })}${ev.winRate != null ? tr("row.evidenceWr", { value: Math.round(ev.winRate) }) : ""}${ev.netPnl != null ? tr("row.evidenceNet", { value: fmtUsd(ev.netPnl, { decimals: 0 }) }) : ""}`}>
                   <LineChart className="h-3 w-3" aria-hidden="true" />
                   {ev.tradeCount}{ev.winRate != null ? ` · ${Math.round(ev.winRate)}%` : ""}
                 </span>
               )}
-              {conf.value != null && <span className={TXT[tone]} title={conf.byTrades ? "Уверенность по сделкам" : "Уверенность (ручная оценка)"}>{conf.value}%</span>}
+              {conf.value != null && <span className={TXT[tone]} title={conf.byTrades ? tr("row.confTrades") : tr("row.confManual")}>{conf.value}%</span>}
               {(r.repeatCount ?? 0) > 1 && (
-                <span className="inline-flex items-center gap-0.5 text-muted-foreground" title="Повторений">
+                <span className="inline-flex items-center gap-0.5 text-muted-foreground" title={tr("row.repeats")}>
                   <Repeat className="h-3 w-3" aria-hidden="true" />
                   {r.repeatCount}
                 </span>
@@ -104,7 +106,7 @@ export const ResearchRow = memo(function ResearchRow({
             {report && (
               <span className="inline-flex items-center gap-1 rounded-full bg-[hsl(var(--chart-3)/0.15)] px-2 py-0.5 text-2xs font-medium text-[hsl(var(--chart-3))]">
                 <CalendarClock className="h-3 w-3" aria-hidden="true" />
-                Отчёт {fmtDate(report.date, "dayMonth")}
+                {tr("row.report", { date: fmtDate(report.date, "dayMonth") })}
                 {report.callType !== "TNS" ? ` · ${report.callType}` : ""}
               </span>
             )}
@@ -115,7 +117,7 @@ export const ResearchRow = memo(function ResearchRow({
       <button
         type="button"
         onClick={() => onTogglePin(r.id)}
-        aria-label={pinned ? `Открепить «${r.patternName}»` : `Закрепить «${r.patternName}»`}
+        aria-label={pinned ? tr("row.unpin", { name: r.patternName }) : tr("row.pin", { name: r.patternName })}
         aria-pressed={pinned}
         className={cn(
           "m-1 grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-opacity hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",

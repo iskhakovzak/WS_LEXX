@@ -10,6 +10,8 @@ import { cn } from "@/lib/utils";
 import { fmtCount, fmtDate, fmtRate } from "@/lib/format";
 import { ScrollContainerContext } from "@/components/ds/virtual";
 import { TermTooltip, type TermKey } from "@/components/ds/term-tooltip";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtRelative } from "@/i18n/format";
 
 /* Foundation modules (usage notes in each file's header). */
 export { GLOSSARY, glossary, TermTooltip, TermContent, TermLabel, termForLabel, type TermKey, type GlossaryEntry } from "@/components/ds/term-tooltip";
@@ -70,8 +72,11 @@ export function toneBg(tone: Tone) {
 }
 
 /** `title` for truncated text: only when the content is plain text. */
+/** Plain text of a node for a native tooltip (strings, numbers and simple element trees); undefined when empty. */
 function textTitle(node: React.ReactNode): string | undefined {
-  return typeof node === "string" || typeof node === "number" ? String(node) : undefined;
+  if (typeof node === "string" || typeof node === "number") return String(node);
+  const t = nodeText(node).trim();
+  return t || undefined;
 }
 
 /**
@@ -300,7 +305,8 @@ export function StatCard({
       {(delta || hint) && (
         <div className="mt-auto flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 pt-0.5 text-xs">
           {delta && <Pill tone={deltaTone ?? "neutral"}>{delta}</Pill>}
-          {hint && <span className="min-w-0 truncate text-muted-foreground" title={textTitle(hint)}>{hint}</span>}
+          {/* Two lines before clipping: UZ / EN hints are longer; the full text stays in the tooltip. */}
+          {hint && <span className="line-clamp-2 min-w-0 break-words text-muted-foreground" title={textTitle(hint)}>{hint}</span>}
         </div>
       )}
       {spark && spark.length > 1 && (
@@ -717,7 +723,7 @@ export function Sparkline({
   const pad = strokeWidth;
   if (pts.length < 2) {
     return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={cn("text-muted-foreground/60", className)} role="img" aria-label={ariaLabel ?? "Нет данных"}>
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className={cn("text-muted-foreground/60", className)} role="img" aria-label={ariaLabel ?? commonI18n.t("states.noData")}>
         <line x1={0} x2={width} y1={height / 2} y2={height / 2} stroke="currentColor" strokeWidth={1} strokeDasharray="2 3" />
       </svg>
     );
@@ -738,7 +744,7 @@ export function Sparkline({
       preserveAspectRatio="none"
       className={cn(colour, "overflow-visible", className)}
       role="img"
-      aria-label={ariaLabel ?? `Тренд: ${pts[0]} → ${pts[pts.length - 1]}`}
+      aria-label={ariaLabel ?? commonI18n.t("ds.trend", { from: pts[0], to: pts[pts.length - 1] })}
     >
       {baseline != null && (
         <line x1={0} x2={width} y1={y(baseline)} y2={y(baseline)} stroke="hsl(var(--border))" strokeWidth={1} strokeDasharray="2 3" vectorEffect="non-scaling-stroke" />
@@ -1050,7 +1056,7 @@ export function SortableTh({
 }) {
   const Icon = !active ? ChevronsUpDown : dir === "asc" ? ChevronUp : ChevronDown;
   const name = nodeText(children).trim();
-  const state = active ? (dir === "asc" ? "по возрастанию" : "по убыванию") : null;
+  const state = active ? commonI18n.t(dir === "asc" ? "ds.sortAsc" : "ds.sortDesc") : null;
   return (
     <th
       scope="col"
@@ -1061,7 +1067,7 @@ export function SortableTh({
       <button
         type="button"
         onClick={onSort}
-        title={state ? `${name ? `${name}: ` : ""}${state} — нажмите, чтобы сменить` : name ? `Сортировать по: ${name}` : "Сортировать"}
+        title={state ? (name ? commonI18n.t("ds.sortedBy", { name, state }) : commonI18n.t("ds.sortedNoName", { state })) : name ? commonI18n.t("ds.sortBy", { name }) : commonI18n.t("ds.sort")}
         className={cn(
           "-mx-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 align-middle transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/60",
           active && "text-foreground",
@@ -1145,7 +1151,8 @@ export function limitTone(used: number | null | undefined, limit: number | null 
 
 const LIMIT_BAR: Record<LimitTone, string> = { ok: "bg-up", warn: "bg-warn", breach: "bg-down" };
 const LIMIT_TEXT: Record<LimitTone, string> = { ok: "text-up", warn: "text-warn", breach: "text-down" };
-const LIMIT_WORD: Record<LimitTone, string> = { ok: "в норме", warn: "близко к лимиту", breach: "лимит превышен" };
+const LIMIT_WORD_KEY = { ok: "ds.limitOk", warn: "ds.limitWarn", breach: "ds.limitBreach" } as const;
+const limitWord = (t: LimitTone) => commonI18n.t(LIMIT_WORD_KEY[t]);
 
 /** Tone of a LimitBar mapped onto the general Tone scale (for Pills etc.). */
 export function limitToneToTone(t: LimitTone): Tone {
@@ -1205,7 +1212,7 @@ export function LimitBar({
         aria-valuemin={0}
         aria-valuemax={hasLimit ? (limit as number) : 0}
         aria-valuenow={u}
-        aria-valuetext={hasLimit ? `${fmtRate(ratio)} лимита, ${LIMIT_WORD[t]}` : "лимит не задан"}
+        aria-valuetext={hasLimit ? commonI18n.t("ds.limitValue", { pct: fmtRate(ratio), state: limitWord(t) }) : commonI18n.t("trading.limitNotSet")}
         aria-label={typeof label === "string" ? label : undefined}
         className={cn(
           "relative w-full overflow-hidden rounded-full bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]",
@@ -1228,7 +1235,7 @@ export function LimitBar({
       {(hint || (hasLimit && t !== "ok")) && (
         <div className="flex items-center justify-between gap-2 text-2xs">
           {hint ? <span className="text-muted-foreground">{hint}</span> : <span />}
-          {hasLimit && t !== "ok" && <span className={cn("font-medium", LIMIT_TEXT[t])}>{LIMIT_WORD[t]}</span>}
+          {hasLimit && t !== "ok" && <span className={cn("font-medium", LIMIT_TEXT[t])}>{limitWord(t)}</span>}
         </div>
       )}
     </div>
@@ -1237,15 +1244,9 @@ export function LimitBar({
 
 /* ── Live feel ──────────────────────────────────────────────────────────────── */
 
-function agoText(ms: number): string {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 5) return "только что";
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return `${Math.floor(h / 24)} дн назад`;
+/** "только что" under 45 s, then the UI language's short relative time ("5 мин. назад" / "5 min. ago"). */
+function agoText(ts: number): string {
+  return Date.now() - ts < 45_000 ? commonI18n.t("time.justNow") : fmtRelative(ts, { style: "short" });
 }
 
 /* One shared 5 s clock for every UpdatedAgo on screen (was one setInterval per instance; a dashboard has a dozen).
@@ -1274,10 +1275,11 @@ function useAgoTick() {
   return React.useSyncExternalStore(agoSubscribe, () => agoNow, () => agoNow);
 }
 
-/** "обновлено 12 сек назад" — pass react-query's `dataUpdatedAt`. Re-renders every 5 s (shared clock). */
+/** "обновлено 5 мин. назад" — pass react-query's `dataUpdatedAt`. Re-renders every 5 s (shared clock). A custom
+ *  `prefix` must already be translated. */
 export function UpdatedAgo({
   at,
-  prefix = "обновлено",
+  prefix,
   className,
 }: {
   at: number | string | Date | null | undefined;
@@ -1290,7 +1292,7 @@ export function UpdatedAgo({
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-2xs text-muted-foreground tabular-nums", className)} title={fmtDate(ts, "shortDateTimeSeconds")}>
       <span className="h-1.5 w-1.5 rounded-full bg-up" aria-hidden="true" />
-      {prefix} {agoText(Date.now() - ts)}
+      {prefix ? `${prefix} ${agoText(ts)}` : commonI18n.t("ds.updatedAgo", { ago: agoText(ts) })}
     </span>
   );
 }

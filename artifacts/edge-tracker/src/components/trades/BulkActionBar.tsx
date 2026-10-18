@@ -8,6 +8,7 @@ import { ResultPill } from "./trade-bits";
 import type { TagKind } from "./review-presets";
 import { KIND_META, TagPicker, pickerOptions, type PickState } from "./review-tagging";
 import { commonI18n } from "@/i18n/ns/common";
+import { tradesI18n } from "@/i18n/ns/trades";
 
 /**
  * Floating bar for the selected trades: bulk setup / mistake / emotion tagging (same pickers as the rows),
@@ -71,7 +72,7 @@ export function BulkActionBar({
   return (
     <motion.div
       role="toolbar"
-      aria-label={`Действия с выбранными: ${count}`}
+      aria-label={tradesI18n.t("bulk.toolbar", { count })}
       initial={reduce ? false : { y: 24, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.2, ease: [0.2, 0.8, 0.2, 1] }}
@@ -82,14 +83,14 @@ export function BulkActionBar({
       </span>
       {onAddToPlaybook && (
         <Button size="sm" className="gap-1.5 bg-primary-solid" onClick={onAddToPlaybook} disabled={pending}>
-          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> В плейбук
+          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> {tradesI18n.t("bulk.toPlaybook")}
         </Button>
       )}
       {canTag && (["setup", "mistake", "emotion"] as const).map(picker)}
       {onSetResult && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" size="sm" className="gap-1.5" disabled={pending}><CircleDot className="h-3.5 w-3.5" /> Результат</Button>
+            <Button variant="outline" size="sm" className="gap-1.5" disabled={pending}><CircleDot className="h-3.5 w-3.5" /> {tradesI18n.t("bulk.result")}</Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" side="top">
             {RESULTS.map((r) => (
@@ -100,9 +101,9 @@ export function BulkActionBar({
       )}
       <Button variant="outline" size="sm" className="gap-1.5" onClick={onExport}><Download className="h-3.5 w-3.5" /> CSV</Button>
       {onDelete && (
-        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-down" onClick={onDelete} disabled={pending}><Trash2 className="h-3.5 w-3.5" /> Удалить</Button>
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hover:text-down" onClick={onDelete} disabled={pending}><Trash2 className="h-3.5 w-3.5" /> {commonI18n.t("actions.delete")}</Button>
       )}
-      <Button variant="ghost" size="icon" className="ml-auto h-8 w-8" aria-label="Снять выделение (Esc)" onClick={onClear}><X /></Button>
+      <Button variant="ghost" size="icon" className="ml-auto h-8 w-8" aria-label={tradesI18n.t("bulk.clearSelection")} onClick={onClear}><X /></Button>
     </motion.div>
   );
 }

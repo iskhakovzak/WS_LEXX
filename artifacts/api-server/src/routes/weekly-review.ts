@@ -9,9 +9,12 @@ import { signedRSql, netPnlSql, closeDateSql, horizonSql, resultSql } from "../l
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { plural, preview as textPreview } from "../lib/notifyEventsCore";
+import { preview as textPreview } from "../lib/notifyEventsCore";
 import { activeViolationSql, archiveReasonLabel, isArchiveReason, reportArchiveSql } from "../lib/violationArchive";
-import { notFound, unauthorized } from "../lib/http";
+import { AppError, notFound, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { riskT } from "../i18n/ns";
+import { violationMessage } from "../lib/rulesI18n";
 
 /**
  * «Отчёт недели 1:1» — the weekly trader ↔ curator review document.
@@ -117,16 +120,16 @@ function resolveWeek(raw: unknown): WeekBounds | null {
 // Access via the permissions matrix (lib/permissions.ts, DB role): journal.read.team to look at
 // other traders' weeks, journal.review for the curator overview / curator notes / marking goals of others.
 
-type Scope = { ok: true; trader: string; staff: boolean; me: string } | { ok: false; status: number; error: string };
+type Scope = { ok: true; trader: string; staff: boolean; me: string };
 
-/** Traders see only themselves; curators/admins pick any trader (default: themselves). */
+/** Traders see only themselves; curators/admins pick any trader (default: themselves). Throws 400 / 401 / 403. */
 async function resolveScope(req: Request, claimed: unknown): Promise<Scope> {
   const auth = req.authUser;
-  if (!auth) return { ok: false, status: 401, error: "Authentication required" };
+  if (!auth) throw unauthorized();
   const name = typeof claimed === "string" ? claimed.trim() : "";
-  if (name.length > 100) return { ok: false, status: 400, error: "Invalid trader" };
+  if (name.length > 100) throw new AppError("INVALID_TRADER");
   const staff = await can(req, "journal.read.team", name && name !== auth.name ? { trader: name } : undefined);
-  if (!staff && name && name !== auth.name) return { ok: false, status: 403, error: "Можно смотреть только свой отчёт" };
+  if (!staff && name && name !== auth.name) throw new AppError("WEEKLY_OWN_ONLY");
   return { ok: true, trader: name || auth.name, staff, me: auth.name };
 }
 
@@ -253,8 +256,10 @@ export function riskEventsOf(
   limits: { dailyLossLimit: number | null; weeklyLossLimit: number | null; maxRiskPerTrade: number | null; allowOvernight: boolean; allowSwing: boolean } | null,
   weekEnd: string,
   warnPct = 70,
+  lang: Lang = "ru",
 ): RiskEvent[] {
   if (!limits) return [];
+  const L = riskT.tFor(lang);
   const out: RiskEvent[] = [];
   const push = (date: string, kind: string, label: string, used: number, limit: number | null, detail?: string) => {
     if (limit == null || limit <= 0) return;
@@ -263,13 +268,13 @@ export function riskEventsOf(
     else if (pct >= warnPct) out.push({ date, kind, label, level: "warn", used: r2(used), limit, pct, detail });
   };
   for (const d of days) {
-    if (d.pnl_count > 0 && n(d.net) < 0) push(d.date, "daily", "Дневной лимит убытка", -n(d.net), limits.dailyLossLimit);
+    if (d.pnl_count > 0 && n(d.net) < 0) push(d.date, "daily", L("alerts.daily"), -n(d.net), limits.dailyLossLimit);
   }
-  if (weekNet != null && weekNet < 0) push(weekEnd, "weekly", "Недельный лимит убытка", -weekNet, limits.weeklyLossLimit);
+  if (weekNet != null && weekNet < 0) push(weekEnd, "weekly", L("alerts.weekly"), -weekNet, limits.weeklyLossLimit);
   for (const t of trades) {
-    if (t.riskUsd != null) push(t.date, "trade_risk", "Риск на сделку", t.riskUsd, limits.maxRiskPerTrade, t.ticker);
-    if (!limits.allowOvernight && t.horizon === "overnight") out.push({ date: t.date, kind: "overnight_not_allowed", label: "Овернайт запрещён", level: "breach", used: 1, limit: 0, pct: null, detail: t.ticker });
-    if (!limits.allowSwing && t.horizon === "swing") out.push({ date: t.date, kind: "swing_not_allowed", label: "Свинг запрещён", level: "breach", used: 1, limit: 0, pct: null, detail: t.ticker });
+    if (t.riskUsd != null) push(t.date, "trade_risk", L("alerts.trade_risk"), t.riskUsd, limits.maxRiskPerTrade, t.ticker);
+    if (!limits.allowOvernight && t.horizon === "overnight") out.push({ date: t.date, kind: "overnight_not_allowed", label: L("alerts.overnight_not_allowed"), level: "breach", used: 1, limit: 0, pct: null, detail: t.ticker });
+    if (!limits.allowSwing && t.horizon === "swing") out.push({ date: t.date, kind: "swing_not_allowed", label: L("alerts.swing_not_allowed"), level: "breach", used: 1, limit: 0, pct: null, detail: t.ticker });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date) || (a.level === b.level ? 0 : a.level === "breach" ? -1 : 1));
 }
@@ -366,9 +371,8 @@ export function riskSummaryOf(events: RiskEvent[], hasLimits: boolean, weeklyLos
 // ── GET /weekly-review ────────────────────────────────────────────────────────
 router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveScope(req, req.query.trader);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const week = resolveWeek(req.query.week);
-  if (!week) { res.status(400).json({ error: "week must be YYYY-Www or YYYY-MM-DD" }); return; }
+  if (!week) throw new AppError("INVALID_WEEK");
   await ensureTables();
 
   const { trader } = scope;
@@ -405,7 +409,7 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
       pw,
     ),
     pool.query(
-      `SELECT v.id, v.severity, v.message, v.trade_id AS "tradeId", v.occurred_at AS "occurredAt",
+      `SELECT v.id, v.severity, v.message, v.details, v.trade_id AS "tradeId", v.occurred_at AS "occurredAt",
               r.name AS "ruleName", r.kind AS "ruleKind", t.ticker, LEFT(t.date, 10) AS "tradeDate",
               ${signedRSql("t")}::float AS "tradeR", ${netPnlSql("t")}::float AS "tradeNet",
               v.archived_reason AS "archivedReason"
@@ -489,12 +493,12 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
     tradeDate: m.tradeDate ?? null, tradeR: nn(m.tradeR), tradeNet: nn(m.tradeNet), createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt ?? ""),
   }));
   const violationRows = (violations.rows as any[]).map((v) => ({
-    id: Number(v.id), severity: String(v.severity ?? "medium"), message: String(v.message ?? ""), ruleName: v.ruleName ?? null, ruleKind: v.ruleKind ?? null,
+    id: Number(v.id), severity: String(v.severity ?? "medium"), message: violationMessage(v.message, v.details, langOf(req)), ruleName: v.ruleName ?? null, ruleKind: v.ruleKind ?? null,
     ticker: v.ticker ?? null, tradeId: v.tradeId == null ? null : Number(v.tradeId), tradeDate: v.tradeDate ?? null, tradeR: nn(v.tradeR), tradeNet: nn(v.tradeNet),
     occurredAt: v.occurredAt instanceof Date ? v.occurredAt.toISOString() : String(v.occurredAt ?? ""),
     // Set only for violations of a rule disabled / deleted after the fact (past weeks) — shown with a muted badge.
     archivedReason: isArchiveReason(v.archivedReason) ? v.archivedReason : null,
-    archivedLabel: archiveReasonLabel(v.archivedReason),
+    archivedLabel: archiveReasonLabel(v.archivedReason, langOf(req)),
   }));
   /** $ and R cost = losing part of the distinct trades linked to mistakes/violations. */
   const costOf = (rows: Array<{ tradeId: number | null; tradeR: number | null; tradeNet: number | null }>) => {
@@ -533,7 +537,7 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
 
   // Risk
   const limits = limitsOf(limitsRes.rows[0]);
-  const riskEvents = riskEventsOf(daysIn(week.start, week.end), current.netPnl, trades, limits, week.end);
+  const riskEvents = riskEventsOf(daysIn(week.start, week.end), current.netPnl, trades, limits, week.end, 70, langOf(req));
   const weeklyLossPct = limits?.weeklyLossLimit && current.netPnl != null && current.netPnl < 0 ? Math.round((-current.netPnl / limits.weeklyLossLimit) * 1000) / 10 : null;
 
   const openPositions = (positions.rows as any[]).map((p) => {
@@ -582,9 +586,9 @@ router.get("/weekly-review", asyncHandler(async (req, res): Promise<void> => {
 // ── GET /weekly-review/overview (staff) ───────────────────────────────────────
 router.get("/weekly-review/overview", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
-  if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const week = resolveWeek(req.query.week);
-  if (!week) { res.status(400).json({ error: "week must be YYYY-Www or YYYY-MM-DD" }); return; }
+  if (!week) throw new AppError("INVALID_WEEK");
   await ensureTables();
 
   const ALL_BASE = `
@@ -659,7 +663,7 @@ router.get("/weekly-review/overview", asyncHandler(async (req, res): Promise<voi
     const rv = presentReview(revBy.get(name));
     const goals = rv?.goals ?? [];
     const lim = limitsBy.get(name) ?? null;
-    const events = riskEventsOf(daysBy.get(name) ?? [], k.netPnl, riskTradesBy.get(name) ?? [], lim, week.end);
+    const events = riskEventsOf(daysBy.get(name) ?? [], k.netPnl, riskTradesBy.get(name) ?? [], lim, week.end, 70, langOf(req));
     const weeklyLossPct = lim?.weeklyLossLimit && k.netPnl != null && k.netPnl < 0 ? Math.round((-k.netPnl / lim.weeklyLossLimit) * 1000) / 10 : null;
     return {
       trader: name,
@@ -744,9 +748,6 @@ const GoalsStatusBody = z.object({
   goals: z.array(z.object({ id: z.string().trim().min(1).max(40), status: z.enum(["open", "done", "partial", "missed"]) })).min(1).max(10),
 });
 
-function zodError(e: z.ZodError): string {
-  return e.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
-}
 
 async function loadReview(trader: string, week: string) {
   const { rows } = await pool.query(`SELECT ${REVIEW_COLS} FROM weekly_reviews WHERE trader = $1 AND week = $2 LIMIT 1`, [trader, week]);
@@ -757,13 +758,13 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
   const auth = req.authUser;
   if (!auth) throw unauthorized();
   const parsed = SelfBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const trader = b.trader ?? auth.name;
   // Self-assessment is personal: only the trader writes it (staff cannot fill it in on someone's behalf).
-  if (trader !== auth.name) { res.status(403).json({ error: "Самооценку пишет только сам трейдер" }); return; }
+  if (trader !== auth.name) throw new AppError("SELF_REVIEW_TRADER_ONLY");
   const bounds = weekBounds(b.week);
-  if (!bounds) { res.status(400).json({ error: "Invalid week" }); return; }
+  if (!bounds) throw new AppError("INVALID_WEEK");
   await ensureTables();
   const self = { well: b.well, badly: b.badly, focus: b.focus, lessons: b.lessons, mood: b.mood ?? null, updatedAt: new Date().toISOString() };
   const submit = b.submit === true;
@@ -785,8 +786,7 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
     inBackground("weekly-review.submit", async () => {
       await notifyUsers(await staffOrFallback(trader), {
         type: "weekly_review", actor: trader, source: "weekly-review",
-        title: `Отчёт недели ${week}: ${trader}`,
-        message: `${b.mood != null ? `Настроение ${b.mood}/5. ` : ""}${b.focus ? `Фокус: «${textPreview(b.focus, 100)}»` : "Самооценка ждёт разбора"}`,
+        params: { variant: "submitted", week, trader, mood: b.mood ?? null, focus: b.focus ? textPreview(b.focus, 100) : null },
         link: notifLinks.weeklyReview({ trader, week }), entityType: "weekly_review", entityId: `${trader}:${week}`,
       }, trader);
     });
@@ -797,12 +797,12 @@ router.put("/weekly-review/self", asyncHandler(async (req, res): Promise<void> =
 router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void> => {
   const auth = req.authUser;
   if (!auth) throw unauthorized();
-  if (!(await requireCap(req, res, "journal.review", null, "Curator or admin role required"))) return;
+  if (!(await requireCap(req, res, "journal.review", null, "STAFF_ONLY"))) return;
   const parsed = CuratorBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const bounds = weekBounds(b.week);
-  if (!bounds) { res.status(400).json({ error: "Invalid week" }); return; }
+  if (!bounds) throw new AppError("INVALID_WEEK");
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!known.length) throw notFound("TRADER_NOT_FOUND");
   await ensureTables();
@@ -838,8 +838,10 @@ router.put("/weekly-review/curator", asyncHandler(async (req, res): Promise<void
     const week = b.week;
     inBackground("weekly-review.finalize", () => notifyUser({
       userName: trader, type: "weekly_review", actor, source: "weekly-review",
-      title: `${again ? "Разбор недели обновлён" : "Разбор недели готов"} ${week}${b.score != null ? `: ${b.score}/10` : ""}`,
-      message: `${actor}${goals.length ? ` · ${goals.length} ${plural(goals.length, "цель", "цели", "целей")} на неделю` : ""}${b.comment ? ` · «${textPreview(b.comment, 120)}»` : ""}`,
+      params: {
+        variant: again ? "updated" : "ready", week, actor, score: b.score ?? null, goals: goals.length,
+        comment: b.comment ? textPreview(b.comment, 120) : null,
+      },
       link: notifLinks.weeklyReview({ trader, week }), entityType: "weekly_review", entityId: `${trader}:${week}`,
     }));
   }
@@ -850,13 +852,13 @@ router.patch("/weekly-review/goals", asyncHandler(async (req, res): Promise<void
   const auth = req.authUser;
   if (!auth) throw unauthorized();
   const parsed = GoalsStatusBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: zodError(parsed.error) }); return; }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const trader = b.trader ?? auth.name;
-  if (trader !== auth.name && !(await can(req, "journal.review", { trader }))) { res.status(403).json({ error: "Можно отмечать только свои цели" }); return; }
+  if (trader !== auth.name && !(await can(req, "journal.review", { trader }))) throw new AppError("GOALS_OWN_ONLY");
   await ensureTables();
   const existing = await loadReview(trader, b.week);
-  if (!existing) { res.status(404).json({ error: "Отчёт за эту неделю не найден" }); return; }
+  if (!existing) throw new AppError("WEEKLY_NOT_FOUND");
   const now = new Date().toISOString();
   const byId = new Map(b.goals.map((g) => [g.id, g.status]));
   let touched = 0;

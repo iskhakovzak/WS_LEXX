@@ -7,12 +7,16 @@ import { EmptyState, Pill, Segmented, TableScroll, useTableSort } from "@/compon
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RiskLimits, RiskPosition } from "./use-risk";
 import { HORIZON_LABEL, HORIZON_TONE, SortableTableHead, useStoredState } from "./primitives";
-import { fmtUsd } from "@/lib/format";
+import { rich, slots } from "@/i18n/rich";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { riskI18n } from "@/i18n/ns/risk";
+import { commonI18n } from "@/i18n/ns/common";
+import { sideLabel } from "./labels";
 
 /** Planned vs stop-implied risk disagree by >25%: show both so the curator sees which one counts. */
 function mismatchText(p: RiskPosition): string | null {
   if (!p.riskMismatch || p.plannedRiskUsd == null || p.stopRiskUsd == null) return null;
-  return `план ${fmtUsd(p.plannedRiskUsd, { decimals: 0 })} ≠ по стопу ${fmtUsd(p.stopRiskUsd, { decimals: 0 })}`;
+  return riskI18n.t("positions.mismatch", { planned: fmtUsd(p.plannedRiskUsd, { decimals: 0 }), stop: fmtUsd(p.stopRiskUsd, { decimals: 0 }) });
 }
 
 export type HorizonFilter = "all" | "carried" | "intraday" | "overnight" | "swing";
@@ -40,12 +44,13 @@ function matches(p: RiskPosition, f: HorizonFilter) {
 /** Over-limit flags for a single position. */
 function flags(p: RiskPosition, limits: RiskLimits | null | undefined): string[] {
   if (!limits) return [];
+  const t = riskI18n.t;
   const out: string[] = [];
-  if (limits.maxRiskPerTrade != null && (p.riskUsd ?? 0) > limits.maxRiskPerTrade) out.push("риск > лимита на сделку");
-  if (limits.maxPositionUsd != null && (p.exposureUsd ?? 0) > limits.maxPositionUsd) out.push("размер > лимита позиции");
-  if (!limits.allowOvernight && p.carried && p.horizon !== "swing") out.push("овернайт запрещён");
-  if (!limits.allowSwing && p.horizon === "swing") out.push("свинг запрещён");
-  if (p.riskSource === "stop" && p.stopRiskUsd === 0) out.push("стоп уже пробит");
+  if (limits.maxRiskPerTrade != null && (p.riskUsd ?? 0) > limits.maxRiskPerTrade) out.push(t("positions.flag.tradeRisk"));
+  if (limits.maxPositionUsd != null && (p.exposureUsd ?? 0) > limits.maxPositionUsd) out.push(t("positions.flag.size"));
+  if (!limits.allowOvernight && p.carried && p.horizon !== "swing") out.push(t("positions.flag.overnight"));
+  if (!limits.allowSwing && p.horizon === "swing") out.push(t("positions.flag.swing"));
+  if (p.riskSource === "stop" && p.stopRiskUsd === 0) out.push(t("positions.flag.stopHit"));
   return out;
 }
 
@@ -67,6 +72,8 @@ export function PositionsTable({
   compact?: boolean;
 }) {
   const [filter, setFilter] = useStoredState<HorizonFilter>(storageKey, defaultFilter, FILTERS);
+  const { t } = riskI18n.useT();
+  const c = commonI18n.t;
 
   const counts = React.useMemo(() => {
     const c: Record<HorizonFilter, number> = { all: 0, carried: 0, intraday: 0, overnight: 0, swing: 0 };
@@ -97,22 +104,22 @@ export function PositionsTable({
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <Segmented
-          ariaLabel="Фильтр по горизонту"
+          ariaLabel={t("positions.filterAria")}
           size="sm"
           value={filter}
           onChange={setFilter}
           options={[
-            { value: "all", label: "Все", count: counts.all },
-            { value: "carried", label: "Перенос", count: counts.carried },
-            { value: "intraday", label: "Интрадей", count: counts.intraday },
-            { value: "overnight", label: "Овернайт", count: counts.overnight },
-            { value: "swing", label: "Свинг", count: counts.swing },
+            { value: "all", label: c("states.all"), count: counts.all },
+            { value: "carried", label: t("positions.carried"), count: counts.carried },
+            { value: "intraday", label: c("trading.intraday"), count: counts.intraday },
+            { value: "overnight", label: c("trading.overnight"), count: counts.overnight },
+            { value: "swing", label: c("trading.swing"), count: counts.swing },
           ]}
         />
         {rows.length > 0 && (
           <div className="flex gap-3 text-xs text-muted-foreground tabular-nums">
-            <span>Риск <span className="font-medium text-foreground">{fmtUsd(totalRisk, { decimals: 0, compact: 10_000 })}</span></span>
-            <span>Экспозиция <span className="font-medium text-foreground">{fmtUsd(totalExp, { decimals: 0, compact: 10_000 })}</span></span>
+            <span>{rich(t("positions.totalRisk", slots("amount")), { amount: <span className="font-medium text-foreground">{fmtUsd(totalRisk, { decimals: 0, compact: 10_000 })}</span> })}</span>
+            <span>{rich(t("positions.totalExposure", slots("amount")), { amount: <span className="font-medium text-foreground">{fmtUsd(totalExp, { decimals: 0, compact: 10_000 })}</span> })}</span>
           </div>
         )}
       </div>
@@ -120,12 +127,8 @@ export function PositionsTable({
       {rows.length === 0 ? (
         <EmptyState
           icon={filter === "carried" || filter === "overnight" ? Moon : Briefcase}
-          title={positions.length === 0 ? "Открытых позиций нет" : "Нет позиций с этим горизонтом"}
-          description={
-            positions.length === 0
-              ? "Сделки со статусом «open» появятся здесь с риском, экспозицией и сроком удержания."
-              : "Смените фильтр, чтобы увидеть остальные позиции."
-          }
+          title={positions.length === 0 ? t("positions.emptyTitle") : t("positions.emptyFilterTitle")}
+          description={positions.length === 0 ? t("positions.emptyDesc") : t("positions.emptyFilterDesc")}
           className={compact ? "py-8" : undefined}
         />
       ) : (
@@ -140,15 +143,16 @@ export function PositionsTable({
                     <div className="flex min-w-0 items-center gap-2">
                       <Link href={links.trade(p.id)} className="font-semibold hover:text-primary">{p.ticker}</Link>
                       <Pill tone={HORIZON_TONE[p.horizon]}>{HORIZON_LABEL[p.horizon]}</Pill>
-                      {p.noStatus && <Pill tone="warn">без статуса</Pill>}
+                      {p.noStatus && <Pill tone="warn">{t("positions.noStatus")}</Pill>}
                       {f.length > 0 && <AlertTriangle className="h-4 w-4 text-down" aria-label={f.join(", ")} />}
                     </div>
-                    <span className="text-xs text-muted-foreground tabular-nums">{p.daysHeld} дн.</span>
+                    <span className="text-xs text-muted-foreground tabular-nums">{c("time.daysShort", { count: p.daysHeld })}</span>
                   </div>
+                  {f.length > 0 && <p className="mt-1 text-xs text-down">{f.join(" · ")}</p>}
                   <div className="mt-2 grid grid-cols-3 gap-2 text-xs tabular-nums">
-                    <div><div className="text-muted-foreground">Риск</div><div className="font-medium">{fmtUsd(p.riskUsd, { decimals: 0 })}</div></div>
-                    <div><div className="text-muted-foreground">Экспозиция</div><div className="font-medium">{fmtUsd(p.exposureUsd, { decimals: 0, compact: 10_000 })}</div></div>
-                    <div><div className="text-muted-foreground">{showTrader ? "Трейдер" : "Сторона"}</div><div className="truncate font-medium">{showTrader ? traderCell(p.trader) : (p.side ?? "—")}</div></div>
+                    <div><div className="text-muted-foreground">{t("positions.risk")}</div><div className="font-medium">{fmtUsd(p.riskUsd, { decimals: 0 })}</div></div>
+                    <div><div className="text-muted-foreground">{t("positions.exposure")}</div><div className="font-medium">{fmtUsd(p.exposureUsd, { decimals: 0, compact: 10_000 })}</div></div>
+                    <div><div className="text-muted-foreground">{showTrader ? c("fields.trader") : c("trading.side")}</div><div className="truncate font-medium">{showTrader ? traderCell(p.trader) : sideLabel(p.side)}</div></div>
                   </div>
                 </li>
               );
@@ -160,16 +164,16 @@ export function PositionsTable({
             <Table>
               <TableHeader className="sticky top-0">
                 <TableRow>
-                  {sortHead("ticker", "Тикер")}
-                  {showTrader && sortHead("trader", "Трейдер")}
-                  {sortHead("horizon", "Горизонт")}
-                  {sortHead("side", "Сторона")}
-                  {sortHead("qty", "Кол-во", "right")}
-                  <TableHead className="text-right">Вход / стоп</TableHead>
-                  {sortHead("days", "В позиции", "right")}
-                  {sortHead("risk", "$ риска", "right")}
-                  {sortHead("exposure", "Экспозиция", "right")}
-                  <TableHead className="w-10"><span className="sr-only">Действия</span></TableHead>
+                  {sortHead("ticker", c("trading.ticker"))}
+                  {showTrader && sortHead("trader", c("fields.trader"))}
+                  {sortHead("horizon", c("trading.horizon"))}
+                  {sortHead("side", c("trading.side"))}
+                  {sortHead("qty", t("positions.qty"), "right")}
+                  <TableHead className="whitespace-nowrap text-right">{t("positions.entryStop")}</TableHead>
+                  {sortHead("days", t("positions.held"), "right")}
+                  {sortHead("risk", t("positions.riskUsd"), "right")}
+                  {sortHead("exposure", t("positions.exposure"), "right")}
+                  <TableHead className="w-10"><span className="sr-only">{t("positions.actions")}</span></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -181,7 +185,7 @@ export function PositionsTable({
                         <div className="flex items-center gap-1.5">
                           <Link href={links.trade(p.id)} className="font-semibold hover:text-primary">{p.ticker}</Link>
                           {p.noStatus && (
-                            <span title="У сделки нет статуса — считаем открытой" className="inline-flex"><Pill tone="warn">без статуса</Pill></span>
+                            <span title={t("positions.noStatusTitle")} className="inline-flex"><Pill tone="warn">{t("positions.noStatus")}</Pill></span>
                           )}
                           {f.length > 0 && (
                             <span title={f.join(", ")} className="inline-flex">
@@ -189,29 +193,30 @@ export function PositionsTable({
                             </span>
                           )}
                         </div>
+                        {f.length > 0 && <div className="max-w-[240px] text-2xs font-medium text-down">{f.join(" · ")}</div>}
                         {p.setup && <div className="max-w-[220px] truncate text-xs text-muted-foreground" title={p.setup}>{p.setup}</div>}
                       </TableCell>
                       {showTrader && <TableCell>{traderCell(p.trader)}</TableCell>}
                       <TableCell>
                         <Pill tone={HORIZON_TONE[p.horizon]}>{HORIZON_LABEL[p.horizon]}</Pill>
-                        {p.horizon === "intraday" && p.daysHeld > 0 && <Pill tone="warn" className="ml-1">не закрыта</Pill>}
+                        {p.horizon === "intraday" && p.daysHeld > 0 && <Pill tone="warn" className="ml-1">{t("positions.notClosed")}</Pill>}
                       </TableCell>
-                      <TableCell className="text-sm">{p.side ?? "—"}</TableCell>
+                      <TableCell className="text-sm">{sideLabel(p.side)}</TableCell>
                       <TableCell className="text-right tabular-nums">{p.qty ?? "—"}</TableCell>
                       <TableCell className="text-right text-sm tabular-nums">
                         {p.entry ?? "—"} <span className="text-muted-foreground">/ {p.stop ?? "—"}</span>
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
-                        {p.daysHeld === 0 ? <span className="text-muted-foreground">сегодня</span> : `${p.daysHeld} дн.`}
+                        {p.daysHeld === 0 ? <span className="text-muted-foreground">{t("day.today")}</span> : c("time.daysShort", { count: p.daysHeld })}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
                         <span className={cn("font-medium", p.riskMismatch && "text-warn")}>{fmtUsd(p.riskUsd, { decimals: 0 })}</span>
                         {p.riskMismatch ? (
-                          <div className="text-2xs text-warn" title="Плановый риск и риск по стопу расходятся больше чем на 25% — берём по стопу">{mismatchText(p)}</div>
+                          <div className="text-2xs text-warn" title={t("positions.mismatchTitle")}>{mismatchText(p)}</div>
                         ) : (
                           <>
-                            {p.riskSource === "stop" && <div className="text-2xs text-muted-foreground">по стопу</div>}
-                            {p.riskUsd == null && <div className="text-2xs text-muted-foreground">нет стопа/кол-ва</div>}
+                            {p.riskSource === "stop" && <div className="text-2xs text-muted-foreground">{t("positions.byStop")}</div>}
+                            {p.riskUsd == null && <div className="text-2xs text-muted-foreground">{t("positions.noStopQty")}</div>}
                           </>
                         )}
                       </TableCell>
@@ -219,8 +224,8 @@ export function PositionsTable({
                       <TableCell>
                         <Link
                           href={links.journalDay(p.date, p.trader)}
-                          aria-label={`Журнал ${p.trader} за ${p.date}`}
-                          title={`Журнал за ${p.date}`}
+                          aria-label={t("positions.journalAria", { trader: p.trader, date: fmtDate(p.date.slice(0, 10), "dayMonthNumeric") })}
+                          title={t("positions.journalTitle", { date: fmtDate(p.date.slice(0, 10), "dayMonthNumeric") })}
                           className="inline-flex rounded-full p-1 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >
                           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />

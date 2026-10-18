@@ -9,7 +9,10 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { HORIZON_LABEL, isTypingTarget } from "@/components/journal/utils";
-import { fmtDate, fmtR, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { eodI18n } from "@/i18n/ns/eod";
+import { commonI18n } from "@/i18n/ns/common";
+import { tagLabel } from "@/components/shared/trade-labels";
 import {
   GRADES, MISTAKE_TAGS, emptySummary, eodApi, gradeTone, splitMissing, useBrokerDaily, useEodDay,
   useEodMutation, usePlaybookNames, type EodDayPayload, type EodPosition, type EodSummary, type EodTrade, type Grade,
@@ -26,6 +29,7 @@ type Step = "trades" | "positions";
  */
 export function EodFlow({ trader, date, onExit }: { trader: string; date: string; today?: string; onExit: () => void }) {
   const { toast } = useToast();
+  const { t } = eodI18n.useT();
   const dayQ = useEodDay(trader, date);
   const brokerQ = useBrokerDaily(trader, date);
   const data = dayQ.data ?? null;
@@ -55,7 +59,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
     dirty.current = false;
     saveDay.mutate(
       { discipline: data.day?.discipline ?? null, summary: { ...emptySummary(), ...(data.day?.summary ?? {}), positions: positionsDraft } },
-      { onError: (e) => toast({ title: "Не удалось сохранить позиции", description: (e as Error).message, variant: "destructive" }) },
+      { onError: (e) => toast({ title: eodI18n.t("flow.positionsSaveFailed"), description: (e as Error).message, variant: "destructive" }) },
     );
   }, [closed, data, positionsDraft, saveDay, toast]);
   const flushRef = useRef(flush);
@@ -70,9 +74,9 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   const exit = () => { flush(); onExit(); };
 
   const header = (
-    <span className="inline-flex items-center gap-2"><ListChecks className="h-4 w-4" aria-hidden="true" />Разбор по сделкам · {fmtDate(date, "long")}</span>
+    <span className="inline-flex items-center gap-2"><ListChecks className="h-4 w-4" aria-hidden="true" />{t("flow.header", { date: fmtDate(date, "long") })}</span>
   );
-  const exitBtn = <Button variant="ghost" size="sm" onClick={exit}><X aria-hidden="true" />К дневнику</Button>;
+  const exitBtn = <Button variant="ghost" size="sm" onClick={exit}><X aria-hidden="true" />{t("flow.toJournal")}</Button>;
 
   if (dayQ.isLoading) {
     return (
@@ -84,7 +88,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   if (dayQ.isError || !data) {
     return (
       <Panel title={header} actions={exitBtn}>
-        <p className="text-sm text-muted-foreground">{dayQ.isError ? (dayQ.error as Error).message : "Разбор по сделкам появится после обновления сервера."}</p>
+        <p className="text-sm text-muted-foreground">{dayQ.isError ? (dayQ.error as Error).message : t("flow.afterUpdate")}</p>
       </Panel>
     );
   }
@@ -92,8 +96,8 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   if (closed) {
     return (
       <Panel
-        title={<span className="inline-flex items-center gap-2"><Lock className="h-4 w-4 text-up" aria-hidden="true" />День {fmtDate(date, "long")} закрыт</span>}
-        description={data.day?.reviewedAt ? `Проверен куратором ${data.day.reviewedBy}` : "Ожидает проверки куратором. Открыть заново можно в «Дневнике дня»."}
+        title={<span className="inline-flex items-center gap-2"><Lock className="h-4 w-4 text-up" aria-hidden="true" />{t("flow.dayClosed", { date: fmtDate(date, "long") })}</span>}
+        description={data.day?.reviewedAt ? t("flow.reviewedBy", { name: data.day.reviewedBy ?? "—" }) : t("flow.awaitingReview")}
         actions={exitBtn}
       >
         <EodDayReadOnly data={data} broker={brokerQ.data ?? null} />
@@ -108,25 +112,25 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
   return (
     <Panel
       title={header}
-      description={`Сетап и грейд — по желанию, для статистики по сетапам. Размечено ${tagged} из ${data.trades.length}.`}
+      description={t("flow.desc", { tagged, total: data.trades.length })}
       actions={exitBtn}
     >
       <div className="space-y-4">
         {positions.length > 0 && (
           <Segmented<Step>
             size="sm"
-            ariaLabel="Раздел разбора"
+            ariaLabel={t("flow.sectionAria")}
             value={step}
             onChange={(s) => { flush(); setStep(s); }}
             options={[
-              { value: "trades", label: "Сделки", count: data.trades.length },
-              { value: "positions", label: "Позиции на ночь", count: positions.length },
+              { value: "trades", label: commonI18n.t("trading.trades"), count: data.trades.length },
+              { value: "positions", label: t("flow.overnight"), count: positions.length },
             ]}
           />
         )}
         {blocking.length > 0 && (
           <p className="rounded-xl bg-warn/10 px-3 py-2 text-xs">
-            Чтобы закрыть день, у {blocking.length} {pluralRu(blocking.length, "сделки", "сделок", "сделок")} нужны сетап и грейд: {blocking.map((m) => m.ticker).join(", ")}.
+            {t("flow.blocking", { count: blocking.length, tickers: blocking.map((m) => m.ticker).join(", ") })}
           </p>
         )}
         {step === "trades" ? (
@@ -135,8 +139,8 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
           <PositionsStep positions={positions} date={date} values={positionsDraft} onChange={changePositions} />
         )}
         <div className="flex items-center justify-end gap-2 border-t border-[var(--glass-border)] pt-3">
-          {saveDay.isPending && <span className="text-2xs text-muted-foreground">сохраняю…</span>}
-          <Button size="sm" onClick={exit}><CheckCircle2 aria-hidden="true" />Готово — к дневнику</Button>
+          {saveDay.isPending && <span className="text-2xs text-muted-foreground">{t("flow.saving")}</span>}
+          <Button size="sm" onClick={exit}><CheckCircle2 aria-hidden="true" />{t("flow.done")}</Button>
         </div>
       </div>
     </Panel>
@@ -147,6 +151,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
 
 function TradeReviewStep({ data, missing, onDone }: { data: EodDayPayload; missing: MissingItem[]; onDone: () => void }) {
   const { toast } = useToast();
+  const { t: te } = eodI18n.useT();
   const playbook = usePlaybookNames();
   const trades = data.trades;
   const [cursor, setCursor] = useState(0);
@@ -166,31 +171,31 @@ function TradeReviewStep({ data, missing, onDone }: { data: EodDayPayload; missi
   const setGrade = useCallback((t: EodTrade, g: Grade) => {
     if (t.confidenceGrade === g) return;
     setEdit(t.id, { confidenceGrade: g });
-    patch.mutate({ id: t.id, body: { confidenceGrade: g } }, { onError: onErr("Грейд не сохранён") });
+    patch.mutate({ id: t.id, body: { confidenceGrade: g } }, { onError: onErr(eodI18n.t("flow.gradeFailed")) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patch]);
   const setSetup = useCallback((t: EodTrade, setup: string) => {
     const v = setup.trim();
     if ((t.setup ?? "") === v) return;
     setEdit(t.id, { setup: v || null });
-    patch.mutate({ id: t.id, body: { setup: v || null } }, { onError: onErr("Сетап не сохранён") });
+    patch.mutate({ id: t.id, body: { setup: v || null } }, { onError: onErr(eodI18n.t("flow.setupFailed")) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patch]);
   const setFollowed = useCallback((t: EodTrade, v: boolean | null) => {
     setEdit(t.id, { followedPlan: v });
-    review.mutate({ id: t.id, body: { followedPlan: v } }, { onError: onErr("Отметка «по плану» не сохранена") });
+    review.mutate({ id: t.id, body: { followedPlan: v } }, { onError: onErr(eodI18n.t("flow.planFailed")) });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [review]);
   const setMistakes = (t: EodTrade, mistakes: string[]) => {
     setEdit(t.id, { mistakes });
-    review.mutate({ id: t.id, body: { mistakes } }, { onError: onErr("Ошибки не сохранены") });
+    review.mutate({ id: t.id, body: { mistakes } }, { onError: onErr(eodI18n.t("flow.mistakesFailed")) });
   };
   const lessonTimers = useRef<Map<number, ReturnType<typeof setTimeout>>>(new Map());
   const setLesson = (t: EodTrade, lesson: string, immediate = false) => {
     setEdit(t.id, { lesson });
     const prev = lessonTimers.current.get(t.id);
     if (prev) clearTimeout(prev);
-    const fire = () => review.mutate({ id: t.id, body: { lesson } }, { onError: onErr("Урок не сохранён") });
+    const fire = () => review.mutate({ id: t.id, body: { lesson } }, { onError: onErr(eodI18n.t("flow.lessonFailed")) });
     if (immediate) fire();
     else lessonTimers.current.set(t.id, setTimeout(fire, 800));
   };
@@ -217,10 +222,13 @@ function TradeReviewStep({ data, missing, onDone }: { data: EodDayPayload; missi
       }
       if (typing) return;
       const k = e.key.toLowerCase();
-      if (k === "j" || k === "о" || e.key === "ArrowDown") { e.preventDefault(); move(1); }
-      else if (k === "k" || k === "л" || e.key === "ArrowUp") { e.preventDefault(); move(-1); }
+      if (k === "j" || k === "о" || e.key === "ArrowDown") // i18n-ignore (Russian layout key)
+        { e.preventDefault(); move(1); }
+      else if (k === "k" || k === "л" || e.key === "ArrowUp") // i18n-ignore (Russian layout key)
+        { e.preventDefault(); move(-1); }
       else if (t && ["1", "2", "3", "4"].includes(e.key)) { e.preventDefault(); setGrade(t, GRADES[Number(e.key) - 1]); }
-      else if (t && (k === "p" || k === "з")) { e.preventDefault(); setFollowed(t, t.followedPlan === true ? false : t.followedPlan === false ? null : true); }
+      else if (t && (k === "p" || k === "з")) // i18n-ignore (Russian layout key)
+        { e.preventDefault(); setFollowed(t, t.followedPlan === true ? false : t.followedPlan === false ? null : true); }
       else if (e.key === "Enter") { e.preventDefault(); if (cursor >= merged.length - 1) onDone(); else move(1); }
     };
     window.addEventListener("keydown", onKey);
@@ -231,7 +239,7 @@ function TradeReviewStep({ data, missing, onDone }: { data: EodDayPayload; missi
   const missingIds = new Set(missing.map((m) => m.tradeId));
 
   if (trades.length === 0) {
-    return <p className="text-sm text-muted-foreground">Сделок за день нет.</p>;
+    return <p className="text-sm text-muted-foreground">{te("flow.noTrades")}</p>;
   }
 
   return (
@@ -239,9 +247,9 @@ function TradeReviewStep({ data, missing, onDone }: { data: EodDayPayload; missi
       <div className="flex items-center justify-end gap-3 text-xs text-muted-foreground">
         <span
           className="inline-flex items-center gap-1"
-          title="J / K — следующая / предыдущая · 1–4 — грейд A+ A B C · P — по плану да / нет · Enter — дальше"
+          title={te("flow.keysTitle")}
         >
-          <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />клавиши
+          <Keyboard className="h-3.5 w-3.5" aria-hidden="true" />{te("flow.keys")}
         </span>
         <span className="tabular-nums">{cursor + 1} / {trades.length}</span>
       </div>
@@ -274,6 +282,8 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
   onFocus: () => void; onGrade: (g: Grade) => void; onSetup: (s: string) => void;
   onFollowed: (v: boolean | null) => void; onMistakes: (m: string[]) => void; onLesson: (l: string, immediate?: boolean) => void;
 }>(function TradeReviewRow({ t, active, flagged, onFocus, onGrade, onSetup, onFollowed, onMistakes, onLesson }, ref) {
+  const { t: te } = eodI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [setupText, setSetupText] = useState(t.setup ?? "");
   useEffect(() => { setSetupText(t.setup ?? ""); }, [t.setup]);
   const isShort = (t.side ?? "").toLowerCase().startsWith("s");
@@ -294,24 +304,24 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
         <span className="text-sm font-semibold">{t.ticker}</span>
         {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
         {t.horizonEff !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>}
-        {t.onPlan && <Pill tone="accent">в плане</Pill>}
-        {!t.enteredToday && <Pill>с {fmtDate(t.date, "dayMonth")}</Pill>}
-        {complete ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />размечена</Pill> : flagged ? <Pill tone="warn">нужны сетап и грейд</Pill> : null}
+        {t.onPlan && <Pill tone="accent">{te("flow.inPlan")}</Pill>}
+        {!t.enteredToday && <Pill>{te("flow.since", { date: fmtDate(t.date, "dayMonth") })}</Pill>}
+        {complete ? <Pill tone="up"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />{te("flow.tagged")}</Pill> : flagged ? <Pill tone="warn">{te("flow.needsSetup")}</Pill> : null}
         <span className="ml-auto flex items-center gap-2 tabular-nums">
           <span className="text-muted-foreground">{t.entry ?? "—"} → {t.exit ?? "…"}</span>
           {t.net != null ? (
             <span className={cn("text-sm font-semibold", toneText(toneOf(t.net)))}>{fmtUsd(t.net, { signed: true, decimals: "auto" })}</span>
           ) : (
-            <span className="text-muted-foreground">{t.resultNorm === "open" ? "открыта" : "—"}</span>
+            <span className="text-muted-foreground">{t.resultNorm === "open" ? te("flow.open") : "—"}</span>
           )}
           {t.r != null && <span className={toneText(toneOf(t.r))}>{fmtR(t.r, 1)}</span>}
-          <Link href={links.trade(t.id)} className="text-primary hover:underline">сделка</Link>
+          <Link href={links.trade(t.id)} className="text-primary hover:underline">{te("flow.trade")}</Link>
         </span>
       </div>
 
       <div className="mt-2 grid gap-2 md:grid-cols-[minmax(0,1fr)_auto_auto]">
         <div className="space-y-1">
-          <label htmlFor={`${id}-setup`} className="text-2xs text-muted-foreground">Сетап (из плейбука или свой)</label>
+          <label htmlFor={`${id}-setup`} className="text-2xs text-muted-foreground">{te("flow.setupLabel")}</label>
           <Input
             id={`${id}-setup`}
             list="eod-setup-names"
@@ -324,14 +334,14 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
           />
         </div>
         <div className="space-y-1">
-          <span className="text-2xs text-muted-foreground" id={`${id}-grade`}>Грейд</span>
+          <span className="text-2xs text-muted-foreground" id={`${id}-grade`}>{te("flow.grade")}</span>
           <div role="group" aria-labelledby={`${id}-grade`} className="glass-field flex items-center gap-0.5 p-1">
             {GRADES.map((g, i) => (
               <button
                 key={g}
                 type="button"
                 aria-pressed={t.confidenceGrade === g}
-                title={`клавиша ${i + 1}`}
+                title={te("flow.gradeKey", { n: i + 1 })}
                 onClick={() => onGrade(g)}
                 className={cn(
                   "min-h-7 min-w-9 rounded-full px-2 text-xs font-semibold transition-colors",
@@ -346,9 +356,9 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
           </div>
         </div>
         <div className="space-y-1">
-          <span className="text-2xs text-muted-foreground" id={`${id}-plan`}>По плану (P)</span>
+          <span className="text-2xs text-muted-foreground" id={`${id}-plan`}>{te("flow.onPlan")}</span>
           <div role="group" aria-labelledby={`${id}-plan`} className="flex gap-1">
-            {([[true, "Да"], [false, "Нет"]] as const).map(([v, l]) => (
+            {([[true, tc("yes")], [false, tc("no")]] as const).map(([v, l]) => (
               <button
                 key={l}
                 type="button"
@@ -374,17 +384,17 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
               onClick={() => onMistakes(on ? t.mistakes.filter((x) => x !== m) : [...t.mistakes, m])}
               className={cn("chip min-h-6 px-2 text-2xs font-medium", on && "!border-transparent !bg-down/15 !text-down")}
             >
-              {m}
+              {tagLabel(m)}
             </button>
           );
         })}
       </div>
       <Input
-        aria-label="Урок одной строкой"
+        aria-label={te("flow.lessonAria")}
         data-eod-lesson="1"
         value={t.lesson}
         maxLength={2000}
-        placeholder="Урок одной строкой… (Enter — к следующей сделке)"
+        placeholder={te("flow.lessonPlaceholder")}
         onChange={(e) => onLesson(e.target.value)}
         onBlur={(e) => onLesson(e.target.value, true)}
         className="mt-2 h-8 text-sm"
@@ -396,8 +406,10 @@ const TradeReviewRow = forwardRef<HTMLLIElement, {
 // ── Step 3: overnight / swing positions ───────────────────────────────────────
 
 function PositionsStep({ positions, date, values, onChange }: { positions: EodTrade[]; date: string; values: EodPosition[]; onChange: (v: EodPosition[]) => void }) {
+  const { t: te } = eodI18n.useT();
+  const { t: tc } = commonI18n.useT();
   if (positions.length === 0) {
-    return <p className="flex items-center gap-2 text-sm text-muted-foreground"><Moon className="h-4 w-4" aria-hidden="true" />На ночь ничего не остаётся — все позиции закрыты.</p>;
+    return <p className="flex items-center gap-2 text-sm text-muted-foreground"><Moon className="h-4 w-4" aria-hidden="true" />{te("flow.nothingOvernight")}</p>;
   }
   const get = (id: number): EodPosition => values.find((p) => p.tradeId === id) ?? { tradeId: id, thesisValid: null, stop: null, target: null, gapNote: "" };
   const set = (id: number, patch: Partial<EodPosition>) => {
@@ -407,7 +419,7 @@ function PositionsStep({ positions, date, values, onChange }: { positions: EodTr
   const num = (s: string): number | null => { const v = Number(s.replace(",", ".")); return s.trim() === "" || !Number.isFinite(v) ? null : v; };
   return (
     <div className="space-y-2">
-      <p className="text-xs text-muted-foreground">Для каждой позиции: тезис ещё в силе? Стоп и цель на завтра, риск гэпа.</p>
+      <p className="text-xs text-muted-foreground">{te("flow.positionsHint")}</p>
       <ul className="space-y-2">
         {positions.map((t) => {
           const p = get(t.id);
@@ -418,14 +430,16 @@ function PositionsStep({ positions, date, values, onChange }: { positions: EodTr
                 <span className="text-sm font-semibold">{t.ticker}</span>
                 {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
                 <Pill tone="purple">{HORIZON_LABEL[t.horizonEff]}</Pill>
-                {t.date !== date && <Pill>с {fmtDate(t.date, "dayMonth")}</Pill>}
-                <span className="ml-auto tabular-nums text-muted-foreground">вход {t.entry ?? "—"} · стоп {t.stop ?? "—"}{t.qty != null ? ` · ${t.qty} шт` : ""}</span>
+                {t.date !== date && <Pill>{te("flow.since", { date: fmtDate(t.date, "dayMonth") })}</Pill>}
+                <span className="ml-auto tabular-nums text-muted-foreground">
+                  {t.qty != null ? te("flow.positionMetaQty", { entry: t.entry ?? "—", stop: t.stop ?? "—", qty: t.qty }) : te("flow.positionMeta", { entry: t.entry ?? "—", stop: t.stop ?? "—" })}
+                </span>
               </div>
               <div className="mt-2 grid gap-2 sm:grid-cols-[auto_1fr_1fr_2fr]">
                 <div className="space-y-1">
-                  <span className="text-2xs text-muted-foreground">Тезис в силе?</span>
+                  <span className="text-2xs text-muted-foreground">{te("flow.thesisValid")}</span>
                   <div className="flex gap-1">
-                    {([[true, "Да"], [false, "Нет"]] as const).map(([v, l]) => (
+                    {([[true, tc("yes")], [false, tc("no")]] as const).map(([v, l]) => (
                       <button key={l} type="button" aria-pressed={p.thesisValid === v} onClick={() => set(t.id, { thesisValid: p.thesisValid === v ? null : v })}
                         className={cn("chip min-h-8 px-3 text-xs font-medium", p.thesisValid === v && (v ? "!bg-up/15 !text-up" : "!bg-down/15 !text-down"))}>
                         {l}
@@ -433,14 +447,14 @@ function PositionsStep({ positions, date, values, onChange }: { positions: EodTr
                     ))}
                   </div>
                 </div>
-                <label className="space-y-1 text-2xs text-muted-foreground">Стоп на завтра
+                <label className="space-y-1 text-2xs text-muted-foreground">{te("flow.stopTomorrow")}
                   <Input inputMode="decimal" value={p.stop ?? ""} placeholder={t.stop != null ? String(t.stop) : "—"} onChange={(e) => set(t.id, { stop: num(e.target.value) })} className="h-8 text-sm" />
                 </label>
-                <label className="space-y-1 text-2xs text-muted-foreground">Цель
+                <label className="space-y-1 text-2xs text-muted-foreground">{te("flow.target")}
                   <Input inputMode="decimal" value={p.target ?? ""} placeholder="—" onChange={(e) => set(t.id, { target: num(e.target.value) })} className="h-8 text-sm" />
                 </label>
-                <label className="space-y-1 text-2xs text-muted-foreground">Гэп-риск / новости
-                  <Input value={p.gapNote} maxLength={500} placeholder="отчёт до открытия, лок-ап, …" onChange={(e) => set(t.id, { gapNote: e.target.value })} className="h-8 text-sm" />
+                <label className="space-y-1 text-2xs text-muted-foreground">{te("flow.gapRisk")}
+                  <Input value={p.gapNote} maxLength={500} placeholder={te("flow.gapPlaceholder")} onChange={(e) => set(t.id, { gapNote: e.target.value })} className="h-8 text-sm" />
                 </label>
               </div>
             </li>

@@ -1,33 +1,35 @@
 import type { Tone } from "@/components/ds";
 import type { NextActionKind, Phase, QueueKind, TraderSignal } from "./api";
 import { matchesAny } from "@workspace/text-search";
+import { localeTag } from "@/lib/format";
+import { curatorI18n } from "@/i18n/ns/curator";
+
+/** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
+export function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
+  const o = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(o, k, { get: () => label(k), enumerable: true });
+  return o;
+}
 
 /** «2 ч», «1 д 4 ч» — waiting time in the queue. */
 export function waitLabel(hours: number | null | undefined): string {
   if (hours == null) return "—";
-  if (hours < 1) return "<1 ч";
-  if (hours < 24) return `${Math.round(hours)} ч`;
+  const t = curatorI18n.t;
+  if (hours < 1) return t("wait.lessHour");
+  if (hours < 24) return t("wait.hours", { h: Math.round(hours) });
   const d = Math.floor(hours / 24);
   const h = Math.round(hours - d * 24);
-  return h ? `${d} д ${h} ч` : `${d} д`;
+  return h ? t("wait.daysHours", { d, h }) : t("wait.days", { d });
 }
 
-export const PHASE_LABEL: Record<Phase, string> = {
-  premarket: "Премаркет",
-  session: "Сессия",
-  afterclose: "После закрытия",
-  weekend: "Выходной",
-};
+const PHASES: readonly Phase[] = ["premarket", "session", "afterclose", "weekend"];
+export const PHASE_LABEL: Record<Phase, string> = liveLabels(PHASES, (p) => curatorI18n.t(`phase.${p}`));
 
 /** What the curator should be doing in this phase (one line under the header). */
-export const PHASE_HINT: Record<Phase, string> = {
-  premarket: "Проверьте планы на день, стопы и тех, кто вчера не закрыл день",
-  session: "Следите за теми, кто близко к стопу; остановленным — связаться",
-  afterclose: "Разберите закрытые дни и нарушения, напомните, кто не закрыл день",
-  weekend: "Недельные отчёты, 1:1 и цели на следующую неделю",
-};
+export const PHASE_HINT: Record<Phase, string> = liveLabels(PHASES, (p) => curatorI18n.t(`phaseHint.${p}`));
 
-export const QUEUE_LABEL: Record<QueueKind, string> = { eod: "День", weekly: "Неделя", academy: "Академия", breach: "Нарушение" };
+const QUEUE_KINDS: readonly QueueKind[] = ["eod", "weekly", "academy", "breach"];
+export const QUEUE_LABEL: Record<QueueKind, string> = liveLabels(QUEUE_KINDS, (k) => curatorI18n.t(`queue.${k}`));
 export const QUEUE_TONE: Record<QueueKind, Tone> = { eod: "accent", weekly: "purple", academy: "neutral", breach: "down" };
 
 export function riskTone(state: string): Tone {
@@ -64,7 +66,7 @@ export type TraderSort = "attention" | "name" | "pnl" | "discipline";
 /** Attention first: priority of the next action, then the worst limit usage, then name. */
 export function sortTraders(list: readonly TraderSignal[], by: TraderSort): TraderSignal[] {
   const arr = [...list];
-  const name = (a: TraderSignal, b: TraderSignal) => a.trader.localeCompare(b.trader, "ru");
+  const name = (a: TraderSignal, b: TraderSignal) => a.trader.localeCompare(b.trader, localeTag());
   if (by === "name") return arr.sort(name);
   if (by === "pnl") return arr.sort((a, b) => (a.risk.weekPnl ?? 0) - (b.risk.weekPnl ?? 0) || name(a, b));
   if (by === "discipline") return arr.sort((a, b) => (a.discipline.value ?? 99) - (b.discipline.value ?? 99) || name(a, b));
@@ -79,7 +81,8 @@ export function matchesQuery(s: TraderSignal, q: string): boolean {
   return matchesAny(q, s.trader, s.nameLatin);
 }
 
-export const NOTE_KIND_LABEL = { note: "Заметка", call: "Разговор", concern: "Тревога", praise: "Успех" } as const;
+const NOTE_KINDS = ["note", "call", "concern", "praise"] as const;
+export const NOTE_KIND_LABEL: Record<(typeof NOTE_KINDS)[number], string> = liveLabels(NOTE_KINDS, (k) => curatorI18n.t(`noteKind.${k}`));
 export const NOTE_KIND_TONE: Record<keyof typeof NOTE_KIND_LABEL, Tone> = { note: "neutral", call: "accent", concern: "warn", praise: "up" };
 
 /** Profile deep link inside the cabinet. */

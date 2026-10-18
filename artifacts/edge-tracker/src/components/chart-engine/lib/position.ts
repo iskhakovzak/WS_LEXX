@@ -8,8 +8,16 @@
 import type { Candle, ExcursionResult, Execution, ExecutionKind, Fill, PositionPoint, PositionState, Side, StructureLeg, TradeLike } from "../types";
 import { barIndexForTime, etParts, isoToEpoch } from "./time";
 import { fillLabelOf, roleFromKind, roleOf } from "./structure";
+import { chartI18n } from "@/i18n/ns/chart";
 
-export const KIND_LABEL: Record<ExecutionKind, string> = { entry: "Вход", add: "Добор", trim: "Частичный фикс", exit: "Выход", stop: "Стоп" };
+/** Stored execution kinds in the UI language (getters). */
+export const KIND_LABEL: Readonly<Record<ExecutionKind, string>> = {
+  get entry() { return chartI18n.t("kind.entry"); },
+  get add() { return chartI18n.t("kind.add"); },
+  get trim() { return chartI18n.t("kind.trim"); },
+  get exit() { return chartI18n.t("kind.exit"); },
+  get stop() { return chartI18n.t("kind.stop"); },
+};
 
 export function sideOf(trade: Pick<TradeLike, "side">): Side {
   return (trade.side || "").toLowerCase().includes("short") ? "short" : "long";

@@ -12,6 +12,8 @@ import type { RiskAlertRecord, RiskLimits } from "./use-risk";
 import { useRiskAlerts, useRiskHistory } from "./use-risk";
 import { breachHistory } from "./risk-math";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
+import { riskI18n } from "@/i18n/ns/risk";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type BreachRow = {
   key: string;
@@ -24,13 +26,6 @@ export type BreachRow = {
   /** true = the desk recorded it live; false = found retrospectively against current limits. */
   logged: boolean;
   message?: string;
-};
-
-const KIND_LABEL: Record<BreachRow["kind"], string> = {
-  daily: "Дневной лимит",
-  weekly: "Недельный лимит",
-  drawdown: "Макс. просадка",
-  near: "Близко к стопу",
 };
 
 const BREACH_DAYS = 250;
@@ -73,23 +68,25 @@ export function useBreaches(trader: string | null, limits: RiskLimits | null | u
 }
 
 export function BreachSummary({ rows }: { rows: BreachRow[] }) {
+  const { t } = riskI18n.useT();
   const breaches = rows.filter((r) => r.level === "breach");
   const n = (k: BreachRow["kind"]) => breaches.filter((r) => r.kind === k).length;
   const parts = [
-    n("daily") ? `${n("daily")} × дневной` : null,
-    n("weekly") ? `${n("weekly")} × недельный` : null,
-    n("drawdown") ? `${n("drawdown")} × просадка` : null,
+    n("daily") ? t("breach.summaryDaily", { count: n("daily") }) : null,
+    n("weekly") ? t("breach.summaryWeekly", { count: n("weekly") }) : null,
+    n("drawdown") ? t("breach.summaryDrawdown", { count: n("drawdown") }) : null,
   ].filter(Boolean);
   const warns = rows.length - breaches.length;
   return (
     <p className="text-xs text-muted-foreground tabular-nums">
-      {parts.length ? <span className="font-medium text-down">Стопы: {parts.join(", ")}</span> : <span className="text-up">Стопов не было</span>}
-      {warns > 0 && <span> · {warns} раз близко к лимиту</span>}
+      {parts.length ? <span className="font-medium text-down">{t("breach.summary", { list: parts.join(", ") })}</span> : <span className="text-up">{t("breach.noStops")}</span>}
+      {warns > 0 && <span> · {t("breach.nearTimes", { count: warns })}</span>}
     </p>
   );
 }
 
 export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]; trader: string; max?: number; className?: string }) {
+  const { t } = riskI18n.useT();
   const [all, setAll] = React.useState(false);
   const shown = max != null && !all ? rows.slice(0, max) : rows;
   return (
@@ -99,18 +96,18 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
           const breach = r.level === "breach";
           const Icon = breach ? OctagonX : AlertTriangle;
           return (
-            <li key={r.key} className={cn("flex items-center gap-3 rounded-xl px-3 py-2 text-sm", breach ? "bg-down/10" : "bg-warn/10")}>
+            <li key={r.key} className={cn("flex flex-wrap items-center gap-x-3 gap-y-0.5 rounded-xl px-3 py-2 text-sm", breach ? "bg-down/10" : "bg-warn/10")}>
               <Icon className={cn("h-4 w-4 shrink-0", breach ? "text-down" : "text-warn")} aria-hidden="true" />
-              <Link href={links.journalDay(r.date, trader)} className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground hover:text-primary" title="Журнал за этот день">
+              <Link href={links.journalDay(r.date, trader)} className="w-16 shrink-0 text-xs tabular-nums text-muted-foreground hover:text-primary" title={t("breach.journalDay")}>
                 {fmtDate(r.date.slice(0, 10), "shortYY")}
               </Link>
-              <span className="min-w-0 flex-1 truncate">
-                <span className="font-medium">{KIND_LABEL[r.kind]}</span>
-                <span className="text-muted-foreground"> · {breach ? "превышен" : "≥ 70%"}</span>
-                {r.logged && <span className="ml-1.5 text-xs text-muted-foreground" title={r.message}>зафиксировано</span>}
+              <span className="min-w-0 flex-1">
+                <span className="font-medium">{t(`breach.kind.${r.kind}`)}</span>
+                <span className={breach ? "text-down" : "text-muted-foreground"}> · {breach ? t("breach.exceeded") : t("breach.nearPct")}</span>
+                {r.logged && <span className="ml-1.5 text-xs text-muted-foreground" title={t("breach.loggedHint")}>{t("breach.logged")}</span>}
               </span>
               <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
-                {r.used != null ? `−${fmtUsd(r.used, { decimals: 0 })}` : "—"}{r.limit != null ? ` / ${fmtUsd(r.limit, { decimals: 0 })}` : ""}
+                {r.used != null ? fmtUsd(-r.used, { decimals: 0 }) : "—"}{r.limit != null ? ` / ${fmtUsd(r.limit, { decimals: 0 })}` : ""}
               </span>
               {r.pct != null && <span className={cn("w-11 shrink-0 text-right text-xs font-semibold tabular-nums", breach ? "text-down" : "text-warn")}>{fmtPct(r.pct, { decimals: 0, signed: false })}</span>}
             </li>
@@ -119,7 +116,7 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
       </ul>
       {max != null && rows.length > max && (
         <button type="button" onClick={() => setAll((v) => !v)} className="self-start text-xs text-primary hover:underline">
-          {all ? "Свернуть" : `Показать ещё ${rows.length - max}`}
+          {all ? commonI18n.t("actions.collapse") : t("breach.showMore", { count: rows.length - max })}
         </button>
       )}
     </div>
@@ -128,13 +125,14 @@ export function BreachList({ rows, trader, max, className }: { rows: BreachRow[]
 
 /** Full block: summary + list, or a short reason why there is nothing. */
 export function BreachHistory({ trader, limits, max }: { trader: string; limits: RiskLimits | null | undefined; max?: number }) {
+  const { t } = riskI18n.useT();
   const b = useBreaches(trader, limits);
   if (b.isLoading) return <Skeleton className="h-24 rounded-xl" />;
   if (!b.rows.length) {
     return (
       <p className="flex items-center gap-2 text-sm text-muted-foreground">
-        <ShieldCheck className="h-4 w-4 text-up" aria-hidden="true" />
-        {b.hasLimits ? `За ${b.days} дней лимиты не нарушались.` : "Лимиты не заданы — нарушения не считаются."}
+        <ShieldCheck className="h-4 w-4 shrink-0 text-up" aria-hidden="true" />
+        {b.hasLimits ? t("breach.none", { count: b.days }) : t("breach.noLimits")}
       </p>
     );
   }
@@ -142,7 +140,7 @@ export function BreachHistory({ trader, limits, max }: { trader: string; limits:
     <div className="flex flex-col gap-2">
       <BreachSummary rows={b.rows} />
       <BreachList rows={b.rows} trader={trader} max={max} />
-      <p className="text-xs text-muted-foreground">За {b.days} дней. Прошлые дни сверены с текущими лимитами; «зафиксировано» — сработало в моменте.</p>
+      <p className="text-xs text-muted-foreground">{t("breach.footnote", { count: b.days })}</p>
     </div>
   );
 }

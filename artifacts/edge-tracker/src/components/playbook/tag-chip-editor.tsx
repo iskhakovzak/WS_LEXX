@@ -8,6 +8,9 @@ import { STALE } from "@/lib/api/keys";
 import { TRADE_TAGS, type TagSubgroup } from "@/lib/tags";
 import { cn } from "@/lib/utils";
 import { splitTags } from "./model";
+import { playbookI18n } from "@/i18n/ns/playbook";
+const pt = playbookI18n.t; // called at render time only
+import { commonI18n } from "@/i18n/ns/common";
 
 type Cat = [string, { name: string; groups: TagSubgroup[] }];
 
@@ -68,7 +71,7 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
   return (
     <div className="space-y-2">
       <div className="flex min-h-7 flex-wrap gap-1.5">
-        {chips.length === 0 && <span className="text-xs text-muted-foreground">Тегов пока нет</span>}
+        {chips.length === 0 && <span className="text-xs text-muted-foreground">{pt("tags.none")}</span>}
         {chips.map((tag, i) => (
           <span
             key={tag}
@@ -81,7 +84,7 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
             {tag}
             <button
               type="button"
-              aria-label={`Удалить тег ${tag}`}
+              aria-label={pt("tags.remove", { tag })}
               onClick={() => set(chips.filter((_, j) => j !== i))}
               className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
@@ -100,13 +103,14 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
             if (e.key === "Enter" || e.key === ",") { e.preventDefault(); addTag(); }
             if (e.key === "Backspace" && !input && chips.length) set(chips.slice(0, -1));
           }}
-          placeholder="Свой тег → Enter"
-          aria-label="Новый тег"
+          placeholder={pt("tags.placeholder")}
+          aria-label={pt("tags.newAria")}
           className="h-9 flex-1 text-sm"
         />
         <button
           type="button"
-          aria-label="Добавить тег"
+          aria-label={pt("tags.add")}
+          title={pt("tags.add")}
           onClick={() => addTag()}
           className="glass-field grid h-9 w-9 shrink-0 place-items-center text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
@@ -115,7 +119,7 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
       </div>
 
       {suggestions.length > 0 && (
-        <div className="flex flex-wrap gap-1.5" aria-label="Похожие теги">
+        <div className="flex flex-wrap gap-1.5" aria-label={pt("tags.similar")}>
           {suggestions.map((s) => (
             <button key={s.tag} type="button" onClick={() => addTag(s.tag)} className="chip min-h-7 px-2.5 text-xs">
               {s.tag} <span className="tabular-nums text-muted-foreground">×{s.count}</span>
@@ -131,7 +135,7 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
           onClick={() => setShowCatalogue((v) => !v)}
           className="flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-xs font-medium text-muted-foreground hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          Шаблоны тегов
+          {pt("tags.templates")}
           <ChevronDown className={cn("h-4 w-4 transition-transform motion-reduce:transition-none", showCatalogue && "rotate-180")} aria-hidden="true" />
         </button>
         {showCatalogue && (
@@ -141,13 +145,13 @@ export function TagChipEditor({ value, onChange, id }: { value: string; onChange
               <Input
                 value={tagSearch}
                 onChange={(e) => setTagSearch(e.target.value)}
-                placeholder="Поиск по шаблонам"
-                aria-label="Поиск по шаблонам тегов"
+                placeholder={pt("tags.templatesSearch")}
+                aria-label={pt("tags.templatesSearchAria")}
                 className="h-8 pl-8 text-xs"
               />
             </div>
             <div className="max-h-[min(55dvh,440px)] space-y-1 overflow-y-auto">
-              {categories.length === 0 && <p className="py-3 text-center text-xs text-muted-foreground">Ничего не найдено</p>}
+              {categories.length === 0 && <p className="py-3 text-center text-xs text-muted-foreground">{commonI18n.t("states.nothingFound")}</p>}
               {categories.map(([key, cat]) => {
                 const isOpen = !!q || openCat === key;
                 const selected = cat.groups.flatMap((g) => g.tags).filter((t) => chips.includes(t)).length;

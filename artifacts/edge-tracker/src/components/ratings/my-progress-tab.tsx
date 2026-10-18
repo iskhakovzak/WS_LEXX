@@ -19,11 +19,16 @@ import { CRITERIA, buildScorecards, criterionLabel, tierLabel, weekLabel, type R
 import { bucketOf, calibVerdict, calibrationOf, enrichIdea, type TradeIdea } from "./idea-metrics";
 import { useTracking } from "@/components/ideas/hooks";
 import { tradeIdeasQuery } from "@/lib/api/queries";
-import { fmtPct, fmtR, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { commonI18n } from "@/i18n/ns/common";
+import { rich, slots } from "@/i18n/rich";
 
 export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | null; ratings: Rating[]; ratingsLoading: boolean }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const month = useLeaderboard("30", "auto");
   // Shared with /trade-ideas, the stats page and global search (one request).
   const ideasQ = useQuery({ ...tradeIdeasQuery<TradeIdea>(), enabled: !!me });
@@ -56,8 +61,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
   // Feedback loop: the trader confirms they have read the curator's focus → curator sees it on the scorecard.
   const ack = useMutation({
     mutationFn: (id: number) => http.post<Rating>(`/api/ratings/${id}/ack`),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ratings"] }); toast({ title: "Фокус принят", description: "Куратор увидит отметку на карточке" }); },
-    onError: (e: Error) => toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось отметить"), variant: "destructive" }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["ratings"] }); toast({ title: ratingsI18n.t("progress.focusAccepted"), description: ratingsI18n.t("progress.focusAcceptedDesc") }); },
+    onError: (e: Error) => toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e, ratingsI18n.t("progress.markFailed")), variant: "destructive" }),
   });
 
   const chartData = card?.series.map((s) => ({ date: s.week, week: weekLabel(s.week).split(" – ")[0], composite: s.composite, overall: s.overall })) ?? [];
@@ -66,14 +71,14 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
     kind: "week",
     dates: chartData.map((d) => d.date),
     trader: me,
-    label: "Оценки по неделям",
-    describe: (i) => `Неделя ${weekLabel(chartData[i].date)} · критерии ${chartData[i].composite?.toFixed(1) ?? "—"}`,
+    label: t("progress.chartLabel"),
+    describe: (i) => t("progress.weekDescribe", { week: weekLabel(chartData[i].date), value: fmtNum(chartData[i].composite, 1) }),
   });
 
   if (!me) {
     return (
       <Panel>
-        <EmptyState icon={UserRound} title="Войдите как трейдер" description="Личный прогресс доступен трейдерам: место в рейтинге, оценки кураторов и статистика ваших идей." />
+        <EmptyState icon={UserRound} title={t("progress.signInTitle")} description={t("progress.signInDescription")} />
       </Panel>
     );
   }
@@ -89,49 +94,49 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
         <StatGrid>
           {deskVisible ? (
             <StatCard
-              label="Место за месяц"
+              label={t("progress.monthPlace")}
               icon={Trophy}
               value={mine ? `#${mine.rank}` : "—"}
-              hint={mine ? <span className="inline-flex items-center gap-1.5">из {month.ranked.length} <RankDelta delta={mine.rankDelta} isNew={mine.isNew} /></span> : "нет сделок за 30 дней"}
+              hint={mine ? <span className="inline-flex items-center gap-1.5">{t("progress.ofTotal", { total: month.ranked.length })} <RankDelta delta={mine.rankDelta} isNew={mine.isNew} /></span> : t("progress.noTrades30")}
               tone={mine && mine.rank <= 3 ? "accent" : "neutral"}
             />
           ) : (
             // A trader's leaderboard holds only their own row: «#1 из 1» meant nothing, the month's net does.
             <StatCard
-              label="P&L за месяц · нетто"
+              label={t("progress.monthPnl")}
               icon={Trophy}
               value={mine ? fmtUsd(mine.totalPnl, { signed: true, decimals: 0 }) : "—"}
               tone={toneOf(mine?.totalPnl)}
               hint={mine
-                ? `${mine.totalTrades} ${pluralRu(mine.totalTrades, "сделка", "сделки", "сделок")}${mine.tradingDays ? ` · ${mine.tradingDays} ${pluralRu(mine.tradingDays, "торговый день", "торговых дня", "торговых дней")}` : ""}`
-                : "нет сделок за 30 дней"}
+                ? `${tc("units.trades", { count: mine.totalTrades })}${mine.tradingDays ? ` · ${tc("units.tradingDays", { count: mine.tradingDays })}` : ""}`
+                : t("progress.noTrades30")}
             />
           )}
           <StatCard
-            label="Текущая серия"
+            label={t("progress.currentStreak")}
             icon={Flame}
             value={mine?.currentStreak ? (mine.currentStreak > 0 ? `W${mine.currentStreak}` : `L${-mine.currentStreak}`) : "—"}
             tone={toneOf(mine?.currentStreak)}
-            hint={mine ? `лучшая W${mine.bestStreak} · худшая L${-mine.worstStreak}` : undefined}
+            hint={mine ? t("progress.streakHint", { best: mine.bestStreak, worst: -mine.worstStreak }) : undefined}
           />
           {mine && mine.totalR == null && (mine.pnlCount ?? 0) > 0 ? (
             // R unknown (no stop on the trades, e.g. broker imports) → show net $ instead of a fake 0R.
             <StatCard
-              label="P&L за месяц · нетто"
+              label={t("progress.monthPnl")}
               value={fmtUsd(mine.totalPnl, { signed: true, decimals: 0 })}
               tone={toneOf(mine.totalPnl)}
-              hint={mine.prev ? `прошлый месяц ${fmtUsd(mine.prev.totalPnl, { signed: true, decimals: 0 })} · R неизвестен` : "R неизвестен — нет стопа"}
+              hint={mine.prev ? t("progress.prevMonthRUnknown", { value: fmtUsd(mine.prev.totalPnl, { signed: true, decimals: 0 }) }) : t("progress.rUnknown")}
             />
           ) : (
             <StatCard
-              label="Сумма R за месяц"
+              label={t("progress.monthR")}
               value={mine ? fmtR(mine.totalR, 1) : "—"}
               tone={toneOf(mine?.totalR)}
-              hint={mine?.prev ? `прошлый месяц ${fmtR(mine.prev.totalR, 1)}` : undefined}
+              hint={mine?.prev ? t("progress.prevMonth", { value: fmtR(mine.prev.totalR, 1) }) : undefined}
             />
           )}
           <StatCard
-            label="Винрейт за месяц"
+            label={t("progress.monthWinrate")}
             value={mine ? fmtPct(winPctOf(mine), { decimals: 0, signed: false }) : "—"}
             tone={(() => {
               const base = deskVisible ? team.winrate : mine?.prev ? winPctOf(mine.prev) : null;
@@ -139,8 +144,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
               return base != null && cur != null ? toneOf(cur - base) : "neutral";
             })()}
             hint={deskVisible
-              ? (team.winrate != null ? `команда ${fmtPct(team.winrate, { decimals: 0, signed: false })}` : undefined)
-              : mine?.prev ? `прошлый месяц ${fmtPct(winPctOf(mine.prev), { decimals: 0, signed: false })}` : undefined}
+              ? (team.winrate != null ? t("progress.teamValue", { value: fmtPct(team.winrate, { decimals: 0, signed: false }) }) : undefined)
+              : mine?.prev ? t("progress.prevMonth", { value: fmtPct(winPctOf(mine.prev), { decimals: 0, signed: false }) }) : undefined}
           />
         </StatGrid>
       )}
@@ -151,57 +156,59 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
             <ScorecardCard card={card} />
           ) : (
             <Panel>
-              <EmptyState icon={Star} title="Оценок кураторов пока нет" description="Кураторы выставляют оценки раз в неделю по пяти критериям — здесь появится ваша карточка и тренд." />
+              <EmptyState icon={Star} title={t("progress.noRatingsTitle")} description={t("progress.noRatingsDescription")} />
             </Panel>
           )}
           {(curatorFocus || weakest) && (
             <Panel
               icon={Crosshair}
-              title="Фокус на неделю"
+              title={t("progress.weekFocus")}
               actions={card?.tier ? <Link href={links.scaling(me)} className="focus-visible:outline-none"><Pill tone="purple">{tierLabel(card.tier)}</Pill></Link> : undefined}
             >
               {curatorFocus ? (
                 <>
                   <p className="text-sm text-foreground">{curatorFocus.text}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{curatorFocus.curator} · нед. {weekLabel(curatorFocus.week)}</span>
+                    <span>{t("progress.curatorWeek", { curator: curatorFocus.curator, week: weekLabel(curatorFocus.week) })}</span>
                     {curatorFocus.acknowledged ? (
-                      <Pill tone="up" className="ml-auto"><Check className="h-3 w-3" aria-hidden="true" />Принято</Pill>
+                      <Pill tone="up" className="ml-auto"><Check className="h-3 w-3" aria-hidden="true" />{t("progress.accepted")}</Pill>
                     ) : (
                       <Button size="sm" variant="secondary" className="ml-auto h-7 gap-1 px-2 text-xs" onClick={() => ack.mutate(curatorFocus.ratingId)} disabled={ack.isPending}>
-                        <Check className="h-3 w-3" aria-hidden="true" /> {ack.isPending ? "Отмечаем…" : "Прочитал, беру в работу"}
+                        <Check className="h-3 w-3" aria-hidden="true" /> {ack.isPending ? t("progress.marking") : t("progress.ack")}
                       </Button>
                     )}
                   </div>
                   {weakest && (
                     <p className="mt-2 text-xs text-muted-foreground">
-                      Слабее всего по оценкам — {criterionLabel(weakest.key).toLowerCase()}: {weakest.now.toFixed(1)} из 10.
+                      {t("progress.weakestNote", { criterion: criterionLabel(weakest.key).toLowerCase(), value: fmtNum(weakest.now, 1) })}
                     </p>
                   )}
                 </>
               ) : weakest ? (
                 <>
                   <p className="text-sm text-foreground">
-                    Подтяните <span className="font-semibold">{criterionLabel(weakest.key)}</span>: сейчас{" "}
-                    <span className="font-semibold tabular-nums">{weakest.now.toFixed(1)}</span>, цель —{" "}
-                    <span className="font-semibold tabular-nums text-up">{Math.min(10, Math.floor(weakest.now) + 1)}</span>.
+                    {rich(t("progress.pullUp", slots("criterion", "now", "target")), {
+                      criterion: <span className="font-semibold">{criterionLabel(weakest.key)}</span>,
+                      now: <span className="font-semibold tabular-nums">{fmtNum(weakest.now, 1)}</span>,
+                      target: <span className="font-semibold tabular-nums text-up">{Math.min(10, Math.floor(weakest.now) + 1)}</span>,
+                    })}
                   </p>
                   <p className="mt-1 text-xs text-muted-foreground">{CRITERIA.find((c) => c.key === weakest.key)?.hint}</p>
                 </>
               ) : null}
               <div className="mt-3 flex flex-wrap gap-x-2 gap-y-1 text-xs">
-                <Link href={links.risk(me)} className="text-primary hover:underline">Мои лимиты риска</Link>
+                <Link href={links.risk(me)} className="text-primary hover:underline">{t("progress.myRiskLimits")}</Link>
                 <span className="text-muted-foreground" aria-hidden="true">·</span>
-                <Link href={links.scaling(me)} className="text-primary hover:underline">Масштабирование</Link>
+                <Link href={links.scaling(me)} className="text-primary hover:underline">{t("progress.scaling")}</Link>
                 <span className="text-muted-foreground" aria-hidden="true">·</span>
-                <Link href={links.weeklyReview({ trader: me })} className="text-primary hover:underline">Разбор недели</Link>
+                <Link href={links.weeklyReview({ trader: me })} className="text-primary hover:underline">{t("progress.weeklyReview")}</Link>
               </div>
             </Panel>
           )}
         </div>
 
         <div className="flex flex-col gap-4 lg:col-span-3">
-          <Panel title="Динамика оценок" description="Средний балл по критериям и общая оценка куратора, по неделям">
+          <Panel title={t("progress.dynamics")} description={t("progress.dynamicsDescription")}>
             {chartData.length >= 2 ? (
               <>
               <div {...weekNav.wrapperProps} className={cn("h-56 w-full", weekNav.wrapperProps.className)}>
@@ -210,8 +217,8 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                     <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey="week" tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
                     <YAxis domain={[0, 10]} ticks={[0, 2, 4, 6, 8, 10]} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} />
-                    <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [v.toFixed(1), n === "overall" ? "Общая" : "Критерии"]} />
-                    <Legend formatter={(v: string) => <span className="text-xs text-muted-foreground">{v === "overall" ? "Общая оценка" : "Среднее критериев"}</span>} />
+                    <Tooltip contentStyle={CHART_TOOLTIP} labelFormatter={(l) => <>{String(l)}<PeriodHint kind="week" /></>} formatter={(v: number, n: string) => [fmtNum(v, 1), n === "overall" ? t("progress.overallShort") : t("progress.criteriaShort")]} />
+                    <Legend formatter={(v: string) => <span className="text-xs text-muted-foreground">{v === "overall" ? t("overall") : t("progress.criteriaAvg")}</span>} />
                     <Line isAnimationActive={false} dataKey="composite" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 3 }} />
                     <Line isAnimationActive={false} dataKey="overall" stroke="hsl(var(--chart-3))" strokeWidth={2} strokeDasharray="4 3" dot={{ r: 3 }} />
                   </LineChart>
@@ -220,20 +227,20 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
               {weekNav.caption}
               </>
             ) : (
-              <p className="rounded-xl bg-[var(--glass-bg)] p-4 text-sm text-muted-foreground">График появится после двух недель оценок.</p>
+              <p className="rounded-xl bg-[var(--glass-bg)] p-4 text-sm text-muted-foreground">{t("progress.chartAfterTwo")}</p>
             )}
           </Panel>
 
-          <Panel icon={MessageSquareQuote} title="Комментарии кураторов">
+          <Panel icon={MessageSquareQuote} title={t("progress.comments")}>
             {myRatings.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Пока без комментариев.</p>
+              <p className="text-sm text-muted-foreground">{t("progress.noComments")}</p>
             ) : (
               <ul className="flex flex-col gap-3">
                 {myRatings.map((r) => (
                   <li key={r.id} className="rounded-xl bg-[var(--glass-bg)] p-3">
                     <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                       <span className="font-medium text-foreground">{r.curator}</span>
-                      <span>нед. {weekLabel(r.week)}</span>
+                      <span>{t("shared.week", { label: weekLabel(r.week) })}</span>
                       {r.tier && <Pill tone="purple">{tierLabel(r.tier)}</Pill>}
                       <Pill tone={r.overall >= 8 ? "up" : r.overall >= 5 ? "warn" : "down"} className="ml-auto">{r.overall}/10</Pill>
                     </div>
@@ -241,7 +248,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                     {r.focus?.trim() && (
                       <p className="mt-1.5 flex items-start gap-1.5 text-xs text-muted-foreground">
                         <Crosshair className="mt-0.5 h-3 w-3 shrink-0" aria-hidden="true" />
-                        <span>Фокус: <span className="text-foreground">{r.focus}</span></span>
+                        <span>{t("progress.focusPrefix")} <span className="text-foreground">{r.focus}</span></span>
                       </p>
                     )}
                   </li>
@@ -252,32 +259,34 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
 
           <Panel
             icon={Lightbulb}
-            title="Мои идеи"
-            actions={<Link href="/trade-idea-stats" className="text-xs text-primary hover:underline">Подробная статистика →</Link>}
+            title={t("progress.myIdeas")}
+            actions={<Link href="/trade-idea-stats" className="text-xs text-primary hover:underline">{t("progress.detailedStats")}</Link>}
           >
             {ideasQ.isLoading ? <Skeleton className="h-20 rounded-xl" /> : ideas.length === 0 ? (
               <p className="text-sm text-muted-foreground">
-                У вас пока нет идей. <Link href={links.newIdea()} className="text-primary hover:underline">Опубликуйте первую</Link> — и отслеживайте, как часто они срабатывают.
+                {rich(t("progress.noIdeas", slots("link")), {
+                  link: <Link href={links.newIdea()} className="text-primary hover:underline">{t("progress.publishFirst")}</Link>,
+                })}
               </p>
             ) : (
               <div className="flex flex-col gap-3">
                 <OutcomeBar wins={ideaB.wins} losses={ideaB.losses} be={ideaB.be} open={ideaB.open} />
                 <div className="grid grid-cols-1 gap-x-6 sm:grid-cols-2">
-                  <StatRow label="Идей / в сделках" value={`${ideaB.ideas} / ${ideaB.converted}`} />
-                  <StatRow label="Hit rate по сделкам" value={ideaB.hitRate == null ? "—" : `${Math.round(ideaB.hitRate * 100)}%`} tone={ideaB.hitRate == null ? "neutral" : ideaB.hitRate >= 0.5 ? "up" : "down"} />
+                  <StatRow label={t("progress.ideasInTrades")} value={`${ideaB.ideas} / ${ideaB.converted}`} />
+                  <StatRow label={t("progress.hitByTrades")} value={ideaB.hitRate == null ? "—" : `${Math.round(ideaB.hitRate * 100)}%`} tone={ideaB.hitRate == null ? "neutral" : ideaB.hitRate >= 0.5 ? "up" : "down"} />
                   <StatRow
-                    label="Цель раньше стопа"
+                    label={t("progress.targetFirst")}
                     value={priceB?.hitRate == null ? "—" : `${Math.round(priceB.hitRate * 100)}% · ${priceB.wins}/${priceB.wins + priceB.losses}`}
                     tone={priceB?.hitRate == null ? "neutral" : priceB.hitRate >= 0.5 ? "up" : "down"}
                   />
-                  <StatRow label="Средний R" value={fmtR(ideaB.avgR)} tone={toneOf(ideaB.avgR)} />
+                  <StatRow label={t("progress.avgR")} value={fmtR(ideaB.avgR)} tone={toneOf(ideaB.avgR)} />
                   <StatRow
-                    label="Калибровка скора"
+                    label={t("progress.calibScore")}
                     value={<span className={cn(toneText(calibVerdict(ideaCalib).tone))}>{calibVerdict(ideaCalib).text}</span>}
                   />
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  {ideaB.converted} из {ideaB.ideas} {pluralRu(ideaB.ideas, "идеи", "идей", "идей")} взяты в сделку.
+                  {t("progress.convertedOf", { converted: ideaB.converted, count: ideaB.ideas })}
                 </p>
               </div>
             )}

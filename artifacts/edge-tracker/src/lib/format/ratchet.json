@@ -16,14 +16,10 @@
     "ru-RU-literal": {
       "pattern": "[\"'`]ru-RU[\"'`]",
       "why": "Locale is the UI language: use fmtCount / fmtDate / fmtMonth / fmtWeekday / localeTag() from @/lib/format.",
-      "total": 2,
-      "baseline": {
-        "components/notes/author-dictation.ts": 1,
-        "components/notes/junior-editor.tsx": 1
-      },
+      "total": 0,
+      "baseline": {},
       "notes": {
-        "components/notes/author-dictation.ts": "SpeechRecognition.lang for Russian dictation (input language, not display). Switch to localeTag() if dictation should follow the UI language.",
-        "components/notes/junior-editor.tsx": "Same: SpeechRecognition.lang."
+        "*": "0 at the end of the translation wave: dictation uses localeTagFor() (notes/author-dictation.ts). Keep it at 0."
       }
     },
     "new-intl": {
@@ -67,7 +63,7 @@
       "date-fns-locale": 5
     },
     "after": {
-      "ru-RU-literal": 2,
+      "ru-RU-literal": 0,
       "new-intl": 16,
       "date-fns-locale": 0
     }

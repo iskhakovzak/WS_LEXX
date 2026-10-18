@@ -1,10 +1,9 @@
 // One response for "AI is not configured" (no AI_INTEGRATIONS_ANTHROPIC_* env), audit P2-3:
-// 503 { code: "ai_not_configured", error: "AI не настроен" } instead of a generic 500/502.
+// 503 { code: "ai_not_configured", error: <translated "AI is not configured"> } instead of a generic 500/502.
 // The frontend (edge-tracker lib/api-errors.ts) recognises the code and shows «AI не настроен».
 import type { Response } from "express";
 import { AnthropicNotConfiguredError, isAnthropicConfigured } from "@workspace/integrations-anthropic-ai";
-
-export const AI_NOT_CONFIGURED = { code: "ai_not_configured", error: "AI не настроен" } as const;
+import { AppError, sendError } from "./http/errors";
 
 /** True for the integration's "env not provisioned" error (name check survives duplicated bundles). */
 export function isAiNotConfigured(e: unknown): boolean {
@@ -12,7 +11,7 @@ export function isAiNotConfigured(e: unknown): boolean {
 }
 
 export function sendAiNotConfigured(res: Response): void {
-  if (!res.headersSent) res.status(503).json(AI_NOT_CONFIGURED);
+  if (!res.headersSent) sendError(res, new AppError("ai_not_configured"));
 }
 
 /** Call in a catch block before the generic error response; returns true when the 503 was sent. */

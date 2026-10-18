@@ -25,6 +25,9 @@ import { nyDate, nyMinutes, nySession, addDays, isWeekend } from "../lib/trading
 import { recentViolationWindow, violationDaySql } from "../lib/violationWindow";
 import { scopeTrader, viewerRole, isStaffRole } from "../lib/auth";
 import { unauthorized } from "../lib/http";
+import { violationMessage } from "../lib/rulesI18n";
+import { langOf } from "../i18n";
+import { calendarName } from "../lib/calendarText";
 
 const router: IRouter = Router();
 
@@ -413,7 +416,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       [traderParam, reviewFrom],
     ),
     pool.query(
-      `SELECT v.id, v.trader, v.severity, v.message, v.trade_id AS "tradeId", r.name AS "ruleName", v.occurred_at AS "occurredAt",
+      `SELECT v.id, v.trader, v.severity, v.message, v.details, v.trade_id AS "tradeId", r.name AS "ruleName", v.occurred_at AS "occurredAt",
               COUNT(*) OVER()::int AS total
        FROM rule_violations v LEFT JOIN trading_rules r ON r.id = v.rule_id
        WHERE ($1::text IS NULL OR v.trader = $1) AND v.archived_at IS NULL
@@ -537,7 +540,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
     : null;
 
   const plan = gamePlan?.rows[0];
-  const holidays = holidayRows.rows.map((x: any) => ({ date: String(x.date), name: String(x.name) }));
+  const holidays = holidayRows.rows.map((x: any) => ({ date: String(x.date), name: calendarName(String(x.name), langOf(req)) ?? String(x.name) }));
   const journalTraders = journalRows ? journalRows.rows.map((x: any) => String(x.trader)) : null;
 
   const first = <T,>(q: { rows: any[] }, f: (r: any) => T): T | null => (q.rows[0] ? f(q.rows[0]) : null);
@@ -570,7 +573,7 @@ router.get("/dashboard/today", asyncHandler(async (req, res): Promise<void> => {
       checkin: { done: checkinDone },
       draftIdeas: { count: n(draftIdeas.rows[0]?.c) },
       ideasToReview: { count: first(ideasToReview, (x) => n(x.total)) ?? 0, items: ideasToReview.rows.map(({ total: _t, ...x }: any) => x) },
-      violations: { count: first(violations, (x) => n(x.total)) ?? 0, items: violations.rows.map(({ total: _t, ...x }: any) => x) },
+      violations: { count: first(violations, (x) => n(x.total)) ?? 0, items: violations.rows.map(({ total: _t, details, ...x }: any) => ({ ...x, message: violationMessage(x.message, details, langOf(req)) })) },
       /** Staff only: closed trades with a trader conclusion and no curator review (14 days). */
       curatorQueue: staff ? { count: first(curatorQueue, (x) => n(x.total)) ?? 0, items: curatorQueue.rows.map(({ total: _t, ...x }: any) => x) } : null,
     },

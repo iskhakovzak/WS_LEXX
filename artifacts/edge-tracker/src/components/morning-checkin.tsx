@@ -13,6 +13,9 @@ import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { WidgetShell, IconAction, WidgetError, Sparkline, MiniStat } from "@/components/widgets/widget-kit";
 import { fmtR } from "@/lib/format";
+import { eodI18n } from "@/i18n/ns/eod";
+import { withNodes } from "@/components/trades/rich-text";
+import { commonI18n } from "@/i18n/ns/common";
 import {
   type CheckinFlags,
   type CheckinRow,
@@ -127,7 +130,7 @@ function ReadinessRing({ score, size = 44 }: { score: number; size?: number }) {
   const c = 2 * Math.PI * r;
   const color = tone === "up" ? "hsl(var(--up))" : tone === "warn" ? "hsl(var(--chart-3))" : "hsl(var(--down))";
   return (
-    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={`Готовность ${score} из 100`}>
+    <div className="relative shrink-0" style={{ width: size, height: size }} role="img" aria-label={eodI18n.t("checkin.readinessAria", { score })}>
       <svg width={size} height={size} className="-rotate-90">
         <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="hsl(var(--foreground) / 0.08)" strokeWidth={4} />
         <circle
@@ -153,6 +156,7 @@ function pctOrDash(v: number | null) {
 
 /** Correlation block: how readiness / flags relate to results over the last 30 days. */
 function Correlation({ data }: { data: CheckinInsights }) {
+  const { t } = eodI18n.useT();
   const { highReadiness: hi, lowReadiness: lo, flags } = data;
   const enough = hi.trades + lo.trades >= 3;
 
@@ -170,8 +174,7 @@ function Correlation({ data }: { data: CheckinInsights }) {
   if (!enough) {
     return (
       <p className="text-xs text-muted-foreground">
-        Связь с результатом появится, когда наберётся несколько дней с чек-ином и сделками
-        {data.overall.days > 0 ? ` (сейчас дней с чек-ином: ${data.overall.days}).` : "."}
+        {data.overall.days > 0 ? t("checkin.notEnoughDays", { days: data.overall.days }) : t("checkin.notEnough")}
       </p>
     );
   }
@@ -180,22 +183,24 @@ function Correlation({ data }: { data: CheckinInsights }) {
     <div className="space-y-2">
       <div className="grid grid-cols-2 gap-2">
         <MiniStat
-          label="Готовность ≥ 70"
+          label={t("checkin.highReadiness")}
           value={pctOrDash(hi.winRate)}
           tone={hi.winRate != null && lo.winRate != null && hi.winRate > lo.winRate ? "up" : "neutral"}
-          hint={`${hi.trades} сд. · ${fmtR(hi.avgR)}`}
+          hint={t("checkin.statHint", { trades: hi.trades, r: fmtR(hi.avgR) })}
         />
         <MiniStat
-          label="Готовность < 50"
+          label={t("checkin.lowReadiness")}
           value={pctOrDash(lo.winRate)}
           tone={hi.winRate != null && lo.winRate != null && lo.winRate < hi.winRate ? "down" : "neutral"}
-          hint={`${lo.trades} сд. · ${fmtR(lo.avgR)}`}
+          hint={t("checkin.statHint", { trades: lo.trades, r: fmtR(lo.avgR) })}
         />
       </div>
       {worstFlag && (
         <p className="text-xs text-muted-foreground">
-          Сильнее всего мешает <span className="font-medium text-down">«{FLAG_LABEL[worstFlag.key]}»</span>:{" "}
-          <span className="tabular-nums text-down">−{Math.abs(worstFlag.delta)} п.п.</span> винрейта.
+          {withNodes(t("checkin.worstFlag", { flag: "{flag}", delta: "{delta}" }), {
+            flag: <span className="font-medium text-down">«{FLAG_LABEL[worstFlag.key]}»</span>,
+            delta: <span className="tabular-nums text-down">{t("checkin.worstFlagDelta", { n: Math.abs(worstFlag.delta) })}</span>,
+          })}
         </p>
       )}
     </div>
@@ -205,6 +210,7 @@ function Correlation({ data }: { data: CheckinInsights }) {
 export function MorningCheckin() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = eodI18n.useT();
   const qc = useQueryClient();
   const userId = user?.traderName ?? null;
   // Trading day = America/New_York date (not the browser's local day): a check-in belongs to the desk's day.
@@ -268,9 +274,9 @@ export function MorningCheckin() {
       qc.setQueryData(["emotional-state-today", userId, today], row);
       qc.invalidateQueries({ queryKey: ["emotional-insights", userId] });
       setEditing(false);
-      toast({ title: "Чек-ин сохранён", description: `Готовность ${score}/100 · ${readinessLabel(score)}` });
+      toast({ title: eodI18n.t("checkin.saved"), description: eodI18n.t("checkin.savedDesc", { score, label: readinessLabel(score) }) });
     } catch (e) {
-      toast({ title: "Ошибка чек-ина", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: eodI18n.t("checkin.failed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -285,7 +291,7 @@ export function MorningCheckin() {
 
   if (todayQ.isLoading) {
     return (
-      <div className="glass-panel rounded-2xl p-4" aria-busy="true" aria-label="Загрузка чек-ина">
+      <div className="glass-panel rounded-2xl p-4" aria-busy="true" aria-label={t("checkin.loadingAria")}>
         <div className="flex items-center gap-3">
           <Skeleton className="h-11 w-11 rounded-full" />
           <div className="flex-1 space-y-2">
@@ -305,10 +311,10 @@ export function MorningCheckin() {
     return (
       <WidgetShell
         icon={Sun}
-        title="Утренний чек-ин"
-        meta={streak > 1 ? `серия ${streak} дн.` : undefined}
+        title={t("checkin.title")}
+        meta={streak > 1 ? t("checkin.streak", { count: streak }) : undefined}
         accent={tone}
-        actions={<IconAction icon={Pencil} label="Изменить чек-ин" onClick={() => setEditing(true)} />}
+        actions={<IconAction icon={Pencil} label={t("checkin.edit")} onClick={() => setEditing(true)} />}
       >
         <div className="grid gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
           <div className="flex min-w-0 items-start gap-3">
@@ -317,7 +323,7 @@ export function MorningCheckin() {
               <div className="text-sm font-semibold text-foreground">{readinessLabel(savedScore)}</div>
               <div className="flex flex-wrap gap-1">
                 {activeFlags.length === 0 ? (
-                  <Pill tone="neutral">Без отметок</Pill>
+                  <Pill tone="neutral">{t("checkin.noMarks")}</Pill>
                 ) : (
                   activeFlags.map((k) => (
                     <Pill key={k} tone={(NEGATIVE_FLAGS as readonly string[]).includes(k) ? "down" : "up"}>
@@ -328,18 +334,18 @@ export function MorningCheckin() {
               </div>
               {saved.freeText && (
                 <p className="line-clamp-2 text-xs text-muted-foreground" title={saved.freeText}>
-                  <span className="text-foreground/80">План:</span> {saved.freeText}
+                  <span className="text-foreground/80">{t("checkin.plan")}</span> {saved.freeText}
                 </p>
               )}
             </div>
           </div>
           <div className="min-w-0 space-y-2 border-t border-border/60 pt-3 md:border-l md:border-t-0 md:pl-4 md:pt-0">
             <div className="flex items-center justify-between gap-2">
-              <span className="micro-label">Готовность · 14 дней</span>
-              <Sparkline values={spark} width={128} height={26} domain={[0, 100]} tone={tone} connectGaps label="Готовность за 14 дней" />
+              <span className="micro-label">{t("checkin.readiness14")}</span>
+              <Sparkline values={spark} width={128} height={26} domain={[0, 100]} tone={tone} connectGaps label={t("checkin.readiness14Aria")} />
             </div>
             {insightsQ.isError ? (
-              <WidgetError message="История недоступна" onRetry={() => insightsQ.refetch()} />
+              <WidgetError message={t("checkin.historyUnavailable")} onRetry={() => insightsQ.refetch()} />
             ) : insights ? (
               <Correlation data={insights} />
             ) : (
@@ -359,11 +365,11 @@ export function MorningCheckin() {
           <Sun className="h-3.5 w-3.5" aria-hidden="true" />
         </span>
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold">Чек-ин не заполнен</div>
-          <div className="text-xs text-muted-foreground">3 нажатия — и видно, в каком состоянии ты торгуешь лучше.</div>
+          <div className="text-sm font-semibold">{t("checkin.notFilled")}</div>
+          <div className="text-xs text-muted-foreground">{t("checkin.notFilledHint")}</div>
         </div>
         <Button size="sm" variant="secondary" onClick={() => snooze(false)}>
-          <ChevronDown aria-hidden="true" /> Заполнить
+          <ChevronDown aria-hidden="true" /> {t("checkin.fill")}
         </Button>
       </div>
     );
@@ -373,16 +379,16 @@ export function MorningCheckin() {
   return (
     <WidgetShell
       icon={Sun}
-      title={saved ? "Изменить чек-ин" : "Как ты сегодня?"}
-      meta={streak > 0 ? `серия ${streak} дн.` : "20 секунд перед сессией"}
+      title={saved ? t("checkin.edit") : t("checkin.howAreYou")}
+      meta={streak > 0 ? t("checkin.streak", { count: streak }) : t("checkin.beforeSession")}
       accent="warn"
       actions={
         saved ? (
           <Button size="sm" variant="ghost" onClick={() => { setDraft(rowToDraft(saved)); setEditing(false); }}>
-            Отмена
+            {commonI18n.t("actions.cancel")}
           </Button>
         ) : (
-          <IconAction icon={ChevronUp} label="Свернуть до конца дня" onClick={() => snooze(true)} />
+          <IconAction icon={ChevronUp} label={t("checkin.collapse")} onClick={() => snooze(true)} />
         )
       }
     >
@@ -395,29 +401,29 @@ export function MorningCheckin() {
       >
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-6">
           <div className="min-w-0 flex-1 space-y-2.5">
-            <Step n={1} label="Сон" done={draft.sleep != null}>
+            <Step n={1} label={t("checkin.sleep")} done={draft.sleep != null}>
               <Choice active={draft.sleep === true} tone="up" icon={Moon} onClick={() => setDraft((d) => ({ ...d, sleep: true }))}>
-                Выспался
+                {t("checkin.slept")}
               </Choice>
               <Choice active={draft.sleep === false} tone="down" onClick={() => setDraft((d) => ({ ...d, sleep: false }))}>
-                Не выспался
+                {t("checkin.notSlept")}
               </Choice>
             </Step>
-            <Step n={2} label="Фокус" done={draft.focus != null}>
+            <Step n={2} label={t("checkin.focus")} done={draft.focus != null}>
               <Choice active={draft.focus === true} tone="up" icon={Target} onClick={() => setDraft((d) => ({ ...d, focus: true }))}>
-                Собран
+                {t("checkin.focused")}
               </Choice>
               <Choice active={draft.focus === false} tone="down" onClick={() => setDraft((d) => ({ ...d, focus: false }))}>
-                Рассеян
+                {t("checkin.scattered")}
               </Choice>
             </Step>
-            <Step n={3} label="Эмоции" done={draft.sleep != null && draft.focus != null}>
+            <Step n={3} label={t("checkin.emotions")} done={draft.sleep != null && draft.focus != null}>
               <Choice
                 active={calm}
                 tone="up"
                 onClick={() => setDraft((d) => ({ ...d, stressed: false, anxious: false, tilted: false, revenge: false }))}
               >
-                Спокоен
+                {t("checkin.calm")}
               </Choice>
               {(["stressed", "anxious", "tilted", "revenge"] as const).map((k) => (
                 <Choice
@@ -436,15 +442,15 @@ export function MorningCheckin() {
           <div className="flex shrink-0 items-center gap-3 rounded-xl bg-foreground/[0.04] px-3 py-2.5 lg:w-60" aria-live="polite">
             <ReadinessRing score={ready ? score : 0} />
             <div className="min-w-0">
-              <div className="text-2xs text-muted-foreground">Готовность</div>
-              <div className="text-sm font-semibold">{ready ? readinessLabel(score) : "Отметь сон и фокус"}</div>
+              <div className="text-2xs text-muted-foreground">{t("checkin.readiness")}</div>
+              <div className="text-sm font-semibold">{ready ? readinessLabel(score) : t("checkin.markSleepFocus")}</div>
             </div>
           </div>
         </div>
 
         <div className="space-y-1.5">
           <label htmlFor="morning-checkin-plan" className="text-xs text-muted-foreground">
-            План на сессию <span className="text-muted-foreground/80">· необязательно</span>
+            {t("checkin.sessionPlan")} <span className="text-muted-foreground/80">{t("checkin.optional")}</span>
           </label>
           <Textarea
             id="morning-checkin-plan"
@@ -458,15 +464,15 @@ export function MorningCheckin() {
             }}
             rows={2}
             maxLength={2000}
-            placeholder="Тикеры, сетапы, лимит убытка на день…"
+            placeholder={t("checkin.planPlaceholder")}
             className="min-h-[52px] resize-none"
           />
         </div>
 
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <span className="text-2xs text-muted-foreground">Ctrl+Enter — сохранить</span>
+          <span className="text-2xs text-muted-foreground">{t("checkin.ctrlEnter")}</span>
           <Button type="submit" size="sm" disabled={!ready || submitting}>
-            <Check aria-hidden="true" /> {submitting ? "Сохранение…" : "Сохранить чек-ин"}
+            <Check aria-hidden="true" /> {submitting ? commonI18n.t("states.saving") : t("checkin.save")}
           </Button>
         </div>
       </form>

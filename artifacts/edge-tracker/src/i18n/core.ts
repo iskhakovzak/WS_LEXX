@@ -29,6 +29,14 @@ export function isLang(v: unknown): v is Lang {
   return v === "ru" || v === "en" || v === "uz";
 }
 
+/**
+ * Locale for Intl.NumberFormat. Uzbek digits follow CLDR uz (non-breaking-space grouping, decimal comma), which is
+ * the same shape as ru; browsers often ship no `uz` number data and would print "1,234.5".
+ */
+export function numberLocaleFor(lang: Lang): string {
+  return lang === "uz" ? LANG_META.ru.tag : LANG_META[lang].tag;
+}
+
 /** BCP 47 tag for Intl: ru-RU / en-US / uz-Latn-UZ. */
 export function localeTagFor(lang: Lang): string {
   return LANG_META[lang].tag;
@@ -114,7 +122,7 @@ export function pluralCategory(lang: Lang, n: number): PluralCategory {
 export function formatCountFor(lang: Lang, n: number): string {
   let nf = numberFmtCache.get(lang);
   if (!nf) {
-    nf = new Intl.NumberFormat(localeTagFor(lang), { maximumFractionDigits: 2 });
+    nf = new Intl.NumberFormat(numberLocaleFor(lang), { maximumFractionDigits: 2 });
     numberFmtCache.set(lang, nf);
   }
   return nf.format(n);

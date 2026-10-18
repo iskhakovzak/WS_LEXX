@@ -27,13 +27,16 @@ export function ensureNameLatin(): Promise<void> {
 }
 
 /** Trim, collapse spaces, cap length; empty → null. Letters (any script), digits, spaces, . - ' ʻ only. */
-export function cleanNameLatin(raw: unknown): { ok: true; value: string | null } | { ok: false; error: string } {
+/** Failure carries an API error code (+ params) — the route throws AppError(code, 400, params). */
+export function cleanNameLatin(raw: unknown):
+  | { ok: true; value: string | null }
+  | { ok: false; code: "INVALID_FIELD" | "TEXT_TOO_LONG" | "NAME_LATIN_CHARS"; params?: { field: string; max?: number } } {
   if (raw == null) return { ok: true, value: null };
-  if (typeof raw !== "string") return { ok: false, error: "Ожидается строка" };
+  if (typeof raw !== "string") return { ok: false, code: "INVALID_FIELD", params: { field: "nameLatin" } };
   const v = raw.normalize("NFC").replace(/\s+/g, " ").trim();
   if (!v) return { ok: true, value: null };
-  if (v.length > 80) return { ok: false, error: "Не длиннее 80 символов" };
-  if (!/^[\p{L}\p{N} .'ʻʼ’`-]+$/u.test(v)) return { ok: false, error: "Только буквы, цифры, пробел, точка, дефис и апостроф" };
+  if (v.length > 80) return { ok: false, code: "TEXT_TOO_LONG", params: { field: "nameLatin", max: 80 } };
+  if (!/^[\p{L}\p{N} .'ʻʼ’`-]+$/u.test(v)) return { ok: false, code: "NAME_LATIN_CHARS" };
   return { ok: true, value: v };
 }
 

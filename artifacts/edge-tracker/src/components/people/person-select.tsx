@@ -12,13 +12,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { cn } from "@/lib/utils";
 import { Highlight } from "./highlight";
 import { prepareQuery, rankPeople, usePeopleAliases } from "./search";
-
-const T = {
-  search: "Имя на любом языке…",
-  nothing: "Никого не нашли",
-  hintLayout: "Можно вводить латиницей, кириллицей и даже в другой раскладке",
-  selfSuffix: "(я)",
-} as const;
+import { commonI18n } from "@/i18n/ns/common";
 
 export type PersonOption = string | { value: string; label?: string; hint?: string };
 
@@ -49,9 +43,12 @@ type Opt = { value: string; label: string; hint?: string };
 const norm = (o: PersonOption): Opt => (typeof o === "string" ? { value: o, label: o } : { value: o.value, label: o.label ?? o.value, hint: o.hint });
 
 export function PersonSelect({
-  value, onValueChange, options, allLabel, allValue = "", icon: Icon, placeholder = "Трейдер", self, selfSuffix = T.selfSuffix, ariaLabel, className, contentClassName,
+  value, onValueChange, options, allLabel, allValue = "", icon: Icon, placeholder: placeholderProp, self, selfSuffix: selfSuffixProp, ariaLabel, className, contentClassName,
   disabled, align = "start", id,
 }: Props) {
+  const { t } = commonI18n.useT();
+  const placeholder = placeholderProp ?? t("roles.trader");
+  const selfSuffix = selfSuffixProp ?? t("people.selfSuffix");
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
   const aliases = usePeopleAliases();
@@ -104,15 +101,15 @@ export function PersonSelect({
             <CommandPrimitive.Input
               value={query}
               onValueChange={setQuery}
-              placeholder={T.search}
-              title={T.hintLayout}
+              placeholder={t("people.search")}
+              title={t("people.hintLayout")}
               autoComplete="off"
               spellCheck={false}
               className="h-10 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
           <CommandPrimitive.List className="max-h-[min(20rem,50dvh)] overflow-y-auto overscroll-contain p-1">
-            {hits.length === 0 && <div role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">{T.nothing}</div>}
+            {hits.length === 0 && <div role="status" className="px-3 py-6 text-center text-sm text-muted-foreground">{t("people.nothing")}</div>}
             {allLabel && pq.empty && (
               <Row value="__all" selected={isAll} onSelect={() => pick(allValue)}>{allLabel}</Row>
             )}

@@ -1,4 +1,5 @@
 import type { Grade, Horizon, Impact, MarketBias, MediaRef, PlanDoc, RiskMode, TickerBias } from "./types";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 
 /**
  * Editor model for a plan (desk or personal). Levels and numbers stay strings while typing; `draftToDoc` parses
@@ -132,8 +133,8 @@ export function parseLevels(str: string): number[] {
 }
 function levelError(str: string): string | null {
   const l = parseLevels(str);
-  if (l.some((n) => !Number.isFinite(n) || n < 0 || n >= 1e7)) return "Только числа через пробел";
-  if (l.length > 12) return "Не больше 12 уровней";
+  if (l.some((n) => !Number.isFinite(n) || n < 0 || n >= 1e7)) return gpI18n.t("validation.levels");
+  if (l.length > 12) return gpI18n.t("validation.levelsMax");
   return null;
 }
 function num(str: string): number | null {
@@ -156,15 +157,15 @@ export function validateDraft(d: PlanDraft): DraftErrors {
     if (err) e[k] = err;
   }
   const ml = num(d.maxLoss);
-  if (ml !== null && (Number.isNaN(ml) || ml < 0 || ml >= 1e7)) e.maxLoss = "Сумма в $, например 300";
+  if (ml !== null && (Number.isNaN(ml) || ml < 0 || ml >= 1e7)) e.maxLoss = gpI18n.t("validation.maxLoss");
   const mt = num(d.maxTrades);
-  if (mt !== null && (Number.isNaN(mt) || !Number.isInteger(mt) || mt < 0 || mt > 500)) e.maxTrades = "Целое число 0–500";
+  if (mt !== null && (Number.isNaN(mt) || !Number.isInteger(mt) || mt < 0 || mt > 500)) e.maxTrades = gpI18n.t("validation.maxTrades");
   const seen = new Set<string>();
   for (const t of d.inPlay) {
     const tk = t.ticker.trim().toUpperCase();
-    if (!tk) e[`inPlay.${t.key}.ticker`] = "Тикер обязателен";
-    else if (tk.length > 12 || !TICKER_RE.test(tk)) e[`inPlay.${t.key}.ticker`] = "Латиница, цифры, . -";
-    else if (seen.has(tk)) e[`inPlay.${t.key}.ticker`] = "Тикер уже в плане";
+    if (!tk) e[`inPlay.${t.key}.ticker`] = gpI18n.t("validation.tickerRequired");
+    else if (tk.length > 12 || !TICKER_RE.test(tk)) e[`inPlay.${t.key}.ticker`] = gpI18n.t("validation.tickerFormat");
+    else if (seen.has(tk)) e[`inPlay.${t.key}.ticker`] = gpI18n.t("validation.tickerDup");
     seen.add(tk);
     for (const k of ["support", "resistance"] as const) {
       const err = levelError(t[k]);
@@ -172,8 +173,8 @@ export function validateDraft(d: PlanDraft): DraftErrors {
     }
   }
   for (const m of d.macro) {
-    if (!m.title.trim()) e[`macro.${m.key}.title`] = "Название обязательно";
-    if (!TIME_RE.test(m.time.trim())) e[`macro.${m.key}.time`] = "ЧЧ:ММ";
+    if (!m.title.trim()) e[`macro.${m.key}.title`] = gpI18n.t("validation.titleRequired");
+    if (!TIME_RE.test(m.time.trim())) e[`macro.${m.key}.time`] = gpI18n.t("validation.time");
   }
   return e;
 }
@@ -272,49 +273,28 @@ export function applyTemplate(cur: PlanDraft, tpl: Partial<PlanDoc>): PlanDraft 
 
 export type BuiltinTemplate = { id: string; name: string; hint: string; doc: Partial<PlanDoc> };
 
+type BuiltinId = "standard" | "earnings" | "macro" | "chop";
+/** A built-in template whose texts follow the UI language (read when the template is shown / applied). */
+function builtin(id: BuiltinId, extra: Partial<PlanDoc> = {}): BuiltinTemplate {
+  return {
+    id,
+    get name() { return gpI18n.t(`templates.${id}.name`); },
+    get hint() { return gpI18n.t(`templates.${id}.hint`); },
+    get doc() {
+      return {
+        ...extra,
+        marketView: gpI18n.t(`templates.${id}.marketView`),
+        riskNotes: gpI18n.t(`templates.${id}.riskNotes`),
+        focus: gpI18n.t(`templates.${id}.focus`),
+      };
+    },
+  };
+}
+
 /** Ready-made skeletons — the prompts are what a desk head asks in the morning meeting. */
 export const BUILTIN_TEMPLATES: BuiltinTemplate[] = [
-  {
-    id: "standard",
-    name: "Обычный день",
-    hint: "Контекст, лидеры, правило дня",
-    doc: {
-      marketView: "Фьючерсы / гэп индексов: \nЛидеры и аутсайдеры премаркета: \nСектора в игре: \nЧто жду от открытия: ",
-      riskNotes: "Red day stop: \nНе торгую: первые 5 минут без сетапа, low float без объёма",
-      focus: "Только A+ сетапы от уровней — ждать подтверждения, не догонять",
-    },
-  },
-  {
-    id: "earnings",
-    name: "Отчётности",
-    hint: "Гэпы на отчётах, реакция и сценарии",
-    doc: {
-      marketView: "Отчёты до открытия: \nФакт vs консенсус и гайденс: \nРеакция в премаркете (гэп, объём): \nЧто сделали аналитики: ",
-      riskNotes: "Первый вход — половина размера; не держать через звонок менеджмента без плана",
-      focus: "Не входить до первой 5-минутной свечи — торговать подтверждённое направление",
-    },
-  },
-  {
-    id: "macro",
-    name: "Макро-день",
-    hint: "CPI / FOMC / NFP — размер вниз до цифр",
-    doc: {
-      riskMode: "reduced",
-      marketView: "Событие и время (ET): \nОжидания рынка: \nСценарий если выше ожиданий: \nСценарий если ниже: ",
-      riskNotes: "До цифр — размер ×0.5, без позиций на выходе данных; после — только по направлению реакции",
-      focus: "Не угадывать цифры — торговать вторую волну после реакции",
-    },
-  },
-  {
-    id: "chop",
-    name: "Боковик",
-    hint: "Низкая волатильность — меньше сделок",
-    doc: {
-      riskMode: "reduced",
-      bias: "neutral",
-      marketView: "Диапазон индексов: \nЧто сломает боковик: ",
-      riskNotes: "Лимит сделок на день; после 2 стопов подряд — пауза 30 минут",
-      focus: "Меньше сделок, только от границ диапазона; цель дня — сохранить капитал",
-    },
-  },
+  builtin("standard"),
+  builtin("earnings"),
+  builtin("macro", { riskMode: "reduced" }),
+  builtin("chop", { riskMode: "reduced", bias: "neutral" }),
 ];

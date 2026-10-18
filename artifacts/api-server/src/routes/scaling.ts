@@ -28,14 +28,17 @@ import { nyDate } from "../lib/tradingDate";
 import { closeDateSql, closedSql, netPnlSql, resultSql, signedRSql } from "../lib/tradeMath";
 import { can, requireCap, type Capability } from "../lib/permissions";
 import {
-  DEFAULT_RULES, DEFAULT_TIERS, METRICS, OPS, UNITS, evaluateTrader, sortTiers, windowStart,
+  DEFAULT_RULES, DEFAULT_TIERS, OPS, evaluateTrader, metricsMeta, renderStoredReasons, sortTiers, unitsMeta, windowStart,
+  type ReasonItem,
   type Evaluation, type MetricKey, type Op, type Rule, type RuleKind, type Tier, type TraderInput, type Unit,
 } from "../lib/scalingEngine";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { limitsSummary, preview as textPreview, scalingActionLabel, uniqueRecipients } from "../lib/notifyEventsCore";
-import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { uniqueRecipients } from "../lib/notifyEventsCore";
+import { AppError, errorMessage, badRequest, conflict, notFound, sendError, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { scalingT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
@@ -179,7 +182,7 @@ async function viewer(req: Request, res: Response): Promise<Viewer | null> {
   return { name, staff: await can(req, "scaling.read.team") };
 }
 async function staffOnly(req: Request, res: Response, cap: Capability): Promise<Viewer | null> {
-  if (!(await requireCap(req, res, cap, null, "Только для кураторов"))) return null;
+  if (!(await requireCap(req, res, cap, null, "STAFF_ONLY"))) return null;
   return { name: req.authUser!.name, staff: true };
 }
 
@@ -267,10 +270,11 @@ type Proposal = {
   decisionComment: string | null; snapshot?: unknown;
 };
 const PROPOSAL_COLS = `id, trader, action, from_tier, to_tier, status, source, reasons, comment, created_by, created_at, decided_by, decided_at, decision_comment`;
-function rowToProposal(r: any, withSnapshot = false): Proposal {
+/** `lang` renders stored reason items (legacy rows keep their stored RU strings). */
+function rowToProposal(r: any, withSnapshot = false, lang: Lang = "ru"): Proposal {
   const p: Proposal = {
     id: Number(r.id), trader: String(r.trader), action: String(r.action), fromTier: r.from_tier ?? null, toTier: String(r.to_tier),
-    status: String(r.status), source: String(r.source ?? "auto"), reasons: Array.isArray(r.reasons) ? r.reasons.map(String) : [],
+    status: String(r.status), source: String(r.source ?? "auto"), reasons: renderStoredReasons(r.reasons, lang),
     comment: r.comment ?? null, createdBy: String(r.created_by), createdAt: new Date(r.created_at).toISOString(),
     decidedBy: r.decided_by ?? null, decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null, decisionComment: r.decision_comment ?? null,
   };
@@ -396,21 +400,21 @@ async function evaluateScope(trader: string | null, today: string): Promise<{ ti
 
 // ─── config ─────────────────────────────────────────────────────────────────
 
-const META = { metrics: METRICS, ops: OPS, units: UNITS };
+const meta = (lang: Lang) => ({ metrics: metricsMeta(lang), ops: OPS, units: unitsMeta(lang) });
 
 router.get("/scaling/config", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
   await ensureTables();
   const [tiers, rules] = await Promise.all([loadTiers(), loadRules()]);
-  res.json({ tiers, rules, meta: META, canEdit: v.staff });
+  res.json({ tiers, rules, meta: meta(langOf(req)), canEdit: v.staff });
 }));
 
 const money = z.union([z.number(), z.string().trim().regex(/^-?\d+(\.\d+)?$/).transform(Number)])
   .pipe(z.number().finite().min(0).max(1e12)).nullable().optional();
 
 const TierBody = z.object({
-  key: z.string().trim().regex(/^[a-z0-9_-]{1,40}$/, "key: латиница, цифры, _ или -"),
+  key: z.string().trim().regex(/^[a-z0-9_-]{1,40}$/),
   name: z.string().trim().min(1).max(60),
   order: z.number().int().min(0).max(1000).optional(),
   accountSize: money,
@@ -431,13 +435,10 @@ router.put("/scaling/tiers", asyncHandler(async (req, res): Promise<void> => {
   if (!v) return;
   await ensureTables();
   const parsed = z.array(TierBody).min(1).max(20).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Проверьте поля тиров", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const keys = new Set<string>();
   for (const t of parsed.data) {
-    if (keys.has(t.key)) { res.status(400).json({ error: `Дубликат ключа тира «${t.key}»` }); return; }
+    if (keys.has(t.key)) throw new AppError("TIER_KEY_DUPLICATE", 400, { key: t.key });
     keys.add(t.key);
   }
   const tiers: Tier[] = parsed.data.map((t, i) => ({
@@ -463,7 +464,7 @@ router.put("/scaling/tiers", asyncHandler(async (req, res): Promise<void> => {
   res.json({ tiers: await loadTiers() });
 }));
 
-const METRIC_KEYS = METRICS.map((m) => m.key) as [MetricKey, ...MetricKey[]];
+const METRIC_KEYS = metricsMeta().map((m) => m.key) as [MetricKey, ...MetricKey[]];
 const RuleBody = z.object({
   id: z.number().int().positive().optional(),
   kind: z.enum(["promote", "demote"]),
@@ -482,13 +483,10 @@ router.put("/scaling/rules", asyncHandler(async (req, res): Promise<void> => {
   if (!v) return;
   await ensureTables();
   const parsed = z.array(RuleBody).max(100).safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: "Проверьте поля правил", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const tierKeys = new Set((await loadTiers()).map((t) => t.key));
   for (const r of parsed.data) {
-    if (r.tierKey && !tierKeys.has(r.tierKey)) { res.status(400).json({ error: `Тир «${r.tierKey}» не найден` }); return; }
+    if (r.tierKey && !tierKeys.has(r.tierKey)) throw new AppError("TIER_NOT_FOUND", 400, { tier: r.tierKey });
   }
   const client = await pool.connect();
   try {
@@ -527,7 +525,7 @@ router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => 
   await ensureTables();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (raw.length > 100) throw badRequest("INVALID_TRADER");
-  if (!v.staff && raw && raw !== v.name) { res.status(403).json({ error: "Можно смотреть только свой план" }); return; }
+  if (!v.staff && raw && raw !== v.name) throw new AppError("SCALING_OWN_ONLY");
   const trader = v.staff ? (raw || null) : v.name;
   const today = clientDate(req.query.date);
   const { tiers, rules, traders } = await evaluateScope(trader, today);
@@ -540,7 +538,7 @@ router.get("/scaling/evaluate", asyncHandler(async (req, res): Promise<void> => 
     warnings: traders.filter((t) => t.recommendation.warning).length,
     pending: traders.filter((t) => t.pendingProposal).length,
   };
-  res.json({ date: today, tiers, rules, meta: META, summary, traders, canEdit: v.staff });
+  res.json({ date: today, tiers, rules, meta: meta(langOf(req)), summary, traders, canEdit: v.staff });
 }));
 
 // ─── proposals ──────────────────────────────────────────────────────────────
@@ -576,7 +574,8 @@ function snapshotOf(e: Evaluation) {
 
 async function createProposal(opts: {
   trader: string; action: "promote" | "demote" | "assign"; fromTier: string | null; toTier: string; source: "auto" | "manual";
-  reasons: string[]; snapshot: unknown; comment: string | null; actor: string;
+  /** Stored as data (ReasonItem objects), rendered per reader by rowToProposal. */
+  reasons: ReasonItem[]; snapshot: unknown; comment: string | null; actor: string; lang?: Lang;
 }): Promise<Proposal | null> {
   const { rows } = await pool.query(
     `INSERT INTO scaling_proposals (trader, action, from_tier, to_tier, status, source, reasons, snapshot, comment, created_by)
@@ -585,20 +584,28 @@ async function createProposal(opts: {
      RETURNING ${PROPOSAL_COLS}`,
     [opts.trader, opts.action, opts.fromTier, opts.toTier, opts.source, JSON.stringify(opts.reasons), JSON.stringify(opts.snapshot ?? null), opts.comment, opts.actor],
   );
-  return rows[0] ? rowToProposal(rows[0]) : null;
+  return rows[0] ? rowToProposal(rows[0], false, opts.lang ?? "ru") : null;
 }
 
 // ─── notifications (background, never block / fail the operation) ─────────────
 
-const tierName = (tiers: Tier[], key: string | null | undefined) => (key ? tiers.find((t) => t.key === key)?.name ?? key : "без тира");
+/** Tier name by key (null when the trader has no tier — the renderer writes «без тира» in the reader's language). */
+const tierName = (tiers: Tier[], key: string | null | undefined): string | null => (key ? tiers.find((t) => t.key === key)?.name ?? key : null);
+const tierLimitParams = (tier: Tier | null) => (tier ? {
+  ...(tier.dailyLossLimit != null ? { daily: tier.dailyLossLimit } : {}),
+  ...(tier.weeklyLossLimit != null ? { weekly: tier.weeklyLossLimit } : {}),
+  ...(tier.maxDrawdown != null ? { dd: tier.maxDrawdown } : {}),
+} : {});
 
 /** scaling_proposal → the trader's assigned staff (fallback: every curator/admin), except the curator who created it. */
-function notifyProposalCreated(p: Proposal, tiers: Tier[], actor: string): void {
+function notifyProposalCreated(p: Proposal, tiers: Tier[], actor: string, reasonItems: ReasonItem[]): void {
   inBackground("scaling.proposal", async () => {
     await notifyUsers(await staffOrFallback(p.trader), {
       type: "scaling_proposal", actor, source: "scaling",
-      title: `${p.trader}: ${scalingActionLabel(p.action).toLowerCase()} ${tierName(tiers, p.fromTier)} → ${tierName(tiers, p.toTier)}`,
-      message: `${p.source === "auto" ? "Авто-предложение по правилам" : `Предложил ${actor}`}${p.reasons.length ? `: ${textPreview(p.reasons.slice(0, 2).join("; "), 160)}` : ""}`,
+      params: {
+        trader: p.trader, actionCode: p.action, from: tierName(tiers, p.fromTier), to: tierName(tiers, p.toTier) ?? p.toTier,
+        source: p.source, actor, ...(reasonItems.length ? { reasonsJson: JSON.stringify(reasonItems.slice(0, 2)) } : {}),
+      },
       link: notifLinks.scaling(p.trader), entityType: "scaling_proposal", entityId: p.id,
     }, actor);
   });
@@ -608,16 +615,14 @@ function notifyProposalCreated(p: Proposal, tiers: Tier[], actor: string): void 
 function notifyDecision(p: Proposal, approved: boolean, actor: string, comment: string | null, tier: Tier | null): void {
   inBackground("scaling.decision", async () => {
     const tiers = tier ? [tier] : await loadTiers();
-    const change = `${scalingActionLabel(p.action)} до «${tierName(tiers, p.toTier)}»`;
-    const limits = approved && tier ? limitsSummary(tier) : "";
-    const body = approved
-      ? `${change} одобрено (${actor})${limits ? `. Новые лимиты: ${limits}` : ""}${comment ? `. «${textPreview(comment, 120)}»` : ""}`
-      : `${change} отклонено (${actor})${comment ? `: «${textPreview(comment, 160)}»` : ""}`;
+    const base = {
+      trader: p.trader, approved: approved ? 1 : 0, actionCode: p.action, to: tierName(tiers, p.toTier) ?? p.toTier, actor,
+      ...(approved ? tierLimitParams(tier) : {}), ...(comment ? { comment } : {}),
+    };
     for (const name of uniqueRecipients([p.trader, p.createdBy], actor)) {
       await notifyUser({
         userName: name, type: "scaling_decision", actor, source: "scaling",
-        title: name === p.trader ? (approved ? "Масштабирование одобрено" : "Масштабирование отклонено") : `${p.trader}: ${approved ? "одобрено" : "отклонено"}`,
-        message: body,
+        params: { ...base, variant: name === p.trader ? "trader" : "staff" },
         link: notifLinks.scaling(p.trader), entityType: "scaling_proposal", entityId: p.id,
       });
     }
@@ -636,21 +641,21 @@ router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =
   if (!v) return;
   await ensureTables();
   const parsed = ProposalBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Проверьте поля предложения", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); return; }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!known.length) throw notFound("TRADER_NOT_FOUND");
   const today = nyDate();
   const { tiers, traders } = await evaluateScope(b.trader, today);
   const e = traders[0];
-  if (!e) { res.status(404).json({ error: "Нет данных по трейдеру" }); return; }
-  if (e.pendingProposal) { res.status(409).json({ error: "У трейдера уже есть предложение на рассмотрении", proposal: e.pendingProposal }); return; }
+  if (!e) throw notFound("TRADER_NO_DATA");
+  if (e.pendingProposal) throw conflict("PROPOSAL_PENDING", { proposal: e.pendingProposal });
 
   let toTier: Tier | null = null;
   let action = b.action ?? (e.recommendation.action === "hold" ? null : e.recommendation.action);
   if (b.toTier) {
     toTier = tiers.find((t) => t.key === b.toTier) ?? null;
-    if (!toTier) { res.status(400).json({ error: `Тир «${b.toTier}» не найден` }); return; }
+    if (!toTier) throw new AppError("TIER_NOT_FOUND", 400, { tier: b.toTier });
     if (!action) {
       const cur = e.tier;
       action = !cur ? "assign" : toTier.order > cur.order ? "promote" : toTier.order < cur.order ? "demote" : "assign";
@@ -658,14 +663,15 @@ router.post("/scaling/proposals", asyncHandler(async (req, res): Promise<void> =
   } else {
     toTier = action === "promote" ? e.nextTier : action === "demote" ? e.prevTier : action === "assign" ? (e.recommendation.toTier ?? tiers[0] ?? null) : null;
   }
-  if (!action || !toTier) { res.status(400).json({ error: "Укажите действие или целевой тир — по правилам сейчас рекомендуется удержание" }); return; }
-  if (toTier.key === e.tierKey) { res.status(400).json({ error: "Трейдер уже на этом тире" }); return; }
+  if (!action || !toTier) throw new AppError("PROPOSAL_TARGET_REQUIRED");
+  if (toTier.key === e.tierKey) throw new AppError("ALREADY_ON_TIER");
 
-  const reasons = b.action || b.toTier ? [b.comment ? `Ручное предложение куратора: ${b.comment}` : "Ручное предложение куратора", ...e.recommendation.reasons] : e.recommendation.reasons;
-  const p = await createProposal({ trader: b.trader, action, fromTier: e.tierKey, toTier: toTier.key, source: "manual", reasons, snapshot: snapshotOf(e), comment: b.comment ?? null, actor: v.name });
-  if (!p) { res.status(409).json({ error: "У трейдера уже есть предложение на рассмотрении" }); return; }
+  const manual: ReasonItem[] = b.action || b.toTier ? [b.comment ? { code: "manualWith", comment: b.comment } : { code: "manual" }] : [];
+  const reasons = [...manual, ...e.recommendation.reasonItems];
+  const p = await createProposal({ trader: b.trader, action, fromTier: e.tierKey, toTier: toTier.key, source: "manual", reasons, snapshot: snapshotOf(e), comment: b.comment ?? null, actor: v.name, lang: langOf(req) });
+  if (!p) throw conflict("PROPOSAL_PENDING");
   await logAudit({ actor: v.name, action: "scaling.proposal.create", targetType: "scaling_proposal", targetId: String(p.id), details: { trader: b.trader, action, toTier: toTier.key, source: "manual" } });
-  notifyProposalCreated(p, tiers, v.name);
+  notifyProposalCreated(p, tiers, v.name, reasons);
   res.status(201).json(p);
 }));
 
@@ -675,18 +681,18 @@ router.post("/scaling/proposals/auto", asyncHandler(async (req, res): Promise<vo
   await ensureTables();
   const today = clientDate(req.body?.date);
   const { tiers, traders } = await evaluateScope(null, today);
-  const created: Proposal[] = [];
+  const created: (Proposal & { reasonItems: ReasonItem[] })[] = [];
   for (const e of traders) {
     const a = e.recommendation.action;
     if ((a !== "promote" && a !== "demote") || !e.recommendation.toTier || e.pendingProposal) continue;
-    const p = await createProposal({ trader: e.trader, action: a, fromTier: e.tierKey, toTier: e.recommendation.toTier.key, source: "auto", reasons: e.recommendation.reasons, snapshot: snapshotOf(e), comment: null, actor: v.name });
-    if (p) created.push(p);
+    const p = await createProposal({ trader: e.trader, action: a, fromTier: e.tierKey, toTier: e.recommendation.toTier.key, source: "auto", reasons: e.recommendation.reasonItems, snapshot: snapshotOf(e), comment: null, actor: v.name, lang: langOf(req) });
+    if (p) created.push({ ...p, reasonItems: e.recommendation.reasonItems });
   }
   if (created.length) {
     await logAudit({ actor: v.name, action: "scaling.proposal.auto", targetType: "scaling_proposal", details: { count: created.length, traders: created.map((p) => p.trader) } });
-    for (const p of created) notifyProposalCreated(p, tiers, v.name);
+    for (const p of created) notifyProposalCreated(p, tiers, v.name, p.reasonItems);
   }
-  res.json({ created: created.length, proposals: created });
+  res.json({ created: created.length, proposals: created.map(({ reasonItems: _items, ...p }) => p) });
 }));
 
 function parseId(raw: unknown): number | null {
@@ -734,7 +740,7 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
+  if (!parsed.success) throw new AppError("TEXT_TOO_LONG", 400, { field: "comment", max: 2000 });
   const comment = parsed.data.comment || null;
   const tiers = await loadTiers();
 
@@ -743,11 +749,11 @@ router.post("/scaling/proposals/:id/approve", asyncHandler(async (req, res): Pro
   try {
     await client.query("BEGIN");
     const { rows } = await client.query(`SELECT ${PROPOSAL_COLS} FROM scaling_proposals WHERE id = $1 FOR UPDATE`, [id]);
-    if (!rows[0]) { await client.query("ROLLBACK"); res.status(404).json({ error: "Предложение не найдено" }); return; }
+    if (!rows[0]) { await client.query("ROLLBACK"); throw notFound("PROPOSAL_NOT_FOUND"); }
     const p = rowToProposal(rows[0]);
-    if (p.status !== "pending") { await client.query("ROLLBACK"); res.status(409).json({ error: "Предложение уже рассмотрено", proposal: p }); return; }
+    if (p.status !== "pending") { await client.query("ROLLBACK"); throw conflict("PROPOSAL_DECIDED", { proposal: p }); }
     const tier = tiers.find((t) => t.key === p.toTier);
-    if (!tier) { await client.query("ROLLBACK"); res.status(400).json({ error: `Тир «${p.toTier}» больше не существует — отклоните предложение` }); return; }
+    if (!tier) { await client.query("ROLLBACK"); throw new AppError("PROPOSAL_TIER_GONE", 400, { tier: p.toTier }); }
     const { rows: cur } = await client.query(`SELECT tier FROM trader_risk_limits WHERE trader = $1`, [p.trader]);
     const fromTier = cur[0]?.tier ?? p.fromTier ?? null;
     const historyId = await applyTier(client, p.trader, tier, v.name, { action: p.action, fromTier, proposalId: p.id, comment });
@@ -778,7 +784,7 @@ router.post("/scaling/proposals/:id/reject", asyncHandler(async (req, res): Prom
   const id = parseId(req.params.id);
   if (!id) throw badRequest("INVALID_ID");
   const parsed = DecisionBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Комментарий слишком длинный" }); return; }
+  if (!parsed.success) throw new AppError("TEXT_TOO_LONG", 400, { field: "comment", max: 2000 });
   const comment = parsed.data.comment || null;
   const { rows } = await pool.query(
     `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3
@@ -787,9 +793,8 @@ router.post("/scaling/proposals/:id/reject", asyncHandler(async (req, res): Prom
   );
   if (!rows[0]) {
     const { rows: ex } = await pool.query(`SELECT ${PROPOSAL_COLS} FROM scaling_proposals WHERE id = $1`, [id]);
-    if (!ex[0]) res.status(404).json({ error: "Предложение не найдено" });
-    else res.status(409).json({ error: "Предложение уже рассмотрено", proposal: rowToProposal(ex[0]) });
-    return;
+    if (!ex[0]) throw notFound("PROPOSAL_NOT_FOUND");
+    throw conflict("PROPOSAL_DECIDED", { proposal: rowToProposal(ex[0], false, langOf(req)) });
   }
   const p = rowToProposal(rows[0]);
   await logAudit({ actor: v.name, action: "scaling.proposal.reject", targetType: "scaling_proposal", targetId: String(id), details: { trader: p.trader, action: p.action, toTier: p.toTier, comment } });
@@ -808,13 +813,13 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
   if (!v) return;
   await ensureTables();
   const parsed = AssignBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: "Проверьте поля", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); return; }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const { rows: known } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
   if (!known.length) throw notFound("TRADER_NOT_FOUND");
   const tiers = await loadTiers();
   const tier = tiers.find((t) => t.key === b.tierKey);
-  if (!tier) { res.status(400).json({ error: `Тир «${b.tierKey}» не найден` }); return; }
+  if (!tier) throw new AppError("TIER_NOT_FOUND", 400, { tier: b.tierKey });
 
   const client = await pool.connect();
   let out: { fromTier: string | null; historyId: number } | null = null;
@@ -822,14 +827,15 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     await client.query("BEGIN");
     const { rows: cur } = await client.query(`SELECT tier FROM trader_risk_limits WHERE trader = $1 FOR UPDATE`, [b.trader]);
     const fromTier: string | null = cur[0]?.tier ?? null;
-    if (fromTier === tier.key) { await client.query("ROLLBACK"); res.status(400).json({ error: "Трейдер уже на этом тире" }); return; }
+    if (fromTier === tier.key) { await client.query("ROLLBACK"); throw new AppError("ALREADY_ON_TIER"); }
     const fromOrder = tiers.find((t) => t.key === fromTier)?.order;
     const action = fromOrder == null ? "assign" : tier.order > fromOrder ? "promote" : "demote";
     const historyId = await applyTier(client, b.trader, tier, v.name, { action, fromTier, proposalId: null, comment: b.comment ?? null });
     // a pending proposal for this trader is now stale
+    // Stored decision note, in the curator's language (staff read it on the proposal card).
     await client.query(
-      `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = 'Тир назначен вручную' WHERE trader = $1 AND status = 'pending'`,
-      [b.trader, v.name],
+      `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE trader = $1 AND status = 'pending'`,
+      [b.trader, v.name, scalingT.tFor(langOf(req))("assignDecision")],
     );
     await client.query("COMMIT");
     out = { fromTier, historyId };
@@ -845,8 +851,7 @@ router.post("/scaling/assign", asyncHandler(async (req, res): Promise<void> => {
     const actor = v.name;
     inBackground("scaling.assign", () => notifyUser({
       userName: b.trader, type: "limit_change", actor, source: "scaling",
-      title: `Тир изменён: ${fromName} → ${tier.name}`,
-      message: `${actor}: назначен тир «${tier.name}»${limitsSummary(tier) ? `. Лимиты: ${limitsSummary(tier)}` : ""}${b.comment ? `. «${textPreview(b.comment, 120)}»` : ""}`,
+      params: { variant: "assign", actor, from: fromName, to: tier.name, ...tierLimitParams(tier), ...(b.comment ? { comment: b.comment } : {}) },
       link: notifLinks.scaling(b.trader), entityType: "scaling_tier", entityId: b.trader,
     }));
   }
@@ -866,13 +871,13 @@ export async function loadTierTemplates(): Promise<Tier[]> {
  * limits). Writes scaling_history (promote / demote / assign — the actions the scaling UI knows); a pending
  * proposal is closed only when the tier actually changes. Notes in trader_risk_limits are kept.
  */
-export async function applyTierTemplate(trader: string, tierKey: string, actor: string, comment: string | null): Promise<
-  { ok: true; tier: Tier; fromTier: string | null; historyId: number; resync: boolean } | { ok: false; status: number; error: string }
+export async function applyTierTemplate(trader: string, tierKey: string, actor: string, comment: string | null, lang: Lang = "ru"): Promise<
+  { ok: true; tier: Tier; fromTier: string | null; historyId: number; resync: boolean } | { ok: false; status: number; error: string; code: "TIER_NOT_FOUND" }
 > {
   await ensureTables();
   const tiers = await loadTiers();
   const tier = tiers.find((t) => t.key === tierKey);
-  if (!tier) return { ok: false, status: 400, error: `Тир «${tierKey}» не найден` };
+  if (!tier) return { ok: false, status: 400, code: "TIER_NOT_FOUND", error: errorMessage("TIER_NOT_FOUND", lang, { tier: tierKey }) };
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -881,11 +886,11 @@ export async function applyTierTemplate(trader: string, tierKey: string, actor: 
     const fromOrder = tiers.find((t) => t.key === fromTier)?.order;
     const resync = fromTier === tier.key;
     const action = resync || fromOrder == null ? "assign" : tier.order > fromOrder ? "promote" : "demote";
-    const historyId = await applyTier(client, trader, tier, actor, { action, fromTier, proposalId: null, comment: comment ?? (resync ? "Лимиты приведены к шаблону тира" : null) });
+    const historyId = await applyTier(client, trader, tier, actor, { action, fromTier, proposalId: null, comment: comment ?? (resync ? scalingT.tFor(lang)("templateResync") : null) });
     if (!resync) {
       await client.query(
-        `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = 'Тир назначен по шаблону' WHERE trader = $1 AND status = 'pending'`,
-        [trader, actor],
+        `UPDATE scaling_proposals SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE trader = $1 AND status = 'pending'`,
+        [trader, actor, scalingT.tFor(lang)("templateDecision")],
       );
     }
     await client.query("COMMIT");
@@ -906,7 +911,7 @@ router.get("/scaling/history", asyncHandler(async (req, res): Promise<void> => {
   await ensureTables();
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
   if (raw.length > 100) throw badRequest("INVALID_TRADER");
-  if (!v.staff && raw && raw !== v.name) { res.status(403).json({ error: "Можно смотреть только свою историю" }); return; }
+  if (!v.staff && raw && raw !== v.name) throw new AppError("SCALING_OWN_ONLY");
   const trader = v.staff ? (raw || null) : v.name;
   const limit = Math.min(500, Math.max(1, Number(req.query.limit) || 100));
   const { rows } = await pool.query(

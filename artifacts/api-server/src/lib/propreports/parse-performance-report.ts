@@ -23,6 +23,8 @@
 import XLSX from "./xlsx";
 import { round2, round4 } from "./csv";
 import { feeKeyFor } from "./fees";
+import { propreportsT } from "../../i18n/ns";
+import type { Lang } from "../../i18n";
 
 export interface PerfSideStats {
   count: number;
@@ -205,7 +207,8 @@ function parseDataRow(r: unknown[]): PerfRow | null {
   return { label, wins, losses, totals, trades: wins.count + losses.count };
 }
 
-export function parsePerformanceRows(rowsIn: unknown[][]): PerformanceReport {
+export function parsePerformanceRows(rowsIn: unknown[][], lang: Lang = "ru"): PerformanceReport {
+  const tr = propreportsT.tFor(lang);
   const rows = rowsIn.map((r) => (Array.isArray(r) ? r : []));
   const issues: string[] = [];
   const perTradeAverages: PerTradeAverage[] = [];
@@ -257,14 +260,14 @@ export function parsePerformanceRows(rowsIn: unknown[][]): PerformanceReport {
       });
     }
   } else {
-    issues.push("Блок «Per Trade Averages» не найден");
+    issues.push(tr("perf.noAverages"));
   }
 
   // ── 2. Data header ("Description", "#") ─────────────────────────────────────
   const descIdx = rows.findIndex((r, k) => k >= i && cellStr(r[0]).toLowerCase() === "description" && cellStr(r[1]) === "#");
   if (descIdx < 0) {
-    issues.push("Заголовок таблицы Wins/Losses/Totals не найден");
-    return finalize(report);
+    issues.push(tr("perf.noHeader"));
+    return finalize(report, lang);
   }
 
   // ── 3. Blocks separated by blank rows ───────────────────────────────────────
@@ -274,7 +277,7 @@ export function parsePerformanceRows(rowsIn: unknown[][]): PerformanceReport {
     const r = rows[k];
     if (isBlank(r)) { if (cur.length) { blocks.push(cur); cur = []; } continue; }
     const row = parseDataRow(r);
-    if (!row) { issues.push(`Строка ${k + 1} пропущена: «${cellStr(r[0]).slice(0, 40)}»`); continue; }
+    if (!row) { issues.push(tr("perf.rowSkipped", { n: k + 1, text: cellStr(r[0]).slice(0, 40) })); continue; }
     cur.push(row);
   }
   if (cur.length) blocks.push(cur);
@@ -292,10 +295,11 @@ export function parsePerformanceRows(rowsIn: unknown[][]): PerformanceReport {
       report.other.push(row);
     }
   }
-  return finalize(report);
+  return finalize(report, lang);
 }
 
-function finalize(report: PerformanceReport): PerformanceReport {
+function finalize(report: PerformanceReport, lang: Lang): PerformanceReport {
+  const tr = propreportsT.tFor(lang);
   const t = report.totals;
   if (!t) {
     // derive totals from symbols if the grand-total row is missing
@@ -310,7 +314,7 @@ function finalize(report: PerformanceReport): PerformanceReport {
         totals: { gross: sum((r) => r.totals.gross), fees: sum((r) => r.totals.fees), net: sum((r) => r.totals.net), winRate: wins + losses ? round2((wins / (wins + losses)) * 100) : null, wlRatio: null, avgHoldSeconds: null, avgHold: null },
         trades: wins + losses,
       };
-      report.issues.push("Итоговая строка отсутствует — суммы вычислены по тикерам");
+      report.issues.push(tr("perf.noTotal"));
     }
   }
   const tt = report.totals;
@@ -332,7 +336,7 @@ function finalize(report: PerformanceReport): PerformanceReport {
       avgLoss: tt.losses.avgGross,
     };
   } else {
-    report.issues.push("В файле нет ни одной строки статистики");
+    report.issues.push(tr("perf.empty"));
   }
   return report;
 }
@@ -345,6 +349,6 @@ export function performanceSheetRows(buf: Buffer): unknown[][] {
   return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: true, defval: null });
 }
 
-export function parsePerformanceBuffer(buf: Buffer): PerformanceReport {
-  return parsePerformanceRows(performanceSheetRows(buf));
+export function parsePerformanceBuffer(buf: Buffer, lang: Lang = "ru"): PerformanceReport {
+  return parsePerformanceRows(performanceSheetRows(buf), lang);
 }

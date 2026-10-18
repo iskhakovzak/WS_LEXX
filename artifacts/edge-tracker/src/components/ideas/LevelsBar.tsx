@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import type { LevelPlan } from "./model";
 import { fmtPrice } from "@/lib/format";
+import { ideasI18n } from "@/i18n/ns/ideas";
 
 /**
  * Risk → reward ladder: stop on the left, targets on the right (direction-agnostic), entry zone in between,
@@ -34,7 +35,9 @@ export function LevelsBar({
   return (
     <div className={cn("w-full", className)}>
       <div className={cn("relative w-full", lg ? "h-3" : "h-1.5")} role="img"
-        aria-label={`Стоп ${fmtPrice(stop)}, вход ${fmtPrice(entry)}, цель ${fmtPrice(targets[0])}${price != null ? `, цена ${fmtPrice(price)}` : ""}`}>
+        aria-label={price != null
+          ? ideasI18n.t("levelsAriaPrice", { stop: fmtPrice(stop), entry: fmtPrice(entry), target: fmtPrice(targets[0]), price: fmtPrice(price) })
+          : ideasI18n.t("levelsAria", { stop: fmtPrice(stop), entry: fmtPrice(entry), target: fmtPrice(targets[0]) })}>
         <div className="absolute inset-y-0 left-0 rounded-l-full bg-down/30" style={{ width: pct(entry) }} />
         <div className="absolute inset-y-0 right-0 rounded-r-full bg-up/30" style={{ left: pct(entry) }} />
         <div className="absolute inset-y-0 bg-foreground/25" style={{ left: `${zoneA * 100}%`, width: `${Math.max(0.8, (zoneB - zoneA) * 100)}%` }} />

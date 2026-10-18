@@ -15,7 +15,8 @@ import {
   addDaysYmd,
   getWeeklyReportById,
 } from "../lib/weeklyPsychologyReport";
-import { AppError, unauthorized } from "../lib/http";
+import { AppError, badRequest, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -50,16 +51,16 @@ async function liveTradeCounts(userId: string, rows: ReportRow[]): Promise<Map<n
 }
 
 /**
- * Re-render insights in Russian from stored stats (older rows were saved in English) and flag stale reports (P1-10):
+ * Re-render insights in the reader's language from stored stats and flag stale reports (P1-10):
  * `stale` = the week's trades changed since generation (typically a report saved with totalTrades 0 before a
  * PropReports import) — the UI offers «Пересчитать». `liveTrades` = trades in the week right now.
  */
-function present(row: ReportRow, prev: ReportRow | null, live?: Map<number, number>) {
+function present(row: ReportRow, prev: ReportRow | null, lang: Lang, live?: Map<number, number>) {
   const liveTrades = live?.get(row.id);
   const stale = liveTrades != null && liveTrades !== row.totalTrades;
   return {
     ...row,
-    keyInsights: buildInsights(row, prev),
+    keyInsights: buildInsights(row, prev, lang),
     liveTrades: liveTrades ?? null,
     stale,
     staleReason: !stale ? null : row.totalTrades === 0 ? "trades_appeared" : "trades_changed",
@@ -98,7 +99,7 @@ router.get("/psychology/weekly-report", asyncHandler(async (req, res): Promise<v
   }
   const prev = await getPreviousWeeklyReport(userId, report.weekStart);
   const live = await liveTradeCounts(userId, [report]);
-  res.json({ report: present(report, prev, live), previous: summary(prev), currentWeek: getCurrentWeekBounds() });
+  res.json({ report: present(report, prev, langOf(req), live), previous: summary(prev), currentWeek: getCurrentWeekBounds() });
 }));
 
 router.get("/psychology/weekly-report/history", asyncHandler(async (req, res): Promise<void> => {
@@ -109,7 +110,8 @@ router.get("/psychology/weekly-report/history", asyncHandler(async (req, res): P
   const rows = await getWeeklyReportHistory(userId, limit + 1);
   const shown = rows.slice(0, limit);
   const live = await liveTradeCounts(userId, shown);
-  const reports = shown.map((r, i) => present(r, rows[i + 1] ?? null, live));
+  const lang = langOf(req);
+  const reports = shown.map((r, i) => present(r, rows[i + 1] ?? null, lang, live));
   const weeks = recalcWeeks();
   res.json({ reports, recalcWeeks: [weeks.current, weeks.last] });
 }));
@@ -119,10 +121,7 @@ router.post("/psychology/weekly-report/generate", asyncHandler(async (req, res):
   if (!userId) return;
   const rawStart = typeof req.body?.weekStart === "string" ? req.body.weekStart.trim() : undefined;
   const rawEnd = typeof req.body?.weekEnd === "string" ? req.body.weekEnd.trim() : undefined;
-  if ((rawStart && !isValidYmd(rawStart)) || (rawEnd && !isValidYmd(rawEnd))) {
-    res.status(400).json({ error: "weekStart/weekEnd must be YYYY-MM-DD" });
-    return;
-  }
+  if ((rawStart && !isValidYmd(rawStart)) || (rawEnd && !isValidYmd(rawEnd))) throw badRequest("INVALID_DATE");
   // Always normalise to the Monday–Friday of the given week, so a client in any
   // timezone (or an old client sending a Sunday) lands on the same row.
   let weekStart: string | undefined;
@@ -130,16 +129,13 @@ router.post("/psychology/weekly-report/generate", asyncHandler(async (req, res):
   if (rawStart) {
     ({ weekStart, weekEnd } = weekBoundsFor(rawStart));
   }
-  if (weekStart && weekEnd && rawEnd && rawEnd < weekStart) {
-    res.status(400).json({ error: "weekEnd must not be before weekStart" });
-    return;
-  }
+  if (weekStart && weekEnd && rawEnd && rawEnd < weekStart) throw badRequest("DATE_RANGE_INVALID");
   const id = await generateWeeklyReport(userId, weekStart, weekEnd);
   const report = await getLatestWeeklyReport(userId);
   const prev = report ? await getPreviousWeeklyReport(userId, report.weekStart) : null;
   res.status(201).json({
     id,
-    report: report ? present(report, prev) : null,
+    report: report ? present(report, prev, langOf(req)) : null,
     previous: summary(prev),
     currentWeek: getCurrentWeekBounds(),
   });
@@ -156,18 +152,14 @@ router.post("/psychology/weekly-report/recalculate", asyncHandler(async (req, re
   if (!auth) throw unauthorized();
   if (isGuestUser(auth)) throw new AppError("GUEST_READ_ONLY");
   const userId = typeof (req.body?.userId ?? req.query.userId) === "string" ? String(req.body?.userId ?? req.query.userId).trim() : "";
-  if (!userId) { res.status(400).json({ error: "userId is required" }); return; }
-  if (auth.name !== userId && !isStaffRole(await viewerRole(req))) {
-    res.status(403).json({ error: "Пересчитать можно только свой отчёт (или куратору)" });
-    return;
-  }
+  if (!userId) throw badRequest("TRADER_REQUIRED");
+  if (auth.name !== userId && !isStaffRole(await viewerRole(req))) throw new AppError("WEEKLY_REPORT_OWN_ONLY", 403);
   const weeks = recalcWeeks();
   const raw = typeof req.body?.weekStart === "string" ? req.body.weekStart.trim() : "";
-  if (raw && !isValidYmd(raw)) { res.status(400).json({ error: "weekStart must be YYYY-MM-DD" }); return; }
+  if (raw && !isValidYmd(raw)) throw badRequest("INVALID_DATE");
   const { weekStart, weekEnd } = weekBoundsFor(raw || weeks.current);
   if (weekStart !== weeks.current && weekStart !== weeks.last) {
-    res.status(400).json({ error: "Пересчитать можно только текущую или прошлую неделю", allowed: [weeks.current, weeks.last] });
-    return;
+    throw badRequest("WEEKLY_REPORT_WEEK_LOCKED", { allowed: [weeks.current, weeks.last] });
   }
   const id = await generateWeeklyReport(userId, weekStart, weekEnd);
   const report = await getWeeklyReportById(userId, id);
@@ -175,7 +167,7 @@ router.post("/psychology/weekly-report/recalculate", asyncHandler(async (req, re
   const live = report ? await liveTradeCounts(userId, [report]) : undefined;
   res.status(201).json({
     id,
-    report: report ? present(report, prev, live) : null,
+    report: report ? present(report, prev, langOf(req), live) : null,
     previous: summary(prev),
     currentWeek: getCurrentWeekBounds(),
   });

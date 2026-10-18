@@ -6,11 +6,12 @@ import { cn } from "@/lib/utils";
 import type { HistoryEntry, Tier } from "./use-scaling";
 import { tierName } from "./format";
 import { fmtDate } from "@/lib/format";
+import { scalingI18n } from "@/i18n/ns/scaling";
 
 const META = {
-  promote: { icon: ArrowUpRight, cls: "bg-up/15 text-up", label: "Повышение" },
-  demote: { icon: ArrowDownRight, cls: "bg-down/15 text-down", label: "Понижение" },
-  assign: { icon: Flag, cls: "bg-primary/15 text-primary", label: "Назначение" },
+  promote: { icon: ArrowUpRight, cls: "bg-up/15 text-up" },
+  demote: { icon: ArrowDownRight, cls: "bg-down/15 text-down" },
+  assign: { icon: Flag, cls: "bg-primary/15 text-primary" },
 } as const;
 
 export function HistoryTimeline({
@@ -28,6 +29,7 @@ export function HistoryTimeline({
   limit?: number;
   className?: string;
 }) {
+  const { t } = scalingI18n.useT();
   if (loading) {
     return (
       <div className={cn("flex flex-col gap-2", className)}>
@@ -37,12 +39,13 @@ export function HistoryTimeline({
   }
   const list = limit ? entries.slice(0, limit) : entries;
   if (!list.length) {
-    return <EmptyState icon={History} title="Истории пока нет" description="Здесь появятся повышения, понижения и назначения тира." className="py-8" />;
+    return <EmptyState icon={History} title={t("history.emptyTitle")} description={t("history.emptyHint")} className="py-8" />;
   }
   return (
     <ol className={cn("relative flex flex-col gap-3 border-l border-[var(--glass-border)] pl-5", className)}>
       {list.map((h) => {
-        const m = META[h.action as keyof typeof META] ?? META.assign;
+        const kind: keyof typeof META = h.action === "promote" || h.action === "demote" ? h.action : "assign";
+        const m = META[kind];
         const Icon = m.icon;
         return (
           <li key={h.id} className="relative">
@@ -51,7 +54,7 @@ export function HistoryTimeline({
             </span>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
               {showTrader && <span className="font-semibold text-foreground">{h.trader}</span>}
-              <span className="text-foreground">{m.label}:</span>
+              <span className="text-foreground">{t(`history.${kind}`)}:</span>
               <span className="text-muted-foreground">{tierName(tiers, h.fromTier)}</span>
               <span className="text-muted-foreground" aria-hidden="true">→</span>
               <Pill tone="purple">{tierName(tiers, h.toTier)}</Pill>
@@ -59,7 +62,7 @@ export function HistoryTimeline({
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
               <span>{fmtDate(h.createdAt, "dateTime")}</span>
               <span>{h.actor}</span>
-              {h.proposalId != null && <span>предложение #{h.proposalId}</span>}
+              {h.proposalId != null && <span>{t("history.proposalRef", { id: h.proposalId })}</span>}
             </div>
             {h.comment && <p className="mt-1 text-xs text-muted-foreground/90">{h.comment}</p>}
           </li>

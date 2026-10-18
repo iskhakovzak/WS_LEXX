@@ -786,11 +786,11 @@ export function WsChart({
     if (!replayActive && showViewSwitch && (code === "KeyD" || code === "KeyZ")) { e.preventDefault(); setViewMode(code === "KeyD" ? "day" : "trade"); return; }
     if (!replayActive) return;
     const btn = (e.target as HTMLElement | null)?.tagName === "BUTTON";
-    if (k === " ") { e.preventDefault(); togglePlay(); return; }
+    if (k === " " || code === "Space") { e.preventDefault(); togglePlay(); return; }
     if (k === "ArrowRight") { e.preventDefault(); step(e.shiftKey ? 10 : 1); return; }
     if (k === "ArrowLeft") { e.preventDefault(); step(e.shiftKey ? -10 : -1); return; }
-    if (k === "+" || k === "=") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, 1) }); return; }
-    if (k === "-" || k === "_") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, -1) }); return; }
+    if (k === "+" || k === "=" || code === "Equal" || code === "NumpadAdd") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, 1) }); return; }
+    if (k === "-" || k === "_" || code === "Minus" || code === "NumpadSubtract") { e.preventDefault(); updatePrefs({ speed: stepSpeed(speed, -1) }); return; }
     if (k === "Home") { e.preventDefault(); if (training) resetSession(); else { setPlaying(false); setCursor(startIdx); } return; }
     if (training) {
       if (code === "KeyB") { e.preventDefault(); placeOrder("buy"); }
@@ -876,18 +876,18 @@ export function WsChart({
   const hotkeys: HotkeyRow[] = React.useMemo(() => {
     const rows: HotkeyRow[] = [];
     if (replayActive) {
-      rows.push([["Space"], "играть / пауза"], [["→"], "бар вперёд (Shift — 10)"]);
-      if (!training) rows.push([["←"], "бар назад (Shift — 10)"]);
-      rows.push([["+", "−"], "быстрее / медленнее"]);
+      rows.push([[tc("hotkeys.keySpace")], tc("hotkeys.playPause")], [["→"], tc("hotkeys.stepForward")]);
+      if (!training) rows.push([["←"], tc("hotkeys.stepBack")]);
+      rows.push([["+", "−"], tc("hotkeys.speed")]);
       if (training) {
-        rows.push([["B"], "купить"], [["S"], "продать / шорт"], [["H"], "закрыть половину"], [["E"], "стоп в безубыток"], [["C"], "закрыть позицию"], [["Enter"], "показать, как было"]);
-        if (hasNextTask) rows.push([["N"], "следующая задача (после разбора)"]);
+        rows.push([["B"], tc("hotkeys.buy")], [["S"], tc("hotkeys.sell")], [["H"], tc("hotkeys.half")], [["E"], tc("hotkeys.breakeven")], [["C"], tc("hotkeys.flat")], [["Enter"], tc("hotkeys.reveal")]);
+        if (hasNextTask) rows.push([["N"], tc("hotkeys.nextTask")]);
       }
-      else rows.push([["E"], "к входу"], [["X"], "к выходу"], [["N"], "к следующему исполнению"], [["P"], "пауза на исполнениях"]);
-      rows.push([["Home"], "в начало"]);
+      else rows.push([["E"], tc("hotkeys.toEntry")], [["X"], tc("hotkeys.toExit")], [["N"], tc("hotkeys.nextFill")], [["P"], tc("hotkeys.pauseOnFills")]);
+      rows.push([["Home"], tc("hotkeys.toStart")]);
     }
     if (showViewSwitch) rows.push([["D"], tc("hotkeys.day")], [["Z"], tc("hotkeys.trade")]);
-    rows.push([["T"], "сменить таймфрейм"], [["F"], "показать сделку целиком"], [["Shift", "F"], "на весь экран"], [["Колесо"], "масштаб"], [["Esc"], "отменить рисование"]);
+    rows.push([["T"], tc("hotkeys.cycleTf")], [["F"], tc("hotkeys.fit")], [["Shift", "F"], tc("hotkeys.fullscreen")], [[tc("hotkeys.keyWheel")], tc("hotkeys.zoom")], [["Esc"], tc("hotkeys.cancelDrawing")]);
     return rows;
   }, [replayActive, training, hasNextTask, showViewSwitch, tc]);
 
@@ -903,19 +903,19 @@ export function WsChart({
       <div className={cn("flex w-full min-w-0 flex-col gap-2", isWorkspace && "h-full min-h-0", className)} aria-busy="true">
         <Skeleton className="h-8 w-full max-w-[34rem] rounded-full" />
         <Skeleton className={cn("rounded-2xl", isWorkspace && "min-h-[280px] flex-1")} style={isWorkspace ? undefined : { height }} />
-        <span className="sr-only" role="status">Загружаем график…</span>
+        <span className="sr-only" role="status">{tc("engine.loading")}</span>
       </div>
     );
   }
   if (data.error || !bars.length) {
     const err = data.error;
     const reason = err?.field<string>("reason");
-    const text = reason === "weekend" ? `${data.dateKey} — выходной, биржа закрыта`
-      : reason === "future" ? `${data.dateKey} ещё не наступило`
-      : err?.status === 404 ? `Нет свечей ${trade.ticker} за ${data.fromKey}…${data.toKey}`
-      : err ? `Не удалось загрузить свечи: ${err.message}`
-      : useDaily && data.daily.loading ? "Загружаем дневные бары…"
-      : `Нет свечей за ${data.dateKey}`;
+    const text = reason === "weekend" ? tc("engine.weekend", { date: data.dateKey })
+      : reason === "future" ? tc("engine.future", { date: data.dateKey })
+      : err?.status === 404 ? tc("engine.noCandlesRange", { ticker: trade.ticker, from: data.fromKey, to: data.toKey })
+      : err ? tc("engine.loadFailed", { message: err.message })
+      : useDaily && data.daily.loading ? tc("engine.loadingDaily")
+      : tc("engine.noCandles", { date: data.dateKey });
     return (
       <div className={cn("flex items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-4 py-6 text-sm text-muted-foreground", className)} role="status">
         <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" /> {text}
@@ -923,9 +923,10 @@ export function WsChart({
     );
   }
 
-  const fmtBarTime = (t: number) => (intraday ? `${fmtEtTime(t)} ET` : fmtEtDay(t));
+  // A multi-day trade (overnight / swing) spans several days: the replay labels carry the day too.
+  const fmtBarTime = (t: number) => (intraday ? (data.multiDay ? fmtEtDateTime(t) : `${fmtEtTime(t)} ET`) : fmtEtDay(t));
   const dockEnd = training ? sessionEnd : Math.min(last, Math.max(sessionEnd, geo.exitIdx ?? 0));
-  const hint = tool ? `${pendingCount ? "Вторая точка" : "Первая точка"}: кликните на графике · Esc — отмена` : selected ? "Delete — удалить выбранный рисунок" : null;
+  const hint = tool ? (pendingCount ? tc("engine.secondPoint") : tc("engine.firstPoint")) : selected ? tc("engine.deleteDrawing") : null;
   const replayDone = mode === "replay" && cursorIdx != null && geo.exitIdx != null && cursorIdx >= geo.exitIdx;
 
   let aside: React.ReactNode[] = [];
@@ -937,7 +938,7 @@ export function WsChart({
     if (hasTrade) aside.push(<FillLog key="log" fills={geo.fills} cursor={cursorIdx} redacted={redacted} onJump={(i) => { setPlaying(false); setCursor(i); }} />);
   } else if (training && cursorIdx != null) {
     if (outcome) {
-      const decisions: DecisionRow[] = sim.fills.map((f) => ({ idx: barIndexForTime(bars, f.t, barSec), time: fmtEtTime(f.t), price: f.price, qty: f.qty, reason: f.reason }));
+      const decisions: DecisionRow[] = sim.fills.map((f) => ({ idx: barIndexForTime(bars, f.t, barSec), time: data.multiDay ? `${fmtEtDay(f.t)} ${fmtEtTime(f.t)}` : fmtEtTime(f.t), price: f.price, qty: f.qty, reason: f.reason }));
       aside.push(
         <TrainingOutcomeCard
           key="out" o={outcome} decisions={decisions} traderName={hasTrade ? (trade.trader ?? undefined) : null}
@@ -967,7 +968,7 @@ export function WsChart({
       className={cn("ws-chart flex w-full min-w-0 max-w-full flex-col gap-2 outline-none", isWorkspace && "h-full min-h-0", fullscreen && "bg-background p-3", className)}
       tabIndex={-1}
       onKeyDown={global ? undefined : (e) => { if (!isTyping(e.target)) keyRef.current(e.nativeEvent); }}
-      aria-label="График: пробел — играть/пауза, стрелки — шаг, T — таймфрейм, F — показать сделку, Shift+F — весь экран"
+      aria-label={tc("engine.aria")}
     >
       <ChartToolbar
         timeframe={tf} timeframes={timeframes} allTimeframes={TIMEFRAMES} baseSec={data.baseSec} onTimeframe={setTf}
@@ -988,7 +989,7 @@ export function WsChart({
             {hint && <div className="pointer-events-none absolute bottom-8 left-2 z-raised rounded-full bg-background/90 px-2.5 py-1 text-xs text-muted-foreground">{hint}</div>}
             {((training && hideReal) || (data.baseSec > 60 && intraday)) && (
               <div className="pointer-events-none absolute bottom-8 right-[4.5rem] z-raised flex max-w-[calc(100%-6rem)] flex-wrap justify-end gap-1">
-                {training && hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">будущее скрыто</span>}
+                {training && hideReal && <span className="rounded-full bg-background/90 px-2 py-0.5 text-xs text-muted-foreground">{tc("engine.futureHidden")}</span>}
                 {data.baseSec > 60 && intraday && (
                   // Honest bar size: an old day may only exist in 5-minute / hourly bars.
                   <span className="pointer-events-auto cursor-help rounded-full bg-background/90 px-2 py-0.5 text-xs text-[hsl(var(--chart-3))]" title={tc("bars.coarseTitle")}>
@@ -1013,7 +1014,7 @@ export function WsChart({
         {showAside && (
           <aside
             className={cn("flex min-w-0 flex-col gap-2", isWorkspace ? "lg:min-h-0 lg:w-[320px] lg:shrink-0 lg:overflow-y-auto lg:pr-0.5" : "sm:grid sm:grid-cols-2 sm:items-start")}
-            aria-label={training ? "Тренировка" : "Сделка"}
+            aria-label={training ? tc("engine.asideTraining") : tc("engine.asideTrade")}
           >
             {aside}
           </aside>

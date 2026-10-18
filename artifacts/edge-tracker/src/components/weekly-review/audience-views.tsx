@@ -15,6 +15,7 @@ import {
 } from "./insight-panels";
 import { BestWorstPanel, HorizonPanel, MistakesPanel, OpenBookPanel, SetupPanel } from "./sections";
 import { useWeekInsights } from "./use-week-insights";
+import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 
 /** Setup / horizon / weekend-book panels only when they carry information. */
 function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
@@ -31,12 +32,13 @@ function OptionalBreakdowns({ doc }: { doc: WeeklyReview }) {
 }
 
 function NoTradesWeek({ doc }: { doc: WeeklyReview }) {
+  const { t } = weeklyI18n.useT();
   return (
     <Panel>
       <EmptyState
         icon={CalendarX2}
-        title="На этой неделе закрытых сделок нет"
-        description={doc.week.isCurrent ? "Отчёт заполнится сам по мере торговли — сделки подгружаются автоматически." : "Выберите другую неделю стрелками вверху."}
+        title={t("audience.noTradesTitle")}
+        description={doc.week.isCurrent ? t("audience.noTradesCurrent") : t("audience.noTradesPast")}
       />
     </Panel>
   );
@@ -44,6 +46,7 @@ function NoTradesWeek({ doc }: { doc: WeeklyReview }) {
 
 // ── Трейдеру ─────────────────────────────────────────────────────────────────
 export function TraderView({ doc }: { doc: WeeklyReview }) {
+  const { t: tr } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const [inject, setInject] = React.useState<{ text: string; n: number } | null>(null);
   const makeGoal = doc.viewer.isOwner ? (t: Tip) => setInject((p) => ({ text: t.action, n: (p?.n ?? 0) + 1 })) : undefined;
@@ -75,7 +78,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
       <DayStrip doc={doc} ins={ins} />
       <BestWorstPanel doc={doc} />
       <OptionalBreakdowns doc={doc} />
-      <section aria-label="Разбор с куратором" className="flex flex-col gap-[var(--grid-gap)]">
+      <section aria-label={tr("audience.withCurator")} className="flex flex-col gap-[var(--grid-gap)]">
         <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
           <CuratorReviewPanel doc={doc} readOnly />
           <PrevGoalsPanel doc={doc} />
@@ -88,6 +91,7 @@ export function TraderView({ doc }: { doc: WeeklyReview }) {
 
 // ── Куратору ─────────────────────────────────────────────────────────────────
 export function CuratorView({ doc }: { doc: WeeklyReview }) {
+  const { t } = weeklyI18n.useT();
   const ins = useWeekInsights(doc);
   const k = doc.kpis.current;
   const fails = ins.checklist.filter((c) => c.status === "fail").length;
@@ -98,9 +102,9 @@ export function CuratorView({ doc }: { doc: WeeklyReview }) {
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
         <span>{weekHeadline(doc)}</span>
-        {fails > 0 && <Pill tone="down" dot>{fails} наруш.</Pill>}
-        {warns > 0 && <Pill tone="warn" dot>{warns} на внимание</Pill>}
-        {fails === 0 && warns === 0 && <Pill tone="up" dot>чек-лист чистый</Pill>}
+        {fails > 0 && <Pill tone="down" dot>{t("audience.violations", { count: fails })}</Pill>}
+        {warns > 0 && <Pill tone="warn" dot>{t("audience.warns", { count: warns })}</Pill>}
+        {fails === 0 && warns === 0 && <Pill tone="up" dot>{t("audience.clean")}</Pill>}
       </div>
       {k.trades > 0 ? <WeekKpiStrip doc={doc} ins={ins} /> : <NoTradesWeek doc={doc} />}
       <BentoGrid>
@@ -111,15 +115,15 @@ export function CuratorView({ doc }: { doc: WeeklyReview }) {
         <TipsPanel
           tips={ins.tips}
           loading={ins.tipsLoading}
-          title="Где трейдер теряет"
-          description="топ-3 утечки недели в $ — основа для разговора 1:1"
+          title={t("audience.leaksTitle")}
+          description={t("audience.leaksDesc")}
           className="lg:col-span-7"
         />
         <JournalRiskPanel doc={doc} ins={ins} className="lg:col-span-5" />
       </BentoGrid>
       {k.trades > 0 && <DayStrip doc={doc} ins={ins} />}
       {hasMistakes && <MistakesPanel doc={doc} />}
-      <section aria-label="Разбор 1:1" className="flex flex-col gap-[var(--grid-gap)]">
+      <section aria-label={t("audience.oneOnOne")} className="flex flex-col gap-[var(--grid-gap)]">
         <div className="grid gap-[var(--grid-gap)] xl:grid-cols-2">
           <SelfReviewPanel doc={doc} />
           <CuratorReviewPanel doc={doc} />

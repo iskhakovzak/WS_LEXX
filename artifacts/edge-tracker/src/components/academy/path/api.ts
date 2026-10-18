@@ -10,7 +10,6 @@ import { fmtDate, fmtTimeNY } from "@/lib/format";
 
 export type StageKey = "trainee" | "junior" | "trader" | "senior";
 export const STAGE_KEYS: readonly StageKey[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_FALLBACK_NAMES: Record<StageKey, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
 
 export type Op = ">=" | ">" | "<=" | "<" | "=";
 export const OPS: readonly Op[] = [">=", ">", "<=", "<", "="];
@@ -170,12 +169,10 @@ export function hhmm(min: number): string {
 export function fmtWindow(w: { start: number; end: number }): string {
   return `${hhmm(w.start)}–${hhmm(Math.max(w.start, w.end - 1))}`;
 }
-/** Instant → "15 окт., 10:12 (NY 03:12)" — local time first, NY in brackets. */
+/** Instant → "Oct 15, 10:12 (NY 03:12)" (UI language) — local time first, NY in brackets. Stage / metric / template names: ./labels.ts. */
 export function fmtInstant(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return iso;
   return `${fmtDate(d, "dateTime")} (NY ${fmtTimeNY(d)})`;
 }
-export const stageName = (stages: StageMeta[] | undefined, key: StageKey | null | undefined): string =>
-  key ? stages?.find((s) => s.key === key)?.name ?? STAGE_FALLBACK_NAMES[key] ?? key : "не назначена";

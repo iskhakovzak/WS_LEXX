@@ -15,6 +15,7 @@ import { BurstRow, DigestCard, FeedRow } from "@/components/team/activity-feed";
 import {
   ACTION_GROUPS,
   SECTION_META,
+  actionGroupLabel,
   capFirst,
   dayLabel as fmtDayLabel,
   groupFeed,
@@ -26,7 +27,9 @@ import {
 } from "@/components/team/activity-model";
 import { isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
 import { PersonSelect } from "@/components/people/person-select";
-import { pluralRu } from "@/lib/format";
+import { localeTag } from "@/lib/format";
+import { activityI18n } from "@/i18n/ns/activity";
+import { commonI18n } from "@/i18n/ns/common";
 
 const FILTER_KEY = "ws_activity_filters";
 const SEEN_KEY = "ws_activity_seen_at";
@@ -99,6 +102,8 @@ async function legacyFeed(params: string): Promise<FeedPage> {
 
 export default function ActivityPage() {
   const { user, isCurator } = useAuth();
+  const { t } = activityI18n.useT();
+  const tc = commonI18n.useT().t;
   const me = user?.role !== "guest" ? user?.traderName ?? null : null;
   const staff = isCurator;
   const seenKey = `${SEEN_KEY}:${user?.role ?? "guest"}:${me ?? ""}`;
@@ -257,7 +262,7 @@ export default function ActivityPage() {
     const set = new Set((facets?.traders ?? []).filter((t) => t && t !== "system"));
     if (filters.trader) set.add(filters.trader);
     if (me) set.add(me);
-    return [...set].sort((a, b) => a.localeCompare(b, "ru"));
+    return [...set].sort((a, b) => a.localeCompare(b, localeTag()));
   }, [facets, filters.trader, me]);
 
   const activeFilterCount =
@@ -270,32 +275,28 @@ export default function ActivityPage() {
   return (
     <Page>
       <PageHeader
-        title="Лента активности"
+        title={t("title")}
         icon={Activity}
-        description={
-          staff
-            ? "Что происходит на деске: сделки, журнал, риск, game plan, оценки, синхронизация и обсуждения"
-            : "Ваши сделки, разборы и оценки наставников плюс общие разделы команды — идеи, плейбук, обсуждения"
-        }
+        description={staff ? t("descriptionStaff") : t("descriptionTrader")}
         actions={
           <>
             {!staff && me && (
               <Pill tone="neutral" dot>
-                Только моё
+                {t("onlyMine")}
               </Pill>
             )}
             {unreadCount > 0 && (
               <Pill tone="accent" dot>
-                {unreadCount} {pluralRu(unreadCount, "новое", "новых", "новых")}
+                {t("unread", { count: unreadCount })}
               </Pill>
             )}
             <Button variant="outline" size="sm" onClick={markRead} disabled={!unreadCount}>
-              <CheckCheck /> Прочитано
+              <CheckCheck /> {t("markRead")}
             </Button>
             <Button
               variant="ghost"
               size="icon-sm"
-              aria-label="Обновить ленту"
+              aria-label={t("refresh")}
               onClick={() => { feed.refetch(); summary.refetch(); }}
               disabled={feed.isFetching && !feed.isFetchingNextPage}
             >
@@ -309,7 +310,7 @@ export default function ActivityPage() {
         summary={summary.data}
         loading={!digestDay || summary.isLoading}
         unavailable={summary.isError}
-        dayLabel={digestDay ? `${capFirst(fmtDayLabel(nyDayStart(digestDay).toISOString()))} · ${digestDay} (NY)` : "…"}
+        dayLabel={digestDay ? t("digestDay", { day: capFirst(fmtDayLabel(nyDayStart(digestDay).toISOString())), date: digestDay }) : "…"}
         canNext={!digestIsToday}
         onPrev={() => shiftDigest(-1)}
         onNext={() => shiftDigest(1)}
@@ -329,15 +330,15 @@ export default function ActivityPage() {
             onKeyDown={(e) => {
               if (e.key === "Escape") { setSearch(""); (e.target as HTMLInputElement).blur(); }
             }}
-            placeholder="Тикер, сетап, комментарий…  /"
-            aria-label="Поиск по ленте"
+            placeholder={t("searchPlaceholder")}
+            aria-label={t("searchAria")}
             className="h-9 pl-9 pr-9"
           />
           {search && (
             <button
               type="button"
               onClick={() => setSearch("")}
-              aria-label="Очистить поиск"
+              aria-label={tc("actions.clearSearch")}
               className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:text-foreground"
             >
               <X className="h-4 w-4" />
@@ -345,22 +346,22 @@ export default function ActivityPage() {
           )}
         </div>
         <Segmented
-          ariaLabel="Тип действия"
+          ariaLabel={t("actionTypeAria")}
           value={filters.group}
           onChange={(g) => setFilters((f) => ({ ...f, group: g }))}
-          options={(Object.keys(ACTION_GROUPS) as ActionGroup[]).map((k) => ({ value: k, label: ACTION_GROUPS[k].label }))}
+          options={(Object.keys(ACTION_GROUPS) as ActionGroup[]).map((k) => ({ value: k, label: actionGroupLabel(k) }))}
         />
         {staff && (
-        <PersonSelect value={filters.trader ?? ""} onValueChange={(v) => pickTrader(v || null)} options={traderOptions} allLabel="Все трейдеры" self={me} ariaLabel="Трейдер" className="h-9 w-full sm:w-[180px]" />
+        <PersonSelect value={filters.trader ?? ""} onValueChange={(v) => pickTrader(v || null)} options={traderOptions} allLabel={tc("fields.allTraders")} self={me} ariaLabel={tc("fields.trader")} className="h-9 w-full sm:w-[180px]" />
         )}
         {staff && me && (
           <FilterChip active={filters.trader === me} onClick={() => pickTrader(filters.trader === me ? null : me)}>
-            Только мои
+            {t("onlyMineFilter")}
           </FilterChip>
         )}
       </Toolbar>
 
-      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Разделы">
+      <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("sectionsAria")}>
         {sectionKeys.map((s) => {
           const m = sectionMeta(s);
           const Icon = m.icon;
@@ -373,15 +374,15 @@ export default function ActivityPage() {
         })}
         {activeFilterCount > 0 && (
           <Button variant="ghost" size="sm" onClick={resetFilters} className="ml-auto">
-            <X /> Сбросить фильтры
+            <X /> {tc("actions.resetFilters")}
           </Button>
         )}
       </div>
-      {facets && <p className="-mt-2 text-xs text-muted-foreground">Счётчики — за последние 30 дней</p>}
+      {facets && <p className="-mt-2 text-xs text-muted-foreground">{t("counts30d")}</p>}
 
       {feed.isError && <QueryError error={feed.error} onRetry={() => feed.refetch()} />}
 
-      <Panel padded={false} bodyClassName="p-2 sm:p-3" aria-label="Лента">
+      <Panel padded={false} bodyClassName="p-2 sm:p-3" aria-label={t("feedAria")}>
         {feed.isLoading ? (
           <div className="flex flex-col gap-2 p-2" aria-busy="true">
             <Skeleton className="h-6 w-24 rounded-full" />
@@ -398,13 +399,9 @@ export default function ActivityPage() {
         ) : items.length === 0 && !feed.isError ? (
           <EmptyState
             icon={Activity}
-            title={activeFilterCount ? "Ничего не найдено" : "Пока нет активности"}
-            description={
-              activeFilterCount
-                ? "Попробуйте убрать часть фильтров или изменить запрос."
-                : "Здесь появятся сделки, сетапы плейбука, идеи, ревью наставников и комментарии команды."
-            }
-            action={activeFilterCount ? <Button variant="outline" onClick={resetFilters}>Сбросить фильтры</Button> : undefined}
+            title={activeFilterCount ? tc("states.nothingFound") : t("emptyTitle")}
+            description={activeFilterCount ? t("emptyFiltered") : t("emptyHint")}
+            action={activeFilterCount ? <Button variant="outline" onClick={resetFilters}>{tc("actions.resetFilters")}</Button> : undefined}
           />
         ) : (
           <div className="flex flex-col gap-2">
@@ -428,10 +425,10 @@ export default function ActivityPage() {
               {hasNextPage ? (
                 <Button variant="outline" size="sm" onClick={() => fetchNextPage()} disabled={isFetchingNextPage}>
                   {isFetchingNextPage ? <Loader2 className="animate-spin motion-reduce:animate-none" /> : null}
-                  {isFetchingNextPage ? "Загрузка…" : "Загрузить ещё"}
+                  {isFetchingNextPage ? tc("states.loading") : t("loadMore")}
                 </Button>
               ) : (
-                <span className="text-xs text-muted-foreground">Это всё — более ранних событий нет</span>
+                <span className="text-xs text-muted-foreground">{t("end")}</span>
               )}
             </div>
           </div>

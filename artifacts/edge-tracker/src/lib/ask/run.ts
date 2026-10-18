@@ -17,6 +17,7 @@ import {
   type AskAnswer, type AskLinkParams, type AskTrade, type BookIndex,
 } from "./aggregate";
 import { filterOf, type AskFilter, type AskQuery } from "./parse";
+import { askI18n } from "@/i18n/ns/ask";
 
 export const ASK_PAGE_LIMIT = 500;
 export const ASK_MAX_PAGES = 10;
@@ -264,7 +265,7 @@ export function runAsk(q: AskQuery, book: AskBook, opts: AskRunOptions = {}): As
     const rb = applyFilter(book.trades, fb, book.index);
     const notes: string[] = [];
     const noTime = ra.noTime + rb.noTime;
-    if (noTime) notes.push(`${noTime} сделок без времени входа не учтены.`);
+    if (noTime) notes.push(askI18n.t("ans.noTime", { count: noTime }));
     const answer = buildCompare(q, f, ra.kept, rb.kept, book.index, { ...meta, notes });
     return { answer, href: tradesHref(answer.link), filter: f, defaultTrader };
   }

@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import { Link } from "wouter";
 import { ListX } from "lucide-react";
 import { DataTable, EmptyState, Pill, Segmented, SortableTh, toneOf, useTableSort } from "@/components/ds";
-import { fmtUsd } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
+
 import { commonI18n } from "@/i18n/ns/common";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { REASON_LABEL } from "./rules";
+import { reasonLabel } from "./rules";
 import type { ChangedTrade, ExcludedTrade } from "./api";
 
 type Row = { id: number; day: string; ticker: string; kind: "excluded" | "changed"; reason: string; detail: string; amount: number; estimate: boolean };
@@ -20,6 +22,7 @@ const ACCESSORS = {
 
 /** Trades the scenario removed or changed. Rendered bare (inside the page's «Какие сделки убраны» section). */
 export function ExcludedTable({ excluded, changed }: { excluded: ExcludedTrade[]; changed: ChangedTrade[] }) {
+  const { t } = whatIfI18n.useT();
   const [filter, setFilter] = useState<"all" | "excluded" | "changed">("all");
   const rows = useMemo<Row[]>(() => {
     const a: Row[] = excluded.map((e) => ({ id: e.id, day: e.day, ticker: e.ticker, kind: "excluded", reason: e.reason, detail: e.detail, amount: -e.net, estimate: false }));
@@ -36,43 +39,43 @@ export function ExcludedTable({ excluded, changed }: { excluded: ExcludedTrade[]
   }, [excluded]);
 
   if (!rows.length) {
-    return <EmptyState compact icon={ListX} title="Правила ничего не изменили" description="Добавь правило или измени его значение." />;
+    return <EmptyState compact icon={ListX} title={t("excluded.nothing")} description={t("excluded.nothingHint")} />;
   }
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-muted-foreground tabular-nums">
-          Убрано {commonI18n.t("units.trades", { count: excluded.length })}, их нетто {fmtUsd(totalExcluded, { signed: true, decimals: "auto" })}{changed.length ? ` · изменено ${changed.length}` : ""}
+          {t("excluded.summary", { trades: commonI18n.t("units.trades", { count: excluded.length }), net: fmtUsd(totalExcluded, { signed: true, decimals: "auto" }) })}{changed.length ? ` ${t("excluded.changed", { count: changed.length })}` : ""}
         </p>
         <div className="flex flex-wrap items-center gap-1.5">
-          {reasons.map(([r, n]) => <Pill key={r} tone="neutral">{REASON_LABEL[r] ?? r} {n}</Pill>)}
+          {reasons.map(([r, n]) => <Pill key={r} tone="neutral">{reasonLabel(r)} {n}</Pill>)}
           {changed.length > 0 && excluded.length > 0 && (
             <Segmented
-              ariaLabel="Фильтр изменений" size="sm" value={filter} onChange={setFilter}
-              options={[{ value: "all", label: "Все" }, { value: "excluded", label: "Убраны", count: excluded.length }, { value: "changed", label: "Изменены", count: changed.length }]}
+              ariaLabel={t("excluded.filterAria")} size="sm" value={filter} onChange={setFilter}
+              options={[{ value: "all", label: t("excluded.all") }, { value: "excluded", label: t("excluded.removed"), count: excluded.length }, { value: "changed", label: t("excluded.changedLabel"), count: changed.length }]}
             />
           )}
         </div>
       </div>
-      <DataTable maxHeight="60vh" ariaLabel="Убранные и изменённые сделки">
+      <DataTable maxHeight="60vh" ariaLabel={t("excluded.tableAria")}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("day")}>Дата</SortableTh>
-              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-              <SortableTh {...thProps("reason")}>Почему</SortableTh>
-              <th scope="col">Подробно</th>
-              <SortableTh {...thProps("amount")} align="right">Влияние на нетто</SortableTh>
+              <SortableTh {...thProps("day")}>{t("excluded.colDate")}</SortableTh>
+              <SortableTh {...thProps("ticker")}>{t("excluded.colTicker")}</SortableTh>
+              <SortableTh {...thProps("reason")}>{t("excluded.colWhy")}</SortableTh>
+              <th scope="col">{t("excluded.colDetail")}</th>
+              <SortableTh {...thProps("amount")} align="right">{t("excluded.colImpact")}</SortableTh>
             </tr>
           </thead>
           <tbody>
             {sorted.map((r) => (
               <tr key={`${r.kind}-${r.id}`}>
-                <td className="whitespace-nowrap">{r.day}</td>
+                <td className="whitespace-nowrap">{fmtDate(r.day, "short")}</td>
                 <td><Link href={links.trade(r.id)} className="font-medium text-primary underline-offset-4 hover:underline">{r.ticker}</Link></td>
                 <td>
-                  <Pill tone={r.kind === "excluded" ? "neutral" : r.estimate ? "warn" : "accent"}>{REASON_LABEL[r.reason] ?? r.reason}{r.estimate ? " · оценка" : ""}</Pill>
+                  <Pill tone={r.kind === "excluded" ? "neutral" : r.estimate ? "warn" : "accent"}>{reasonLabel(r.reason)}{r.estimate ? ` ${t("excluded.estimate")}` : ""}</Pill>
                 </td>
                 <td className="text-muted-foreground">{r.detail}</td>
                 <td className={cn("text-right font-medium", toneOf(r.amount) === "up" ? "text-up" : toneOf(r.amount) === "down" ? "text-down" : "")}>{fmtUsd(r.amount, { signed: true, decimals: "auto" })}</td>

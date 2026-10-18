@@ -14,31 +14,15 @@ import {
   useStoredState,
 } from "@/components/widgets/widget-kit";
 import { fmtDate, fmtPct } from "@/lib/format";
+import { marketWidgetsI18n } from "@/i18n/ns/marketWidgets";
 
 type SortKey = "day" | "week" | "alpha";
 type View = "strip" | "bars";
 const SORTS = ["day", "week", "alpha"] as const;
 const VIEWS = ["strip", "bars"] as const;
 
-const NAME_RU: Record<string, string> = {
-  Technology: "Технологии",
-  Semiconductors: "Полупроводники",
-  Financials: "Финансы",
-  Energy: "Энергетика",
-  Healthcare: "Здравоохранение",
-  Biotech: "Биотех",
-  Industrials: "Промышленность",
-  "Consumer Discretionary": "Потреб. циклич.",
-  "Consumer Staples": "Потреб. базовые",
-  Utilities: "Коммуналка",
-  "Real Estate": "Недвижимость",
-  Materials: "Материалы",
-  Communication: "Коммуникации",
-  "Communication Services": "Коммуникации",
-  "Regional Banks": "Регион. банки",
-  Retail: "Ритейл",
-};
-const ruName = (n: string) => NAME_RU[n] ?? n;
+/** Sector name in the UI language (unknown server names stay as delivered). */
+const ruName = (n: string) => marketWidgetsI18n.tryT(`sectors.name.${n}`) ?? n;
 
 /** Day move against the 5-day trend: a sector bouncing after a sell-off (or fading after a run). */
 function rotation(s: SectorPoint): "up" | "down" | null {
@@ -52,6 +36,7 @@ function StripCell({ s, metric, rank }: { s: SectorPoint; metric: "day" | "week"
   const v = metric === "week" ? s.trend5d : s.changePct;
   const other = metric === "week" ? s.changePct : s.trend5d;
   const rot = rotation(s);
+  const t = marketWidgetsI18n.t;
   return (
     <div
       className={cn(
@@ -60,21 +45,21 @@ function StripCell({ s, metric, rank }: { s: SectorPoint; metric: "day" | "week"
         rank === "bottom" && "ring-1 ring-down/60",
       )}
       style={{ background: heatBg(v, metric === "week" ? 5 : 2.5) }}
-      title={`${s.symbol} · ${ruName(s.name)} — день ${fmtPct(s.changePct)}, 5 дней ${fmtPct(s.trend5d)}`}
+      title={t("sectors.cellTitle", { symbol: s.symbol, name: ruName(s.name), day: fmtPct(s.changePct), week: fmtPct(s.trend5d) })}
     >
       <div className="flex items-center justify-between gap-1">
         <span className="text-sm font-semibold">{s.symbol}</span>
         {rot && (
           <Repeat2
             className={cn("h-3.5 w-3.5", rot === "up" ? "text-up" : "text-down")}
-            aria-label={rot === "up" ? "Разворот вверх против 5-дневного тренда" : "Разворот вниз против 5-дневного тренда"}
+            aria-label={t(rot === "up" ? "sectors.rotationUp" : "sectors.rotationDown")}
           />
         )}
       </div>
       <div className="truncate text-2xs text-foreground/80">{ruName(s.name)}</div>
       <div className="flex items-baseline justify-between gap-1">
         <span className="text-sm font-semibold tabular-nums">{fmtPct(v)}</span>
-        <span className="text-2xs tabular-nums text-foreground/75">{metric === "week" ? "д " : "5д "}{fmtPct(other, 1)}</span>
+        <span className="text-2xs tabular-nums text-foreground/75">{t(metric === "week" ? "sectors.otherDay" : "sectors.otherWeek", { value: fmtPct(other, 1) })}</span>
       </div>
     </div>
   );
@@ -98,7 +83,7 @@ function BarRow({ s, max, metric }: { s: SectorPoint; max: number; metric: "day"
         )}
       </div>
       <span className={cn("flex items-center justify-end gap-1 text-sm font-medium tabular-nums", v == null ? "text-muted-foreground" : v >= 0 ? "text-up" : "text-down")}>
-        {rot && <Repeat2 className="h-3 w-3" aria-label="Разворот против 5-дневного тренда" />}
+        {rot && <Repeat2 className="h-3 w-3" aria-label={marketWidgetsI18n.t("sectors.rotationAny")} />}
         {fmtPct(v)}
       </span>
     </li>
@@ -106,6 +91,7 @@ function BarRow({ s, max, metric }: { s: SectorPoint; max: number; metric: "day"
 }
 
 export function SectorRadar() {
+  const { t } = marketWidgetsI18n.useT();
   const { data, isLoading, error, refetch, isFetching } = useSectors();
   const qc = useQueryClient();
   const [sort, setSort] = useStoredState<SortKey>("sector_radar_sort", "day", SORTS);
@@ -144,7 +130,7 @@ export function SectorRadar() {
     try {
       qc.setQueryData(["sectors"], await http.get("/api/sectors?force=1"));
     } catch {
-      setForceError("Не удалось обновить котировки");
+      setForceError(marketWidgetsI18n.t("sectors.refreshFailed"));
       refetch();
     } finally {
       setForcing(false);
@@ -157,26 +143,26 @@ export function SectorRadar() {
   return (
     <WidgetShell
       icon={Radar}
-      title="Сила секторов"
-      meta={data?.fetchedAt ? `на ${fmtDate(data.fetchedAt, "time")}` : undefined}
+      title={t("sectors.title")}
+      meta={data?.fetchedAt ? t("sectors.at", { time: fmtDate(data.fetchedAt, "time") }) : undefined}
       actions={
         <>
           <Segmented<View>
-            ariaLabel="Вид"
+            ariaLabel={t("sectors.viewAria")}
             size="sm"
             value={view}
             onChange={setView}
             options={[
-              { value: "strip", label: "Карта" },
-              { value: "bars", label: "Рейтинг" },
+              { value: "strip", label: t("sectors.viewMap") },
+              { value: "bars", label: t("sectors.viewRank") },
             ]}
           />
-          <IconAction icon={RefreshCw} label="Обновить котировки секторов" spinning={forcing || isFetching} disabled={forcing} onClick={forceRefresh} />
+          <IconAction icon={RefreshCw} label={t("sectors.refresh")} spinning={forcing || isFetching} disabled={forcing} onClick={forceRefresh} />
         </>
       }
     >
       {showSkeleton ? (
-        <div className="space-y-3" aria-busy="true" aria-label="Загрузка секторов">
+        <div className="space-y-3" aria-busy="true" aria-label={t("sectors.loading")}>
           <Skeleton className="h-6 w-full rounded-full" />
           <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-6">
             {Array.from({ length: 12 }).map((_, i) => (
@@ -185,9 +171,9 @@ export function SectorRadar() {
           </div>
         </div>
       ) : showError ? (
-        <WidgetError message="Не удалось загрузить секторы" onRetry={() => refetch()} />
+        <WidgetError message={t("sectors.loadFailed")} onRetry={() => refetch()} />
       ) : sectors.length === 0 ? (
-        <EmptyState icon={Radar} title="Нет данных по секторам" description="Котировки секторных ETF появятся после первого обновления." className="py-6" />
+        <EmptyState icon={Radar} title={t("sectors.emptyTitle")} description={t("sectors.emptyText")} className="py-6" />
       ) : (
         <div className="space-y-3">
           {/* Breadth summary */}
@@ -196,18 +182,18 @@ export function SectorRadar() {
               <div className="mb-1 flex items-center justify-between gap-2 text-xs">
                 <span className="flex items-center gap-2">
                   <TermTooltip term="breadth" className="text-muted-foreground" />
-                  <span className="text-up tabular-nums">Растут {breadth.up}</span>
+                  <span className="text-up tabular-nums">{t("sectors.up", { count: breadth.up })}</span>
                 </span>
-                <span className="text-down tabular-nums">Падают {breadth.down}</span>
+                <span className="text-down tabular-nums">{t("sectors.down", { count: breadth.down })}</span>
               </div>
-              <div className="flex h-1.5 overflow-hidden rounded-full bg-foreground/[0.06]" role="img" aria-label={`Растут ${breadth.up} из ${breadth.total}, падают ${breadth.down}`}>
+              <div className="flex h-1.5 overflow-hidden rounded-full bg-foreground/[0.06]" role="img" aria-label={t("sectors.breadthAria", { up: breadth.up, total: breadth.total, down: breadth.down })}>
                 <span className="bg-up/80" style={{ width: `${breadth.total ? (breadth.up / breadth.total) * 100 : 0}%` }} />
                 <span className="flex-1" />
                 <span className="bg-down/80" style={{ width: `${breadth.total ? (breadth.down / breadth.total) * 100 : 0}%` }} />
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-1.5 text-xs">
-              <Pill tone={breadth.avg == null ? "neutral" : breadth.avg >= 0 ? "up" : "down"}>Среднее {fmtPct(breadth.avg)}</Pill>
+              <Pill tone={breadth.avg == null ? "neutral" : breadth.avg >= 0 ? "up" : "down"}>{t("sectors.avg", { value: fmtPct(breadth.avg) })}</Pill>
               {breadth.leader && (
                 <Pill tone="up">
                   <ArrowUpRight className="h-3 w-3" aria-hidden="true" /> {breadth.leader.symbol} {fmtPct(breadth.leader.changePct, 1)}
@@ -223,20 +209,20 @@ export function SectorRadar() {
 
           <div className="flex flex-wrap items-center justify-between gap-2">
             <Segmented<SortKey>
-              ariaLabel="Сортировка секторов"
+              ariaLabel={t("sectors.sortAria")}
               size="sm"
               value={sort}
               onChange={setSort}
               options={[
-                { value: "day", label: "За день" },
-                { value: "week", label: "За 5 дней" },
-                { value: "alpha", label: "А–Я" },
+                { value: "day", label: t("sectors.sortDay") },
+                { value: "week", label: t("sectors.sortWeek") },
+                { value: "alpha", label: t("sectors.sortAlpha") },
               ]}
             />
             {breadth.rotations.length > 0 && (
               <span className="flex items-center gap-1 text-xs text-muted-foreground">
                 <Repeat2 className="h-3.5 w-3.5" aria-hidden="true" />
-                Разворот: {breadth.rotations.map((s) => s.symbol).join(", ")}
+                {t("sectors.rotation", { list: breadth.rotations.map((s) => s.symbol).join(", ") })}
               </span>
             )}
           </div>
@@ -263,7 +249,7 @@ export function SectorRadar() {
           )}
 
           <p className="text-2xs text-muted-foreground">
-            Цвет — сила движения {metric === "week" ? "за 5 дней" : "за день"}. <Repeat2 className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> — день идёт против 5-дневного тренда.
+            {t(metric === "week" ? "sectors.legendWeek" : "sectors.legendDay")} <Repeat2 className="inline h-3 w-3 align-[-2px]" aria-hidden="true" /> {t("sectors.legendRotation")}
           </p>
         </div>
       )}

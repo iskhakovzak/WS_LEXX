@@ -10,23 +10,28 @@ import { DESK_PRESETS, HORIZONS, HORIZON_META, LIB_BY_ID, type LibIndicator } fr
 import type { IndicatorStats } from "./stats";
 import { EMPTY_STATS } from "./stats";
 import { commonI18n } from "@/i18n/ns/common";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 import { fmtDate, fmtR } from "@/lib/format";
 
 export type SetExport = { version: 1; exportedAt: string; favorites: string[]; notes: Record<string, string> };
 
 export function buildMarkdown(ids: string[], notes: Record<string, string>, stats: Record<string, IndicatorStats>): string {
+  const t = indicatorsI18n.t;
   const date = fmtDate(new Date(), "short");
-  const lines = [`# Мой набор индикаторов — WS_LEXX`, ``, `Экспорт: ${date} · ${ids.length} шт.`, ``];
+  const lines = [t("md.title"), ``, t("md.exported", { date, count: ids.length }), ``];
   ids.forEach((id, i) => {
     const ind = LIB_BY_ID.get(id);
     if (!ind) return;
     const s = stats[id] ?? EMPTY_STATS;
     lines.push(`## ${i + 1}. ${ind.shortName} — ${ind.name}`);
-    lines.push(`Горизонт: ${HORIZONS.map((h) => `${HORIZON_META[h].label} ${"●".repeat(ind.horizons[h])}${"○".repeat(3 - ind.horizons[h])}`).join(" · ")}`);
-    lines.push(`Таймфрейм: ${ind.timeframe}`);
-    if (ind.settings.length) lines.push(`Настройки: ${ind.settings.map((x) => `${x.label} — ${x.value}`).join("; ")}`);
-    lines.push(`- Лонг: ${ind.signals.long}`, `- Шорт: ${ind.signals.short}`, `- Не торговать: ${ind.signals.avoid}`);
-    if (s.count) lines.push(`Моя статистика: ${commonI18n.t("units.trades", { count: s.count })}, WR ${s.winRate}%${s.avgR != null ? `, средний ${fmtR(s.avgR)}` : ""}`);
+    lines.push(t("md.horizon", { value: HORIZONS.map((h) => `${HORIZON_META[h].label} ${"●".repeat(ind.horizons[h])}${"○".repeat(3 - ind.horizons[h])}`).join(" · ") }));
+    lines.push(t("md.timeframe", { value: ind.timeframe }));
+    if (ind.settings.length) lines.push(t("md.settings", { value: ind.settings.map((x) => `${x.label} — ${x.value}`).join("; ") }));
+    lines.push(t("md.long", { value: ind.signals.long }), t("md.short", { value: ind.signals.short }), t("md.avoid", { value: ind.signals.avoid }));
+    if (s.count) {
+      const trades = commonI18n.t("units.trades", { count: s.count });
+      lines.push(s.avgR != null ? t("md.statsAvg", { trades, wr: s.winRate, avgR: fmtR(s.avgR) }) : t("md.stats", { trades, wr: s.winRate }));
+    }
     if (notes[id]) lines.push(``, `> ${notes[id].replace(/\n/g, "\n> ")}`);
     lines.push(``);
   });
@@ -63,28 +68,29 @@ export function MySetPanel({
   onCopy: () => void;
   onImport: (file: File) => void;
 }) {
+  const { t } = indicatorsI18n.useT();
   const fileRef = useRef<HTMLInputElement>(null);
   const items = ids.map((id) => LIB_BY_ID.get(id)).filter((x): x is LibIndicator => !!x);
 
   return (
     <Panel
-      title="Мой набор"
-      description={items.length ? `${items.length} в рабочем наборе` : "Твой рабочий пресет"}
+      title={t("set.title")}
+      description={items.length ? t("set.countDesc", { count: items.length }) : t("set.emptyDesc")}
       icon={Layers}
       actions={
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button size="icon" variant="ghost" className="h-8 w-8" aria-label="Экспорт и импорт набора">
+            <Button size="icon" variant="ghost" className="h-8 w-8" aria-label={t("set.menuAria")}>
               <MoreHorizontal />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel>Экспорт</DropdownMenuLabel>
+            <DropdownMenuLabel>{t("set.exportLabel")}</DropdownMenuLabel>
             <DropdownMenuItem disabled={!items.length} onSelect={onExportMd}><FileText className="mr-2 h-4 w-4" /> Markdown (.md)</DropdownMenuItem>
-            <DropdownMenuItem disabled={!items.length} onSelect={onExportJson}><FileJson className="mr-2 h-4 w-4" /> JSON для импорта</DropdownMenuItem>
-            <DropdownMenuItem disabled={!items.length} onSelect={onCopy}><ClipboardCopy className="mr-2 h-4 w-4" /> Скопировать текстом</DropdownMenuItem>
+            <DropdownMenuItem disabled={!items.length} onSelect={onExportJson}><FileJson className="mr-2 h-4 w-4" /> {t("set.jsonExport")}</DropdownMenuItem>
+            <DropdownMenuItem disabled={!items.length} onSelect={onCopy}><ClipboardCopy className="mr-2 h-4 w-4" /> {t("set.copyText")}</DropdownMenuItem>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => fileRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> Импорт из JSON…</DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => fileRef.current?.click()}><Upload className="mr-2 h-4 w-4" /> {t("set.importJson")}</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       }
@@ -94,7 +100,7 @@ export function MySetPanel({
         type="file"
         accept="application/json,.json"
         className="hidden"
-        aria-label="Файл набора индикаторов"
+        aria-label={t("set.fileAria")}
         onChange={(e) => {
           const f = e.target.files?.[0];
           if (f) onImport(f);
@@ -104,7 +110,7 @@ export function MySetPanel({
 
       {items.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Отметь ★ на карточках или добавь готовый пресет деска ниже — набор можно выгрузить в Markdown для гейм-плана.
+          {t("set.emptyText")}
         </p>
       ) : (
         <ul className="-mx-1 space-y-0.5">
@@ -117,14 +123,14 @@ export function MySetPanel({
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{ind.name}</span>
                   {!statsLoading && s.count > 0 && (
                     <span className={cn("shrink-0 text-xs tabular-nums", s.avgR != null && toneOf(s.avgR) === "up" ? "text-up" : s.avgR != null && s.avgR < 0 ? "text-down" : "text-muted-foreground")}>
-                      {s.avgR != null ? fmtR(s.avgR, 1) : `${s.count} сд.`}
+                      {s.avgR != null ? fmtR(s.avgR, 1) : commonI18n.t("units.tradesShort", { count: s.count })}
                     </span>
                   )}
                 </button>
                 <button
                   type="button"
                   onClick={() => onRemove(ind.id)}
-                  aria-label={`Убрать ${ind.shortName} из набора`}
+                  aria-label={t("set.remove", { short: ind.shortName })}
                   className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100"
                 >
                   <X className="h-3.5 w-3.5" />
@@ -136,7 +142,7 @@ export function MySetPanel({
       )}
 
       <div className="mt-4 space-y-2">
-        <div className="micro-label">Пресеты деска</div>
+        <div className="micro-label">{t("set.presets")}</div>
         <div className="space-y-1.5">
           {DESK_PRESETS.map((p) => {
             const missing = p.ids.filter((id) => !ids.includes(id)).length;
@@ -157,7 +163,7 @@ export function MySetPanel({
                   </span>
                 </span>
                 {missing === 0 ? (
-                  <span className="text-xs text-muted-foreground">в наборе</span>
+                  <span className="text-xs text-muted-foreground">{t("set.inSet")}</span>
                 ) : (
                   <span className="inline-flex items-center gap-1 text-xs text-primary"><Plus className="h-3.5 w-3.5" />{missing}</span>
                 )}
@@ -169,7 +175,7 @@ export function MySetPanel({
 
       {items.length > 0 && (
         <Button variant="outline" size="sm" className="mt-4 w-full" onClick={onExportMd}>
-          <Download /> Скачать набор (.md)
+          <Download /> {t("set.download")}
         </Button>
       )}
     </Panel>

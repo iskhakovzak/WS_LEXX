@@ -1,5 +1,14 @@
 import type { Tone } from "@/components/ds";
-import { fmtDate, fmtDateCustom, fmtPct, fmtPrice, fmtUsd, type DateStyle } from "@/lib/format";
+import { fmtDate, fmtDateCustom, fmtPct, fmtPrice, fmtRelative, fmtUsd, type DateStyle } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
+
+/** Record whose values are read from the dictionary at access time (never frozen at import). */
+function liveRecord<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
+  const out = {} as Record<K, string>;
+  for (const k of keys) Object.defineProperty(out, k, { get: () => label(k), enumerable: true });
+  return out;
+}
 
 export type OfferingType = "IPO" | "Follow-on" | "ATM" | "Bought Deal" | "SPAC" | "Shelf" | "Other";
 export type SellerType = "company" | "insiders" | "mixed" | "unknown";
@@ -324,23 +333,12 @@ export function pctOfMcap(o: Offering): number | null {
   return o.dilutionPct ?? null;
 }
 
-export const RISK_LABEL: Record<RiskLevel, string> = { high: "Высокий", medium: "Средний", low: "Низкий" };
+export const RISK_LABEL: Record<RiskLevel, string> = liveRecord(["high", "medium", "low"] as const, (k) => offeringsI18n.t(`risk.${k}`));
 export const RISK_TONE: Record<RiskLevel, Tone> = { high: "down", medium: "warn", low: "up" };
 
-export const KIND_LABEL: Record<FilingKind, string> = {
-  "424B": "424B",
-  ATM: "ATM",
-  "S-3": "S-3 шелф",
-  "S-1": "S-1",
-  IPO: "IPO",
-};
-export const KIND_HINT: Record<FilingKind, string> = {
-  "424B": "Проспект-supplement: сделка оценена (follow-on / registered direct)",
-  ATM: "At-the-market: компания продаёт акции в рынок по ходу торгов",
-  "S-3": "Шелф-регистрация: право выпускать бумаги в течение 3 лет",
-  "S-1": "Регистрация выпуска (IPO или follow-on без доступа к S-3)",
-  IPO: "Первичное размещение",
-};
+const FILING_KINDS = ["424B", "ATM", "S-3", "S-1", "IPO"] as const;
+export const KIND_LABEL: Record<FilingKind, string> = liveRecord(FILING_KINDS, (k) => (k === "S-3" ? offeringsI18n.t("kind.shelf") : k));
+export const KIND_HINT: Record<FilingKind, string> = liveRecord(FILING_KINDS, (k) => offeringsI18n.t(`kind.hint.${k}`));
 export const KIND_TONE: Record<FilingKind, Tone> = {
   "424B": "purple",
   ATM: "warn",
@@ -349,22 +347,15 @@ export const KIND_TONE: Record<FilingKind, Tone> = {
   IPO: "accent",
 };
 
-export const STATUS_LABEL: Record<OfferingStatus, string> = {
-  trading: "Торгуется",
-  priced: "Оценено",
-  upcoming: "Предстоит",
-  withdrawn: "Отозвано",
-  filed: "Подано",
-};
+export const STATUS_LABEL: Record<OfferingStatus, string> = liveRecord(
+  ["trading", "priced", "upcoming", "withdrawn", "filed"] as const, (k) => offeringsI18n.t(`status.${k}`));
 
-export const SELLER_LABEL: Record<SellerType, string> = {
-  company: "Компания",
-  insiders: "Инсайдеры",
-  mixed: "Компания + инсайдеры",
-  unknown: "—",
-};
+export const SELLER_LABEL: Record<SellerType, string> = liveRecord(
+  ["company", "insiders", "mixed", "unknown"] as const, (k) => (k === "unknown" ? "—" : offeringsI18n.t(`seller.${k}`)));
 
-export const HORIZON_LABEL: Record<string, string> = { intraday: "интрадей", overnight: "овернайт", swing: "свинг" };
+/** Horizon codes → lower-case label in the UI language (common trading words). */
+export const HORIZON_LABEL: Record<string, string> = liveRecord(
+  ["intraday", "overnight", "swing"] as const, (k) => commonI18n.t(`trading.${k}`).toLowerCase());
 
 // ── Formatters ────────────────────────────────────────────────────────────────
 
@@ -411,14 +402,10 @@ export function dayTitle(d: string): string {
   const isToday = d === todayNY();
   const weekday = fmtDay(d, { weekday: "short" });
   const date = fmtDay(d, "dayMonthLong");
-  return isToday ? `Сегодня, ${date}` : `${weekday}, ${date}`;
+  return isToday ? offeringsI18n.t("format.today", { date }) : offeringsI18n.t("format.weekdayDate", { weekday, date });
 }
 export function fmtAgo(ts: number, now = Date.now()): string {
-  const sec = Math.max(0, Math.round((now - ts) / 1000));
-  if (sec < 60) return `${sec} сек назад`;
-  const min = Math.round(sec / 60);
-  if (min < 60) return `${min} мин назад`;
-  return `${Math.round(min / 60)} ч назад`;
+  return fmtRelative(ts, { now, style: "short" });
 }
 
 export function offeringKey(o: Offering): string {
@@ -429,12 +416,13 @@ export function offeringKey(o: Offering): string {
 /** One-line catalyst text for the watchlist entry. */
 export function watchCatalyst(o: Offering): string {
   const k = kindOf(o);
-  const parts = [`Размещение ${o.form && o.form !== "IPO" ? o.form : KIND_LABEL[k]}`];
+  const t = offeringsI18n.t;
+  const parts = [t("watch.offering", { form: o.form && o.form !== "IPO" ? o.form : KIND_LABEL[k] })];
   const size = o.dealSizeM ?? o.shelfCapacityM;
   if (size != null) parts.push(fmtM(size));
   const pct = pctOfMcap(o);
-  if (pct != null) parts.push(`${fmtPctCap(pct, 0)} мкап`);
-  if (o.discountPct != null) parts.push(`дисконт ${Math.abs(o.discountPct).toFixed(1)}%`);
-  if (o.offerPrice != null) parts.push(`оффер ${fmtPrice(o.offerPrice, { dollar: true })}`);
+  if (pct != null) parts.push(t("watch.pctMcap", { pct: fmtPctCap(pct, 0) }));
+  if (o.discountPct != null) parts.push(t("watch.discount", { pct: Math.abs(o.discountPct).toFixed(1) }));
+  if (o.offerPrice != null) parts.push(t("watch.offer", { price: fmtPrice(o.offerPrice, { dollar: true }) }));
   return parts.join(" · ");
 }

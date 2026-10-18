@@ -15,6 +15,8 @@ import { LS_KEYS, PERIODS, type PeriodValue, lsGet, lsSet } from "@/components/r
 import type { RuleDraft } from "@/components/rules/templates";
 import type { Mistake, MistakePrefill, Rule, RuleReport } from "@/components/rules/types";
 import { PersonSelect } from "@/components/people/person-select";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { shellI18n } from "@/i18n/ns/shell";
 
 type Tab = "overview" | "mistakes" | "violations";
 const TABS: Tab[] = ["overview", "mistakes", "violations"];
@@ -35,6 +37,7 @@ function asRule(r: RuleReport): Rule {
 }
 
 export default function RulesTracker() {
+  const { t } = rulesI18n.useT();
   const { user, dbUsers } = useAuth();
   const { toast } = useToast();
   const isStaff = user?.role === "curator" || user?.role === "admin";
@@ -105,7 +108,7 @@ export default function RulesTracker() {
 
   const openRule = (draft?: RuleDraft) => {
     if (!kinds.length) {
-      toast({ title: "Типы правил ещё загружаются", description: "Попробуйте через секунду", variant: "destructive" });
+      toast({ title: t("page.kindsLoading"), description: t("page.kindsLoadingHint"), variant: "destructive" });
       kindsQ.refetch();
       return;
     }
@@ -130,7 +133,8 @@ export default function RulesTracker() {
     function onKey(e: KeyboardEvent) {
       if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
       if (mistakeOpen || ruleOpen || detailOpen) return;
-      if (e.key === "n" || e.key === "N" || e.key === "т" || e.key === "Т") {
+      // «т» / «Т» — the same physical key as N on a Russian keyboard layout (input, not display).
+      if (e.key === "n" || e.key === "N" || e.key === "т" || e.key === "Т") { // i18n-ignore
         e.preventDefault();
         openMistake();
       } else if (e.key === "/") {
@@ -149,10 +153,10 @@ export default function RulesTracker() {
   return (
     <Page>
       <PageHeader
-        title="Правила"
+        title={shellI18n.t("nav.rules")}
         description={isStaff && traderName && traderName !== self
-          ? `Дисциплина ${traderName}: какие правила соблюдаются и во что обходятся нарушения`
-          : "Ваш торговый план в цифрах: что соблюдаете, что нарушаете и сколько это стоит"}
+          ? t("page.descTrader", { name: traderName })
+          : t("page.descSelf")}
         icon={ShieldCheck}
         actions={
           <>
@@ -162,34 +166,34 @@ export default function RulesTracker() {
                 onValueChange={(v) => { setPickedTrader(v); lsSet(LS_KEYS.trader, v); }}
                 options={traderOptions}
                 self={self}
-                selfSuffix="(вы)"
-                ariaLabel="Трейдер"
+                selfSuffix={t("page.selfSuffix")}
+                ariaLabel={t("page.traderAria")}
                 className="w-full sm:w-[180px]"
               />
             )}
-            <Segmented<PeriodValue> ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
+            <Segmented<PeriodValue> ariaLabel={t("page.periodAria")} value={period} onChange={setPeriod} options={PERIODS.map((p) => ({ value: p.value, label: p.label }))} />
             {user?.role !== "guest" && !(tab === "overview" && report && !hasRules) && (
-              <Button onClick={() => openRule()} disabled={!traderName}><Plus /> Добавить правило</Button>
+              <Button onClick={() => openRule()} disabled={!traderName}><Plus /> {t("page.addRule")}</Button>
             )}
           </>
         }
       >
         {traderName && (
           <SectionTabs<Tab>
-            ariaLabel="Раздел"
+            ariaLabel={t("page.sectionAria")}
             value={tab}
             onChange={setTab}
             tabs={[
-              { value: "overview", label: "Обзор" },
-              { value: "mistakes", label: "Ошибки", count: mistakes.filter((m) => m.resolved !== "yes").length || undefined },
-              { value: "violations", label: "Нарушения", count: openViolations || undefined },
+              { value: "overview", label: t("page.tabs.overview") },
+              { value: "mistakes", label: t("page.tabs.mistakes"), count: mistakes.filter((m) => m.resolved !== "yes").length || undefined },
+              { value: "violations", label: t("page.tabs.violations"), count: openViolations || undefined },
             ]}
           />
         )}
       </PageHeader>
 
       {!traderName ? (
-        <ErrorState title={isStaff ? "Нет активных трейдеров для просмотра" : "Не удалось определить трейдера"} message={isStaff ? undefined : "Войдите заново"} />
+        <ErrorState title={isStaff ? t("page.noTraders") : t("page.noTrader")} message={isStaff ? undefined : t("page.signInAgain")} />
       ) : reportQ.error && !report ? (
         <ErrorState error={reportQ.error} onRetry={() => reportQ.refetch()} />
       ) : !report ? (

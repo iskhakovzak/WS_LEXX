@@ -10,6 +10,9 @@ import { Ring, Bar, winrateTone, lsGet, lsSet } from "@/components/playbook-sub/
 import { byCloseDate, isOpen, netPnl, resultOf, signedR } from "@/lib/trade-math";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
+import { playbookToolsI18n } from "@/i18n/ns/playbookTools";
+import { HORIZON_LABEL } from "@/components/playbook/model";
+import { redactedAggHint } from "@/components/playbook/setup-bits";
 
 /** Mirror of api-server lib/playbookEdge.ts EdgeStats (shared trade math; every ratio is null without data). */
 type EdgeStats = {
@@ -55,19 +58,24 @@ type LinkedTrade = {
 const MIN_SAMPLE = 20;
 
 
-const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
-const REDACTED_AGG_HINT = "Суммы скрыты — в выборке есть сделки других трейдеров";
+
 /** Server R first (computed before $ redaction), else the shared client math. */
 const rOfTrade = (t: LinkedTrade): number | null => (t.signedR != null && Number.isFinite(t.signedR) ? t.signedR : signedR(t));
 
 type Dim = "byRegime" | "bySession" | "byVix" | "byScore" | "byHorizon";
-const DIMS: { value: Dim; label: string }[] = [
-  { value: "bySession", label: "Сессия" },
-  { value: "byHorizon", label: "Горизонт" },
-  { value: "byRegime", label: "Режим рынка" },
-  { value: "byVix", label: "VIX" },
-  { value: "byScore", label: "Чек-лист" },
-];
+const DIM_KEYS: Dim[] = ["bySession", "byHorizon", "byRegime", "byVix", "byScore"];
+
+/** Bucket label of a breakdown: server codes (session, horizon, market regime) are translated; ranges / "—" as is. */
+function bucketLabel(dim: Dim, k: string): string {
+  if (dim === "byHorizon") return HORIZON_LABEL[k] ?? k;
+  if (dim === "byRegime") return playbookToolsI18n.tryT(`edge.regime.${k}`) ?? k;
+  if (dim === "bySession") {
+    if (k === "premarket") return commonI18n.t("trading.premarket");
+    if (k === "regular") return commonI18n.t("trading.regularSession");
+    if (k === "afterhours" || k === "postmarket") return commonI18n.t("trading.afterHours");
+  }
+  return k;
+}
 
 /** Mini equity sparkline (pure SVG). */
 function Sparkline({ values, tone }: { values: number[]; tone: Tone }) {
@@ -97,10 +105,11 @@ function Metric({ label, value, tone = "neutral", hint }: { label: string; value
   );
 }
 
-function Breakdown({ data, labels }: { data: Record<string, EdgeStats>; labels?: Record<string, string> }) {
+function Breakdown({ data, dim }: { data: Record<string, EdgeStats>; dim: Dim }) {
+  const { t } = playbookToolsI18n.useT();
   const rows = Object.entries(data ?? {}).filter(([, s]) => s && s.count >= 1).sort((a, b) => b[1].count - a[1].count);
   if (rows.length === 0) {
-    return <p className="py-3 text-center text-xs text-muted-foreground">Нет данных для этой разбивки</p>;
+    return <p className="py-3 text-center text-xs text-muted-foreground">{t("edge.noData")}</p>;
   }
   const best = rows.filter(([, s]) => s.count >= 3 && s.expectancy != null).sort((a, b) => (b[1].expectancy ?? 0) - (a[1].expectancy ?? 0))[0]?.[0];
   return (
@@ -110,8 +119,8 @@ function Breakdown({ data, labels }: { data: Record<string, EdgeStats>; labels?:
         return (
           <li key={k} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 py-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_auto_auto]">
             <span className="flex min-w-0 items-center gap-1.5 text-sm text-foreground">
-              <span className="truncate">{labels?.[k] ?? k}</span>
-              {k === best && rows.length > 1 && <Pill tone="up">лучший</Pill>}
+              <span className="truncate" title={bucketLabel(dim, k)}>{bucketLabel(dim, k)}</span>
+              {k === best && rows.length > 1 && <Pill tone="up">{t("edge.best")}</Pill>}
             </span>
             <span className="order-last col-span-2 flex items-center gap-2 sm:order-none sm:col-span-1">
               <Bar value={s.winrate ?? 0} tone={wrTone} />
@@ -127,6 +136,7 @@ function Breakdown({ data, labels }: { data: Record<string, EdgeStats>; labels?:
 }
 
 export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId: number; defaultExpanded?: boolean }) {
+  const { t } = playbookToolsI18n.useT();
   const { user } = useAuth();
   // The API scopes trades by the session (traders only ever see their own); the key separates caches per viewer.
   const userKey = user?.role === "trader" && user.traderName ? user.traderName : null;
@@ -195,13 +205,13 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
     return (
       <div className="flex items-center gap-2 rounded-xl border border-down/30 bg-down/10 px-3 py-2 text-sm text-down" role="alert">
         <AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" />
-        <span className="flex-1">Не удалось загрузить статистику сетапа</span>
+        <span className="flex-1">{t("edge.loadFailed")}</span>
         <button
           type="button"
           onClick={() => refetch()}
           className="inline-flex min-h-8 items-center gap-1 rounded-full px-3 text-xs font-medium hover:bg-down/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Повторить
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {commonI18n.t("actions.retry")}
         </button>
       </div>
     );
@@ -213,8 +223,8 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
           <LineChart className="h-4 w-4" aria-hidden="true" />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Edge ещё не посчитан</p>
-          <p className="text-xs text-muted-foreground">Привяжите сделки к сетапу — здесь появятся винрейт, средний R, ожидание и кривая.</p>
+          <p className="text-sm font-medium text-foreground">{t("edge.emptyTitle")}</p>
+          <p className="text-xs text-muted-foreground">{t("edge.emptyDesc")}</p>
         </div>
       </div>
     );
@@ -236,29 +246,29 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
   }
 
   return (
-    <section className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3" aria-label="Edge сетапа">
+    <section className="rounded-xl border border-[var(--glass-border)] bg-[var(--glass-bg)] p-3" aria-label={t("edge.aria")}>
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <span className="micro-label">Edge сетапа</span>
+        <span className="micro-label">{t("edge.aria")}</span>
         <span className="text-xs tabular-nums text-muted-foreground">{commonI18n.t("units.trades", { count: n })}</span>
         {lowSample && (
           <Pill tone="warn" className="gap-1">
             <AlertTriangle className="h-3 w-3" aria-hidden="true" />
-            мало данных
+            {t("edge.lowSample")}
           </Pill>
         )}
         {derived.streak >= 2 && derived.streakKind && (
           <Pill tone={derived.streakKind === "win" ? "up" : "down"}>
-            серия {derived.streak} {derived.streakKind === "win" ? "W" : "L"}
+            {t("edge.streak", { count: derived.streak, kind: derived.streakKind === "win" ? "W" : "L" })}
           </Pill>
         )}
       </div>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-stretch">
         <div className="flex items-center gap-3">
-          <Ring value={o.winrate ?? 0} size={64} stroke={6} tone={wrTone} label={`Винрейт ${fmtRate(o.winrate)} (W / (W + L))`}>
+          <Ring value={o.winrate ?? 0} size={64} stroke={6} tone={wrTone} label={t("edge.winrateRing", { wr: fmtRate(o.winrate) })}>
             <div className="text-center leading-none">
               <div className={cn("text-sm font-semibold tabular-nums", toneText(wrTone))}>{fmtRate(o.winrate)}</div>
-              <div className="mt-0.5 text-xs text-muted-foreground">винрейт</div>
+              <div className="mt-0.5 text-xs text-muted-foreground">{t("edge.winrate")}</div>
             </div>
           </Ring>
           <div className="text-xs tabular-nums text-muted-foreground sm:hidden">
@@ -267,9 +277,9 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         </div>
 
         <div className="grid flex-1 grid-cols-2 gap-2 sm:grid-cols-3">
-          <Metric label="Средний R" value={hasR ? fmtR(o.avgR) : "—"} tone={toneOf(o.avgR)} hint={hasR ? `R есть у ${o.rCount} из ${n}` : "В сделках нет R (ни r_multiple, ни вход/стоп/выход)"} />
-          <Metric label="Ожидание" value={hasR ? fmtR(o.expectancy) : "—"} tone={toneOf(o.expectancy)} hint="Средний знаковый R на закрытую сделку" />
-          <Metric label="Profit factor" value={fmtNum(o.profitFactor)} tone={o.profitFactor == null ? "neutral" : o.profitFactor >= 1.5 ? "up" : o.profitFactor >= 1 ? "warn" : "down"} hint={o.profitFactor == null ? "ΣR⁺ / |ΣR⁻| — нет убыточных R, фактор не определён" : "ΣR⁺ / |ΣR⁻|"} />
+          <Metric label={t("edge.avgR")} value={hasR ? fmtR(o.avgR) : "—"} tone={toneOf(o.avgR)} hint={hasR ? t("edge.rOf", { count: o.rCount, total: n }) : t("edge.noR")} />
+          <Metric label={t("edge.expectancy")} value={hasR ? fmtR(o.expectancy) : "—"} tone={toneOf(o.expectancy)} hint={t("edge.expectancyHint")} />
+          <Metric label="Profit factor" value={fmtNum(o.profitFactor)} tone={o.profitFactor == null ? "neutral" : o.profitFactor >= 1.5 ? "up" : o.profitFactor >= 1 ? "warn" : "down"} hint={o.profitFactor == null ? t("edge.pfUndefined") : "ΣR⁺ / |ΣR⁻|"} />
         </div>
       </div>
 
@@ -278,7 +288,7 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         {derived.curve.length >= 3 ? (
           <div>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>Кривая {derived.unit === "R" ? "в R" : "P&L нетто"} · {commonI18n.t("units.trades", { count: derived.curve.length - 1 })}</span>
+              <span>{t(derived.unit === "R" ? "edge.curveR" : "edge.curvePnl", { trades: commonI18n.t("units.trades", { count: derived.curve.length - 1 }) })}</span>
               <span className={cn("font-medium tabular-nums", toneText(toneOf(curveLast)))}>
                 {derived.unit === "R" ? fmtR(curveLast) : fmtUsd(curveLast, { signed: true, decimals: 0 })}
               </span>
@@ -287,18 +297,18 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
           </div>
         ) : derived.last.length > 0 ? (
           <div>
-            <div className="mb-1 text-xs text-muted-foreground">Последние {commonI18n.t("units.trades", { count: derived.last.length })} (старые → новые)</div>
-            <div className="flex flex-wrap gap-1" aria-label="Результаты последних сделок">
-              {derived.last.map((t) => (
+            <div className="mb-1 text-xs text-muted-foreground">{t("edge.lastTrades", { trades: commonI18n.t("units.trades", { count: derived.last.length }) })}</div>
+            <div className="flex flex-wrap gap-1" aria-label={t("edge.lastAria")}>
+              {derived.last.map((tr) => (
                 <span
-                  key={t.id}
-                  title={`${t.ticker} · ${t.date} · ${resultOf(t) === "win" ? "плюс" : resultOf(t) === "loss" ? "минус" : "в ноль"}`}
+                  key={tr.id}
+                  title={`${tr.ticker} · ${tr.date} · ${resultOf(tr) === "win" ? commonI18n.t("trading.win") : resultOf(tr) === "loss" ? commonI18n.t("trading.loss") : commonI18n.t("trading.breakeven")}`}
                   className={cn(
                     "grid h-5 min-w-5 place-items-center rounded-md px-1 text-xs font-semibold",
-                    resultOf(t) === "win" ? "bg-up/15 text-up" : resultOf(t) === "loss" ? "bg-down/15 text-down" : "bg-[var(--glass-hover-bg)] text-muted-foreground",
+                    resultOf(tr) === "win" ? "bg-up/15 text-up" : resultOf(tr) === "loss" ? "bg-down/15 text-down" : "bg-[var(--glass-hover-bg)] text-muted-foreground",
                   )}
                 >
-                  {resultOf(t) === "win" ? "W" : resultOf(t) === "loss" ? "L" : "·"}
+                  {resultOf(tr) === "win" ? "W" : resultOf(tr) === "loss" ? "L" : "·"}
                 </span>
               ))}
             </div>
@@ -313,32 +323,32 @@ export function PlaybookEdgeBlock({ playbookId, defaultExpanded }: { playbookId:
         className="mt-3 inline-flex min-h-8 items-center gap-1 rounded-full px-2 text-xs font-medium text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ChevronDown className={cn("h-3.5 w-3.5 motion-safe:transition-transform", expanded && "rotate-180")} aria-hidden="true" />
-        {expanded ? "Скрыть детали" : "Детали и разбивка"}
+        {expanded ? t("edge.hideDetails") : t("edge.showDetails")}
       </button>
 
       {expanded && (
         <div className="mt-2 space-y-3">
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric label="Плюс / минус" value={`${o.wins} / ${o.losses}`} hint={be > 0 || o.open ? `${be} BE · ${o.open ?? 0} открытых` : undefined} />
-            <Metric label="P&L нетто" value={hasPnl ? fmtUsd(o.totalPnl, { signed: true, decimals: 0 }) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? REDACTED_AGG_HINT : hasPnl ? `брутто ${fmtUsd(o.totalPnlGross, { signed: true, decimals: 0 })} · комиссии ${fmtUsd(o.fees ?? 0, { decimals: 0 })} · P&L есть у ${o.pnlCount} из ${n}` : "В сделках не заполнен P&L"} />
-            <Metric label="Макс. просадка (нетто)" value={o.maxDrawdown != null ? fmtUsd(-o.maxDrawdown, { signed: true, decimals: 0 }) : "—"} tone={(o.maxDrawdown ?? 0) > 0 ? "down" : "neutral"} />
+            <Metric label={t("edge.winLoss")} value={`${o.wins} / ${o.losses}`} hint={be > 0 || o.open ? t("edge.beOpen", { be, open: o.open ?? 0 }) : undefined} />
+            <Metric label={t("edge.netPnl")} value={hasPnl ? fmtUsd(o.totalPnl, { signed: true, decimals: 0 }) : "—"} tone={toneOf(o.totalPnl)} hint={moneyHidden ? redactedAggHint() : hasPnl ? t("edge.pnlHint", { gross: fmtUsd(o.totalPnlGross, { signed: true, decimals: 0 }), fees: fmtUsd(o.fees ?? 0, { decimals: 0 }), count: o.pnlCount, total: n }) : t("edge.noPnl")} />
+            <Metric label={t("edge.maxDd")} value={o.maxDrawdown != null ? fmtUsd(-o.maxDrawdown, { signed: true, decimals: 0 }) : "—"} tone={(o.maxDrawdown ?? 0) > 0 ? "down" : "neutral"} />
             <Metric label="Sharpe (R)" value={fmtNum(o.sharpe)} tone={toneOf(o.sharpe)} />
           </div>
           <div>
             <Segmented
-              ariaLabel="Разбивка edge"
+              ariaLabel={t("edge.breakdownAria")}
               size="sm"
-              options={DIMS}
+              options={DIM_KEYS.map((value) => ({ value, label: t(`edge.dim.${value}`) }))}
               value={dim}
               onChange={(v) => { setDim(v); lsSet("pb-edge-dim", v); }}
             />
             <div className="mt-1">
-              <Breakdown data={data[dim] ?? {}} labels={dim === "byHorizon" ? HORIZON_LABEL : undefined} />
+              <Breakdown data={data[dim] ?? {}} dim={dim} />
             </div>
           </div>
           {lowSample && (
             <p className="text-xs text-muted-foreground">
-              Для надёжных выводов нужно хотя бы {MIN_SAMPLE} сделок — сейчас {n}. Цифры выше могут сильно меняться.
+              {t("edge.lowSampleNote", { min: MIN_SAMPLE, count: n })}
             </p>
           )}
         </div>

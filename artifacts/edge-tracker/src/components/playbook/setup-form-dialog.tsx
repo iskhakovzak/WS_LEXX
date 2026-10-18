@@ -30,14 +30,16 @@ import { cn } from "@/lib/utils";
 import { invalidateExamples, invalidatePlaybook } from "./api";
 import { http } from "@/lib/api/http";
 import {
-  HORIZON_LABEL, STRUCTURED, TIME_OF_DAY_OPTIONS, blankForm, draftKey, entryToForm, formToBody, spaceOf, splitTags, tierMeta,
+  HORIZON_LABEL, STRUCTURED, timeOfDayOptions, blankForm, draftKey, entryToForm, formToBody, spaceOf, splitTags, tierMeta,
   type FormData, type PlaybookEntry, type Space, type StructuredKey, type Tier,
 } from "./model";
 import { fmtDate } from "@/lib/format";
 import { SetupTypeSelect } from "./setup-type-select";
 import { TagChipEditor } from "./tag-chip-editor";
 import { confidenceTone } from "./setup-bits";
-import { SETUP_TEMPLATES } from "./structured-editor";
+import { setupTemplates } from "./structured-editor";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookSetupI18n } from "@/i18n/ns/playbookSetup";
 
 const LazyVoiceRecorder = React.lazy(() => import("@/components/voice-recorder").then((m) => ({ default: m.VoiceRecorder })));
 
@@ -70,7 +72,7 @@ function baseline(mode: FormMode): FormData {
   switch (mode.kind) {
     case "edit": return entryToForm(mode.entry);
     case "child": return { ...blankForm(), folder: mode.parent.folder ?? "", horizon: mode.parent.horizon ?? "" };
-    case "duplicate": { const f = entryToForm(mode.source); return { ...f, name: `${f.name} (копия)` }; }
+    case "duplicate": { const f = entryToForm(mode.source); return { ...f, name: playbookSetupI18n.t("form.copySuffix", { name: f.name }) }; }
     default: return { ...blankForm(), folder: mode.folder ?? "", ticker: mode.fromTrade?.ticker.slice(0, 12) ?? "" };
   }
 }
@@ -104,6 +106,7 @@ export function SetupFormDialog({
   live?: boolean;
   onOpenExisting?: (id: number) => void;
 }) {
+  const { t } = playbookSetupI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -187,9 +190,9 @@ export function SetupFormDialog({
         writeDraft(key, cur);
         const k = key;
         toast({
-          title: "Черновик сохранён",
-          description: mode.kind === "edit" ? "Откроется при следующем редактировании этого сетапа." : "Откроется при следующем создании сетапа.",
-          action: <ToastAction altText="Удалить черновик" onClick={() => writeDraft(k, null)}>Удалить</ToastAction>,
+          title: t("form.draftSaved"),
+          description: mode.kind === "edit" ? t("form.draftSavedEdit") : t("form.draftSavedNew"),
+          action: <ToastAction altText={t("form.deleteDraftAlt")} onClick={() => writeDraft(k, null)}>{commonI18n.t("actions.delete")}</ToastAction>,
         });
       }
     }
@@ -215,7 +218,7 @@ export function SetupFormDialog({
   async function save() {
     if (!mode || saving) return;
     if (!form.name.trim()) { setTried(true); nameRef.current?.focus(); return; }
-    if (newFolder !== null && !newFolder.trim()) { toast({ title: "Введите название новой папки", variant: "destructive" }); return; }
+    if (newFolder !== null && !newFolder.trim()) { toast({ title: t("form.newFolderEmpty"), variant: "destructive" }); return; }
     const folder = newFolder !== null ? newFolder.trim() : form.folder;
     // A variant belongs to the parent's owner (a curator adding one to a trader's setup files it for that trader).
     const owner = mode.kind === "child" && spaceOf(mode.parent) === "personal" ? mode.parent.trader ?? trader : trader;
@@ -241,7 +244,7 @@ export function SetupFormDialog({
             await http.post(`/api/playbook/${id}/examples`, { tradeIds: [ft.id], tier: ft.tier });
             invalidateExamples(qc, id);
           } catch (e) {
-            toast({ title: "Сетап создан, но сделка не добавлена", description: (e as Error)?.message, variant: "destructive" });
+            toast({ title: t("form.exampleFailed"), description: (e as Error)?.message, variant: "destructive" });
           }
         }
       }
@@ -250,24 +253,24 @@ export function SetupFormDialog({
       setIsDraft(false);
       invalidatePlaybook(qc, id ?? undefined);
       toast({
-        title: mode.kind === "edit" ? "Сохранено" : mode.kind === "child" ? "Вариант создан" : mode.kind === "duplicate" ? "Копия создана" : "Добавлено в плейбук",
-        description: mode.kind === "create" && mode.fromTrade ? `Сделка ${mode.fromTrade.ticker} — эталон ${tierMeta(mode.fromTrade.tier).short}` : undefined,
+        title: mode.kind === "edit" ? t("form.savedEdit") : mode.kind === "child" ? t("form.savedChild") : mode.kind === "duplicate" ? t("form.savedDuplicate") : t("form.savedCreate"),
+        description: mode.kind === "create" && mode.fromTrade ? t("form.savedFromTrade", { ticker: mode.fromTrade.ticker, tier: tierMeta(mode.fromTrade.tier).short }) : undefined,
       });
       onSaved?.(id);
       onClose();
     } catch (e: any) {
-      toast({ title: "Не удалось сохранить", description: e?.message, variant: "destructive" });
+      toast({ title: commonI18n.t("states.saveFailed"), description: e?.message, variant: "destructive" });
     } finally {
       setSaving(false);
     }
   }
 
-  const title = !mode ? "" : mode.kind === "edit" ? "Редактировать сетап" : mode.kind === "child" ? "Новый вариант" : mode.kind === "duplicate" ? "Копия сетапа" : mode.space === "office" ? "Новый сетап в Офис" : mode.space === "personal" ? "Новый сетап в «Мой»" : "Новый сетап";
+  const title = !mode ? "" : mode.kind === "edit" ? t("form.titleEdit") : mode.kind === "child" ? t("form.titleChild") : mode.kind === "duplicate" ? t("form.titleDuplicate") : mode.space === "office" ? t("form.titleOffice") : mode.space === "personal" ? t("form.titleMine") : t("form.titleNew");
   const subtitle = !mode ? ""
-    : mode.kind === "child" ? `Дочерний для «${mode.parent.name}»`
+    : mode.kind === "child" ? t("form.subtitleChild", { name: mode.parent.name })
     : mode.kind === "edit" ? mode.entry.name
-    : mode.kind === "create" && mode.fromTrade ? `Из сделки ${mode.fromTrade.ticker}${mode.fromTrade.date ? ` ${fmtDate(mode.fromTrade.date, "dayMonthNumeric")}` : ""} — она станет первым эталоном (${tierMeta(mode.fromTrade.tier).label})`
-    : "Опишите, когда и как вы торгуете этот сетап";
+    : mode.kind === "create" && mode.fromTrade ? t("form.subtitleFromTrade", { trade: `${mode.fromTrade.ticker}${mode.fromTrade.date ? ` ${fmtDate(mode.fromTrade.date, "dayMonthNumeric")}` : ""}`, tier: tierMeta(mode.fromTrade.tier).label })
+    : t("form.subtitleNew");
   /** Folders of the space the setup lives in first; the rest («ещё папки») stay pickable below. */
   const folderGroups = useMemo(() => {
     const own = new Set<string>();
@@ -303,6 +306,7 @@ export function SetupFormDialog({
         onKeyDown={(e) => {
           if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
           const k = e.key.toLowerCase();
+          // i18n-ignore (RU keyboard layout key)
           if (k === "enter" || k === "s" || k === "ы") { e.preventDefault(); e.stopPropagation(); save(); }
         }}
       >
@@ -311,14 +315,14 @@ export function SetupFormDialog({
             {title}
             {isDraft && (
               <>
-                <Pill tone="warn"><History className="h-3 w-3" aria-hidden="true" /> Черновик</Pill>
+                <Pill tone="warn"><History className="h-3 w-3" aria-hidden="true" /> {t("form.draft")}</Pill>
                 <button type="button" onClick={discardDraft} className="text-xs font-normal text-muted-foreground underline underline-offset-2 hover:text-foreground">
-                  сбросить
+                  {t("form.discardDraft")}
                 </button>
               </>
             )}
           </DialogTitle>
-          <DialogDescription className="truncate">{subtitle}</DialogDescription>
+          <DialogDescription className="truncate" title={subtitle}>{subtitle}</DialogDescription>
         </DialogHeader>
 
         <form
@@ -330,7 +334,7 @@ export function SetupFormDialog({
           {/* Basics */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
             <div className="space-y-1.5">
-              <Label htmlFor="pb-name" className="text-xs text-muted-foreground">Название *</Label>
+              <Label htmlFor="pb-name" className="text-xs text-muted-foreground">{t("form.name")}</Label>
               <Input
                 id="pb-name"
                 ref={nameRef}
@@ -343,16 +347,16 @@ export function SetupFormDialog({
                 aria-describedby={nameError ? "pb-name-err" : sameName ? "pb-name-same" : undefined}
                 className={cn(nameError && "border-down focus-visible:ring-down")}
               />
-              {nameError && <p id="pb-name-err" className="text-xs text-down">Введите название сетапа</p>}
+              {nameError && <p id="pb-name-err" className="text-xs text-down">{t("form.nameError")}</p>}
               {!nameError && sameName && (
                 <p id="pb-name-same" className="flex items-center gap-1.5 text-xs text-[hsl(var(--chart-3))]">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
                   <span className="min-w-0">
-                    Сетап с таким названием уже есть{sameName.folder ? ` в папке «${sameName.folder}»` : ""}
+                    {sameName.folder ? t("form.sameNameIn", { folder: sameName.folder }) : t("form.sameName")}
                     {onOpenExisting && (
                       <>
                         {" — "}
-                        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => { closeKeepingDraft(); onOpenExisting(sameName.id); }}>открыть</button>
+                        <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={() => { closeKeepingDraft(); onOpenExisting(sameName.id); }}>{t("form.open")}</button>
                       </>
                     )}
                   </span>
@@ -360,7 +364,7 @@ export function SetupFormDialog({
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pb-ticker" className="text-xs text-muted-foreground">Тикер-пример</Label>
+              <Label htmlFor="pb-ticker" className="text-xs text-muted-foreground">{t("form.ticker")}</Label>
               <Input id="pb-ticker" value={form.ticker} onChange={(e) => set("ticker", e.target.value.toUpperCase().replace(/\s+/g, ""))} placeholder="NVDA" maxLength={12} />
             </div>
           </div>
@@ -368,16 +372,16 @@ export function SetupFormDialog({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <div className="space-y-1.5">
-              <Label htmlFor="pb-folder" className="text-xs text-muted-foreground">Папка</Label>
+              <Label htmlFor="pb-folder" className="text-xs text-muted-foreground">{t("form.folder")}</Label>
               {newFolder === null ? (
                 <div className="flex gap-2">
                   <Select value={form.folder || "__none"} onValueChange={(v) => set("folder", v === "__none" ? "" : v)}>
-                    <SelectTrigger id="pb-folder" className="min-w-0 flex-1"><SelectValue placeholder="Без папки" /></SelectTrigger>
+                    <SelectTrigger id="pb-folder" className="min-w-0 flex-1"><SelectValue placeholder={commonI18n.t("fields.noFolder")} /></SelectTrigger>
                     <SelectContent className="max-h-[min(60dvh,420px)]">
-                      <SelectItem value="__none">Без папки</SelectItem>
+                      <SelectItem value="__none">{commonI18n.t("fields.noFolder")}</SelectItem>
                       {folderGroups.primary.length > 0 && (
                         <SelectGroup>
-                          <SelectLabel className="text-xs font-normal text-muted-foreground">{targetSpace === "office" ? "Папки офиса" : "Мои папки"}</SelectLabel>
+                          <SelectLabel className="text-xs font-normal text-muted-foreground">{targetSpace === "office" ? t("form.officeFolders") : t("form.myFolders")}</SelectLabel>
                           {folderGroups.primary.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                         </SelectGroup>
                       )}
@@ -385,14 +389,14 @@ export function SetupFormDialog({
                         <>
                           <SelectSeparator />
                           <SelectGroup>
-                            <SelectLabel className="text-xs font-normal text-muted-foreground">{targetSpace === "office" ? "Папки из личных плейбуков" : "Папки офиса и общие"}</SelectLabel>
+                            <SelectLabel className="text-xs font-normal text-muted-foreground">{targetSpace === "office" ? t("form.personalFolders") : t("form.officeSharedFolders")}</SelectLabel>
                             {folderGroups.rest.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
                           </SelectGroup>
                         </>
                       )}
                     </SelectContent>
                   </Select>
-                  <IconAction aria-label="Новая папка" title="Новая папка" onClick={() => setNewFolder("")} className="h-10 w-10 shrink-0"><FolderPlus /></IconAction>
+                  <IconAction aria-label={t("form.newFolder")} title={t("form.newFolder")} onClick={() => setNewFolder("")} className="h-10 w-10 shrink-0"><FolderPlus /></IconAction>
                 </div>
               ) : (
                 <div className="flex gap-2">
@@ -401,22 +405,22 @@ export function SetupFormDialog({
                     value={newFolder}
                     onChange={(e) => setNewFolder(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setNewFolder(null); } }}
-                    placeholder="Новая папка"
+                    placeholder={t("form.newFolder")}
                     autoFocus
                     maxLength={80}
                     className="min-w-0 flex-1"
                   />
-                  <Button type="button" variant="ghost" className="h-10 shrink-0" onClick={() => setNewFolder(null)}>Отмена</Button>
+                  <Button type="button" variant="ghost" className="h-10 shrink-0" onClick={() => setNewFolder(null)}>{commonI18n.t("actions.cancel")}</Button>
                 </div>
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="pb-setup-type" className="text-xs text-muted-foreground">Тип сетапа</Label>
+              <Label htmlFor="pb-setup-type" className="text-xs text-muted-foreground">{t("form.setupType")}</Label>
               <SetupTypeSelect id="pb-setup-type" value={form.setupType} onChange={(v) => set("setupType", v)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="pb-confidence" className="flex items-center justify-between text-xs text-muted-foreground">
-                Уверенность
+                {t("form.confidence")}
                 <span className={confValid ? cn("font-semibold tabular-nums", toneText(confidenceTone(conf))) : "text-muted-foreground"}>
                   {confValid ? `${conf}%` : "—"}
                 </span>
@@ -439,29 +443,29 @@ export function SetupFormDialog({
             <section aria-labelledby="pb-card-h" className="space-y-3 rounded-2xl border border-border/60 p-4">
               <div className="flex flex-wrap items-center gap-2">
                 <h3 id="pb-card-h" className="mr-auto flex items-center gap-2 text-sm font-semibold text-foreground">
-                  <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Карточка сетапа
+                  <Target className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("editor.card")}
                 </h3>
                 <Select value={form.horizon || "__none"} onValueChange={(v) => set("horizon", v === "__none" ? "" : v)}>
-                  <SelectTrigger className="h-9 w-44 text-sm" aria-label="Горизонт"><SelectValue placeholder="Горизонт" /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-auto min-w-44 gap-2 text-sm" aria-label={t("editor.horizon")}><SelectValue placeholder={t("editor.horizon")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">Горизонт: любой</SelectItem>
+                    <SelectItem value="__none">{t("editor.horizonAny")}</SelectItem>
                     {Object.entries(HORIZON_LABEL).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
                   </SelectContent>
                 </Select>
                 <Select value={form.timeOfDay || "__none"} onValueChange={(v) => set("timeOfDay", v === "__none" ? "" : v)}>
-                  <SelectTrigger className="h-9 w-52 text-sm" aria-label="Время дня"><SelectValue placeholder="Время дня" /></SelectTrigger>
+                  <SelectTrigger className="h-9 w-auto min-w-52 gap-2 text-sm" aria-label={t("editor.timeOfDay")}><SelectValue placeholder={t("editor.timeOfDay")} /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="__none">Время: любое</SelectItem>
-                    {[...TIME_OF_DAY_OPTIONS, ...(form.timeOfDay && !TIME_OF_DAY_OPTIONS.includes(form.timeOfDay) ? [form.timeOfDay] : [])].map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                    <SelectItem value="__none">{t("editor.timeAny")}</SelectItem>
+                    {[...timeOfDayOptions(), ...(form.timeOfDay && !timeOfDayOptions().some((o) => o.value === form.timeOfDay) ? [{ value: form.timeOfDay, label: form.timeOfDay }] : [])].map((o) => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>
               {structuredEmpty && (
                 <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
                   <LayoutTemplate className="h-4 w-4" aria-hidden="true" />
-                  <span>Начать с шаблона:</span>
-                  {SETUP_TEMPLATES.map((t) => (
-                    <button key={t.id} type="button" onClick={() => applyTemplate(t.fields)} className="chip min-h-7 px-2.5 text-xs">{t.label}</button>
+                  <span>{t("form.startTemplate")}</span>
+                  {setupTemplates().map((tpl) => (
+                    <button key={tpl.id} type="button" onClick={() => applyTemplate(tpl.fields)} className="chip min-h-7 px-2.5 text-xs">{tpl.label}</button>
                   ))}
                 </div>
               )}
@@ -482,7 +486,7 @@ export function SetupFormDialog({
               </div>
               {!showLegacy && (
                 <button type="button" onClick={() => setShowLegacy(true)} className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground">
-                  + Описать одним текстом
+                  {t("form.oneText")}
                 </button>
               )}
             </section>
@@ -492,16 +496,16 @@ export function SetupFormDialog({
             {showLegacy && (
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
-                  <Label htmlFor="pb-conditions" className="text-xs text-muted-foreground">{live ? "Описание одним текстом" : "Условия входа"}</Label>
+                  <Label htmlFor="pb-conditions" className="text-xs text-muted-foreground">{live ? t("form.oneTextLabel") : t("form.conditions")}</Label>
                   <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("conditions")} /></React.Suspense>
                 </div>
-                <Textarea id="pb-conditions" value={form.conditions} onChange={(e) => set("conditions", e.target.value)} rows={5} placeholder={"Контекст рынка, катализатор, уровень, триггер входа.\nИнвалидация: …\nЦели: …"} className="resize-y text-sm" />
+                <Textarea id="pb-conditions" value={form.conditions} onChange={(e) => set("conditions", e.target.value)} rows={5} placeholder={t("form.conditionsPlaceholder")} className="resize-y text-sm" />
               </div>
             )}
             <div className={cn("grid grid-cols-1 gap-3", !showLegacy && "md:grid-cols-2")}>
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
-                  <Label htmlFor="pb-checklist" className="text-xs text-muted-foreground">Чеклист — пункт на строку</Label>
+                  <Label htmlFor="pb-checklist" className="text-xs text-muted-foreground">{t("form.checklist")}</Label>
                   <div className="flex items-center gap-1">
                     <PlaybookGenerateChecklistButton
                       playbookId={editId}
@@ -513,25 +517,25 @@ export function SetupFormDialog({
                     <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("checklist")} /></React.Suspense>
                   </div>
                 </div>
-                <Textarea id="pb-checklist" value={form.checklist} onChange={(e) => set("checklist", e.target.value)} rows={5} placeholder={"- Гэп > 5%\n- Объём > 500k в премаркете\n- Чистый катализатор\n- Вход на первом откате"} className="resize-y text-sm" />
+                <Textarea id="pb-checklist" value={form.checklist} onChange={(e) => set("checklist", e.target.value)} rows={5} placeholder={t("form.checklistPlaceholder")} className="resize-y text-sm" />
               </div>
               <div className="space-y-1.5">
                 <div className="flex min-h-8 items-center justify-between gap-2">
-                  <Label htmlFor="pb-notes" className="text-xs text-muted-foreground">Заметки — нюансы, типичные ошибки</Label>
+                  <Label htmlFor="pb-notes" className="text-xs text-muted-foreground">{t("form.notes")}</Label>
                   <React.Suspense fallback={null}><LazyVoiceRecorder onTranscript={append("notes")} /></React.Suspense>
                 </div>
-                <Textarea id="pb-notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={5} className="resize-y text-sm" placeholder="Что отличает эталон от «почти того же»" />
+                <Textarea id="pb-notes" value={form.notes} onChange={(e) => set("notes", e.target.value)} rows={5} className="resize-y text-sm" placeholder={t("form.notesPlaceholder")} />
               </div>
             </div>
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="pb-tags" className="text-xs text-muted-foreground">Теги <span className="text-muted-foreground">· перетащите, чтобы изменить порядок</span></Label>
+            <Label htmlFor="pb-tags" className="text-xs text-muted-foreground">{t("form.tags")} <span className="text-muted-foreground">{t("form.tagsHint")}</span></Label>
             <TagChipEditor id="pb-tags" value={form.tags} onChange={(v) => set("tags", v)} />
           </div>
 
           <div className="space-y-1.5">
-            <div className="text-xs text-muted-foreground">Скриншоты по ссылке{live ? " · картинки можно вставить (Ctrl+V) прямо в карточку после сохранения" : ""}</div>
+            <div className="text-xs text-muted-foreground">{live ? t("form.screenshotsPaste") : t("form.screenshots")}</div>
             <ScreenshotFields
               urls={form.screenshotUrls}
               onChange={(urls) => setForm((f) => ({ ...f, screenshotUrls: urls }))}
@@ -543,10 +547,10 @@ export function SetupFormDialog({
 
         <DialogFooter className="shrink-0 gap-2 border-t border-border/60 px-6 py-3 sm:items-center">
           <span className="mr-auto hidden items-center gap-1.5 text-xs text-muted-foreground sm:inline-flex">
-            <Kbd keys={["Ctrl", "Enter"]} /> или <Kbd keys={["Ctrl", "S"]} /> — сохранить · <Kbd keys={["Esc"]} /> — закрыть, черновик сохранится
+            <Kbd keys={["Ctrl", "Enter"]} /> {t("form.or")} <Kbd keys={["Ctrl", "S"]} /> {t("form.saveHint")} <Kbd keys={["Esc"]} /> {t("form.closeHint")}
           </span>
-          <Button type="button" variant="ghost" onClick={closeKeepingDraft}>Отмена</Button>
-          <Button type="submit" form="pb-form" disabled={saving} aria-busy={saving}>{saving ? "Сохраняем…" : "Сохранить"}</Button>
+          <Button type="button" variant="ghost" onClick={closeKeepingDraft}>{commonI18n.t("actions.cancel")}</Button>
+          <Button type="submit" form="pb-form" disabled={saving} aria-busy={saving}>{saving ? t("form.saving") : commonI18n.t("actions.save")}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

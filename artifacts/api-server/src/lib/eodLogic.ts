@@ -1,5 +1,6 @@
 // Pure «Закрытие дня» rules (no DB) — used by routes/eod.ts and checked offline with synthetic data.
 import { addDays, isWeekend } from "./tradingDate";
+import { errorMessage } from "./http/errors";
 
 export type MissingField = "setup" | "grade";
 export type MissingItem = { tradeId: number; ticker: string; fields: MissingField[] };
@@ -35,10 +36,11 @@ export function missingList(trades: ReviewableTrade[]): MissingItem[] {
   return out;
 }
 
-export function canCloseDay(args: { date: string; today: string; trades: ReviewableTrade[] }): { ok: boolean; missing: MissingItem[]; reason: string | null } {
-  if (args.date > args.today) return { ok: false, missing: [], reason: "Нельзя закрыть будущий день" };
+/** `reasonCode` = the API error code that blocks the close; `reason` = its RU text (translate the code per request). */
+export function canCloseDay(args: { date: string; today: string; trades: ReviewableTrade[] }): { ok: boolean; missing: MissingItem[]; reason: string | null; reasonCode?: "EOD_FUTURE_DAY" | "EOD_INCOMPLETE" } {
+  if (args.date > args.today) return { ok: false, missing: [], reason: errorMessage("EOD_FUTURE_DAY", "ru"), reasonCode: "EOD_FUTURE_DAY" };
   const missing = missingList(args.trades);
-  if (missing.length) return { ok: false, missing, reason: "Не у всех сделок указаны сетап и грейд" };
+  if (missing.length) return { ok: false, missing, reason: errorMessage("EOD_INCOMPLETE", "ru"), reasonCode: "EOD_INCOMPLETE" };
   return { ok: true, missing: [], reason: null };
 }
 

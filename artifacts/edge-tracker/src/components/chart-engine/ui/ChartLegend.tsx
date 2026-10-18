@@ -4,6 +4,8 @@ import type { Bar, PositionState, Side } from "../types";
 import { fmtEtDateTime, formatDuration } from "../lib/time";
 import { fmtCompact, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { fmtPerShare } from "../lib/trade-summary";
+import { chartI18n } from "@/i18n/ns/chart";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type LegendInfo = {
   bar: Bar;
@@ -56,22 +58,22 @@ export function ChartLegend({ info, ticker, tfLabel, className }: { info: Legend
         <span>H <b className="font-medium text-foreground">{fmtPrice(bar.h)}</b></span>
         <span>L <b className="font-medium text-foreground">{fmtPrice(bar.l)}</b></span>
         <span>C <b className={cn("font-medium", tone(chg))}>{fmtPrice(bar.c)}</b> <span className={tone(chg)}>{fmtPct(chgPct)}</span></span>
-        <span className="hidden sm:inline">V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.rvol != null && info.rvol >= 1.5 && <span className="ml-1 text-[hsl(var(--chart-3))]" title="Объём относительно того же времени в другие дни">×{info.rvol.toFixed(1)}</span>}</span>
+        <span className="hidden sm:inline">V <b className="font-medium text-foreground">{fmtCompact(bar.v)}</b>{info.rvol != null && info.rvol >= 1.5 && <span className="ml-1 text-[hsl(var(--chart-3))]" title={chartI18n.t("legend.rvolTitle")}>×{info.rvol.toFixed(1)}</span>}</span>
       </div>
       <div className="flex items-center gap-x-2.5 overflow-hidden whitespace-nowrap [&>*]:shrink-0">
-        {vsPrev != null && <span className="hidden sm:inline" title="К закрытию предыдущего дня">к вчера <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
+        {vsPrev != null && <span className="hidden sm:inline" title={chartI18n.t("legend.vsPrevTitle")}>{chartI18n.t("legend.vsPrev")} <b className={cn("font-medium", tone(vsPrev))}>{fmtPct(vsPrev)}</b></span>}
         {info.vwap && <span>VWAP <b className="font-medium text-[hsl(var(--chart-5))]">{fmtPrice(info.vwap.vwap)}</b></span>}
         {info.avwap != null && <span className="hidden sm:inline">AVWAP <b className="font-medium text-primary">{fmtPrice(info.avwap)}</b></span>}
         {pos && pos.fillsSoFar > 0 && (open ? (
           <span className="text-foreground">
-            {info.side === "short" ? "Шорт" : "Лонг"} ср. {fmtPrice(pos.avg)}{" "}
+            {chartI18n.t("legend.position", { side: info.side === "short" ? commonI18n.t("trading.short") : commonI18n.t("trading.long"), price: fmtPrice(pos.avg) })}{" "}
             <b className={tone(perShare)}>{fmtPerShare(perShare)}</b>
             {r != null && <b className={cn("ml-1", tone(r))}>{fmtR(r)}</b>}
             {usd != null && <b className={cn("ml-1", tone(usd))}>{fmtUsd(usd, { signed: true, decimals: "auto" })}</b>}
             {info.sinceEntry != null && info.sinceEntry >= 0 && <span className="ml-1 text-muted-foreground">· {formatDuration(info.sinceEntry)}</span>}
           </span>
         ) : (
-          <span>позиция закрыта</span>
+          <span>{chartI18n.t("legend.closed")}</span>
         ))}
       </div>
     </div>

@@ -142,6 +142,12 @@ export default {
       after: "Postmarket",
       closed: "Yopiq",
     },
+    phaseLong: {
+      pre: "Premarket",
+      regular: "Asosiy sessiya",
+      after: "Postmarket",
+      closed: "Bozor yopiq",
+    },
     phaseShort: {
       pre: "Pre",
       regular: "Asos",
@@ -198,7 +204,6 @@ export default {
       ticker: "Tiker",
     },
     action: {
-      newTrade: "Yangi savdo",
       newIdea: "Yangi gʻoya",
       newEvent: "Yangi voqea",
       theme: "Mavzuni oʻzgartirish",
@@ -260,6 +265,12 @@ export default {
     notification: "Bildirishnoma",
     notificationsRegion: "Bildirishnomalar ({hotkey})",
     commandPalette: "Buyruqlar palitrasi",
+  },
+  notFound: {
+    lead: "Havola eskirgan yoki manzilda xato bor.",
+    maybe: "Balki siz buni qidirgandirsiz",
+    toDashboard: "Boshqaruv paneliga",
+    sections: "Boʻlimlar",
   },
   app: {
     pageLoading: "Sahifa yuklanmoqda…",

@@ -15,22 +15,23 @@ import { QueryError } from "@/components/query-error";
 import { EmptyState, Kbd, Panel, Pill, Segmented } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
-import { BAN_PRESETS } from "./useUserActions";
+import { banPresets } from "./useUserActions";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
-import { ROLE_LABEL, adminUrl, isTypingTarget, timeAgo, useReports, type ContentReport } from "./api";
-import { pluralRu } from "@/lib/format";
+import { adminUrl, isTypingTarget, roleLabel, timeAgo, useReports, type ContentReport } from "./api";
+import { adminI18n } from "@/i18n/ns/admin";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Status = "open" | "resolved" | "dismissed" | "all";
 
-const STATUS_LABEL: Record<string, string> = { open: "Открыта", resolved: "Решена", dismissed: "Отклонена" };
-const RESOLVE_PRESETS = ["Контент удалён", "Предупреждение автору", "Исправлено автором"];
-const DISMISS_PRESETS = ["Не нарушает правила", "Дубликат жалобы", "Недостаточно контекста"];
+/** Quick-pick lists in the UI language (the chosen text is stored as the resolution). */
+const presets = (k: "resolvePresets" | "dismissPresets" | "removePresets") => adminI18n.t(`moderation.${k}`).split("|");
 
 const EASE = [0.2, 0.8, 0.2, 1] as const;
 
 export function ModerationQueue({ actor, openCount }: { actor: string; openCount?: number }) {
   const { toast } = useToast();
+  const { t } = adminI18n.useT();
   const qc = useQueryClient();
   const reduce = useReducedMotion();
   const [status, setStatus] = useState<Status>("open");
@@ -45,7 +46,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const invalidate = () => {
     for (const k of ["admin-reports", "admin-overview", "admin-audit", "admin-desk-pulse", "admin-users"]) qc.invalidateQueries({ queryKey: [k] });
   };
-  const onError = (e: Error) => { toast({ title: "Ошибка", description: e.message, variant: "destructive" }); invalidate(); };
+  const onError = (e: Error) => { toast({ title: commonI18n.t("states.error"), description: e.message, variant: "destructive" }); invalidate(); };
 
   /** Optimistically drop a report from the open queue. */
   const dropOptimistic = (ids: number[]) => {
@@ -57,7 +58,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
     mutationFn: ({ id, kind, resolution }: { id: number; kind: "resolve" | "dismiss"; resolution: string }) =>
       http.post(adminUrl(`/admin/reports/${id}/${kind}`, actor), { actor, resolution }),
     onMutate: ({ id }) => { setDialog(null); dropOptimistic([id]); },
-    onSuccess: (_d, v) => { invalidate(); toast({ title: v.kind === "resolve" ? "Жалоба решена" : "Жалоба отклонена", description: v.resolution }); },
+    onSuccess: (_d, v) => { invalidate(); toast({ title: v.kind === "resolve" ? t("moderation.resolvedToast") : t("moderation.dismissedToast"), description: v.resolution }); },
     onError,
   });
 
@@ -75,8 +76,8 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
     onSuccess: (d, v) => {
       invalidate();
       toast({
-        title: `${v.kind === "resolve" ? "Решено" : "Отклонено"}: ${d.updated.length}`,
-        description: d.skipped.length ? `Пропущено (уже закрыты): ${d.skipped.length}` : v.resolution,
+        title: v.kind === "resolve" ? t("moderation.bulkResolved", { count: d.updated.length }) : t("moderation.bulkDismissed", { count: d.updated.length }),
+        description: d.skipped.length ? t("moderation.bulkSkipped", { count: d.skipped.length }) : v.resolution,
       });
     },
     onError,
@@ -85,10 +86,10 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
   const bulk = (kind: "resolve" | "dismiss") => {
     const ids = [...checked];
     setDialog({
-      title: `${kind === "resolve" ? "Решить" : "Отклонить"} ${ids.length} ${pluralRu(ids.length, "жалобу", "жалобы", "жалоб")}`,
-      description: "Одна причина для всех выбранных. Каждая жалоба отдельно попадёт в аудит.",
-      confirmLabel: kind === "resolve" ? "Решить все" : "Отклонить все",
-      input: { label: kind === "resolve" ? "Резолюция" : "Причина отклонения", required: true, presets: kind === "resolve" ? RESOLVE_PRESETS : DISMISS_PRESETS },
+      title: kind === "resolve" ? t("moderation.bulkResolveTitle", { count: ids.length }) : t("moderation.bulkDismissTitle", { count: ids.length }),
+      description: t("moderation.bulkText"),
+      confirmLabel: kind === "resolve" ? t("moderation.resolveAll") : t("moderation.dismissAll"),
+      input: { label: kind === "resolve" ? t("moderation.resolution") : t("moderation.dismissReason"), required: true, presets: presets(kind === "resolve" ? "resolvePresets" : "dismissPresets") },
       onConfirm: (resolution) => bulkMut.mutate({ ids, kind, resolution }),
     });
   };
@@ -99,7 +100,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
     onMutate: ({ id }) => { setDialog(null); dropOptimistic([id]); },
     onSuccess: (d, v) => {
       invalidate();
-      toast({ title: `${v.author} забанен`, description: `Закрыто жалоб: ${d.closedReports?.length ?? 1}` });
+      toast({ title: t("moderation.authorBanned", { name: v.author }), description: t("moderation.reportsClosed", { count: d.closedReports?.length ?? 1 }) });
     },
     onError,
   });
@@ -110,10 +111,10 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
       await http.del(`/api/admin/${path}/${encodeURIComponent(report.targetId)}`, undefined, { query: { actor } }).catch((e) => {
         if (!isNotFound(e)) throw e;
       });
-      await http.post(adminUrl(`/admin/reports/${report.id}/resolve`, actor), { actor, resolution: `Контент удалён: ${reason}` });
+      await http.post(adminUrl(`/admin/reports/${report.id}/resolve`, actor), { actor, resolution: t("moderation.contentRemoved", { reason }) });
     },
     onMutate: ({ report }) => { setDialog(null); dropOptimistic([report.id]); },
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/discussions"] }); invalidate(); toast({ title: "Контент удалён, жалоба закрыта" }); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ["/api/discussions"] }); invalidate(); toast({ title: t("moderation.contentRemovedToast") }); },
     onError,
   });
 
@@ -121,39 +122,40 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
 
   const act = useMemo(() => ({
     resolve: (r: ContentReport) => setDialog({
-      title: `Решить жалобу #${r.id}`,
-      description: "Что сделано по жалобе — увидит команда модерации в аудите.",
-      confirmLabel: "Отметить решённой",
-      input: { label: "Резолюция", required: true, presets: RESOLVE_PRESETS, placeholder: "Что сделали" },
+      title: t("moderation.resolve.title", { id: r.id }),
+      description: t("moderation.resolve.text"),
+      confirmLabel: t("moderation.resolve.confirm"),
+      input: { label: t("moderation.resolution"), required: true, presets: presets("resolvePresets"), placeholder: t("moderation.resolve.placeholder") },
       onConfirm: (resolution) => resolveMut.mutate({ id: r.id, kind: "resolve", resolution }),
     }),
     dismiss: (r: ContentReport) => setDialog({
-      title: `Отклонить жалобу #${r.id}?`,
-      confirmLabel: "Отклонить",
-      input: { label: "Причина отклонения", required: true, presets: DISMISS_PRESETS },
+      title: t("moderation.dismiss.title", { id: r.id }),
+      confirmLabel: t("moderation.dismiss.confirm"),
+      input: { label: t("moderation.dismissReason"), required: true, presets: presets("dismissPresets") },
       onConfirm: (resolution) => resolveMut.mutate({ id: r.id, kind: "dismiss", resolution }),
     }),
     ban: (r: ContentReport) => {
       const author = r.target?.author;
-      if (!author) { toast({ title: "Автор не найден", description: "Забаньте вручную во вкладке «Трейдеры».", variant: "destructive" }); return; }
+      if (!author) { toast({ title: t("moderation.noAuthor"), description: t("moderation.noAuthorHint"), variant: "destructive" }); return; }
+      const more = (r.openReportsOnTarget ?? 1) - 1;
       setDialog({
-        title: `Забанить автора — ${author}?`,
-        description: `${author} будет разлогинен, жалоба${(r.openReportsOnTarget ?? 1) > 1 ? ` и ещё ${(r.openReportsOnTarget ?? 1) - 1} на этот же контент` : ""} будет закрыта.`,
-        confirmLabel: "Забанить и закрыть",
+        title: t("moderation.ban.title", { name: author }),
+        description: more > 0 ? t("moderation.ban.textMore", { name: author, count: more }) : t("moderation.ban.text", { name: author }),
+        confirmLabel: t("moderation.ban.confirm"),
         destructive: true,
-        input: { label: "Причина бана", kind: "textarea", required: true, presets: BAN_PRESETS },
+        input: { label: t("moderation.ban.reason"), kind: "textarea", required: true, presets: banPresets() },
         onConfirm: (reason) => banAuthorMut.mutate({ id: r.id, reason, author }),
       });
     },
     remove: (r: ContentReport) => setDialog({
-      title: `Удалить ${r.targetType === "discussion" ? "обсуждение" : "комментарий"} и закрыть жалобу?`,
-      description: r.targetType === "discussion" ? "Обсуждение будет скрыто для всех." : "Комментарий будет удалён без возможности восстановления.",
-      confirmLabel: "Удалить и закрыть",
+      title: r.targetType === "discussion" ? t("moderation.removeDiscussion.title") : t("moderation.removeComment.title"),
+      description: r.targetType === "discussion" ? t("moderation.removeDiscussion.text") : t("moderation.removeComment.text"),
+      confirmLabel: t("moderation.removeConfirm"),
       destructive: true,
-      input: { label: "Причина удаления", required: true, presets: ["Спам", "Оскорбления", "Не по теме", "Слив конфиденциальных данных"] },
+      input: { label: t("moderation.removeReason"), required: true, presets: presets("removePresets") },
       onConfirm: (reason) => deleteMut.mutate({ report: r, reason }),
     }),
-  }), [resolveMut, banAuthorMut, deleteMut, toast]);
+  }), [resolveMut, banAuthorMut, deleteMut, toast, t]);
 
   // Keyboard triage: J/K move, R resolve, D dismiss, B ban author, X delete content.
   useEffect(() => { setSelected((s) => Math.min(s, Math.max(0, reports.length - 1))); }, [reports.length]);
@@ -181,20 +183,20 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
 
   return (
     <Panel
-      title="Очередь модерации"
-      description="Жалобы на обсуждения и комментарии. Каждое действие требует причину и пишется в аудит."
+      title={t("moderation.title")}
+      description={t("moderation.description")}
       icon={Flag}
       actions={
         <Segmented<Status>
-          ariaLabel="Статус жалоб"
+          ariaLabel={t("moderation.statusAria")}
           size="sm"
           value={status}
           onChange={(s) => { setStatus(s); setSelected(0); }}
           options={[
-            { value: "open", label: "Открытые", count: openCount },
-            { value: "resolved", label: "Решённые" },
-            { value: "dismissed", label: "Отклонённые" },
-            { value: "all", label: "Все" },
+            { value: "open", label: t("moderation.tab.open"), count: openCount },
+            { value: "resolved", label: t("moderation.tab.resolved") },
+            { value: "dismissed", label: t("moderation.tab.dismissed") },
+            { value: "all", label: t("moderation.tab.all") },
           ]}
         />
       }
@@ -202,12 +204,12 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
       <div className="flex flex-col gap-3">
         {status === "open" && reports.length > 0 && (
           <p className="hidden flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground md:flex">
-            <span><Kbd>J</Kbd> <Kbd>K</Kbd> навигация</span>
-            <span><Kbd>R</Kbd> решить</span>
-            <span><Kbd>D</Kbd> отклонить</span>
-            <span><Kbd>B</Kbd> бан автора</span>
-            <span><Kbd>X</Kbd> удалить контент</span>
-            <span><Kbd>S</Kbd> выбрать</span>
+            <span><Kbd>J</Kbd> <Kbd>K</Kbd> {t("moderation.keys.nav")}</span>
+            <span><Kbd>R</Kbd> {t("moderation.keys.resolve")}</span>
+            <span><Kbd>D</Kbd> {t("moderation.keys.dismiss")}</span>
+            <span><Kbd>B</Kbd> {t("moderation.keys.ban")}</span>
+            <span><Kbd>X</Kbd> {t("moderation.keys.remove")}</span>
+            <span><Kbd>S</Kbd> {t("moderation.keys.select")}</span>
           </p>
         )}
 
@@ -218,7 +220,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
               checked.size ? "bg-primary/10" : "bg-[var(--glass-bg)]",
             )}
             role="toolbar"
-            aria-label="Массовые действия"
+            aria-label={t("moderation.bulkAria")}
           >
             <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
               <input
@@ -227,15 +229,15 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
                 checked={checked.size > 0 && openIds.every((id) => checked.has(id))}
                 ref={(el) => { if (el) el.indeterminate = checked.size > 0 && !openIds.every((id) => checked.has(id)); }}
                 onChange={(e) => setChecked(e.target.checked ? new Set(openIds) : new Set())}
-                aria-label="Выбрать все открытые жалобы"
+                aria-label={t("moderation.selectAllOpen")}
               />
-              {checked.size ? <span className="tabular-nums">Выбрано: {checked.size}</span> : <span className="text-muted-foreground">Выбрать все</span>}
+              {checked.size ? <span className="tabular-nums">{t("moderation.selected", { count: checked.size })}</span> : <span className="text-muted-foreground">{t("moderation.selectAll")}</span>}
             </label>
             {checked.size > 0 && (
               <div className="ml-auto flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => bulk("resolve")} disabled={busy}><Check className="text-up" /> Решить выбранные</Button>
-                <Button size="sm" variant="outline" onClick={() => bulk("dismiss")} disabled={busy}><X /> Отклонить выбранные</Button>
-                <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>Снять выбор</Button>
+                <Button size="sm" variant="outline" onClick={() => bulk("resolve")} disabled={busy}><Check className="text-up" /> {t("moderation.resolveSelected")}</Button>
+                <Button size="sm" variant="outline" onClick={() => bulk("dismiss")} disabled={busy}><X /> {t("moderation.dismissSelected")}</Button>
+                <Button size="sm" variant="ghost" onClick={() => setChecked(new Set())}>{t("moderation.clearSelection")}</Button>
               </div>
             )}
           </div>
@@ -244,17 +246,17 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
         {isError ? (
           <QueryError error={error} onRetry={() => refetch()} />
         ) : isLoading ? (
-          <div className="flex flex-col gap-2" aria-busy="true" aria-label="Загрузка">
+          <div className="flex flex-col gap-2" aria-busy="true" aria-label={commonI18n.t("states.loading")}>
             {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}
           </div>
         ) : reports.length === 0 ? (
           <EmptyState
             icon={ShieldCheck}
-            title={status === "open" ? "Очередь пуста — всё чисто" : "Жалоб с таким статусом нет"}
-            description={status === "open" ? "Новые жалобы из обсуждений появятся здесь, счётчик — в меню слева." : undefined}
+            title={status === "open" ? t("moderation.emptyOpen") : t("moderation.emptyOther")}
+            description={status === "open" ? t("moderation.emptyOpenHint") : undefined}
           />
         ) : (
-          <ul ref={listRef} className="flex flex-col gap-2" aria-label="Жалобы">
+          <ul ref={listRef} className="flex flex-col gap-2" aria-label={t("moderation.listAria")}>
             <AnimatePresence initial={false}>
               {reports.map((r, i) => (
                 <motion.li
@@ -297,6 +299,7 @@ function ReportCard({
   checked: boolean;
   onToggle: () => void;
 }) {
+  const { t: tr } = adminI18n.useT();
   const t = r.target;
   const isDiscussion = r.targetType === "discussion";
   const Icon = isDiscussion ? MessagesSquare : MessageCircle;
@@ -316,7 +319,7 @@ function ReportCard({
             checked={checked}
             onChange={onToggle}
             onClick={(e) => e.stopPropagation()}
-            aria-label={`Выбрать жалобу ${r.id}`}
+            aria-label={tr("moderation.selectReport", { id: r.id })}
           />
         )}
         <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-[var(--glass-bg)] text-muted-foreground">
@@ -324,34 +327,34 @@ function ReportCard({
         </span>
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium">
-            {isDiscussion ? "Обсуждение" : "Комментарий"}
+            {isDiscussion ? tr("moderation.discussion") : tr("moderation.comment")}
             {t?.title ? <span className="text-muted-foreground"> · «{t.title}»</span> : <span className="text-muted-foreground"> #{r.targetId}</span>}
           </div>
-          <div className="text-xs text-muted-foreground">Жалоба #{r.id} · {timeAgo(r.createdAt)}</div>
+          <div className="text-xs text-muted-foreground">{tr("moderation.reportMeta", { id: r.id, ago: timeAgo(r.createdAt) })}</div>
         </div>
-        {many && <Pill tone="down">{r.openReportsOnTarget} {pluralRu(r.openReportsOnTarget ?? 0, "жалоба", "жалобы", "жалоб")}</Pill>}
-        <Pill tone={r.status === "open" ? "warn" : r.status === "resolved" ? "up" : "neutral"} dot>{STATUS_LABEL[r.status] ?? r.status}</Pill>
+        {many && <Pill tone="down">{tr("moderation.reportsCount", { count: r.openReportsOnTarget ?? 0 })}</Pill>}
+        <Pill tone={r.status === "open" ? "warn" : r.status === "resolved" ? "up" : "neutral"} dot>{adminI18n.tryT(`moderation.status.${r.status}`) ?? r.status}</Pill>
       </div>
 
       {(t?.preview || t?.deleted) && (
         <blockquote className="rounded-xl border-l-2 border-[var(--glass-border)] bg-[var(--glass-bg)] px-3 py-2 text-sm">
           {t?.deleted
-            ? <span className="italic text-muted-foreground">Контент уже удалён</span>
+            ? <span className="italic text-muted-foreground">{tr("moderation.deleted")}</span>
             : (
               <>
                 <span className={cn("whitespace-pre-line break-words text-foreground/90", !fullText && "line-clamp-3")}>{t?.preview}</span>
                 {longPreview && (
                   <button type="button" onClick={(e) => { e.stopPropagation(); setFullText((v) => !v); }} className="mt-1 block text-xs text-primary hover:underline">
-                    {fullText ? "Свернуть" : "Показать полностью"}
+                    {fullText ? commonI18n.t("actions.collapse") : tr("moderation.showFull")}
                   </button>
                 )}
               </>
             )}
           {t?.author && (
             <footer className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              Автор: <span className="font-medium text-foreground">{t.author}</span>
-              {t.authorRole && t.authorRole !== "trader" && <Pill tone="accent">{ROLE_LABEL[t.authorRole] ?? t.authorRole}</Pill>}
-              {t.authorBanned && <Pill tone="down">забанен</Pill>}
+              {tr("moderation.author")} <span className="font-medium text-foreground">{t.author}</span>
+              {t.authorRole && t.authorRole !== "trader" && <Pill tone="accent">{roleLabel(t.authorRole)}</Pill>}
+              {t.authorBanned && <Pill tone="down">{tr("moderation.banned")}</Pill>}
             </footer>
           )}
         </blockquote>
@@ -364,36 +367,36 @@ function ReportCard({
 
       {r.resolution && (
         <div className="text-xs text-muted-foreground">
-          {r.status === "dismissed" ? "Отклонено" : "Решено"}{r.resolvedBy ? ` · ${r.resolvedBy}` : ""}{r.resolvedAt ? ` · ${timeAgo(r.resolvedAt)}` : ""}: <span className="text-foreground/90">{r.resolution}</span>
+          {r.status === "dismissed" ? tr("moderation.dismissedBy") : tr("moderation.resolvedBy")}{r.resolvedBy ? ` · ${r.resolvedBy}` : ""}{r.resolvedAt ? ` · ${timeAgo(r.resolvedAt)}` : ""}: <span className="text-foreground/90">{r.resolution}</span>
         </div>
       )}
 
       {r.status === "open" && (
         <div className="flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3">
           <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); act.resolve(r); }} disabled={busy}>
-            <Check className="text-up" /> Решить
+            <Check className="text-up" /> {tr("moderation.actionResolve")}
           </Button>
           <Button size="sm" variant="outline" onClick={(e) => { e.stopPropagation(); act.dismiss(r); }} disabled={busy}>
-            <X /> Отклонить
+            <X /> {tr("moderation.actionDismiss")}
           </Button>
-          <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); act.ban(r); }} disabled={busy || !canBan} title={!canBan ? (t?.authorBanned ? "Автор уже забанен" : "Автора забанить нельзя") : undefined}>
-            <Ban /> Бан автора
+          <Button size="sm" variant="destructive" onClick={(e) => { e.stopPropagation(); act.ban(r); }} disabled={busy || !canBan} title={!canBan ? (t?.authorBanned ? tr("moderation.alreadyBanned") : tr("moderation.cantBan")) : undefined}>
+            <Ban /> {tr("moderation.actionBan")}
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="ghost" className="ml-auto h-8 w-8" aria-label={`Ещё действия по жалобе ${r.id}`} onClick={(e) => e.stopPropagation()}>
+              <Button size="icon" variant="ghost" className="ml-auto h-8 w-8" aria-label={tr("moderation.more", { id: r.id })} onClick={(e) => e.stopPropagation()}>
                 <MoreHorizontal />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {threadHref && (
                 <DropdownMenuItem asChild>
-                  <Link href={threadHref}><ExternalLink /> Открыть обсуждение</Link>
+                  <Link href={threadHref}><ExternalLink /> {tr("moderation.openThread")}</Link>
                 </DropdownMenuItem>
               )}
               <DropdownMenuSeparator />
               <DropdownMenuItem disabled={!!t?.deleted} onSelect={() => act.remove(r)} className="text-down focus:text-down">
-                <Trash2 /> Удалить контент и закрыть
+                <Trash2 /> {tr("moderation.removeAndClose")}
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -401,7 +404,7 @@ function ReportCard({
       )}
       {r.status !== "open" && threadHref && (
         <Link href={threadHref} className="inline-flex w-fit items-center gap-1 text-xs text-primary hover:underline">
-          <ExternalLink className="h-3 w-3" aria-hidden="true" /> Открыть обсуждение
+          <ExternalLink className="h-3 w-3" aria-hidden="true" /> {tr("moderation.openThread")}
         </Link>
       )}
     </>

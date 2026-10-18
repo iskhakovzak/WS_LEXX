@@ -29,12 +29,15 @@ import { can, readScope, requireCap } from "../lib/permissions";
 import { logAudit } from "../lib/audit";
 import { ensureCuratorTables, rowToBreachReview, rowToNote } from "../lib/curatorStore";
 import {
-  QUEUE_DEFAULT_DAYS, STAGE_LABELS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, staleQueueIds, tradingPhase,
+  QUEUE_DEFAULT_DAYS, arrangeQueue, mondayOf, nextActionFor, prevTradingDay, stageLabel, staleQueueIds, tradingPhase,
   trendDirection, weeklyTrend, type NextAction, type QueueKind, type WeekPoint,
 } from "../lib/curatorLogic";
-import { BREACH_KIND_LABELS, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
+import { breachKindLabel, deskSnapshot, templateStatus, type DeskSnapshotRow } from "./risk";
 import { ensureNameLatin } from "../lib/peopleDirectory";
-import { badRequest, forbidden, notFound } from "../lib/http";
+import { AppError, badRequest, forbidden, notFound } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { riskT } from "../i18n/ns";
+import { fmtDateFor } from "../i18n/format";
 
 const router: IRouter = Router();
 
@@ -121,7 +124,8 @@ export type TraderSignal = {
 
 type Bulk = Awaited<ReturnType<typeof loadBulk>>;
 
-async function loadBulk(traders: string[], today: string) {
+/** `lang` = the reader's language of generated labels (stop texts, stage names, next steps, queue titles). */
+async function loadBulk(traders: string[], today: string, lang: Lang = "ru") {
   await ensureCuratorTables();
   const prev = prevTradingDay(today);
   const from35 = addDays(today, -35);
@@ -130,8 +134,8 @@ async function loadBulk(traders: string[], today: string) {
   await ensureNameLatin().catch(() => undefined);
   const [plansTable, desk, tpl, plans, eodRows, eodPendingAll, weekly, subsAll, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, ackRows, people, activity] = await Promise.all([
     safe<{ ok: boolean }>(`SELECT to_regclass('public.trader_plans') IS NOT NULL AS ok`),
-    deskSnapshot(today),
-    templateStatus(traders),
+    deskSnapshot(today, null, lang),
+    templateStatus(traders, lang),
     safe(`SELECT trader, status FROM trader_plans WHERE date = $1 AND deleted_at IS NULL AND trader = ANY($2)`, [today, traders]),
     safe(`SELECT id, trader, date, closed_at, reviewed_at, discipline, curator_score FROM eod_days WHERE date >= $1 AND trader = ANY($2)`, [from35, traders]),
     safe(`SELECT id, trader, date, closed_at FROM eod_days WHERE closed_at IS NOT NULL AND reviewed_at IS NULL AND trader = ANY($1) ORDER BY closed_at DESC LIMIT 500`, [traders]),
@@ -160,7 +164,7 @@ async function loadBulk(traders: string[], today: string) {
   const subs = subsAll.filter((x: any) => !acked.has(`academy:${x.id}`));
   const peopleBy = new Map(people.map((p) => [p.name, p]));
   const activityBy = new Map(activity.map((a) => [a.trader, iso(a.at)]));
-  return { today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy };
+  return { lang, today, prev, plansAvailable: plansTable[0]?.ok === true, desk, tpl, plans, eodRows, eodPending, weekly, subs, actions, meetings, stages, enrolls, ratings, breaches, notes, goals, acked, peopleBy, activityBy };
 }
 
 function buildSignal(name: string, b: Bulk): TraderSignal {
@@ -206,7 +210,7 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
 
   const st = b.stages.find((s: any) => s.user_name === name);
   const en = b.enrolls.find((s: any) => s.user_name === name);
-  const stageKey: string | null = st?.stage ?? en?.stage ?? (tpl?.tier && STAGE_LABELS[tpl.tier] ? tpl.tier : null);
+  const stageKey: string | null = st?.stage ?? en?.stage ?? (tpl?.tier && stageLabel(tpl.tier) ? tpl.tier : null);
 
   const planRow = b.plans.find((p: any) => p.trader === name);
   const weekday = tradingPhase(today, 0) !== "weekend";
@@ -215,11 +219,11 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
 
   const signalBase = {
     trader: name,
-    stage: { key: stageKey, label: stageKey ? STAGE_LABELS[stageKey] ?? stageKey : null, since: st?.since ?? null },
+    stage: { key: stageKey, label: stageKey ? stageLabel(stageKey, b.lang) ?? stageKey : null, since: st?.since ?? null },
     tier: tpl?.tier ?? null,
     tierName: tpl?.tierName ?? null,
     risk: {
-      status: m?.status ?? "no_limits", state: m?.stop.state ?? "no_limits", label: m?.stop.label ?? "Нет лимитов", message: m?.stop.message ?? "",
+      status: m?.status ?? "no_limits", state: m?.stop.state ?? "no_limits", label: m?.stop.label ?? riskT.tFor(b.lang)("stop.no_limits.label"), message: m?.stop.message ?? "",
       halted: m?.stop.halted ?? false, nearStop: m?.stop.state === "warn",
       dailyPct: m?.stop.dailyPct ?? null, weeklyPct: m?.stop.weeklyPct ?? null, drawdownPct: m?.stop.drawdownPct ?? null,
       todayPnl: m?.today.pnlNet ?? null, todayTrades: m?.today.trades ?? 0, weekPnl: m?.week.pnlNet ?? null, openPositions: m?.today.openPositions ?? 0,
@@ -265,7 +269,7 @@ function buildSignal(name: string, b: Bulk): TraderSignal {
     missingPlan: b.plansAvailable && weekday && !planRow && today === nyDate() && tradingPhase(today, nyMinutes()) !== "afterclose",
     missingEod: signalBase.eod.prevTraded && !signalBase.eod.prevClosed,
     daysSinceOneOnOne: daysSince1on1,
-  });
+  }, b.lang);
   return { ...signalBase, nextAction };
 }
 
@@ -280,25 +284,27 @@ function maxIso(values: unknown[]): string | null {
 type QueueRaw = { kind: QueueKind; id: string; trader: string; title: string; since: string | null; hoursWaiting: number | null; href: string; date?: string | null; eodId?: number };
 
 function buildQueueItems(b: Bulk, now: number): QueueRaw[] {
+  const t = riskT.tFor(b.lang);
+  const day = (d: unknown) => fmtDateFor(b.lang, String(d), "dayMonth");
   return [
     ...b.eodPending.map((e: any) => ({
-      kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: `Закрытый день ${e.date}`,
+      kind: "eod" as const, id: `eod:${e.id}`, trader: String(e.trader), title: t("queue.eod", { date: day(e.date) }),
       since: iso(e.closed_at), hoursWaiting: hoursSince(e.closed_at, now),
       href: `/journal?date=${encodeURIComponent(String(e.date))}&trader=${encodeURIComponent(String(e.trader))}`,
       date: String(e.date), eodId: Number(e.id),
     })),
     ...b.weekly.filter((w: any) => w.status === "submitted").map((w: any) => ({
-      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: `Недельный отчёт ${w.week}`,
+      kind: "weekly" as const, id: `weekly:${w.id}`, trader: String(w.trader), title: t("queue.weekly", { week: String(w.week) }),
       since: iso(w.submitted_at), hoursWaiting: hoursSince(w.submitted_at, now), date: w.week_start ? String(w.week_start) : null,
       href: `/weekly-review?view=curator&trader=${encodeURIComponent(String(w.trader))}&week=${encodeURIComponent(String(w.week))}`,
     })),
     ...b.subs.map((s: any) => ({
-      kind: "academy" as const, id: `academy:${s.id}`, trader: String(s.user_name), title: `Задание: ${String(s.title).slice(0, 80)}`,
+      kind: "academy" as const, id: `academy:${s.id}`, trader: String(s.user_name), title: t("queue.academy", { title: String(s.title).slice(0, 80) }),
       since: iso(s.created_at), hoursWaiting: hoursSince(s.created_at, now), href: "/academy/mentor",
     })),
     ...b.breaches.filter((x: any) => x.review_id == null).map((x: any) => ({
       // Тип «Нарушение» уже на плашке строки — в заголовке только что и когда.
-      kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: `${BREACH_KIND_LABELS[String(x.kind)] ?? x.kind}, ${x.date}`, date: String(x.date),
+      kind: "breach" as const, id: `breach:${x.id}`, trader: String(x.trader), title: t("queue.breach", { kind: breachKindLabel(String(x.kind), b.lang), date: day(x.date) }), date: String(x.date),
       since: iso(breachSince(x)), hoursWaiting: hoursSince(breachSince(x), now), href: `/curator?trader=${encodeURIComponent(String(x.trader))}&tab=risk`,
     })),
   ];
@@ -318,7 +324,7 @@ router.get("/curator/today", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today);
+  const b = await loadBulk(roster.traders, today, langOf(req));
   const signals = roster.traders.map((t) => buildSignal(t, b));
   const phase = tradingPhase(today, today === nyDate() ? nyMinutes() : today < nyDate() ? 17 * 60 : 0);
   const now = Date.now();
@@ -398,7 +404,7 @@ router.post("/curator/queue/archive-old", asyncHandler(async (req, res): Promise
   if (!parsed.success) throw badRequest();
   const days = parsed.data.olderThanDays ?? QUEUE_DEFAULT_DAYS;
   const roster = await loadRoster(req, parsed.data.scope);
-  const b = await loadBulk(roster.traders, nyDate());
+  const b = await loadBulk(roster.traders, nyDate(), langOf(req));
   const items = buildQueueItems(b, Date.now());
   const ids = new Set(staleQueueIds(items, days, b.acked));
   const stale = items.filter((q) => ids.has(q.id));
@@ -440,7 +446,7 @@ router.get("/curator/traders", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "journal.review"))) return;
   const today = clientDate(req.query.date);
   const roster = await loadRoster(req, req.query.scope);
-  const b = await loadBulk(roster.traders, today);
+  const b = await loadBulk(roster.traders, today, langOf(req));
   res.json({ date: today, scope: roster.scope, wards: roster.wards.length, traders: roster.traders.map((t) => buildSignal(t, b)) });
 }));
 
@@ -451,7 +457,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
   const { rows: u } = await pool.query(`SELECT name, role, assigned_curator, assigned_mentor, assigned_risk_manager FROM users WHERE name = $1 LIMIT 1`, [name]);
   if (!u[0]) throw notFound("TRADER_NOT_FOUND");
   const today = clientDate(req.query.date);
-  const b = await loadBulk([name], today);
+  const b = await loadBulk([name], today, langOf(req));
   const signal = buildSignal(name, b);
   const row = b.desk.rows.find((r) => r.trader === name);
   const from90 = addDays(today, -89);
@@ -480,7 +486,7 @@ router.get("/curator/trader/:name", asyncHandler(async (req, res): Promise<void>
     limits: row?.limits ?? null,
     metrics: row ? { today: row.metrics.today, week: row.metrics.week, drawdown: row.metrics.drawdown, stop: row.metrics.stop, alerts: row.metrics.alerts } : null,
     breaches: breaches.map((r: any) => ({
-      id: Number(r.id), date: String(r.date), kind: String(r.kind), kindLabel: BREACH_KIND_LABELS[String(r.kind)] ?? String(r.kind),
+      id: Number(r.id), date: String(r.date), kind: String(r.kind), kindLabel: breachKindLabel(String(r.kind), b.lang),
       used: r.used == null ? null : Number(r.used), limit: r.limit == null ? null : Number(r.limit), message: String(r.message), createdAt: iso(r.created_at),
       review: r.review ? rowToBreachReview(r.review) : null,
     })),
@@ -518,14 +524,14 @@ router.get("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
 
 const NoteBody = z.object({
   trader: z.string().trim().min(1).max(100),
-  body: z.string().trim().min(1, "Пустая заметка").max(4000),
+  body: z.string().trim().min(1).max(4000),
   kind: z.enum(NOTE_KINDS).default("note"),
   pinned: z.boolean().default(false),
 }).strict();
 
 router.post("/curator/notes", asyncHandler(async (req, res): Promise<void> => {
   const parsed = NoteBody.safeParse(req.body ?? {});
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Проверьте поля" }); return; }
+  if (!parsed.success) throw parsed.error.issues[0]?.path[0] === "body" ? new AppError("NOTE_EMPTY", 400, undefined, parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message }))) : parsed.error;
   const b = parsed.data;
   if (!(await requireCap(req, res, "journal.review", { trader: b.trader }))) return;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [b.trader]);
@@ -544,12 +550,13 @@ const NotePatch = z.object({
   pinned: z.boolean().optional(),
 }).strict();
 
-async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any } | { ok: false; status: number; error: string }> {
+/** Throws 404 NOTE_NOT_FOUND / 403 FORBIDDEN. */
+async function loadNoteForEdit(req: Request, id: number): Promise<{ ok: true; row: any }> {
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NULL`, [id]);
   const row = rows[0];
-  if (!row) return { ok: false, status: 404, error: "Заметка не найдена" };
-  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) return { ok: false, status: 403, error: "Нет доступа" };
+  if (!row) throw notFound("NOTE_NOT_FOUND");
+  if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden("journal.review");
   // Body is edited by its author only; pin / kind — by any staff member of the trader.
   return { ok: true, row };
 }
@@ -560,9 +567,8 @@ router.patch("/curator/notes/:id", asyncHandler(async (req, res): Promise<void> 
   const parsed = NotePatch.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest("VALIDATION");
   const found = await loadNoteForEdit(req, id);
-  if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   const p = parsed.data;
-  if (p.body !== undefined && found.row.author !== req.authUser!.name) { res.status(403).json({ error: "Текст заметки меняет только автор" }); return; }
+  if (p.body !== undefined && found.row.author !== req.authUser!.name) throw new AppError("NOTE_AUTHOR_ONLY");
   const { rows } = await pool.query(
     `UPDATE curator_notes SET body = COALESCE($2, body), kind = COALESCE($3, kind), pinned = COALESCE($4, pinned), updated_at = NOW() WHERE id = $1 RETURNING *`,
     [id, p.body ?? null, p.kind ?? null, p.pinned ?? null],
@@ -574,7 +580,6 @@ router.post("/curator/notes/:id/archive", asyncHandler(async (req, res): Promise
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const found = await loadNoteForEdit(req, id);
-  if (!found.ok) { res.status(found.status).json({ error: found.error }); return; }
   await pool.query(`UPDATE curator_notes SET archived_at = NOW(), archived_by = $2 WHERE id = $1`, [id, req.authUser!.name]);
   await logAudit({ actor: req.authUser!.name, action: "curator.note.archive", targetType: "curator_notes", targetId: String(id), details: { trader: found.row.trader, author: found.row.author } });
   res.json({ ok: true });
@@ -587,7 +592,7 @@ router.post("/curator/notes/:id/restore", asyncHandler(async (req, res): Promise
   await ensureCuratorTables();
   const { rows } = await pool.query(`SELECT * FROM curator_notes WHERE id = $1 AND archived_at IS NOT NULL AND archived_at > NOW() - INTERVAL '1 day'`, [id]);
   const row = rows[0];
-  if (!row) { res.status(404).json({ error: "Заметка не найдена" }); return; }
+  if (!row) throw notFound("NOTE_NOT_FOUND");
   if (!(await can(req, "journal.review", { trader: String(row.trader) }))) throw forbidden();
   const { rows: out } = await pool.query(`UPDATE curator_notes SET archived_at = NULL, archived_by = NULL WHERE id = $1 RETURNING *`, [id]);
   await logAudit({ actor: req.authUser!.name, action: "curator.note.restore", targetType: "curator_notes", targetId: String(id), details: { trader: row.trader } });

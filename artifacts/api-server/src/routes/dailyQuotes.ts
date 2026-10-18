@@ -5,6 +5,7 @@ import { anthropic } from "@workspace/integrations-anthropic-ai";
 import { handleAiNotConfigured } from "../lib/aiErrors";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logAudit } from "../lib/audit";
+import { AppError, sendError } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -18,6 +19,7 @@ function todayKey(): string {
   return fmt.format(new Date());
 }
 
+// i18n-ignore-next (AI prompt — model input; quotes come back in every language)
 const SYSTEM_PROMPT = `Ты — мудрый тренер по трейдингу и психологии для команды профессиональных дей-трейдеров (prop desk). Твоя задача — создать ДВЕ глубокие, неизбитые цитаты на ЧЕТЫРЁХ языках. Каждая цитата — короткая (1-2 предложения), запоминающаяся, развивающая мышление. Избегай банальностей. Допускаются цитаты реальных трейдеров/мыслителей с указанием автора, или твои оригинальные афоризмы (тогда author = null).
 
 Категории:
@@ -102,6 +104,7 @@ export async function generateBundleAndUpsert(date: string): Promise<void> {
 }
 
 async function generateBundle(date: string): Promise<QuoteBundle> {
+  // i18n-ignore-next (AI prompt — model input)
   const userMsg = `Сгенерируй пару цитат на сегодня (${date}). Тема трейдинговой цитаты: на твоё усмотрение из набора {risk, edge, patience, position sizing, discipline, statistical edge, market structure, execution}. Тема психологической цитаты: на твоё усмотрение из набора {tilt control, FOMO, fear vs analysis, focus, identity, emotional detachment, post-loss recovery, win mindset}.`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -130,16 +133,16 @@ async function generateBundle(date: string): Promise<QuoteBundle> {
 
 const FALLBACK_BUNDLE: QuoteBundle = {
   trading: {
-    ru: "Edge — это не предсказание движения, а статистика твоих решений на дистанции.",
+    ru: "Edge — это не предсказание движения, а статистика твоих решений на дистанции.", // i18n-ignore (fallback quote — data in every language)
     uz: "Edge — bu narx harakatini bashorat qilish emas, masofada qabul qilingan qarorlar statistikasidir.",
-    uk: "Edge — це не передбачення руху, а статистика твоїх рішень на дистанції.",
+    uk: "Edge — це не передбачення руху, а статистика твоїх рішень на дистанції.", // i18n-ignore (fallback quote — data in every language)
     en: "Edge isn't predicting the move; it's the statistics of your decisions over time.",
     author: null,
   },
   psychology: {
-    ru: "Лучший трейд дня — тот, который ты не сделал, потому что не было сетапа.",
+    ru: "Лучший трейд дня — тот, который ты не сделал, потому что не было сетапа.", // i18n-ignore (fallback quote — data in every language)
     uz: "Kunning eng yaxshi savdosi — sen qilmagan savdo, chunki to‘g‘ri setup yo‘q edi.",
-    uk: "Найкращий трейд дня — той, який ти не зробив, бо не було сетапу.",
+    uk: "Найкращий трейд дня — той, який ти не зробив, бо не було сетапу.", // i18n-ignore (fallback quote — data in every language)
     en: "The best trade of the day is the one you didn't take because there was no setup.",
     author: null,
   },
@@ -196,7 +199,7 @@ router.post("/daily-quote/regenerate", asyncHandler(async (req, res): Promise<vo
   } catch (e: any) {
     if (handleAiNotConfigured(e, res)) return; // 503 ai_not_configured (audit P2-3)
     req.log.warn({ error: e.message }, "daily-quote regenerate: AI failed");
-    res.status(503).json({ error: "AI generation failed", detail: e.message });
+    sendError(res, new AppError("AI_UNAVAILABLE", 503));
     return;
   }
   await db.delete(dailyQuotesTable).where(eq(dailyQuotesTable.date, date));

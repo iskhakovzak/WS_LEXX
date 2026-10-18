@@ -6,31 +6,37 @@ import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import type { TradeIdea } from "./model";
 import { fmtDate } from "@/lib/format";
+import { ideasI18n } from "@/i18n/ns/ideas";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Decision = "approved" | "needs_work" | "rejected";
 
-const DECISIONS: { key: Decision; label: string; icon: React.ElementType; tone: Tone; cls: string }[] = [
-  { key: "approved", label: "Одобрить", icon: CheckCircle2, tone: "up", cls: "aria-pressed:bg-up/20 aria-pressed:text-up hover:text-up" },
-  { key: "needs_work", label: "На доработку", icon: RotateCcw, tone: "warn", cls: "aria-pressed:bg-[hsl(var(--chart-3)/0.2)] aria-pressed:text-[hsl(var(--chart-3))] hover:text-[hsl(var(--chart-3))]" },
-  { key: "rejected", label: "Отклонить", icon: XCircle, tone: "down", cls: "aria-pressed:bg-down/20 aria-pressed:text-down hover:text-down" },
+const DECISIONS: { key: Decision; icon: React.ElementType; tone: Tone; cls: string }[] = [
+  { key: "approved", icon: CheckCircle2, tone: "up", cls: "aria-pressed:bg-up/20 aria-pressed:text-up hover:text-up" },
+  { key: "needs_work", icon: RotateCcw, tone: "warn", cls: "aria-pressed:bg-[hsl(var(--chart-3)/0.2)] aria-pressed:text-[hsl(var(--chart-3))] hover:text-[hsl(var(--chart-3))]" },
+  { key: "rejected", icon: XCircle, tone: "down", cls: "aria-pressed:bg-down/20 aria-pressed:text-down hover:text-down" },
 ];
 
-const QUICK_NOTES: Record<Decision, string[]> = {
-  approved: ["Чёткий план", "Хороший R:R", "Сильный катализатор"],
-  needs_work: ["Уточни уровень входа", "Стоп слишком широкий", "Нет катализатора", "Слабый R:R", "Добавь скриншот"],
-  rejected: ["Против тренда рынка", "Низкая ликвидность", "Нет преимущества", "Дубль идеи"],
-};
+/** Quick-note chips: inserted into the reason the author receives, written in the curator's UI language. */
+const QUICK_NOTES = {
+  approved: ["plan", "rr", "catalyst"],
+  needs_work: ["entry", "stopWide", "noCatalyst", "weakRr", "screenshot"],
+  rejected: ["trend", "liquidity", "edge", "duplicate"],
+} as const;
+const quickNotes = (d: Decision): string[] => QUICK_NOTES[d].map((k) => ideasI18n.tryT(`review.quick.${d}.${k}`) ?? k);
 
-export const REVIEW_LABEL: Record<string, { label: string; tone: Tone }> = {
-  approved: { label: "Одобрена", tone: "up" },
-  needs_work: { label: "На доработку", tone: "warn" },
-  rejected: { label: "Отклонена", tone: "down" },
-};
+const REVIEW_TONE: Record<string, Tone> = { approved: "up", needs_work: "warn", rejected: "down" };
+/** Review verdict label + tone for a stored review_status (undefined for unknown codes). */
+export function reviewLabel(status: string): { label: string; tone: Tone } | undefined {
+  const tone = REVIEW_TONE[status];
+  const label = ideasI18n.tryT(`review.verdict.${status}`);
+  return tone && label ? { label, tone } : undefined;
+}
 
 /** Current review verdict (visible to everyone). */
 export function ReviewVerdict({ idea }: { idea: TradeIdea }) {
   if (!idea.review_status) return null;
-  const v = REVIEW_LABEL[idea.review_status];
+  const v = reviewLabel(idea.review_status);
   if (!v) return null;
   return (
     <div className={cn(
@@ -56,6 +62,7 @@ export function ReviewActions({
   onSubmit: (status: Decision, reason: string) => void;
   pending: boolean;
 }) {
+  const { t } = ideasI18n.useT();
   const [decision, setDecision] = React.useState<Decision | null>(null);
   const [note, setNote] = React.useState("");
   const noteId = React.useId();
@@ -66,7 +73,7 @@ export function ReviewActions({
 
   return (
     <div className="flex flex-col gap-3">
-      <div role="group" aria-label="Решение куратора" className="grid grid-cols-3 gap-2">
+      <div role="group" aria-label={t("review.groupAria")} className="grid grid-cols-3 gap-2">
         {DECISIONS.map((d) => {
           const Icon = d.icon;
           const current = idea.review_status === d.key;
@@ -82,8 +89,8 @@ export function ReviewActions({
               )}
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
-              <span>{d.label}</span>
-              {current && <span className="sr-only">(текущий статус)</span>}
+              <span>{t(`review.decision.${d.key}`)}</span>
+              {current && <span className="sr-only">{t("review.currentStatus")}</span>}
             </button>
           );
         })}
@@ -92,10 +99,10 @@ export function ReviewActions({
       {decision && (
         <div className="flex flex-col gap-2">
           <label htmlFor={noteId} className="text-xs text-muted-foreground">
-            {decision === "approved" ? "Комментарий (необязательно)" : decision === "needs_work" ? "Что доработать" : "Причина отклонения"}
+            {t(decision === "approved" ? "review.noteApproved" : decision === "needs_work" ? "review.noteNeedsWork" : "review.noteRejected")}
           </label>
           <div className="flex flex-wrap gap-1.5">
-            {QUICK_NOTES[decision].map((q) => (
+            {quickNotes(decision).map((q) => (
               <button key={q} type="button" onClick={() => addQuick(q)} className="chip min-h-7 px-2.5 text-xs">+ {q}</button>
             ))}
           </div>
@@ -106,20 +113,20 @@ export function ReviewActions({
             onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && (decision === "approved" || note.trim())) { e.preventDefault(); onSubmit(decision, note.trim()); } }}
             rows={2}
             maxLength={2000}
-            placeholder="Автор получит уведомление с этим комментарием"
+            placeholder={t("review.placeholder")}
           />
           <div className="flex justify-end gap-2">
-            <Button size="sm" variant="ghost" onClick={() => { setDecision(null); setNote(""); }}>Отмена</Button>
+            <Button size="sm" variant="ghost" onClick={() => { setDecision(null); setNote(""); }}>{commonI18n.t("actions.cancel")}</Button>
             <Button
               size="sm"
               onClick={() => onSubmit(decision, note.trim())}
               disabled={pending || (decision !== "approved" && !note.trim())}
             >
-              {pending ? "Сохраняем…" : DECISIONS.find((d) => d.key === decision)!.label}
+              {pending ? t("saving") : t(`review.decision.${decision}`)}
             </Button>
           </div>
           {decision !== "approved" && !note.trim() && (
-            <p className="text-2xs text-muted-foreground">Для доработки и отклонения нужен комментарий — автору важно знать причину.</p>
+            <p className="text-2xs text-muted-foreground">{t("review.needComment")}</p>
           )}
         </div>
       )}

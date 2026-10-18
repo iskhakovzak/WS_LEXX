@@ -3,7 +3,8 @@ import { ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { dateRu, fmtValue, rangeRu, weekdayRu, type EquityCandle, type EquityUnit } from "@/components/equity-candles/lib";
 import type { EquityAgg } from "./model";
-import { fmtMonth, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtMonth, fmtRate, fmtUsd } from "@/lib/format";
+import { equityChartI18n } from "@/i18n/ns/equityChart";
 
 const TIP_W = 272;
 
@@ -11,7 +12,7 @@ const tone = (v: number | null | undefined) => (v == null ? "text-foreground" : 
 
 /** «Пятница, 15 октября» / «Неделя 13–17 окт.» / «Октябрь 2026». */
 export function candleTitle(c: EquityCandle, agg: EquityAgg): string {
-  if (agg === "week") return `Неделя ${rangeRu(c.from, c.to)}`;
+  if (agg === "week") return equityChartI18n.t("tip.week", { range: rangeRu(c.from, c.to) });
   if (agg === "month") {
     const mi = Number(c.key.slice(5, 7)) - 1;
     const m = mi >= 0 && mi < 12 ? fmtMonth(mi, "long") : "";
@@ -44,13 +45,13 @@ export function EquityTooltip({
   top: number;
   touch: boolean;
 }) {
+  const { t } = equityChartI18n.useT();
   const w = Math.min(TIP_W, width - 16);
   const right = x + 16 + w <= width - 8;
   const left = width < 420 ? Math.max(8, Math.min(width - w - 8, x - w / 2)) : right ? x + 16 : Math.max(8, x - 16 - w);
   const usd = unit !== "r";
-  const span = agg === "week" ? "недели" : agg === "month" ? "месяца" : "дня";
   const hasWicks = c.high > Math.max(c.open, c.close) + 1e-9 || c.low < Math.min(c.open, c.close) - 1e-9;
-  const action = agg === "day" ? "разбор дня" : agg === "week" ? "по дням + отчёт недели" : "по дням";
+  const action = t(`tip.action.${agg}`);
   return (
     <div
       className="pointer-events-none absolute z-raised flex flex-col gap-2 rounded-xl border border-border/70 bg-popover/95 p-3 text-xs text-popover-foreground shadow-xl tabular-nums animate-in fade-in-0 duration-100"
@@ -61,20 +62,20 @@ export function EquityTooltip({
         <div className="flex items-baseline justify-between gap-2">
           <span className="truncate font-semibold text-foreground">{candleTitle(c, agg)}</span>
           {agg !== "day" && (
-            <span className="shrink-0 text-2xs text-muted-foreground">{c.days} {pluralRu(c.days, "торг. день", "торг. дня", "торг. дней")}</span>
+            <span className="shrink-0 text-2xs text-muted-foreground">{t("tip.tradingDays", { count: c.days })}</span>
           )}
         </div>
         <div className="flex items-baseline justify-between gap-2">
-          <span className="text-muted-foreground">{usd ? (unit === "gross" ? "Брутто" : "Нетто") : "Результат"} {span}</span>
+          <span className="text-muted-foreground">{t(`tip.value.${usd ? (unit === "gross" ? "gross" : "net") : "r"}.${agg}`)}</span>
           <span className={cn("text-lg font-semibold leading-none tracking-tight", tone(c.value))}>{fmtValue(c.value, unit)}</span>
         </div>
       </div>
 
       <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-border/60 pt-2">
-        {usd && c.gross != null && unit !== "gross" && c.fees > 0 && <Row k="Брутто" cls={tone(c.gross)}>{fmtValue(c.gross, "net")}</Row>}
-        {usd && c.fees > 0 && <Row k="Комиссии" cls="text-down">{fmtUsd(-c.fees)}</Row>}
+        {usd && c.gross != null && unit !== "gross" && c.fees > 0 && <Row k={t("tip.gross")} cls={tone(c.gross)}>{fmtValue(c.gross, "net")}</Row>}
+        {usd && c.fees > 0 && <Row k={t("tip.fees")} cls="text-down">{fmtUsd(-c.fees)}</Row>}
         {c.trades > 0 && (
-          <Row k="Сделок">
+          <Row k={t("tip.trades")}>
             {c.trades}
             {c.wins + c.losses > 0 && (
               <> · <span className="text-up">{c.wins}W</span>/<span className="text-down">{c.losses}L</span></>
@@ -82,22 +83,22 @@ export function EquityTooltip({
             {c.winRate != null && <span className="text-muted-foreground"> · {fmtRate(c.winRate)}</span>}
           </Row>
         )}
-        {hasWicks && <Row k={`Хай / лой ${span}`}><span className={tone(c.peakIn)}>{fmtValue(c.peakIn, unit)}</span> <span className="text-muted-foreground">/</span> <span className={tone(c.troughIn)}>{fmtValue(c.troughIn, unit)}</span></Row>}
-        <Row k="Накоплено" cls={cn("font-medium", tone(c.close))}>{fmtValue(c.close, unit)}</Row>
-        <Row k="От пика" cls={underwater < 0 ? "text-down" : "text-muted-foreground"}>{underwater < 0 ? fmtValue(underwater, unit) : "на пике"}</Row>
+        {hasWicks && <Row k={t(`tip.hiLo.${agg}`)}><span className={tone(c.peakIn)}>{fmtValue(c.peakIn, unit)}</span> <span className="text-muted-foreground">/</span> <span className={tone(c.troughIn)}>{fmtValue(c.troughIn, unit)}</span></Row>}
+        <Row k={t("tip.cumulative")} cls={cn("font-medium", tone(c.close))}>{fmtValue(c.close, unit)}</Row>
+        <Row k={t("tip.fromPeak")} cls={underwater < 0 ? "text-down" : "text-muted-foreground"}>{underwater < 0 ? fmtValue(underwater, unit) : t("tip.atPeak")}</Row>
       </dl>
 
       {(c.best || c.worst) && c.trades > 0 && (
         <div className="grid grid-cols-2 gap-2 border-t border-border/60 pt-2">
           {c.best && (
             <div className="min-w-0">
-              <div className="text-2xs text-muted-foreground">Лучшая сделка</div>
+              <div className="text-2xs text-muted-foreground">{t("tip.best")}</div>
               <div className="truncate"><span className="font-medium text-foreground">{c.best.ticker}</span> <span className={tone(c.best.value)}>{fmtValue(c.best.value, unit)}</span></div>
             </div>
           )}
           {c.worst && c.trades > 1 && (
             <div className="min-w-0">
-              <div className="text-2xs text-muted-foreground">Худшая сделка</div>
+              <div className="text-2xs text-muted-foreground">{t("tip.worst")}</div>
               <div className="truncate"><span className="font-medium text-foreground">{c.worst.ticker}</span> <span className={tone(c.worst.value)}>{fmtValue(c.worst.value, unit)}</span></div>
             </div>
           )}
@@ -105,7 +106,7 @@ export function EquityTooltip({
       )}
 
       <div className="flex items-center justify-end gap-1 text-2xs font-medium text-primary">
-        {touch ? `Нажмите ещё раз — ${action}` : `Клик — ${action}`}
+        {touch ? t("tip.tapAgain", { action }) : t("tip.click", { action })}
         <ArrowRight className="h-3 w-3" aria-hidden="true" />
       </div>
     </div>

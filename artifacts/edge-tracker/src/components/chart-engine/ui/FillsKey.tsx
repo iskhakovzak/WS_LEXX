@@ -3,7 +3,8 @@ import { cn } from "@/lib/utils";
 import type { Fill, TradeRole, TradeStructureDto } from "../types";
 import { readChartTheme } from "../theme";
 import { drawRoleGlyph } from "../primitives/FillsPrimitive";
-import { ROLE_LABEL, ROLE_ORDER } from "../lib/structure";
+import { ROLE_LABEL, ROLE_ORDER, structureSummary } from "../lib/structure";
+import { chartI18n } from "@/i18n/ns/chart";
 import type { StructureLayer } from "../hooks/useStructureLayer";
 
 /** One marker glyph, drawn with the chart's own painter so the key matches the chart exactly. */
@@ -35,7 +36,9 @@ export function FillsKey({ fills, structure, layer, className }: { fills: readon
     for (const f of fills) seen.set(f.role, (seen.get(f.role) ?? false) || f.inferred);
     return ROLE_ORDER.filter((r) => seen.has(r)).map((r) => ({ role: r, inferred: seen.get(r) ?? false }));
   }, [fills]);
-  const summary = structure?.stats.summary ?? "";
+  const { t } = chartI18n.useT();
+  // Built on the client from the stats (the server's `summary` is Russian only).
+  const summary = structure ? structureSummary(structure.stats) : "";
   const { toggles, available, setToggle } = layer;
   const chain = available.chain && toggles.chain;
   const plain = roles.every((r) => r.role === "entry" || r.role === "exit") && !summary && !available.chain && !available.steps;
@@ -54,10 +57,10 @@ export function FillsKey({ fills, structure, layer, className }: { fills: readon
           {ROLE_LABEL[role]}{inferred ? "?" : ""}
         </span>
       ))}
-      {chain && <span className="inline-flex items-center gap-1"><span className="inline-block w-4 border-t border-dashed border-[hsl(var(--chart-2))]" />другие сделки дня</span>}
+      {chain && <span className="inline-flex items-center gap-1"><span className="inline-block w-4 border-t border-dashed border-[hsl(var(--chart-2))]" />{t("fillsKey.chain")}</span>}
       {summary && <span className="font-medium text-foreground">{summary}</span>}
-      {available.steps && <Switch on={toggles.steps} onChange={(v) => setToggle("steps", v)} title="Пунктир средней цены и полоса объёма позиции">Средняя цена</Switch>}
-      {available.chain && <Switch on={toggles.chain} onChange={(v) => setToggle("chain", v)} title="Другие сделки по тикеру за этот день: перезаходы и перевороты">Сделки дня</Switch>}
+      {available.steps && <Switch on={toggles.steps} onChange={(v) => setToggle("steps", v)} title={t("fillsKey.stepsTitle")}>{t("fillsKey.steps")}</Switch>}
+      {available.chain && <Switch on={toggles.chain} onChange={(v) => setToggle("chain", v)} title={t("fillsKey.chainTitle")}>{t("fillsKey.chainToggle")}</Switch>}
     </div>
   );
 }

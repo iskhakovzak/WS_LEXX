@@ -2,6 +2,7 @@
 // number comes from the API, which uses the shared trade math (net = gross − |fees|, signed R,
 // win rate = W/(W+L), PF = ΣR⁺/|ΣR⁻|). Nothing here recomputes R or P&L.
 import { useCallback, useEffect, useState } from "react";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { apiErrorStatus, nullIfMissing } from "@/lib/api/errors";
@@ -465,22 +466,21 @@ export type SectionId =
   | "dna"
   | "psychology";
 
-export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = {
-  attention: { label: "Что важно сейчас", hint: "Следующий шаг, риск, разбор дня, события по моим тикерам" },
-  equity: { label: "Кривая капитала", hint: "От недели до всего времени, нетто или R" },
-  recent: { label: "Последние сделки", hint: "Короткая лента → карточка сделки" },
-  desk: { label: "Деск сегодня", hint: "Каждый трейдер: день, неделя, лимит", staffOnly: true },
-  streaks: { label: "Серии", hint: "Текущая серия и последние 20 сделок" },
-  positions: { label: "Открытые позиции", hint: "Показывается, только когда есть позиции" },
+const SECTION_FLAGS: Record<SectionId, { staffOnly?: boolean; extra?: boolean }> = {
+  attention: {}, equity: {}, recent: {}, desk: { staffOnly: true }, streaks: {}, positions: {},
   // Optional extras below the cockpit — off by default, switch on in «Настроить».
-  checkin: { label: "Утренний чек-ин", hint: "Сон, фокус, стресс перед сессией", extra: true },
-  brief: { label: "Бриф к открытию", hint: "Премаркет, гэпы, события дня", extra: true },
-  quote: { label: "Цитата дня", hint: "Короткая мысль на день", extra: true },
-  sectors: { label: "Радар секторов", hint: "Сила секторов к рынку", extra: true },
-  macro: { label: "Макро-календарь", hint: "Ближайшие события и праздники", extra: true },
-  dna: { label: "DNA рынка", hint: "Режим рынка сегодня", extra: true },
-  psychology: { label: "Психология недели", hint: "Еженедельный отчёт", extra: true },
+  checkin: { extra: true }, brief: { extra: true }, quote: { extra: true }, sectors: { extra: true },
+  macro: { extra: true }, dna: { extra: true }, psychology: { extra: true },
 };
+
+/** Label / hint are read in the current language on access; flags are plain. */
+export const SECTION_META: Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }> = Object.fromEntries(
+  (Object.keys(SECTION_FLAGS) as SectionId[]).map((id) => [id, {
+    ...SECTION_FLAGS[id],
+    get label() { return dashboardI18n.t(`sections.${id}.label`); },
+    get hint() { return dashboardI18n.t(`sections.${id}.hint`); },
+  }]),
+) as Record<SectionId, { label: string; hint: string; staffOnly?: boolean; extra?: boolean }>;
 
 export const DEFAULT_ORDER: SectionId[] = [
   "attention",

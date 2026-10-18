@@ -16,9 +16,11 @@ import { can, requireCap } from "../lib/permissions";
 import { signedRSql, netPnlSql, closeDateSql, closedSql, decidedSql, resultSql } from "../lib/tradeMath";
 import { nyDate } from "../lib/tradingDate";
 import { logActivity } from "../lib/activity";
+import { activityTitle, localizeActivity } from "../lib/activityText";
 import { audienceSql, loadAudienceViewer } from "../lib/discussionAudience";
 import { spaceSql } from "../lib/playbookAccess";
-import { notFound, unauthorized } from "../lib/http";
+import { AppError, notFound, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
 
 const GetActivityQuery = z.object({
   limit: z.coerce.number().int().min(1).max(500).optional().default(100),
@@ -58,25 +60,25 @@ const PUBLIC_SECTIONS = ["trade-ideas", "discussions", "playbook", "research", "
 const FEED_CTE = `
 WITH feed AS (
   SELECT 'log:' || l.id AS uid, l.action, l.section, l.entity_id, l.entity_title, l.trader, l.details,
-         NULL::text AS rating, l.created_at,
+         NULL::text AS rating, l.created_at, l.params,
          CASE WHEN l.section = 'trades' AND l.entity_id ~ '^[0-9]+$' THEN (SELECT t0.trader FROM trades t0 WHERE t0.id = l.entity_id::int)
-              -- разбор дня куратором: entity_id = «YYYY-MM-DD|трейдер» — трейдер видит разбор своего дня
+              -- curator day review: entity_id = "YYYY-MM-DD|trader" — the trader sees the review of their own day
               WHEN l.section = 'eod' AND l.entity_id LIKE '%|%' THEN split_part(l.entity_id, '|', 2)
               ELSE NULL END AS owner
     FROM activity_log l
   UNION ALL
-  SELECT 'rev:' || r.id, 'reviewed', 'trades', r.trade_id::text, t.ticker, r.curator, r.comment, r.rating, r.created_at, t.trader
+  SELECT 'rev:' || r.id, 'reviewed', 'trades', r.trade_id::text, t.ticker, r.curator, r.comment, r.rating, r.created_at, NULL::jsonb, t.trader
     FROM trade_reviews r LEFT JOIN trades t ON t.id = r.trade_id
   UNION ALL
-  SELECT 'rx:' || x.id, 'liked', 'trades', x.trade_id::text, t.ticker, x.trader, x.reaction_type, NULL, x.created_at, t.trader
+  SELECT 'rx:' || x.id, 'liked', 'trades', x.trade_id::text, t.ticker, x.trader, x.reaction_type, NULL, x.created_at, NULL::jsonb, t.trader
     FROM trade_reactions x LEFT JOIN trades t ON t.id = x.trade_id
   UNION ALL
   SELECT 'irx:' || x.id, 'reacted', 'trade-ideas', x.trade_idea_id::text, i.ticker, x.trader,
          CASE WHEN x.comment IS NOT NULL AND x.comment <> '' THEN x.reaction || ': ' || x.comment ELSE x.reaction END,
-         NULL, x.created_at, i.trader
+         NULL, x.created_at, NULL::jsonb, i.trader
     FROM trade_idea_reactions x LEFT JOIN trade_ideas i ON i.id = x.trade_idea_id
   UNION ALL
-  SELECT 'cm:' || c.id, 'commented', 'discussions', c.discussion_id::text, d.topic, c.trader, c.text, NULL, c.created_at, NULL
+  SELECT 'cm:' || c.id, 'commented', 'discussions', c.discussion_id::text, d.topic, c.trader, c.text, NULL, c.created_at, NULL::jsonb, NULL
     FROM comments c LEFT JOIN discussions d ON d.id = c.discussion_id
 )`;
 
@@ -90,6 +92,7 @@ type FeedRow = {
   details: string | null;
   rating: string | null;
   created_at: Date;
+  params: Record<string, string | number | boolean | null> | null;
   ts_us: string;
 };
 
@@ -129,7 +132,7 @@ async function discussionsVisibleSql(req: Parameters<typeof loadAudienceViewer>[
 
 router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
   const parsed = FeedQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const { limit, before, sections, actions, trader, q } = parsed.data;
   const v = await visibility(req, trader ?? null);
   if (!v) throw unauthorized();
@@ -158,7 +161,7 @@ router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
 
   const sql = `${FEED_CTE},
   feed2 AS (SELECT *, (extract(epoch FROM created_at) * 1000000)::bigint AS ts_us FROM feed)
-  SELECT uid, action, section, entity_id, entity_title, trader, details, rating, created_at, ts_us::text AS ts_us
+  SELECT uid, action, section, entity_id, entity_title, trader, details, rating, created_at, params, ts_us::text AS ts_us
     FROM feed2
    ${where.length ? "WHERE " + where.join(" AND ") : ""}
    ORDER BY ts_us DESC, uid DESC
@@ -168,15 +171,15 @@ router.get("/activity/feed", asyncHandler(async (req, res): Promise<void> => {
   const hasMore = rows.length > limit;
   const page = hasMore ? rows.slice(0, limit) : rows;
   const last = page[page.length - 1];
+  const lang = langOf(req);
   res.json({
     items: page.map((r) => ({
       uid: r.uid,
       action: r.action,
       section: r.section,
       entityId: r.entity_id,
-      entityTitle: r.entity_title,
+      ...localizeActivity({ entityTitle: r.entity_title, details: r.details, params: r.params }, lang),
       trader: r.trader,
-      details: r.details,
       rating: r.rating,
       createdAt: new Date(r.created_at).toISOString(),
     })),
@@ -195,13 +198,10 @@ const SummaryQuery = z.object({
 /** Daily digest for the feed header: activity counts for [from,to) + trades closed on `date` (NY). Also returns 30-day facets. */
 router.get("/activity/summary", asyncHandler(async (req, res): Promise<void> => {
   const parsed = SummaryQuery.safeParse(req.query);
-  if (!parsed.success) { res.status(400).json({ error: parsed.error.message }); return; }
+  if (!parsed.success) throw parsed.error;
   const { from, to } = parsed.data;
   const date = parsed.data.date ?? nyDate();
-  if (new Date(to).getTime() <= new Date(from).getTime() || new Date(to).getTime() - new Date(from).getTime() > 8 * 86400000) {
-    res.status(400).json({ error: "Invalid range" });
-    return;
-  }
+  if (new Date(to).getTime() <= new Date(from).getTime() || new Date(to).getTime() - new Date(from).getTime() > 8 * 86400000) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
   const v = await visibility(req, parsed.data.trader ?? null);
   if (!v) throw unauthorized();
 
@@ -279,8 +279,7 @@ router.get("/activity/summary", asyncHandler(async (req, res): Promise<void> => 
 router.get("/activity", asyncHandler(async (req, res): Promise<void> => {
   const query = GetActivityQuery.safeParse(req.query);
   if (!query.success) {
-    res.status(400).json({ error: query.error.message });
-    return;
+    throw query.error;
   }
   const scope = await scopeTrader(req, null);
   if (scope === undefined) throw unauthorized();
@@ -288,12 +287,13 @@ router.get("/activity", asyncHandler(async (req, res): Promise<void> => {
   const logs = await (scope === null ? base : base.where(eq(activityLogTable.trader, scope)))
     .orderBy(desc(activityLogTable.createdAt))
     .limit(query.data.limit);
-  res.json(logs.map((l) => ({ ...l, createdAt: l.createdAt.toISOString() })));
+  const lang = langOf(req);
+  res.json(logs.map((l) => ({ ...l, ...localizeActivity({ entityTitle: l.entityTitle, details: l.details, params: (l as { params?: Record<string, string | number | boolean | null> | null }).params ?? null }, lang), createdAt: l.createdAt.toISOString() })));
 }));
 
 router.get("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   if (!req.authUser) throw unauthorized();
   const reactions = await db.select().from(tradeReactionsTable).where(eq(tradeReactionsTable.tradeId, params.data.id));
   res.json(reactions.map((r) => ({ ...r, createdAt: r.createdAt.toISOString() })));
@@ -301,9 +301,9 @@ router.get("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void>
 
 router.post("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const body = PostReactionBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   if (!requireMember(req, res)) return;
   const trader = req.authUser!.name;
   const { reactionType } = body.data;
@@ -321,12 +321,12 @@ router.post("/trades/:id/reactions", asyncHandler(async (req, res): Promise<void
 
 router.get("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   if (!req.authUser) throw unauthorized();
   // Curator reviews are personal feedback: the trade's owner and staff only.
   const ok = await canAccessTrade(req, params.data.id);
   if (ok === null) throw notFound("TRADE_NOT_FOUND");
-  if (!ok) { res.status(403).json({ error: "Нет доступа к разбору этой сделки" }); return; }
+  if (!ok) throw new AppError("OWN_TRADES_ONLY");
   const reviews = await db.select().from(tradeReviewsTable)
     .where(eq(tradeReviewsTable.tradeId, params.data.id))
     .orderBy(desc(tradeReviewsTable.createdAt));
@@ -335,9 +335,9 @@ router.get("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> =
 
 router.post("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeIdParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   const body = PostReviewBody.safeParse(req.body);
-  if (!body.success) { res.status(400).json({ error: body.error.message }); return; }
+  if (!body.success) throw body.error;
   if (!(await requireCap(req, res, "trades.review"))) return;
   const curator = req.authUser!.name;
   const { comment, rating } = body.data;
@@ -347,13 +347,13 @@ router.post("/trades/:id/reviews", asyncHandler(async (req, res): Promise<void> 
 
 router.delete("/trades/:tradeId/reviews/:reviewId", asyncHandler(async (req, res): Promise<void> => {
   const params = DeleteReviewParams.safeParse(req.params);
-  if (!params.success) { res.status(400).json({ error: params.error.message }); return; }
+  if (!params.success) throw params.error;
   if (!(await requireCap(req, res, "trades.review"))) return;
   const [existing] = await db.select().from(tradeReviewsTable).where(eq(tradeReviewsTable.id, params.data.reviewId));
-  if (!existing || existing.tradeId !== params.data.tradeId) { res.status(404).json({ error: "Разбор не найден" }); return; }
-  if (existing.curator !== req.authUser!.name && !(await can(req, "trades.review.delete.any"))) { res.status(403).json({ error: "Можно удалять только свои разборы" }); return; }
+  if (!existing || existing.tradeId !== params.data.tradeId) throw new AppError("BREACH_REVIEW_NOT_FOUND");
+  if (existing.curator !== req.authUser!.name && !(await can(req, "trades.review.delete.any"))) throw new AppError("REVIEW_DELETE_OWN_ONLY");
   await db.delete(tradeReviewsTable).where(eq(tradeReviewsTable.id, params.data.reviewId));
-  await logActivity({ action: "deleted", section: "trades", entityId: String(params.data.tradeId), entityTitle: `разбор #${params.data.reviewId}`, trader: req.authUser!.name, params: { titleKey: "trade_review", reviewId: params.data.reviewId } });
+  await logActivity({ action: "deleted", section: "trades", entityId: String(params.data.tradeId), entityTitle: activityTitle("trade_review", { reviewId: params.data.reviewId }), trader: req.authUser!.name, params: { titleKey: "trade_review", reviewId: params.data.reviewId } });
   res.sendStatus(204);
 }));
 

@@ -9,8 +9,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { EmptyState, Panel, Pill, Segmented, StatCard, StatGrid, TableScroll, toneOf, toneText } from "@/components/ds";
 import { Avatar, RankDelta, Sparkline, StreakBadge, OutcomeBar, downloadCsv, useStoredState } from "./shared";
-import { fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
+import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { ratingsI18n } from "@/i18n/ns/ratings";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -30,22 +31,21 @@ export type LeaderboardEntry = {
 };
 
 export const PERIODS = [
-  { value: "7", label: "Неделя" },
-  { value: "30", label: "Месяц" },
-  { value: "90", label: "Квартал" },
-  { value: "all", label: "Всё" },
+  { value: "7", key: "p7" },
+  { value: "30", key: "p30" },
+  { value: "90", key: "p90" },
+  { value: "all", key: "all" },
 ] as const;
 export type Period = (typeof PERIODS)[number]["value"];
 const PERIOD_VALUES = PERIODS.map((p) => p.value) as readonly Period[];
+const periodKey = (p: Period) => PERIODS.find((x) => x.value === p)!.key;
 
 type Metric = "r" | "pnl" | "winrate" | "expR";
-const METRICS: { value: Metric; label: string }[] = [
-  { value: "r", label: "Сумма R" },
-  { value: "pnl", label: "P&L" },
-  { value: "winrate", label: "Винрейт" },
-  { value: "expR", label: "Ожидание R" },
-];
-const METRIC_VALUES = ["auto", ...METRICS.map((m) => m.value)] as const;
+const METRIC_KEYS: Metric[] = ["r", "pnl", "winrate", "expR"];
+/** Metric labels are built at render time (current UI language). */
+const metricOptions = (): { value: Metric; label: string }[] =>
+  METRIC_KEYS.map((value) => ({ value, label: value === "pnl" ? "P&L" : ratingsI18n.t(`leaderboard.metrics.${value}`) }));
+const METRIC_VALUES = ["auto", ...METRIC_KEYS] as const;
 
 type MetricSource = {
   totalR: number | null; totalPnl: number; winrate: number; avgR: number | null; expectancyR?: number | null; totalTrades: number;
@@ -120,6 +120,9 @@ export function LeaderboardTab({ me }: { me: string | null }) {
   const [period, setPeriod] = useStoredState<Period>("ratings.lb.period", "30", PERIOD_VALUES);
   const [metricPref, setMetricPref] = useStoredState<Metric | "auto">("ratings.lb.metric", "auto", METRIC_VALUES);
   const { ranked, metric, isLoading, isError, error, refetch, hasPnl } = useLeaderboard(period, metricPref);
+  const { t } = ratingsI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const METRICS = metricOptions();
 
   const team = useMemo(() => {
     if (ranked.length === 0) return null;
@@ -137,13 +140,13 @@ export function LeaderboardTab({ me }: { me: string | null }) {
     return { trades, winrate: decided > 0 ? (wins / decided) * 100 : null, r, pnl, streak, hot };
   }, [ranked]);
 
-  const periodLabel = PERIODS.find((p) => p.value === period)?.label.toLowerCase();
-  const prevLabel = period === "all" ? "положения неделю назад" : "прошлого периода";
+  const periodFor = t(`leaderboard.periodFor.${periodKey(period)}`);
+  const prevLabel = period === "all" ? t("leaderboard.prevAll") : t("leaderboard.prevPeriod");
 
   function exportCsv() {
     downloadCsv(
       `leaderboard-${period}.csv`,
-      ["#", "Трейдер", "Сделок", "Винрейт %", "Сумма R", "Ожидание R", "P&L $", "Sharpe (дн.)", "Серия", "Лучшая серия"],
+      ["#", t("leaderboard.csv.trader"), t("leaderboard.csv.trades"), t("leaderboard.csv.winRatePct"), t("leaderboard.csv.totalR"), t("leaderboard.csv.expR"), "P&L $", t("leaderboard.csv.sharpe"), t("leaderboard.csv.streak"), t("leaderboard.csv.bestStreak")],
       ranked.map((l) => [l.rank, l.trader, l.totalTrades, winPctOf(l), l.totalR, l.expectancyR ?? l.avgR, l.totalPnl, sharpeOf(l).value, l.currentStreak, l.bestStreak]),
     );
   }
@@ -151,9 +154,9 @@ export function LeaderboardTab({ me }: { me: string | null }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2">
-        <Segmented ariaLabel="Период" options={[...PERIODS]} value={period} onChange={setPeriod} />
+        <Segmented ariaLabel={t("leaderboard.periodAria")} options={PERIODS.map((p) => ({ value: p.value, label: t(`leaderboard.periods.${p.key}`) }))} value={period} onChange={setPeriod} />
         <Segmented
-          ariaLabel="Ранжировать по"
+          ariaLabel={t("leaderboard.rankByAria")}
           size="sm"
           options={METRICS.map((m) => ({ ...m, disabled: m.value === "pnl" && !hasPnl && ranked.length > 0 }))}
           value={metric}
@@ -165,7 +168,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
       </div>
 
       {isLoading && (
-        <div className="flex flex-col gap-3" aria-busy="true" aria-label="Загрузка рейтинга">
+        <div className="flex flex-col gap-3" aria-busy="true" aria-label={t("leaderboard.loading")}>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             {[0, 1, 2].map((i) => <Skeleton key={i} className="h-36 rounded-2xl" />)}
           </div>
@@ -177,9 +180,9 @@ export function LeaderboardTab({ me }: { me: string | null }) {
         <Panel>
           <EmptyState
             icon={Trophy}
-            title={`Нет сделок за ${periodLabel === "всё" ? "всё время" : `период «${periodLabel}»`}`}
-            description="Рейтинг строится автоматически по сделкам из PropReports. Выберите период побольше."
-            action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPeriod("all")}>Показать за всё время</Button> : undefined}
+            title={period === "all" ? t("leaderboard.emptyAll") : t("leaderboard.emptyPeriod", { period: t(`leaderboard.periods.${periodKey(period)}`).toLowerCase() })}
+            description={t("leaderboard.emptyDescription")}
+            action={period !== "all" ? <Button variant="outline" size="sm" onClick={() => setPeriod("all")}>{t("leaderboard.showAll")}</Button> : undefined}
           />
         </Panel>
       )}
@@ -199,13 +202,13 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   )}
                 >
                   <div className="flex items-center gap-3">
-                    <span className={cn("grid h-9 w-9 place-items-center rounded-full bg-[var(--glass-hover-bg)]", MEDAL[i])} aria-label={`${i + 1} место`}>
+                    <span className={cn("grid h-9 w-9 place-items-center rounded-full bg-[var(--glass-hover-bg)]", MEDAL[i])} aria-label={t("leaderboard.place", { n: i + 1 })}>
                       {i === 0 ? <Crown className="h-4 w-4" aria-hidden="true" /> : <Medal className="h-4 w-4" aria-hidden="true" />}
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span className="truncate text-sm font-semibold text-foreground">{l.trader}</span>
-                        {l.trader === me && <Pill tone="accent">Вы</Pill>}
+                        {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
                         <span className="tabular-nums">#{i + 1}</span>
@@ -221,12 +224,12 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                         {fmtMetric(metric, v)}
                       </div>
                     </div>
-                    <Sparkline values={l.sparkR ?? []} width={96} height={32} label={`Кумулятивный R: ${fmtR(l.totalR, 1)}`} />
+                    <Sparkline values={l.sparkR ?? []} width={96} height={32} label={t("leaderboard.cumR", { r: fmtR(l.totalR, 1) })} />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <OutcomeBar wins={l.wins} losses={l.losses} be={l.breakevens} open={l.open ?? 0} />
                     <div className="flex justify-between text-xs text-muted-foreground tabular-nums">
-                      <span>{commonI18n.t("units.trades", { count: l.totalTrades })}</span>
+                      <span>{tc("units.trades", { count: l.totalTrades })}</span>
                       <span>WR {fmtPct(winPctOf(l), { decimals: 0, signed: false })}</span>
                     </div>
                   </div>
@@ -237,31 +240,31 @@ export function LeaderboardTab({ me }: { me: string | null }) {
 
           {team && (
             <StatGrid>
-              <StatCard label="Сделок у команды" value={team.trades} icon={Users} hint={`за ${periodLabel === "всё" ? "всё время" : periodLabel}`} />
-              <StatCard label="Винрейт команды" value={fmtPct(team.winrate, { decimals: 0, signed: false })} hint="W/(W+L), безубыток не в счёт" />
+              <StatCard label={t("leaderboard.teamTrades")} value={fmtCount(team.trades)} icon={Users} hint={periodFor} />
+              <StatCard label={t("leaderboard.teamWinrate")} value={fmtPct(team.winrate, { decimals: 0, signed: false })} hint={t("leaderboard.teamWinrateHint")} />
               {team.r != null || team.pnl == null ? (
-                <StatCard label="Сумма R команды" value={fmtR(team.r, 1)} tone={toneOf(team.r)} hint={team.r == null ? "R неизвестен — нет стопов" : undefined} />
+                <StatCard label={t("leaderboard.teamR")} value={fmtR(team.r, 1)} tone={toneOf(team.r)} hint={team.r == null ? t("leaderboard.rUnknown") : undefined} />
               ) : (
-                <StatCard label="P&L команды · нетто" value={fmtUsd(team.pnl, { signed: true, decimals: 0 })} tone={toneOf(team.pnl)} hint="R неизвестен (нет стопа) — показан P&L" />
+                <StatCard label={t("leaderboard.teamPnl")} value={fmtUsd(team.pnl, { signed: true, decimals: 0 })} tone={toneOf(team.pnl)} hint={t("leaderboard.teamPnlHint")} />
               )}
               <StatCard
-                label={team.hot ? "Горячая серия" : "Лучшая серия"}
+                label={team.hot ? t("leaderboard.hotStreak") : t("leaderboard.bestStreak")}
                 icon={Flame}
                 value={team.hot ? `W${team.hot.currentStreak}` : team.streak.bestStreak > 0 ? `W${team.streak.bestStreak}` : "—"}
                 tone={team.hot || team.streak.bestStreak > 0 ? "up" : "neutral"}
-                hint={team.hot ? team.hot.trader : team.streak.bestStreak > 0 ? team.streak.trader : "нет серий"}
+                hint={team.hot ? team.hot.trader : team.streak.bestStreak > 0 ? team.streak.trader : t("leaderboard.noStreaks")}
               />
             </StatGrid>
           )}
 
           {/* Desktop table */}
-          <Panel padded={false} className="hidden md:block" title="Таблица лидеров" description={`Стрелки — изменение места относительно ${prevLabel}`}>
+          <Panel padded={false} className="hidden md:block" title={t("leaderboard.table")} description={t("leaderboard.tableDescription", { prev: prevLabel })}>
             <TableScroll className="max-h-[70vh] overflow-y-auto">
               <table className="w-full text-sm">
                 <thead className="sticky top-0 z-sticky bg-[var(--sticky-bg)] text-xs text-muted-foreground">
                   <tr className="border-b border-border">
                     <th scope="col" className="w-16 px-4 py-2.5 text-left font-medium">#</th>
-                    <th scope="col" className="px-2 py-2.5 text-left font-medium">Трейдер</th>
+                    <th scope="col" className="px-2 py-2.5 text-left font-medium">{t("leaderboard.trader")}</th>
                     {METRICS.map((m) => (
                       <th key={m.value} scope="col" className="px-2 py-2.5 text-right font-medium" aria-sort={metric === m.value ? "descending" : "none"}>
                         <button
@@ -269,7 +272,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                           onClick={() => setMetricPref(m.value)}
                           disabled={m.value === "pnl" && !hasPnl}
                           className={cn("inline-flex flex-row-reverse items-center gap-1 rounded-full px-1.5 py-0.5 hover:text-foreground disabled:opacity-50", metric === m.value && "text-primary")}
-                          title="Рейтинг по этой метрике"
+                          title={t("leaderboard.byMetricTitle")}
                         >
                           {m.label}
                           {metric === m.value
@@ -278,9 +281,9 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                         </button>
                       </th>
                     ))}
-                    <th scope="col" className="px-2 py-2.5 text-right font-medium" title="Sharpe по дневным итогам (P&L, иначе R) × √252; нужно ≥ 5 торговых дней">Sharpe (дн.)</th>
-                    <th scope="col" className="px-2 py-2.5 text-right font-medium">Серия</th>
-                    <th scope="col" className="px-4 py-2.5 text-right font-medium">Тренд R</th>
+                    <th scope="col" className="px-2 py-2.5 text-right font-medium" title={t("leaderboard.sharpeTitle")}>{t("leaderboard.sharpe")}</th>
+                    <th scope="col" className="px-2 py-2.5 text-right font-medium">{t("leaderboard.streak")}</th>
+                    <th scope="col" className="px-4 py-2.5 text-right font-medium">{t("leaderboard.trendR")}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -301,10 +304,10 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
                                 <span className="font-medium text-foreground">{l.trader}</span>
-                                {mine && <Pill tone="accent">Вы</Pill>}
+                                {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
-                                {commonI18n.t("units.trades", { count: l.totalTrades })} · {l.wins}/{l.losses}/{l.breakevens}
+                                {tc("units.trades", { count: l.totalTrades })} · {l.wins}/{l.losses}/{l.breakevens}
                               </div>
                             </div>
                           </div>
@@ -315,7 +318,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                         </td>
                         <td className={cn("px-2 py-2.5 text-right tabular-nums", metric === "winrate" && "font-semibold")}>{fmtPct(winPctOf(l), { decimals: 0, signed: false })}</td>
                         <td className={cn("px-2 py-2.5 text-right tabular-nums", toneText(toneOf(l.expectancyR ?? l.avgR)), metric === "expR" && "font-semibold")}>{fmtR(l.expectancyR ?? l.avgR, 2)}</td>
-                        <td className="px-2 py-2.5 text-right tabular-nums" title={sh.value == null ? "Нужно ≥ 5 торговых дней" : `По дневным итогам в ${sh.basis === "$" ? "$" : "R"}`}>
+                        <td className="px-2 py-2.5 text-right tabular-nums" title={sh.value == null ? t("leaderboard.needDays") : t("leaderboard.dailyBasis", { basis: sh.basis === "$" ? "$" : "R" })}>
                           {sh.value == null ? <span className="text-muted-foreground">—</span> : (
                             <span className={toneText(toneOf(sh.value))}>{fmtNum(sh.value, { decimals: 2, signed: true })}{sh.basis === "R" && <span className="ml-0.5 text-2xs text-muted-foreground">R</span>}</span>
                           )}
@@ -323,7 +326,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                         <td className="px-2 py-2.5 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <StreakBadge value={l.currentStreak} />
-                            {l.bestStreak > 1 && <span className="text-2xs text-muted-foreground tabular-nums" title="Лучшая серия">макс W{l.bestStreak}</span>}
+                            {l.bestStreak > 1 && <span className="text-2xs text-muted-foreground tabular-nums" title={t("leaderboard.bestStreak")}>{t("leaderboard.maxStreak", { count: l.bestStreak })}</span>}
                           </div>
                         </td>
                         <td className="px-4 py-2.5">
@@ -338,7 +341,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
           </Panel>
 
           {/* Mobile cards */}
-          <ul className="flex flex-col gap-2 md:hidden" aria-label="Таблица лидеров">
+          <ul className="flex flex-col gap-2 md:hidden" aria-label={t("leaderboard.table")}>
             {ranked.map((l) => {
               const v = metricOf(metric, l);
               const mine = l.trader === me;
@@ -351,10 +354,10 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
                       <span className="truncate font-medium text-foreground">{l.trader}</span>
-                      {mine && <Pill tone="accent">Вы</Pill>}
+                      {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">
-                      <span>{l.totalTrades} сд.</span>
+                      <span>{t("leaderboard.tradesShort", { count: l.totalTrades })}</span>
                       <span>WR {fmtPct(winPctOf(l), { decimals: 0, signed: false })}</span>
                       <StreakBadge value={l.currentStreak} className="px-1.5 py-0 text-2xs" />
                     </div>
@@ -368,10 +371,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
             })}
           </ul>
 
-          <p className="text-xs text-muted-foreground">
-            Винрейт — по закрытым сделкам. Sharpe (дн.) считается по дневным итогам трейдера (P&L, а если суммы не заполнены — по R) × √252,
-            показывается при ≥ 5 торговых днях. Тренд — кумулятивный R по дням периода.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("leaderboard.footnote")}</p>
         </>
       )}
     </div>

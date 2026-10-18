@@ -8,6 +8,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { screenshotUrlsToString } from "@/components/screenshot-fields";
 import type { TradeIdeaFormData } from "@/components/trade-idea-form";
 import { horizonOf, type IdeaComment, type TradeIdea, type TrackingResponse } from "./model";
+import { ideasI18n } from "@/i18n/ns/ideas";
 
 /** GET /api/trade-ideas — one key for the ideas page, stats, ratings and global search (lib/api/queries). */
 export const IDEAS_KEY = KEYS.tradeIdeas();
@@ -58,7 +59,9 @@ export function useIdeaMutations() {
   const { toast } = useToast();
   const { user } = useAuth();
   const invalidate = () => qc.invalidateQueries({ queryKey: IDEAS_KEY });
-  const fail = (title: string) => (e: Error) => toast({ title, description: humanizeApiError(e), variant: "destructive" });
+  const t = ideasI18n.t;
+  // Titles are read when the error happens (current UI language), not when the hook renders.
+  const fail = (title: () => string) => (e: Error) => toast({ title: title(), description: humanizeApiError(e), variant: "destructive" });
 
   const create = useMutation({
     mutationFn: async ({ data, publish }: { data: TradeIdeaFormData; publish?: boolean }) => {
@@ -66,8 +69,8 @@ export function useIdeaMutations() {
       if (publish) await http.post(`/api/trade-ideas/${row.id}/publish`);
       return row;
     },
-    onSuccess: (_r, v) => { invalidate(); toast({ title: v.publish ? "Идея опубликована" : "Черновик сохранён", description: v.publish ? "Кураторы получили уведомление" : undefined }); },
-    onError: fail("Не удалось сохранить идею"),
+    onSuccess: (_r, v) => { invalidate(); toast({ title: t(v.publish ? "toast.published" : "toast.draftSaved"), description: v.publish ? t("toast.curatorsNotified") : undefined }); },
+    onError: fail(() => t("toast.saveFailed")),
   });
 
   const update = useMutation({
@@ -76,27 +79,27 @@ export function useIdeaMutations() {
       if (publish) await http.post(`/api/trade-ideas/${id}/publish`);
       return row;
     },
-    onSuccess: () => { invalidate(); toast({ title: "Изменения сохранены" }); },
-    onError: fail("Ошибка сохранения"),
+    onSuccess: () => { invalidate(); toast({ title: t("toast.changesSaved") }); },
+    onError: fail(() => t("toast.saveError")),
   });
 
   const publish = useMutation({
     mutationFn: (id: number) => http.post(`/api/trade-ideas/${id}/publish`),
-    onSuccess: () => { invalidate(); toast({ title: "Опубликовано", description: "Кураторы получили уведомление" }); },
-    onError: fail("Ошибка публикации"),
+    onSuccess: () => { invalidate(); toast({ title: t("toast.publishedShort"), description: t("toast.curatorsNotified") }); },
+    onError: fail(() => t("toast.publishError")),
   });
 
   const resubmit = useMutation({
     mutationFn: (id: number) => http.post(`/api/trade-ideas/${id}/resubmit`),
-    onSuccess: () => { invalidate(); toast({ title: "Отправлено на повторное ревью" }); },
-    onError: fail("Не удалось отправить на ревью"),
+    onSuccess: () => { invalidate(); toast({ title: t("toast.resubmitted") }); },
+    onError: fail(() => t("toast.resubmitFailed")),
   });
 
   const remove = useMutation({
     mutationFn: (id: number) => http.del(`/api/trade-ideas/${id}`),
     // The page shows an undo toast («Идея … удалена · Отменить»), so no second toast here.
     onSuccess: () => { invalidate(); },
-    onError: fail("Ошибка удаления"),
+    onError: fail(() => t("toast.deleteError")),
   });
 
   const review = useMutation({
@@ -104,9 +107,9 @@ export function useIdeaMutations() {
       http.post(`/api/trade-ideas/${id}/review`, { review_status: status, review_reason: reason || undefined }),
     onSuccess: (_r, v) => {
       invalidate();
-      toast({ title: v.status === "approved" ? "Идея одобрена" : v.status === "rejected" ? "Идея отклонена" : "Отправлено на доработку" });
+      toast({ title: t(v.status === "approved" ? "toast.approved" : v.status === "rejected" ? "toast.rejected" : "toast.needsWork") });
     },
-    onError: fail("Не удалось сохранить ревью"),
+    onError: fail(() => t("toast.reviewFailed")),
   });
 
   const react = useMutation({
@@ -115,7 +118,7 @@ export function useIdeaMutations() {
         ? http.del(`/api/trade-ideas/${id}/reactions`)
         : http.post(`/api/trade-ideas/${id}/reactions`, { reaction }),
     onSuccess: invalidate,
-    onError: fail("Не удалось сохранить реакцию"),
+    onError: fail(() => t("toast.reactionFailed")),
   });
 
   /** Opening an idea marks its notifications read; refresh the header bell (layout query keys). */

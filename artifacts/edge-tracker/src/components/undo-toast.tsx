@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Trash2, Undo2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Props = {
   label: string;
   onUndo: () => void;
   onDismiss: () => void;
   durationMs?: number;
-  /** Optional: verb after the label ("удалено" by default). */
+  /** Optional: verb after the label (common `undo.deleted` by default; pass a translated word). */
   actionText?: string;
   /** Optional: show a spinner on the undo button (e.g. useUndoDelete().restoring). */
   restoring?: boolean;
@@ -33,10 +34,11 @@ export function UndoToast({
   onUndo,
   onDismiss,
   durationMs = 8000,
-  actionText = "удалено",
+  actionText,
   restoring,
   shortcut = true,
 }: Props) {
+  const { t } = commonI18n.useT();
   const [remaining, setRemaining] = useState(durationMs);
   const [paused, setPaused] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -122,10 +124,10 @@ export function UndoToast({
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm text-foreground">
             <span className="font-semibold">{label}</span>{" "}
-            <span className="text-muted-foreground">{actionText}</span>
+            <span className="text-muted-foreground">{actionText ?? t("undo.deleted")}</span>
           </p>
           <p className="truncate text-2xs text-muted-foreground">
-            {paused ? "Таймер на паузе" : `Можно вернуть ещё ${seconds} с`}
+            {paused ? t("undo.paused") : t("undo.canRestore", { count: seconds })}
             {shortcut && <span className="hidden sm:inline"> · {isMac ? "⌘" : "Ctrl"}+Z</span>}
           </p>
         </div>
@@ -137,11 +139,11 @@ export function UndoToast({
           className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-primary/15 px-3.5 text-sm font-medium text-primary transition-colors hover:bg-primary/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60"
         >
           {isBusy ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : <Undo2 className="h-4 w-4" aria-hidden="true" />}
-          {isBusy ? "Возвращаем…" : "Отменить"}
+          {isBusy ? t("undo.restoring") : t("actions.undo")}
         </button>
         <button
           type="button"
-          aria-label="Закрыть уведомление"
+          aria-label={t("undo.dismissAria")}
           onClick={() => { dismissedRef.current = true; onDismiss(); }}
           disabled={isBusy}
           className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"

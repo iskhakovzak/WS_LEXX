@@ -19,6 +19,9 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { ORIGIN_LABEL, originOf, severityMeta } from "./constants";
 import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { SelfMarkButtons } from "./RulesOverview";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { rich } from "./rich";
 import type { RuleReport, SideStats } from "./types";
 
 export function RuleDetailSheet({
@@ -38,6 +41,7 @@ export function RuleDetailSheet({
   onEdit: (r: RuleReport) => void;
   onChanged: () => void;
 }) {
+  const { t } = rulesI18n.useT();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState<"disable" | "delete" | null>(null);
@@ -49,19 +53,20 @@ export function RuleDetailSheet({
   const o = ORIGIN_LABEL[origin];
   const editable = r.canEdit !== false;
   const mark = selfQ.data?.marks.find((m) => m.ruleId === r.id);
-  const unit = r.auto ? "сделка" : "день";
+  const perTrade = !!r.auto;
+  const errorTitle = commonI18n.t("states.error");
 
   async function toggle() {
     setBusy(true);
     try {
       await http.patch(`/api/rules/${r.id}`, { enabled: !r.enabled });
       toast({
-        title: r.enabled ? "Правило выключено" : "Правило включено",
-        description: r.enabled ? "Нарушения и комментарии сохранены в архиве" : undefined,
+        title: r.enabled ? t("detail.toastDisabled") : t("detail.toastEnabled"),
+        description: r.enabled ? t("detail.toastDisabledHint") : undefined,
       });
       onChanged();
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось изменить правило"), variant: "destructive" });
+      toast({ title: errorTitle, description: humanizeApiError(e, t("detail.changeFailed")), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -74,26 +79,26 @@ export function RuleDetailSheet({
       onOpenChange(false);
       onChanged();
       toast({
-        title: "Правило удалено",
-        description: `${r.name} · нарушения и комментарии сохранены в архиве`,
+        title: t("detail.deleted"),
+        description: t("detail.deletedHint", { name: r.name }),
         action: (
           <ToastAction
-            altText="Вернуть правило"
+            altText={t("detail.restoreAlt")}
             onClick={async () => {
               try {
                 await http.post(`/api/rules/${r.id}/restore`);
                 onChanged();
               } catch (e) {
-                toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось вернуть правило"), variant: "destructive" });
+                toast({ title: errorTitle, description: humanizeApiError(e, t("detail.restoreFailed")), variant: "destructive" });
               }
             }}
           >
-            Вернуть
+            {commonI18n.t("actions.restore")}
           </ToastAction>
         ),
       });
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось удалить правило"), variant: "destructive" });
+      toast({ title: errorTitle, description: humanizeApiError(e, t("detail.deleteFailed")), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -108,18 +113,18 @@ export function RuleDetailSheet({
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={o.tone} title={o.hint}>{o.label}</Pill>
             <span className="text-xs text-muted-foreground">{r.kindLabel}</span>
-            {!r.enabled && <Pill>Выключено</Pill>}
+            {!r.enabled && <Pill>{t("row.disabled")}</Pill>}
           </div>
           <SheetTitle className="text-lg leading-snug">{r.name}</SheetTitle>
-          <SheetDescription>{r.summary}{r.createdBy && origin !== "personal" ? ` · задал ${r.createdBy}` : ""}</SheetDescription>
+          <SheetDescription>{[r.summary, r.createdBy && origin !== "personal" ? t("detail.setBy", { name: r.createdBy }) : null].filter(Boolean).join(" · ")}</SheetDescription>
           {r.note && <p className="text-sm italic text-muted-foreground">«{r.note}»</p>}
         </SheetHeader>
 
         {!r.auto && r.enabled && canMark && (
           <section className="tile flex flex-wrap items-center justify-between gap-3 p-3">
             <div>
-              <p className="text-sm font-medium text-foreground">Сегодня, {fmtDate(today, "dayMonth")}</p>
-              <p className="text-xs text-muted-foreground">Отметка попадает в журнал дня и в статистику правила.</p>
+              <p className="text-sm font-medium text-foreground">{t("detail.today", { date: fmtDate(today, "dayMonth") })}</p>
+              <p className="text-xs text-muted-foreground">{t("detail.todayHint")}</p>
             </div>
             <SelfMarkButtons ruleId={r.id} trader={trader} day={today} mark={mark} size="md" />
           </section>
@@ -127,47 +132,47 @@ export function RuleDetailSheet({
 
         {r.status === "disabled" ? (
           <p className="text-sm text-muted-foreground">
-            Правило выключено — оно не проверяется и не попадает в статистику.
+            {t("detail.disabledText")}
             {r.archivedViolations ? (
-              <> Сохранено нарушений: <b className="tabular-nums text-foreground">{r.archivedViolations}</b> (с комментариями) — они в «Нарушения» → «Показать архив» с пометкой «правило выключено» и вернутся, если включить правило.</>
+              <> {rich(t("detail.archivedKept", { count: "{count}" }), { count: <b className="tabular-nums text-foreground">{r.archivedViolations}</b> })}</>
             ) : null}
           </p>
         ) : r.status === "no_data" ? (
           <p className="tile p-3 text-sm text-muted-foreground">
-            По вашим сделкам это правило проверить нельзя — в них нет нужных данных (например, отдельных исполнений или стопа). Как только данные появятся, проверка начнётся сама.
+            {t("detail.noData")}
           </p>
         ) : (
           <>
             <StatGrid min="9rem">
-              <Metric label="Соблюдение" value={fmtRate(r.compliance)} hint={`${r.days - r.violatedDays} из ${r.days} дн.`} />
-              <Metric label="Нарушений" value={String(r.violations)} hint={r.lastViolation ? `последнее ${fmtDate(r.lastViolation, "dayMonth")}` : "ни одного"} />
+              <Metric label={t("detail.compliance")} value={fmtRate(r.compliance)} hint={t("detail.daysOf", { kept: r.days - r.violatedDays, days: r.days })} />
+              <Metric label={t("detail.violations")} value={String(r.violations)} hint={r.lastViolation ? t("preview.last", { date: fmtDate(r.lastViolation, "dayMonth") }) : t("detail.none")} />
               {r.auto ? (
                 <Metric
-                  label={r.impact != null && r.impact > 0 ? "Нарушения принесли" : "Стоит вам"}
+                  label={r.impact != null && r.impact > 0 ? t("detail.paidOff") : t("detail.costsYou")}
                   value={r.impact == null ? "—" : fmtUsd(r.impact, { signed: true, decimals: "trim" })}
                   valueClass={r.impact == null || r.impact === 0 ? "" : r.impact < 0 ? "text-down" : "text-up"}
-                  hint="без нарушений итог был бы другим на эту сумму"
+                  hint={t("detail.impactHint")}
                 />
               ) : (
-                <Metric label="Чистых дней подряд" value={String(r.cleanStreak)} hint={r.unmarkedDays ? `не отмечено: ${r.unmarkedDays} дн.` : "все дни отмечены"} />
+                <Metric label={t("detail.cleanStreak")} value={String(r.cleanStreak)} hint={r.unmarkedDays ? t("detail.unmarked", { count: r.unmarkedDays }) : t("detail.allMarked")} />
               )}
             </StatGrid>
 
             {r.broken.n > 0 && r.clean.n > 0 && (
               <section className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold text-foreground">Средний результат: {unit} с нарушением против без</h3>
-                <CompareBars broken={r.broken} clean={r.clean} unit={unit} />
+                <h3 className="text-sm font-semibold text-foreground">{perTrade ? t("detail.compareTrade") : t("detail.compareDay")}</h3>
+                <CompareBars broken={r.broken} clean={r.clean} perTrade={perTrade} />
               </section>
             )}
 
             {weekly.length > 1 && (
               <section className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold text-foreground">Соблюдение по неделям</h3>
-                <div className="flex h-24 items-end gap-1" role="img" aria-label="Соблюдение по неделям">
+                <h3 className="text-sm font-semibold text-foreground">{t("detail.weekly")}</h3>
+                <div className="flex h-24 items-end gap-1" role="img" aria-label={t("detail.weekly")}>
                   {weekly.map((w) => {
                     const c = w.compliance ?? 0;
                     return (
-                      <div key={w.week} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={`Неделя с ${fmtDate(w.week, "dayMonth")}: ${fmtRate(w.compliance)} · нарушений ${w.violations}`}>
+                      <div key={w.week} className="flex min-w-0 flex-1 flex-col items-center gap-1" title={t("detail.weekTitle", { date: fmtDate(w.week, "dayMonth"), rate: fmtRate(w.compliance), count: w.violations })}>
                         <div className="flex h-20 w-full items-end rounded-md bg-[var(--glass-bg)]">
                           <div className={cn("w-full rounded-md", c >= 0.9 ? "bg-primary" : c >= 0.7 ? "bg-primary/60" : "bg-warn")} style={{ height: `${Math.max(4, c * 100)}%` }} />
                         </div>
@@ -184,7 +189,7 @@ export function RuleDetailSheet({
 
             {r.examples.length > 0 && (
               <section className="flex flex-col gap-2">
-                <h3 className="text-sm font-semibold text-foreground">{r.auto ? "Самые дорогие нарушения" : "Дни с нарушением"}</h3>
+                <h3 className="text-sm font-semibold text-foreground">{r.auto ? t("detail.examplesAuto") : t("detail.examplesSelf")}</h3>
                 <ul className="flex flex-col divide-y divide-[var(--glass-border)]">
                   {r.examples.map((ex) => (
                     <li key={ex.key} className="flex items-center gap-3 py-2">
@@ -198,11 +203,11 @@ export function RuleDetailSheet({
                           <span>{fmtDate(ex.day, "dayMonth")}</span>
                           {ex.tradeId != null && (
                             <Link href={links.trade(ex.tradeId)} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
-                              Сделка <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                              {t("detail.trade")} <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                             </Link>
                           )}
                           <Link href={links.dayReport(ex.day, trader)} className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
-                            Разбор дня <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+                            {t("day.dayReport")} <ArrowUpRight className="h-3 w-3" aria-hidden="true" />
                           </Link>
                         </p>
                       </div>
@@ -220,27 +225,25 @@ export function RuleDetailSheet({
         <div className="mt-auto flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-4">
           {editable ? (
             <>
-              <Button variant="outline" size="sm" onClick={() => onEdit(r)} disabled={busy}><Pencil /> Изменить</Button>
-              <Button variant="outline" size="sm" onClick={() => (r.enabled ? setConfirm("disable") : toggle())} disabled={busy}><Power /> {r.enabled ? "Выключить" : "Включить"}</Button>
-              <Button variant="ghost" size="sm" onClick={() => setConfirm("delete")} disabled={busy} className="ml-auto text-muted-foreground hover:text-down"><Trash2 /> Удалить</Button>
+              <Button variant="outline" size="sm" onClick={() => onEdit(r)} disabled={busy}><Pencil /> {commonI18n.t("actions.edit")}</Button>
+              <Button variant="outline" size="sm" onClick={() => (r.enabled ? setConfirm("disable") : toggle())} disabled={busy}><Power /> {r.enabled ? t("detail.disable") : t("detail.enable")}</Button>
+              <Button variant="ghost" size="sm" onClick={() => setConfirm("delete")} disabled={busy} className="ml-auto text-muted-foreground hover:text-down"><Trash2 /> {commonI18n.t("actions.delete")}</Button>
             </>
           ) : (
-            <p className="text-xs text-muted-foreground">Правило задал офис — изменить или выключить его может куратор.</p>
+            <p className="text-xs text-muted-foreground">{t("detail.officeLocked")}</p>
           )}
         </div>
 
         <AlertDialog open={confirm != null} onOpenChange={(v) => { if (!v) setConfirm(null); }}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>{confirm === "delete" ? "Удалить правило?" : "Выключить правило?"}</AlertDialogTitle>
+              <AlertDialogTitle>{confirm === "delete" ? t("detail.confirmDeleteTitle") : t("detail.confirmDisableTitle")}</AlertDialogTitle>
               <AlertDialogDescription>
-                {confirm === "delete"
-                  ? `«${r.name}» пропадёт из списка правил и перестанет проверяться. Найденные нарушения и комментарии к ним сохранятся: они уйдут в архив («Нарушения» → «Показать архив») и останутся в отчётах за прошлые недели. Правило можно вернуть.`
-                  : `«${r.name}» перестанет проверяться и пропадёт из статистики. Найденные нарушения и комментарии к ним сохранятся — в архиве с пометкой «правило выключено». Если включить правило снова, они вернутся.`}
+                {confirm === "delete" ? t("detail.confirmDelete", { name: r.name }) : t("detail.confirmDisable", { name: r.name })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel>Отмена</AlertDialogCancel>
+              <AlertDialogCancel>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 className={confirm === "delete" ? buttonVariants({ variant: "destructive" }) : undefined}
                 onClick={() => {
@@ -250,7 +253,7 @@ export function RuleDetailSheet({
                   else if (what === "disable") void toggle();
                 }}
               >
-                {confirm === "delete" ? "Удалить" : "Выключить"}
+                {confirm === "delete" ? commonI18n.t("actions.delete") : t("detail.disable")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -263,14 +266,15 @@ export function RuleDetailSheet({
 function Metric({ label, value, hint, valueClass }: { label: string; value: string; hint?: string; valueClass?: string }) {
   return (
     <div className="tile flex min-w-0 flex-col gap-0.5 p-3">
-      <span className="truncate text-xs text-muted-foreground">{label}</span>
+      <span className="truncate text-xs text-muted-foreground" title={label}>{label}</span>
       <span className={cn("truncate text-xl font-semibold tabular-nums text-foreground", valueClass)}>{value}</span>
-      {hint && <span className="line-clamp-2 text-xs text-muted-foreground">{hint}</span>}
+      {hint && <span className="line-clamp-2 text-xs text-muted-foreground" title={hint}>{hint}</span>}
     </div>
   );
 }
 
-function CompareBars({ broken, clean, unit }: { broken: SideStats; clean: SideStats; unit: string }) {
+function CompareBars({ broken, clean, perTrade }: { broken: SideStats; clean: SideStats; perTrade: boolean }) {
+  const { t } = rulesI18n.useT();
   const max = Math.max(Math.abs(broken.avg ?? 0), Math.abs(clean.avg ?? 0)) || 1;
   const row = (label: string, s: SideStats) => {
     const v = s.avg ?? 0;
@@ -290,9 +294,9 @@ function CompareBars({ broken, clean, unit }: { broken: SideStats; clean: SideSt
   };
   return (
     <div className="flex flex-col gap-1.5">
-      {row(`с нарушением`, broken)}
-      {row(`без нарушений`, clean)}
-      <span className="text-xs text-muted-foreground">Средний нетто-результат на {unit === "сделка" ? "сделку" : "торговый день"}.</span>
+      {row(t("detail.withViolation"), broken)}
+      {row(t("detail.withoutViolation"), clean)}
+      <span className="text-xs text-muted-foreground">{perTrade ? t("detail.compareFootTrade") : t("detail.compareFootDay")}</span>
     </div>
   );
 }

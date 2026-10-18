@@ -1,5 +1,7 @@
 import { logger } from "./logger";
 import { config } from "../config";
+import { telegramT } from "../i18n/ns";
+import type { Lang } from "../i18n";
 
 /** Outbound request budget (a hung Telegram API call must not hold the caller forever). */
 const FETCH_TIMEOUT_MS = 15_000;
@@ -121,19 +123,20 @@ export function buildIdeaHtml(idea: {
   stop?: string | null; score?: number | null; trader?: string | null;
   screenshotUrl?: string | null; riskAmount?: string | number | null;
   setupQuality?: string | null;
-}, siteUrl: string, opts?: { includeScreenshotLink?: boolean }): string {
+}, siteUrl: string, opts?: { includeScreenshotLink?: boolean; lang?: Lang }): string {
+  const t = telegramT.tFor(opts?.lang ?? "ru");
   const lines: string[] = [];
   const includeLink = opts?.includeScreenshotLink ?? true;
 
   // ── Trader name FIRST — most visible line ──
-  lines.push(`👤 <b>${escHtml(idea.trader ?? "Неизвестный трейдер")}</b>`);
+  lines.push(`👤 <b>${escHtml(idea.trader ?? t("idea.unknownTrader"))}</b>`);
   lines.push("");
 
   // Screenshot link — Telegram previews the FIRST link in the message
   // Only include when not already sending as a media group
   const urls = parseScreenshotUrls(idea.screenshotUrl);
   if (includeLink && urls.length === 1) {
-    lines.push(`📸 <a href="${escHtml(urls[0]!)}">Скриншот / Chart</a>`);
+    lines.push(`📸 <a href="${escHtml(urls[0]!)}">${t("idea.screenshot")}</a>`);
     lines.push("");
   }
 
@@ -144,9 +147,9 @@ export function buildIdeaHtml(idea: {
   if (idea.setup) parts.push(escHtml(idea.setup));
   if (parts.length) lines.push(parts.join(" | "));
 
-  if (idea.entryZone) lines.push(`📍 <b>Вход:</b> ${escHtml(idea.entryZone)}`);
-  if (idea.target) lines.push(`🎯 <b>TP (тейк):</b> ${escHtml(idea.target)}`);
-  if (idea.stop) lines.push(`🛑 <b>SL (стоп):</b> ${escHtml(idea.stop)}`);
+  if (idea.entryZone) lines.push(`📍 <b>${t("idea.entry")}:</b> ${escHtml(idea.entryZone)}`);
+  if (idea.target) lines.push(`🎯 <b>${t("idea.target")}:</b> ${escHtml(idea.target)}`);
+  if (idea.stop) lines.push(`🛑 <b>${t("idea.stop")}:</b> ${escHtml(idea.stop)}`);
 
   const extras: string[] = [];
   if (idea.setupQuality) {
@@ -164,46 +167,48 @@ export function buildIdeaHtml(idea: {
     lines.push(`\n<i>${escHtml(t)}${idea.thesis.length > 500 ? "…" : ""}</i>`);
   }
 
-  lines.push(`\n🔗 <a href="${siteUrl}/trade-ideas">Открыть на сайте</a>`);
+  lines.push(`\n🔗 <a href="${siteUrl}/trade-ideas">${t("idea.open")}</a>`);
   return lines.join("\n");
 }
 
 /** Inline keyboard for curators/risk reviewing an idea */
-export function buildIdeaKeyboard(ideaId: number): InlineKeyboard {
+export function buildIdeaKeyboard(ideaId: number, lang: Lang = "ru"): InlineKeyboard {
+  const t = telegramT.tFor(lang);
   return [
     [
-      { text: "✅ Одобрить", callback_data: `approve:${ideaId}` },
-      { text: "❌ Отклонить", callback_data: `reject:${ideaId}` },
-      { text: "🔄 Доработка", callback_data: `needs_work:${ideaId}` },
+      { text: t("button.approve"), callback_data: `approve:${ideaId}` },
+      { text: t("button.reject"), callback_data: `reject:${ideaId}` },
+      { text: t("button.needsWork"), callback_data: `needs_work:${ideaId}` },
     ],
     [
-      { text: "💬 Публичный комм.", callback_data: `comment_pub:${ideaId}` },
-      { text: "🔒 Личный ответ", callback_data: `reply_priv:${ideaId}` },
+      { text: t("button.commentPublic"), callback_data: `comment_pub:${ideaId}` },
+      { text: t("button.replyPrivate"), callback_data: `reply_priv:${ideaId}` },
     ],
     [
-      { text: "🌐 Открыть идею", callback_data: `open_idea:${ideaId}` },
+      { text: t("button.openIdea"), callback_data: `open_idea:${ideaId}` },
     ],
   ];
 }
 
 /** Inline keyboard for traders — lets them reply back to curator/risk */
-export function buildTraderReplyKeyboard(ideaId: number): InlineKeyboard {
+export function buildTraderReplyKeyboard(ideaId: number, lang: Lang = "ru"): InlineKeyboard {
   return [
     [
-      { text: "💬 Ответить куратору/риску", callback_data: `trader_reply:${ideaId}` },
+      { text: telegramT.tFor(lang)("button.replyStaff"), callback_data: `trader_reply:${ideaId}` },
     ],
   ];
 }
 
 /** Main menu keyboard for curators/admins */
-export function buildMainMenuKeyboard(): InlineKeyboard {
+export function buildMainMenuKeyboard(lang: Lang = "ru"): InlineKeyboard {
+  const t = telegramT.tFor(lang);
   return [
     [
-      { text: "📅 Сегодня", callback_data: "menu:today" },
-      { text: "📋 Последние 10", callback_data: "menu:recent" },
+      { text: t("button.today"), callback_data: "menu:today" },
+      { text: t("button.recent"), callback_data: "menu:recent" },
     ],
     [
-      { text: "👤 По трейдеру", callback_data: "menu:traders" },
+      { text: t("button.byTrader"), callback_data: "menu:traders" },
     ],
   ];
 }
@@ -212,23 +217,24 @@ export async function sendIdeaNotification(
   chatId: string,
   idea: Parameters<typeof buildIdeaHtml>[0],
   siteUrl: string,
+  lang: Lang = "ru",
 ): Promise<void> {
   const urls = parseScreenshotUrls(idea.screenshotUrl);
 
   if (urls.length >= 2) {
     // Send all screenshots as a media group first, then text+keyboard separately
     await sendMediaGroup(chatId, urls);
-    const text = buildIdeaHtml(idea, siteUrl, { includeScreenshotLink: false });
+    const text = buildIdeaHtml(idea, siteUrl, { includeScreenshotLink: false, lang });
     await sendMessage(chatId, text, {
       disable_web_page_preview: true,
-      reply_markup: { inline_keyboard: buildIdeaKeyboard(idea.id) },
+      reply_markup: { inline_keyboard: buildIdeaKeyboard(idea.id, lang) },
     });
   } else {
     // Single screenshot or no screenshot — original behaviour (inline link preview)
-    const text = buildIdeaHtml(idea, siteUrl, { includeScreenshotLink: true });
+    const text = buildIdeaHtml(idea, siteUrl, { includeScreenshotLink: true, lang });
     await sendMessage(chatId, text, {
       disable_web_page_preview: urls.length === 0,
-      reply_markup: { inline_keyboard: buildIdeaKeyboard(idea.id) },
+      reply_markup: { inline_keyboard: buildIdeaKeyboard(idea.id, lang) },
     });
   }
 }

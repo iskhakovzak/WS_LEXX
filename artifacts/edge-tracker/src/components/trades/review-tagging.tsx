@@ -7,13 +7,25 @@ import { Kbd, Pill, type Tone } from "@/components/ds";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { EMOTIONS, MISTAKES, classifyTags, type TagKind } from "./review-presets";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { EMOTIONS, MISTAKES, classifyTags, tagLabel, tagMatches, type TagKind } from "./review-presets";
 
+const kindMeta = (kind: TagKind, key: string, tone: Tone) => ({
+  key,
+  tone,
+  get label() { return tradesI18n.t(`tagging.kind.${kind}.label`); },
+  get add() { return tradesI18n.t(`tagging.kind.${kind}.label`); },
+  get placeholder() { return tradesI18n.t(`tagging.kind.${kind}.placeholder`); },
+});
+/** Labels are read in the current language on access. */
 export const KIND_META: Record<TagKind, { label: string; add: string; key: string; tone: Tone; placeholder: string }> = {
-  setup: { label: "Сетап", add: "Сетап", key: "S", tone: "accent", placeholder: "Найти или ввести сетап" },
-  mistake: { label: "Ошибка", add: "Ошибка", key: "M", tone: "warn", placeholder: "Найти или ввести ошибку" },
-  emotion: { label: "Эмоция", add: "Эмоция", key: "E", tone: "purple", placeholder: "Найти или ввести эмоцию" },
+  setup: kindMeta("setup", "S", "accent"),
+  mistake: kindMeta("mistake", "M", "warn"),
+  emotion: kindMeta("emotion", "E", "purple"),
 };
+
+/** Setup names are user content; mistake / emotion vocabulary words are shown in the UI language. */
+const shown = (kind: TagKind, v: string) => (kind === "setup" ? v : tagLabel(v));
 
 export type PickState = "all" | "some" | "none";
 export type PickerTarget = { id: number | "bulk"; kind: TagKind } | null;
@@ -51,13 +63,14 @@ export function TagPicker({
   children: React.ReactNode;
   align?: "start" | "end" | "center";
 }) {
+  const { t } = tradesI18n.useT();
   const meta = KIND_META[kind];
   const [q, setQ] = React.useState("");
   const [hi, setHi] = React.useState(0);
   React.useEffect(() => { if (open) { setQ(""); setHi(0); } }, [open]);
   const query = q.trim().toLowerCase();
-  const list = React.useMemo(() => (query ? options.filter((o) => o.toLowerCase().includes(query)) : options), [options, query]);
-  const exact = list.some((o) => o.toLowerCase() === query);
+  const list = React.useMemo(() => (query ? options.filter((o) => (kind === "setup" ? o.toLowerCase().includes(query) : tagMatches(o, query))) : options), [options, query, kind]);
+  const exact = list.some((o) => o.toLowerCase() === query || shown(kind, o).toLowerCase() === query);
   const canAdd = query.length > 0 && !exact;
 
   const pick = (v: string) => {
@@ -127,7 +140,7 @@ export function TagPicker({
                     {st === "all" && <Check className="h-3 w-3" aria-hidden="true" />}
                     {st === "some" && <span className="h-0.5 w-2 rounded bg-primary" aria-hidden="true" />}
                   </span>
-                  <span className="min-w-0 flex-1 truncate">{o}</span>
+                  <span className="min-w-0 flex-1 truncate" title={shown(kind, o)}>{shown(kind, o)}</span>
                   {i < 9 && !q && <Kbd>{i + 1}</Kbd>}
                 </button>
               </li>
@@ -141,15 +154,15 @@ export function TagPicker({
                 className={cn("flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm", hi >= list.length && "bg-[var(--glass-hover-bg)]")}
               >
                 <Plus className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
-                <span className="truncate">Добавить «{q.trim()}»</span>
+                <span className="truncate">{t("tagging.addValue", { value: q.trim() })}</span>
               </button>
             </li>
           )}
-          {!list.length && !canAdd && <li className="px-2 py-2 text-xs text-muted-foreground">Начните вводить название</li>}
+          {!list.length && !canAdd && <li className="px-2 py-2 text-xs text-muted-foreground">{t("tagging.startTyping")}</li>}
         </ul>
         {onClear && (
           <button type="button" onClick={() => { onClear(); onOpenChange(false); }} className="mt-1 w-full rounded-lg px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-            Убрать сетап
+            {t("tagging.clearSetup")}
           </button>
         )}
       </PopoverContent>
@@ -178,6 +191,7 @@ export function ReviewChips({
   setupOptions: readonly string[];
   className?: string;
 }) {
+  const { t } = tradesI18n.useT();
   const { mistakes, emotions, other } = classifyTags(trade.tags);
   const setup = trade.setup?.trim() || "";
   const isOpen = (k: TagKind) => picker?.id === trade.id && picker.kind === k;
@@ -187,7 +201,7 @@ export function ReviewChips({
       <button
         type="button"
         onClick={openPicker(k)}
-        aria-label={`${KIND_META[k].add}: добавить (${KIND_META[k].key})`}
+        aria-label={t("tagging.addAria", { kind: KIND_META[k].add, key: KIND_META[k].key })}
         className={cn(
           "inline-flex h-6 items-center gap-0.5 rounded-full border border-dashed border-[var(--field-border)] px-2 text-xs text-muted-foreground transition-opacity hover:border-primary/60 hover:text-foreground focus-visible:opacity-100",
           isOpen(k) ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-data-[active=true]:opacity-100",
@@ -222,8 +236,8 @@ export function ReviewChips({
   };
 
   const chip = (k: TagKind, v: string) => (
-    <button key={`${k}:${v}`} type="button" disabled={!canTag} onClick={openPicker(k)} className="rounded-full disabled:cursor-default" title={`${KIND_META[k].label}: ${v}`}>
-      <Pill tone={KIND_META[k].tone} className="max-w-[160px]"><span className="truncate">{v}</span></Pill>
+    <button key={`${k}:${v}`} type="button" disabled={!canTag} onClick={openPicker(k)} className="rounded-full disabled:cursor-default" title={t("tagging.chipTitle", { kind: KIND_META[k].label, value: shown(k, v) })}>
+      <Pill tone={KIND_META[k].tone} className="max-w-[160px]"><span className="truncate">{shown(k, v)}</span></Pill>
     </button>
   );
 
@@ -233,8 +247,8 @@ export function ReviewChips({
       {group("mistake", mistakes.map((m) => chip("mistake", m)), true)}
       {group("emotion", emotions.map((m) => chip("emotion", m)), true)}
       {other.length > 0 && (
-        <Pill tone="neutral" title={other.join(", ")} className="max-w-[140px]">
-          <span className="truncate">{other[0]}</span>{other.length > 1 && <span>+{other.length - 1}</span>}
+        <Pill tone="neutral" title={other.map(tagLabel).join(", ")} className="max-w-[140px]">
+          <span className="truncate">{tagLabel(other[0])}</span>{other.length > 1 && <span>+{other.length - 1}</span>}
         </Pill>
       )}
     </div>

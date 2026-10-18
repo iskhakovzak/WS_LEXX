@@ -16,8 +16,13 @@ import { links } from "@/lib/links";
 import { byCloseDate, horizonOf, isDecided, netPnl, resultOf, signedR, type Horizon } from "@/lib/trade-math";
 import { invalidateTradeLinks, useTradePicker } from "./api";
 import { http } from "@/lib/api/http";
-import { DocSection, InlineError, REDACTED_HINT, RedactedHint } from "./setup-bits";
-import type { LinkedTrade, PickerTrade, PlaybookEntry } from "./model";
+import { DocSection, InlineError, redactedHint, RedactedHint } from "./setup-bits";
+import { HORIZON_LABEL, type LinkedTrade, type PickerTrade, type PlaybookEntry } from "./model";
+import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
+
+const et = playbookExamplesI18n.t; // called at render / call time only
 
 type PickRow = LinkedTrade & { matchesSetup: boolean };
 /** Lean picker row → the LinkedTrade shape the row renderer uses (net P&L goes in as `pnl`, fees already netted). */
@@ -31,9 +36,9 @@ const resultTone = (t: LinkedTrade): Tone => { const r = resultOf(t); return r =
 /** Net $ when P&L is known (labelled «нетто» in the title), else the result word (also for redacted rows). */
 const resultLabel = (t: LinkedTrade) => {
   const n = t.redacted ? null : netPnl(t);
-  if (n != null) return `${n >= 0 ? "+" : "−"}$${Math.abs(n).toFixed(0)}`;
+  if (n != null) return fmtUsd(n, { signed: true, decimals: 0 });
   const r = resultOf(t);
-  return r === "win" ? "Win" : r === "loss" ? "Loss" : r === "be" ? "BE" : "Open";
+  return r === "win" ? commonI18n.t("trading.win") : r === "loss" ? commonI18n.t("trading.loss") : r === "be" ? commonI18n.t("trading.breakeven") : et("linked.open");
 };
 /**
  * Signed R: the server's value first (it is computed before $ redaction, so it survives for other traders'
@@ -48,7 +53,7 @@ function RStrip({ trades }: { trades: LinkedTrade[] }) {
   const vals = pts.map((t) => { const r = rOf(t); const res = resultOf(t); return r != null ? r : res === "win" ? 1 : res === "loss" ? -1 : 0; });
   const max = Math.max(1, ...vals.map((v) => Math.abs(v)));
   return (
-    <div className="mb-3 flex h-12 items-center gap-[3px]" role="img" aria-label={`R по последним ${pts.length} сделкам`}>
+    <div className="mb-3 flex h-12 items-center gap-[3px]" role="img" aria-label={et("linked.rStripAria", { count: pts.length })}>
       {vals.map((v, i) => (
         <div key={pts[i].id} className="flex h-full min-w-[3px] flex-1 flex-col justify-center" title={`${pts[i].ticker} ${pts[i].date?.slice(0, 10)}: ${v > 0 ? "+" : ""}${v.toFixed(2)}R`}>
           <div className="flex h-1/2 items-end">
@@ -74,21 +79,17 @@ const LINKED_ACCESSORS: Record<LinkedKey, (t: LinkedTrade) => number | string | 
   result: (t) => { const n = t.redacted ? null : netPnl(t); if (n != null) return n; const r = resultOf(t); return r === "win" ? 1 : r === "loss" ? -1 : r === "be" ? 0 : null; },
 };
 
-const HORIZONS: { key: Horizon; label: string }[] = [
-  { key: "intraday", label: "Интрадей" },
-  { key: "overnight", label: "Овернайт" },
-  { key: "swing", label: "Свинг" },
-];
+const HORIZONS: Horizon[] = ["intraday", "overnight", "swing"];
 
 /** Edge split by holding horizon (shared trade math) — only shown when the setup was traded on more than one horizon. */
 function HorizonSplit({ trades }: { trades: LinkedTrade[] }) {
-  const rows = HORIZONS.map((h) => {
-    const list = trades.filter((t) => horizonOf(t) === h.key);
+  const rows = HORIZONS.map((key) => {
+    const list = trades.filter((t) => horizonOf(t) === key);
     const decided = list.filter(isDecided);
     const wins = decided.filter((t) => resultOf(t) === "win").length;
     const rs = list.map(rOf).filter((r): r is number => r != null);
     return {
-      ...h,
+      key, label: HORIZON_LABEL[key] ?? key,
       n: list.length,
       wr: decided.length ? wins / decided.length : null,
       avgR: rs.length ? rs.reduce((a, b) => a + b, 0) / rs.length : null,
@@ -96,7 +97,7 @@ function HorizonSplit({ trades }: { trades: LinkedTrade[] }) {
   }).filter((r) => r.n > 0);
   if (rows.length < 2) return null;
   return (
-    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label="Edge по горизонту удержания">
+    <div className="mb-3 grid grid-cols-1 gap-2 sm:grid-cols-3" aria-label={et("linked.horizonAria")}>
       {rows.map((r) => (
         <div key={r.key} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2">
           <div className="text-xs text-muted-foreground">{r.label} · {r.n}</div>
@@ -113,6 +114,7 @@ function HorizonSplit({ trades }: { trades: LinkedTrade[] }) {
 }
 
 export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
+  const { t: tr } = playbookExamplesI18n.useT();
   const entryId = entry.id;
   const qc = useQueryClient();
   const [, setLocation] = useLocation();
@@ -164,18 +166,18 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
     try {
       await http.post(`/api/playbook/${entryId}/link-trade`, { tradeId: t.id });
       invalidateTradeLinks(qc);
-      toast({ title: `Сделка ${t.ticker} привязана` });
+      toast({ title: tr("linked.linked", { ticker: t.ticker }) });
     } catch (e: any) {
-      toast({ title: "Не удалось привязать сделку", description: e?.message, variant: "destructive" });
+      toast({ title: tr("linked.linkFailed"), description: e?.message, variant: "destructive" });
     }
   }
   async function unlink(t: LinkedTrade) {
     try {
       await http.del(`/api/playbook/${entryId}/link-trade/${t.id}`);
       invalidateTradeLinks(qc);
-      toast({ title: `Сделка ${t.ticker} отвязана` });
+      toast({ title: tr("linked.unlinked", { ticker: t.ticker }) });
     } catch (e: any) {
-      toast({ title: "Не удалось отвязать сделку", description: e?.message, variant: "destructive" });
+      toast({ title: tr("linked.unlinkFailed"), description: e?.message, variant: "destructive" });
     }
   }
 
@@ -188,10 +190,10 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
         <span className="w-14 shrink-0 font-semibold text-foreground">{t.ticker}</span>
         {t.side && <span className={cn("shrink-0 text-xs", t.side === "Long" ? "text-up" : "text-down")}>{t.side === "Long" ? "▲" : "▼"}</span>}
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{t.date?.slice(0, 10)}</span>
-        {hz !== "intraday" && <span className="shrink-0 text-xs text-muted-foreground">{hz === "swing" ? "свинг" : "овернайт"}</span>}
+        {hz !== "intraday" && <span className="shrink-0 text-xs text-muted-foreground">{HORIZON_LABEL[hz] ?? hz}</span>}
         <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{[t.setup, t.trader].filter(Boolean).join(" · ")}</span>
         {r != null && <span className={cn("shrink-0 text-xs tabular-nums", toneText(r > 0 ? "up" : r < 0 ? "down" : "neutral"))}>{r > 0 ? "+" : ""}{r.toFixed(1)}R</span>}
-        <Pill tone={tone} className="shrink-0"><span title={t.redacted ? REDACTED_HINT : netPnl(t) != null ? "P&L нетто" : undefined}>{resultLabel(t)}</span></Pill>
+        <Pill tone={tone} className="shrink-0"><span title={t.redacted ? redactedHint() : netPnl(t) != null ? commonI18n.t("trading.netPnl") : undefined}>{resultLabel(t)}</span></Pill>
       </>
     );
     if (onPick) {
@@ -204,11 +206,11 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
     return (
       <div key={t.id} className="group flex items-center gap-2 rounded-xl px-2 py-1.5 text-sm hover:bg-[var(--glass-hover-bg)]">
         {body}
-        <IconAction aria-label={`Открыть сделку ${t.ticker}`} onClick={() => setLocation(links.trade(t.id))} className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+        <IconAction aria-label={tr("linked.openTrade", { ticker: t.ticker })} title={tr("linked.openTrade", { ticker: t.ticker })} onClick={() => setLocation(links.trade(t.id))} className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
           <ExternalLink />
         </IconAction>
         <WriteOnly>
-          <IconAction aria-label={`Отвязать сделку ${t.ticker}`} onClick={() => unlink(t)} className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+          <IconAction aria-label={tr("linked.unlinkTrade", { ticker: t.ticker })} title={tr("linked.unlinkTrade", { ticker: t.ticker })} onClick={() => unlink(t)} className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
             <Unlink />
           </IconAction>
         </WriteOnly>
@@ -219,18 +221,18 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
   return (
     <DocSection
       id="pb-linked-trades"
-      title={<>Связанные сделки {linked.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{linked.length}</span>}</>}
+      title={<>{tr("linked.title")} {linked.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{linked.length}</span>}</>}
       icon={TrendingUp}
       actions={
         <div className="flex items-center gap-1">
           {linked.length > 0 && (
-            <Button size="sm" variant="ghost" className="h-8" onClick={() => setLocation(links.trades({ playbookId: entryId }))} title="Открыть все сделки сетапа в журнале сделок">
-              <List className="h-4 w-4" aria-hidden="true" /> Все сделки сетапа
+            <Button size="sm" variant="ghost" className="h-8" onClick={() => setLocation(links.trades({ playbookId: entryId }))} title={tr("linked.allTitle")}>
+              <List className="h-4 w-4" aria-hidden="true" /> {tr("linked.all")}
             </Button>
           )}
           <WriteOnly>
             <Button size="sm" variant="outline" className="h-8" onClick={() => setLinkOpen(true)}>
-              <Link2 className="h-4 w-4" aria-hidden="true" /> Привязать
+              <Link2 className="h-4 w-4" aria-hidden="true" /> {tr("linked.link")}
             </Button>
           </WriteOnly>
         </div>
@@ -239,10 +241,10 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
       {isLoading ? (
         <div className="space-y-2"><Skeleton className="h-9 rounded-xl" /><Skeleton className="h-9 rounded-xl" /></div>
       ) : isError ? (
-        <InlineError text="Не удалось загрузить сделки." onRetry={() => refetch()} />
+        <InlineError text={tr("linked.loadFailed")} onRetry={() => refetch()} />
       ) : linked.length === 0 ? (
         <p className="text-sm text-muted-foreground">
-          Пока ни одной сделки. Привяжите сделки, торгованные по этому сетапу, — появятся win rate, средний R и ожидание.
+          {tr("linked.empty")}
         </p>
       ) : (
         <>
@@ -252,13 +254,13 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
             <table className="w-full min-w-[560px] text-sm">
               <thead className="sticky top-0 z-raised bg-surface-solid text-xs text-muted-foreground [&_th]:px-2 [&_th]:py-1.5 [&_th]:font-medium">
                 <tr className="border-b border-border/60">
-                  <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-                  <SortableTh {...thProps("date")}>Дата</SortableTh>
-                  <SortableTh {...thProps("horizon")}>Горизонт</SortableTh>
-                  <SortableTh {...thProps("who")}>Сетап · трейдер</SortableTh>
+                  <SortableTh {...thProps("ticker")}>{tr("linked.colTicker")}</SortableTh>
+                  <SortableTh {...thProps("date")}>{tr("linked.colDate")}</SortableTh>
+                  <SortableTh {...thProps("horizon")}>{tr("linked.colHorizon")}</SortableTh>
+                  <SortableTh {...thProps("who")}>{tr("linked.colWho")}</SortableTh>
                   <SortableTh {...thProps("r")} align="right">R</SortableTh>
-                  <SortableTh {...thProps("result")} align="right">Итог</SortableTh>
-                  <th className="w-20"><span className="sr-only">Действия</span></th>
+                  <SortableTh {...thProps("result")} align="right">{tr("linked.colResult")}</SortableTh>
+                  <th className="w-20"><span className="sr-only">{tr("linked.colActions")}</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -269,20 +271,20 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
                     <tr key={t.id} className="group border-b border-border/40 last:border-0 hover:bg-[var(--glass-hover-bg)]">
                       <td className="px-2 py-1.5 font-semibold text-foreground">
                         {t.ticker}
-                        {t.side && <span className={cn("ml-1 text-xs", t.side === "Long" ? "text-up" : "text-down")} aria-label={t.side === "Long" ? "лонг" : "шорт"}>{t.side === "Long" ? "▲" : "▼"}</span>}
+                        {t.side && <span className={cn("ml-1 text-xs", t.side === "Long" ? "text-up" : "text-down")} aria-label={t.side === "Long" ? commonI18n.t("trading.long") : commonI18n.t("trading.short")}>{t.side === "Long" ? "▲" : "▼"}</span>}
                       </td>
                       <td className="px-2 py-1.5 text-xs tabular-nums text-muted-foreground">{(t.exitDate || t.date)?.slice(0, 10)}</td>
-                      <td className="px-2 py-1.5 text-xs text-muted-foreground">{hz === "swing" ? "свинг" : hz === "overnight" ? "овернайт" : "интрадей"}</td>
-                      <td className="max-w-[220px] truncate px-2 py-1.5 text-xs text-muted-foreground">{[t.setup, t.trader].filter(Boolean).join(" · ") || "—"}</td>
+                      <td className="px-2 py-1.5 text-xs text-muted-foreground">{HORIZON_LABEL[hz] ?? hz}</td>
+                      <td className="max-w-[220px] truncate px-2 py-1.5 text-xs text-muted-foreground" title={[t.setup, t.trader].filter(Boolean).join(" · ") || undefined}>{[t.setup, t.trader].filter(Boolean).join(" · ") || "—"}</td>
                       <td className={cn("px-2 py-1.5 text-right text-xs tabular-nums", toneText(r == null ? "neutral" : r > 0 ? "up" : r < 0 ? "down" : "neutral"))}>{r == null ? "—" : `${r > 0 ? "+" : ""}${r.toFixed(1)}R`}</td>
-                      <td className="px-2 py-1.5 text-right"><Pill tone={resultTone(t)}><span title={t.redacted ? REDACTED_HINT : netPnl(t) != null ? "P&L нетто" : undefined}>{resultLabel(t)}</span></Pill></td>
+                      <td className="px-2 py-1.5 text-right"><Pill tone={resultTone(t)}><span title={t.redacted ? redactedHint() : netPnl(t) != null ? commonI18n.t("trading.netPnl") : undefined}>{resultLabel(t)}</span></Pill></td>
                       <td className="px-1 py-1 text-right">
                         <span className="inline-flex">
-                          <IconAction aria-label={`Открыть сделку ${t.ticker}`} onClick={() => setLocation(links.trade(t.id))} className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                          <IconAction aria-label={tr("linked.openTrade", { ticker: t.ticker })} title={tr("linked.openTrade", { ticker: t.ticker })} onClick={() => setLocation(links.trade(t.id))} className="md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
                             <ExternalLink />
                           </IconAction>
                           <WriteOnly>
-                            <IconAction aria-label={`Отвязать сделку ${t.ticker}`} onClick={() => unlink(t)} className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
+                            <IconAction aria-label={tr("linked.unlinkTrade", { ticker: t.ticker })} title={tr("linked.unlinkTrade", { ticker: t.ticker })} onClick={() => unlink(t)} className="hover:text-down md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100">
                               <Unlink />
                             </IconAction>
                           </WriteOnly>
@@ -301,28 +303,28 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
       <Dialog open={linkOpen} onOpenChange={(v) => { setLinkOpen(v); if (!v) setSearch(""); }}>
         <DialogContent className="flex max-h-[85dvh] max-w-3xl flex-col">
           <DialogHeader>
-            <DialogTitle>Привязать сделку</DialogTitle>
-            <DialogDescription>к сетапу «{entry.name}»</DialogDescription>
+            <DialogTitle>{tr("linked.dialogTitle")}</DialogTitle>
+            <DialogDescription>{tr("linked.dialogDesc", { name: entry.name })}</DialogDescription>
           </DialogHeader>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} aria-label="Поиск сделки" placeholder="Тикер, сетап или трейдер" className="pl-9" autoFocus />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} aria-label={tr("linked.searchAria")} placeholder={tr("linked.searchPlaceholder")} className="pl-9" autoFocus />
           </div>
           <div className="-mx-2 min-h-0 flex-1 overflow-y-auto">
             {allLoading && <div className="space-y-2 px-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-9 rounded-xl" />)}</div>}
-            {allError && <p className="py-4 text-center text-sm text-down">Не удалось загрузить сделки</p>}
+            {allError && <p className="py-4 text-center text-sm text-down">{tr("linked.loadFailedShort")}</p>}
             {!allLoading && !allError && suggested.length + rest.length === 0 && (
-              <p className="py-6 text-center text-sm text-muted-foreground">{search ? "Ничего не найдено" : "Нет сделок для привязки"}</p>
+              <p className="py-6 text-center text-sm text-muted-foreground">{search ? commonI18n.t("states.nothingFound") : tr("linked.noneToLink")}</p>
             )}
             {suggested.length > 0 && (
               <div className="mb-2">
-                <div className="px-3 pb-1 text-xs text-muted-foreground">Подходят по названию сетапа</div>
+                <div className="px-3 pb-1 text-xs text-muted-foreground">{tr("linked.suggested")}</div>
                 {suggested.map((t) => tradeRow(t, () => { link(t); setLinkOpen(false); setSearch(""); }))}
               </div>
             )}
             {rest.length > 0 && (
               <div>
-                {suggested.length > 0 && <div className="px-3 pb-1 text-xs text-muted-foreground">Остальные</div>}
+                {suggested.length > 0 && <div className="px-3 pb-1 text-xs text-muted-foreground">{tr("linked.rest")}</div>}
                 {rest.map((t) => tradeRow(t, () => { link(t); setLinkOpen(false); setSearch(""); }))}
               </div>
             )}

@@ -6,6 +6,8 @@
  */
 import rateLimit, { ipKeyGenerator, type Options } from "express-rate-limit";
 import type { Request } from "express";
+import { langOf } from "../i18n";
+import { AppError, errorBody } from "./http/errors";
 
 export function rateLimitKey(req: Request): string {
   const u = req.authUser;
@@ -13,7 +15,8 @@ export function rateLimitKey(req: Request): string {
   return `ip:${ipKeyGenerator(req.ip ?? "")}`;
 }
 
-const RATE_LIMITED = { error: "Слишком много запросов, попробуйте позже", code: "RATE_LIMITED" } as const;
+/** 429 body in the request language (same shape as every API error). */
+export const rateLimitedBody = (req: Request) => errorBody(new AppError("RATE_LIMITED"), langOf(req));
 
 function perUser(windowMs: number, limit: number, extra?: Partial<Options>) {
   return rateLimit({
@@ -22,7 +25,7 @@ function perUser(windowMs: number, limit: number, extra?: Partial<Options>) {
     standardHeaders: "draft-7",
     legacyHeaders: false,
     keyGenerator: rateLimitKey,
-    message: RATE_LIMITED,
+    message: rateLimitedBody,
     ...extra,
   });
 }

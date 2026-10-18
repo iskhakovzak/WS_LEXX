@@ -2,6 +2,7 @@ import express, { Router, type IRouter, type Request, type Response } from "expr
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logActivity } from "../lib/activity";
+import { accessCustomParams, activityDetails, localizeActivity } from "../lib/activityText";
 import { canAccessTrade, isGuest, scopeTrader } from "../lib/auth";
 import { requireCap } from "../lib/permissions";
 import { closeDateSql, horizonSql, netPnlSql, resultSql, signedR, signedRSql } from "../lib/tradeMath";
@@ -19,6 +20,8 @@ import {
   type MoneyViewer,
 } from "../lib/playbookPrivacy";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { langOf } from "../i18n";
+import { playbookT } from "../i18n/ns";
 
 /**
  * Playbook spaces, tiered examples, gallery, trade picker, sharing, copy / promote, $-stats and media (Wave J3).
@@ -119,7 +122,7 @@ async function setupForRead(req: Request, res: Response, id: number | null) {
   await ensurePlaybookSpaces();
   const row = await loadSetupAccess(id);
   const v = await loadViewer(req);
-  if (!row || !canReadPure(v, row)) { res.status(404).json({ error: "Сетап не найден" }); return null; }
+  if (!row || !canReadPure(v, row)) throw new AppError("SETUP_NOT_FOUND");
   return { row, v };
 }
 
@@ -189,15 +192,12 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
-  if (!accessHints(v, row).canAddExamples) {
-    res.status(403).json({ error: "Добавлять эталоны можно в свои сетапы и в офисный плейбук. Скопируйте сетап в «Мой»." });
-    return;
-  }
+  if (!accessHints(v, row).canAddExamples) throw new AppError("EXAMPLE_SETUP_FORBIDDEN");
   const body = req.body as Record<string, unknown>;
   const ids = (Array.isArray(body.tradeIds) ? body.tradeIds : body.tradeId != null ? [body.tradeId] : [])
     .map(Number).filter((n) => Number.isSafeInteger(n) && n > 0);
   const uniq = [...new Set(ids)].slice(0, 100);
-  if (!uniq.length) { res.status(400).json({ error: "tradeIds required" }); return; }
+  if (!uniq.length) throw new AppError("TRADE_IDS_REQUIRED");
   const tier = tierOf(body.tier) ?? 2;
   const note = noteOf(body.note);
   const marks = marksOf(body.checklistMarks);
@@ -245,7 +245,7 @@ router.post("/playbook/:id/examples", asyncHandler(async (req, res): Promise<voi
   if (added.length) {
     await logActivity({
       action: "created", section: "playbook", entityId: String(row.id), entityTitle: row.name,
-      trader: v.name ?? undefined, details: `Эталоны (Tier ${tier}): +${added.length}`,
+      trader: v.name ?? undefined, details: activityDetails("examplesAdded", { tier, count: added.length }), params: { detailsKey: "examplesAdded", tier, count: added.length },
     });
   }
   const { rows } = added.length
@@ -266,16 +266,13 @@ router.post("/playbook/:id/examples/reorder", asyncHandler(async (req, res): Pro
   const body = req.body as { tier?: unknown; ids?: unknown };
   const tier = tierOf(body.tier);
   const ids = Array.isArray(body.ids) ? body.ids.map(Number).filter((n) => Number.isSafeInteger(n) && n > 0).slice(0, 300) : [];
-  if (!tier || !ids.length) { res.status(400).json({ error: "tier and ids required" }); return; }
+  if (!tier || !ids.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "tier, ids" });
   const { rows } = await pool.query<{ id: number; added_by: string | null }>(
     `SELECT id, added_by FROM playbook_examples WHERE playbook_id = $1 AND id = ANY($2::int[]) AND deleted_at IS NULL`,
     [row.id, ids],
   );
   const editor = await canEditSetupRow(req, row);
-  if (!editor && rows.some((r) => r.added_by !== v.name)) {
-    res.status(403).json({ error: "Переставлять чужие эталоны может редактор сетапа" });
-    return;
-  }
+  if (!editor && rows.some((r) => r.added_by !== v.name)) throw new AppError("SETUP_EDITOR_ONLY");
   const known = new Set(rows.map((r) => r.id));
   let order = 0;
   for (const id of ids) {
@@ -292,15 +289,15 @@ router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res):
   const { row, v } = ctx;
   const exId = parseId(req.params.exampleId);
   const ex = exId ? await loadExample(exId) : null;
-  if (!ex || ex.playbookId !== row.id) { res.status(404).json({ error: "Эталон не найден" }); return; }
-  if (!(await canChangeExample(req, v, ex, row))) { res.status(403).json({ error: "Менять эталон может тот, кто его добавил, или редактор сетапа" }); return; }
+  if (!ex || ex.playbookId !== row.id) throw new AppError("EXAMPLE_NOT_FOUND");
+  if (!(await canChangeExample(req, v, ex, row))) throw new AppError("SETUP_EDITOR_ONLY");
   const body = req.body as Record<string, unknown>;
   const sets: string[] = [];
   const vals: unknown[] = [];
   const push = (col: string, val: unknown, cast = "") => { vals.push(val); sets.push(`${col} = $${vals.length}${cast}`); };
   if (body.tier !== undefined) {
     const t = tierOf(body.tier);
-    if (!t) { res.status(400).json({ error: "tier: 1 | 2 | 3" }); return; }
+    if (!t) throw new AppError("INVALID_FIELD", undefined, { field: "tier" });
     push("tier", t);
   }
   if (body.note !== undefined) push("note", noteOf(body.note));
@@ -312,8 +309,8 @@ router.patch("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res):
   const target = body.playbookId !== undefined ? parseId(body.playbookId) : null;
   if (target && target !== row.id) {
     const dest = await loadSetupAccess(target);
-    if (!dest || !canReadPure(v, dest)) { res.status(404).json({ error: "Целевой сетап не найден" }); return; }
-    if (!accessHints(v, dest).canAddExamples) { res.status(403).json({ error: "В этот сетап нельзя добавлять эталоны" }); return; }
+    if (!dest || !canReadPure(v, dest)) throw new AppError("SETUP_NOT_FOUND");
+    if (!accessHints(v, dest).canAddExamples) throw new AppError("EXAMPLE_SETUP_FORBIDDEN");
     const { rows: clash } = await pool.query<{ id: number }>(
       `SELECT id FROM playbook_examples WHERE playbook_id = $1 AND trade_id = $2 AND deleted_at IS NULL`,
       [target, ex.tradeId],
@@ -345,8 +342,8 @@ router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res)
   const { row, v } = ctx;
   const exId = parseId(req.params.exampleId);
   const ex = exId ? await loadExample(exId) : null;
-  if (!ex || ex.playbookId !== row.id) { res.status(404).json({ error: "Эталон не найден" }); return; }
-  if (!(await canChangeExample(req, v, ex, row))) { res.status(403).json({ error: "Убрать эталон может тот, кто его добавил, или редактор сетапа" }); return; }
+  if (!ex || ex.playbookId !== row.id) throw new AppError("EXAMPLE_NOT_FOUND");
+  if (!(await canChangeExample(req, v, ex, row))) throw new AppError("SETUP_EDITOR_ONLY");
   await pool.query(`UPDATE playbook_examples SET deleted_at = NOW() WHERE id = $1`, [ex.id]);
   // ?unlink=1 (undo of a fresh add): also drop the trade → setup link, only when it points at this setup and
   // the caller may write the trade.
@@ -355,7 +352,7 @@ router.delete("/playbook/:id/examples/:exampleId", asyncHandler(async (req, res)
     const { rowCount } = await pool.query(`UPDATE trades SET playbook_id = NULL WHERE id = $1 AND playbook_id = $2`, [ex.tradeId, row.id]);
     unlinked = !!rowCount;
   }
-  await logActivity({ action: "deleted", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: `Эталон убран (сделка #${ex.tradeId})` });
+  await logActivity({ action: "deleted", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: activityDetails("exampleRemoved", { trade: ex.tradeId }), params: { detailsKey: "exampleRemoved", trade: ex.tradeId } });
   res.json({ success: true, unlinked });
 }));
 
@@ -408,7 +405,7 @@ router.get("/playbook-tools/trade-picker", asyncHandler(async (req, res): Promis
   let setup: { id: number; name: string; setupType: string | null; tags: string | null } | null = null;
   if (setupId) {
     const acc = await loadSetupAccess(setupId);
-    if (!acc || !canReadPure(v, acc)) { res.status(404).json({ error: "Сетап не найден" }); return; }
+    if (!acc || !canReadPure(v, acc)) throw new AppError("SETUP_NOT_FOUND");
     const { rows } = await pool.query<any>(`SELECT id, name, setup_type AS "setupType", tags FROM playbook WHERE id = $1`, [setupId]);
     setup = rows[0] ?? null;
   }
@@ -515,14 +512,15 @@ router.get("/playbook-tools/for-trade/:tradeId", asyncHandler(async (req, res): 
   }
   const suggested: { id: number; reason: string }[] = [];
   const addSug = (id: number, reason: string) => { if (byId.has(id) && !suggested.some((s) => s.id === id)) suggested.push({ id, reason }); };
-  if (trade?.playbookId) addSug(trade.playbookId, "Сделка привязана к этому сетапу");
+  const pt = playbookT.tFor(langOf(req));
+  if (trade?.playbookId) addSug(trade.playbookId, pt("suggest.linkedHere"));
   // Closest name first (exact > partial name > type/tag), writable setups before read-only ones.
   const byLabel = (label: string) => light
     .map((s) => ({ s, sc: labelScore(label, s) }))
     .filter((x) => x.sc > 0)
     .sort((a, b) => b.sc - a.sc || Number(b.s.canAddExamples) - Number(a.s.canAddExamples) || Number(b.s.mine) - Number(a.s.mine));
-  if (trade?.autoSetup) for (const { s } of byLabel(trade.autoSetup)) addSug(s.id, `Автоклассификация: ${trade.autoSetup}`);
-  if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, `Название похоже на метку сделки «${trade.setup}»`);
+  if (trade?.autoSetup) for (const { s } of byLabel(trade.autoSetup)) addSug(s.id, pt("suggest.auto", { label: trade.autoSetup }));
+  if (trade?.setup) for (const { s } of byLabel(trade.setup)) addSug(s.id, pt("suggest.text", { label: trade.setup }));
   const { rows: ex } = await pool.query<any>(
     `SELECT id, playbook_id AS "playbookId", tier, note FROM playbook_examples WHERE trade_id = $1 AND deleted_at IS NULL`,
     [tradeId],
@@ -592,7 +590,7 @@ router.get("/playbook-tools/inbox", asyncHandler(async (req, res): Promise<void>
   const mv = await loadMoneyViewer(req);
   const shaped = rows.map((r) => {
     const t = { ...r, netPnl: numOrNull(r.netPnl), signedR: numOrNull(r.signedR), autoConfidence: numOrNull(r.autoConfidence), closeDate: iso(r.closeDate)?.slice(0, 10) ?? null };
-    return redactTradeRow({ ...t, suggestion: suggestSetup(t, setups), suggestedTier: suggestTier(t) }, mv);
+    return redactTradeRow({ ...t, suggestion: suggestSetup(t, setups, langOf(req)), suggestedTier: suggestTier(t) }, mv);
   });
   res.json({ trader: who, days, total: Number(cnt[0]?.n ?? shaped.length), trades: rankInbox(shaped) });
 }));
@@ -626,14 +624,14 @@ async function inboxDismiss(req: Request, res: Response, on: boolean): Promise<v
   if (!v.name) { sendError(res, unauthorized()); return; }
   const body = req.body as { tradeIds?: unknown };
   const ids = [...new Set((Array.isArray(body.tradeIds) ? body.tradeIds : []).map(Number).filter((n) => Number.isSafeInteger(n) && n > 0))].slice(0, 200);
-  if (!ids.length) { res.status(400).json({ error: "tradeIds required" }); return; }
+  if (!ids.length) throw new AppError("TRADE_IDS_REQUIRED");
   // Own trades only (staff: any) — the same people who see them in the inbox.
   const { rows } = await pool.query<{ id: number }>(
     `SELECT id FROM trades WHERE id = ANY($1::int[]) AND deleted_at IS NULL AND (trader = $2 OR $3::boolean)`,
     [ids, v.name, v.editAny],
   );
   const allowed = rows.map((r) => r.id);
-  if (!allowed.length) { res.status(404).json({ error: "Сделки не найдены" }); return; }
+  if (!allowed.length) throw new AppError("NOT_FOUND");
   if (on) {
     await pool.query(
       `INSERT INTO playbook_inbox_dismissed (trade_id, dismissed_by) SELECT x, $2 FROM UNNEST($1::int[]) AS x ON CONFLICT (trade_id) DO NOTHING`,
@@ -657,21 +655,22 @@ router.get("/playbook/:id/activity", asyncHandler(async (req, res): Promise<void
   if (!ctx) return;
   await ensureInboxExtras();
   const { rows } = await pool.query<any>(
-    `SELECT id, action, section, entity_id AS "entityId", entity_title AS "entityTitle", trader, details, created_at AS "createdAt"
+    `SELECT id, action, section, entity_id AS "entityId", entity_title AS "entityTitle", trader, details, params, created_at AS "createdAt"
        FROM activity_log
       WHERE section = 'playbook' AND (entity_id = $1 OR (entity_id IS NULL AND entity_title = $2))
       ORDER BY created_at DESC, id DESC
       LIMIT 100`,
     [String(ctx.row.id), ctx.row.name],
   );
-  res.json(rows.map((r) => ({ ...r, createdAt: iso(r.createdAt) })));
+  const lang = langOf(req);
+  res.json(rows.map(({ params, ...r }) => ({ ...r, ...localizeActivity({ entityTitle: r.entityTitle, details: r.details, params }, lang), createdAt: iso(r.createdAt) })));
 }));
 
 // ─── Sharing ─────────────────────────────────────────────────────────────────
 
 router.get("/playbook-tools/share-targets", asyncHandler(async (req, res): Promise<void> => {
   const v = await loadViewer(req);
-  if (!mayShareAny(v)) { res.status(403).json({ error: "Делиться сетапами могут сеньоры и кураторы" }); return; }
+  if (!mayShareAny(v)) throw new AppError("SHARE_SENIOR_ONLY");
   const { rows: users } = await pool.query<{ name: string; role: string }>(
     `SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false ORDER BY name LIMIT 500`,
   );
@@ -692,14 +691,13 @@ router.post("/playbook/:id/share", asyncHandler(async (req, res): Promise<void> 
   if (!ctx) return;
   const { row, v } = ctx;
   if (!canSharePure(v, row)) {
-    res.status(403).json({ error: spaceOf(row) === "office" ? "Офисный плейбук и так виден всем" : "Делиться может автор сетапа со ступенью «Сеньор» или куратор" });
-    return;
+    throw new AppError(spaceOf(row) === "office" ? "OFFICE_ALREADY_PUBLIC" : "SHARE_SENIOR_ONLY");
   }
   const body = req.body as { visibility?: unknown; users?: unknown; cohorts?: unknown };
   const vis = body.visibility === "all" || body.visibility === "custom" || body.visibility === "private" ? body.visibility : null;
-  if (!vis) { res.status(400).json({ error: "visibility: private | all | custom" }); return; }
+  if (!vis) throw new AppError("INVALID_FIELD", undefined, { field: "visibility" });
   const sw = normSharedWith({ users: body.users, cohorts: body.cohorts });
-  if (vis === "custom" && !sw.users.length && !sw.cohorts.length) { res.status(400).json({ error: "Выберите людей или когорту" }); return; }
+  if (vis === "custom" && !sw.users.length && !sw.cohorts.length) throw new AppError("FIELD_REQUIRED", undefined, { field: "audience" });
   await pool.query(
     `UPDATE playbook SET visibility = $2, shared_with = $3::jsonb,
             shared_at = CASE WHEN $2 = 'private' THEN NULL ELSE COALESCE(shared_at, NOW()) END,
@@ -707,8 +705,10 @@ router.post("/playbook/:id/share", asyncHandler(async (req, res): Promise<void> 
       WHERE id = $1`,
     [row.id, vis, vis === "custom" ? JSON.stringify(sw) : null, v.name],
   );
-  const label = vis === "private" ? "Доступ закрыт" : vis === "all" ? "Открыт всему офису" : `Открыт: ${[...sw.users, ...sw.cohorts.map((c) => `когорта #${c}`)].join(", ")}`;
-  await logActivity({ action: "updated", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: label });
+  const access = vis === "private" ? { details: activityDetails("accessClosed"), params: { detailsKey: "accessClosed" } }
+    : vis === "all" ? { details: activityDetails("accessAll"), params: { detailsKey: "accessAll" } }
+    : accessCustomParams(sw.users, sw.cohorts);
+  await logActivity({ action: "updated", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, ...access });
   res.json({ success: true, visibility: vis, sharedWith: vis === "custom" ? sw : null });
 }));
 
@@ -725,11 +725,11 @@ router.post("/playbook/:id/copy", asyncHandler(async (req, res): Promise<void> =
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
-  if (!v.name || !(v.editOwn || v.editAny)) { res.status(403).json({ error: "Недостаточно прав: Вести плейбук" }); return; }
+  if (!v.name || !(v.editOwn || v.editAny)) throw new AppError("FORBIDDEN");
   const body = req.body as { folder?: unknown };
   const folder = typeof body.folder === "string" ? body.folder.trim().slice(0, 120) || null : undefined;
   const cols = COPY_COLUMNS.join(", ");
-  const { rows } = await pool.query<{ id: number; name: string }>(
+  const { rows } = await pool.query<{ id: number; name: string }>( // i18n-ignore ('Офис' = stored author label of the office space)
     `INSERT INTO playbook (${cols}, trader, space, visibility, created_by, copied_from_id, copied_from_author, source_type, source_id, updated_at)
      SELECT ${COPY_COLUMNS.map((c) => (c === "folder" && folder !== undefined ? "$3" : c)).join(", ")},
             $2, 'personal', 'private', $2, p.id,
@@ -740,7 +740,7 @@ router.post("/playbook/:id/copy", asyncHandler(async (req, res): Promise<void> =
     folder !== undefined ? [row.id, v.name, folder] : [row.id, v.name],
   );
   const copy = rows[0]!;
-  await logActivity({ action: "created", section: "playbook", entityId: String(copy.id), entityTitle: copy.name, trader: v.name, details: `Скопирован в «Мой» из #${row.id}` });
+  await logActivity({ action: "created", section: "playbook", entityId: String(copy.id), entityTitle: copy.name, trader: v.name, details: activityDetails("copiedToMine", { id: row.id }), params: { detailsKey: "copiedToMine", id: row.id } });
   res.status(201).json({ id: copy.id, name: copy.name });
 }));
 
@@ -748,10 +748,10 @@ router.post("/playbook/:id/propose", asyncHandler(async (req, res): Promise<void
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
-  if (spaceOf(row) !== "personal" || row.trader !== v.name || v.guest) { res.status(403).json({ error: "Предложить в Офис можно свой личный сетап" }); return; }
+  if (spaceOf(row) !== "personal" || row.trader !== v.name || v.guest) throw new AppError("SETUP_OWN_ONLY");
   const note = noteOf((req.body as { note?: unknown })?.note);
   await pool.query(`UPDATE playbook SET office_proposed_at = NOW(), office_proposed_by = $2, office_proposed_note = $3 WHERE id = $1`, [row.id, v.name, note]);
-  await logActivity({ action: "updated", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: "Предложен в офисный плейбук" });
+  await logActivity({ action: "updated", section: "playbook", entityId: String(row.id), entityTitle: row.name, trader: v.name ?? undefined, details: activityDetails("proposedOffice"), params: { detailsKey: "proposedOffice" } });
   res.json({ success: true });
 }));
 
@@ -759,17 +759,17 @@ router.delete("/playbook/:id/propose", asyncHandler(async (req, res): Promise<vo
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
-  if (!(row.trader === v.name || v.review) || v.guest) { res.status(403).json({ error: "Недостаточно прав" }); return; }
+  if (!(row.trader === v.name || v.review) || v.guest) throw new AppError("FORBIDDEN");
   await pool.query(`UPDATE playbook SET office_proposed_at = NULL, office_proposed_by = NULL, office_proposed_note = NULL WHERE id = $1`, [row.id]);
   res.json({ success: true });
 }));
 
 router.post("/playbook/:id/promote", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "playbook.review", null, "Переносить сетапы в Офис может куратор"))) return;
+  if (!(await requireCap(req, res, "playbook.review", null, "PROMOTE_STAFF_ONLY"))) return;
   const ctx = await setupForRead(req, res, parseId(req.params.id));
   if (!ctx) return;
   const { row, v } = ctx;
-  if (spaceOf(row) !== "personal") { res.status(400).json({ error: "Сетап уже в Офисе" }); return; }
+  if (spaceOf(row) !== "personal") throw new AppError("SETUP_ALREADY_OFFICE", 400);
   const body = req.body as { folder?: unknown; withExamples?: unknown };
   const folder = typeof body.folder === "string" ? body.folder.trim().slice(0, 120) || null : undefined;
   const cols = COPY_COLUMNS.join(", ");
@@ -793,7 +793,7 @@ router.post("/playbook/:id/promote", asyncHandler(async (req, res): Promise<void
     examples = r.rowCount ?? 0;
   }
   await pool.query(`UPDATE playbook SET office_proposed_at = NULL, office_proposed_by = NULL, office_proposed_note = NULL WHERE id = $1`, [row.id]);
-  await logActivity({ action: "created", section: "playbook", entityId: String(office.id), entityTitle: office.name, trader: v.name ?? undefined, details: `Перенесён в Офис из «Мой» (${row.trader}), эталонов: ${examples}` });
+  await logActivity({ action: "created", section: "playbook", entityId: String(office.id), entityTitle: office.name, trader: v.name ?? undefined, details: activityDetails("movedToOffice", { trader: String(row.trader), count: examples }), params: { detailsKey: "movedToOffice", trader: String(row.trader), count: examples } });
   res.status(201).json({ id: office.id, name: office.name, examples });
 }));
 
@@ -899,7 +899,7 @@ router.post(
     rawImage(req, res, (err: unknown) => {
       if (!err) return next();
       const tooBig = (err as { type?: string })?.type === "entity.too.large";
-      res.status(tooBig ? 413 : 400).json({ error: tooBig ? "Картинка больше 2,5 МБ — уменьшите её" : "Не удалось прочитать картинку" });
+      sendError(res, tooBig ? new AppError("IMAGE_TOO_LARGE", 413, { max: "2.5 MB" }) : new AppError("IMAGE_UNREADABLE"));
     });
   },
   asyncHandler(async (req, res): Promise<void> => {
@@ -908,15 +908,15 @@ router.post(
     if (!ctx) return;
     const { row, v } = ctx;
     const hints = accessHints(v, row);
-    if (!hints.canEdit && !hints.canAddExamples) { res.status(403).json({ error: "Нет прав добавлять скриншоты к этому сетапу" }); return; }
+    if (!hints.canEdit && !hints.canAddExamples) throw new AppError("SETUP_EDITOR_ONLY");
     const body = req.body;
     const mime = Buffer.isBuffer(body) && body.length ? sniffImageMime(body) : null;
-    if (!mime) { res.status(415).json({ error: "Нужна картинка WebP, JPEG или PNG" }); return; }
+    if (!mime) throw new AppError("IMAGE_TYPE", 415);
     const { rows: quota } = await pool.query<{ n: number }>(
       `SELECT COUNT(*)::int AS n FROM playbook_media WHERE owner = $1 AND created_at > NOW() - INTERVAL '24 hours'`,
       [v.name],
     );
-    if ((quota[0]?.n ?? 0) >= MEDIA_DAILY_LIMIT) { res.status(429).json({ error: `Не больше ${MEDIA_DAILY_LIMIT} скриншотов в сутки` }); return; }
+    if ((quota[0]?.n ?? 0) >= MEDIA_DAILY_LIMIT) throw new AppError("MEDIA_DAILY_LIMIT", undefined, { max: MEDIA_DAILY_LIMIT });
     const dim = (x: unknown) => { const n = Number(x); return Number.isInteger(n) && n > 0 && n <= 10000 ? n : null; };
     const { rows } = await pool.query<{ id: number }>(
       `INSERT INTO playbook_media (playbook_id, owner, mime, bytes, size_bytes, width, height) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
@@ -954,7 +954,7 @@ router.delete("/playbook-media/:id", asyncHandler(async (req, res): Promise<void
   if (!m) throw notFound();
   const setup = await loadSetupAccess(m.playbook_id, true);
   const ok = !v.guest && !!v.name && (m.owner === v.name || (setup ? await canEditSetupRow(req, setup) : false));
-  if (!ok) { res.status(403).json({ error: "Удалить скриншот может автор или редактор сетапа" }); return; }
+  if (!ok) throw new AppError("SETUP_EDITOR_ONLY");
   await pool.query(`UPDATE playbook_media SET deleted_at = NOW() WHERE id = $1`, [id]);
   res.json({ success: true });
 }));

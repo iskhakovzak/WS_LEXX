@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useState } from "react";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import { fmtRelative } from "@/lib/format";
 
 export type CallType = "BMO" | "AMC" | "TNS";
 
@@ -129,11 +130,5 @@ export function relTime(iso: string | null | undefined, now = Date.now()) {
   if (!iso) return "";
   const t = new Date(iso).getTime();
   if (isNaN(t)) return "";
-  const s = Math.max(0, Math.round((now - t) / 1000));
-  if (s < 45) return "только что";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  const h = Math.round(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  return `${Math.round(h / 24)} дн назад`;
+  return fmtRelative(t, { now, style: "short" });
 }

@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
-import { prKeys, useAccounts, usePending, useRuns, useStatus } from "@/components/propreports/api";
+import { prKeys, useAccounts, usePending, useRuns, useStatus, type IntegrationsTab } from "@/components/propreports/api";
 import { StatusHero } from "@/components/propreports/status-hero";
 import { ImportZone } from "@/components/propreports/import-zone";
 import { AccountsEditor } from "@/components/propreports/accounts-editor";
@@ -23,8 +23,11 @@ import { RunSyncDialog } from "@/components/propreports/run-sync-dialog";
 import { PerformanceReportPanel } from "@/components/propreports/PerformanceReportPanel";
 import { ReconcilePanel } from "@/components/propreports/ReconcilePanel";
 import { SetupPanel } from "@/components/propreports/setup-panel";
+import { propreportsI18n } from "@/i18n/ns/propreports";
+import { shellI18n } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 
-type Tab = "setup" | "import" | "performance" | "accounts" | "reconcile" | "history";
+type Tab = IntegrationsTab;
 const TABS: readonly Tab[] = ["setup", "import", "performance", "accounts", "reconcile", "history"];
 
 function initialTab(): Tab {
@@ -37,16 +40,17 @@ function initialTab(): Tab {
 
 export default function IntegrationsPage() {
   const { user, isCurator } = useAuth();
+  const { t } = propreportsI18n.useT();
   const signedIn = !!user && user.role !== "guest";
   if (signedIn && !isCurator) {
     return (
       <Page>
-        <PageHeader title="Интеграции" description="Импорт сделок из PropReports" icon={Plug} />
+        <PageHeader title={shellI18n.t("nav.integrations")} description={t("page.descriptionTrader")} icon={Plug} />
         <Panel>
           <EmptyState
             icon={ShieldAlert}
-            title="Раздел для кураторов"
-            description="Ваши сделки загружаются из PropReports автоматически. Если сделки не появились или пришли не на ваш счёт — напишите куратору."
+            title={t("page.traderTitle")}
+            description={t("page.traderText")}
           />
         </Panel>
       </Page>
@@ -56,6 +60,7 @@ export default function IntegrationsPage() {
 }
 
 function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
+  const { t } = propreportsI18n.useT();
   const qc = useQueryClient();
   const status = useStatus();
   const accounts = useAccounts();
@@ -78,8 +83,8 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
   if (!signedIn) {
     return (
       <Page>
-        <PageHeader title="Интеграции" description="Импорт сделок и выписок из внешних систем" icon={Plug} />
-        <Panel><EmptyState icon={Plug} title="Нужен вход" description="Войдите, чтобы видеть свои счета и импортировать сделки." /></Panel>
+        <PageHeader title={shellI18n.t("nav.integrations")} description={t("page.descriptionGuest")} icon={Plug} />
+        <Panel><EmptyState icon={Plug} title={t("page.signInTitle")} description={t("page.signInText")} /></Panel>
       </Page>
     );
   }
@@ -89,17 +94,17 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
   return (
     <Page>
       <PageHeader
-        title="Интеграции"
-        description="PropReports → журнал: раунд-трипы, комиссии, овернайт/свинг и сверка с брокером"
+        title={shellI18n.t("nav.integrations")}
+        description={t("page.description")}
         icon={Plug}
         actions={
           <>
-            <Button variant="outline" size="icon" onClick={() => qc.invalidateQueries({ queryKey: prKeys.all })} aria-label="Обновить" disabled={fetching}>
+            <Button variant="outline" size="icon" onClick={() => qc.invalidateQueries({ queryKey: prKeys.all })} aria-label={commonI18n.t("actions.refresh")} disabled={fetching}>
               <RefreshCw className={cn("h-4 w-4", fetching && "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
             </Button>
             {staff && (
               <Button onClick={() => setRunOpen(true)} disabled={!status.data}>
-                <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />Синхронизировать сейчас
+                <PlayCircle className="mr-2 h-4 w-4" aria-hidden="true" />{t("page.syncNow")}
               </Button>
             )}
           </>
@@ -109,27 +114,27 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
       {status.isLoading ? (
         <Skeleton className="h-48 w-full rounded-2xl" />
       ) : err ? (
-        <Panel><EmptyState icon={Plug} title={err.status === 401 ? "Сессия истекла" : "Не удалось загрузить статус"} description={err.message} /></Panel>
+        <Panel><EmptyState icon={Plug} title={err.status === 401 ? t("page.sessionExpired") : t("page.statusFailed")} description={err.message} /></Panel>
       ) : status.data ? (
         <StatusHero status={status.data} />
       ) : null}
 
       <SectionTabs
-        ariaLabel="Разделы интеграции"
+        ariaLabel={t("page.tabsAria")}
         value={tab}
         onChange={setTab}
         tabs={[
-          ...(staff ? [{ value: "setup" as const, label: "Настройка", count: wizardTodo || undefined }] : []),
-          { value: "import", label: "Импорт" },
-          { value: "performance", label: "Статистика" },
-          { value: "accounts", label: "Счета", count: status.data?.accounts.unmapped.length || undefined },
-          { value: "reconcile", label: "Сверка", count: pending.data?.length || undefined },
-          { value: "history", label: "История", count: runs.data?.length || undefined },
+          ...(staff ? [{ value: "setup" as const, label: t("page.tabs.setup"), count: wizardTodo || undefined }] : []),
+          { value: "import", label: t("page.tabs.import") },
+          { value: "performance", label: t("page.tabs.performance") },
+          { value: "accounts", label: t("page.tabs.accounts"), count: status.data?.accounts.unmapped.length || undefined },
+          { value: "reconcile", label: t("page.tabs.reconcile"), count: pending.data?.length || undefined },
+          { value: "history", label: t("page.tabs.history"), count: runs.data?.length || undefined },
         ]}
       />
 
-      {tab === "setup" && staff && status.data && <SetupPanel status={status.data} accounts={accounts.data ?? []} />}
-      {tab === "import" && <ImportZone accounts={accounts.data ?? []} staff={staff} viewerName={status.data?.viewer.name} />}
+      {tab === "setup" && staff && status.data && <SetupPanel status={status.data} accounts={accounts.data ?? []} onGoTab={setTab} />}
+      {tab === "import" && <ImportZone accounts={accounts.data ?? []} staff={staff} viewerName={status.data?.viewer.name} onGoTab={setTab} />}
       {tab === "performance" && (
         <div className="space-y-4">
           <PerformanceReportPanel staff={staff} trader={staff ? undefined : status.data?.viewer.name} />
@@ -140,7 +145,7 @@ function IntegrationsConsole({ signedIn }: { signedIn: boolean }) {
       {tab === "reconcile" && <ReconcileInbox pending={pending.data ?? []} staff={staff} loading={pending.isLoading} />}
       {tab === "history" && <SyncHistory runs={runs.data ?? []} loading={runs.isLoading} />}
 
-      {staff && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={status.data?.config.configured ?? false} />}
+      {staff && <RunSyncDialog open={runOpen} onOpenChange={setRunOpen} configured={status.data?.config.configured ?? false} onGoTab={(x) => { setRunOpen(false); setTab(x); }} />}
     </Page>
   );
 }

@@ -3,6 +3,8 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { ChevronLeft, ChevronRight, ExternalLink, ImageOff, Loader2, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useMediaUrl } from "./media";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type LightboxItem =
   | { kind: "media"; id: number; caption: string }
@@ -23,6 +25,7 @@ export function PlanLightbox({
   onIndexChange: (i: number) => void;
   onClose: () => void;
 }) {
+  const { t } = gpI18n.useT();
   const open = index !== null && !!items[index];
   const [zoom, setZoom] = useState(false);
   useEffect(() => setZoom(false), [index]);
@@ -54,14 +57,14 @@ export function PlanLightbox({
           }}
         >
           <DialogPrimitive.Title className="sr-only">
-            Скриншот {index !== null ? index + 1 : ""} из {items.length}
+            {t("media.lightboxTitle", { n: index !== null ? index + 1 : 0, total: items.length })}
           </DialogPrimitive.Title>
           <div className="flex h-14 shrink-0 items-center justify-between gap-2 px-4">
             <span className="text-sm tabular-nums text-muted-foreground">
               {index !== null ? index + 1 : 0} / {items.length}
             </span>
             <div className="flex items-center gap-1">
-              <IconBtn label={zoom ? "Вписать в экран" : "Реальный размер"} onClick={() => setZoom((z) => !z)}>
+              <IconBtn label={zoom ? t("media.fit") : t("media.actual")} onClick={() => setZoom((z) => !z)}>
                 {zoom ? <ZoomOut /> : <ZoomIn />}
               </IconBtn>
               {item?.kind === "url" && (
@@ -73,11 +76,11 @@ export function PlanLightbox({
                   className="chip inline-flex min-h-9 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-                  Открыть в TradingView
+                  {t("media.openInTv")}
                 </a>
               )}
               <DialogPrimitive.Close asChild>
-                <IconBtn label="Закрыть (Esc)">
+                <IconBtn label={t("media.closeEsc")}>
                   <X />
                 </IconBtn>
               </DialogPrimitive.Close>
@@ -90,8 +93,8 @@ export function PlanLightbox({
             </div>
             {items.length > 1 && (
               <>
-                <NavBtn side="left" label="Предыдущий (←)" onClick={() => go(-1)} />
-                <NavBtn side="right" label="Следующий (→)" onClick={() => go(1)} />
+                <NavBtn side="left" label={t("media.prev")} onClick={() => go(-1)} />
+                <NavBtn side="right" label={t("media.next")} onClick={() => go(1)} />
               </>
             )}
           </div>
@@ -106,6 +109,7 @@ export function PlanLightbox({
 }
 
 function LightboxImage({ item, zoom, onToggleZoom }: { item: LightboxItem; zoom: boolean; onToggleZoom: () => void }) {
+  const { t } = gpI18n.useT();
   const mediaSrc = useMediaUrl(item.kind === "media" ? item.id : null);
   const [failed, setFailed] = useState(false);
   const src = item.kind === "media" ? (mediaSrc === "error" ? null : mediaSrc) : item.src;
@@ -114,15 +118,15 @@ function LightboxImage({ item, zoom, onToggleZoom }: { item: LightboxItem; zoom:
     return (
       <div className="m-auto flex flex-col items-center gap-2 text-muted-foreground">
         <ImageOff className="h-8 w-8" aria-hidden="true" />
-        <span className="text-sm">Картинка недоступна</span>
+        <span className="text-sm">{t("media.imageUnavailable")}</span>
       </div>
     );
   }
-  if (!src) return <Loader2 className="m-auto h-8 w-8 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label="Загрузка" />;
+  if (!src) return <Loader2 className="m-auto h-8 w-8 animate-spin text-muted-foreground motion-reduce:animate-none" aria-label={commonI18n.t("states.loading")} />;
   return (
     <img
       src={src}
-      alt={item.caption || "Скриншот"}
+      alt={item.caption || t("media.screenshot")}
       referrerPolicy="no-referrer"
       onClick={onToggleZoom}
       onError={() => setFailed(true)}

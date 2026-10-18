@@ -10,8 +10,11 @@ import { links } from "@/lib/links";
 import { nyDate } from "@/lib/trading-date";
 import { putSelfCheck, useRulePreview, useSelfChecks } from "./api";
 import { DisciplineCalendar } from "./DisciplineCalendar";
-import { ORIGIN_LABEL, originOf, violationsWord } from "./constants";
-import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { ORIGIN_LABEL, originOf } from "./constants";
+import { fmtDate, fmtRate, fmtUsd, localeTag } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { rulesI18n } from "@/i18n/ns/rules";
+import { rich } from "./rich";
 import { starterTemplates, type RuleDraft } from "./templates";
 import type { MistakePrefill, RuleReport, RulesReportResponse, SelfMark } from "./types";
 
@@ -24,14 +27,14 @@ function rank(r: RuleReport): number {
 }
 
 export function sortRules(rules: RuleReport[]): RuleReport[] {
-  return [...rules].sort((a, b) => rank(a) - rank(b) || (a.impact ?? 0) - (b.impact ?? 0) || b.violations - a.violations || a.name.localeCompare(b.name, "ru"));
+  return [...rules].sort((a, b) => rank(a) - rank(b) || (a.impact ?? 0) - (b.impact ?? 0) || b.violations - a.violations || a.name.localeCompare(b.name, localeTag()));
 }
 
 function ppDelta(recent: number | null, prev: number | null): { text: string; tone: "accent" | "warn" | "neutral" } | null {
   if (recent == null || prev == null) return null;
   const d = Math.round((recent - prev) * 100);
-  if (d === 0) return { text: "без изменений", tone: "neutral" };
-  return { text: `${d > 0 ? "+" : "−"}${Math.abs(d)} п.п. к прошлым 20 дням`, tone: d > 0 ? "accent" : "warn" };
+  if (d === 0) return { text: rulesI18n.t("overview.ppSame"), tone: "neutral" };
+  return { text: rulesI18n.t("overview.ppDelta", { delta: `${d > 0 ? "+" : "−"}${Math.abs(d)}` }), tone: d > 0 ? "accent" : "warn" };
 }
 
 // ─── Onboarding (0 rules) ───────────────────────────────────────────────────
@@ -49,29 +52,33 @@ export function RulesOnboarding({
   onUseTemplate: (d: RuleDraft) => void;
   onCustom: () => void;
 }) {
-  const templates = useMemo(() => starterTemplates(report?.stats), [report?.stats]);
+  const { t, lang } = rulesI18n.useT();
+  // Template names follow the language.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const templates = useMemo(() => starterTemplates(report?.stats), [report?.stats, lang]);
   return (
     <Panel
-      title="Добавьте правила из шаблонов"
-      description={`Параметры подобраны по вашей истории. Под каждым шаблоном — что было бы, если бы правило действовало последние ${days} дней.`}
+      title={t("onboarding.title")}
+      description={t("onboarding.description", { days })}
       icon={Sparkles}
-      actions={<Button variant="outline" size="sm" onClick={onCustom}><Plus /> Своё правило</Button>}
+      actions={<Button variant="outline" size="sm" onClick={onCustom}><Plus /> {t("onboarding.custom")}</Button>}
     >
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
         {templates.map((t) => <TemplateCard key={t.kind} t={t} trader={trader} days={days} onUse={() => onUseTemplate(t)} />)}
       </div>
       <p className="mt-3 text-xs text-muted-foreground">
-        Каждое правило проверяется по всем вашим сделкам автоматически. Правила, которые нельзя проверить по сделкам («первая сделка — только A+ сетап»), отмечаются раз в день в журнале.
+        {t("onboarding.footer")}
       </p>
     </Panel>
   );
 }
 
 function TemplateCard({ t, trader, days, onUse }: { t: RuleDraft & { why: string }; trader: string; days: number; onUse: () => void }) {
+  const { t: tr } = rulesI18n.useT();
   const q = useRulePreview(trader, days, t.kind, t.threshold);
   const r = q.data;
   return (
-    <button type="button" onClick={onUse} title="Добавить правило — порог можно поменять" className="tile tile-interactive press group flex min-h-[132px] flex-col gap-1.5 p-3 text-left">
+    <button type="button" onClick={onUse} title={tr("onboarding.addTitle")} className="tile tile-interactive press group flex min-h-[132px] flex-col gap-1.5 p-3 text-left">
       <span className="flex items-start justify-between gap-2">
         <span className="text-sm font-medium text-foreground">{t.name}</span>
         {/* The whole card adds the rule; the icon makes that visible before hover. */}
@@ -82,16 +89,18 @@ function TemplateCard({ t, trader, days, onUse }: { t: RuleDraft & { why: string
         {q.isLoading ? (
           <span className="skeleton block h-4 w-3/4" aria-hidden="true" />
         ) : !r || q.error ? (
-          <span className="text-muted-foreground">Предпросмотр недоступен</span>
+          <span className="text-muted-foreground">{tr("preview.unavailable")}</span>
         ) : r.status === "no_data" ? (
-          <span className="text-muted-foreground">Нет данных для проверки</span>
+          <span className="text-muted-foreground">{tr("preview.noData")}</span>
         ) : r.violations === 0 ? (
-          <span className="text-foreground">Ни одного нарушения — уже соблюдаете</span>
+          <span className="text-foreground">{tr("onboarding.clean")}</span>
         ) : (
           <span className="text-foreground">
-            <b className="tabular-nums">{r.violations}</b> {violationsWord(r.violations)} в {r.violatedDays} из {r.days} дн.
+            {tr("preview.violations", { count: r.violations, violated: r.violatedDays, days: r.days })}
             {r.impact != null && r.impact !== 0 && (
-              <> · {r.impact < 0 ? "стоили " : "принесли "}<b className={cn("tabular-nums", r.impact < 0 ? "text-down" : "text-up")}>{fmtUsd(r.impact, { decimals: "trim" })}</b></>
+              <> · {rich(tr(r.impact < 0 ? "onboarding.cost" : "onboarding.gain", { amount: "{amount}" }), {
+                amount: <b className={cn("tabular-nums", r.impact < 0 ? "text-down" : "text-up")}>{fmtUsd(r.impact, { decimals: "trim" })}</b>,
+              })}</>
             )}
           </span>
         )}
@@ -117,6 +126,7 @@ export function RulesOverview({
   onAddRule: () => void;
   onLogMistake: (p?: MistakePrefill) => void;
 }) {
+  const { t: tr } = rulesI18n.useT();
   const t = report.totals;
   const rules = useMemo(() => sortRules(report.rules), [report.rules]);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
@@ -133,36 +143,36 @@ export function RulesOverview({
     <div className="flex flex-col gap-[var(--grid-gap)]">
       {noTrades ? (
         <Panel>
-          <EmptyState compact icon={CircleSlash} title={`Нет сделок за последние ${report.days} дней`} description="Как только появятся сделки, здесь будет видно, какие правила вы соблюдаете и сколько стоят нарушения." />
+          <EmptyState compact icon={CircleSlash} title={tr("overview.noTrades", { days: report.days })} description={tr("overview.noTradesHint")} />
         </Panel>
       ) : (
         <StatGrid min="13rem">
           <StatCard
-            label="Соблюдение"
+            label={tr("overview.compliance")}
             value={fmtRate(t.compliance)}
-            hint={`${t.cleanDays} из ${t.tradingDays} дней без нарушений`}
+            hint={tr("overview.cleanDaysOf", { clean: t.cleanDays, total: t.tradingDays })}
             delta={compDelta?.text}
             deltaTone={compDelta?.tone}
             spark={weeklySpark.filter((v) => v != null).length > 1 ? weeklySpark : undefined}
             sparkTone="accent"
           />
           <StatCard
-            label="Цена нарушений"
+            label={tr("overview.impact")}
             value={t.impact == null ? "—" : t.impact === 0 ? "$0" : fmtUsd(t.impact, { signed: true, decimals: "trim" })}
             tone={t.impact == null ? "neutral" : t.impact < 0 ? "down" : t.impact > 0 ? "up" : "neutral"}
-            hint={t.impact == null ? "нет правил, проверяемых по сделкам" : t.impact > 0 ? "нарушения пока в плюсе — это везение, не система" : "насколько итог был бы лучше без нарушений"}
+            hint={t.impact == null ? tr("overview.impactNone") : t.impact > 0 ? tr("overview.impactLucky") : tr("overview.impactHint")}
           />
           <StatCard
-            label="Чистых дней подряд"
+            label={tr("overview.cleanStreak")}
             value={t.currentStreak}
-            hint={`рекорд за период — ${t.bestStreak}`}
+            hint={tr("overview.bestStreak", { count: t.bestStreak })}
           />
           {t.broken.n > 0 && t.clean.n > 0 && (
             <StatCard
-              label="Сделка с нарушением"
+              label={tr("overview.brokenTrade")}
               value={fmtUsd(t.broken.avg, { signed: true, decimals: "trim" })}
               tone={t.broken.avg == null ? "neutral" : t.broken.avg < 0 ? "down" : "up"}
-              hint={`без нарушений — ${fmtUsd(t.clean.avg, { signed: true, decimals: "trim" })} в среднем`}
+              hint={tr("overview.cleanAvg", { amount: fmtUsd(t.clean.avg, { signed: true, decimals: "trim" }) })}
             />
           )}
         </StatGrid>
@@ -172,12 +182,12 @@ export function RulesOverview({
         <Panel
           className="lg:col-span-8"
           fill
-          title="Правила"
-          description="Сначала самые дорогие. Нажмите на правило — примеры нарушений и тренд."
-          actions={<Button variant="ghost" size="sm" onClick={onAddRule}><Plus /> Добавить</Button>}
+          title={tr("overview.rulesTitle")}
+          description={tr("overview.rulesDesc")}
+          actions={<Button variant="ghost" size="sm" onClick={onAddRule}><Plus /> {commonI18n.t("actions.add")}</Button>}
           padded={false}
         >
-          <ul className="flex flex-col px-2 pb-2" aria-label="Правила">
+          <ul className="flex flex-col px-2 pb-2" aria-label={tr("overview.rulesAria")}>
             {rules.map((r) => (
               <RuleRow
                 key={r.id}
@@ -195,8 +205,8 @@ export function RulesOverview({
         <Panel
           className="lg:col-span-4"
           fill
-          title="Календарь дисциплины"
-          description={noTrades ? undefined : `${t.cleanDays} из ${t.tradingDays} торговых дней чистые`}
+          title={tr("overview.calendarTitle")}
+          description={noTrades ? undefined : tr("overview.calendarDesc", { clean: t.cleanDays, total: t.tradingDays })}
         >
           <DisciplineCalendar calendar={report.calendar} from={report.from} to={report.to} selected={selectedDay} onSelect={setSelectedDay} />
           <DayDetail day={selectedDay} report={report} trader={trader} onLogMistake={onLogMistake} />
@@ -221,32 +231,35 @@ function RuleRow({
   canMark: boolean;
   onOpen: () => void;
 }) {
+  const { t } = rulesI18n.useT();
   const origin = originOf(r);
   const o = ORIGIN_LABEL[origin];
   const spark = r.weekly.map((w) => (w.compliance == null ? null : Math.round(w.compliance * 100)));
   const muted = r.status === "disabled" || r.status === "no_data";
   // Self-assessed rules: average day «нарушил» minus average day «соблюдал» (net $).
   const selfGap = !r.auto && r.status !== "disabled" && r.broken.n > 0 && r.broken.avg != null && r.clean.avg != null ? r.broken.avg - r.clean.avg : null;
+  const status =
+    r.status === "disabled" ? t("row.disabled")
+    : r.status === "no_data" ? t("row.noData")
+    : !r.auto ? (r.unmarkedDays > 0 ? t("row.selfUnmarked", { count: r.unmarkedDays }) : t("row.self"))
+    : r.violations === 0 ? t("row.clean", { days: r.days })
+    : [t("preview.violations", { count: r.violations, violated: r.violatedDays, days: r.days }), r.lastViolation ? t("preview.last", { date: fmtDate(r.lastViolation, "dayMonth") }) : null].filter(Boolean).join(" · ");
   return (
     <li className={cn("flex min-h-[60px] items-center gap-3 rounded-xl px-2 py-2 transition-colors duration-[var(--dur-1)] hover:bg-[var(--glass-hover-bg)]", muted && "opacity-70")}>
       <button type="button" onClick={onOpen} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
         <span className="min-w-0 flex-1">
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">{r.name}</span>
+            <span className="truncate text-sm font-medium text-foreground" title={r.name}>{r.name}</span>
             {origin !== "personal" && <Pill tone={o.tone} title={o.hint}>{o.label}</Pill>}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-muted-foreground">
-            {r.status === "disabled" ? "Выключено"
-              : r.status === "no_data" ? "Нельзя проверить: в сделках нет нужных данных"
-              : !r.auto ? (r.unmarkedDays > 0 ? `Самооценка · не отмечено дней: ${r.unmarkedDays}` : "Самооценка в журнале")
-              : r.violations === 0 ? `Без нарушений за ${r.days} дн.`
-              : `${r.violations} ${violationsWord(r.violations)} в ${r.violatedDays} из ${r.days} дн.${r.lastViolation ? ` · последнее ${fmtDate(r.lastViolation, "dayMonth")}` : ""}`}
+          <span className="mt-0.5 block truncate text-xs text-muted-foreground" title={status}>
+            {status}
           </span>
         </span>
 
         {r.status !== "disabled" && r.status !== "no_data" && (
           <span className="hidden w-[132px] shrink-0 items-center gap-2 sm:flex">
-            <Sparkline data={spark} tone="accent" width={64} height={22} fill={false} ariaLabel="Соблюдение по неделям" />
+            <Sparkline data={spark} tone="accent" width={64} height={22} fill={false} ariaLabel={t("row.sparkAria")} />
             <span className={cn("w-10 text-right text-sm font-medium tabular-nums", r.compliance != null && r.compliance < 0.7 ? "text-warn" : "text-foreground")}>
               {fmtRate(r.compliance)}
             </span>
@@ -257,12 +270,12 @@ function RuleRow({
           {r.auto && r.status === "checked" && r.impact != null && r.impact !== 0 ? (
             <>
               <span className={cn("block text-sm font-semibold tabular-nums", r.impact < 0 ? "text-down" : "text-up")}>{fmtUsd(r.impact, { signed: true, decimals: "trim" })}</span>
-              <span className="block text-xs text-muted-foreground">{r.impact < 0 ? "стоит вам" : "нарушения в плюсе"}</span>
+              <span className="block text-xs text-muted-foreground">{r.impact < 0 ? t("row.costsYou") : t("row.paidOff")}</span>
             </>
           ) : selfGap != null ? (
             <>
               <span className={cn("block text-sm font-semibold tabular-nums", selfGap < 0 ? "text-down" : "text-up")}>{fmtUsd(selfGap, { signed: true, decimals: "trim" })}</span>
-              <span className="block text-xs text-muted-foreground">в день нарушения</span>
+              <span className="block text-xs text-muted-foreground">{t("row.perDay")}</span>
             </>
           ) : (
             <span className="text-sm text-muted-foreground">—</span>
@@ -277,6 +290,7 @@ function RuleRow({
 
 /** Today's «соблюдал / нарушил» for a self-assessed rule (same data the journal checklist writes). */
 export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ruleId: number; trader: string; day: string; mark: SelfMark | undefined; size?: "sm" | "md" }) {
+  const { t } = rulesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [busy, setBusy] = useState(false);
@@ -288,14 +302,14 @@ export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ru
       await putSelfCheck({ trader, day, ruleId, ok: next });
       await qc.invalidateQueries({ predicate: (q) => q.queryKey[0] === "rules" && q.queryKey[1] !== "kinds" });
     } catch (e) {
-      toast({ title: "Не удалось сохранить отметку", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: t("self.saveFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setBusy(false);
     }
   }
   const cls = size === "sm" ? "h-8 px-2 text-xs" : "h-9 px-3 text-sm";
   return (
-    <div role="group" aria-label={`Сегодня, ${fmtDate(day, "dayMonth")}`} className="flex shrink-0 items-center gap-1" title="Отметка за сегодня">
+    <div role="group" aria-label={t("self.todayAria", { date: fmtDate(day, "dayMonth") })} className="flex shrink-0 items-center gap-1" title={t("self.title")}>
       <button
         type="button"
         disabled={busy}
@@ -304,7 +318,7 @@ export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ru
         className={cn("inline-flex items-center gap-1 rounded-lg border font-medium transition-colors duration-[var(--dur-1)] disabled:opacity-50", cls,
           ok === true ? "border-transparent bg-primary-solid text-primary-foreground" : "border-[var(--field-border)] text-muted-foreground hover:text-foreground")}
       >
-        <Check className="h-3.5 w-3.5" aria-hidden="true" />Соблюдал
+        <Check className="h-3.5 w-3.5" aria-hidden="true" />{t("self.kept")}
       </button>
       <button
         type="button"
@@ -314,16 +328,17 @@ export function SelfMarkButtons({ ruleId, trader, day, mark, size = "sm" }: { ru
         className={cn("inline-flex items-center gap-1 rounded-lg border font-medium transition-colors duration-[var(--dur-1)] disabled:opacity-50", cls,
           ok === false ? "border-transparent bg-warn text-background" : "border-[var(--field-border)] text-muted-foreground hover:text-foreground")}
       >
-        <X className="h-3.5 w-3.5" aria-hidden="true" />Нарушил
+        <X className="h-3.5 w-3.5" aria-hidden="true" />{t("self.broke")}
       </button>
     </div>
   );
 }
 
 function DayDetail({ day, report, trader, onLogMistake }: { day: string | null; report: RulesReportResponse; trader: string; onLogMistake: (p?: MistakePrefill) => void }) {
+  const { t } = rulesI18n.useT();
   const c = day ? report.calendar.find((x) => x.day === day) : undefined;
   if (!day || !c) {
-    return <p className="mt-3 text-xs text-muted-foreground">Нажмите на день, чтобы увидеть, какие правила были нарушены.</p>;
+    return <p className="mt-3 text-xs text-muted-foreground">{t("day.hint")}</p>;
   }
   const names = c.ruleIds.map((id) => report.rules.find((r) => r.id === id)?.name).filter(Boolean) as string[];
   return (
@@ -331,7 +346,7 @@ function DayDetail({ day, report, trader, onLogMistake }: { day: string | null; 
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-sm font-medium text-foreground">{fmtDate(day, "dayMonth")}</span>
         <span className="text-xs text-muted-foreground tabular-nums">
-          {c.trades} сд. · <span className={cn("font-medium", c.net < 0 ? "text-down" : c.net > 0 ? "text-up" : "text-foreground")}>{fmtUsd(c.net, { signed: true, decimals: "trim" })}</span>
+          {commonI18n.t("units.tradesShort", { count: c.trades })} · <span className={cn("font-medium", c.net < 0 ? "text-down" : c.net > 0 ? "text-up" : "text-foreground")}>{fmtUsd(c.net, { signed: true, decimals: "trim" })}</span>
         </span>
       </div>
       {names.length ? (
@@ -339,15 +354,15 @@ function DayDetail({ day, report, trader, onLogMistake }: { day: string | null; 
           {names.map((n) => <li key={n} className="flex items-center gap-1.5"><span className="h-1.5 w-1.5 shrink-0 rounded-full bg-warn" aria-hidden="true" />{n}</li>)}
         </ul>
       ) : (
-        <span className="text-xs text-muted-foreground">Все правила соблюдены.</span>
+        <span className="text-xs text-muted-foreground">{t("day.allKept")}</span>
       )}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pt-0.5">
         <Link href={links.dayReport(day, trader)} className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-          Разбор дня <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+          {t("day.dayReport")} <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
         </Link>
         {!c.clean && (
           <button type="button" onClick={() => onLogMistake({ description: `${fmtDate(day, "dayMonth")}: ${names.join(", ")}` })} className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-foreground">
-            <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> Записать вывод
+            <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> {t("day.logLesson")}
           </button>
         )}
       </div>

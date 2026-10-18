@@ -11,6 +11,7 @@ import { linear, niceTicks, niceStep, axisLabel, type Domain } from "./scale";
 import { crosshairDate, timeTicks } from "./time";
 import { navWindow, xOf, type Layout, type Rect } from "./geometry";
 import { fullView, type View } from "./viewport";
+import { equityChartI18n } from "@/i18n/ns/equityChart";
 
 export interface Frame {
   layout: Layout;
@@ -82,9 +83,8 @@ function yScale(d: Domain, r: Rect) {
 }
 
 function aggWord(agg: EquityAgg): { best: string; worst: string; pnl: string } {
-  if (agg === "week") return { best: "лучшая неделя", worst: "худшая неделя", pnl: "P&L за неделю" };
-  if (agg === "month") return { best: "лучший месяц", worst: "худший месяц", pnl: "P&L за месяц" };
-  return { best: "лучший день", worst: "худший день", pnl: "P&L за день" };
+  const t = equityChartI18n.t;
+  return { best: t(`canvas.best.${agg}`), worst: t(`canvas.worst.${agg}`), pnl: t(`canvas.pnl.${agg}`) };
 }
 
 export function bodyWidth(slotPx: number): number {
@@ -386,9 +386,9 @@ function drawMarkers(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s:
   if (derived.best >= 0) list.push({ i: derived.best, color: th.up, text: `${fmtShort(bars[derived.best].value, f.unit)} · ${words.best}`, above: true });
   if (derived.worst >= 0) list.push({ i: derived.worst, color: th.down, text: `${fmtShort(bars[derived.worst].value, f.unit)} · ${words.worst}`, above: false });
   if (derived.trough >= 0 && derived.trough !== derived.worst) {
-    list.push({ i: derived.trough, color: th.down, text: `просадка ${fmtShort(derived.maxDrawdown, f.unit)}`, above: false });
+    list.push({ i: derived.trough, color: th.down, text: equityChartI18n.t("canvas.drawdown", { value: fmtShort(derived.maxDrawdown, f.unit) }), above: false });
   } else if (derived.trough >= 0 && derived.trough === derived.worst && list.length) {
-    list[list.length - 1].text += ` · дно просадки`;
+    list[list.length - 1].text += ` · ${equityChartI18n.t("canvas.ddBottom")}`;
   }
   for (const m of list) {
     if (m.i < f.i0 || m.i > f.i1) continue;
@@ -515,7 +515,7 @@ function drawDd(ctx: CanvasRenderingContext2D, f: Frame, pane: Rect, x: (s: numb
   ctx.strokeStyle = th.down(0.9);
   ctx.stroke(line);
   ctx.restore();
-  paneTitle(ctx, f, pane, "Просадка от пика");
+  paneTitle(ctx, f, pane, equityChartI18n.t("ddPane"));
 }
 
 function drawNavigator(ctx: CanvasRenderingContext2D, f: Frame, nav: Rect) {
@@ -679,5 +679,5 @@ export function drawOverlay(ctx: CanvasRenderingContext2D, f: Frame, p: Pointer 
 
 /** Screen-reader / aria text of a candle. */
 export function candleText(c: EquityCandle, unit: EquityUnit): string {
-  return `${fmtValue(c.value, unit)}, накоплено ${fmtValue(c.close, unit)}, сделок ${c.trades}`;
+  return equityChartI18n.t("canvas.candleText", { value: fmtValue(c.value, unit), close: fmtValue(c.close, unit), count: c.trades });
 }

@@ -11,26 +11,30 @@ import {
   type EarningsHistory,
 } from "@/components/shared/market/earnings-api";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
+import { humanizeApiError } from "@/lib/api/errors";
+import { commonI18n } from "@/i18n/ns/common";
+import { researchI18n } from "@/i18n/ns/research";
 
 export function CallTypePill({ type, long = false, className }: { type: CallType; long?: boolean; className?: string }) {
+  const { t } = researchI18n.useT();
   if (type === "BMO")
     return (
       <Pill tone="warn" className={className}>
         <Sun className="h-3 w-3" aria-hidden="true" />
-        {long ? "До открытия" : "BMO"}
+        {long ? t("earnings.bmo") : "BMO"}
       </Pill>
     );
   if (type === "AMC")
     return (
       <Pill tone="purple" className={className}>
         <Moon className="h-3 w-3" aria-hidden="true" />
-        {long ? "После закрытия" : "AMC"}
+        {long ? t("earnings.amc") : "AMC"}
       </Pill>
     );
   return (
     <Pill tone="neutral" className={className}>
       <Clock3 className="h-3 w-3" aria-hidden="true" />
-      {long ? "Время не указано" : "—"}
+      {long ? t("earnings.unknown") : "—"}
     </Pill>
   );
 }
@@ -40,7 +44,7 @@ export function StreakPill({ streak }: { streak: EarningsHistory["streak"] }) {
   const tone: Tone = streak.kind === "beat" ? "up" : "down";
   return (
     <Pill tone={tone} dot>
-      {streak.count} {streak.kind === "beat" ? "beat" : "miss"} подряд
+      {researchI18n.t("earnings.streak", { count: streak.count, kind: streak.kind === "beat" ? "beat" : "miss" })}
     </Pill>
   );
 }
@@ -85,10 +89,11 @@ export function EarningsHistoryView({
   compact?: boolean;
 }) {
   const { data, isLoading, isError, error, refetch, isFetching } = useEarningsHistory(ticker, timing);
+  const { t } = researchI18n.useT();
 
   if (isLoading) {
     return (
-      <div className="space-y-2" aria-busy="true" aria-label="Загружаем историю отчётов">
+      <div className="space-y-2" aria-busy="true" aria-label={t("earnings.loading")}>
         <Skeleton className="h-6 w-2/3 rounded-full" />
         <Skeleton className="h-20 w-full rounded-xl" />
         {!compact && <Skeleton className="h-32 w-full rounded-xl" />}
@@ -99,16 +104,16 @@ export function EarningsHistoryView({
     return (
       <div className="flex flex-col items-start gap-2 text-sm text-muted-foreground">
         <span className="inline-flex items-center gap-1.5 text-down">
-          <AlertTriangle className="h-4 w-4" aria-hidden="true" /> Не удалось загрузить историю: {(error as Error)?.message}
+          <AlertTriangle className="h-4 w-4" aria-hidden="true" /> {t("earnings.loadFailed", { message: humanizeApiError(error) })}
         </span>
         <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
-          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> Повторить
+          <RefreshCw className={cn("h-3.5 w-3.5", isFetching && "animate-spin")} /> {commonI18n.t("actions.retry")}
         </Button>
       </div>
     );
   }
   if (!data || data.quarters.length === 0) {
-    return <p className="text-sm text-muted-foreground">Нет истории отчётов для {ticker}.</p>;
+    return <p className="text-sm text-muted-foreground">{t("earnings.none", { ticker })}</p>;
   }
 
   const total = data.beats + data.misses;
@@ -125,33 +130,33 @@ export function EarningsHistoryView({
         )}
         {(data.upReactions > 0 || data.downReactions > 0) && (
           <Pill tone="neutral">
-            Рост {data.upReactions} · падение {data.downReactions}
+            {t("earnings.upDown", { up: data.upReactions, down: data.downReactions })}
           </Pill>
         )}
       </div>
 
       <div className="grid grid-cols-2 gap-2">
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-          <div className="text-xs text-muted-foreground">Средний гэп</div>
+          <div className="text-xs text-muted-foreground">{t("earnings.avgGap")}</div>
           <div className="text-lg font-semibold tabular-nums">{data.avgAbsGap != null ? `±${data.avgAbsGap.toFixed(1)}%` : "—"}</div>
         </div>
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-          <div className="text-xs text-muted-foreground">Средняя реакция</div>
+          <div className="text-xs text-muted-foreground">{t("earnings.avgReaction")}</div>
           <div className="text-lg font-semibold tabular-nums">{data.avgAbsClose != null ? `±${data.avgAbsClose.toFixed(1)}%` : "—"}</div>
         </div>
       </div>
 
       <div>
-        <div className="micro-label mb-1">Реакция по дням отчётов</div>
+        <div className="micro-label mb-1">{t("earnings.byDay")}</div>
         <ReactionBars data={data} />
       </div>
 
-      <ul className="divide-y divide-border/70" aria-label={`История отчётов ${ticker}`}>
+      <ul className="divide-y divide-border/70" aria-label={t("earnings.listAria", { ticker })}>
         {quarters.map((q) => (
           <li key={q.date} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 py-2.5">
             <div className="min-w-0">
               <div className="flex items-center gap-2 text-sm font-medium">
-                {fmtDate(q.date, "dayMonth")} {q.date.slice(0, 4)}
+                {fmtDate(q.date, "medium")}
                 {q.beat != null && <Pill tone={q.beat ? "up" : "down"}>{q.beat ? "Beat" : "Miss"}</Pill>}
               </div>
               <div className="text-xs text-muted-foreground tabular-nums">
@@ -161,15 +166,15 @@ export function EarningsHistoryView({
             </div>
             <div className="flex items-center gap-4 text-right text-sm tabular-nums">
               <div>
-                <div className="text-2xs text-muted-foreground">Гэп</div>
+                <div className="text-2xs text-muted-foreground">{t("earnings.gap")}</div>
                 <div className={toneText(toneOf(q.gapPct))}>{fmtPct(q.gapPct, 1)}</div>
               </div>
               <div>
-                <div className="text-2xs text-muted-foreground">От открытия</div>
+                <div className="text-2xs text-muted-foreground">{t("earnings.fromOpen")}</div>
                 <div className={toneText(toneOf(q.dayPct))}>{fmtPct(q.dayPct, 1)}</div>
               </div>
               <div>
-                <div className="text-2xs text-muted-foreground">Итог дня</div>
+                <div className="text-2xs text-muted-foreground">{t("earnings.dayClose")}</div>
                 <div className={cn("font-semibold", toneText(toneOf(q.closePct)))}>{fmtPct(q.closePct, 1)}</div>
               </div>
             </div>
@@ -178,8 +183,8 @@ export function EarningsHistoryView({
       </ul>
       {!compact && (
         <p className="text-2xs text-muted-foreground">
-          Реакция — сессия после отчёта{data.timing ? ` (${data.timing === "BMO" ? "день отчёта" : "следующий день"})` : " (день с наибольшим гэпом)"}.
-          Данные: NASDAQ, Yahoo Finance.
+          {data.timing ? (data.timing === "BMO" ? t("earnings.footBmo") : t("earnings.footAmc")) : t("earnings.footAny")}{" "}
+          {t("earnings.source")}
         </p>
       )}
     </div>
@@ -200,6 +205,7 @@ export function EarningsHistorySheet({
   /** Optional block under the history (e.g. «Катализаторы»: the trader's own trades on reaction days). */
   extra?: React.ReactNode;
 }) {
+  const { t } = researchI18n.useT();
   return (
     <Sheet open={!!target} onOpenChange={onOpenChange}>
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
@@ -210,12 +216,12 @@ export function EarningsHistorySheet({
                 {target.ticker}
                 {target.callType && <CallTypePill type={target.callType} long />}
               </SheetTitle>
-              <SheetDescription>{target.company ?? "История отчётов"}</SheetDescription>
+              <SheetDescription>{target.company ?? t("earnings.history")}</SheetDescription>
             </SheetHeader>
             {(target.date || target.epsEstimate != null) && (
               <div className="mt-4 rounded-xl bg-[var(--glass-bg)] px-3 py-1">
-                {target.date && <StatRow label="Ближайший отчёт" value={fmtDate(target.date, "weekdayDayMonth")} />}
-                {target.epsEstimate != null && <StatRow label="Прогноз EPS" value={fmtUsd(target.epsEstimate)} />}
+                {target.date && <StatRow label={t("earnings.nextReport")} value={fmtDate(target.date, "weekdayDayMonth")} />}
+                {target.epsEstimate != null && <StatRow label={t("earnings.epsEstimate")} value={fmtUsd(target.epsEstimate)} />}
               </div>
             )}
             <div className="mt-5">
@@ -225,7 +231,7 @@ export function EarningsHistorySheet({
             {onCreateNote && (
               <div className="mt-5 flex justify-end">
                 <Button variant="outline" onClick={() => onCreateNote(target)}>
-                  <NotebookPen className="h-4 w-4" /> Заметка по {target.ticker}
+                  <NotebookPen className="h-4 w-4" /> {t("earnings.noteFor", { ticker: target.ticker })}
                 </Button>
               </div>
             )}

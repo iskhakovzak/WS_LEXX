@@ -7,6 +7,7 @@ import { addDays, nyDate } from "@/lib/trading-date";
 import { safeHttpUrl } from "@/lib/url";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { feedI18n } from "@/i18n/ns/feed";
 
 /* ─────────────── server shape (additive fields on top of the generated DailyFeed) ─────────────── */
 
@@ -57,10 +58,10 @@ export function formatDayLong(d: string): string {
 
 export function relativeDayLabel(d: string, today = nyDate()): string | null {
   const diff = daysBetween(d, today);
-  if (diff === 0) return "Сегодня";
-  if (diff === 1) return "Вчера";
-  if (diff === -1) return "Завтра";
-  if (diff > 1 && diff < 7) return `${commonI18n.t("units.days", { count: diff })} назад`;
+  if (diff === 0) return commonI18n.t("time.today");
+  if (diff === 1) return commonI18n.t("time.yesterday");
+  if (diff === -1) return commonI18n.t("time.tomorrow");
+  if (diff > 1 && diff < 7) return feedI18n.t("day.daysAgo", { count: diff });
   return null;
 }
 
@@ -91,11 +92,12 @@ export function parseShots(urls?: string | null, notes?: string | null): Shot[] 
 /** Plain-text version of an entry for pasting into Telegram / chat. */
 export function entryToText(f: DailyFeed): string {
   const lines = [`📅 ${formatDayLong(dayOf(f))}`];
-  if (f.marketTheme) lines.push(`Тема: ${f.marketTheme}`);
+  const t = feedI18n.t;
+  if (f.marketTheme) lines.push(t("text.theme", { text: f.marketTheme }));
   const tickers = parseTickers(f.bestTickers);
-  if (tickers.length) lines.push(`Тикеры: ${tickers.join(", ")}`);
-  if (f.whatWorksNow) lines.push(`✅ Работает: ${f.whatWorksNow}`);
-  if (f.whatDoesntWork) lines.push(`⛔ Не работает: ${f.whatDoesntWork}`);
+  if (tickers.length) lines.push(t("text.tickers", { text: tickers.join(", ") }));
+  if (f.whatWorksNow) lines.push(t("text.works", { text: f.whatWorksNow }));
+  if (f.whatDoesntWork) lines.push(t("text.doesntWork", { text: f.whatDoesntWork }));
   if (f.notes) lines.push("", f.notes);
   const tags = splitList(f.tags);
   if (tags.length) lines.push("", tags.map((t) => `#${t.replace(/\s+/g, "_")}`).join(" "));

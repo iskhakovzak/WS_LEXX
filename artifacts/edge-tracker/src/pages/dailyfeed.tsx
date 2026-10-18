@@ -39,8 +39,10 @@ import {
   type FeedCategory, type StreamItem,
 } from "@/components/feed/stream-api";
 import { dayOf, entryIsUnread, entryToText, formatDayLong, hasServerAcks, splitList, useFeedAck, useFeedViewerState, type AckKind, type FeedEntry } from "@/components/feed/feed-utils";
-import { fmtDate, pluralRu } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
+import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
+import { feedI18n } from "@/i18n/ns/feed";
 
 /** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
@@ -51,15 +53,8 @@ import { commonI18n } from "@/i18n/ns/common";
  */
 
 type Cat = "all" | FeedCategory;
-const CAT_OPTIONS: { value: Cat; label: string }[] = [
-  { value: "all", label: "Все" },
-  { value: "mine", label: "Мои" },
-  { value: "desk", label: "Деск" },
-  { value: "achievement", label: "Достижения" },
-  { value: "market", label: "Рынок" },
-  { value: "announcement", label: "Объявления" },
-];
-const CAT_VALUES = CAT_OPTIONS.map((o) => o.value);
+const CAT_VALUES: Cat[] = ["all", "mine", "desk", "achievement", "market", "announcement"];
+const catLabel = (c: Cat) => (c === "all" ? commonI18n.t("states.all") : feedI18n.t(`cat.${c}`));
 
 function isTypingTarget(el: EventTarget | null) {
   if (!(el instanceof HTMLElement)) return false;
@@ -79,13 +74,14 @@ function stepWeekday(d: string, dir: -1 | 1) {
 function buildPlaybookPayload(feed: DailyFeed): PlaybookPayload {
   const conditions: string[] = [];
   if (feed.whatWorksNow) conditions.push(feed.whatWorksNow);
-  if (feed.marketTheme) conditions.push(`Рыночная тема: ${feed.marketTheme}`);
+  const t = feedI18n.t;
+  if (feed.marketTheme) conditions.push(t("playbook.theme", { text: feed.marketTheme }));
   const notes: string[] = [];
-  if (feed.whatDoesntWork) notes.push(`Что не работает: ${feed.whatDoesntWork}`);
+  if (feed.whatDoesntWork) notes.push(t("playbook.doesntWork", { text: feed.whatDoesntWork }));
   if (feed.notes) notes.push(feed.notes);
-  if (feed.bestTickers) notes.push(`Тикеры: ${feed.bestTickers}`);
+  if (feed.bestTickers) notes.push(t("playbook.tickers", { text: feed.bestTickers }));
   return {
-    name: `${feed.marketTheme || "Стратегия"} (${dayOf(feed)})`,
+    name: `${feed.marketTheme || t("playbook.strategy")} (${dayOf(feed)})`,
     conditions: conditions.join("\n") || undefined,
     notes: notes.join("\n") || undefined,
     screenshotUrl: feed.screenshotUrl || undefined,
@@ -102,7 +98,7 @@ const postHay = (f: DailyFeed) =>
 
 function FeedSkeleton() {
   return (
-    <div className="flex flex-col gap-6" role="status" aria-label="Загрузка ленты">
+    <div className="flex flex-col gap-6" role="status" aria-label={feedI18n.t("page.loading")}>
       {[5, 3].map((rows, d) => (
         <section key={d} className="flex flex-col gap-2">
           <SkeletonBlock className="mx-1 h-6 w-64 rounded-full" />
@@ -127,6 +123,7 @@ function FeedSkeleton() {
 export default function DailyFeedPage() {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = feedI18n.useT();
   const { user, canEdit, isCurator, isAdmin } = useAuth();
   const isStaff = isCurator || isAdmin;
   const userId = user?.traderName ?? undefined;
@@ -168,7 +165,7 @@ export default function DailyFeedPage() {
     qc.invalidateQueries({ queryKey: STREAM_KEY });
   }, [qc]);
   const undo = useUndoDelete(invalidate);
-  const onMutErr = (e: unknown) => toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? String(e), variant: "destructive" });
+  const onMutErr = (e: unknown) => toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e), variant: "destructive" });
   const createMut = useCreateDailyFeed({ mutation: { onError: onMutErr } });
   const updateMut = useUpdateDailyFeed({ mutation: { onError: onMutErr } });
   const deleteMut = useDeleteDailyFeed({ mutation: { onError: onMutErr } });
@@ -312,10 +309,11 @@ export default function DailyFeedPage() {
       if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
       if (isTypingTarget(e.target) || document.querySelector("[role=dialog]")) return;
       const k = e.key.toLowerCase();
-      if (k === "n" || k === "т") { if (canEdit) { e.preventDefault(); openNew(); } }
+      // Same physical keys on the Russian layout (Т = N, О = J, Л = K).
+      if (k === "n" || k === "т") { if (canEdit) { e.preventDefault(); openNew(); } } // i18n-ignore
       else if (e.key === "/") { e.preventDefault(); searchRef.current?.focus(); }
-      else if (k === "j" || k === "о") { e.preventDefault(); stepDay(-1); }
-      else if (k === "k" || k === "л") { e.preventDefault(); stepDay(1); }
+      else if (k === "j" || k === "о") { e.preventDefault(); stepDay(-1); } // i18n-ignore
+      else if (k === "k" || k === "л") { e.preventDefault(); stepDay(1); } // i18n-ignore
       else if (e.key === "Escape" && hasFilters) { clearFilters(); }
     };
     window.addEventListener("keydown", onKey);
@@ -328,12 +326,12 @@ export default function DailyFeedPage() {
     try {
       const data = (await http.post<{ skipped?: boolean } | null>(`/api/market-brief/generate-feed${force ? "?force=1" : ""}`)) ?? {};
       toast({
-        title: data.skipped ? "Брифинг за сегодня уже есть" : "AI-брифинг готов",
-        description: data.skipped ? "Чтобы обновить его, выбери «Перегенерировать»." : "Брифинг добавлен в объявления на сегодня.",
+        title: data.skipped ? t("toast.briefExists") : t("toast.briefReady"),
+        description: data.skipped ? t("toast.briefExistsText") : t("toast.briefReadyText"),
       });
       invalidate();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: humanizeApiError(e), variant: "destructive" });
     } finally {
       setRegenLoading(false);
     }
@@ -346,11 +344,11 @@ export default function DailyFeedPage() {
     try {
       if (editing) {
         await updateMut.mutateAsync({ id: editing.id, data: formToBody(form) as UpdateDailyFeedBody });
-        toast({ title: "Объявление обновлено" });
+        toast({ title: t("toast.updated") });
       } else {
         const created = await createMut.mutateAsync({ data: formToBody(form) });
         if (created && typeof (created as DailyFeed).id === "number") viewer.markRead((created as DailyFeed).id);
-        toast({ title: "Опубликовано в ленте" });
+        toast({ title: t("toast.published") });
       }
       invalidate();
       setEditorOpen(false);
@@ -362,7 +360,7 @@ export default function DailyFeedPage() {
     deleteMut.mutate({ id: f.id }, {
       onSuccess: () => {
         invalidate();
-        undo.scheduleUndo(f.id, "dailyfeed", `Объявление (${fmtDate(dayOf(f), "dayMonth")})`);
+        undo.scheduleUndo(f.id, "dailyfeed", t("toast.undoLabel", { date: fmtDate(dayOf(f), "dayMonth") }));
       },
     });
   }
@@ -372,20 +370,20 @@ export default function DailyFeedPage() {
       await http.patch(`/api/dailyfeed/${f.id}`, { screenshotNotes: JSON.stringify(notes) });
       invalidate();
     } catch {
-      toast({ title: "Не удалось сохранить подпись", variant: "destructive" });
+      toast({ title: t("toast.captionFailed"), variant: "destructive" });
     }
   }
 
   async function copyEntry(f: DailyFeed) {
     try {
       await navigator.clipboard.writeText(entryToText(f));
-      toast({ title: "Скопировано", description: "Текст объявления в буфере обмена." });
+      toast({ title: commonI18n.t("states.copied"), description: t("toast.copiedText") });
     } catch {
-      toast({ title: "Не удалось скопировать", variant: "destructive" });
+      toast({ title: commonI18n.t("states.copyFailed"), variant: "destructive" });
     }
   }
 
-  const ackErr = (e: unknown) => toast({ title: "Не удалось сохранить отметку", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+  const ackErr = (e: unknown) => toast({ title: t("toast.ackFailed"), description: humanizeApiError(e), variant: "destructive" });
   function markRead(f: FeedEntry) {
     viewer.markRead(f.id);
     if (canEdit && hasServerAcks(f) && !f.acks.mine.includes("read")) ack(f.id, "read", true).catch(ackErr);
@@ -409,14 +407,14 @@ export default function DailyFeedPage() {
         j = await http.post<{ updated?: boolean } | null>(`/api/dailyfeed/eod?date=${date}${force ? "&force=1" : ""}`);
       } catch (e) {
         if (e instanceof ApiError && e.status === 409 && e.code === "SYNC_PENDING") { setEodPending({ date, lastSyncedAt: e.field<string | null>("lastSyncedAt") ?? null }); return; }
-        if (e instanceof ApiError && e.status === 409 && e.code === "SYNC_RUNNING") { toast({ title: "Сделки ещё загружаются", description: "Подожди пару минут и закрой день ещё раз." }); return; }
+        if (e instanceof ApiError && e.status === 409 && e.code === "SYNC_RUNNING") { toast({ title: t("toast.syncRunning"), description: t("toast.syncRunningText") }); return; }
         throw e;
       }
       invalidate();
       setSelectedDay(date);
-      toast({ title: j?.updated ? "Итог дня обновлён" : "Итог дня записан", description: formatDayLong(date) });
+      toast({ title: j?.updated ? t("toast.dayUpdated") : t("toast.dayWritten"), description: formatDayLong(date) });
     } catch (e) {
-      toast({ title: "Не удалось закрыть день", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: t("toast.closeFailed"), description: humanizeApiError(e), variant: "destructive" });
     } finally {
       setEodLoading(false);
     }
@@ -433,15 +431,15 @@ export default function DailyFeedPage() {
   /* ── render pieces ── */
   const header = (
     <PageHeader
-      title="Лента"
+      title={t("page.title")}
       icon={Newspaper}
-      description="Собирается сама: итоги дней, рекорды и серии, разборы, идеи и плейбук деска, события по твоим тикерам"
+      description={t("page.description")}
       meta={
         <>
           {newTotal > 0 ? (
-            <Pill tone="accent" dot>{newTotal} {pluralRu(newTotal, "новое", "новых", "новых")} с последнего визита</Pill>
+            <Pill tone="accent" dot>{t("page.newSinceVisit", { count: newTotal })}</Pill>
           ) : baseline ? (
-            <span>Нового с последнего визита нет</span>
+            <span>{t("page.nothingNew")}</span>
           ) : null}
           {stream.dataUpdatedAt > 0 && <UpdatedAgo at={stream.dataUpdatedAt} />}
         </>
@@ -450,35 +448,35 @@ export default function DailyFeedPage() {
         <>
           {canEdit && (
             isStaff ? (
-              <Button onClick={openNew} title="Объявление для деска (N)">
-                <Megaphone aria-hidden="true" /> Написать объявление
+              <Button onClick={openNew} title={t("page.announceTitle")}>
+                <Megaphone aria-hidden="true" /> {t("page.announce")}
               </Button>
             ) : (
-              <Button variant="outline" onClick={openNew} title="Короткая заметка в ленту деска (N)">
-                <PenLine aria-hidden="true" /> Заметка
+              <Button variant="outline" onClick={openNew} title={t("page.noteTitle")}>
+                <PenLine aria-hidden="true" /> {t("page.note")}
               </Button>
             )
           )}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="icon" aria-label="Ещё действия" title="Ещё">
+              <Button variant="outline" size="icon" aria-label={commonI18n.t("actions.moreActions")} title={commonI18n.t("actions.more")}>
                 {eodLoading || regenLoading ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <MoreHorizontal aria-hidden="true" />}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-64">
               <DropdownMenuItem onSelect={() => setDigestOpen(true)}>
-                <Bell aria-hidden="true" /> Дайджест
+                <Bell aria-hidden="true" /> {t("page.digest")}
               </DropdownMenuItem>
               {isStaff && (
                 <DropdownMenuItem disabled={eodLoading} onSelect={() => closeDay(false)}>
-                  <ClipboardCheck aria-hidden="true" /> Закрыть день · {fmtDate(selectedDay ?? today, "dayMonth")}
+                  <ClipboardCheck aria-hidden="true" /> {t("page.closeDay", { date: fmtDate(selectedDay ?? today, "dayMonth") })}
                 </DropdownMenuItem>
               )}
               {isStaff && (
                 <>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem disabled={regenLoading} onSelect={() => (todayPost ? setConfirmRegen(true) : handleRegen(false))}>
-                    <Bot aria-hidden="true" /> {todayPost ? "Перегенерировать AI-брифинг" : "AI-брифинг дня"}
+                    <Bot aria-hidden="true" /> {todayPost ? t("page.regen") : t("page.brief")}
                   </DropdownMenuItem>
                 </>
               )}
@@ -492,26 +490,26 @@ export default function DailyFeedPage() {
   const toolbar = (
     <Toolbar className="sticky-top">
       <Segmented<Cat>
-        ariaLabel="Что показывать"
+        ariaLabel={t("page.whatToShow")}
         size="sm"
         value={cat}
         onChange={setCat}
-        options={CAT_OPTIONS.map((o) => ({ value: o.value, label: o.label, count: loading ? undefined : catCounts[o.value] || undefined }))}
+        options={CAT_VALUES.map((v) => ({ value: v, label: catLabel(v), count: loading ? undefined : catCounts[v] || undefined }))}
       />
       <div className="relative min-w-[200px] flex-1">
         <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
         <Input
           ref={searchRef}
-          aria-label="Поиск по ленте"
-          title="Поиск ( / )"
+          aria-label={t("page.searchAria")}
+          title={t("page.searchTitle")}
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           onKeyDown={(e) => { if (e.key === "Escape") { setQuery(""); (e.target as HTMLInputElement).blur(); } }}
-          placeholder="Тикер, трейдер, событие…"
+          placeholder={t("page.searchPlaceholder")}
           className="pl-10 pr-9"
         />
         {query && (
-          <button type="button" aria-label="Очистить поиск" onClick={() => setQuery("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <button type="button" aria-label={commonI18n.t("actions.clearSearch")} onClick={() => setQuery("")} className="absolute right-1.5 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
             <X className="h-3.5 w-3.5" />
           </button>
         )}
@@ -520,21 +518,21 @@ export default function DailyFeedPage() {
   );
 
   const dayNav = selectedDay && (
-    <div className="flex flex-wrap items-center gap-2" aria-label="Выбранный день">
+    <div className="flex flex-wrap items-center gap-2" aria-label={t("page.selectedDay")}>
       <div className="glass-field inline-flex items-center gap-1 p-1">
-        <button type="button" aria-label="Предыдущий торговый день" title="День назад (J)" onClick={() => stepDay(-1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("page.prevDay")} title={t("page.prevDayTitle")} onClick={() => stepDay(-1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <ChevronLeft className="h-4 w-4" />
         </button>
         <span className="px-1 text-sm font-medium text-foreground">{formatDayLong(selectedDay)}</span>
-        <button type="button" aria-label="Следующий торговый день" title="День вперёд (K)" disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
+        <button type="button" aria-label={t("page.nextDay")} title={t("page.nextDayTitle")} disabled={stepWeekday(selectedDay, 1) > today} onClick={() => stepDay(1)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground disabled:opacity-40">
           <ChevronRight className="h-4 w-4" />
         </button>
-        <button type="button" aria-label="Показать все дни" title="Все дни (Esc)" onClick={() => setSelectedDay(null)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+        <button type="button" aria-label={t("page.allDaysAria")} title={t("page.allDaysTitle")} onClick={() => setSelectedDay(null)} className="grid h-7 w-7 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
           <X className="h-3.5 w-3.5" />
         </button>
       </div>
       <Link href={links.dayReport(selectedDay)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
-        <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> Отчёт за день
+        <NotebookPen className="h-3.5 w-3.5" aria-hidden="true" /> {t("page.dayReport")}
       </Link>
     </div>
   );
@@ -543,15 +541,15 @@ export default function DailyFeedPage() {
     <div className="glass-panel flex items-start gap-3 rounded-2xl p-[var(--panel-p)] text-sm" role="status">
       <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
       <p className="text-muted-foreground">
-        Автоматическая лента появится после обновления сервера. Пока показаны только объявления.
+        {t("page.unavailable")}
       </p>
     </div>
   ) : softError ? (
     <div className="glass-panel flex flex-wrap items-center gap-3 rounded-2xl p-[var(--panel-p)] text-sm" role="alert">
       <AlertTriangle className="h-4 w-4 shrink-0 text-warn" aria-hidden="true" />
-      <p className="min-w-0 flex-1 text-muted-foreground">Не удалось собрать ленту. Объявления показаны, остальное — после повтора.</p>
+      <p className="min-w-0 flex-1 text-muted-foreground">{t("page.softError")}</p>
       <Button variant="outline" size="sm" onClick={() => (selectedDay ? dayQ.refetch() : stream.refetch())}>
-        <RefreshCw aria-hidden="true" /> Повторить
+        <RefreshCw aria-hidden="true" /> {commonI18n.t("actions.retry")}
       </Button>
     </div>
   ) : null;
@@ -564,9 +562,9 @@ export default function DailyFeedPage() {
       <Panel>
         <EmptyState
           icon={Newspaper}
-          title="Лента пока пустая"
-          description="Как только появятся сделки, разборы, идеи или события рынка, лента соберётся сама."
-          action={canEdit ? <Button variant="outline" onClick={openNew}><PenLine aria-hidden="true" />{isStaff ? "Написать объявление" : "Заметка"}</Button> : undefined}
+          title={t("page.emptyTitle")}
+          description={t("page.emptyText")}
+          action={canEdit ? <Button variant="outline" onClick={openNew}><PenLine aria-hidden="true" />{isStaff ? t("page.announce") : t("page.note")}</Button> : undefined}
         />
       </Panel>
     );
@@ -577,17 +575,17 @@ export default function DailyFeedPage() {
           <EmptyState
             compact
             icon={CalendarDays}
-            title={`За ${fmtDate(selectedDay, "dayMonth")} событий нет`}
-            description="Выходной или день без сделок. Выбери другой день в календаре."
-            action={<Button variant="outline" size="sm" onClick={() => setSelectedDay(null)}>Все дни</Button>}
+            title={t("page.noDayEvents", { date: fmtDate(selectedDay, "dayMonth") })}
+            description={t("page.noDayEventsText")}
+            action={<Button variant="outline" size="sm" onClick={() => setSelectedDay(null)}>{t("page.allDays")}</Button>}
           />
         ) : (
           <EmptyState
             compact
             icon={Search}
-            title="Ничего не найдено"
-            description="Попробуй другой раздел или запрос."
-            action={<Button variant="outline" size="sm" onClick={clearFilters}><X aria-hidden="true" />Сбросить</Button>}
+            title={commonI18n.t("states.nothingFound")}
+            description={t("page.tryOther")}
+            action={<Button variant="outline" size="sm" onClick={clearFilters}><X aria-hidden="true" />{commonI18n.t("actions.reset")}</Button>}
           />
         )}
       </Panel>
@@ -649,7 +647,7 @@ export default function DailyFeedPage() {
         {!selectedDay && stream.hasNextPage && (
           <Button variant="outline" className="self-center" disabled={stream.isFetchingNextPage} onClick={() => stream.fetchNextPage()}>
             {stream.isFetchingNextPage ? <RefreshCw className="animate-spin" aria-hidden="true" /> : <CalendarRange aria-hidden="true" />}
-            Показать раньше
+            {t("page.showEarlier")}
           </Button>
         )}
       </div>
@@ -658,10 +656,10 @@ export default function DailyFeedPage() {
 
   const aside = (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <Panel title="Сводка" icon={TrendingUp}>
+      <Panel title={t("page.summary")} icon={TrendingUp}>
         <dl className="flex flex-col gap-3 text-sm">
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-muted-foreground">Последний торговый день</dt>
+            <dt className="text-muted-foreground">{t("page.lastTradingDay")}</dt>
             <dd className="text-right">
               {summary.lastDay ? (
                 <Link href={summary.lastDay.href ?? links.dayReport(summary.lastDay.date)} className="inline-flex flex-col items-end hover:underline">
@@ -672,7 +670,7 @@ export default function DailyFeedPage() {
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-muted-foreground">Прошлая неделя</dt>
+            <dt className="text-muted-foreground">{t("page.lastWeek")}</dt>
             <dd className="text-right">
               {summary.lastWeek ? (
                 <Link href={summary.lastWeek.href ?? links.weeklyReview()} className="inline-flex flex-col items-end hover:underline">
@@ -683,7 +681,7 @@ export default function DailyFeedPage() {
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="text-muted-foreground">Достижения за 2 недели</dt>
+            <dt className="text-muted-foreground">{t("page.achievements")}</dt>
             <dd>
               <button type="button" className="font-semibold tabular-nums text-foreground hover:underline" onClick={() => { setSelectedDay(null); setCat("achievement"); }}>
                 {summary.achievements}
@@ -691,10 +689,10 @@ export default function DailyFeedPage() {
             </dd>
           </div>
           <div className="flex items-center justify-between gap-3">
-            <dt className="inline-flex items-center gap-1.5 text-muted-foreground"><Zap className="h-3.5 w-3.5" aria-hidden="true" />Мои тикеры сегодня</dt>
+            <dt className="inline-flex items-center gap-1.5 text-muted-foreground"><Zap className="h-3.5 w-3.5" aria-hidden="true" />{t("page.myTickersToday")}</dt>
             <dd>
               <button type="button" className="font-semibold tabular-nums text-foreground hover:underline" onClick={() => { setSelectedDay(null); setCat("market"); }}>
-                {summary.myMarket ? commonI18n.t("units.events", { count: summary.myMarket }) : "тихо"}
+                {summary.myMarket ? commonI18n.t("units.events", { count: summary.myMarket }) : t("page.quiet")}
               </button>
             </dd>
           </div>
@@ -719,13 +717,13 @@ export default function DailyFeedPage() {
     <Page>
       {header}
       <div className="grid items-start gap-[var(--grid-gap)] lg:grid-cols-[minmax(0,1fr)_300px]">
-        <main className="flex min-w-0 flex-col gap-4" aria-label="Лента">
+        <main className="flex min-w-0 flex-col gap-4" aria-label={t("page.title")}>
           {toolbar}
           {dayNav}
           {banner}
           {body}
         </main>
-        <aside className="hidden lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:block" aria-label="Сводка и календарь">
+        <aside className="hidden lg:sticky lg:top-[var(--sticky-top)] lg:z-sticky lg:block" aria-label={t("page.asideAria")}>
           {aside}
         </aside>
       </div>
@@ -746,17 +744,17 @@ export default function DailyFeedPage() {
       <AlertDialog open={!!eodPending} onOpenChange={(v) => { if (!v) setEodPending(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Сделки за {eodPending ? fmtDate(eodPending.date, "dayMonth") : ""} ещё загружаются</AlertDialogTitle>
+            <AlertDialogTitle>{t("page.eodTitle", { date: eodPending ? fmtDate(eodPending.date, "dayMonth") : "" })}</AlertDialogTitle>
             <AlertDialogDescription>
               {eodPending?.lastSyncedAt
-                ? `Последняя загрузка: ${fmtDate(eodPending.lastSyncedAt, "shortDateTimeSeconds")}. `
-                : "За этот день сделки ещё не загружались. "}
-              Итог дня соберётся по тем сделкам, что уже есть, — цифры могут быть неполными. Закрыть день сейчас?
+                ? t("page.eodLast", { time: fmtDate(eodPending.lastSyncedAt, "shortDateTimeSeconds") })
+                : t("page.eodNever")}{" "}
+              {t("page.eodText")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Подождать</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setEodPending(null); closeDay(true); }}>Всё равно закрыть</AlertDialogAction>
+            <AlertDialogCancel>{t("page.eodWait")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setEodPending(null); closeDay(true); }}>{t("page.eodForce")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -764,14 +762,14 @@ export default function DailyFeedPage() {
       <AlertDialog open={confirmRegen} onOpenChange={setConfirmRegen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Перегенерировать AI-брифинг?</AlertDialogTitle>
+            <AlertDialogTitle>{t("page.regenTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              AI заново соберёт брифинг на сегодня и обновит сегодняшнее AI-объявление. Ручные правки в нём могут потеряться.
+              {t("page.regenText")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { setConfirmRegen(false); handleRegen(true); }}>Перегенерировать</AlertDialogAction>
+            <AlertDialogCancel>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => { setConfirmRegen(false); handleRegen(true); }}>{t("page.regenConfirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

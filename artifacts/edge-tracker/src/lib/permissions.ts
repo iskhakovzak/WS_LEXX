@@ -14,71 +14,90 @@ export type Scope = "desk" | "assigned";
 export type CapabilityDef = {
   key: Capability;
   group: string;
-  label: string;
-  description: string;
+  /** Server payloads carry a Russian label/description; the UI shows settings `permissions.caps.*` by key. */
+  label?: string;
+  description?: string;
   team?: boolean;
   own?: boolean;
   adminOnly?: boolean;
 };
 
+/**
+ * Group names exactly as the API matrix spells them: they are compared by scripts/check-permissions.mjs, so they act
+ * as codes here. Display names: settings namespace `permissions.groups.<code>` (see PERM_GROUP_CODE).
+ */
+const G = {
+  desk: "Деск", // i18n-ignore (code shared with the API)
+  trades: "Сделки", // i18n-ignore
+  journal: "Дневник", // i18n-ignore
+  risk: "Риск", // i18n-ignore
+  propreports: "PropReports",
+  ratings: "Оценки", // i18n-ignore
+  content: "Контент", // i18n-ignore
+  admin: "Администрирование", // i18n-ignore
+} as const;
+export type PermGroupCode = keyof typeof G;
+/** API group name → group code (for the translated header). */
+export const PERM_GROUP_CODE: Readonly<Record<string, PermGroupCode>> = Object.fromEntries(
+  (Object.entries(G) as [PermGroupCode, string][]).map(([code, name]) => [name, code]),
+);
+
 export const CAPABILITIES = [
-  { key: "team.read", group: "Деск", label: "Видеть данные всех трейдеров", team: true,
-    description: "Сделки, события, идеи, рейтинги, плейбук-статистика и ленты по любому трейдеру. Без него — только свои." },
-  { key: "users.read.team", group: "Деск", label: "Список команды", team: true,
-    description: "Настройки → Команда, /admin/users, назначения куратор/риск/ментор (просмотр)." },
+  { key: "team.read", group: G.desk, team: true },
+  { key: "users.read.team", group: G.desk, team: true },
 
-  { key: "trades.read.own", group: "Сделки", label: "Смотреть свои сделки", own: true, description: "Журнал, исполнения, чек-листы своих сделок." },
-  { key: "trades.read.team", group: "Сделки", label: "Смотреть сделки команды", team: true, description: "Сделки и исполнения других трейдеров." },
-  { key: "trades.write.own", group: "Сделки", label: "Вести свои сделки", own: true, description: "Создавать, править, удалять свои сделки и исполнения." },
-  { key: "trades.write.any", group: "Сделки", label: "Править чужие сделки", team: true, description: "Редактировать/переназначать сделки других трейдеров, привязывать их к сетапам и событиям." },
-  { key: "trades.review", group: "Сделки", label: "Разбор сделок куратором", team: true, description: "Оставлять разборы и оценку качества." },
-  { key: "trades.review.delete.any", group: "Сделки", label: "Удалять чужие разборы", adminOnly: true, description: "Удалять разборы других кураторов." },
+  { key: "trades.read.own", group: G.trades, own: true },
+  { key: "trades.read.team", group: G.trades, team: true },
+  { key: "trades.write.own", group: G.trades, own: true },
+  { key: "trades.write.any", group: G.trades, team: true },
+  { key: "trades.review", group: G.trades, team: true },
+  { key: "trades.review.delete.any", group: G.trades, adminOnly: true },
 
-  { key: "journal.write.own", group: "Дневник", label: "Вести свой дневник", own: true, description: "План дня, итоги дня, закрытие дня, недельная самооценка, заметки, эмоции." },
-  { key: "journal.read.team", group: "Дневник", label: "Читать дневники команды", team: true, description: "Дневник, EOD-статус, недельный отчёт, заметки, эмоции и психо-аналитика других трейдеров." },
-  { key: "journal.review", group: "Дневник", label: "Ревью куратора", team: true, description: "Очередь закрытых дней, оценка дня, недельный отчёт 1:1, сводки джуниоров, напоминания." },
-  { key: "gameplan.publish", group: "Дневник", label: "Публиковать план дня", description: "Создавать/удалять premarket game plan и видеть кто прочитал." },
-  { key: "dailyfeed.manage", group: "Дневник", label: "Управлять дневной лентой", team: true, description: "EOD-пост ленты, правка чужих записей, список непрочитавших." },
-  { key: "errors.manage.team", group: "Дневник", label: "Журнал ошибок команды", team: true, description: "Смотреть и вести журнал ошибок от имени трейдера." },
+  { key: "journal.write.own", group: G.journal, own: true },
+  { key: "journal.read.team", group: G.journal, team: true },
+  { key: "journal.review", group: G.journal, team: true },
+  { key: "gameplan.publish", group: G.journal },
+  { key: "dailyfeed.manage", group: G.journal, team: true },
+  { key: "errors.manage.team", group: G.journal, team: true },
 
-  { key: "risk.read.own", group: "Риск", label: "Свой риск-профиль", own: true, description: "Лимиты, история, позиции, алерты по себе." },
-  { key: "risk.read.team", group: "Риск", label: "Риск-деск", team: true, description: "Риск-деск, лимиты и история любого трейдера." },
-  { key: "risk.limits.edit", group: "Риск", label: "Менять лимиты", team: true, description: "Изменение лимитов трейдера." },
-  { key: "scaling.read.team", group: "Риск", label: "План масштабирования команды", team: true, description: "Оценка и история любого трейдера." },
-  { key: "scaling.configure", group: "Риск", label: "Настраивать лестницу тиров", description: "Тиры и правила масштабирования." },
-  { key: "scaling.approve", group: "Риск", label: "Решать по тирам", team: true, description: "Создавать/одобрять/отклонять предложения, назначать тир напрямую." },
-  { key: "rules.manage.team", group: "Риск", label: "Правила команды", team: true, description: "Правила и нарушения других трейдеров (просмотр, создание, правка)." },
-  { key: "rules.violations.delete", group: "Риск", label: "Удалять нарушения", description: "Удаление нарушений (трейдер может только «принять»)." },
+  { key: "risk.read.own", group: G.risk, own: true },
+  { key: "risk.read.team", group: G.risk, team: true },
+  { key: "risk.limits.edit", group: G.risk, team: true },
+  { key: "scaling.read.team", group: G.risk, team: true },
+  { key: "scaling.configure", group: G.risk },
+  { key: "scaling.approve", group: G.risk, team: true },
+  { key: "rules.manage.team", group: G.risk, team: true },
+  { key: "rules.violations.delete", group: G.risk },
 
-  { key: "propreports.import", group: "PropReports", label: "Импорт своих отчётов", own: true, description: "Загрузка файлов по своим счетам (dry-run и запись)." },
-  { key: "propreports.read.team", group: "PropReports", label: "Статус и отчёты команды", team: true, description: "Все счета, история синка, инбокс сверки, отчёты по любому трейдеру." },
-  { key: "propreports.configure", group: "PropReports", label: "Привязка счетов", description: "Привязка счетов PropReports к трейдерам, обновление списка счетов." },
-  { key: "propreports.sync", group: "PropReports", label: "Синхронизация и сверка", description: "Запуск синка, объединение/разделение сделок, удаление отчётов, XLS-импорт из админки." },
+  { key: "propreports.import", group: G.propreports, own: true },
+  { key: "propreports.read.team", group: G.propreports, team: true },
+  { key: "propreports.configure", group: G.propreports },
+  { key: "propreports.sync", group: G.propreports },
 
-  { key: "ratings.read.team", group: "Оценки", label: "Оценки команды", team: true, description: "Еженедельные оценки любого трейдера." },
-  { key: "ratings.write", group: "Оценки", label: "Ставить оценки", team: true, description: "Ставить оценки, править/удалять свои оценки." },
-  { key: "ratings.manage.any", group: "Оценки", label: "Править чужие оценки", adminOnly: true, description: "Редактировать и удалять оценки других кураторов." },
+  { key: "ratings.read.team", group: G.ratings, team: true },
+  { key: "ratings.write", group: G.ratings, team: true },
+  { key: "ratings.manage.any", group: G.ratings, adminOnly: true },
 
-  { key: "playbook.edit", group: "Контент", label: "Вести плейбук", description: "Создавать сетапы, править свои и командные (без автора)." },
-  { key: "playbook.edit.any", group: "Контент", label: "Править чужие сетапы", team: true, description: "Редактировать сетапы, созданные другими трейдерами, автопривязка по всему деску." },
-  { key: "playbook.review", group: "Контент", label: "Ревью плейбука", description: "Вердикты approved/needs_work/retired, переименование и удаление папок." },
-  { key: "ideas.publish", group: "Контент", label: "Публиковать идеи", own: true, description: "Создавать и публиковать свои торговые идеи, комментировать." },
-  { key: "ideas.review", group: "Контент", label: "Ревью идей", team: true, description: "Статус ревью идей, управление чужими идеями, черновики всех." },
-  { key: "discussions.moderate", group: "Контент", label: "Модерация обсуждений", description: "Удалять чужие темы и комментарии, закрывать темы." },
-  { key: "discussions.edit.any", group: "Контент", label: "Править чужие комментарии", adminOnly: true, description: "Редактировать чужие комментарии." },
-  { key: "checklist.template.edit", group: "Контент", label: "Шаблон pre-trade чек-листа", description: "Менять пункты чек-листа для всего деска." },
-  { key: "watchlist.manage", group: "Контент", label: "Вотчлист деска", description: "Править общий вотчлист (любой участник, не гость)." },
+  { key: "playbook.edit", group: G.content },
+  { key: "playbook.edit.any", group: G.content, team: true },
+  { key: "playbook.review", group: G.content },
+  { key: "ideas.publish", group: G.content, own: true },
+  { key: "ideas.review", group: G.content, team: true },
+  { key: "discussions.moderate", group: G.content },
+  { key: "discussions.edit.any", group: G.content, adminOnly: true },
+  { key: "checklist.template.edit", group: G.content },
+  { key: "watchlist.manage", group: G.content },
 
-  { key: "users.manage", group: "Администрирование", label: "Управлять пользователями", description: "Создавать, править, деактивировать, банить трейдеров и кураторов; менять назначения." },
-  { key: "users.manage.admins", group: "Администрирование", label: "Управлять админами", adminOnly: true, description: "Создавать админов, выдавать роль admin, править/деактивировать админов, банить кураторов." },
-  { key: "admin.reports", group: "Администрирование", label: "Жалобы на контент", description: "Очередь жалоб, решение, бан автора." },
-  { key: "admin.audit", group: "Администрирование", label: "Журнал аудита", description: "Читать audit log и статистику." },
-  { key: "admin.backups.read", group: "Администрирование", label: "Список бэкапов", description: "Список бэкапов, полный JSON-бэкап." },
-  { key: "admin.backups.run", group: "Администрирование", label: "Запуск и скачивание бэкапов", adminOnly: true, description: "Запуск бэкапа, ссылки на скачивание." },
-  { key: "telegram.broadcast", group: "Администрирование", label: "Telegram-рассылка", description: "Массовая рассылка и отвязка Telegram у пользователей." },
-  { key: "digest.manage.any", group: "Администрирование", label: "Дайджест за других", team: true, description: "Смотреть/менять подписку на дайджест другого участника." },
-  { key: "permissions.manage", group: "Администрирование", label: "Менять права доступа", adminOnly: true, description: "Редактировать матрицу прав деска." },
-  { key: "admin.errors", group: "Администрирование", label: "Ошибки приложения", adminOnly: true, description: "Пульт → Ошибки: ошибки сервера и браузера, пометка «исправлено»." },
+  { key: "users.manage", group: G.admin },
+  { key: "users.manage.admins", group: G.admin, adminOnly: true },
+  { key: "admin.reports", group: G.admin },
+  { key: "admin.audit", group: G.admin },
+  { key: "admin.backups.read", group: G.admin },
+  { key: "admin.backups.run", group: G.admin, adminOnly: true },
+  { key: "telegram.broadcast", group: G.admin },
+  { key: "digest.manage.any", group: G.admin, team: true },
+  { key: "permissions.manage", group: G.admin, adminOnly: true },
+  { key: "admin.errors", group: G.admin, adminOnly: true },
 ] as const;
 
 export type Capability = (typeof CAPABILITIES)[number]["key"];

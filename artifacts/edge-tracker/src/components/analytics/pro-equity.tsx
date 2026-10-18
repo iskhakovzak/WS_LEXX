@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { LineChart } from "lucide-react";
 import { Panel, EmptyState } from "@/components/ds";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 import { type Metric, type OhlcCandle } from "@/lib/analytics-pro";
 import { EquityChart, fromOhlc } from "@/components/equity-chart";
 
@@ -10,11 +11,12 @@ export function EquityPanel({ candles, metric }: { candles: OhlcCandle[]; metric
   return (
     <Panel
       icon={LineChart}
-      title="Кривая капитала"
-      description={metric === "r" ? "Накопленный результат в R · клик по дню — разбор дня" : "Накопленный P&L · клик по дню — разбор дня"}
+      title={analyticsProI18n.t("equity.title")}
+      description={metric === "r" ? analyticsProI18n.t("equity.hintR") : analyticsProI18n.t("equity.hintPnl")}
     >
       {candles.length === 0 ? (
-        <EmptyState icon={LineChart} title="Нет данных для графика" description="В выборке нет сделок с датой." />
+        <EmptyState icon={LineChart} title={analyticsProI18n.t("equity.empty")} description={analyticsProI18n.t("equity.emptyHint")} />
+
       ) : (
         <EquityChart days={days} unit={metric === "r" ? "r" : "net"} storageKey="analyticsPro.equity" height={400} />
       )}

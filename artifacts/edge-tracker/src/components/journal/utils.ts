@@ -1,5 +1,6 @@
 import type { Trade as ApiTrade } from "@workspace/api-client-react";
 import { nyDate } from "@/lib/trading-date";
+import { HORIZON_LABEL as TRADES_HORIZON_LABEL } from "@/components/shared/trade-labels";
 import { fmtDate, fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
 import {
   closeDate, computeKpis, feesOf, grossPnl, isOpen, netPnl, resultOf, signedR, type Kpis,
@@ -119,7 +120,8 @@ export function tradeOutcome(t: Trade): Outcome {
   return resultOf(t) ?? "open";
 }
 
-export const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+/** Horizon code → label (current language); the trades area owns the labels. */
+export const HORIZON_LABEL: Record<string, string> = TRADES_HORIZON_LABEL;
 
 export function isMultiDay(t: Trade): boolean {
   return t.horizon === "overnight" || t.horizon === "swing" || !!t.exitDate;

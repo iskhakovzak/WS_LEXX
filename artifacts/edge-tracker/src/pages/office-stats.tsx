@@ -21,6 +21,9 @@ import { StrategyMonthMatrix, StrategyMultiples, StrategyTable, TotalNetByStrate
 import { BestWorstDays, DailyHistogram, StreaksPanel, Tickers, TimeOfDay, Underwater, WeekdayProfile } from "@/components/office-stats/time-risk";
 import { CapitalPanel, CsvButton, RulesPopover, TradersTable } from "@/components/office-stats/team";
 import { MonthlyPanel } from "@/components/office-stats/monthly";
+import { officeI18n } from "@/i18n/ns/officeStats";
+import { shellI18n } from "@/i18n/ns/shell";
+import { commonI18n } from "@/i18n/ns/common";
 
 type PeriodMode = "ytd" | "quarter" | "month" | "custom";
 
@@ -30,11 +33,11 @@ const lastDay = (y: number, m: number) => new Date(Date.UTC(y, m, 0)).getUTCDate
 const minYmd = (a: string, b: string) => (a < b ? a : b);
 
 const SECTIONS = [
-  { id: "overview", label: "Обзор", icon: LayoutDashboard },
-  { id: "strategies", label: "Стратегии", icon: Layers },
-  { id: "time", label: "Время", icon: Clock },
-  { id: "risk", label: "Риск", icon: ShieldAlert },
-  { id: "team", label: "Команда", icon: Users, admin: true },
+  { id: "overview", icon: LayoutDashboard },
+  { id: "strategies", icon: Layers },
+  { id: "time", icon: Clock },
+  { id: "risk", icon: ShieldAlert },
+  { id: "team", icon: Users, admin: true },
 ] as const;
 
 function Section({ id, title, hint, children }: { id: string; title: string; hint?: string; children: React.ReactNode }) {
@@ -51,6 +54,7 @@ function Section({ id, title, hint, children }: { id: string; title: string; hin
 }
 
 export default function OfficeStatsPage() {
+  const { t } = officeI18n.useT();
   const today = nyToday();
   const ty = Number(today.slice(0, 4));
   const yearChoices = [ty - 3, ty - 2, ty - 1, ty];
@@ -85,7 +89,13 @@ export default function OfficeStatsPage() {
     return { from: `${y}-01-01`, to: cap(`${y}-12-31`) };
   }, [mode, effQuarter, effMonth, custom, focusYear, today]);
 
-  const periodLabel = mode === "quarter" ? `${effQuarter} кв. ${focusYear}` : mode === "month" ? `${monthLong(effMonth - 1)} ${focusYear}` : mode === "custom" ? `${fmtDay(period.from)} – ${fmtDay(period.to)}` : `С начала ${focusYear}`;
+  const periodLabel = mode === "quarter"
+    ? t("period.quarterOfYear", { q: effQuarter, year: focusYear })
+    : mode === "month"
+      ? t("period.monthOfYear", { month: monthLong(effMonth - 1), year: focusYear })
+      : mode === "custom"
+        ? commonI18n.t("time.range", { from: fmtDay(period.from), to: fmtDay(period.to) })
+        : t("period.ytdOf", { year: focusYear });
 
   const q = useOfficeStats({ years: selYears, from: period.from, to: period.to });
   const data = q.data;
@@ -135,15 +145,15 @@ export default function OfficeStatsPage() {
   return (
     <Page>
       <PageHeader
-        title="Статистика офиса"
+        title={shellI18n.t("nav.office")}
         icon={Building2}
         description={isAdmin
-          ? "Результат всего офиса: стратегии, время, риск и вклад трейдеров. Вы видите $ и % — трейдерам видны только проценты."
-          : "Результат всего офиса в процентах от капитала: стратегии, время входа, риск и темп к годовой цели."}
+          ? t("page.descAdmin")
+          : t("page.descMember")}
         meta={data && (
           <>
-            <Pill tone={isAdmin ? "accent" : "neutral"}>{isAdmin ? "партнёр · $ и %" : "только %"}</Pill>
-            <span>{periodLabel} · время NY · обновляется раз в минуту</span>
+            <Pill tone={isAdmin ? "accent" : "neutral"}>{isAdmin ? t("page.pillAdmin") : t("page.pillMember")}</Pill>
+            <span>{t("page.meta", { period: periodLabel })}</span>
           </>
         )}
         actions={data && (
@@ -163,8 +173,8 @@ export default function OfficeStatsPage() {
 
       {/* Filters: one row above everything (wraps on phones). */}
       <div className="glass-panel flex flex-col gap-3 rounded-2xl p-3 lg:flex-row lg:flex-wrap lg:items-center">
-        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label="Годы для сравнения">
-          <span className="mr-1 text-xs text-muted-foreground">Годы</span>
+        <div className="flex flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.yearsAria")}>
+          <span className="mr-1 text-xs text-muted-foreground">{t("filters.years")}</span>
           {yearChoices.map((y) => {
             const on = selYears.includes(y);
             return (
@@ -178,7 +188,7 @@ export default function OfficeStatsPage() {
                   on ? "border-primary/40 bg-primary/12 text-foreground" : "border-[var(--glass-border)] text-muted-foreground hover:text-foreground",
                   on && y === focusYear && "border-primary bg-primary/20",
                 )}
-                title={on && y === focusYear ? "Основной год (последний выбранный)" : on ? "Убрать из сравнения" : "Добавить к сравнению"}
+                title={on && y === focusYear ? t("filters.yearFocus") : on ? t("filters.yearRemove") : t("filters.yearAdd")}
               >
                 {y}
               </button>
@@ -187,19 +197,19 @@ export default function OfficeStatsPage() {
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Segmented<PeriodMode>
-            ariaLabel="Период"
+            ariaLabel={t("period.label")}
             value={mode}
             onChange={setMode}
             size="sm"
-            options={[{ value: "ytd", label: "С начала года" }, { value: "quarter", label: "Квартал" }, { value: "month", label: "Месяц" }, { value: "custom", label: "Свой" }]}
+            options={[{ value: "ytd", label: t("period.ytd") }, { value: "quarter", label: t("period.quarter") }, { value: "month", label: t("period.month") }, { value: "custom", label: t("period.custom") }]}
           />
           {mode === "quarter" && (
-            <Segmented<string> ariaLabel="Квартал" size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
-              options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: `${n} кв.`, disabled: focusYear === ty && n > curQ }))} />
+            <Segmented<string> ariaLabel={t("period.quarter")} size="sm" value={String(effQuarter)} onChange={(v) => setQuarter(Number(v))}
+              options={[1, 2, 3, 4].map((n) => ({ value: String(n), label: t("period.quarterShort", { q: n }), disabled: focusYear === ty && n > curQ }))} />
           )}
           {mode === "month" && (
             <select
-              aria-label="Месяц"
+              aria-label={t("period.month")}
               value={effMonth}
               onChange={(e) => setMonth(Number(e.target.value))}
               className="glass-field h-8 rounded-full bg-transparent px-3 text-sm text-foreground"
@@ -211,21 +221,21 @@ export default function OfficeStatsPage() {
           )}
           {mode === "custom" && (
             <span className="flex flex-wrap items-center gap-1.5">
-              <Input type="date" aria-label="С" value={custom.from} max={today} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="h-8 w-[9.5rem]" />
+              <Input type="date" aria-label={t("period.from")} value={custom.from} max={today} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="h-8 w-[9.5rem]" />
               <span className="text-muted-foreground">—</span>
-              <Input type="date" aria-label="По" value={custom.to} max={today} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="h-8 w-[9.5rem]" />
+              <Input type="date" aria-label={t("period.to")} value={custom.to} max={today} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="h-8 w-[9.5rem]" />
             </span>
           )}
         </div>
         {isAdmin && (
           <div className="flex items-center gap-2 lg:ml-auto">
-            <span className="text-xs text-muted-foreground">Единицы</span>
+            <span className="text-xs text-muted-foreground">{t("filters.units")}</span>
             <Segmented<Unit>
-              ariaLabel="Единицы"
+              ariaLabel={t("filters.units")}
               size="sm"
               value={unit}
               onChange={setUnitPref}
-              options={[{ value: "pct", label: "% капитала", disabled: !capitalSet, title: capitalSet ? undefined : "Сначала укажите капитал за год" }, { value: "usd", label: "$" }]}
+              options={[{ value: "pct", label: t("filters.pctOfCapital"), disabled: !capitalSet, title: capitalSet ? undefined : t("filters.needCapital") }, { value: "usd", label: "$" }]}
             />
           </div>
         )}
@@ -233,11 +243,11 @@ export default function OfficeStatsPage() {
 
       {/* Section anchors (sticky). */}
       {ctx && !memberNoCapital && (
-        <nav ref={navRef} aria-label="Разделы страницы" className="sticky top-2 z-sticky -my-1 flex justify-center">
+        <nav ref={navRef} aria-label={t("page.sectionsNav")} className="sticky top-2 z-sticky -my-1 flex justify-center">
           <div className="glass-panel scrollbar-none flex h-9 max-w-full items-center gap-0.5 overflow-x-auto rounded-full bg-surface-solid/95 p-[3px] shadow-sm">
             {SECTIONS.filter((s) => !("admin" in s) || isAdmin).map((s) => (
               <button key={s.id} type="button" onClick={() => jump(s.id)} className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
-                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{s.label}
+                <s.icon className="h-3.5 w-3.5" aria-hidden="true" />{t(`page.sections.${s.id}`)}
               </button>
             ))}
           </div>
@@ -245,11 +255,11 @@ export default function OfficeStatsPage() {
       )}
 
       {forbidden ? (
-        <Panel><EmptyState icon={Building2} title="Нет доступа" description="Статистика офиса доступна участникам офиса. Гостевой доступ её не видит." /></Panel>
+        <Panel><EmptyState icon={Building2} title={t("states.noAccessTitle")} description={t("states.noAccessDesc")} /></Panel>
       ) : q.isError ? (
-        <Panel><EmptyState icon={AlertTriangle} title="Не удалось загрузить статистику" description={q.error instanceof Error ? q.error.message : undefined} action={<Button size="sm" onClick={() => q.refetch()}>Повторить</Button>} /></Panel>
+        <Panel><EmptyState icon={AlertTriangle} title={t("states.loadFailed")} description={q.error instanceof Error ? q.error.message : undefined} action={<Button size="sm" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>} /></Panel>
       ) : !data ? (
-        <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label="Загрузка">
+        <div className="flex flex-col gap-[var(--grid-gap)]" aria-busy="true" aria-label={t("page.loading")}>
           <div className="skeleton h-24 rounded-2xl" />
           <div className="grid grid-cols-2 gap-[var(--grid-gap)] md:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="skeleton h-28 rounded-2xl" />)}</div>
           <div className="skeleton h-[380px] rounded-2xl" />
@@ -258,10 +268,10 @@ export default function OfficeStatsPage() {
         <Panel>
           <EmptyState
             icon={Landmark}
-            title={`Партнёры ещё не указали капитал за ${focusYear}`}
-            description="Статистика офиса показывается в процентах от капитала. Как только партнёры его укажут, здесь появятся графики."
+            title={t("states.noCapitalTitle", { year: focusYear })}
+            description={t("states.noCapitalDesc")}
             action={data.settings.filter((s) => s.hasCapital && s.year !== focusYear).slice(-1).map((s) => (
-              <Button key={s.year} size="sm" variant="outline" onClick={() => setYears([s.year])}>Открыть {s.year}</Button>
+              <Button key={s.year} size="sm" variant="outline" onClick={() => setYears([s.year])}>{t("states.openYear", { year: s.year })}</Button>
             ))}
           />
         </Panel>
@@ -270,12 +280,12 @@ export default function OfficeStatsPage() {
           {(showAdminHint || adminPctNoCapital) && (
             <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-warn/30 bg-warn/10 p-3 text-sm">
               <Landmark className="h-4 w-4 text-warn" aria-hidden="true" />
-              <span className="min-w-0 flex-1">Капитал офиса за {focusYear} не указан — проценты и цель не считаются, трейдеры видят пустую страницу.</span>
-              <Button size="sm" variant="outline" onClick={() => jump("team")}>Указать капитал</Button>
+              <span className="min-w-0 flex-1">{t("states.adminNoCapital", { year: focusYear })}</span>
+              <Button size="sm" variant="outline" onClick={() => jump("team")}>{t("states.setCapital")}</Button>
             </div>
           )}
 
-          <Section id="overview" title="Обзор" hint={periodLabel}>
+          <Section id="overview" title={t("page.sections.overview")} hint={periodLabel}>
             <InsightsStrip insights={view.insights} />
             <KpiRow ctx={ctx} period={view.period} onJump={jump} />
             <BentoGrid>
@@ -289,7 +299,7 @@ export default function OfficeStatsPage() {
             <MonthlyPanel ctx={ctx} today={data.today} onPickMonth={pickMonth} />
           </Section>
 
-          <Section id="strategies" title="Стратегии" hint="классификация по времени входа и выхода — см. «Как считается»">
+          <Section id="strategies" title={t("page.sections.strategies")} hint={t("page.strategiesHint")}>
             <BentoGrid>
               <TotalNetByStrategy ctx={ctx} years={view.years.filter((y) => y.year <= focusYear)} />
               <VolumeShare years={view.years.filter((y) => y.year <= focusYear)} />
@@ -299,7 +309,7 @@ export default function OfficeStatsPage() {
             <StrategyTable period={view.period} prev={view.prev} unit={unit} periodLabel={periodLabel} />
           </Section>
 
-          <Section id="time" title="Время" hint={periodLabel}>
+          <Section id="time" title={t("page.sections.time")} hint={periodLabel}>
             <BentoGrid>
               <TimeOfDay period={view.period} unit={unit} />
               <WeekdayProfile period={view.period} unit={unit} />
@@ -307,7 +317,7 @@ export default function OfficeStatsPage() {
             <Tickers period={view.period} unit={unit} />
           </Section>
 
-          <Section id="risk" title="Риск" hint={`${focusYear}`}>
+          <Section id="risk" title={t("page.sections.risk")} hint={`${focusYear}`}>
             <BentoGrid>
               <Underwater ctx={ctx} onPickDay={pickDay} />
               <StreaksPanel ctx={ctx} />
@@ -319,16 +329,16 @@ export default function OfficeStatsPage() {
           </Section>
 
           {data.role === "admin" && (
-            <Section id="team" title="Команда" hint="только для партнёров">
+            <Section id="team" title={t("page.sections.team")} hint={t("page.teamHint")}>
               <BentoGrid>
                 <CapitalPanel data={data} />
                 <div className="lg:col-span-6">
-                  <Panel title="Что видят трейдеры" icon={CalendarDays} fill>
+                  <Panel title={t("traderView.title")} icon={CalendarDays} fill>
                     <ul className="flex list-disc flex-col gap-1.5 pl-4 text-sm text-muted-foreground">
-                      <li>Все графики этой страницы — только в процентах от капитала года, без сумм в $.</li>
-                      <li>Нет таблицы трейдеров, абсолютного объёма и размера капитала — сервер их не отдаёт.</li>
-                      <li>Доли объёма по стратегиям и доли тикеров в результате — видны.</li>
-                      <li>Без капитала за год трейдеры видят «Партнёры ещё не указали капитал».</li>
+                      <li>{t("traderView.item1")}</li>
+                      <li>{t("traderView.item2")}</li>
+                      <li>{t("traderView.item3")}</li>
+                      <li>{t("traderView.item4")}</li>
                     </ul>
                   </Panel>
                 </div>

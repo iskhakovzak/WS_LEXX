@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { can } from "../lib/permissions";
-import { badRequest, unauthorized } from "../lib/http";
+import { AppError, badRequest, sendErrorWith, unauthorized } from "../lib/http";
 
 /**
  * Day-by-day trading journal (pre-market plan + post-market review).
@@ -80,44 +80,44 @@ type Body = {
 
 function parseBody(b: Body):
   | { ok: true; v: { plan: string; well: string; mistakes: string; lessons: string; mood: number | null; discipline: number | null; followedPlan: boolean | null; tags: string[] } }
-  | { ok: false; error: string } {
+  | { ok: false; field: string } {
   const text = (k: keyof Body): string | { error: string } => {
     const raw = b[k];
     if (raw == null) return "";
-    if (typeof raw !== "string") return { error: `${k} must be a string` };
-    if (raw.length > TEXT_MAX) return { error: `${k} too long (max ${TEXT_MAX})` };
+    if (typeof raw !== "string") return { error: String(k) };
+    if (raw.length > TEXT_MAX) return { error: String(k) };
     return raw;
   };
   const scale = (k: "mood" | "discipline"): number | null | { error: string } => {
     const raw = b[k];
     if (raw == null || raw === "") return null;
     const n = Number(raw);
-    if (!Number.isInteger(n) || n < 1 || n > 5) return { error: `${k} must be an integer 1..5` };
+    if (!Number.isInteger(n) || n < 1 || n > 5) return { error: k };
     return n;
   };
   const plan = text("plan"), well = text("well"), mistakes = text("mistakes"), lessons = text("lessons");
-  for (const t of [plan, well, mistakes, lessons]) if (typeof t !== "string") return { ok: false, error: t.error };
+  for (const t of [plan, well, mistakes, lessons]) if (typeof t !== "string") return { ok: false, field: t.error };
   const mood = scale("mood"), discipline = scale("discipline");
-  for (const s of [mood, discipline]) if (s && typeof s === "object") return { ok: false, error: s.error };
+  for (const s of [mood, discipline]) if (s && typeof s === "object") return { ok: false, field: s.error };
 
   let followedPlan: boolean | null = null;
   if (b.followedPlan != null) {
-    if (typeof b.followedPlan !== "boolean") return { ok: false, error: "followedPlan must be boolean" };
+    if (typeof b.followedPlan !== "boolean") return { ok: false, field: "followedPlan" };
     followedPlan = b.followedPlan;
   }
 
   let tags: string[] = [];
   if (b.tags != null) {
-    if (!Array.isArray(b.tags)) return { ok: false, error: "tags must be an array of strings" };
+    if (!Array.isArray(b.tags)) return { ok: false, field: "tags" };
     const seen = new Set<string>();
     for (const t of b.tags) {
-      if (typeof t !== "string") return { ok: false, error: "tags must be an array of strings" };
+      if (typeof t !== "string") return { ok: false, field: "tags" };
       const s = t.trim();
       if (!s) continue;
-      if (s.length > TAG_MAX) return { ok: false, error: `tag too long (max ${TAG_MAX})` };
+      if (s.length > TAG_MAX) return { ok: false, field: "tags" };
       if (!seen.has(s.toLowerCase())) { seen.add(s.toLowerCase()); tags.push(s); }
     }
-    if (tags.length > TAGS_MAX) return { ok: false, error: `too many tags (max ${TAGS_MAX})` };
+    if (tags.length > TAGS_MAX) return { ok: false, field: "tags" };
   }
 
   return {
@@ -133,10 +133,10 @@ router.get("/journal/days", asyncHandler(async (req, res): Promise<void> => {
   if (!req.authUser) throw unauthorized();
   const from = req.query["from"];
   const to = req.query["to"];
-  if (!isIsoDate(from) || !isIsoDate(to)) { res.status(400).json({ error: "from and to (YYYY-MM-DD) are required" }); return; }
-  if (from > to) { res.status(400).json({ error: "from must be <= to" }); return; }
+  if (!isIsoDate(from) || !isIsoDate(to)) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
+  if (from > to) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
   const spanDays = (Date.parse(to + "T00:00:00Z") - Date.parse(from + "T00:00:00Z")) / 86_400_000;
-  if (spanDays > 400) { res.status(400).json({ error: "range too large (max 400 days)" }); return; }
+  if (spanDays > 400) throw new AppError("RANGE_TOO_LONG", undefined, { max: 400 });
 
   await ensureTable();
   const params: unknown[] = [from, to];
@@ -162,7 +162,7 @@ router.get("/journal/days/:date", asyncHandler(async (req, res): Promise<void> =
   const trader = qTrader && (await canReadTeam(req, qTrader)) ? qTrader : req.authUser.name;
   await ensureTable();
   const { rows } = await pool.query(`SELECT ${COLS} FROM journal_days WHERE trader = $1 AND day = $2`, [trader, date]);
-  if (!rows[0]) { res.status(404).json({ error: "Записи нет" }); return; }
+  if (!rows[0]) throw new AppError("NOT_FOUND");
   res.json(rows[0]);
 }));
 
@@ -186,7 +186,7 @@ router.put("/journal/days/:date", asyncHandler(async (req, res): Promise<void> =
   const date = req.params["date"];
   if (!isIsoDate(date)) throw badRequest("INVALID_DATE");
   const parsed = parseBody((req.body ?? {}) as Body);
-  if (!parsed.ok) { res.status(400).json({ error: parsed.error }); return; }
+  if (!parsed.ok) throw new AppError("INVALID_FIELD", 400, { field: parsed.field });
   const v = parsed.v;
 
   await ensureTable();
@@ -194,13 +194,13 @@ router.put("/journal/days/:date", asyncHandler(async (req, res): Promise<void> =
   const baseRaw = (req.body as { updatedAt?: unknown } | undefined)?.updatedAt;
   if (typeof baseRaw === "string" && baseRaw) {
     const base = Date.parse(baseRaw);
-    if (!Number.isFinite(base)) { res.status(400).json({ error: "updatedAt must be an ISO timestamp" }); return; }
+    if (!Number.isFinite(base)) throw new AppError("INVALID_FIELD", undefined, { field: "updatedAt" });
     const { rows: cur } = await pool.query<{ updatedAt: Date } & Record<string, unknown>>(
       `SELECT ${COLS} FROM journal_days WHERE trader = $1 AND day = $2`,
       [req.authUser.name, date],
     );
     if (cur[0] && Math.abs(new Date(cur[0].updatedAt).getTime() - base) > 1000) {
-      res.status(409).json({ error: "Запись изменена в другой вкладке — загружена актуальная версия", code: "JOURNAL_CONFLICT", current: cur[0] });
+      sendErrorWith(res, new AppError("JOURNAL_CONFLICT"), { current: cur[0] });
       return;
     }
   }

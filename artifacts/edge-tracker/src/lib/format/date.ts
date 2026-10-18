@@ -6,6 +6,7 @@
 export {
   fmtDate,
   fmtDateCustom,
+  fmtDateRange,
   fmtMonth,
   fmtWeekday,
   fmtRelative,

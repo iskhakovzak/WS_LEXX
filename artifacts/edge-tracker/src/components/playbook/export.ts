@@ -1,6 +1,14 @@
 import JSZip from "jszip";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { playbookToolsI18n } from "@/i18n/ns/playbookTools";
+import { HORIZON_LABEL, STRUCTURED, timeOfDayLabel, type StructuredKey } from "./model";
+
+/**
+ * Markdown / Notion export of the playbook. Headings follow the UI language at export time (`x` is only called
+ * inside the export functions); setup names, folders, notes, checklists and card texts are user content, as is.
+ */
+const x = playbookToolsI18n.t;
 
 export type ExportEntry = {
   id: number;
@@ -26,7 +34,10 @@ export type ExportEntry = {
   shortInterest: number | null;
   sector: string | null;
   longName: string | null;
-};
+  /* structured card (current API) */
+  horizon?: string | null;
+  timeOfDay?: string | null;
+} & Partial<Record<StructuredKey, string | null>>;
 
 function parseScreenshots(rawUrl: string | null, rawNotes: string | null): { url: string; note: string }[] {
   if (!rawUrl) return [];
@@ -40,8 +51,8 @@ function parseScreenshots(rawUrl: string | null, rawNotes: string | null): { url
 
 function renderFundamentalsTable(e: ExportEntry): string {
   const rows: [string, string][] = [];
-  if (e.ticker) rows.push(["Тикер", e.longName ? `${e.ticker} — ${e.longName}` : e.ticker]);
-  if (e.sector) rows.push(["Сектор", e.sector]);
+  if (e.ticker) rows.push([x("export.ticker"), e.longName ? `${e.ticker} — ${e.longName}` : e.ticker]);
+  if (e.sector) rows.push([x("export.sector"), e.sector]);
   if (e.marketCap) rows.push(["Market Cap", e.marketCap]);
   if (e.float) rows.push(["Float", e.float]);
   if (e.adv) rows.push(["ADV", e.adv]);
@@ -50,7 +61,24 @@ function renderFundamentalsTable(e: ExportEntry): string {
   if (e.beta != null) rows.push(["Beta", String(e.beta)]);
   if (e.shortInterest != null) rows.push(["Short Interest", `${e.shortInterest}%`]);
   if (!rows.length) return "";
-  return `| Параметр | Значение |\n| --- | --- |\n${rows.map(([k, v]) => `| ${k} | ${v} |`).join("\n")}\n`;
+  return `| ${x("export.param")} | ${x("export.value")} |\n| --- | --- |\n${rows.map(([k, v]) => `| ${k} | ${v} |`).join("\n")}\n`;
+}
+
+/** The structured card (context / trigger / entry / stop / targets …) as labelled blocks; "" when empty. */
+function renderCard(e: ExportEntry, labelStyle: "bold" | "h4"): string {
+  const out: string[] = [];
+  const meta: string[] = [];
+  if (e.horizon) meta.push(`**${x("export.horizon")}:** ${HORIZON_LABEL[e.horizon] ?? e.horizon}`);
+  if (e.timeOfDay) meta.push(`**${x("export.timeOfDay")}:** ${timeOfDayLabel(e.timeOfDay)}`);
+  if (meta.length) { out.push(meta.join("  \n")); out.push(""); }
+  for (const f of STRUCTURED) {
+    const v = (e[f.key] ?? "").trim();
+    if (!v) continue;
+    out.push(labelStyle === "bold" ? `**${f.label}:**` : `#### ${f.label}`);
+    out.push(v);
+    out.push("");
+  }
+  return out.join("\n");
 }
 
 function renderChecklist(raw: string | null): string {
@@ -63,7 +91,7 @@ function renderScreenshots(rawUrl: string | null, rawNotes: string | null, embed
   const shots = parseScreenshots(rawUrl, rawNotes);
   if (!shots.length) return "";
   if (embed) {
-    return shots.map(s => s.note ? `![${s.note}](${s.url})\n*${s.note}*` : `![скриншот](${s.url})`).join("\n\n");
+    return shots.map(s => s.note ? `![${s.note}](${s.url})\n*${s.note}*` : `![${x("export.screenshot")}](${s.url})`).join("\n\n");
   }
   return shots.map(s => s.note ? `- [${s.note}](${s.url})` : `- ${s.url}`).join("\n");
 }
@@ -91,6 +119,11 @@ function orderFolders(parents: ExportEntry[], folderOrder?: string[]): string[] 
   return [...ordered, ...present.filter(f => !ordered.includes(f))];
 }
 
+function tagChips(tags: string | null): string | null {
+  const chips = (tags ?? "").split(",").map(t => t.trim()).filter(Boolean);
+  return chips.length ? chips.map(t => `\`${t}\``).join(" ") : null;
+}
+
 // ── Standard Markdown export (single file) ─────────────────────────────────
 
 function renderEntryMd(e: ExportEntry, level: number): string {
@@ -101,40 +134,41 @@ function renderEntryMd(e: ExportEntry, level: number): string {
   lines.push("");
 
   const meta: string[] = [];
-  if (e.setupType) meta.push(`**Тип:** ${e.setupType}`);
-  if (e.confidenceLevel != null) meta.push(`**Уверенность:** ${e.confidenceLevel}%`);
-  if (e.tags) {
-    const chips = e.tags.split(",").map(t => t.trim()).filter(Boolean);
-    if (chips.length) meta.push(`**Теги:** ${chips.map(t => `\`${t}\``).join(" ")}`);
-  }
-  meta.push(`**Добавлен:** ${fmtDate(e.createdAt, "long")}`);
+  if (e.setupType) meta.push(`**${x("export.type")}:** ${e.setupType}`);
+  if (e.confidenceLevel != null) meta.push(`**${x("export.confidence")}:** ${e.confidenceLevel}%`);
+  const chips = tagChips(e.tags);
+  if (chips) meta.push(`**${x("export.tags")}:** ${chips}`);
+  meta.push(`**${x("export.added")}:** ${fmtDate(e.createdAt, "long")}`);
   if (meta.length) { lines.push(meta.join("  \n")); lines.push(""); }
 
   const fund = renderFundamentalsTable(e);
   if (fund) { lines.push(fund); }
 
+  const cardMd = renderCard(e, "bold");
+  if (cardMd) lines.push(cardMd);
+
   if (e.conditions?.trim()) {
-    lines.push(`**Условия входа:**`);
+    lines.push(`**${x("export.conditions")}:**`);
     lines.push(e.conditions.trim());
     lines.push("");
   }
 
   const cl = renderChecklist(e.checklist);
   if (cl) {
-    lines.push(`**Чеклист:**`);
+    lines.push(`**${x("export.checklist")}:**`);
     lines.push(cl);
     lines.push("");
   }
 
   if (e.notes?.trim()) {
-    lines.push(`**Заметки:**`);
+    lines.push(`**${x("export.notes")}:**`);
     lines.push(e.notes.trim());
     lines.push("");
   }
 
   const shots = renderScreenshots(e.screenshotUrl, e.screenshotNotes, false);
   if (shots) {
-    lines.push(`**Скриншоты:**`);
+    lines.push(`**${x("export.screenshots")}:**`);
     lines.push(shots);
     lines.push("");
   }
@@ -149,15 +183,15 @@ export function generatePlaybookMarkdown(entries: ExportEntry[], folderOrder?: s
   const now = fmtDate(new Date(), "long");
 
   const out: string[] = [];
-  out.push("# WS_LEXX — Плейбук");
-  out.push(`> Экспортировано: ${now} · Всего: ${commonI18n.t("units.setups", { count: parents.length })} · Дочерних: ${entries.length - parents.length}`);
+  out.push(`# ${x("export.title")}`);
+  out.push(`> ${x("export.exportedAt", { date: now })} · ${x("export.totals", { setups: commonI18n.t("units.setups", { count: parents.length }), children: entries.length - parents.length })}`);
   out.push("");
   out.push("---");
   out.push("");
 
   function appendFolder(folderName: string | null, items: ExportEntry[]) {
     if (folderName) { out.push(`## 📁 ${folderName}`); out.push(""); }
-    else if (folders.length > 0) { out.push(`## 📂 Без папки`); out.push(""); }
+    else if (folders.length > 0) { out.push(`## 📂 ${x("export.unfiled")}`); out.push(""); }
     const seen = new Set<number>();
     function appendWithChildren(e: ExportEntry, level: number) {
       if (seen.has(e.id)) return; // guard against parent cycles
@@ -190,24 +224,26 @@ function renderEntryNotion(e: ExportEntry, level: number, childrenMap: Map<numbe
 
   // Meta block
   const meta: string[] = [];
-  if (e.setupType) meta.push(`**Тип сетапа:** ${e.setupType}`);
-  if (e.confidenceLevel != null) meta.push(`**Уверенность:** ${e.confidenceLevel}%`);
-  if (e.ticker) meta.push(`**Тикер:** ${e.longName ? `${e.ticker} — ${e.longName}` : e.ticker}`);
-  if (e.sector) meta.push(`**Сектор:** ${e.sector}`);
-  if (e.tags) {
-    const chips = e.tags.split(",").map(t => t.trim()).filter(Boolean);
-    if (chips.length) meta.push(`**Теги:** ${chips.map(t => `\`${t}\``).join(" ")}`);
-  }
-  meta.push(`**Добавлен:** ${fmtDate(e.createdAt, "long")}`);
+  if (e.setupType) meta.push(`**${x("export.setupType")}:** ${e.setupType}`);
+  if (e.confidenceLevel != null) meta.push(`**${x("export.confidence")}:** ${e.confidenceLevel}%`);
+  if (e.ticker) meta.push(`**${x("export.ticker")}:** ${e.longName ? `${e.ticker} — ${e.longName}` : e.ticker}`);
+  if (e.sector) meta.push(`**${x("export.sector")}:** ${e.sector}`);
+  const chips = tagChips(e.tags);
+  if (chips) meta.push(`**${x("export.tags")}:** ${chips}`);
+  meta.push(`**${x("export.added")}:** ${fmtDate(e.createdAt, "long")}`);
   if (meta.length) { lines.push(meta.join("  \n")); lines.push(""); }
 
   // Fundamentals table
   const fund = renderFundamentalsTable(e);
-  if (fund) { lines.push("### 📊 Фундаментал"); lines.push(""); lines.push(fund); }
+  if (fund) { lines.push(`### 📊 ${x("export.fundamentals")}`); lines.push(""); lines.push(fund); }
 
-  // Conditions
+  // Structured card
+  const cardMd = renderCard(e, "h4");
+  if (cardMd) { lines.push(`### 🎯 ${x("export.card")}`); lines.push(""); lines.push(cardMd); }
+
+  // Conditions (legacy free text)
   if (e.conditions?.trim()) {
-    lines.push("### 📋 Условия входа");
+    lines.push(`### 📋 ${x("export.conditions")}`);
     lines.push("");
     lines.push(e.conditions.trim());
     lines.push("");
@@ -216,7 +252,7 @@ function renderEntryNotion(e: ExportEntry, level: number, childrenMap: Map<numbe
   // Checklist
   const cl = renderChecklist(e.checklist);
   if (cl) {
-    lines.push("### ✅ Чеклист");
+    lines.push(`### ✅ ${x("export.checklist")}`);
     lines.push("");
     lines.push(cl);
     lines.push("");
@@ -224,7 +260,7 @@ function renderEntryNotion(e: ExportEntry, level: number, childrenMap: Map<numbe
 
   // Notes
   if (e.notes?.trim()) {
-    lines.push("### 💡 Заметки");
+    lines.push(`### 💡 ${x("export.notes")}`);
     lines.push("");
     lines.push(e.notes.trim());
     lines.push("");
@@ -233,10 +269,10 @@ function renderEntryNotion(e: ExportEntry, level: number, childrenMap: Map<numbe
   // Screenshots — embedded as images for Notion
   const shots = parseScreenshots(e.screenshotUrl, e.screenshotNotes);
   if (shots.length) {
-    lines.push("### 🖼 Скриншоты");
+    lines.push(`### 🖼 ${x("export.screenshots")}`);
     lines.push("");
     for (const { url, note } of shots) {
-      lines.push(`![${note || "скриншот"}](${url})`);
+      lines.push(`![${note || x("export.screenshot")}](${url})`);
       if (note) lines.push(`*${note}*`);
       lines.push("");
     }
@@ -265,33 +301,36 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
   const unfiled = parents.filter(e => !e.folder);
   const now = fmtDate(new Date(), "long");
   const totalChildren = entries.length - parents.length;
+  const unfiledName = x("export.unfiled");
 
   // Index page
   const indexLines: string[] = [];
-  indexLines.push("# WS_LEXX — Плейбук");
+  indexLines.push(`# ${x("export.title")}`);
   indexLines.push("");
-  indexLines.push(`> Экспортировано: ${now}`);
-  indexLines.push(`> Папок: ${folders.length} · Сетапов: ${parents.length} · Дочерних: ${totalChildren}`);
+  indexLines.push(`> ${x("export.exportedAt", { date: now })}`);
+  indexLines.push(`> ${x("export.totalsNotion", { folders: folders.length, setups: parents.length, children: totalChildren })}`);
   indexLines.push("");
-  indexLines.push("## Папки");
+  indexLines.push(`## ${x("export.folders")}`);
   indexLines.push("");
   for (const f of folders) {
     const count = parents.filter(e => e.folder === f).length;
     const childCount = parents.filter(e => e.folder === f).reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0);
-    indexLines.push(`- **${f}** — ${commonI18n.t("units.setups", { count })}${childCount ? ` (+ ${childCount} дочерних)` : ""}`);
+    const setups = commonI18n.t("units.setups", { count });
+    indexLines.push(`- **${f}** — ${childCount ? x("export.folderLineChildren", { setups, children: childCount }) : x("export.folderLine", { setups })}`);
   }
   if (unfiled.length) {
-    indexLines.push(`- **Без папки** — ${commonI18n.t("units.setups", { count: unfiled.length })}`);
+    indexLines.push(`- **${unfiledName}** — ${commonI18n.t("units.setups", { count: unfiled.length })}`);
   }
   zip.file("Playbook.md", indexLines.join("\n"));
 
   // One .md file per folder
   function buildFolderPage(folderName: string | null, items: ExportEntry[]): string {
-    const title = folderName ? `📁 ${folderName}` : "📂 Без папки";
+    const title = folderName ? `📁 ${folderName}` : `📂 ${unfiledName}`;
     const lines: string[] = [];
     lines.push(`# ${title}`);
     lines.push("");
-    lines.push(`*${commonI18n.t("units.setups", { count: items.length })} ·${items.reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0)} дочерних*`);
+    const children = items.reduce((acc, p) => acc + (childrenMap.get(p.id)?.length ?? 0), 0);
+    lines.push(`*${x("export.folderPageMeta", { setups: commonI18n.t("units.setups", { count: items.length }), children })}*`);
     lines.push("");
     lines.push("---");
     lines.push("");
@@ -307,7 +346,7 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
   // by "/" vs ":" must not overwrite each other or the index page.
   const usedNames = new Set<string>(["playbook"]);
   function uniqueName(base: string): string {
-    const root = base.trim() || "Папка";
+    const root = base.trim() || x("export.folderFile");
     let name = root;
     let i = 2;
     while (usedNames.has(name.toLowerCase())) name = `${root} (${i++})`;
@@ -320,7 +359,7 @@ export async function generateNotionZip(entries: ExportEntry[], folderOrder?: st
     zip.file(uniqueName(safe), buildFolderPage(folder, items));
   }
   if (unfiled.length) {
-    zip.file(uniqueName("Без папки"), buildFolderPage(null, unfiled));
+    zip.file(uniqueName(unfiledName), buildFolderPage(null, unfiled));
   }
 
   return zip.generateAsync({ type: "blob", compression: "DEFLATE" });

@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { blankEvent, formToBody, SessionPicker, TypeSelect, type EventFormData } from "./event-form-dialog";
 import { fmtDay } from "./event-meta";
+import { eventsI18n } from "@/i18n/ns/events";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Compact "+" popover: a short day note (ticker, type, session, text) → create. */
 export function QuickAdd({
@@ -15,6 +17,7 @@ export function QuickAdd({
   onCreate: (body: ReturnType<typeof formToBody>) => Promise<unknown>;
   onMore: (prefill: EventFormData) => void;
 }) {
+  const { t } = eventsI18n.useT();
   const [open, setOpen] = React.useState(false);
   const [f, setF] = React.useState<EventFormData>(() => blankEvent({ date }));
   const [busy, setBusy] = React.useState(false);
@@ -39,7 +42,7 @@ export function QuickAdd({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label={`Добавить заметку на ${fmtDay(date, "dayMonthLong")}`}>
+        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground" aria-label={t("quick.addAria", { date: fmtDay(date, "dayMonthLong") })}>
           <Plus className="!size-4" />
         </Button>
       </PopoverTrigger>
@@ -51,27 +54,27 @@ export function QuickAdd({
           }}
         >
           <div className="flex items-baseline justify-between">
-            <span className="text-sm font-semibold">Заметка</span>
+            <span className="text-sm font-semibold">{t("quick.title")}</span>
             <span className="text-xs text-muted-foreground">{fmtDay(date, "weekdayDayMonth")}</span>
           </div>
           <div className="grid grid-cols-2 gap-2">
             <div className="space-y-1">
-              <Label htmlFor={`${uid}-t`} className="text-xs text-muted-foreground">Тикер</Label>
+              <Label htmlFor={`${uid}-t`} className="text-xs text-muted-foreground">{t("quick.ticker")}</Label>
               <Input id={`${uid}-t`} autoFocus value={f.ticker} placeholder="NVDA" className="uppercase" onChange={(e) => setF((p) => ({ ...p, ticker: e.target.value.toUpperCase() }))} />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${uid}-ty`} className="text-xs text-muted-foreground">Тип</Label>
+              <Label htmlFor={`${uid}-ty`} className="text-xs text-muted-foreground">{t("quick.type")}</Label>
               <TypeSelect id={`${uid}-ty`} value={f.eventType} onChange={(v) => setF((p) => ({ ...p, eventType: v }))} />
             </div>
           </div>
           <SessionPicker value={f.session} onChange={(v) => setF((p) => ({ ...p, session: v }))} size="sm" />
           <div className="space-y-1">
-            <Label htmlFor={`${uid}-h`} className="text-xs text-muted-foreground">Что ждёте или увидели</Label>
-            <Input id={`${uid}-h`} value={f.headline} placeholder="Напр.: гэп после отчёта, жду отката" onChange={(e) => setF((p) => ({ ...p, headline: e.target.value }))} />
+            <Label htmlFor={`${uid}-h`} className="text-xs text-muted-foreground">{t("quick.headline")}</Label>
+            <Input id={`${uid}-h`} value={f.headline} placeholder={t("quick.headlinePlaceholder")} onChange={(e) => setF((p) => ({ ...p, headline: e.target.value }))} />
           </div>
           <div className="flex items-center justify-between gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); onMore(f); }}>Подробнее…</Button>
-            <Button type="button" size="sm" disabled={!valid || busy} onClick={() => void submit()}>{busy ? "Добавляем…" : "Добавить"}</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setOpen(false); onMore(f); }}>{t("quick.more")}</Button>
+            <Button type="button" size="sm" disabled={!valid || busy} onClick={() => void submit()}>{busy ? t("quick.adding") : commonI18n.t("actions.add")}</Button>
           </div>
         </div>
       </PopoverContent>

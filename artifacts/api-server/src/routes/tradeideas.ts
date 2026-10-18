@@ -14,6 +14,8 @@ import { loadMoneyViewer } from "../lib/playbookAccess";
 import { redactTradeRow, type MoneyViewer } from "../lib/playbookPrivacy";
 import { signedR, netPnl, normResult } from "../lib/tradeMath";
 import { AppError, badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { reviewT } from "../i18n/ns";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -25,7 +27,7 @@ let ensured: Promise<void> | null = null;
 function ensureIdeaColumns(): Promise<void> {
   if (!ensured) {
     ensured = pool
-      .query(
+      .query( // i18n-ignore (migration matches stored RU tags)
         `ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS horizon TEXT;
          ALTER TABLE trade_ideas ADD COLUMN IF NOT EXISTS valid_until TEXT;
          UPDATE trade_ideas SET horizon = CASE
@@ -48,9 +50,9 @@ const IDEA_TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,11}$/;
 
 function parseHorizon(v: unknown): "intraday" | "overnight" | "swing" | null {
   const s = String(v ?? "").trim().toLowerCase();
-  if (s === "интрадей" || s === "day") return "intraday";
-  if (s === "овернайт") return "overnight";
-  if (s === "свинг") return "swing";
+  if (s === "интрадей" || s === "day") return "intraday"; // i18n-ignore (input parsing)
+  if (s === "овернайт") return "overnight"; // i18n-ignore (input parsing)
+  if (s === "свинг") return "swing"; // i18n-ignore (input parsing)
   return HORIZONS.has(s) ? (s as "intraday" | "overnight" | "swing") : null;
 }
 
@@ -535,13 +537,14 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
     return "none";
   }
 
+  const rt = reviewT.tFor(langOf(req));
   const traderBuckets = new Map<string, Bucket>();
   const reactionBuckets = new Map<string, Bucket>();
   const overall = blank();
 
   for (const idea of ideas) {
     tally(overall, idea);
-    const tname = idea.trader ?? "(не указан)";
+    const tname = idea.trader ?? rt("ideas.noTrader");
     const tb = traderBuckets.get(tname) ?? blank();
     tally(tb, idea);
     traderBuckets.set(tname, tb);
@@ -564,7 +567,7 @@ router.get("/trade-ideas/stats", asyncHandler(async (req, res): Promise<void> =>
     overall: finalize(overall),
     byTrader,
     byReactionMajority,
-    formulas: { winRate: "W/(W+L), безубыток не учитывается", r: "signed R (lib/tradeMath)", totalPnl: "нетто = брутто − комиссии" },
+    formulas: { winRate: rt("ideas.formulaWinRate"), r: "signed R (lib/tradeMath)", totalPnl: rt("ideas.formulaNet") },
   });
 }));
 
@@ -585,8 +588,8 @@ router.get("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
 function parseSide(v: unknown): "Long" | "Short" | null | "invalid" {
   if (v === undefined || v === null || v === "") return null;
   const s = String(v).trim().toLowerCase();
-  if (s === "long" || s === "лонг" || s === "buy") return "Long";
-  if (s === "short" || s === "шорт" || s === "sell") return "Short";
+  if (s === "long" || s === "лонг" || s === "buy") return "Long"; // i18n-ignore (input parsing)
+  if (s === "short" || s === "шорт" || s === "sell") return "Short"; // i18n-ignore (input parsing)
   return "invalid";
 }
 
@@ -603,18 +606,12 @@ router.post("/trade-ideas", asyncHandler(async (req, res): Promise<void> => {
   if (!ticker) throw badRequest("TICKER_REQUIRED");
   if (!IDEA_TICKER_RE.test(ticker)) throw badRequest("INVALID_TICKER");
   const side = parseSide(b.side);
-  if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
+  if (side === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "side" });
   const status = b.status === undefined || b.status === null || b.status === "" ? "draft" : String(b.status);
-  if (status !== "draft" && status !== "published") { res.status(400).json({ error: "status must be draft | published" }); return; }
-  if (b.score !== undefined && b.score !== null && b.score !== "" && (typeof b.score !== "number" || !Number.isFinite(b.score) || b.score < 0 || b.score > 100)) {
-    res.status(400).json({ error: "score must be 0..100" }); return;
-  }
-  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) {
-    res.status(400).json({ error: "horizon must be intraday | overnight | swing" }); return;
-  }
-  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) {
-    res.status(400).json({ error: "validUntil must be YYYY-MM-DD" }); return;
-  }
+  if (status !== "draft" && status !== "published") throw new AppError("INVALID_FIELD", undefined, { field: "status" });
+  if (b.score !== undefined && b.score !== null && b.score !== "" && (typeof b.score !== "number" || !Number.isFinite(b.score) || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
+  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) throw new AppError("INVALID_FIELD", undefined, { field: "horizon" });
+  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) throw new AppError("INVALID_FIELD", undefined, { field: "validUntil" });
   const staff = await can(req, "ideas.review");
   // Identity comes from the token; only staff may author an idea for someone else.
   const trader = staff && b.trader ? String(b.trader).trim() : req.authUser!.name;
@@ -674,29 +671,21 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
     const keys = Object.keys(b);
     const linkOnly = keys.length > 0 && keys.every((k) => k === "status" || k === "convertedTradeId")
       && (b.status === undefined || b.status === "converted") && existing.status !== "draft";
-    if (!linkOnly) { res.status(403).json({ error: "Редактировать идею может только автор или куратор" }); return; }
+    if (!linkOnly) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   }
-  if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) {
-    res.status(400).json({ error: "invalid status" }); return;
-  }
-  if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) {
-    res.status(400).json({ error: "score must be 0..100" }); return;
-  }
-  if (b.trader !== undefined && !staff) { res.status(403).json({ error: "Переназначить автора может только куратор" }); return; }
+  if (b.status !== undefined && !["draft", "published", "converted"].includes(String(b.status))) throw new AppError("INVALID_FIELD", undefined, { field: "status" });
+  if (b.score !== undefined && b.score !== null && (typeof b.score !== "number" || b.score < 0 || b.score > 100)) throw new AppError("INVALID_FIELD", undefined, { field: "score" });
+  if (b.trader !== undefined && !staff) throw new AppError("STAFF_ONLY");
   if (b.ticker !== undefined && !IDEA_TICKER_RE.test(String(b.ticker).trim().toUpperCase())) throw badRequest("INVALID_TICKER");
   const side = b.side !== undefined ? parseSide(b.side) : undefined;
-  if (side === "invalid") { res.status(400).json({ error: "side must be Long | Short" }); return; }
-  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) {
-    res.status(400).json({ error: "horizon must be intraday | overnight | swing" }); return;
-  }
-  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) {
-    res.status(400).json({ error: "validUntil must be YYYY-MM-DD" }); return;
-  }
+  if (side === "invalid") throw new AppError("INVALID_FIELD", undefined, { field: "side" });
+  if (b.horizon !== undefined && b.horizon !== null && b.horizon !== "" && !parseHorizon(b.horizon)) throw new AppError("INVALID_FIELD", undefined, { field: "horizon" });
+  if (b.validUntil !== undefined && b.validUntil !== null && b.validUntil !== "" && !parseDateOrNull(b.validUntil)) throw new AppError("INVALID_FIELD", undefined, { field: "validUntil" });
   if (b.convertedTradeId !== undefined && b.convertedTradeId !== null) {
     const tid = Number(b.convertedTradeId);
     const { rows: tr } = await pool.query<{ trader: string | null }>(`SELECT trader FROM trades WHERE id = $1 AND deleted_at IS NULL`, [tid]);
     if (!tr[0]) throw new AppError("TRADE_NOT_FOUND", 400);
-    if (!staff && tr[0].trader !== req.authUser!.name) { res.status(403).json({ error: "Можно привязать только свою сделку" }); return; }
+    if (!staff && tr[0].trader !== req.authUser!.name) throw new AppError("OWN_TRADES_ONLY");
   }
   const update: Record<string, unknown> = {};
   if (b.ticker !== undefined) update.ticker = String(b.ticker).trim().toUpperCase();
@@ -732,7 +721,7 @@ router.patch("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =>
   const extra: { horizon?: string | null; validUntil?: string | null } = {};
   if (b.horizon !== undefined) extra.horizon = parseHorizon(b.horizon);
   if (b.validUntil !== undefined) extra.validUntil = parseDateOrNull(b.validUntil);
-  if (Object.keys(update).length === 0 && Object.keys(extra).length === 0) { res.status(400).json({ error: "no fields to update" }); return; }
+  if (Object.keys(update).length === 0 && Object.keys(extra).length === 0) throw new AppError("NO_FIELDS");
   const [row] = Object.keys(update).length
     ? await db.update(tradeIdeasTable).set(update).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt))).returning()
     : await db.select().from(tradeIdeasTable).where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)));
@@ -758,8 +747,8 @@ router.post("/trade-ideas/:id/publish", asyncHandler(async (req, res): Promise<v
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt, status: tradeIdeasTable.status })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   if (!existing || existing.deletedAt) throw notFound();
-  if (!(await canManageIdea(req, existing.trader))) { res.status(403).json({ error: "Опубликовать идею может только автор или куратор" }); return; }
-  if (existing.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
+  if (existing.status === "converted") throw new AppError("IDEA_ALREADY_TRADED");
   const [row] = await db.update(tradeIdeasTable)
     .set({ status: "published", publishedAt: new Date() })
     .where(and(eq(tradeIdeasTable.id, id), isNull(tradeIdeasTable.deletedAt)))
@@ -782,8 +771,8 @@ router.post("/trade-ideas/:id/resubmit", asyncHandler(async (req, res): Promise<
   if (!requireMember(req, res)) return;
   const [idea] = await db.select().from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   if (!idea || idea.deletedAt) throw notFound();
-  if (!(await canManageIdea(req, idea.trader))) { res.status(403).json({ error: "Отправить на ревью может только автор или куратор" }); return; }
-  if (idea.status === "converted") { res.status(409).json({ error: "Идея уже в сделке" }); return; }
+  if (!(await canManageIdea(req, idea.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
+  if (idea.status === "converted") throw new AppError("IDEA_ALREADY_TRADED");
   await pool.query(
     `UPDATE trade_ideas SET review_status = NULL, status = 'published', published_at = COALESCE(published_at, NOW()) WHERE id = $1`,
     [id],
@@ -801,12 +790,8 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
   const { review_status, review_reason } = req.body as { review_status?: string; review_reason?: string };
   const reviewer = req.authUser!.name;
 
-  if (!review_status || !["approved", "rejected", "needs_work"].includes(review_status)) {
-    res.status(400).json({ error: "review_status must be approved | rejected | needs_work" }); return;
-  }
-  if (review_reason && String(review_reason).length > 2000) {
-    res.status(400).json({ error: "Комментарий ревьюера слишком длинный (макс. 2000 символов)" }); return;
-  }
+  if (!review_status || !["approved", "rejected", "needs_work"].includes(review_status)) throw new AppError("INVALID_FIELD", undefined, { field: "review_status" });
+  if (review_reason && String(review_reason).length > 2000) throw new AppError("TEXT_TOO_LONG", undefined, { field: "reviewComment", max: 2000 });
 
   const updated = await applyIdeaReview(
     id,
@@ -825,11 +810,8 @@ router.post("/trade-ideas/:id/review", asyncHandler(async (req, res): Promise<vo
  * POST /trade-ideas/:id/convert — retired. It created a manual trade, but trades come only from PropReports now:
  * a published idea is linked to the author's broker trade automatically (lib/ideaTradeMatch).
  */
-router.post("/trade-ideas/:id/convert", (_req, res): void => {
-  res.status(410).json({
-    error: "Сделки приходят из PropReports — идея связывается со сделкой автоматически (тикер, сторона и время входа)",
-    code: "IDEA_CONVERT_RETIRED",
-  });
+router.post("/trade-ideas/:id/convert", (_req, _res): void => {
+  throw new AppError("IDEA_CONVERT_RETIRED");
 });
 
 router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> => {
@@ -839,9 +821,7 @@ router.delete("/trade-ideas/:id", asyncHandler(async (req, res): Promise<void> =
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
   if (!existing || existing.deletedAt) throw notFound();
   // Only the author or a curator/admin may delete an idea (unowned ideas: staff only).
-  if (!(await canManageIdea(req, existing.trader))) {
-    res.status(403).json({ error: "Удалить идею может только автор или куратор" }); return;
-  }
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   const [row] = await db.update(tradeIdeasTable)
     .set({ deletedAt: new Date() })
     .where(eq(tradeIdeasTable.id, id))
@@ -856,10 +836,8 @@ router.post("/trade-ideas/:id/restore", asyncHandler(async (req, res): Promise<v
   if (!requireMember(req, res)) return;
   const [existing] = await db.select({ trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, id));
-  if (!existing || !existing.deletedAt) { res.status(404).json({ error: "Идея не найдена" }); return; }
-  if (!(await canManageIdea(req, existing.trader))) {
-    res.status(403).json({ error: "Восстановить идею может только автор или куратор" }); return;
-  }
+  if (!existing || !existing.deletedAt) throw new AppError("IDEA_NOT_FOUND");
+  if (!(await canManageIdea(req, existing.trader))) throw new AppError("AUTHOR_OR_STAFF_ONLY");
   await db.update(tradeIdeasTable).set({ deletedAt: null }).where(eq(tradeIdeasTable.id, id));
   res.json({ success: true });
 }));
@@ -870,16 +848,13 @@ router.post("/trade-ideas/:id/reactions", asyncHandler(async (req, res): Promise
   const { reaction, comment } = req.body as Record<string, unknown>;
   // Reactions are always attributed to the authenticated user (body `trader` is ignored to prevent spoofing).
   const trader = req.authUser!.name;
-  if (!reaction) { res.status(400).json({ error: "reaction required" }); return; }
+  if (!reaction) throw new AppError("FIELD_REQUIRED", undefined, { field: "reaction" });
   const vis = await ideaVisibility(req);
   const [idea] = await db.select({ status: tradeIdeasTable.status, trader: tradeIdeasTable.trader, deletedAt: tradeIdeasTable.deletedAt })
     .from(tradeIdeasTable).where(eq(tradeIdeasTable.id, tradeIdeaId));
   if (!idea || idea.deletedAt || !vis || !isVisible(vis, idea)) throw notFound();
   const reactionStr = String(reaction);
-  if (!["thumbs_up", "warning", "thumbs_down"].includes(reactionStr)) {
-    res.status(400).json({ error: "invalid reaction" });
-    return;
-  }
+  if (!["thumbs_up", "warning", "thumbs_down"].includes(reactionStr)) throw new AppError("INVALID_FIELD", undefined, { field: "reaction" });
   await db.delete(tradeIdeaReactionsTable).where(
     and(
       eq(tradeIdeaReactionsTable.tradeIdeaId, tradeIdeaId),

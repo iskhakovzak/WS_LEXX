@@ -1,5 +1,7 @@
 import { normalizeResult } from "@/lib/trade-result";
 import { signedR, netPnl } from "@/lib/trade-math";
+import { ratingsI18n } from "@/i18n/ns/ratings";
+import { ideasI18n } from "@/i18n/ns/ideas";
 
 export type IdeaReaction = { id: number; trader: string; reaction: string };
 /** `r` / `net` / `outcome` come from the API (shared trade math); the raw columns are kept for older payloads. */
@@ -70,7 +72,8 @@ export function enrichIdea(i: TradeIdea, opts?: { basis?: OutcomeBasis; track?: 
   if (lt) {
     const n = lt.outcome ?? normalizeResult(lt.result);
     const raw = (lt.result ?? "").toLowerCase().trim();
-    outcome = n ?? (raw === "winner" || raw === "profit" ? "win" : raw === "loser" || raw === "убыточный" ? "loss" : raw === "ноль" ? "be" : "open");
+    // Legacy stored result values (some rows were written in Russian) — data parsing, not UI text.
+    outcome = n ?? (raw === "winner" || raw === "profit" ? "win" : raw === "loser" || raw === "убыточный" ? "loss" : raw === "ноль" ? "be" : "open"); // i18n-ignore
   }
   // One trade math: signed R (BE ⇒ 0, open ⇒ null) and net P&L (gross − |fees|), server value first.
   const r = lt ? (lt.r != null && Number.isFinite(lt.r) ? lt.r : signedR({ ...lt, rMultiple: num(lt.rMultiple), pnl: num(lt.pnl) })) : null;
@@ -148,19 +151,20 @@ export const SCORE_BUCKETS = [
 export const QUALITY_ORDER = ["A+", "A", "B+", "B", "C", "D"] as const;
 
 export type CalibRow = Bucket & { key: string; label: string };
+/* Labels of the «no score» / «no grade» rows are read when the rows are built (render time). */
 
 export function scoreCalibration(list: EnrichedIdea[]): CalibRow[] {
   const rows: CalibRow[] = SCORE_BUCKETS.map((b) => ({
     key: b.key, label: b.label,
     ...bucketOf(list.filter((i) => i.score != null && i.score >= b.min && i.score <= b.max)),
   }));
-  rows.push({ key: "none", label: "Без скора", ...bucketOf(list.filter((i) => i.score == null)) });
+  rows.push({ key: "none", label: ratingsI18n.t("calib.noScore"), ...bucketOf(list.filter((i) => i.score == null)) });
   return rows;
 }
 
 export function qualityCalibration(list: EnrichedIdea[]): CalibRow[] {
   const rows: CalibRow[] = QUALITY_ORDER.map((q) => ({ key: q, label: q, ...bucketOf(list.filter((i) => i.setupQuality === q)) }));
-  rows.push({ key: "none", label: "Без оценки", ...bucketOf(list.filter((i) => !i.setupQuality || !QUALITY_ORDER.includes(i.setupQuality as never))) });
+  rows.push({ key: "none", label: ratingsI18n.t("calib.noGrade"), ...bucketOf(list.filter((i) => !i.setupQuality || !QUALITY_ORDER.includes(i.setupQuality as never))) });
   return rows;
 }
 
@@ -176,7 +180,7 @@ export type AuthorStats = Bucket & {
 export function authorStats(list: EnrichedIdea[]): AuthorStats[] {
   const by = new Map<string, EnrichedIdea[]>();
   for (const i of list) {
-    const t = i.trader ?? "(не указан)";
+    const t = i.trader ?? ideasI18n.t("stats.noAuthor");
     const l = by.get(t) ?? [];
     l.push(i);
     by.set(t, l);
@@ -199,8 +203,9 @@ export function authorStats(list: EnrichedIdea[]): AuthorStats[] {
 }
 
 export function calibVerdict(c: { r: number | null; n: number }): { text: string; tone: "up" | "down" | "warn" | "neutral" } {
-  if (c.r == null) return { text: c.n < 5 ? `мало данных (${c.n}/5)` : "нет разброса", tone: "neutral" };
-  if (c.r >= 0.3) return { text: "скор предсказывает исход", tone: "up" };
-  if (c.r <= -0.1) return { text: "скор работает наоборот", tone: "down" };
-  return { text: "слабая связь", tone: "warn" };
+  const t = ratingsI18n.t;
+  if (c.r == null) return { text: c.n < 5 ? t("calib.fewData", { n: c.n }) : t("calib.noSpread"), tone: "neutral" };
+  if (c.r >= 0.3) return { text: t("calib.predicts"), tone: "up" };
+  if (c.r <= -0.1) return { text: t("calib.inverse"), tone: "down" };
+  return { text: t("calib.weak"), tone: "warn" };
 }

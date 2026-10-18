@@ -3,8 +3,9 @@
  * (leaks, timeline with ET entry times, summary) — this file only selects and phrases it, plus one thing the
  * report does not flag on its own: trades in the first minutes after the open.
  */
-import { fmtUsd, pluralRu } from "@/lib/format";
+import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { journalI18n } from "@/i18n/ns/journal";
 
 export type HintTone = "down" | "warn" | "up" | "accent";
 export type DayHint = { id: string; tone: HintTone; text: string; detail?: string; tradeIds?: number[] };
@@ -45,6 +46,7 @@ export function dayHints(
   extra: { untagged?: number; violations?: number } = {},
   max = 5,
 ): DayHint[] {
+  const t = journalI18n.t;
   const out: DayHint[] = [];
   if (src && src.summary.closed > 0) {
     const open = openingWindow(src.timeline);
@@ -52,37 +54,37 @@ export function dayHints(
       out.push({
         id: "opening",
         tone: open.net < 0 ? "down" : "warn",
-        text: `${commonI18n.t("units.trades", { count: open.count })} в первые 15 минут, ${fmtUsd(open.net, { signed: true, decimals: "auto" })}`,
-        detail: open.net < 0 ? "Открытие стоило денег — подождите формирования уровней." : "Много входов на открытии — проверьте, все ли по плану.",
+        text: t("hints.opening", { trades: commonI18n.t("units.trades", { count: open.count }), amount: fmtUsd(open.net, { signed: true, decimals: "auto" }) }),
+        detail: open.net < 0 ? t("hints.openingCost") : t("hints.openingBusy"),
         tradeIds: open.ids,
       });
     }
     const leaks = [...src.leaks].sort((a, b) => b.costUsd - a.costUsd).slice(0, 3);
     for (const l of leaks) {
-      out.push({ id: `leak-${l.kind}`, tone: SEVERITY_TONE[l.severity] ?? "warn", text: `${l.title}: ${fmtUsd(l.netUsd, { signed: true, decimals: "auto" })}`, detail: l.detail, tradeIds: l.tradeIds });
+      out.push({ id: `leak-${l.kind}`, tone: SEVERITY_TONE[l.severity] ?? "warn", text: t("hints.leak", { title: l.title, amount: fmtUsd(l.netUsd, { signed: true, decimals: "auto" }) }), detail: l.detail, tradeIds: l.tradeIds });
     }
     const fee = src.summary.feeShareOfGross;
     if (fee != null && fee >= 0.3 && !src.leaks.some((l) => l.kind === "fee_over_gross")) {
-      out.push({ id: "fees", tone: "warn", text: `Комиссии — ${Math.round(fee * 100)}% брутто`, detail: "Меньше мелких сделок или крупнее цель." });
+      out.push({ id: "fees", tone: "warn", text: t("hints.fees", { pct: Math.round(fee * 100) }), detail: t("hints.feesDetail") });
     }
     if (out.length === 0 && src.summary.net > 0 && src.summary.best?.net != null) {
       out.push({
         id: "best",
         tone: "up",
-        text: `Чистый день: лучшая сделка ${src.summary.best.ticker} ${fmtUsd(src.summary.best.net, { signed: true, decimals: "auto" })}`,
-        detail: src.summary.winRate != null ? `Винрейт ${Math.round(src.summary.winRate * 100)}% — запишите, что повторять.` : undefined,
+        text: t("hints.best", { ticker: src.summary.best.ticker, amount: fmtUsd(src.summary.best.net, { signed: true, decimals: "auto" }) }),
+        detail: src.summary.winRate != null ? t("hints.bestDetail", { pct: Math.round(src.summary.winRate * 100) }) : undefined,
       });
     }
   }
   if (extra.violations) {
-    out.push({ id: "violations", tone: "warn", text: `${extra.violations} ${pluralRu(extra.violations, "нарушение", "нарушения", "нарушений")} правил`, detail: "Отмечено автоматически по сделкам дня." });
+    out.push({ id: "violations", tone: "warn", text: t("hints.violations", { count: extra.violations }), detail: t("hints.violationsDetail") });
   }
   if (extra.untagged) {
     out.push({
       id: "untagged",
       tone: "accent",
-      text: `У ${extra.untagged} ${pluralRu(extra.untagged, "сделки", "сделок", "сделок")} нет сетапа`,
-      detail: "Не обязательно для закрытия дня, но без сетапа статистика по сетапам неполная.",
+      text: t("hints.untagged", { count: extra.untagged }),
+      detail: t("hints.untaggedDetail"),
     });
   }
   return out.slice(0, max);

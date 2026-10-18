@@ -5,12 +5,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
+import { propreportsI18n } from "@/i18n/ns/propreports";
 
 export type Severity = "ok" | "warn" | "error";
 export type CompareStatus = Severity | "na";
 export type DiscrepancyCause = "fee_rounding";
 
-export const FEE_ROUNDING_LABEL = "расхождение из-за округления комиссий";
+/** «расхождение из-за округления комиссий» in the UI language. */
+export const feeRoundingLabel = () => propreportsI18n.t("reconcile.feeRounding");
 
 export type Money = { trades: number; gross: number; fees: number; net: number };
 export type MoneyWL = Money & { wins: number; losses: number };
@@ -96,11 +98,12 @@ export function discrepanciesCsv(issues: Issue[]): string {
     const s = v == null ? "" : String(v);
     return /[",\n;]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
   };
-  const head = ["Статус", "Тип", "Причина", "Дата", "Трейдер", "Тикер", "ID сделок", "Брокер", "Журнал", "Разница", "Описание", "Подсказка"];
+  const t = propreportsI18n.t;
+  const head = (["status", "kind", "cause", "date", "trader", "ticker", "ids", "broker", "journal", "diff", "message", "hint"] as const).map((k) => t(`reconcile.csv.${k}`));
   const rows = issues
     .filter((i) => i.severity !== "ok")
     .map((i) => [
-      i.severity === "error" ? "серьёзное" : "расхождение", i.kind, i.cause === "fee_rounding" ? FEE_ROUNDING_LABEL : "",
+      i.severity === "error" ? t("reconcile.csv.serious") : t("reconcile.csv.discrepancy"), i.kind, i.cause === "fee_rounding" ? feeRoundingLabel() : "",
       i.date, i.trader, i.ticker, i.tradeIds.join(" "), i.expected, i.actual, i.diff, i.message, i.hint,
     ].map(esc).join(","));
   return "﻿" + [head.join(","), ...rows].join("\n");

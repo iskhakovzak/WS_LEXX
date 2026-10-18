@@ -3,6 +3,8 @@
  * react-query hooks, trading-day navigation (weekends + market holidays) and formatting.
  */
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { dayReportI18n } from "@/i18n/ns/dayReport";
+import { commonI18n } from "@/i18n/ns/common";
 import { http } from "@/lib/api/http";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { fmtDate, } from "@/lib/format";
@@ -149,11 +151,12 @@ export function lastTradingDay(holidays: ReadonlySet<string> | undefined): strin
 // Money / percent: @/lib/format (fmtUsd, fmtRate).
 export function fmtHold(min: number | null | undefined): string {
   if (min == null || !Number.isFinite(min)) return "—";
-  if (min < 1) return `${Math.max(1, Math.round(min * 60))} с`;
-  if (min < 60) return `${Math.round(min)} мин`;
+  const t = dayReportI18n.t;
+  if (min < 1) return t("hold.s", { n: Math.max(1, Math.round(min * 60)) });
+  if (min < 60) return t("hold.m", { n: Math.round(min) });
   const h = Math.floor(min / 60);
   const m = Math.round(min - h * 60);
-  return m ? `${h} ч ${m} мин` : `${h} ч`;
+  return m ? t("hold.hm", { h, m }) : t("hold.h", { h });
 }
 
 /** "Чт, 15 октября 2026 г." (UI language). */
@@ -169,4 +172,8 @@ export function fmtDayShort(ymd: string): string {
   return fmtDate(ymd, "dayMonth").replace(".", "");
 }
 
-export const SIDE_LABEL: Record<Side, string> = { long: "Лонг", short: "Шорт" };
+/** Side code → label in the current language (read on access). */
+export const SIDE_LABEL: Record<Side, string> = Object.defineProperties({} as Record<Side, string>, {
+  long: { get: () => commonI18n.t("trading.long"), enumerable: true },
+  short: { get: () => commonI18n.t("trading.short"), enumerable: true },
+});

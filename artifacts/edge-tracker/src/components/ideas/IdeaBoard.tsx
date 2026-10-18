@@ -4,15 +4,10 @@ import { Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { IdeaCard } from "./IdeaCard";
 import { STAGES, type IdeaTracking, type Stage, type TradeIdea } from "./model";
+import { ideasI18n } from "@/i18n/ns/ideas";
+import { commonI18n } from "@/i18n/ns/common";
 
-const EMPTY_COPY: Record<Stage, string> = {
-  draft: "Нет черновиков. Нажмите N, чтобы набросать идею.",
-  review: "Очередь ревью пуста.",
-  active: "Нет активных идей.",
-  won: "Пока ничего не сработало.",
-  lost: "Нет закрытых по стопу.",
-  rejected: "",
-};
+const emptyCopy = (s: Stage): string => (s === "rejected" ? commonI18n.t("states.empty") : ideasI18n.t(`board.empty.${s}`));
 
 /** Closed lanes (won / lost / rejected) show the newest cards first; the rest unfold on demand. */
 const CLOSED_LANES = new Set<Stage>(["won", "lost", "rejected"]);
@@ -32,6 +27,7 @@ export function IdeaBoard({
   query: string;
   selectedId: number | null;
 }) {
+  const { t } = ideasI18n.useT();
   const lanes = STAGES.filter((s) => s.key !== "rejected" || groups.rejected.length > 0);
   const [expanded, setExpanded] = useState<Partial<Record<Stage, boolean>>>({});
   // A card reached via J/K in the sheet unfolds its lane (and keeps it open), so focus can return to it on close.
@@ -51,7 +47,7 @@ export function IdeaBoard({
       )}
       style={{ gridTemplateColumns: template }}
       role="list"
-      aria-label="Воронка идей по статусам"
+      aria-label={t("board.aria")}
     >
       {lanes.map((lane) => {
         const all = groups[lane.key];
@@ -61,7 +57,7 @@ export function IdeaBoard({
           <section
             key={lane.key}
             role="listitem"
-            aria-label={`${lane.label}: ${all.length}`}
+            aria-label={t("board.laneAria", { stage: lane.label, count: all.length })}
             className={cn(
               "flex w-[80vw] max-w-[320px] shrink-0 snap-start flex-col gap-2 sm:w-[300px]",
               lanes.length === 5 ? "xl:w-auto xl:min-w-0 xl:max-w-none" : "2xl:w-auto 2xl:min-w-0 2xl:max-w-none",
@@ -94,12 +90,12 @@ export function IdeaBoard({
                   className="chip inline-flex min-h-8 items-center justify-center gap-1.5 px-3 text-xs font-medium"
                 >
                   {capped ? <ChevronDown className="h-3.5 w-3.5" aria-hidden="true" /> : <ChevronUp className="h-3.5 w-3.5" aria-hidden="true" />}
-                  {capped ? `Ещё ${all.length - CLOSED_PREVIEW}` : "Свернуть"}
+                  {capped ? t("board.more", { count: all.length - CLOSED_PREVIEW }) : commonI18n.t("actions.collapse")}
                 </button>
               )}
               {all.length === 0 && (
                 <div className="rounded-xl border border-dashed border-[var(--field-border)] px-3 py-6 text-center text-xs text-muted-foreground">
-                  {EMPTY_COPY[lane.key] || "Пусто"}
+                  {emptyCopy(lane.key)}
                 </div>
               )}
             </div>

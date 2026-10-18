@@ -9,7 +9,9 @@ export type QuickSetup = {
   owner: string | null; canAddExamples: boolean; setupType: string | null; tags: string | null;
 };
 
-export type QuickRow = { s: QuickSetup; group: string };
+/** Group code of a row; the heading text is looked up in `playbookDialogs` → `quick.group.*` at render time. */
+export type QuickGroup = "found" | "suggested" | "recent" | "mine" | "office" | "shared";
+export type QuickRow = { s: QuickSetup; group: QuickGroup };
 
 /** Search haystack match: every whitespace-separated term must occur in name / folder / type / tags / owner. */
 export function matchesSearch(s: QuickSetup, term: string): boolean {
@@ -32,19 +34,19 @@ export function buildQuickRows(input: {
   const rank = (s: QuickSetup) => (s.mine ? 0 : s.space === "office" ? 1 : 2);
   const ordered = [...writable].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name, "ru"));
   if (input.search.trim()) {
-    return ordered.filter((s) => matchesSearch(s, input.search)).slice(0, 60).map((s) => ({ s, group: "Найдено" }));
+    return ordered.filter((s) => matchesSearch(s, input.search)).slice(0, 60).map((s) => ({ s, group: "found" as const }));
   }
   const byId = new Map(writable.map((s) => [s.id, s]));
   const out: QuickRow[] = [];
   const seen = new Set<number>();
-  const push = (s: QuickSetup | undefined, group: string) => {
+  const push = (s: QuickSetup | undefined, group: QuickGroup) => {
     if (!s || seen.has(s.id)) return;
     seen.add(s.id);
     out.push({ s, group });
   };
-  for (const sg of input.suggested) push(byId.get(sg.id), "Подходят по сделке");
-  for (const id of input.recent) push(byId.get(id), "Недавние");
-  for (const s of ordered) push(s, s.mine ? "Мой плейбук" : s.space === "office" ? "Плейбук офиса" : "Общие");
+  for (const sg of input.suggested) push(byId.get(sg.id), "suggested");
+  for (const id of input.recent) push(byId.get(id), "recent");
+  for (const s of ordered) push(s, s.mine ? "mine" : s.space === "office" ? "office" : "shared");
   return out;
 }
 

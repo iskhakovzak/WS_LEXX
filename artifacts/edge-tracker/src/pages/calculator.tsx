@@ -7,6 +7,7 @@
 import { BarChart3 } from "lucide-react";
 import { Page, PageHeader } from "@/components/ds";
 import OptionsSection from "@/components/calculator/OptionsSection";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
 function tickerParam(): string | undefined {
   try {
@@ -18,12 +19,13 @@ function tickerParam(): string | undefined {
 }
 
 export default function CalculatorPage() {
+  const { t } = calculatorI18n.useT();
   return (
     <Page>
       <PageHeader
-        title="Опционный калькулятор"
+        title={t("page.title")}
         icon={BarChart3}
-        description="Цепочка и советник по стратегиям, цена и греки по Black-Scholes, конструктор многоногих стратегий с диаграммой выплат"
+        description={t("page.description")}
       />
       <OptionsSection initialTicker={tickerParam()} />
     </Page>

@@ -42,94 +42,106 @@ import { cn } from "@/lib/utils";
 import { curatorKeys, reassignCurator, useTopPatterns, type TraderSignal } from "./api";
 import { riskTone, sortTraders, type TraderSort } from "./curator-math";
 import {
-  ALL_GROUPS, CSV_HEAD, DEFAULT_FILTERS, GROUP_SORT, NO_CURATOR, activeFilterCount, applyFilters, breachesWeek, buildGroups, csvRow,
+  ALL_GROUPS, csvHead, DEFAULT_FILTERS, GROUP_SORT, NO_CURATOR, activeFilterCount, applyFilters, breachesWeek, buildGroups, csvRow,
   daysSinceTrade, groupTotals, isIdle, isRiskNow, pendingReviews, searchTraders, tradersOf,
   type GroupFilters, type GroupKey, type GroupTotals, type SearchMark,
 } from "./group-model";
 import { TraderCard } from "./trader-card";
-import { fmtDate, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtDate, fmtUsd, localeTag } from "@/lib/format";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { commonI18n } from "@/i18n/ns/common";
 
-// ── copy (one place, for the i18n extraction) ────────────────────────────────
+// ── copy: read from the `curator` namespace at render time (getters follow the current language) ──────────
+const t = curatorI18n.t;
 const T = {
-  allGroups: "Все группы",
-  myGroup: "Моя группа",
-  mineSuffix: "· моя",
-  noCurator: "Без куратора",
-  groupOf: (c: string) => `Группа: ${c}`,
-  groupPicker: "Группа",
-  risk: "Риск сейчас",
-  violations: "Нарушения за неделю",
-  pending: "Ждут разбора",
-  activity: { all: "Все", active: "Торгуют", idle: "Без сделок" },
-  idleDays: (n: number) => `≥ ${n} дн.`,
-  idleTitle: "Нет сделок столько дней или больше",
-  tierAny: "Любой тир",
-  reset: "Сбросить фильтры",
-  table: "Таблица",
-  cards: "Карточки",
-  patternsOn: "Паттерны",
-  patternsOff: "Без паттернов",
+  get allGroups() { return t("group.allGroups"); },
+  get myGroup() { return t("group.myGroup"); },
+  get myGroupBadge() { return t("group.myGroupBadge"); },
+  get mineSuffix() { return t("group.mineSuffix"); },
+  get noCurator() { return t("group.noCurator"); },
+  groupOf: (c: string) => t("group.groupOf", { name: c }),
+  myGroupNamed: (c: string) => t("group.myGroupNamed", { name: c }),
+  get groupPicker() { return t("group.groupPicker"); },
+  get risk() { return t("group.risk"); },
+  get violations() { return t("group.violations"); },
+  get pending() { return t("group.pending"); },
+  activity: {
+    get all() { return t("group.activity.all"); },
+    get active() { return t("group.activity.active"); },
+    get idle() { return t("group.activity.idle"); },
+  },
+  idleDays: (n: number) => t("group.idleDays", { count: n }),
+  get idleTitle() { return t("group.idleTitle"); },
+  get tierAny() { return t("group.tierAny"); },
+  get reset() { return commonI18n.t("actions.resetFilters"); },
+  get table() { return t("group.table"); },
+  get cards() { return t("group.cards"); },
+  get patternsOn() { return t("group.patternsOn"); },
+  get patternsOff() { return t("group.patternsOff"); },
   csv: "CSV",
-  csvTitle: "Скачать видимые строки",
+  get csvTitle() { return t("group.csvTitle"); },
   cols: {
-    trader: "Трейдер", curator: "Куратор", tier: "Тир", stage: "Этап Академии", today: "Сегодня", week: "Неделя", month: "Месяц",
-    violations: "Нарушения", pending: "Разборы", activity: "Активность", risk: "Риск",
+    get trader() { return t("group.cols.trader"); },
+    get curator() { return t("group.cols.curator"); },
+    get tier() { return t("group.cols.tier"); },
+    get stage() { return t("group.cols.stage"); },
+    get today() { return t("group.cols.today"); },
+    get week() { return t("group.cols.week"); },
+    get month() { return t("group.cols.month"); },
+    get violations() { return t("group.cols.violations"); },
+    get pending() { return t("group.cols.pending"); },
+    get activity() { return t("group.cols.activity"); },
+    get risk() { return t("group.cols.risk"); },
+    get actions() { return t("group.cols.actions"); },
   },
   colHints: {
-    tier: "Тир лимитов; ниже — этап Академии, если отличается",
-    violations: "Нарушения лимитов с понедельника (NY); красным — сколько ждут разбора",
-    pending: "Закрытые дни, недельный отчёт и задания Академии, которые ждут куратора",
-    activity: "Последний признак жизни: действие в приложении, закрытый день, недельный отчёт или день сделок",
-    month: "С 1-го числа по сегодня, нетто",
+    get tier() { return t("group.colHints.tier"); },
+    get violations() { return t("group.colHints.violations"); },
+    get pending() { return t("group.colHints.pending"); },
+    get activity() { return t("group.colHints.activity"); },
+    get month() { return t("group.colHints.month"); },
   },
-  totals: {
-    tradersForms: ["трейдер", "трейдера", "трейдеров"] as [string, string, string],
-    violationsForms: ["нарушение за неделю", "нарушения за неделю", "нарушений за неделю"] as [string, string, string],
-    pendingForms: ["ждёт разбора", "ждут разбора", "ждут разбора"] as [string, string, string],
-    today: "сегодня", week: "неделя", month: "месяц", atRisk: "в зоне риска", idle: "без сделок",
-  },
-  openGroup: "Открыть группу",
-  collapseAll: "Свернуть все",
-  expandAll: "Развернуть все",
-  emptyGroup: "В группе пока никого нет",
-  emptyCurators: "Кураторы без трейдеров:",
-  nothing: "Никто не подходит",
-  nothingHint: "Сбросьте фильтры или поиск.",
-  noTraders: "Трейдеров нет",
-  noTradersHint: "В деске нет активных трейдеров, которых вы можете видеть.",
+  get openGroup() { return t("group.openGroup"); },
+  get collapseAll() { return t("group.collapseAll"); },
+  get expandAll() { return t("group.expandAll"); },
+  get emptyGroup() { return t("group.emptyGroup"); },
+  get emptyCurators() { return t("group.emptyCurators"); },
+  get nothing() { return t("group.nothing"); },
+  get nothingHint() { return t("group.nothingHint"); },
+  get noTraders() { return t("group.noTraders"); },
+  get noTradersHint() { return t("group.noTradersHint"); },
   actions: {
-    menu: (n: string) => `Действия: ${n}`,
-    profile: "Профиль",
-    journal: "Дневник",
-    day: "Разбор дня",
-    trades: "Сделки",
-    notes: "Заметка куратора",
-    discussions: "Обсуждения",
-    move: "Перевести в группу",
-    moveTitle: (who: string, to: string | null) => (to ? `Перевести ${who} в группу «${to}»?` : `Убрать ${who} из группы?`),
-    moveDesc: (from: string | null) => `Сейчас: ${from ? `группа «${from}»` : "без куратора"}. Новый куратор начнёт получать разборы и уведомления по этому трейдеру. Изменение попадёт в аудит.`,
-    reason: "Причина (в аудит)",
-    reasonDefault: "Перевод между группами",
-    confirm: "Перевести",
+    menu: (n: string) => t("group.actions.menu", { name: n }),
+    withName: (action: string, n: string) => t("group.actions.withName", { action, name: n }),
+    get profile() { return t("profileLink"); },
+    get journal() { return t("group.actions.journal"); },
+    get day() { return t("group.actions.day"); },
+    get trades() { return t("group.actions.trades"); },
+    get notes() { return t("group.actions.notes"); },
+    get discussions() { return t("group.actions.discussions"); },
+    get move() { return t("group.actions.move"); },
+    moveTitle: (who: string, to: string | null) => (to ? t("group.actions.moveTitleTo", { name: who, to }) : t("group.actions.moveTitleOut", { name: who })),
+    moveDesc: (from: string | null) => (from ? t("group.actions.moveDescFrom", { from }) : t("group.actions.moveDescNone")),
+    get reason() { return t("group.actions.reason"); },
+    get reasonDefault() { return t("group.actions.reasonDefault"); },
+    get confirm() { return t("group.actions.confirm"); },
+    get moving() { return t("group.actions.moving"); },
     moved: (who: string) => who,
-    movedText: (to: string | null) => (to ? `→ ${to}` : "без куратора"),
-    undoReason: "Отмена перевода",
-    failed: "Не удалось перевести",
+    movedText: (to: string | null) => (to ? t("group.actions.movedTo", { to }) : t("group.actions.movedOut")),
+    get undoReason() { return t("group.actions.undoReason"); },
+    get failed() { return t("group.actions.failed"); },
+    get noAccount() { return t("group.actions.noAccount"); },
   },
-  never: "не было",
-  daysAgo: (n: number) => (n === 0 ? "сегодня" : n === 1 ? "вчера" : `${n} дн. назад`),
-  noLimits: "Без лимитов",
+  get never() { return t("never"); },
+  daysAgo: (n: number) => (n === 0 ? commonI18n.t("time.today").toLowerCase() : n === 1 ? commonI18n.t("time.yesterday").toLowerCase() : t("group.daysAgo", { count: n })),
+  get noLimits() { return t("noLimits"); },
   stageNone: "—",
-  stagePrefix: "этап:",
-  shown: (a: number, b: number) => `${a} из ${b}`,
-} as const;
+  get stagePrefix() { return t("group.stagePrefix"); },
+  shown: (a: number, b: number) => t("group.shown", { shown: a, total: b }),
+};
 
-const CARD_SORTS: { value: TraderSort; label: string }[] = [
-  { value: "attention", label: "Внимание" },
-  { value: "pnl", label: "Неделя ↑" },
-  { value: "discipline", label: "Дисциплина ↑" },
-  { value: "name", label: "Имя" },
-];
+const CARD_SORT_KEYS: readonly TraderSort[] = ["attention", "pnl", "discipline", "name"];
+const cardSorts = () => CARD_SORT_KEYS.map((value) => ({ value, label: t(`group.cardSort.${value}`) }));
 const IDLE_OPTIONS = [3, 5, 10, 20] as const;
 
 type Props = {
@@ -150,7 +162,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
 
   const myCount = React.useMemo(() => traders.filter((s) => s.curator === me).length, [traders, me]);
   const curators = React.useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && (u.role === "curator" || u.role === "admin")).map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")),
+    () => dbUsers.filter((u) => u.active && !u.banned && (u.role === "curator" || u.role === "admin")).map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag())),
     [dbUsers],
   );
   const groupCounts = React.useMemo(() => {
@@ -198,7 +210,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
   const doMove = async () => {
     if (!move) return;
     const id = userIdOf(move.s.trader);
-    if (id == null) { toast({ title: T.actions.failed, description: "Учётка не найдена", variant: "destructive" }); return; }
+    if (id == null) { toast({ title: T.actions.failed, description: T.actions.noAccount, variant: "destructive" }); return; }
     setBusy(true);
     try {
       await reassignCurator(id, move.to, reason.trim() || T.actions.reasonDefault);
@@ -230,12 +242,12 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
   const from = addDays(to, -28);
   const topPatterns = useTopPatterns(shown.map((s) => s.trader), from, to, mode === "cards" && patterns === "on");
 
-  const exportCsv = () => downloadCsv(CSV_HEAD, shown.map(csvRow), `group-${group === ALL_GROUPS ? "all" : group === NO_CURATOR ? "none" : group}-${date}.csv`);
+  const exportCsv = () => downloadCsv(csvHead(), shown.map(csvRow), `group-${group === ALL_GROUPS ? "all" : group === NO_CURATOR ? "none" : group}-${date}.csv`);
 
-  const groupLabel = (k: GroupKey) => (k === ALL_GROUPS ? T.allGroups : k === NO_CURATOR ? T.noCurator : k === me ? `${T.myGroup} (${k})` : k);
+  const groupLabel = (k: GroupKey) => (k === ALL_GROUPS ? T.allGroups : k === NO_CURATOR ? T.noCurator : k === me ? T.myGroupNamed(k) : k);
   const groupOptions = [
     ...[...new Set([...curators, ...[...groupCounts.keys()].filter((k) => k !== NO_CURATOR)])]
-      .sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, "ru")))
+      .sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, localeTag())))
       .map((c) => ({ value: c, label: c, hint: String(groupCounts.get(c) ?? 0) })),
     { value: NO_CURATOR, label: T.noCurator, hint: String(groupCounts.get(NO_CURATOR) ?? 0) },
   ];
@@ -265,13 +277,13 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
         <div className="ml-auto flex min-w-0 flex-wrap items-center gap-2">
           {mode === "cards" && (
             <>
-              <Segmented size="sm" ariaLabel="Паттерны поведения" value={patterns} onChange={setPatterns} options={[{ value: "on", label: T.patternsOn }, { value: "off", label: T.patternsOff }]} />
-              <Segmented size="sm" ariaLabel="Сортировка карточек" value={cardSort} onChange={setCardSort} options={CARD_SORTS} />
+              <Segmented size="sm" ariaLabel={t("group.patternsAria")} value={patterns} onChange={setPatterns} options={[{ value: "on", label: T.patternsOn }, { value: "off", label: T.patternsOff }]} />
+              <Segmented size="sm" ariaLabel={t("group.cardSortAria")} value={cardSort} onChange={setCardSort} options={cardSorts()} />
             </>
           )}
           <Segmented
             size="sm"
-            ariaLabel="Вид"
+            ariaLabel={t("group.viewAria")}
             value={mode}
             onChange={setMode}
             options={[
@@ -281,13 +293,13 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
           />
           <Button type="button" variant="outline" size="sm" onClick={exportCsv} disabled={!shown.length} title={T.csvTitle}><Download /> {T.csv}</Button>
         </div>
-        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Фильтры группы">
+        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label={t("group.filtersAria")}>
           <FilterChip size="sm" active={f.risk} onClick={() => patch({ risk: !f.risk })} count={counts.risk}><ShieldAlert className="h-3.5 w-3.5" aria-hidden="true" />{T.risk}</FilterChip>
           <FilterChip size="sm" active={f.violations} onClick={() => patch({ violations: !f.violations })} count={counts.violations}><AlertTriangle className="h-3.5 w-3.5" aria-hidden="true" />{T.violations}</FilterChip>
           <FilterChip size="sm" active={f.pending} onClick={() => patch({ pending: !f.pending })} count={counts.pending}><ClipboardList className="h-3.5 w-3.5" aria-hidden="true" />{T.pending}</FilterChip>
           <Segmented
             size="sm"
-            ariaLabel="Активность"
+            ariaLabel={t("group.activityAria")}
             value={f.activity}
             onChange={(v) => patch({ activity: v })}
             options={[
@@ -302,7 +314,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
           </Select>
           {tiers.length > 0 && (
             <Select value={f.tier || "__any"} onValueChange={(v) => patch({ tier: v === "__any" ? "" : v })}>
-              <SelectTrigger className="h-8 w-36 px-3 text-xs" aria-label="Тир"><SelectValue /></SelectTrigger>
+              <SelectTrigger className="h-8 w-36 px-3 text-xs" aria-label={t("group.tierAria")}><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="__any">{T.tierAny}</SelectItem>
                 {tiers.map(([k, n]) => <SelectItem key={k} value={k}>{n}</SelectItem>)}
@@ -370,9 +382,9 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
             <Input id="move-reason" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction disabled={busy || reason.trim().length < 3} onClick={(e) => { e.preventDefault(); void doMove(); }}>
-              {busy ? "Перевожу…" : T.actions.confirm}
+              {busy ? T.actions.moving : T.actions.confirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -398,17 +410,18 @@ function money(v: number | null) {
   return <span className={cn("tabular-nums", v == null ? "text-muted-foreground" : v > 0 ? "text-up" : v < 0 ? "text-down" : "text-foreground")}>{fmtUsd(v, { signed: true, decimals: 0 })}</span>;
 }
 
-function TotalsInline({ t, idleDays }: { t: GroupTotals; idleDays: number }) {
+function TotalsInline({ t: x, idleDays }: { t: GroupTotals; idleDays: number }) {
+  const { t: tr } = curatorI18n.useT();
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-      <span className="tabular-nums"><span className="text-foreground">{t.traders}</span> {pluralRu(t.traders, ...T.totals.tradersForms)}</span>
-      <span>{T.totals.today} {money(t.today)}</span>
-      <span>{T.totals.week} {money(t.week)}</span>
-      <span>{T.totals.month} {money(t.month)}</span>
-      {t.violations > 0 && <span className="tabular-nums text-down" title={T.colHints.violations}>{t.violations} {pluralRu(t.violations, ...T.totals.violationsForms)}</span>}
-      {t.pending > 0 && <span className="tabular-nums text-primary" title={T.colHints.pending}>{t.pending} {pluralRu(t.pending, ...T.totals.pendingForms)}</span>}
-      {t.atRisk > 0 && <span className="tabular-nums text-warn">{t.atRisk} {T.totals.atRisk}</span>}
-      {t.idle > 0 && <span className="tabular-nums" title={T.idleTitle}>{t.idle} {T.totals.idle} {T.idleDays(idleDays)}</span>}
+      <span className="tabular-nums text-foreground">{tr("group.totals.traders", { count: x.traders })}</span>
+      <span>{tr("group.totals.today")} {money(x.today)}</span>
+      <span>{tr("group.totals.week")} {money(x.week)}</span>
+      <span>{tr("group.totals.month")} {money(x.month)}</span>
+      {x.violations > 0 && <span className="tabular-nums text-down" title={T.colHints.violations}>{tr("group.totals.violations", { count: x.violations })}</span>}
+      {x.pending > 0 && <span className="tabular-nums text-primary" title={T.colHints.pending}>{tr("group.totals.pending", { count: x.pending })}</span>}
+      {x.atRisk > 0 && <span className="tabular-nums text-warn">{tr("group.totals.atRisk", { count: x.atRisk })}</span>}
+      {x.idle > 0 && <span className="tabular-nums" title={T.idleTitle}>{tr("group.totals.idle", { count: x.idle, days: T.idleDays(idleDays) })}</span>}
     </span>
   );
 }
@@ -472,7 +485,7 @@ function AllGroups({
               >
                 {open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
                 <span className={cn("truncate text-sm font-semibold", g.curator ? "text-foreground" : "text-warn")}>{label}</span>
-                {g.curator === me && <Pill tone="accent">{T.myGroup.toLowerCase()}</Pill>}
+                {g.curator === me && <Pill tone="accent">{T.myGroupBadge}</Pill>}
                 {narrowed && <span className="text-xs tabular-nums text-muted-foreground">{T.shown(g.traders.length, sizes.get(g.key) ?? 0)}</span>}
               </button>
               <span className="min-w-0 flex-1"><TotalsInline t={totals} idleDays={idleDays} /></span>
@@ -515,7 +528,7 @@ function GroupTable({ rows, showCurator, row, compact = false }: { rows: TraderS
     trader: "asc", curator: "asc", tier: "asc", stage: "asc", today: "asc", week: "asc", month: "asc",
   });
   return (
-    <DataTable maxHeight={compact ? undefined : "68vh"} stickyFirstCol ariaLabel="Трейдеры группы" className={cn(compact && "rounded-none border-0")}>
+    <DataTable maxHeight={compact ? undefined : "68vh"} stickyFirstCol ariaLabel={t("group.tableAria")} className={cn(compact && "rounded-none border-0")}>
       <table>
         <thead>
           <tr>
@@ -529,7 +542,7 @@ function GroupTable({ rows, showCurator, row, compact = false }: { rows: TraderS
             <SortableTh {...thProps("pending")} align="right"><span title={T.colHints.pending}>{T.cols.pending}</span></SortableTh>
             <SortableTh {...thProps("activity")} align="right"><span title={T.colHints.activity}>{T.cols.activity}</span></SortableTh>
             <SortableTh {...thProps("risk")}>{T.cols.risk}</SortableTh>
-            <th scope="col" className="w-24"><span className="sr-only">Действия</span></th>
+            <th scope="col" className="w-24"><span className="sr-only">{T.cols.actions}</span></th>
           </tr>
         </thead>
         <tbody>
@@ -551,7 +564,7 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
   return (
     <tr className={cn(s.risk.halted && "bg-down/5")}>
       <td className="max-w-[16rem]">
-        <button type="button" onClick={() => row.onOpenTrader(s.trader)} className="block min-w-0 max-w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={`${T.actions.profile}: ${s.trader}`}>
+        <button type="button" onClick={() => row.onOpenTrader(s.trader)} className="block min-w-0 max-w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={T.actions.withName(T.actions.profile, s.trader)}>
           <span className="block truncate font-medium text-foreground hover:text-primary">
             <Highlight text={s.trader} ranges={mark?.field === 0 ? mark.ranges : null} />
           </span>
@@ -569,25 +582,25 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
         {s.tierName ?? <span className="text-muted-foreground">—</span>}
         {s.stage.label && s.stage.label !== s.tierName && <div className="text-2xs text-muted-foreground" title={T.cols.stage}>{T.stagePrefix} {s.stage.label}</div>}
       </td>
-      <td className="whitespace-nowrap text-right" title={`${s.risk.todayTrades} сд.${s.risk.openPositions ? ` · ${s.risk.openPositions} откр.` : ""}`}>
+      <td className="whitespace-nowrap text-right" title={`${t("tradesShort", { count: s.risk.todayTrades })}${s.risk.openPositions ? ` · ${t("openShort", { count: s.risk.openPositions })}` : ""}`}>
         {s.risk.todayTrades ? money(s.risk.todayPnl) : <span className="text-muted-foreground">—</span>}
-        {s.risk.todayTrades > 0 && <div className="text-2xs tabular-nums text-muted-foreground">{s.risk.todayTrades} сд.</div>}
+        {s.risk.todayTrades > 0 && <div className="text-2xs tabular-nums text-muted-foreground">{t("tradesShort", { count: s.risk.todayTrades })}</div>}
       </td>
       <td className="whitespace-nowrap text-right">{money(s.risk.weekPnl)}</td>
       <td className="whitespace-nowrap text-right">
         {money(s.month?.pnl ?? null)}
-        {s.month && s.month.trades > 0 && <div className="text-2xs tabular-nums text-muted-foreground">{s.month.trades} сд.</div>}
+        {s.month && s.month.trades > 0 && <div className="text-2xs tabular-nums text-muted-foreground">{t("tradesShort", { count: s.month.trades })}</div>}
       </td>
       <td className="whitespace-nowrap text-right tabular-nums">
         {wk ? <span className={toneText(wk > 1 ? "down" : "warn")}>{wk}</span> : <span className="text-muted-foreground">0</span>}
-        {s.breaches.unreviewed > 0 && <div className="text-2xs text-down">{s.breaches.unreviewed} без разбора</div>}
+        {s.breaches.unreviewed > 0 && <div className="text-2xs text-down">{t("group.unreviewed", { count: s.breaches.unreviewed })}</div>}
       </td>
       <td className="whitespace-nowrap text-right tabular-nums">
         {pend ? <Link href={s.nextAction.kind === "eod_review" || s.nextAction.kind === "weekly_review" ? s.nextAction.href : `/curator?trader=${enc}&tab=journal`} className="text-primary hover:underline">{pend}</Link> : <span className="text-muted-foreground">0</span>}
       </td>
-      <td className="whitespace-nowrap text-right text-xs" title={[s.lastActivityAt ? `Активность: ${fmtDate(s.lastActivityAt.slice(0, 10), "dayMonth")}` : null, s.lastTradeDate ? `Последняя сделка: ${fmtDate(s.lastTradeDate, "dayMonth")}` : null].filter(Boolean).join(" · ") || undefined}>
+      <td className="whitespace-nowrap text-right text-xs" title={[s.lastActivityAt ? t("group.activityOn", { date: fmtDate(s.lastActivityAt.slice(0, 10), "dayMonth") }) : null, s.lastTradeDate ? t("group.lastTradeOn", { date: fmtDate(s.lastTradeDate, "dayMonth") }) : null].filter(Boolean).join(" · ") || undefined}>
         <span className={cn("tabular-nums", actDays == null ? "text-muted-foreground" : actDays >= 5 ? "text-warn" : "text-foreground")}>{actDays == null ? T.never : T.daysAgo(actDays)}</span>
-        {days != null && days !== actDays && <div className="text-2xs tabular-nums text-muted-foreground">сделка {fmtDate(s.lastTradeDate, "dayMonth")}</div>}
+        {days != null && days !== actDays && <div className="text-2xs tabular-nums text-muted-foreground">{t("group.tradeOn", { date: fmtDate(s.lastTradeDate, "dayMonth") })}</div>}
       </td>
       <td className="whitespace-nowrap">
         <span title={s.risk.message || undefined}><Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : T.noLimits}</Pill></span>
@@ -595,10 +608,10 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
       <td className="whitespace-nowrap text-right">
         <span className="inline-flex items-center gap-0.5">
           <Button asChild variant="ghost" size="icon" className="h-8 w-8" title={T.actions.journal}>
-            <Link href={`/journal?trader=${enc}`} aria-label={`${T.actions.journal}: ${s.trader}`}><BookText /></Link>
+            <Link href={`/journal?trader=${enc}`} aria-label={T.actions.withName(T.actions.journal, s.trader)}><BookText /></Link>
           </Button>
           <Button asChild variant="ghost" size="icon" className="h-8 w-8" title={T.actions.day}>
-            <Link href={`/day-report?trader=${enc}`} aria-label={`${T.actions.day}: ${s.trader}`}><ClipboardList /></Link>
+            <Link href={`/day-report?trader=${enc}`} aria-label={T.actions.withName(T.actions.day, s.trader)}><ClipboardList /></Link>
           </Button>
           <RowMenu s={s} row={row} />
         </span>

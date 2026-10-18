@@ -11,16 +11,19 @@ import { cn } from "@/lib/utils";
 import { links } from "@/lib/links";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { eodI18n } from "@/i18n/ns/eod";
 import { useJournalRange } from "@/components/journal/use-journal-days";
 import { eodApi, hoursText, slaText, useBrokerDaily, useEodDay, useEodMutation, type QueueItem } from "./eod-api";
 import { EodDayReadOnly } from "./EodDayReadOnly";
 
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
-const SCORE_HINT = ["Нет разбора", "Формально", "Нормально", "Хорошо", "Образцово"];
+const SCORE_KEYS = ["none", "formal", "ok", "good", "exemplary"] as const;
 
 /** Curator review of one closed day: read-only day + comment + score 1–5, «Сохранить и следующий». */
 export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | null; onClose: () => void; onNext: (n: QueueItem | null) => void }) {
   const { toast } = useToast();
+  const { t } = eodI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const SCORE_HINT = SCORE_KEYS.map((k) => t(`sheet.score.${k}`));
   const open = !!item;
   const dayQ = useEodDay(item?.trader ?? "", item?.date ?? "", open);
   const brokerQ = useBrokerDaily(item?.trader ?? "", item?.date ?? "", open);
@@ -39,16 +42,16 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
   const review = useEodMutation((b: { id: number; comment: string; score: number; next: boolean }) =>
     eodApi.curatorReview(b.id, { comment: b.comment, score: b.score }).then((out) => ({ ...out, goNext: b.next })),
   (out) => {
-    toast({ title: `Разбор ${out.day.trader} за ${out.day.date} проверен` });
+    toast({ title: eodI18n.t("sheet.reviewedToast", { trader: out.day.trader, date: fmtDate(out.day.date, "dayMonth") }) });
     if (out.goNext) onNext(out.next);
     else onClose();
   });
 
   const submit = (next: boolean) => {
     if (!item || score == null) return;
-    if (!comment.trim()) { toast({ title: "Напишите комментарий трейдеру", variant: "destructive" }); return; }
+    if (!comment.trim()) { toast({ title: t("sheet.writeComment"), variant: "destructive" }); return; }
     review.mutate({ id: item.id, comment: comment.trim(), score, next }, {
-      onError: (e) => toast({ title: "Не удалось сохранить проверку", description: (e as Error).message, variant: "destructive" }),
+      onError: (e) => toast({ title: t("sheet.saveFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
 
@@ -58,14 +61,14 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
         <SheetHeader className="border-b border-[var(--glass-border)] px-5 py-4 text-left">
           <SheetTitle className="flex flex-wrap items-center gap-2">
             {item?.trader} · {item ? fmtDate(item.date, "long") : ""}
-            {item && !reviewed && <Pill tone={item.overdue ? "warn" : "neutral"}>ждёт {hoursText(item.hoursWaiting)} · {slaText(item.hoursWaiting, 24)}</Pill>}
-            {reviewed && <Pill tone="up">проверен{item?.reviewedBy ? ` · ${item.reviewedBy}` : ""}</Pill>}
+            {item && !reviewed && <Pill tone={item.overdue ? "warn" : "neutral"}>{t("sheet.waiting", { time: hoursText(item.hoursWaiting), sla: slaText(item.hoursWaiting, 24) })}</Pill>}
+            {reviewed && <Pill tone="up">{item?.reviewedBy ? t("sheet.reviewedBy", { name: item.reviewedBy }) : t("sheet.reviewed")}</Pill>}
           </SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-x-3">
-            <span>{commonI18n.t("units.trades", { count: tradesN })} · закрыт {item?.closedAt ? fmtDate(item.closedAt, "shortDateTimeSeconds") : "—"}</span>
+            <span>{t("sheet.closedAt", { trades: tc("units.trades", { count: tradesN }), date: item?.closedAt ? fmtDate(item.closedAt, "shortDateTimeSeconds") : "—" })}</span>
             {item && (
               <Link href={links.journalDay(item.date, item.trader)} className="inline-flex items-center gap-1 text-primary hover:underline" onClick={onClose}>
-                <ExternalLink className="h-3 w-3" aria-hidden="true" />открыть в дневнике
+                <ExternalLink className="h-3 w-3" aria-hidden="true" />{t("sheet.openInJournal")}
               </Link>
             )}
           </SheetDescription>
@@ -77,13 +80,13 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
           ) : dayQ.data ? (
             <EodDayReadOnly data={dayQ.data} broker={brokerQ.data ?? null} journal={journal} />
           ) : (
-            <p className="text-sm text-muted-foreground">День не найден.</p>
+            <p className="text-sm text-muted-foreground">{t("sheet.notFound")}</p>
           )}
         </div>
 
         <div className="space-y-3 border-t border-[var(--glass-border)] px-5 py-4">
           <div className="flex items-center justify-between gap-2">
-            <span id="eod-score" className="text-xs text-muted-foreground">Оценка разбора</span>
+            <span id="eod-score" className="text-xs text-muted-foreground">{t("sheet.scoreLabel")}</span>
             <span className="text-xs font-medium">{score != null ? SCORE_HINT[score - 1] : "—"}</span>
           </div>
           <div role="group" aria-labelledby="eod-score" className="glass-field flex items-center gap-0.5 p-1">
@@ -100,20 +103,20 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
             })}
           </div>
           <Textarea
-            aria-label="Комментарий куратора"
+            aria-label={t("sheet.commentAria")}
             value={comment}
             maxLength={4000}
-            placeholder="Что трейдер сделал хорошо, что исправить завтра…"
+            placeholder={t("sheet.commentPlaceholder")}
             onChange={(e) => setComment(e.target.value)}
             className="min-h-[90px] leading-relaxed"
           />
           <div className="flex flex-wrap justify-end gap-2">
             <Button variant="outline" size="sm" disabled={score == null || review.isPending} onClick={() => submit(false)}>
-              <Check aria-hidden="true" />{reviewed ? "Обновить отзыв" : "Сохранить"}
+              <Check aria-hidden="true" />{reviewed ? t("sheet.update") : tc("actions.save")}
             </Button>
             {!reviewed && (
               <Button size="sm" disabled={score == null || review.isPending} onClick={() => submit(true)}>
-                Сохранить и следующий<ArrowRight aria-hidden="true" />
+                {t("sheet.saveNext")}<ArrowRight aria-hidden="true" />
               </Button>
             )}
           </div>

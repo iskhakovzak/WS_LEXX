@@ -7,6 +7,10 @@ import { requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { getSectorStrength, SECTOR_ETFS } from "../lib/marketDataService";
 import { nyDate } from "../lib/tradingDate";
+import { langOf, type Lang } from "../i18n";
+import { marketbriefT } from "../i18n/ns";
+import { aiLanguageName } from "../i18n/ai";
+import { localizeCalendarRow } from "../lib/calendarText";
 
 const router: IRouter = Router();
 
@@ -229,7 +233,7 @@ async function buildQuotes() {
   return { futures, overnight, macro, premarketMovers, gapLeaders };
 }
 
-async function buildBrief(date: string): Promise<any> {
+async function buildBrief(date: string, lang: Lang = "ru"): Promise<any> {
   const { futures, overnight, macro, premarketMovers, gapLeaders } = await buildQuotes();
 
   const sectors = await getSectorStrength().catch((): Awaited<ReturnType<typeof getSectorStrength>> => []);
@@ -239,7 +243,7 @@ async function buildBrief(date: string): Promise<any> {
     .map((s) => ({ symbol: s.symbol, name: s.name, changePct: s.changePct, trend5d: s.trend5d }));
 
   const today = date;
-  const { startDate, endDate, label, days } = lookbackWindow(today);
+  const { startDate, endDate, label, days, kind } = lookbackWindow(today);
   const sevenDaysOut = new Date(new Date(today).getTime() + 7 * 86400_000).toISOString().slice(0, 10);
 
   const { rows: earningsToday } = await pool.query<any>(
@@ -297,16 +301,17 @@ async function buildBrief(date: string): Promise<any> {
     economicEvents,
     yesterdayThemes: lookbackThemes[0] || null,
     topNews,
-    lookback: { startDate, endDate, label, days },
+    lookback: { startDate, endDate, label, days, kind },
     sectorEtfs: SECTOR_ETFS,
   };
 
-  const aiSummary = await generateAiSummary(partial).catch((e) => {
+  const aiSummary = await generateAiSummary(partial, lang).catch((e) => {
     logger.warn({ error: e?.message }, "market brief AI summary failed");
     return null;
   });
 
-  return { ...partial, aiSummary };
+  // The AI summary is cached per reader language; other languages are generated on first read (see GET /market-brief).
+  return { ...partial, aiSummary, aiSummaries: { [lang]: aiSummary } };
 }
 
 function fmtPctSafe(p: number | null | undefined): string {
@@ -314,17 +319,18 @@ function fmtPctSafe(p: number | null | undefined): string {
   return `${p >= 0 ? "+" : ""}${p.toFixed(2)}%`;
 }
 
-async function generateAiSummary(b: any): Promise<string | null> {
+async function generateAiSummary(b: any, lang: Lang = "ru"): Promise<string | null> {
+  // Prompt context is model input and stays in Russian; the answer language follows the reader.
   const lines: string[] = [];
   if (b.futures?.length) {
-    lines.push("Фьючерсы US: " + b.futures.map((f: any) => `${f.name} ${fmtPctSafe(f.changePct)}`).join(", "));
+    lines.push("Фьючерсы US: " + b.futures.map((f: any) => `${f.name} ${fmtPctSafe(f.changePct)}`).join(", ")); // i18n-ignore (AI prompt context)
   }
   const asia = (b.overnight || []).filter((o: any) => o.region === "Asia" && o.changePct != null);
   const eu = (b.overnight || []).filter((o: any) => o.region === "Europe" && o.changePct != null);
-  if (asia.length) lines.push("Азия: " + asia.map((o: any) => `${o.name} ${fmtPctSafe(o.changePct)}`).join(", "));
-  if (eu.length) lines.push("Европа: " + eu.map((o: any) => `${o.name} ${fmtPctSafe(o.changePct)}`).join(", "));
+  if (asia.length) lines.push("Азия: " + asia.map((o: any) => `${o.name} ${fmtPctSafe(o.changePct)}`).join(", ")); // i18n-ignore (AI prompt context)
+  if (eu.length) lines.push("Европа: " + eu.map((o: any) => `${o.name} ${fmtPctSafe(o.changePct)}`).join(", ")); // i18n-ignore (AI prompt context)
   if (b.macro?.length) {
-    lines.push("Макро: " + b.macro.map((m: any) => `${m.name} ${m.price != null ? m.price.toFixed(2) : "—"} (${fmtPctSafe(m.changePct)})`).join(", "));
+    lines.push("Макро: " + b.macro.map((m: any) => `${m.name} ${m.price != null ? m.price.toFixed(2) : "—"} (${fmtPctSafe(m.changePct)})`).join(", ")); // i18n-ignore (AI prompt context)
   }
   if (b.premarketMovers?.length) {
     lines.push("Premarket movers: " + b.premarketMovers.slice(0, 8).map((p: any) => `${p.ticker} ${fmtPctSafe(p.preMarketPct)}${p.catalyst ? " (" + p.catalyst + ")" : ""}`).join(", "));
@@ -332,27 +338,28 @@ async function generateAiSummary(b: any): Promise<string | null> {
   if (b.sectorRotation?.length) {
     const top3 = b.sectorRotation.slice(0, 3).map((s: any) => `${s.symbol} ${fmtPctSafe(s.changePct)}`).join(", ");
     const bot3 = b.sectorRotation.slice(-3).map((s: any) => `${s.symbol} ${fmtPctSafe(s.changePct)}`).join(", ");
-    lines.push(`Сектора лидеры: ${top3} | аутсайдеры: ${bot3}`);
+    lines.push(`Сектора лидеры: ${top3} | аутсайдеры: ${bot3}`); // i18n-ignore (AI prompt context)
   }
   if (b.earningsToday?.length) {
-    lines.push("Earnings сегодня: " + b.earningsToday.slice(0, 12).map((e: any) => e.ticker).join(", "));
+    lines.push("Earnings сегодня: " + b.earningsToday.slice(0, 12).map((e: any) => e.ticker).join(", ")); // i18n-ignore (AI prompt context)
   }
   if (b.economicEvents?.length) {
-    lines.push("Макрособытия (7д): " + b.economicEvents.slice(0, 6).map((e: any) => `${e.date} ${e.name}${e.importance === "high" ? " [HIGH]" : ""}`).join("; "));
+    lines.push("Макрособытия (7д): " + b.economicEvents.slice(0, 6).map((e: any) => `${e.date} ${e.name}${e.importance === "high" ? " [HIGH]" : ""}`).join("; ")); // i18n-ignore (AI prompt context)
   }
   if (b.topNews?.length) {
-    lines.push("Новости (" + (b.lookback?.label || "последний день") + "):");
+    lines.push("Новости (" + (b.lookback?.label || "последний день") + "):"); // i18n-ignore (AI prompt context)
     b.topNews.slice(0, 12).forEach((n: any) => {
       lines.push(`- ${n.ticker}${n.percent_move != null ? " " + (Number(n.percent_move) >= 0 ? "+" : "") + Number(n.percent_move).toFixed(1) + "%" : ""}: ${n.headline}`);
     });
   }
   if (b.yesterdayThemes?.what_works_now) {
-    lines.push("Темы вчера: " + b.yesterdayThemes.what_works_now);
-    if (b.yesterdayThemes.best_tickers) lines.push("Лучшие тикеры вчера: " + b.yesterdayThemes.best_tickers);
+    lines.push("Темы вчера: " + b.yesterdayThemes.what_works_now); // i18n-ignore (AI prompt context)
+    if (b.yesterdayThemes.best_tickers) lines.push("Лучшие тикеры вчера: " + b.yesterdayThemes.best_tickers); // i18n-ignore (AI prompt context)
   }
   if (lines.length === 0) return null;
 
-  const system = `Ты — рыночный аналитик для дей-трейдера. Дай краткий бриф открытия US-сессии на русском: 4–6 предложений, плотный, без воды и общих фраз. Структура: (1) ночь Азия/Европа и общий риск-он/риск-офф; (2) что говорят фьючерсы и макро (VIX/DXY/доходности/нефть); (3) ключевые новости и катализаторы по тикерам; (4) сектора в фокусе; (5) что важно держать в голове на сегодня. Без markdown, без списков, обычным абзацем. Не выдумывай данные которых нет.`;
+  // i18n-ignore-next (AI prompt — model input)
+  const system = `Ты — рыночный аналитик для дей-трейдера. Дай краткий бриф открытия US-сессии ${aiLanguageName(lang)}: 4–6 предложений, плотный, без воды и общих фраз. Структура: (1) ночь Азия/Европа и общий риск-он/риск-офф; (2) что говорят фьючерсы и макро (VIX/DXY/доходности/нефть); (3) ключевые новости и катализаторы по тикерам; (4) сектора в фокусе; (5) что важно держать в голове на сегодня. Без markdown, без списков, обычным абзацем. Не выдумывай данные которых нет.`;
   const user = lines.join("\n");
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), AI_TIMEOUT_MS);
@@ -369,20 +376,23 @@ async function generateAiSummary(b: any): Promise<string | null> {
   }
 }
 
-function lookbackWindow(today: string): { startDate: string; endDate: string; label: string; days: number } {
+type LookbackKind = "weekend" | "friday" | "lastDay";
+/** Lookback window; `label` is the RU text (prompt context / older cached rows), the reader gets `lookback.<kind>` in their language. */
+function lookbackWindow(today: string): { startDate: string; endDate: string; label: string; days: number; kind: LookbackKind } {
+  const ru = marketbriefT.tFor("ru");
   const d = new Date(today + "T12:00:00Z");
   const dow = d.getUTCDay();
   const subDays = (n: number): string => new Date(d.getTime() - n * 86400_000).toISOString().slice(0, 10);
   if (dow === 1) {
-    return { startDate: subDays(3), endDate: subDays(1), label: "За выходные (Пт–Вс)", days: 3 };
+    return { startDate: subDays(3), endDate: subDays(1), label: ru("lookback.weekend"), days: 3, kind: "weekend" };
   }
   if (dow === 0) {
-    return { startDate: subDays(2), endDate: subDays(2), label: "За пятницу", days: 1 };
+    return { startDate: subDays(2), endDate: subDays(2), label: ru("lookback.friday"), days: 1, kind: "friday" };
   }
   if (dow === 6) {
-    return { startDate: subDays(1), endDate: subDays(1), label: "За пятницу", days: 1 };
+    return { startDate: subDays(1), endDate: subDays(1), label: ru("lookback.friday"), days: 1, kind: "friday" };
   }
-  return { startDate: subDays(1), endDate: subDays(1), label: "За последний день", days: 1 };
+  return { startDate: subDays(1), endDate: subDays(1), label: ru("lookback.lastDay"), days: 1, kind: "lastDay" };
 }
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -435,33 +445,34 @@ async function generateAutoFeed(date: string, brief: any): Promise<AutoFeedResul
 
   // Build the prompt context
   const lines: string[] = [];
-  lines.push(`Дата: ${date}`);
+  lines.push(`Дата: ${date}`); // i18n-ignore (AI prompt context)
 
   if (brief?.macro?.length) {
-    lines.push("Макро: " + brief.macro.map((m: any) => `${m.name} ${m.price ?? "—"} (${m.changePct != null ? (m.changePct >= 0 ? "+" : "") + m.changePct.toFixed(2) + "%" : "—"})`).join(", "));
+    lines.push("Макро: " + brief.macro.map((m: any) => `${m.name} ${m.price ?? "—"} (${m.changePct != null ? (m.changePct >= 0 ? "+" : "") + m.changePct.toFixed(2) + "%" : "—"})`).join(", ")); // i18n-ignore (AI prompt context)
   }
   if (brief?.sectorRotation?.length) {
     const top4 = brief.sectorRotation.slice(0, 4).map((s: any) => `${s.symbol} ${s.changePct != null ? (s.changePct >= 0 ? "+" : "") + s.changePct.toFixed(2) + "%" : ""}`).join(", ");
-    lines.push(`Топ секторов: ${top4}`);
+    lines.push(`Топ секторов: ${top4}`); // i18n-ignore (AI prompt context)
   }
   if (brief?.earningsToday?.length) {
-    lines.push("Earnings сегодня: " + brief.earningsToday.slice(0, 10).map((e: any) => e.ticker).join(", "));
+    lines.push("Earnings сегодня: " + brief.earningsToday.slice(0, 10).map((e: any) => e.ticker).join(", ")); // i18n-ignore (AI prompt context)
   }
 
   if (analystRows.length > 0) {
-    lines.push("\nДействия аналитиков сегодня:");
+    lines.push("\nДействия аналитиков сегодня:"); // i18n-ignore (AI prompt context)
     for (const r of analystRows) {
-      const pt = r.price_target ? ` PT $${r.price_target}${r.price_target_from ? ` (был $${r.price_target_from})` : ""}` : "";
+      const pt = r.price_target ? ` PT $${r.price_target}${r.price_target_from ? ` (был $${r.price_target_from})` : ""}` : ""; // i18n-ignore (AI prompt context)
       const grade = r.to_grade ? ` → ${r.to_grade}` : "";
       lines.push(`- ${r.ticker} ${r.action.toUpperCase()} ${r.firm}${grade}${pt}`);
     }
   }
 
   if (newsRows.length > 0) {
-    lines.push("\nТрендовые тикеры в новостях (48ч):");
+    lines.push("\nТрендовые тикеры в новостях (48ч):"); // i18n-ignore (AI prompt context)
     lines.push(newsRows.slice(0, 15).map((r: any) => `${r.ticker}(${r.cnt})`).join(", "));
   }
 
+  // i18n-ignore-next (AI prompt — model input; the auto feed is desk content, written in the desk language)
   const system = `Ты — рыночный аналитик для дей-трейдера. На основе данных составь дневной торговый план.
 Верни JSON (только JSON, без markdown):
 {
@@ -539,7 +550,7 @@ async function generateAutoFeed(date: string, brief: any): Promise<AutoFeedResul
 // Staff only (dailyfeed.manage — curators/admins by default), ?force=1 included: it spends an AI call and
 // soft-deletes the day's feed entry. Checked before anything touches the AI or the DB.
 router.post("/market-brief/generate-feed", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "dailyfeed.manage", null, "Генерировать ленту может только куратор"))) return;
+  if (!(await requireCap(req, res, "dailyfeed.manage", null, "FEED_GENERATE_STAFF_ONLY"))) return;
   // generateAutoFeed swallows AI errors (created:false); say why up front instead (audit P2-3)
   if (!requireAiConfigured(res)) return;
   const date = typeof req.query.date === "string" && req.query.date.match(/^\d{4}-\d{2}-\d{2}$/)
@@ -576,8 +587,28 @@ router.get("/market-brief/quotes", asyncHandler(async (_req, res): Promise<void>
   res.json({ ...quotesMemo.data, quotesAt: new Date(quotesMemo.at).toISOString() });
 }));
 
+/** Brief payload for one reader: AI summary in their language (generated once per language and cached in the row), localized lookback label. */
+async function briefFor(data: any, lang: Lang, date: string): Promise<any> {
+  const summaries: Record<string, string | null> = { ...(data.aiSummaries ?? (data.aiSummary !== undefined ? { ru: data.aiSummary } : {})) };
+  if (!(lang in summaries)) {
+    summaries[lang] = await generateAiSummary(data, lang).catch((e) => {
+      logger.warn({ error: e?.message, lang }, "market brief AI summary failed");
+      return null;
+    });
+    await pool.query(
+      `UPDATE market_open_brief_cache SET data = jsonb_set(data, '{aiSummaries}', $2::jsonb) WHERE date = $1`,
+      [date, JSON.stringify(summaries)],
+    ).catch(() => {});
+  }
+  const kind = data.lookback?.kind as LookbackKind | undefined;
+  const lookback = data.lookback && kind ? { ...data.lookback, label: marketbriefT.tFor(lang)(`lookback.${kind}`) } : data.lookback;
+  const economicEvents = Array.isArray(data.economicEvents) ? data.economicEvents.map((e: any) => localizeCalendarRow(e, lang)) : data.economicEvents;
+  return { ...data, aiSummaries: undefined, aiSummary: summaries[lang] ?? null, lookback, economicEvents };
+}
+
 router.get("/market-brief", asyncHandler(async (req, res): Promise<void> => {
   const force = req.query.force === "1" || req.query.force === "true";
+  const lang = langOf(req);
   const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
 
   if (!force) {
@@ -586,13 +617,13 @@ router.get("/market-brief", asyncHandler(async (req, res): Promise<void> => {
       [today]
     );
     if (rows[0]) {
-      res.json({ ...rows[0].data, cached: true, fetchedAt: rows[0].fetched_at });
+      res.json({ ...(await briefFor(rows[0].data, lang, today)), cached: true, fetchedAt: rows[0].fetched_at });
       return;
     }
   }
 
   try {
-    const brief = await buildBrief(today);
+    const brief = await buildBrief(today, lang);
     await pool.query(
       `INSERT INTO market_open_brief_cache (date, data, fetched_at) VALUES ($1, $2, NOW())
        ON CONFLICT (date) DO UPDATE SET data=EXCLUDED.data, fetched_at=NOW()`,
@@ -602,7 +633,7 @@ router.get("/market-brief", asyncHandler(async (req, res): Promise<void> => {
     generateAutoFeed(today, brief).catch((e) =>
       logger.warn({ error: e?.message, date: today }, "auto daily-feed generation failed silently")
     );
-    res.json({ ...brief, cached: false });
+    res.json({ ...(await briefFor(brief, lang, today)), cached: false });
   } catch (e: any) {
     logger.warn({ error: e.message }, "market brief build error");
     const { rows } = await pool.query<any>(
@@ -610,7 +641,7 @@ router.get("/market-brief", asyncHandler(async (req, res): Promise<void> => {
       [today]
     ).catch(() => ({ rows: [] }));
     if (rows[0]) {
-      res.json({ ...rows[0].data, cached: true, stale: true, fetchedAt: rows[0].fetched_at });
+      res.json({ ...(await briefFor(rows[0].data, lang, today)), cached: true, stale: true, fetchedAt: rows[0].fetched_at });
     } else {
       res.json({ generatedAt: new Date().toISOString(), date: today, futures: [], overnight: [], macro: [], premarketMovers: [], gapLeaders: [], sectorRotation: [], earningsToday: [], economicEvents: [], yesterdayThemes: null, topNews: [], aiSummary: null, lookback: null, error: e.message });
     }

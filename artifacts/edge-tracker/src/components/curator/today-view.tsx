@@ -18,17 +18,20 @@ import { useCuratorEodReview, type EodTarget } from "./eod-review";
 import { QUEUE_LABEL, QUEUE_TONE, actionTone, curatorLinks, profileHref, riskTone, waitLabel } from "./curator-math";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Which limit the risk tile should show: the one that triggered the state (drawdown / week), otherwise the daily one. */
 function riskBar(r: TodayPayload["risk"]["halted"][number]): { label: string; pct: number | null } {
-  if (r.state === "drawdown") return { label: "Просадка от пика", pct: r.drawdownPct };
-  if (r.state === "weekly") return { label: "Недельный лимит", pct: r.weeklyPct };
+  const t = curatorI18n.t;
+  if (r.state === "drawdown") return { label: t("today.bar.drawdown"), pct: r.drawdownPct };
+  if (r.state === "weekly") return { label: t("today.bar.weekly"), pct: r.weeklyPct };
   const worst = [
-    { label: "Дневной лимит", pct: r.dailyPct },
-    { label: "Недельный лимит", pct: r.weeklyPct },
-    { label: "Просадка от пика", pct: r.drawdownPct },
+    { label: t("today.bar.daily"), pct: r.dailyPct },
+    { label: t("today.bar.weekly"), pct: r.weeklyPct },
+    { label: t("today.bar.drawdown"), pct: r.drawdownPct },
   ].reduce((m, x) => ((x.pct ?? -1) > (m.pct ?? -1) ? x : m));
-  return worst.pct != null ? worst : { label: "Дневной лимит", pct: r.dailyPct };
+  return worst.pct != null ? worst : { label: t("today.bar.daily"), pct: r.dailyPct };
 }
 
 /** «Сегодня»: what needs the curator now — risk, discipline gaps, the review queue and next steps. */
@@ -38,6 +41,8 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
   const [confirmArchive, setConfirmArchive] = React.useState(false);
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = curatorI18n.useT();
+  const tc = commonI18n.useT().t;
   const win = data.queueWindow;
   const oldQ = useQuery({ queryKey: curatorKeys.todayOld(scope), queryFn: () => curatorApi.today(scope, true), enabled: showOld, staleTime: 30_000 });
   const fullQueue = showOld && oldQ.data ? oldQ.data.queue : data.queue;
@@ -63,19 +68,19 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
     onSuccess: (r) => {
       setShowOld(false);
       if (r.archived && r.ids?.length) setUndo({ ids: r.ids, n: r.archived });
-      else toast({ title: r.archived ? `В архиве: ${r.archived}` : "Старых элементов нет" });
+      else toast({ title: r.archived ? t("today.archived", { count: r.archived }) : t("today.nothingOld") });
       void qc.invalidateQueries({ queryKey: curatorKeys.all });
     },
-    onError: (e) => toast({ title: "Не удалось архивировать", description: (e as Error).message, variant: "destructive" }),
+    onError: (e) => toast({ title: t("today.archiveFailed"), description: (e as Error).message, variant: "destructive" }),
   });
   const restore = async () => {
     if (!undo) return;
     setRestoring(true);
     try {
       const r = await curatorApi.restoreQueue(undo.ids);
-      toast({ title: `Возвращено в очередь: ${r.restored}` });
+      toast({ title: t("today.restored", { count: r.restored }) });
     } catch (e) {
-      toast({ title: "Не удалось вернуть", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("today.restoreFailed"), description: (e as Error).message, variant: "destructive" });
     } finally {
       setRestoring(false);
       setUndo(null);
@@ -91,41 +96,41 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <StatGrid cols={6}>
-        <StatCard label="Торгуют сегодня" value={`${c.trading} из ${c.traders}`} icon={Users} hint={data.phase === "weekend" ? "выходной" : undefined} />
+        <StatCard label={t("today.trading")} value={t("today.tradingValue", { n: c.trading, total: c.traders })} icon={Users} hint={data.phase === "weekend" ? t("today.weekend") : undefined} />
         <StatCard
-          label="Стоп / у стопа"
+          label={t("today.stopNear")}
           value={`${c.halted} / ${c.nearStop}`}
           tone={c.halted ? "down" : c.nearStop ? "warn" : "neutral"}
           icon={ShieldAlert}
-          hint={c.noLimits ? `${c.noLimits} без лимитов` : "все с лимитами"}
+          hint={c.noLimits ? t("today.noLimitsCount", { count: c.noLimits }) : t("today.allHaveLimits")}
         />
         <StatCard
-          label="Разборы"
+          label={t("today.reviews")}
           value={c.queue}
           tone={c.queueOverdue ? "down" : c.queue ? "accent" : "neutral"}
           icon={Inbox}
-          hint={c.queueOverdue ? `${c.queueOverdue} просрочено по SLA` : "в пределах SLA"}
+          hint={c.queueOverdue ? t("today.overdueSla", { count: c.queueOverdue }) : t("today.withinSla")}
         />
         <StatCard
-          label="Не закрыт день"
+          label={t("today.dayNotClosed")}
           value={c.missingEod}
           tone={c.missingEod ? "warn" : "neutral"}
           icon={CalendarX}
-          hint={`за ${fmtDate(data.prevDay, "dayMonth")}`}
+          hint={t("today.forDate", { date: fmtDate(data.prevDay, "dayMonth") })}
         />
         <StatCard
-          label="Нет плана"
+          label={t("today.noPlan")}
           value={data.plansAvailable ? c.missingPlan : "—"}
           tone={data.plansAvailable && c.missingPlan ? "warn" : "neutral"}
           icon={ClipboardList}
-          hint={data.plansAvailable ? (data.phase === "weekend" ? "выходной" : "готовый план к открытию") : "нет данных"}
+          hint={data.plansAvailable ? (data.phase === "weekend" ? t("today.weekend") : t("today.planHint")) : t("today.noData")}
         />
         <StatCard
-          label="Просрочки 1:1"
+          label={t("today.overdue11")}
           value={c.overdueActions}
           tone={c.overdueActions ? "warn" : "neutral"}
           icon={AlarmClock}
-          hint={c.overdueActions ? "договорённости" : "без просрочек"}
+          hint={c.overdueActions ? t("today.agreements") : t("today.noOverdue")}
         />
       </StatGrid>
 
@@ -133,13 +138,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
         <Panel
           className="lg:col-span-7"
           fill
-          title="Следующие шаги"
+          title={t("today.nextTitle")}
           icon={Sparkles}
-          description="По одному самому важному действию на трейдера — сверху срочное"
+          description={t("today.nextHint")}
           actions={data.nextActions.length ? <Pill tone="neutral">{data.nextActions.length}</Pill> : undefined}
         >
           {data.nextActions.length === 0 ? (
-            <EmptyState compact icon={Sparkles} title="Всё под контролем" description="Нет нарушений без разбора, очередь пуста, у всех есть лимиты." />
+            <EmptyState compact icon={Sparkles} title={t("today.allClear")} description={t("today.allClearHint")} />
           ) : (
             <ul className="flex flex-col gap-1.5">
               {(showAll.next ? data.nextActions : data.nextActions.slice(0, 10)).map((a) => (
@@ -150,11 +155,11 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                   <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
                   {a.kind === "no_limits" ? (
                     <Button type="button" size="sm" variant="outline" className="shrink-0" onClick={() => setTemplateFor([a.trader])}>
-                      <Layers className="h-3.5 w-3.5" /> Шаблон
+                      <Layers className="h-3.5 w-3.5" /> {t("today.template")}
                     </Button>
                   ) : (
                     <Button asChild size="sm" variant="ghost" className="shrink-0">
-                      <Link href={a.href}>Открыть <ArrowRight className="h-3.5 w-3.5" /></Link>
+                      <Link href={a.href}>{t("open")} <ArrowRight className="h-3.5 w-3.5" /></Link>
                     </Button>
                   )}
                 </li>
@@ -167,13 +172,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
         <Panel
           className="lg:col-span-5"
           fill
-          title="Риск сейчас"
+          title={t("today.riskTitle")}
           icon={ShieldAlert}
-          description="Стоп при 100% лимита, предупреждение при 70%"
-          actions={<Button asChild size="sm" variant="ghost"><Link href="/risk">Риск-деск <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
+          description={t("today.riskHint")}
+          actions={<Button asChild size="sm" variant="ghost"><Link href="/risk">{t("today.riskDesk")} <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
         >
           <div className="flex flex-col gap-3">
-            {riskCount === 0 && <p className="text-sm text-muted-foreground">Никто не на стопе и не близко к нему.</p>}
+            {riskCount === 0 && <p className="text-sm text-muted-foreground">{t("today.nobodyAtStop")}</p>}
             {(showAll.risk ? riskRows : riskRows.slice(0, RISK_VISIBLE)).map((r) => {
               const bar = riskBar(r);
               return (
@@ -181,8 +186,8 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="text-sm font-medium text-foreground">{r.trader}</span>
                     <Pill tone={riskTone(r.state)} dot>{r.label}</Pill>
-                    <span className={cn("ml-auto text-sm tabular-nums", (r.pnlNet ?? 0) < 0 ? "text-down" : "text-muted-foreground")} title="P&L сегодня">
-                      {r.pnlNet == null ? "сегодня без сделок" : fmtUsd(r.pnlNet, { signed: true, decimals: 0 })}
+                    <span className={cn("ml-auto text-sm tabular-nums", (r.pnlNet ?? 0) < 0 ? "text-down" : "text-muted-foreground")} title={t("today.pnlToday")}>
+                      {r.pnlNet == null ? t("today.noTradesToday") : fmtUsd(r.pnlNet, { signed: true, decimals: 0 })}
                     </span>
                   </div>
                   <LimitBar size="sm" used={Math.min(bar.pct ?? 0, 100)} limit={100} warnAt={0.7} showValues={false} label={bar.label} hint={bar.pct != null ? `${Math.round(bar.pct)}%` : undefined} />
@@ -193,13 +198,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
             {riskRows.length > RISK_VISIBLE && <ShowMore open={!!showAll.risk} rest={riskRows.length - RISK_VISIBLE} onClick={() => expand("risk")} />}
             {data.trading.length > 0 && (
               <div className="flex flex-col gap-1">
-                <span className="micro-label">Торгуют</span>
+                <span className="micro-label">{t("today.tradingNow")}</span>
                 <ul className="flex flex-col">
-                  {data.trading.map((t) => (
-                    <li key={t.trader} className="flex items-center gap-2 border-b border-border/50 py-1.5 text-sm last:border-b-0">
-                      <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary" onClick={() => onOpenTrader(t.trader)}>{t.trader}</button>
-                      <span className="text-xs tabular-nums text-muted-foreground">{t.trades} сд.{t.openPositions ? ` · ${t.openPositions} откр.` : ""}</span>
-                      <span className={cn("w-20 text-right tabular-nums", (t.pnlNet ?? 0) > 0 ? "text-up" : (t.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(t.pnlNet, { signed: true, decimals: 0 })}</span>
+                  {data.trading.map((x) => (
+                    <li key={x.trader} className="flex items-center gap-2 border-b border-border/50 py-1.5 text-sm last:border-b-0">
+                      <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary" onClick={() => onOpenTrader(x.trader)}>{x.trader}</button>
+                      <span className="text-xs tabular-nums text-muted-foreground">{t("tradesShort", { count: x.trades })}{x.openPositions ? ` · ${t("openShort", { count: x.openPositions })}` : ""}</span>
+                      <span className={cn("w-20 text-right tabular-nums", (x.pnlNet ?? 0) > 0 ? "text-up" : (x.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(x.pnlNet, { signed: true, decimals: 0 })}</span>
                     </li>
                   ))}
                 </ul>
@@ -208,12 +213,12 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
             {data.risk.noLimits.length > 0 && (
               <div className="flex flex-col gap-2 rounded-xl border border-warn/30 bg-warn/5 p-3">
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium text-warn">Без лимитов: {data.risk.noLimits.length}</span>
+                  <span className="font-medium text-warn">{t("today.noLimitsCountTitle", { count: data.risk.noLimits.length })}</span>
                   <Button type="button" size="sm" variant="outline" className="ml-auto" onClick={() => setTemplateFor(data.risk.noLimits)}>
-                    <Layers className="h-3.5 w-3.5" /> Применить шаблон
+                    <Layers className="h-3.5 w-3.5" /> {t("today.applyTemplate")}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">{data.risk.noLimits.join(", ")} — стоп не сработает, пока лимиты не заданы.</p>
+                <p className="text-xs text-muted-foreground">{t("today.noLimitsHint", { names: data.risk.noLimits.join(", ") })}</p>
               </div>
             )}
           </div>
@@ -222,38 +227,42 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
         <Panel
           className="lg:col-span-7"
           fill
-          title="Очередь разборов"
+          title={t("today.queueTitle")}
           icon={Inbox}
-          description={`Сначала нарушения, затем дни, недели и задания${win && !showOld ? ` · последние ${win.days} дн.` : ""} · красным — дольше SLA`}
-          actions={<Button asChild size="sm" variant="ghost"><Link href={curatorLinks.journalQueue()}>Очередь дней <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
+          description={win && !showOld ? t("today.queueHintWindow", { days: win.days }) : t("today.queueHint")}
+          actions={<Button asChild size="sm" variant="ghost"><Link href={curatorLinks.journalQueue()}>{t("today.dayQueue")} <ArrowRight className="h-3.5 w-3.5" /></Link></Button>}
         >
           {win && win.old > 0 && (
             <div className="mb-2 flex flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
               <History className="h-3.5 w-3.5 shrink-0" />
               <span className="min-w-0 flex-1">
                 {showOld
-                  ? `Показаны и старые: ${win.old} старше ${win.days} дн.`
-                  : `Скрыто старых: ${win.old} (старше ${win.days} дн.${win.oldOverdue ? (win.oldOverdue === win.old ? ", все просрочены" : `, ${win.oldOverdue} просрочено`) : ""})`}
+                  ? t("today.oldShown", { count: win.old, days: win.days })
+                  : !win.oldOverdue
+                    ? t("today.oldHidden", { count: win.old, days: win.days })
+                    : win.oldOverdue === win.old
+                      ? t("today.oldHiddenAllOverdue", { count: win.old, days: win.days })
+                      : t("today.oldHiddenSomeOverdue", { count: win.old, days: win.days, overdue: win.oldOverdue })}
               </span>
               <Button type="button" size="sm" variant="ghost" className="h-7" onClick={() => setShowOld((v) => !v)} disabled={showOld && oldQ.isFetching}>
-                {showOld ? (oldQ.isFetching ? "Загрузка…" : "Только свежие") : "Показать старые"}
+                {showOld ? (oldQ.isFetching ? tc("states.loading") : t("today.onlyFresh")) : t("today.showOld")}
               </Button>
               <Button type="button" size="sm" variant="outline" className="h-7" onClick={() => setConfirmArchive(true)} disabled={archiveOld.isPending}>
-                <Archive className="h-3.5 w-3.5" /> Архивировать старые
+                <Archive className="h-3.5 w-3.5" /> {t("today.archiveOld")}
               </Button>
             </div>
           )}
           {fullQueue.length > 0 && (
-            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label="Тип разбора">
-              <FilterChip size="sm" active={activeKind === "all"} onClick={() => setKindFilter("all")} count={fullQueue.length}>Все</FilterChip>
+            <div className="mb-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("today.kindAria")}>
+              <FilterChip size="sm" active={activeKind === "all"} onClick={() => setKindFilter("all")} count={fullQueue.length}>{t("today.all")}</FilterChip>
               {QUEUE_KIND_ORDER.filter((k) => kindCounts[k] > 0).map((k) => (
                 <FilterChip key={k} size="sm" active={activeKind === k} onClick={() => setKindFilter(activeKind === k ? "all" : k)} count={kindCounts[k]}>
-                  {QUEUE_FILTER_LABEL[k]}
+                  {t(`queueFilter.${k}`)}
                 </FilterChip>
               ))}
               {activeKind === "eod" && eodTargets.length > 1 && (
                 <Button type="button" size="sm" className="ml-auto h-8" onClick={() => review.open(eodTargets[0])}>
-                  <BookCheck className="h-3.5 w-3.5" /> Разбирать по очереди
+                  <BookCheck className="h-3.5 w-3.5" /> {t("today.reviewInOrder")}
                 </Button>
               )}
             </div>
@@ -262,21 +271,21 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
             <EmptyState
               compact
               icon={BookCheck}
-              title="Очередь пуста"
-              description={win?.old ? "За последние дни всё разобрано. Старые элементы скрыты." : "Всё, что трейдеры сдали, уже разобрано."}
+              title={t("today.queueEmpty")}
+              description={win?.old ? t("today.queueEmptyOld") : t("today.queueEmptyAll")}
             />
           ) : (
             <ul className="flex flex-col gap-1.5">
               {(showAll.queue ? queue : queue.slice(0, 12)).map((q) => (
-                <li key={q.id} className="tile grid min-w-0 grid-cols-[5.5rem_minmax(0,8rem)_minmax(0,1fr)_4.5rem_auto] items-center gap-x-3 px-3 py-1.5">
-                  <Pill tone={QUEUE_TONE[q.kind]} className="w-full justify-center">{QUEUE_LABEL[q.kind]}</Pill>
+                <li key={q.id} className="tile grid min-w-0 grid-cols-[7rem_minmax(0,8rem)_minmax(0,1fr)_5rem_auto] items-center gap-x-3 px-3 py-1.5">
+                  <Pill tone={QUEUE_TONE[q.kind]} className="w-full min-w-0 justify-center" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
                   <span className="truncate text-sm font-medium text-foreground" title={q.trader}>{q.trader}</span>
                   <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
                   <span
                     className={cn("text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
-                    title={q.overdue ? `Просрочено: ждёт дольше SLA ${q.slaHours} ч` : `Ждёт · SLA ${q.slaHours} ч`}
+                    title={q.overdue ? t("today.overdueTitle", { hours: q.slaHours }) : t("today.waitingTitle", { hours: q.slaHours })}
                   >
-                    {waitLabel(q.hoursWaiting)}{q.overdue && <span className="sr-only"> · просрочено</span>}
+                    {waitLabel(q.hoursWaiting)}{q.overdue && <span className="sr-only">{t("today.overdueSr")}</span>}
                   </span>
                   {q.kind === "eod" && q.eodId && q.date ? (
                     <Button
@@ -284,13 +293,13 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                       size="sm"
                       variant="ghost"
                       className="shrink-0"
-                      title="Открыть день и оставить отзыв, не уходя из кабинета"
+                      title={t("today.reviewHere")}
                       onClick={() => review.open({ eodId: q.eodId!, trader: q.trader, date: q.date!, closedAt: q.since, hoursWaiting: q.hoursWaiting })}
                     >
-                      Разобрать
+                      {t("review")}
                     </Button>
                   ) : (
-                    <Button asChild size="sm" variant="ghost" className="shrink-0"><Link href={q.href}>Разобрать</Link></Button>
+                    <Button asChild size="sm" variant="ghost" className="shrink-0"><Link href={q.href}>{t("review")}</Link></Button>
                   )}
                 </li>
               ))}
@@ -300,49 +309,49 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
           <AlertDialog open={confirmArchive} onOpenChange={setConfirmArchive}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Архивировать старые разборы?</AlertDialogTitle>
+                <AlertDialogTitle>{t("today.archiveTitle")}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  {win ? `Из очереди уйдут ${win.old} шт. старше ${win.days} дн. ` : ""}
-                  Дни, отчёты и задания не удаляются и не помечаются разобранными — они просто перестанут висеть в очереди.
+                  {win ? t("today.archiveCount", { count: win.old, days: win.days }) : ""}
+                  {t("today.archiveHint")}
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Отмена</AlertDialogCancel>
-                <AlertDialogAction onClick={() => archiveOld.mutate()}>Архивировать</AlertDialogAction>
+                <AlertDialogCancel>{tc("actions.cancel")}</AlertDialogCancel>
+                <AlertDialogAction onClick={() => archiveOld.mutate()}>{t("today.archive")}</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>
         </Panel>
 
-        <Panel className="lg:col-span-5" fill title="Дисциплина" icon={ListChecks} description="Кому напомнить про план, закрытие дня и договорённости">
+        <Panel className="lg:col-span-5" fill title={t("today.disciplineTitle")} icon={ListChecks} description={t("today.disciplineHint")}>
           <div className="flex flex-col gap-4">
             <GapList
-              title={`Не закрыт день ${fmtDate(data.prevDay, "dayMonth")}`}
-              empty="Все, кто торговал, закрыли день."
+              title={t("today.notClosedOn", { date: fmtDate(data.prevDay, "dayMonth") })}
+              empty={t("today.allClosed")}
               items={data.missingEod.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))}
             />
             {data.openToday.length > 0 && (
-              <GapList title="Сегодня ещё не закрыли" items={data.openToday.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))} />
+              <GapList title={t("today.openToday")} items={data.openToday.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))} />
             )}
             {data.plansAvailable && data.phase !== "weekend" && (
               <GapList
-                title="Нет готового плана на сегодня"
-                empty="У всех готов план."
-                items={data.missingPlan.map((m) => ({ key: m.trader, label: m.trader, meta: m.status === "draft" ? "черновик" : undefined }))}
+                title={t("today.noPlanToday")}
+                empty={t("today.allPlans")}
+                items={data.missingPlan.map((m) => ({ key: m.trader, label: m.trader, meta: m.status === "draft" ? t("today.draft") : undefined }))}
                 onOpen={(t) => onOpenTrader(t, "journal")}
               />
             )}
             <div className="flex flex-col gap-1.5">
-              <span className="micro-label">Просроченные договорённости 1:1</span>
+              <span className="micro-label">{t("today.overdueAgreements")}</span>
               {data.overdueActions.length === 0 ? (
-                <p className="text-sm text-muted-foreground">Просрочек нет.</p>
+                <p className="text-sm text-muted-foreground">{t("today.noOverdueAgreements")}</p>
               ) : (
                 <ul className="flex flex-col gap-1">
                   {(showAll.overdue ? data.overdueActions : data.overdueActions.slice(0, 6)).map((a) => (
                     <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm">
                       <button type="button" title={a.trader} className="w-24 shrink-0 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(a.trader, "academy")}>{a.trader}</button>
                       <span className="min-w-0 flex-1 truncate text-muted-foreground" title={a.title}>{a.title}</span>
-                      <span className="shrink-0 text-xs tabular-nums text-down">просрочка {a.daysOverdue} дн.</span>
+                      <span className="shrink-0 text-xs tabular-nums text-down">{t("today.overdueDays", { count: a.daysOverdue })}</span>
                     </li>
                   ))}
                   {data.overdueActions.length > 6 && <li><ShowMore open={!!showAll.overdue} rest={data.overdueActions.length - 6} onClick={() => expand("overdue")} /></li>}
@@ -357,8 +366,8 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
       {review.sheet}
       {undo && (
         <UndoToast
-          label={`${undo.n} шт.`}
-          actionText="убрано из очереди в архив"
+          label={t("today.undoLabel", { count: undo.n })}
+          actionText={t("today.undoAction")}
           restoring={restoring}
           onUndo={() => void restore()}
           onDismiss={() => setUndo(null)}
@@ -370,7 +379,6 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
 
 const RISK_VISIBLE = 4;
 const QUEUE_KIND_ORDER: QueueKind[] = ["breach", "eod", "weekly", "academy"];
-const QUEUE_FILTER_LABEL: Record<QueueKind, string> = { breach: "Нарушения", eod: "Дни", weekly: "Недели", academy: "Академия" };
 
 function GapList({ title, items, empty, onOpen }: {
   title: string;
@@ -405,7 +413,7 @@ export { profileHref };
 function ShowMore({ open, rest, onClick }: { open: boolean; rest: number; onClick: () => void }) {
   return (
     <button type="button" onClick={onClick} className="px-1 text-xs text-primary hover:underline">
-      {open ? "Свернуть" : `Показать ещё ${rest}`}
+      {open ? commonI18n.t("actions.collapse") : curatorI18n.t("showMore", { count: rest })}
     </button>
   );
 }

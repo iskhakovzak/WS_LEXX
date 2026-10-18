@@ -16,7 +16,7 @@ import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { fetchTradesPage, TRADES_PAGE_KEY } from "@/hooks/use-trades-page";
 import {
   Search, X, CandlestickChart, CalendarClock, BookOpen, Newspaper, BookMarked, Lightbulb, StickyNote,
-  Plus, CornerDownLeft, History, Hash, Eye, MessageSquare, SunMoon, ArrowRight, Loader2,
+  CornerDownLeft, History, Hash, Eye, MessageSquare, SunMoon, ArrowRight, Loader2,
   UserRound, UsersRound, ClipboardList, NotebookPen, BookText, Languages,
 } from "lucide-react";
 import { http } from "@/lib/api/http";
@@ -490,7 +490,7 @@ export function GlobalSearch() {
     // Current-language name, the Russian name and the RU/EN keywords: a section is found whatever language you type in.
     const hit = (s?: string) => !!s && s.toLowerCase().includes(q);
     return visible.filter((i) => hit(i.name) || hit(i.ruName) || hit(i.hubLabel) || hit(i.ruHubLabel) || hit(i.keywords)).slice(0, 8);
-  }, [q, isCurator, lang]);
+  }, [q, isCurator]);
   const pagePath = (p: NavItem) => {
     const owner = parentOf(p) ?? (p.hubLabel ? p : undefined);
     return [groupOf(p)?.label, owner ? rowLabel(owner) : null].filter(Boolean).join(" · ") || undefined;
@@ -520,7 +520,6 @@ export function GlobalSearch() {
 
   type Action = { id: string; label: string; hint?: string; icon: React.ElementType; run: () => void; keywords: string; when?: boolean };
   const actions: Action[] = [
-    { id: "new-trade", label: ts("palette.action.newTrade"), icon: Plus, run: () => go("/trades?new=1"), keywords: "new trade добавить сделку записать yangi savdo", when: isCurator },
     { id: "new-idea", label: ts("palette.action.newIdea"), icon: Lightbulb, run: () => go("/trade-ideas?new=1"), keywords: "new idea добавить идею yangi goya", when: canEdit },
     { id: "new-event", label: ts("palette.action.newEvent"), icon: CalendarClock, run: () => go("/events?new=1"), keywords: "new event катализатор отчёт yangi voqea", when: canEdit },
     { id: "theme", label: ts("palette.action.theme"), hint: tc("theme.currentHint", { name: themeLabel }), icon: SunMoon, run: () => cycleTheme(), keywords: "theme тема dark light тёмная светлая mavzu" },

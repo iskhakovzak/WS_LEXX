@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
+import { AppError } from "../lib/http";
+import { localizeCalendarRow } from "../lib/calendarText";
+import { langOf } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -22,14 +25,8 @@ router.get("/holidays", asyncHandler(async (req, res): Promise<void> => {
   const from = typeof req.query.from === "string" ? req.query.from.trim() : "";
   const to = typeof req.query.to === "string" ? req.query.to.trim() : "";
   // Validate before hitting SQL: a malformed date used to surface as a 500 from Postgres.
-  if ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) {
-    res.status(400).json({ error: "from/to must be calendar dates YYYY-MM-DD" });
-    return;
-  }
-  if (from && to && from > to) {
-    res.status(400).json({ error: "from must be <= to" });
-    return;
-  }
+  if ((from && !isIsoDate(from)) || (to && !isIsoDate(to))) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
+  if (from && to && from > to) throw new AppError("INVALID_RANGE", undefined, { max: 400 });
   // Optional comma-separated type filter, e.g. ?types=fomc,cpi
   const types = typeof req.query.types === "string"
     ? req.query.types.split(",").map((t) => t.trim().toLowerCase()).filter((t) => /^[a-z0-9_]{1,32}$/.test(t)).slice(0, 20)
@@ -44,10 +41,11 @@ router.get("/holidays", asyncHandler(async (req, res): Promise<void> => {
     `SELECT id, date, type, name, description, importance FROM holiday_calendar ${where} ORDER BY date ASC, CASE importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END ASC`,
     params
   );
-  res.json({ events: rows });
+  const lang = langOf(req);
+  res.json({ events: rows.map((r) => localizeCalendarRow(r, lang)) });
 }));
 
-router.get("/holidays/today", asyncHandler(async (_req, res): Promise<void> => {
+router.get("/holidays/today", asyncHandler(async (req, res): Promise<void> => {
   const today = nyToday();
   const { rows } = await pool.query(
     `SELECT id, date, type, name, description, importance FROM holiday_calendar WHERE date = $1 ORDER BY CASE importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END ASC`,
@@ -57,7 +55,8 @@ router.get("/holidays/today", asyncHandler(async (_req, res): Promise<void> => {
     `SELECT id, date, type, name, description, importance FROM holiday_calendar WHERE date > $1 AND date <= $2 ORDER BY date ASC, CASE importance WHEN 'high' THEN 0 WHEN 'medium' THEN 1 WHEN 'low' THEN 2 ELSE 3 END ASC LIMIT 10`,
     [today, new Date(new Date(today + "T12:00:00Z").getTime() + 14 * 86400_000).toISOString().slice(0, 10)]
   );
-  res.json({ today: rows, upcoming: upcoming.rows });
+  const lang = langOf(req);
+  res.json({ today: rows.map((r) => localizeCalendarRow(r, lang)), upcoming: upcoming.rows.map((r) => localizeCalendarRow(r, lang)) });
 }));
 
 export default router;

@@ -7,6 +7,7 @@ import { type MergedCatalyst } from "./lib";
 import { fmtNum, fmtPct, fmtPrice } from "@/lib/format";
 import { big7Today, tradingDaysUntil } from "./lib";
 import type { LevelPoint } from "./context";
+import { big7I18n } from "@/i18n/ns/big7";
 
 /** RVOL «1.8×» / «12×» (whole from 10×). */
 export const fmtRvol = (n: number | null | undefined) => fmtNum(n, { decimals: n != null && n >= 10 ? 0 : 1, suffix: "×" });
@@ -59,12 +60,14 @@ export function nextEarnings(symbol: string, merged: MergedCatalyst[], horizon =
   if (!e) return null;
   const days = tradingDaysUntil(e.date);
   if (days > horizon) return null;
+  // Calendar rows carry the timing; a manual catalyst may name it in its (user-written) description.
   const d = e.description ?? "";
-  const when = d.startsWith("до открытия") ? "BMO" : d.startsWith("после закрытия") ? "AMC" : null;
+  const when = e.callType ?? (/\bBMO\b|до открытия/i.test(d) ? "BMO" : /\bAMC\b|после закрытия/i.test(d) ? "AMC" : null); // i18n-ignore (parses user text)
   return { date: e.date, days, when };
 }
 
 export function earningsLabel(e: { days: number; when: string | null }): string {
-  const day = e.days <= 0 ? "сегодня" : e.days === 1 ? "завтра" : `${e.days}д`;
-  return `Отчёт ${day}${e.when ? ` ${e.when}` : ""}`;
+  const t = big7I18n.t;
+  const day = e.days <= 0 ? t("earnings.today") : e.days === 1 ? t("earnings.tomorrow") : t("earnings.inDays", { count: e.days });
+  return e.when ? t("earnings.labelWhen", { day, when: e.when }) : t("earnings.label", { day });
 }

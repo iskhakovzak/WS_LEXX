@@ -15,16 +15,21 @@ import { STALE } from "@/lib/api/keys";
 import { links } from "@/lib/links";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { fmtCompact, fmtPct, fmtR, fmtUsd } from "@/lib/format";
+import { fmtCompact, fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
+import { humanizeApiError } from "@/lib/api/errors";
 import {
-  dayOf, displayTags, fmtDay, getSession, eventTone, splitTickers, typeMeta,
+  dayOf, displayTags, fmtDay, getSession, eventTone, reactionMeta, splitTickers, typeMeta,
 } from "./event-meta";
 import { MoveValue, ReactionPill, SessionPill, TagChips, TypePill } from "./event-pills";
+import { eventsI18n } from "@/i18n/ns/events";
+import { commonI18n } from "@/i18n/ns/common";
 
 type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 type ReactionResult =
   | { kind: "ok"; gap: number | null; day: number | null; openToClose: number; range: number; volume: number; close: number; prevClose: number | null }
-  | { kind: "none"; reason: string };
+  | { kind: "none"; reason: "future" | "weekend" | "noTrading" | "noData" };
+
+const REASON_KEY = { future: "detail.reasonFuture", weekend: "detail.reasonWeekend", noTrading: "detail.reasonNoTrading", noData: "detail.reasonNoData" } as const;
 
 async function fetchReaction(ticker: string, date: string): Promise<ReactionResult> {
   let j: { candles: Candle[]; prevClose: number | null };
@@ -34,13 +39,13 @@ async function fetchReaction(ticker: string, date: string): Promise<ReactionResu
     if (!(e instanceof ApiError)) throw e;
     if (e.status === 422) {
       const reason = e.field<string>("reason");
-      return { kind: "none", reason: reason === "future" ? "Событие ещё впереди — данных нет" : reason === "weekend" ? "Выходной — торгов не было" : "Нет торгов в этот день" };
+      return { kind: "none", reason: reason === "future" ? "future" : reason === "weekend" ? "weekend" : "noTrading" };
     }
-    if (e.status === 404 || e.status === 400) return { kind: "none", reason: "Нет рыночных данных по тикеру" };
+    if (e.status === 404 || e.status === 400) return { kind: "none", reason: "noData" };
     throw e;
   }
   const cs = j.candles ?? [];
-  if (!cs.length) return { kind: "none", reason: "Нет рыночных данных по тикеру" };
+  if (!cs.length) return { kind: "none", reason: "noData" };
   const o = cs[0].o, c = cs[cs.length - 1].c;
   const h = Math.max(...cs.map((x) => x.h)), l = Math.min(...cs.map((x) => x.l));
   const pc = j.prevClose;
@@ -88,6 +93,7 @@ function Metric({ label, value }: { label: string; value: number | null }) {
 }
 
 function ReactionBlock({ event, onFill, filling }: { event: MarketEvent; onFill: (day: number, gap: number | null) => void; filling: boolean }) {
+  const { t } = eventsI18n.useT();
   const tickers = splitTickers(event.ticker).slice(0, 8);
   const [ticker, setTicker] = React.useState(tickers[0] ?? "");
   React.useEffect(() => setTicker(splitTickers(event.ticker)[0] ?? ""), [event.id, event.ticker]);
@@ -103,18 +109,18 @@ function ReactionBlock({ event, onFill, filling }: { event: MarketEvent; onFill:
   const logged = event.percentMove;
 
   return (
-    <Section icon={LineChart} title="Реакция рынка">
+    <Section icon={LineChart} title={t("detail.reactionTitle")}>
       <div className="mb-3 flex flex-wrap items-end gap-4">
         <div>
-          <div className="micro-label">Записано</div>
+          <div className="micro-label">{t("detail.logged")}</div>
           <MoveValue value={logged} className="text-2xl" />
         </div>
         <ReactionPill reaction={event.reaction} />
-        {event.volume && <span className="text-xs text-muted-foreground">Объём: {event.volume}</span>}
+        {event.volume && <span className="text-xs text-muted-foreground">{t("detail.volume", { value: event.volume })}</span>}
       </div>
 
       {tickers.length > 1 && (
-        <div className="mb-3 flex flex-wrap gap-1" role="group" aria-label="Тикер для графика">
+        <div className="mb-3 flex flex-wrap gap-1" role="group" aria-label={t("detail.chartTicker")}>
           {tickers.map((t) => (
             <button key={t} type="button" aria-pressed={t === ticker} onClick={() => setTicker(t)} className="chip min-h-7 px-2.5 text-xs font-medium">{t}</button>
           ))}
@@ -122,32 +128,32 @@ function ReactionBlock({ event, onFill, filling }: { event: MarketEvent; onFill:
       )}
 
       {!valid ? (
-        <p className="text-xs text-muted-foreground">Нет тикера для загрузки графика.</p>
+        <p className="text-xs text-muted-foreground">{t("detail.noTicker")}</p>
       ) : q.isLoading ? (
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-16 rounded-xl" />)}
         </div>
       ) : q.isError ? (
-        <p className="text-xs text-muted-foreground">Не удалось загрузить котировки. <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => q.refetch()}>Повторить</button></p>
+        <p className="text-xs text-muted-foreground">{t("detail.quotesFailed")} <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</button></p>
       ) : q.data?.kind === "none" ? (
-        <p className="text-xs text-muted-foreground">{q.data.reason}</p>
+        <p className="text-xs text-muted-foreground">{t(REASON_KEY[q.data.reason])}</p>
       ) : q.data?.kind === "ok" ? (
         <>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <Metric label="Гэп" value={q.data.gap} />
-            <Metric label="За день" value={q.data.day} />
-            <Metric label="Открытие → закрытие" value={q.data.openToClose} />
+            <Metric label={t("detail.gap")} value={q.data.gap} />
+            <Metric label={t("detail.day")} value={q.data.day} />
+            <Metric label={t("detail.openToClose")} value={q.data.openToClose} />
             <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-              <div className="micro-label">Диапазон</div>
+              <div className="micro-label">{t("detail.range")}</div>
               <div className="mt-1 text-lg font-semibold tabular-nums text-foreground">{q.data.range.toFixed(1)}%</div>
             </div>
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
-            <span className="tabular-nums">{ticker} · закрытие {q.data.close.toFixed(2)}{q.data.prevClose ? ` · вчера ${q.data.prevClose.toFixed(2)}` : ""}</span>
-            {q.data.volume > 0 && <span className="tabular-nums">объём {fmtCompact(q.data.volume)}</span>}
+            <span className="tabular-nums">{t("detail.close", { ticker, close: fmtPrice(q.data.close) })}{q.data.prevClose ? t("detail.prevClose", { price: fmtPrice(q.data.prevClose) }) : ""}</span>
+            {q.data.volume > 0 && <span className="tabular-nums">{t("detail.volumeLower", { value: fmtCompact(q.data.volume) })}</span>}
             {logged == null && q.data.day != null && (
               <Button size="sm" variant="outline" className="ml-auto" disabled={filling} onClick={() => { const d = q.data; if (d?.kind === "ok" && d.day != null) onFill(d.day, d.gap); }}>
-                <Wand2 /> {filling ? "Сохраняем…" : "Записать итог из котировок"}
+                <Wand2 /> {filling ? t("detail.saving") : t("detail.fillFromQuotes")}
               </Button>
             )}
           </div>
@@ -158,6 +164,7 @@ function ReactionBlock({ event, onFill, filling }: { event: MarketEvent; onFill:
 }
 
 function HistoryBlock({ event, all, onOpen }: { event: MarketEvent; all: MarketEvent[]; onOpen: (e: MarketEvent) => void }) {
+  const { t } = eventsI18n.useT();
   const tickers = new Set(splitTickers(event.ticker));
   const items = all
     .filter((e) => e.id !== event.id && splitTickers(e.ticker).some((t) => tickers.has(t)))
@@ -168,15 +175,15 @@ function HistoryBlock({ event, all, onOpen }: { event: MarketEvent; all: MarketE
   const dirKnown = items.filter((e) => eventTone(e) !== "neutral").length;
 
   return (
-    <Section icon={History} title="История тикера">
+    <Section icon={History} title={t("detail.historyTitle")}>
       {items.length === 0 ? (
-        <p className="text-xs text-muted-foreground">Других событий по {[...tickers].slice(0, 3).join(", ")} пока нет — это первое.</p>
+        <p className="text-xs text-muted-foreground">{t("detail.historyEmpty", { tickers: [...tickers].slice(0, 3).join(", ") })}</p>
       ) : (
         <>
           <div className="mb-2 flex flex-wrap gap-1.5">
-            <Pill tone="neutral">{items.length} ранее</Pill>
-            {avgAbs != null && <Pill tone="accent">средний ход {avgAbs.toFixed(1)}%</Pill>}
-            {dirKnown > 0 && <Pill tone={ups / dirKnown >= 0.5 ? "up" : "down"}>вверх {Math.round((ups / dirKnown) * 100)}%</Pill>}
+            <Pill tone="neutral">{t("detail.earlier", { count: items.length })}</Pill>
+            {avgAbs != null && <Pill tone="accent">{t("detail.avgMove", { value: avgAbs.toFixed(1) })}</Pill>}
+            {dirKnown > 0 && <Pill tone={ups / dirKnown >= 0.5 ? "up" : "down"}>{t("detail.up", { value: Math.round((ups / dirKnown) * 100) })}</Pill>}
           </div>
           <ul className="flex flex-col">
             {items.slice(0, 8).map((e) => (
@@ -199,6 +206,7 @@ function HistoryBlock({ event, all, onOpen }: { event: MarketEvent; all: MarketE
 function TradesBlock({ event }: { event: MarketEvent }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t: tr } = eventsI18n.useT();
   const q = useQuery({
     queryKey: ["event-trades", event.id],
     queryFn: ({ signal }): Promise<TradesPayload | null> =>
@@ -211,7 +219,7 @@ function TradesBlock({ event }: { event: MarketEvent }) {
       await http.post(`/api/events/${event.id}/link-trade`, { tradeId, unlink });
     },
     onSuccess: () => { void qc.invalidateQueries({ queryKey: ["event-trades", event.id] }); void qc.invalidateQueries({ queryKey: ["events-today"] }); },
-    onError: (e) => toast({ title: "Не удалось изменить привязку", description: String((e as Error).message), variant: "destructive" }),
+    onError: (e) => toast({ title: eventsI18n.t("toast.linkFailed"), description: humanizeApiError(e), variant: "destructive" }),
   });
   if (q.data === null) return null; // endpoint not deployed yet
   const day = dayOf(event);
@@ -233,14 +241,14 @@ function TradesBlock({ event }: { event: MarketEvent }) {
           {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{t.trader}</span>}
           {t.brokerAccount && <span className="hidden text-2xs text-muted-foreground lg:inline">{t.brokerAccount}</span>}
           {r != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(r)))}>{fmtR(r, 1)}</span>}
-          {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={`брутто ${fmtUsd(t.pnl, { decimals: 0 })} · комиссии ${fmtUsd(t.fees, { decimals: 0 })}`}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}
+          {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={tr("detail.grossFees", { gross: fmtUsd(t.pnl, { decimals: 0 }), fees: fmtUsd(t.fees, { decimals: 0 }) })}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}
           <Pill tone={tone} className="text-2xs">{t.result ?? "open"}</Pill>
           <ExternalLink className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" />
         </Link>
         <button
           type="button"
-          aria-label={t.linked ? "Отвязать сделку" : "Привязать сделку к событию"}
-          title={t.linked ? "Отвязать" : "Привязать"}
+          aria-label={t.linked ? tr("detail.unlinkAria") : tr("detail.linkAria")}
+          title={t.linked ? tr("detail.unlink") : tr("detail.link")}
           disabled={link.isPending}
           onClick={() => link.mutate({ tradeId: t.id, unlink: t.linked })}
           className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground"
@@ -254,29 +262,29 @@ function TradesBlock({ event }: { event: MarketEvent }) {
   return (
     <Section
       icon={ArrowLeftRight}
-      title="Сделки по событию"
+      title={tr("detail.tradesTitle")}
       actions={
         <>
           {q.data?.scope && <Pill tone="neutral" className="text-2xs">{q.data.scope}</Pill>}
-          <Link href={links.trades({ ticker, date: day })} className="text-xs text-primary hover:underline">все сделки</Link>
-          <Link href={links.journalDay(day)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><BookOpen className="h-3 w-3" aria-hidden="true" />журнал</Link>
-          <Link href={links.newThread({ ticker })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><MessageSquare className="h-3 w-3" aria-hidden="true" />обсудить</Link>
+          <Link href={links.trades({ ticker, date: day })} className="text-xs text-primary hover:underline">{tr("detail.allTrades")}</Link>
+          <Link href={links.journalDay(day)} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><BookOpen className="h-3 w-3" aria-hidden="true" />{tr("detail.journal")}</Link>
+          <Link href={links.newThread({ ticker })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline"><MessageSquare className="h-3 w-3" aria-hidden="true" />{tr("detail.discuss")}</Link>
         </>
       }
     >
       {q.isLoading ? (
         <Skeleton className="h-10 rounded-xl" />
       ) : q.isError ? (
-        <p className="text-xs text-muted-foreground">Не удалось загрузить сделки.</p>
+        <p className="text-xs text-muted-foreground">{tr("detail.tradesFailed")}</p>
       ) : !q.data?.trades.length ? (
-        <p className="text-xs text-muted-foreground">Сделок в {splitTickers(event.ticker).slice(0, 3).join(", ")} за {fmtDay(day)} нет.</p>
+        <p className="text-xs text-muted-foreground">{tr("detail.noTrades", { tickers: splitTickers(event.ticker).slice(0, 3).join(", "), date: fmtDay(day) })}</p>
       ) : (
         <>
           {stats && stats.n > 0 && (
             <div className="mb-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5">
-                <div className="micro-label">Сделок</div>
-                <div className="mt-0.5 text-base font-semibold tabular-nums">{stats.n}{stats.open ? <span className="text-xs text-muted-foreground"> · {stats.open} откр.</span> : null}</div>
+                <div className="micro-label">{tr("detail.tradesCount")}</div>
+                <div className="mt-0.5 text-base font-semibold tabular-nums">{stats.n}{stats.open ? <span className="text-xs text-muted-foreground">{tr("detail.openCount", { count: stats.open })}</span> : null}</div>
               </div>
               <div className="rounded-xl bg-[var(--glass-bg)] p-2.5">
                 <div className="micro-label">Win rate</div>
@@ -286,10 +294,10 @@ function TradesBlock({ event }: { event: MarketEvent }) {
                 <div className="micro-label">ΣR</div>
                 <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.sumR)))}>{fmtR(stats.sumR, 1)}</div>
               </div>
-              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={`брутто ${fmtUsd(stats.grossPnl, { decimals: 0 })} · комиссии ${fmtUsd(stats.fees, { decimals: 0 })}`}>
-                <div className="micro-label">P&L нетто</div>
+              <div className="rounded-xl bg-[var(--glass-bg)] p-2.5" title={tr("detail.grossFees", { gross: fmtUsd(stats.grossPnl, { decimals: 0 }), fees: fmtUsd(stats.fees, { decimals: 0 }) })}>
+                <div className="micro-label">{commonI18n.t("trading.netPnl")}</div>
                 <div className={cn("mt-0.5 text-base font-semibold tabular-nums", toneText(toneOf(stats.netPnl)))}>{fmtUsd(stats.netPnl, { decimals: 0 })}</div>
-                <div className="text-2xs text-muted-foreground">брутто {fmtUsd(stats.grossPnl, { decimals: 0 })}</div>
+                <div className="text-2xs text-muted-foreground">{tr("detail.gross", { value: fmtUsd(stats.grossPnl, { decimals: 0 }) })}</div>
               </div>
             </div>
           )}
@@ -302,13 +310,13 @@ function TradesBlock({ event }: { event: MarketEvent }) {
           )}
           {linked.length > 0 && (
             <>
-              <div className="micro-label mb-1">Привязаны</div>
+              <div className="micro-label mb-1">{tr("detail.linked")}</div>
               <ul className="flex flex-col">{linked.map(row)}</ul>
             </>
           )}
           {candidates.length > 0 && (
             <>
-              <div className="micro-label mb-1 mt-2">В тот же день по тикеру</div>
+              <div className="micro-label mb-1 mt-2">{tr("detail.sameDay")}</div>
               <ul className="flex flex-col">{candidates.map(row)}</ul>
             </>
           )}
@@ -331,13 +339,14 @@ export function EventDetailSheet({
   onPatch: (id: number, body: Record<string, unknown>) => Promise<void>;
   patching?: boolean;
 }) {
+  const { t } = eventsI18n.useT();
   const e = event;
   const fundamentals = e ? ([
-    ["Компания", e.longName],
-    ["Сектор", e.sector],
-    ["Капитализация", e.marketCap],
+    [t("detail.company"), e.longName],
+    [commonI18n.t("trading.sector"), e.sector],
+    [commonI18n.t("trading.marketCap"), e.marketCap],
     ["Float", e.float],
-    ["Ср. дневной объём", e.adv],
+    [t("detail.adv"), e.adv],
     ["ATR", e.atr != null ? e.atr.toFixed(2) : null],
     ["RVOL", e.relativeVolume != null ? `${e.relativeVolume.toFixed(2)}×` : null],
     ["Beta", e.beta != null ? e.beta.toFixed(2) : null],
@@ -358,13 +367,13 @@ export function EventDetailSheet({
               <SheetTitle className="text-2xl font-semibold tracking-tight">{e.ticker}</SheetTitle>
               <SheetDescription className="text-sm text-foreground/90">{e.headline}</SheetDescription>
               <div className="flex flex-wrap items-center gap-2 pt-1">
-                <Button size="sm" variant="outline" onClick={() => onEdit(e)}><Pencil /> Редактировать</Button>
+                <Button size="sm" variant="outline" onClick={() => onEdit(e)}><Pencil /> {t("detail.edit")}</Button>
                 <AddToPlaybookButton
                   payload={{
                     name: `${e.ticker} ${typeMeta(e.eventType).label} (${dayOf(e)})`,
                     setupType: /earn/i.test(e.eventType) ? "Earnings Gap Up" : /momentum/i.test(e.eventType) ? "Intraday Momentum" : /ipo/i.test(e.eventType) ? "IPO Day Trade" : undefined,
                     conditions: e.headline || undefined,
-                    notes: [e.summary, e.reaction ? `Реакция: ${e.reaction}` : "", e.percentMove != null ? `Движение: ${fmtPct(e.percentMove, 1)}` : "", e.volume ? `Объём: ${e.volume}` : ""].filter(Boolean).join("\n") || undefined,
+                    notes: [e.summary, e.reaction ? t("detail.pbReaction", { value: reactionMeta(e.reaction)?.label ?? e.reaction }) : "", e.percentMove != null ? t("detail.pbMove", { value: fmtPct(e.percentMove, 1) }) : "", e.volume ? t("detail.pbVolume", { value: e.volume }) : ""].filter(Boolean).join("\n") || undefined,
                     screenshotUrl: e.screenshotUrl || undefined,
                     screenshotNotes: e.screenshotNotes || undefined,
                     tags: displayTags(e.tags).join(", ") || undefined,
@@ -375,7 +384,7 @@ export function EventDetailSheet({
                     sourceId: e.id,
                   }}
                 />
-                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-down" onClick={() => onDelete(e)}><Trash2 /> Удалить</Button>
+                <Button size="sm" variant="ghost" className="text-muted-foreground hover:text-down" onClick={() => onDelete(e)}><Trash2 /> {commonI18n.t("actions.delete")}</Button>
               </div>
             </SheetHeader>
 
@@ -391,7 +400,7 @@ export function EventDetailSheet({
               />
 
               {e.summary && (
-                <Section icon={Info} title="Заметки">
+                <Section icon={Info} title={t("detail.notes")}>
                   <p className="whitespace-pre-wrap text-sm leading-relaxed text-foreground/90">{e.summary}</p>
                 </Section>
               )}
@@ -412,7 +421,7 @@ export function EventDetailSheet({
               <HistoryBlock event={e} all={all} onOpen={onOpenEvent} />
 
               {fundamentals.length > 0 && (
-                <Section icon={Info} title="Профиль тикера">
+                <Section icon={Info} title={t("detail.profile")}>
                   <div className="divide-y divide-border/60">
                     {fundamentals.map(([k, v]) => <StatRow key={k} label={<TermLabel text={k} />} value={v} />)}
                   </div>

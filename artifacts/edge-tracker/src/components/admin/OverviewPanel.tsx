@@ -14,16 +14,15 @@ import { timeAgo, type DeskPulse, type Overview, type RiskDeskLite } from "./api
 import { actorName, describeAudit } from "./audit-text";
 import type { DataCheck, EodStatus, HealthData } from "./console-api";
 import type { TraderFilter } from "./TradersTable";
-import { fmtCount, fmtDate, pluralRu } from "@/lib/format";
+import { fmtCount, fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
-
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
+import { adminI18n } from "@/i18n/ns/admin";
 
 export type AdminTab = "overview" | "people" | "moderation" | "roles" | "data" | "audit" | "errors";
 
 function names(list: string[], max = 4) {
   if (list.length <= max) return list.join(", ");
-  return `${list.slice(0, max).join(", ")} и ещё ${list.length - max}`;
+  return adminI18n.t("namesMore", { names: list.slice(0, max).join(", "), count: list.length - max });
 }
 
 type Go = (tab: AdminTab, filter?: TraderFilter) => void;
@@ -50,46 +49,47 @@ export function KpiRow({
   loading: boolean;
   onGo: Go;
 }) {
+  const { t } = adminI18n.useT();
   const s = pulse?.summary;
   const notClosed = eodNotClosed(eod, pulse);
   return (
     <StatGrid cols={4}>
       <StatCard
         loading={loading && !s}
-        label="В работе сегодня"
+        label={t("kpi.activeToday")}
         icon={Users}
         value={s ? <span>{s.activeToday}<span className="text-base font-medium text-muted-foreground"> / {s.deskTraders}</span></span> : "—"}
         tone={s && s.deskTraders && s.activeToday === s.deskTraders ? "up" : "neutral"}
-        hint={s ? `${commonI18n.t("units.trades", { count: s.tradesToday })} сегодня` : undefined}
+        hint={s ? t("kpi.tradesToday", { trades: commonI18n.t("units.trades", { count: s.tradesToday }) }) : undefined}
         onClick={() => onGo("people", "traders")}
       />
       <StatCard
         loading={eod === undefined}
-        label="День не закрыт"
+        label={t("kpi.dayNotClosed")}
         icon={BookX}
         value={eod ? notClosed.length : "—"}
         tone={!eod ? "neutral" : notClosed.length ? "warn" : "up"}
-        hint={!eod ? "статус дня недоступен" : notClosed.length ? `${eod.date}: ${names(notClosed, 2)}` : `все закрыли ${eod.date}`}
+        hint={!eod ? t("kpi.eodUnavailable") : notClosed.length ? t("kpi.eodNames", { date: eod.date, names: names(notClosed, 2) }) : t("kpi.eodAllClosed", { date: eod.date })}
       />
       <StatCard
         loading={queue === undefined}
-        label="Ревью куратора"
+        label={t("kpi.review")}
         icon={ClipboardCheck}
         value={queue ? queue.count : "—"}
         tone={!queue ? "neutral" : queue.overdue ? "down" : queue.count ? "warn" : "up"}
-        delta={queue?.overdue ? `${queue.overdue} просрочено` : undefined}
+        delta={queue?.overdue ? t("kpi.overdue", { count: queue.overdue }) : undefined}
         deltaTone="down"
-        hint={queue ? (queue.count ? `SLA ${queue.slaHours} ч` : "очередь пуста") : "очередь недоступна"}
+        hint={queue ? (queue.count ? t("kpi.sla", { hours: queue.slaHours }) : t("kpi.queueEmpty")) : t("kpi.queueUnavailable")}
       />
       <StatCard
         loading={risk === undefined}
-        label="Риск-лимиты"
+        label={t("kpi.risk")}
         icon={Gauge}
         value={risk ? risk.summary.breach : "—"}
         tone={!risk ? "neutral" : risk.summary.breach > 0 ? "down" : risk.summary.warn > 0 ? "warn" : "up"}
-        delta={risk && risk.summary.warn > 0 ? `${risk.summary.warn} близко` : undefined}
+        delta={risk && risk.summary.warn > 0 ? t("kpi.near", { count: risk.summary.warn }) : undefined}
         deltaTone="warn"
-        hint={!risk ? "риск-деск недоступен" : risk.summary.breach > 0 ? pluralRu(risk.summary.breach, "превышение", "превышения", "превышений") : "превышений нет"}
+        hint={!risk ? t("kpi.riskUnavailable") : risk.summary.breach > 0 ? t("kpi.breaches", { count: risk.summary.breach }) : t("kpi.noBreaches")}
       />
     </StatGrid>
   );
@@ -110,42 +110,45 @@ function buildItems({
   pulse: DeskPulse | undefined; overview: Overview | undefined; risk: RiskDeskLite | null | undefined; health: HealthData | undefined;
   eod: EodStatus | null | undefined; queue: QueueCount; quality: DataCheck[] | null | undefined; onGo: Go;
 }): AttentionItem[] {
+  const t = adminI18n.t;
+  type ActionKey = "review" | "riskDesk" | "queue" | "journal" | "details" | "integrations" | "map" | "reconcile" | "check" | "show" | "list";
+  const A = (k: ActionKey) => t(`attention.action.${k}`);
   const items: AttentionItem[] = [];
   const s = pulse?.summary;
   const reports = s?.openReports ?? overview?.openReports ?? 0;
-  if (reports > 0) items.push({ key: "reports", tone: "down", icon: Flag, title: `${reports} ${pluralRu(reports, "жалоба ждёт", "жалобы ждут", "жалоб ждут")} решения`, action: { label: "Разобрать", go: () => onGo("moderation") } });
+  if (reports > 0) items.push({ key: "reports", tone: "down", icon: Flag, title: t("attention.reports", { count: reports }), action: { label: A("review"), go: () => onGo("moderation") } });
 
   const breach = risk?.traders.filter((t) => t.status === "breach").map((t) => t.trader) ?? [];
-  if (breach.length) items.push({ key: "risk", tone: "down", icon: Gauge, title: `Превышен риск-лимит: ${breach.length}`, detail: names(breach), action: { label: "Риск-деск", href: links.risk() } });
+  if (breach.length) items.push({ key: "risk", tone: "down", icon: Gauge, title: t("attention.riskBreach", { count: breach.length }), detail: names(breach), action: { label: A("riskDesk"), href: links.risk() } });
 
-  if (queue?.overdue) items.push({ key: "sla", tone: "down", icon: ClipboardCheck, title: `Просрочено ревью куратора: ${queue.overdue}`, detail: `SLA ${queue.slaHours} ч · всего в очереди ${queue.count}`, action: { label: "Очередь", href: "/journal?view=queue" } });
-  else if (queue?.count) items.push({ key: "queue", tone: "warn", icon: ClipboardCheck, title: `Ждут ревью куратора: ${queue.count}`, detail: `SLA ${queue.slaHours} ч`, action: { label: "Очередь", href: "/journal?view=queue" } });
+  if (queue?.overdue) items.push({ key: "sla", tone: "down", icon: ClipboardCheck, title: t("attention.slaOverdue", { count: queue.overdue }), detail: t("attention.slaDetail", { hours: queue.slaHours, count: queue.count }), action: { label: A("queue"), href: "/journal?view=queue" } });
+  else if (queue?.count) items.push({ key: "queue", tone: "warn", icon: ClipboardCheck, title: t("attention.queueWaiting", { count: queue.count }), detail: t("kpi.sla", { hours: queue.slaHours }), action: { label: A("queue"), href: "/journal?view=queue" } });
 
   const notClosed = eodNotClosed(eod, pulse);
-  if (notClosed.length) items.push({ key: "eod", tone: "warn", icon: BookX, title: `Не закрыли день ${eod!.date}: ${notClosed.length}`, detail: names(notClosed), action: { label: "Дневник", href: "/journal" } });
+  if (notClosed.length) items.push({ key: "eod", tone: "warn", icon: BookX, title: t("attention.eodOpen", { date: eod!.date, count: notClosed.length }), detail: names(notClosed), action: { label: A("journal"), href: "/journal" } });
 
   if (health) {
     const sy = health.sync;
-    if (health.errors24h.count) items.push({ key: "errors", tone: "down", icon: ServerCrash, title: `Ошибки за 24 ч: ${health.errors24h.count}`, detail: health.errors24h.items[0]?.text, action: { label: "Подробнее", go: () => onGo("data") } });
+    if (health.errors24h.count) items.push({ key: "errors", tone: "down", icon: ServerCrash, title: t("attention.errors24h", { count: health.errors24h.count }), detail: health.errors24h.items[0]?.text, action: { label: A("details"), go: () => onGo("data") } });
     if (sy.lastRun && (sy.lastRun.status === "error" || sy.lastRun.status === "partial")) {
-      items.push({ key: "sync-failed", tone: "down", icon: Plug, title: sy.lastRun.status === "error" ? "Последний синк PropReports завершился ошибкой" : "Последний синк PropReports прошёл частично", detail: sy.lastRun.errorText ?? undefined, action: { label: "Интеграции", href: "/integrations?tab=history" } });
+      items.push({ key: "sync-failed", tone: "down", icon: Plug, title: sy.lastRun.status === "error" ? t("attention.syncFailed") : t("attention.syncPartial"), detail: sy.lastRun.errorText ?? undefined, action: { label: A("integrations"), href: "/integrations?tab=history" } });
     }
     const unmatched = sy.unmatched.length + sy.accounts.unmapped.length;
-    if (unmatched) items.push({ key: "accounts", tone: "warn", icon: Link2, title: `Счета без трейдера: ${unmatched}`, detail: names([...sy.unmatched, ...sy.accounts.unmapped]), action: { label: "Сопоставить", go: () => onGo("people") } });
-    if (sy.pending) items.push({ key: "pending", tone: "warn", icon: Database, title: `Ждут сверки: ${sy.pending}`, detail: "Сделки брокера совпали с ручными записями", action: { label: "Сверка", href: "/integrations?tab=reconcile" } });
+    if (unmatched) items.push({ key: "accounts", tone: "warn", icon: Link2, title: t("attention.unmappedAccounts", { count: unmatched }), detail: names([...sy.unmatched, ...sy.accounts.unmapped]), action: { label: A("map"), go: () => onGo("people") } });
+    if (sy.pending) items.push({ key: "pending", tone: "warn", icon: Database, title: t("attention.pending", { count: sy.pending }), detail: t("attention.pendingDetail"), action: { label: A("reconcile"), href: "/integrations?tab=reconcile" } });
     const lastAt = sy.lastRun?.startedAt ?? sy.lastSyncedAt;
     const staleDays = lastAt ? Math.floor((Date.now() - Date.parse(lastAt)) / 86_400_000) : null;
-    if (!lastAt) items.push({ key: "nosync", tone: "warn", icon: Plug, title: "Сделки из PropReports ещё не загружались", action: { label: "Интеграции", href: "/integrations" } });
-    else if (staleDays != null && staleDays >= 3) items.push({ key: "stale-sync", tone: "warn", icon: Plug, title: `Сделки не обновлялись ${staleDays} дн`, detail: sy.configured ? "Проверьте расписание синка" : "Автосинк не настроен — загрузите свежий отчёт", action: { label: "Интеграции", href: "/integrations" } });
+    if (!lastAt) items.push({ key: "nosync", tone: "warn", icon: Plug, title: t("attention.noSync"), action: { label: A("integrations"), href: "/integrations" } });
+    else if (staleDays != null && staleDays >= 3) items.push({ key: "stale-sync", tone: "warn", icon: Plug, title: t("attention.staleSync", { days: staleDays }), detail: sy.configured ? t("attention.staleConfigured") : t("attention.staleManual"), action: { label: A("integrations"), href: "/integrations" } });
   }
 
   const high = (quality ?? []).filter((c) => c.severity === "high" && c.count > 0);
-  if (high.length) items.push({ key: "quality", tone: "warn", icon: AlertTriangle, title: `Качество данных: ${high.map((c) => `${c.label.toLowerCase()} — ${c.count}`).join("; ")}`, action: { label: "Проверить", go: () => onGo("data") } });
+  if (high.length) items.push({ key: "quality", tone: "warn", icon: AlertTriangle, title: t("attention.quality", { items: high.map((c) => t("attention.qualityItem", { label: c.label.toLowerCase(), count: c.count })).join("; ") }), action: { label: A("check"), go: () => onGo("data") } });
 
   if (pulse) {
     const violToday = pulse.users.filter((u) => u.violationsToday > 0).map((u) => u.name);
-    if (violToday.length) items.push({ key: "viol", tone: "warn", icon: ShieldAlert, title: `Нарушили правила сегодня: ${violToday.length}`, detail: names(violToday), action: { label: "Показать", go: () => onGo("people", "violations") } });
-    if (s && s.stale.length) items.push({ key: "stale", tone: "neutral", icon: Clock, title: `Не заходили 3+ дня: ${s.stale.length}`, detail: names(s.stale), action: { label: "Список", go: () => onGo("people", "stale") } });
+    if (violToday.length) items.push({ key: "viol", tone: "warn", icon: ShieldAlert, title: t("attention.violationsToday", { count: violToday.length }), detail: names(violToday), action: { label: A("show"), go: () => onGo("people", "violations") } });
+    if (s && s.stale.length) items.push({ key: "stale", tone: "neutral", icon: Clock, title: t("attention.stale", { count: s.stale.length }), detail: names(s.stale), action: { label: A("list"), go: () => onGo("people", "stale") } });
   }
   return items;
 }
@@ -183,54 +186,55 @@ function AttentionRow({ it, i, reduce }: { it: AttentionItem; i: number; reduce:
 }
 
 function SyncPanel({ health, error, onGo }: { health: HealthData | undefined; error: unknown; onGo: Go }) {
+  const { t } = adminI18n.useT();
   const sy = health?.sync;
   const run = sy?.lastRun;
   const runTone: Tone = !run ? "neutral" : run.status === "ok" ? "up" : run.status === "running" ? "accent" : "down";
-  const runLabel = !run ? "—" : run.status === "ok" ? "успешно" : run.status === "running" ? "идёт" : run.status === "partial" ? "частично" : "ошибка";
+  const runLabel = !run ? "—" : t(`sync.status.${run.status === "ok" || run.status === "running" || run.status === "partial" ? run.status : "error"}`);
   return (
     <Panel
       title="PropReports"
       icon={Plug}
-      description="Состояние загрузки сделок"
-      actions={<Button asChild variant="ghost" size="sm"><Link href="/integrations">Интеграции <ArrowRight /></Link></Button>}
+      description={t("sync.description")}
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/integrations">{t("attention.action.integrations")} <ArrowRight /></Link></Button>}
     >
       {error ? (
-        <p className="py-2 text-sm text-muted-foreground">Статус интеграции недоступен.</p>
+        <p className="py-2 text-sm text-muted-foreground">{t("sync.unavailable")}</p>
       ) : !sy ? (
         <div className="flex flex-col gap-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-6 w-full rounded-lg" />)}</div>
       ) : (
         <div className="flex flex-col">
           <StatRow
-            label="Последний синк"
+            label={t("sync.lastSync")}
             value={run ? (
               <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
                 <Pill tone={runTone} dot>{runLabel}</Pill>
                 <span className="tabular-nums" title={run.startedAt ? fmtDate(run.startedAt, "shortDateTimeSeconds") : undefined}>{timeAgo(run.startedAt)}</span>
               </span>
-            ) : "ещё не было"}
+            ) : t("sync.never")}
           />
           {run && (
             <StatRow
-              label={run.source === "file" ? "Из файла" : "Через API"}
-              value={<span className="tabular-nums">+{fmtCount(Number(run.inserted))} · обновлено {fmtCount(Number(run.updated))}{run.conflicts ? ` · на сверку ${run.conflicts}` : ""}</span>}
+              label={run.source === "file" ? t("sync.fromFile") : t("sync.viaApi")}
+              value={<span className="tabular-nums">{t("sync.runCounts", { inserted: fmtCount(Number(run.inserted)), updated: fmtCount(Number(run.updated)) })}{run.conflicts ? t("sync.runConflicts", { count: run.conflicts }) : ""}</span>}
             />
           )}
-          <StatRow label="Сделок из брокера" value={<span className="tabular-nums">{fmtCount(Number(sy.imported))}</span>} />
+          <StatRow label={t("sync.imported")} value={<span className="tabular-nums">{fmtCount(Number(sy.imported))}</span>} />
           <StatRow
-            label="Счета"
-            value={<span className="tabular-nums">{sy.accounts.mapped}/{sy.accounts.total} привязано{sy.unmatched.length ? ` · ${sy.unmatched.length} новых` : ""}</span>}
+            label={t("sync.accounts")}
+            value={<span className="tabular-nums">{t("sync.accountsMapped", { mapped: sy.accounts.mapped, total: sy.accounts.total })}{sy.unmatched.length ? t("sync.accountsNew", { count: sy.unmatched.length }) : ""}</span>}
             tone={sy.accounts.unmapped.length || sy.unmatched.length ? "warn" : "neutral"}
           />
           <StatRow
-            label="Автосинк"
+            label={t("sync.auto")}
             value={sy.scheduler.enabled
-              ? `каждые ${sy.scheduler.minutes} мин${sy.scheduler.nextRunAt ? ` · след. ${fmtDate(sy.scheduler.nextRunAt, "numericDateTime")}` : ""}`
-              : sy.configured ? "выключен" : "не настроен"}
+              ? `${t("sync.autoEvery", { minutes: sy.scheduler.minutes ?? 0 })}${sy.scheduler.nextRunAt ? t("sync.autoNext", { at: fmtDate(sy.scheduler.nextRunAt, "numericDateTime") }) : ""}`
+              : sy.configured ? t("sync.autoOff") : t("sync.autoNotSet")}
             tone={sy.scheduler.enabled ? "up" : "neutral"}
           />
           <StatRow
-            label="Ошибки за 24 ч"
-            value={health!.errors24h.count ? <button type="button" className="text-down underline-offset-2 hover:underline" onClick={() => onGo("data")}>{health!.errors24h.count}</button> : "нет"}
+            label={t("sync.errors24h")}
+            value={health!.errors24h.count ? <button type="button" className="text-down underline-offset-2 hover:underline" onClick={() => onGo("data")}>{health!.errors24h.count}</button> : t("sync.errorsNone")}
             tone={health!.errors24h.count ? "down" : "up"}
           />
         </div>
@@ -256,6 +260,7 @@ export function OverviewPanel({
   onGo: Go;
   tierNames?: Record<string, string>;
 }) {
+  const { t } = adminI18n.useT();
   const reduce = useReducedMotion();
   const items = buildItems({ pulse, overview, risk, health, eod, queue, quality, onGo });
   const loading = !pulse && !pulseError && !health && !healthError;
@@ -263,13 +268,13 @@ export function OverviewPanel({
   return (
     // items-start: the right column must not stretch to the height of the attention list (empty glass bug).
     <div className="grid grid-cols-1 items-start gap-[var(--grid-gap)] lg:grid-cols-5">
-      <Panel title="Требует действий" icon={ListChecks} className="lg:col-span-3" description="Только то, что нужно разобрать — по порядку важности">
+      <Panel title={t("attention.title")} icon={ListChecks} className="lg:col-span-3" description={t("attention.description")}>
         {pulseError && !health ? (
           <QueryError error={pulseError} onRetry={onRetry} />
         ) : loading ? (
           <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-14 w-full rounded-xl" />)}</div>
         ) : items.length === 0 ? (
-          <EmptyState icon={CheckCircle2} title="Всё под контролем" description="Жалоб и просрочек нет, дни закрыты, синк в порядке." className="py-8" />
+          <EmptyState icon={CheckCircle2} title={t("attention.allClear")} description={t("attention.allClearHint")} className="py-8" />
         ) : (
           <ul className="flex flex-col gap-2">
             {items.map((it, i) => <AttentionRow key={it.key} it={it} i={i} reduce={reduce} />)}
@@ -281,28 +286,28 @@ export function OverviewPanel({
         <SyncPanel health={health} error={healthError} onGo={onGo} />
 
         <Panel
-          title="Последние действия"
+          title={t("recent.title")}
           icon={ScrollText}
-          actions={<Button variant="ghost" size="sm" onClick={() => onGo("audit")}>Весь журнал <ArrowRight /></Button>}
+          actions={<Button variant="ghost" size="sm" onClick={() => onGo("audit")}>{t("recent.all")} <ArrowRight /></Button>}
         >
           {overviewError ? (
             <QueryError error={overviewError} onRetry={onRetry} />
           ) : !overview ? (
             <div className="flex flex-col gap-2">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-9 w-full rounded-xl" />)}</div>
           ) : overview.recent.length === 0 ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">Пока пусто — здесь появятся смены ролей, заморозки, синки и решения по жалобам.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t("recent.empty")}</p>
           ) : (
             <ul className="-my-1 divide-y divide-border/50">
               {overview.recent.slice(0, 6).map((e) => {
-                const t = describeAudit(e, tierNames);
+                const x = describeAudit(e, tierNames);
                 return (
                   <li key={e.id} className="flex items-start gap-3 py-2.5">
-                    <span className="w-14 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={fmtDate(e.createdAt, "shortDateTimeSeconds")}>
+                    <span className="w-20 shrink-0 pt-0.5 text-xs tabular-nums text-muted-foreground" title={fmtDate(e.createdAt, "shortDateTimeSeconds")}>
                       {timeAgo(e.createdAt)}
                     </span>
                     <div className="min-w-0 flex-1 text-sm">
-                      <span className="font-medium">{actorName(e.actor)}</span> <span className="text-foreground/90">{t.text}</span>
-                      {t.detail && <div className="truncate text-xs text-muted-foreground" title={t.detail}>{t.detail}</div>}
+                      <span className="font-medium">{actorName(e.actor)}</span> <span className="text-foreground/90">{x.text}</span>
+                      {x.detail && <div className="truncate text-xs text-muted-foreground" title={x.detail}>{x.detail}</div>}
                     </div>
                   </li>
                 );

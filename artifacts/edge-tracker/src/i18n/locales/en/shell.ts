@@ -142,6 +142,12 @@ export default {
       after: "After-hours",
       closed: "Closed",
     },
+    phaseLong: {
+      pre: "Premarket",
+      regular: "Regular session",
+      after: "After-hours",
+      closed: "Market closed",
+    },
     phaseShort: {
       pre: "Pre",
       regular: "Reg",
@@ -198,7 +204,6 @@ export default {
       ticker: "Ticker",
     },
     action: {
-      newTrade: "New trade",
       newIdea: "New idea",
       newEvent: "New event",
       theme: "Change theme",
@@ -260,6 +265,12 @@ export default {
     notification: "Notification",
     notificationsRegion: "Notifications ({hotkey})",
     commandPalette: "Command palette",
+  },
+  notFound: {
+    lead: "The link is outdated or the address has a typo.",
+    maybe: "Were you looking for",
+    toDashboard: "Go to dashboard",
+    sections: "Sections",
   },
   app: {
     pageLoading: "Loading page…",

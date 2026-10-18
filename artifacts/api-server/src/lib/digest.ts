@@ -3,6 +3,8 @@ import { logger } from "./logger";
 import { config } from "../config";
 import { getLatestReview } from "./aiReview";
 import { nyDate } from "./tradingDate";
+import { digestT } from "../i18n/ns";
+import { localeOfUser, localeTagFor, type Lang } from "../i18n";
 
 /** Outbound request budget for Telegram / Resend sends (a hung API must not stall the digest job). */
 const FETCH_TIMEOUT_MS = 15_000;
@@ -163,6 +165,8 @@ async function loadRecentTrades(trader: string, windowHours: number): Promise<Tr
 
 type BriefData = {
   aiSummary?: string;
+  /** AI summary per reader language (routes/marketbrief caches one per language). */
+  aiSummaries?: Record<string, string | null>;
   macro?: Array<{ name: string; price: number; changePct: number; kind: string }>;
   futures?: Array<{ name: string; price: number; changePct: number }>;
   sectorRotation?: Array<{ name: string; symbol: string; changePct: number; trend5d?: number }>;
@@ -256,8 +260,8 @@ async function loadLatestDailyFeed(): Promise<DailyFeedRow | null> {
 
 function resultEmoji(result: string): string {
   const r = result.toLowerCase();
-  if (r === "win" || r === "прибыль") return "✅";
-  if (r === "loss" || r === "убыток") return "❌";
+  if (r === "win" || r === "прибыль") return "✅"; // i18n-ignore (legacy stored result value)
+  if (r === "loss" || r === "убыток") return "❌"; // i18n-ignore (legacy stored result value)
   return "⚖️";
 }
 
@@ -270,12 +274,21 @@ function truncate(s: string, maxLen: number): string {
   return s.slice(0, maxLen).trimEnd() + "…";
 }
 
-function buildBriefSection(brief: BriefData): string[] {
+/** The brief's AI summary in `lang` (never another language's text; older rows hold only the RU `aiSummary`). */
+function briefSummary(brief: BriefData | null | undefined, lang: Lang): string | null {
+  if (!brief) return null;
+  if (brief.aiSummaries) return brief.aiSummaries[lang] ?? null;
+  return lang === "ru" ? brief.aiSummary ?? null : null;
+}
+
+function buildBriefSection(brief: BriefData, lang: Lang): string[] {
+  const t = digestT.tFor(lang);
   const lines: string[] = [];
 
-  if (brief.aiSummary) {
-    lines.push(`\n📋 *УТРЕННИЙ БРИФ*`);
-    lines.push(safeMd(truncate(brief.aiSummary, 800)));
+  const summary = briefSummary(brief, lang);
+  if (summary) {
+    lines.push(`\n📋 *${t("brief")}*`);
+    lines.push(safeMd(truncate(summary, 800)));
   }
 
   const keyMacro = (brief.macro ?? []).filter(m =>
@@ -284,7 +297,7 @@ function buildBriefSection(brief: BriefData): string[] {
   const keyFutures = (brief.futures ?? []).slice(0, 3);
 
   if (keyMacro.length > 0 || keyFutures.length > 0) {
-    lines.push(`\n📊 *МАКРО*`);
+    lines.push(`\n📊 *${t("macro")}*`);
     for (const m of keyMacro) {
       lines.push(`• ${safeMd(m.name)}: ${m.price} (${fmtChange(m.changePct)})`);
     }
@@ -297,7 +310,7 @@ function buildBriefSection(brief: BriefData): string[] {
     .sort((a, b) => b.changePct - a.changePct)
     .slice(0, 4);
   if (topSectors.length > 0) {
-    lines.push(`\n📈 *СЕКТОРЫ*`);
+    lines.push(`\n📈 *${t("sectors")}*`);
     for (const s of topSectors) {
       lines.push(`• ${safeMd(s.symbol)} ${safeMd(s.name)}: ${fmtChange(s.changePct)}`);
     }
@@ -306,17 +319,19 @@ function buildBriefSection(brief: BriefData): string[] {
   return lines;
 }
 
-function buildDailyFeedSection(feed: DailyFeedRow): string[] {
+function buildDailyFeedSection(feed: DailyFeedRow, lang: Lang): string[] {
+  const t = digestT.tFor(lang);
   const lines: string[] = [];
-  lines.push(`\n🎯 *ДНЕВНОЙ ФИД* (${feed.date})`);
-  if (feed.market_theme) lines.push(`Тема: *${safeMd(feed.market_theme)}*`);
-  if (feed.best_tickers) lines.push(`Тикеры: \`${safeMd(feed.best_tickers)}\``);
-  if (feed.what_works_now) lines.push(`Что работает: ${safeMd(feed.what_works_now)}`);
-  if (feed.notes) lines.push(`Заметки: ${safeMd(truncate(feed.notes, 300))}`);
+  lines.push(`\n🎯 *${t("feed")}* (${feed.date})`);
+  if (feed.market_theme) lines.push(`${t("theme")}: *${safeMd(feed.market_theme)}*`);
+  if (feed.best_tickers) lines.push(`${t("tickers")}: \`${safeMd(feed.best_tickers)}\``);
+  if (feed.what_works_now) lines.push(`${t("works")}: ${safeMd(feed.what_works_now)}`);
+  if (feed.notes) lines.push(`${t("notes")}: ${safeMd(truncate(feed.notes, 300))}`);
   return lines;
 }
 
-export async function buildDigest(trader: string, windowHours: number): Promise<{
+/** `lang` defaults to the trader's users.locale (the digest goes to them). */
+export async function buildDigest(trader: string, windowHours: number, langIn?: Lang): Promise<{
   trades: TradeSummary[];
   text: string;
   html: string;
@@ -327,49 +342,51 @@ export async function buildDigest(trader: string, windowHours: number): Promise<
     loadLatestDailyFeed(),
   ]);
 
+  const lang = langIn ?? (await localeOfUser(trader));
+  const t = digestT.tFor(lang);
   const now = new Date();
-  const dateStr = now.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
+  const dateStr = now.toLocaleDateString(localeTagFor(lang), { day: "numeric", month: "long", year: "numeric" });
   const isEvening = now.getUTCHours() >= 12;
-  const period = isEvening ? "ВЕЧЕРНИЙ" : "УТРЕННИЙ";
+  const period = isEvening ? t("evening") : t("morning");
 
   const lines: string[] = [];
-  lines.push(`📊 *${period} ДАЙДЖЕСТ* | ${dateStr}`);
+  lines.push(`📊 *${t("title", { period })}* | ${dateStr}`);
   lines.push(`━━━━━━━━━━━━━━━━━━━━`);
 
   if (brief) {
-    lines.push(...buildBriefSection(brief));
+    lines.push(...buildBriefSection(brief, lang));
     lines.push(`\n━━━━━━━━━━━━━━━━━━━━`);
   }
 
   if (feed) {
-    lines.push(...buildDailyFeedSection(feed));
+    lines.push(...buildDailyFeedSection(feed, lang));
     lines.push(`\n━━━━━━━━━━━━━━━━━━━━`);
   }
 
   if (trades.length === 0) {
-    lines.push(`\n🔹 *ТРЕЙДЫ ЗА ${windowHours}Ч*`);
-    lines.push(`_Трейдов за период не найдено_`);
+    lines.push(`\n🔹 *${t("trades", { hours: windowHours })}*`);
+    lines.push(`_${t("noTrades")}_`);
   } else {
-    lines.push(`\n🔹 *ТРЕЙДЫ ЗА ${windowHours}Ч (${trades.length})*`);
+    lines.push(`\n🔹 *${t("trades", { hours: windowHours })} (${trades.length})*`);
     for (let i = 0; i < trades.length; i++) {
-      const t = trades[i];
-      const pnlStr = t.pnl != null ? ` | ${t.pnl > 0 ? "+" : ""}$${t.pnl.toFixed(0)}` : "";
-      const rStr = t.rMultiple != null ? ` | ${t.rMultiple > 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : "";
-      const emoji = resultEmoji(t.result);
-      lines.push(`\n${emoji} *${safeMd(t.ticker)}* ${t.side ? `${safeMd(t.side)} ` : ""}${pnlStr}${rStr}`);
-      if (t.setup) lines.push(`   Setup: ${safeMd(t.setup)}`);
-      if (t.review?.summary) lines.push(`   💡 ${safeMd(truncate(t.review.summary, 200))}`);
-      if (t.review?.grade) lines.push(`   Оценка: *${safeMd(t.review.grade)}*`);
-      if (t.review?.riskErrors) lines.push(`   ⚠️ ${safeMd(t.review.riskErrors)}`);
+      const tr = trades[i];
+      const pnlStr = tr.pnl != null ? ` | ${tr.pnl > 0 ? "+" : ""}$${tr.pnl.toFixed(0)}` : "";
+      const rStr = tr.rMultiple != null ? ` | ${tr.rMultiple > 0 ? "+" : ""}${tr.rMultiple.toFixed(2)}R` : "";
+      const emoji = resultEmoji(tr.result);
+      lines.push(`\n${emoji} *${safeMd(tr.ticker)}* ${tr.side ? `${safeMd(tr.side)} ` : ""}${pnlStr}${rStr}`);
+      if (tr.setup) lines.push(`   Setup: ${safeMd(tr.setup)}`);
+      if (tr.review?.summary) lines.push(`   💡 ${safeMd(truncate(tr.review.summary, 200))}`);
+      if (tr.review?.grade) lines.push(`   ${t("grade")}: *${safeMd(tr.review.grade)}*`);
+      if (tr.review?.riskErrors) lines.push(`   ⚠️ ${safeMd(tr.review.riskErrors)}`);
     }
   }
 
   lines.push(`\n━━━━━━━━━━━━━━━━━━━━`);
-  lines.push(`_Edge Tracker · ${now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}_`);
+  lines.push(`_Edge Tracker · ${now.toLocaleTimeString(localeTagFor(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}_`);
 
   const text = lines.join("\n");
 
-  const html = buildHtml(period, dateStr, brief, feed, trades, windowHours, now);
+  const html = buildHtml(period, dateStr, brief, feed, trades, windowHours, now, lang);
 
   return { trades, text, html };
 }
@@ -382,50 +399,53 @@ function buildHtml(
   trades: TradeSummary[],
   windowHours: number,
   now: Date,
+  lang: Lang,
 ): string {
+  const t = digestT.tFor(lang);
   const lines: string[] = [];
-  lines.push(`<h2>📊 ${escapeHtml(period)} ДАЙДЖЕСТ | ${escapeHtml(dateStr)}</h2>`);
+  lines.push(`<h2>📊 ${escapeHtml(t("title", { period }))} | ${escapeHtml(dateStr)}</h2>`);
 
-  if (brief?.aiSummary) {
-    lines.push(`<h3>📋 Утренний бриф</h3>`);
-    lines.push(`<p>${escapeHtml(truncate(brief.aiSummary, 800))}</p>`);
+  const summary = briefSummary(brief, lang);
+  if (brief && (summary || brief.aiSummary)) {
+    lines.push(`<h3>📋 ${escapeHtml(t("briefHtml"))}</h3>`);
+    if (summary) lines.push(`<p>${escapeHtml(truncate(summary, 800))}</p>`);
     const keyMacro = (brief.macro ?? []).filter(m => ["VIX", "DXY", "US10Y"].includes(m.name));
     if (keyMacro.length > 0) {
-      lines.push(`<p><b>Макро:</b> ${keyMacro.map(m => `${escapeHtml(m.name)} ${m.price} (${fmtChange(m.changePct)})`).join(" &nbsp;|&nbsp; ")}</p>`);
+      lines.push(`<p><b>${escapeHtml(t("macroHtml"))}:</b> ${keyMacro.map(m => `${escapeHtml(m.name)} ${m.price} (${fmtChange(m.changePct)})`).join(" &nbsp;|&nbsp; ")}</p>`);
     }
     const topSectors = (brief.sectorRotation ?? []).sort((a, b) => b.changePct - a.changePct).slice(0, 4);
     if (topSectors.length > 0) {
-      lines.push(`<p><b>Секторы:</b> ${topSectors.map(s => `${escapeHtml(s.symbol)} ${fmtChange(s.changePct)}`).join(", ")}</p>`);
+      lines.push(`<p><b>${escapeHtml(t("sectorsHtml"))}:</b> ${topSectors.map(s => `${escapeHtml(s.symbol)} ${fmtChange(s.changePct)}`).join(", ")}</p>`);
     }
     lines.push(`<hr>`);
   }
 
   if (feed) {
-    lines.push(`<h3>🎯 Дневной фид (${escapeHtml(feed.date)})</h3>`);
-    if (feed.market_theme) lines.push(`<p><b>Тема:</b> ${escapeHtml(feed.market_theme)}</p>`);
-    if (feed.best_tickers) lines.push(`<p><b>Тикеры:</b> <code>${escapeHtml(feed.best_tickers)}</code></p>`);
-    if (feed.what_works_now) lines.push(`<p><b>Что работает:</b> ${escapeHtml(feed.what_works_now)}</p>`);
-    if (feed.notes) lines.push(`<p><b>Заметки:</b> ${escapeHtml(truncate(feed.notes, 400))}</p>`);
+    lines.push(`<h3>🎯 ${escapeHtml(t("feedHtml"))} (${escapeHtml(feed.date)})</h3>`);
+    if (feed.market_theme) lines.push(`<p><b>${escapeHtml(t("theme"))}:</b> ${escapeHtml(feed.market_theme)}</p>`);
+    if (feed.best_tickers) lines.push(`<p><b>${escapeHtml(t("tickers"))}:</b> <code>${escapeHtml(feed.best_tickers)}</code></p>`);
+    if (feed.what_works_now) lines.push(`<p><b>${escapeHtml(t("works"))}:</b> ${escapeHtml(feed.what_works_now)}</p>`);
+    if (feed.notes) lines.push(`<p><b>${escapeHtml(t("notes"))}:</b> ${escapeHtml(truncate(feed.notes, 400))}</p>`);
     lines.push(`<hr>`);
   }
 
-  lines.push(`<h3>🔹 Трейды за ${escapeHtml(windowHours)}ч${trades.length > 0 ? ` (${trades.length})` : ""}</h3>`);
+  lines.push(`<h3>🔹 ${escapeHtml(t("tradesHtml", { hours: windowHours }))}${trades.length > 0 ? ` (${trades.length})` : ""}</h3>`);
   if (trades.length === 0) {
-    lines.push(`<p><em>Трейдов за период не найдено</em></p>`);
+    lines.push(`<p><em>${escapeHtml(t("noTrades"))}</em></p>`);
   } else {
-    for (const t of trades) {
-      const pnlStr = t.pnl != null ? ` | ${t.pnl > 0 ? "+" : ""}$${t.pnl.toFixed(0)}` : "";
-      const rStr = t.rMultiple != null ? ` | ${t.rMultiple > 0 ? "+" : ""}${t.rMultiple.toFixed(2)}R` : "";
-      const emoji = resultEmoji(t.result);
-      lines.push(`<p><strong>${emoji} ${escapeHtml(t.ticker)}</strong> ${escapeHtml(t.side ?? "")}${pnlStr}${rStr}</p>`);
-      if (t.setup) lines.push(`<p style="margin-left:1em">Setup: ${escapeHtml(t.setup)}</p>`);
-      if (t.review?.summary) lines.push(`<p style="margin-left:1em">💡 ${escapeHtml(truncate(t.review.summary, 200))}</p>`);
-      if (t.review?.grade) lines.push(`<p style="margin-left:1em">Оценка: <strong>${escapeHtml(t.review.grade)}</strong></p>`);
-      if (t.review?.riskErrors) lines.push(`<p style="margin-left:1em">⚠️ ${escapeHtml(t.review.riskErrors)}</p>`);
+    for (const tr of trades) {
+      const pnlStr = tr.pnl != null ? ` | ${tr.pnl > 0 ? "+" : ""}$${tr.pnl.toFixed(0)}` : "";
+      const rStr = tr.rMultiple != null ? ` | ${tr.rMultiple > 0 ? "+" : ""}${tr.rMultiple.toFixed(2)}R` : "";
+      const emoji = resultEmoji(tr.result);
+      lines.push(`<p><strong>${emoji} ${escapeHtml(tr.ticker)}</strong> ${escapeHtml(tr.side ?? "")}${pnlStr}${rStr}</p>`);
+      if (tr.setup) lines.push(`<p style="margin-left:1em">Setup: ${escapeHtml(tr.setup)}</p>`);
+      if (tr.review?.summary) lines.push(`<p style="margin-left:1em">💡 ${escapeHtml(truncate(tr.review.summary, 200))}</p>`);
+      if (tr.review?.grade) lines.push(`<p style="margin-left:1em">${escapeHtml(t("grade"))}: <strong>${escapeHtml(tr.review.grade)}</strong></p>`);
+      if (tr.review?.riskErrors) lines.push(`<p style="margin-left:1em">⚠️ ${escapeHtml(tr.review.riskErrors)}</p>`);
     }
   }
 
-  lines.push(`<p><small>Edge Tracker · ${now.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" })}</small></p>`);
+  lines.push(`<p><small>Edge Tracker · ${now.toLocaleTimeString(localeTagFor(lang), { hour: "2-digit", minute: "2-digit", hourCycle: "h23" })}</small></p>`);
   return lines.join("\n");
 }
 
@@ -502,7 +522,8 @@ export async function sendDigestToTrader(trader: string): Promise<{ sent: boolea
 
   const { text, html } = await buildDigest(trader, sub.tradesWindowHours);
   const now = new Date();
-  const subject = `Edge Tracker | Дайджест ${now.toLocaleDateString("ru-RU")} — ${trader}`;
+  const lang = await localeOfUser(trader);
+  const subject = digestT.tFor(lang)("subject", { date: now.toLocaleDateString(localeTagFor(lang)), trader });
 
   const channelsSent: string[] = [];
   const errors: string[] = [];
@@ -608,7 +629,8 @@ export async function runDigestIfNeeded(period: "morning" | "evening"): Promise<
     try {
       const { html } = await buildDigest(sub.trader, sub.tradesWindowHours);
       const now = new Date();
-      const subject = `Edge Tracker | Дайджест ${now.toLocaleDateString("ru-RU")} — ${sub.trader}`;
+      const subLang = await localeOfUser(sub.trader);
+      const subject = digestT.tFor(subLang)("subject", { date: now.toLocaleDateString(localeTagFor(subLang)), trader: sub.trader });
       await sendEmail(sub.email!, subject, html);
       logger.info({ trader: sub.trader, period }, "Email digest sent");
     } catch (e: any) {

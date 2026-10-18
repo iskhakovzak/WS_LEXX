@@ -146,6 +146,12 @@ export default {
       after: "Постмаркет",
       closed: "Закрыто",
     },
+    phaseLong: {
+      pre: "Премаркет",
+      regular: "Основная сессия",
+      after: "Постмаркет",
+      closed: "Рынок закрыт",
+    },
     phaseShort: {
       pre: "Пре",
       regular: "Осн",
@@ -202,7 +208,6 @@ export default {
       ticker: "Тикер",
     },
     action: {
-      newTrade: "Новая сделка",
       newIdea: "Новая идея",
       newEvent: "Новое событие",
       theme: "Сменить тему",
@@ -264,6 +269,12 @@ export default {
     notification: "Уведомление",
     notificationsRegion: "Уведомления ({hotkey})",
     commandPalette: "Командная палитра",
+  },
+  notFound: {
+    lead: "Ссылка устарела или в адресе опечатка.",
+    maybe: "Возможно, вы искали",
+    toDashboard: "На дашборд",
+    sections: "Разделы",
   },
   app: {
     pageLoading: "Загрузка страницы…",

@@ -14,6 +14,9 @@
  * Торговая дата — дата Нью-Йорка (lib/tradingDate). Файл импортируется тестами без БД.
  */
 import { addDays, isWeekend } from "./tradingDate";
+import { academyCohortsT, academyPathT, ruCohorts, ruPath } from "./academyI18n";
+import { DEFAULT_LANG, type Lang } from "../i18n";
+import { fmtDateFor } from "../i18n/format";
 
 /* ─── Справочники ──────────────────────────────────────────────────────────── */
 
@@ -23,13 +26,19 @@ export type CohortFormat = (typeof COHORT_FORMATS)[number];
 /** Лестница (решение владельца): Стажёр → Джун → Трейдер → Сеньор. */
 export const STAGES = ["trainee", "junior", "trader", "senior"] as const;
 export type Stage = (typeof STAGES)[number];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
+export const STAGE_LABELS: Record<Stage, string> = { trainee: ruPath.stages.trainee.name, junior: ruPath.stages.junior.name, trader: ruPath.stages.trader.name, senior: ruPath.stages.senior.name };
+/** Stage name in `lang` (academyPath.stages). */
+export function stageLabelFor(stage: Stage, lang: Lang = DEFAULT_LANG): string {
+  return academyPathT.tFor(lang)(`stages.${stage}.name`);
+}
 
 export const ENROLLMENT_STATUSES = ["active", "paused", "graduated", "dropped"] as const;
 export type EnrollmentStatus = (typeof ENROLLMENT_STATUSES)[number];
-export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = {
-  active: "Учится", paused: "Пауза", graduated: "Выпущен", dropped: "Отчислен",
-};
+export const ENROLLMENT_STATUS_LABELS: Record<EnrollmentStatus, string> = ruCohorts.enrollmentStatus;
+/** Enrollment status label in `lang`. */
+export function enrollmentStatusLabelFor(status: EnrollmentStatus, lang: Lang = DEFAULT_LANG): string {
+  return academyCohortsT.tFor(lang)(`enrollmentStatus.${status}`);
+}
 
 export const RECURRENCES = ["none", "daily", "weekdays", "weekly"] as const;
 export type Recurrence = (typeof RECURRENCES)[number];
@@ -217,21 +226,21 @@ export function nextOccurrence(rule: SessionRule, nowMs: number, horizonDays = 6
   return null;
 }
 
-/** Описание правила по-русски: «по будням в 09:00 (America/New_York)». */
-export function describeRule(rule: Pick<SessionRule, "recurrence" | "weekdays" | "startDate" | "startTime" | "timezone">): string {
-  const WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+/** Описание правила на языке `lang`: «по будням в 09:00 (America/New_York)». */
+export function describeRule(rule: Pick<SessionRule, "recurrence" | "weekdays" | "startDate" | "startTime" | "timezone">, lang: Lang = DEFAULT_LANG): string {
+  const t = academyCohortsT.tFor(lang);
   const when = (() => {
     switch (rule.recurrence) {
-      case "none": return `разово ${rule.startDate}`;
-      case "daily": return "ежедневно";
-      case "weekdays": return "по будням";
+      case "none": return t("rule.once", { date: rule.startDate });
+      case "daily": return t("rule.daily");
+      case "weekdays": return t("rule.weekdays");
       case "weekly": {
         const days = (rule.weekdays.length ? rule.weekdays : [weekdayOf(rule.startDate)]).slice().sort((a, b) => ((a + 6) % 7) - ((b + 6) % 7));
-        return `еженедельно: ${days.map((d) => WD[d]).join(", ")}`;
+        return t("rule.weekly", { days: days.map((d) => academyCohortsT.tryFor(lang, `weekdays.d${d}`) ?? String(d)).join(", ") });
       }
     }
   })();
-  return `${when} в ${rule.startTime} (${rule.timezone})`;
+  return t("rule.full", { when, time: rule.startTime, tz: rule.timezone });
 }
 
 /* ─── Самоотметка ──────────────────────────────────────────────────────────── */
@@ -336,43 +345,31 @@ export interface MetricDef {
   example: string;
 }
 
-export const METRICS: Record<MetricKey, MetricDef> = {
-  fee_share: {
-    key: "fee_share", label: "Доля комиссий от брутто", unit: "%", comparator: "lt", windowKind: "days", defaultWindow: 10, defaultTarget: 50, lowerIsBetter: true,
-    description: "Σ|комиссий| / Σ брутто P&L за последние N торговых дней со сделками. Брутто ≤ 0 — цель не выполнена.",
-    example: "доля комиссий < 50% брутто за 10 дней",
-  },
-  loss_streak: {
-    key: "loss_streak", label: "Убыточных сделок подряд (макс.)", unit: "сделок", comparator: "lte", windowKind: "days", defaultWindow: 10, defaultTarget: 3, lowerIsBetter: true,
-    description: "Самая длинная серия убыточных (по нетто) сделок подряд за последние N торговых дней. Безубыточная сделка серию не прерывает.",
-    example: "не более 3 убыточных сделок подряд за 10 дней",
-  },
-  win_rate: {
-    key: "win_rate", label: "Винрейт", unit: "%", comparator: "gte", windowKind: "trades", defaultWindow: 100, defaultTarget: 50, lowerIsBetter: false,
-    description: "W / (W + L) по последним N сделкам с исходом (безубыточные исключены). Пока сделок меньше N — цель не засчитывается.",
-    example: "винрейт ≥ 50% на 100 сделках",
-  },
-  journal_days: {
-    key: "journal_days", label: "Дней дневника с разбором", unit: "дней", comparator: "gte", windowKind: "since_start", defaultWindow: null, defaultTarget: 10, lowerIsBetter: false,
-    description: "Торговые дни с даты начала цели, где заполнен дневник (что получилось / ошибки / уроки) или день закрыт в EOD.",
-    example: "закрыть 10 дней дневника с разбором",
-  },
-  net_pnl: {
-    key: "net_pnl", label: "Нетто P&L", unit: "$", comparator: "gte", windowKind: "days", defaultWindow: 20, defaultTarget: 0, lowerIsBetter: false,
-    description: "Сумма нетто (брутто − |комиссии|) за последние N торговых дней со сделками.",
-    example: "нетто ≥ $0 за 20 дней",
-  },
-  trading_days: {
-    key: "trading_days", label: "Торговых дней", unit: "дней", comparator: "gte", windowKind: "since_start", defaultWindow: null, defaultTarget: 20, lowerIsBetter: false,
-    description: "Число дней со сделками с даты начала цели.",
-    example: "20 торговых дней",
-  },
-  manual: {
-    key: "manual", label: "Ручная цель", unit: "%", comparator: "gte", windowKind: "none", defaultWindow: null, defaultTarget: 100, lowerIsBetter: false,
-    description: "Прогресс отмечает наставник (или студент) вручную, 0–100 %.",
-    example: "прочитать «Trading in the Zone» и сдать конспект",
-  },
+type MetricBase = Omit<MetricDef, "label" | "unit" | "description" | "example">;
+const METRIC_BASE: Record<MetricKey, MetricBase> = {
+  fee_share: { key: "fee_share", comparator: "lt", windowKind: "days", defaultWindow: 10, defaultTarget: 50, lowerIsBetter: true },
+  loss_streak: { key: "loss_streak", comparator: "lte", windowKind: "days", defaultWindow: 10, defaultTarget: 3, lowerIsBetter: true },
+  win_rate: { key: "win_rate", comparator: "gte", windowKind: "trades", defaultWindow: 100, defaultTarget: 50, lowerIsBetter: false },
+  journal_days: { key: "journal_days", comparator: "gte", windowKind: "since_start", defaultWindow: null, defaultTarget: 10, lowerIsBetter: false },
+  net_pnl: { key: "net_pnl", comparator: "gte", windowKind: "days", defaultWindow: 20, defaultTarget: 0, lowerIsBetter: false },
+  trading_days: { key: "trading_days", comparator: "gte", windowKind: "since_start", defaultWindow: null, defaultTarget: 20, lowerIsBetter: false },
+  manual: { key: "manual", comparator: "gte", windowKind: "none", defaultWindow: null, defaultTarget: 100, lowerIsBetter: false },
 };
+
+const metricsCache = new Map<Lang, Record<MetricKey, MetricDef>>();
+/** IDP metric catalog with label / unit / description / example in `lang` (`academyCohorts.metrics.*`). */
+export function metricsFor(lang: Lang = DEFAULT_LANG): Record<MetricKey, MetricDef> {
+  let m = metricsCache.get(lang);
+  if (!m) {
+    const t = academyCohortsT.tFor(lang);
+    m = Object.fromEntries((Object.keys(METRIC_BASE) as MetricKey[]).map((k) => [k, {
+      ...METRIC_BASE[k], label: t(`metrics.${k}.label`), unit: t(`metrics.${k}.unit`), description: t(`metrics.${k}.description`), example: t(`metrics.${k}.example`),
+    }])) as Record<MetricKey, MetricDef>;
+    metricsCache.set(lang, m);
+  }
+  return m;
+}
+export const METRICS: Record<MetricKey, MetricDef> = metricsFor(DEFAULT_LANG);
 
 export interface IdpTrade {
   /** Торговая дата (NY) закрытия. */
@@ -414,6 +411,16 @@ export interface GoalEval {
   windowFrom: string | null;
   windowTo: string | null;
   detail: string;
+  /** `detail` as data: key under `academyCohorts.goal.*` + params (for notifications rendered per reader). */
+  detailMsg: GoalMsg;
+}
+
+export type GoalMsg = { key: string; params?: Record<string, string | number>; inner?: GoalMsg };
+
+/** Render a goal detail message in `lang` (`inner` fills `{detail}` of `needDays`). */
+export function renderGoalMsg(m: GoalMsg, lang: Lang = DEFAULT_LANG): string {
+  const params = { ...(m.params ?? {}), ...(m.inner ? { detail: renderGoalMsg(m.inner, lang) } : {}) };
+  return academyCohortsT.tryFor(lang, `goal.${m.key}`, params) ?? m.key;
 }
 
 export function netOf(t: Pick<IdpTrade, "gross" | "fees">): number | null {
@@ -470,8 +477,9 @@ function closeness(def: MetricDef, value: number | null, target: number, met: bo
   return clamp01(value / target);
 }
 
-export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
+export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext, lang: Lang = DEFAULT_LANG): GoalEval {
   const def = METRICS[goal.metric];
+  const out = (msg: GoalMsg) => ({ detail: renderGoalMsg(msg, lang), detailMsg: msg });
   const target = goal.target;
   const cmp = goal.comparator;
   const window = goal.window ?? def.defaultWindow ?? null;
@@ -481,7 +489,7 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
     const p = clamp01((goal.manualProgress ?? 0) / 100);
     return {
       value: r1(p * 100), progress: p, met: p >= 1, achieved: p >= 1, sample: 0, required: null, windowFrom: null, windowTo: null,
-      detail: `Отмечено вручную: ${Math.round(p * 100)} %`,
+      ...out({ key: "manual", params: { pct: Math.round(p * 100) } }),
     };
   }
 
@@ -491,30 +499,28 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
     const coverage = clamp01(days.length / n);
     const from = days[0] ?? null, to = days[days.length - 1] ?? null;
     let value: number | null = null;
-    let detail = "";
+    let msg: GoalMsg = { key: "noTrades" };
     if (goal.metric === "fee_share") {
       let gross = 0, fees = 0;
       for (const t of trades) { gross += t.gross ?? 0; fees += Math.abs(t.fees ?? 0); }
       value = gross > 0 ? r1((fees / gross) * 100) : null;
-      detail = days.length === 0
-        ? "Нет сделок"
-        : gross > 0
-          ? `Комиссии $${fees.toFixed(2)} из брутто $${gross.toFixed(2)} за ${days.length} из ${n} дн.`
-          : `Брутто ≤ 0 за ${days.length} дн. (комиссии $${fees.toFixed(2)}) — цель не выполнена`;
+      if (days.length) msg = gross > 0
+        ? { key: "fees", params: { fees: fees.toFixed(2), gross: gross.toFixed(2), days: days.length, n } }
+        : { key: "grossNeg", params: { days: days.length, fees: fees.toFixed(2) } };
     } else if (goal.metric === "loss_streak") {
       value = days.length ? maxLossStreak(trades) : null;
-      detail = days.length ? `Макс. серия убытков ${value} за ${days.length} из ${n} дн. (${trades.length} сделок)` : "Нет сделок";
+      if (days.length) msg = { key: "lossStreak", params: { value: value ?? 0, days: days.length, n, trades: trades.length } };
     } else if (goal.metric === "net_pnl") {
       let net = 0;
       for (const t of trades) net += netOf(t) ?? 0;
       value = days.length ? Math.round(net * 100) / 100 : null;
-      detail = days.length ? `Нетто $${net.toFixed(2)} за ${days.length} из ${n} дн.` : "Нет сделок";
+      if (days.length) msg = { key: "net", params: { net: net.toFixed(2), days: days.length, n } };
     }
     const met = value != null && compare(value, cmp, target);
     const progress = clamp01(coverage * closeness(def, value, target, met));
     return {
       value, progress, met, achieved: met && coverage >= 1, sample: days.length, required: n, windowFrom: from, windowTo: to,
-      detail: coverage < 1 && days.length > 0 ? `${detail}; нужно ${n} дн. для зачёта (${sign} ${target})` : detail,
+      ...out(coverage < 1 && days.length > 0 ? { key: "needDays", params: { n, sign, target }, inner: msg } : msg),
     };
   }
 
@@ -528,9 +534,9 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
     return {
       value, progress: clamp01(coverage * closeness(def, value, target, met)), met, achieved: met && coverage >= 1,
       sample: decided.length, required: n, windowFrom: decided[0]?.date ?? null, windowTo: decided[decided.length - 1]?.date ?? null,
-      detail: decided.length
-        ? `${wins} из ${decided.length} сделок в плюс${decided.length < n ? `; нужно ${n} сделок для зачёта` : ""}`
-        : "Нет сделок с исходом",
+      ...out(decided.length
+        ? decided.length < n ? { key: "winRateNeed", params: { wins, total: decided.length, n } } : { key: "winRate", params: { wins, total: decided.length } }
+        : { key: "noDecided" }),
     };
   }
 
@@ -543,7 +549,7 @@ export function evaluateGoal(goal: IdpGoalInput, ctx: IdpContext): GoalEval {
   return {
     value, progress: closeness(def, value, target, met), met, achieved: met, sample: value, required: target,
     windowFrom: goal.startDate, windowTo: ctx.today,
-    detail: `${value} из ${target} ${goal.metric === "journal_days" ? pluralRuGen(target, "дня дневника с разбором", "дней дневника с разбором") : pluralRuGen(target, "торгового дня", "торговых дней")} с ${ruDate(goal.startDate)}`,
+    ...out({ key: goal.metric === "journal_days" ? "sinceJournal" : "sinceTrading", params: { value, count: target, date: fmtDateFor(lang, goal.startDate, "short") } }),
   };
 }
 
@@ -556,13 +562,14 @@ export function goalTransition(status: GoalStatus, ev: Pick<GoalEval, "achieved"
 }
 
 /** Формулировка цели: «Доля комиссий от брутто < 50 % · окно 10 дн.». */
-export function describeGoal(goal: Pick<IdpGoalInput, "metric" | "target" | "comparator" | "window">): string {
-  const def = METRICS[goal.metric];
+export function describeGoal(goal: Pick<IdpGoalInput, "metric" | "target" | "comparator" | "window">, lang: Lang = DEFAULT_LANG): string {
+  const def = metricsFor(lang)[goal.metric];
   if (goal.metric === "manual") return def.label;
   const unit = def.unit === "$" ? "" : ` ${def.unit}`;
   const val = def.unit === "$" ? `$${goal.target}` : `${goal.target}`;
   const w = goal.window ?? def.defaultWindow;
-  const win = def.windowKind === "days" ? ` за ${w} дн.` : def.windowKind === "trades" ? ` на ${w} сделках` : "";
+  const t = academyCohortsT.tFor(lang);
+  const win = def.windowKind === "days" ? t("goal.formulaDays", { n: w ?? "" }) : def.windowKind === "trades" ? t("goal.formulaTrades", { n: w ?? "" }) : "";
   return `${def.label} ${COMPARATOR_SIGNS[goal.comparator]} ${val}${unit}${win}`;
 }
 
@@ -594,51 +601,38 @@ export interface LagReason {
   code: "attendance_low" | "absent_streak" | "unmarked" | "overdue_actions" | "missed_goals" | "goals_at_risk" | "no_trades" | "no_journal" | "paused";
   severity: "warn" | "critical";
   text: string;
+  /** Params of `text` (`academyCohorts.lag.<code>`), for clients that render it themselves. */
+  params?: Record<string, string | number>;
 }
 
-export function lagReasons(i: LagInput): LagReason[] {
+export function lagReasons(i: LagInput, lang: Lang = DEFAULT_LANG): LagReason[] {
   const out: LagReason[] = [];
-  if (i.status === "paused") out.push({ code: "paused", severity: "warn", text: "Обучение на паузе" });
+  const tx = (key: string, params?: Record<string, string | number>) => academyCohortsT.tryFor(lang, `lag.${key}`, params) ?? key;
+  const reason = (code: LagReason["code"], severity: LagReason["severity"], key: string, params?: Record<string, string | number>): LagReason =>
+    ({ code, severity, text: tx(key, params), ...(params ? { params } : {}) });
+  if (i.status === "paused") out.push(reason("paused", "warn", "paused"));
   if (i.status !== "active") return out;
   const a = i.attendance;
   if (a.rate != null && a.present + a.late + a.absent >= 3 && a.rate < 0.75) {
-    out.push({ code: "attendance_low", severity: a.rate < 0.5 ? "critical" : "warn", text: `Посещаемость ${Math.round(a.rate * 100)} %` });
+    out.push(reason("attendance_low", a.rate < 0.5 ? "critical" : "warn", "attendance_low", { pct: Math.round(a.rate * 100) }));
   }
-  if (a.absentStreak >= 2) out.push({ code: "absent_streak", severity: a.absentStreak >= 3 ? "critical" : "warn", text: `${a.absentStreak} ${pluralRuNom(a.absentStreak, "пропуск", "пропуска", "пропусков")} подряд` });
-  if (i.overdueActions > 0) out.push({ code: "overdue_actions", severity: i.overdueActions >= 3 ? "critical" : "warn", text: `Просрочено договорённостей: ${i.overdueActions}` });
-  if (i.missedGoals > 0) out.push({ code: "missed_goals", severity: "critical", text: `Сорвано целей ИПР: ${i.missedGoals}` });
-  if (i.atRiskGoals > 0) out.push({ code: "goals_at_risk", severity: "warn", text: `Цели под угрозой срыва: ${i.atRiskGoals}` });
+  if (a.absentStreak >= 2) out.push(reason("absent_streak", a.absentStreak >= 3 ? "critical" : "warn", "absent_streak", { count: a.absentStreak }));
+  if (i.overdueActions > 0) out.push(reason("overdue_actions", i.overdueActions >= 3 ? "critical" : "warn", "overdue_actions", { n: i.overdueActions }));
+  if (i.missedGoals > 0) out.push(reason("missed_goals", "critical", "missed_goals", { n: i.missedGoals }));
+  if (i.atRiskGoals > 0) out.push(reason("goals_at_risk", "warn", "goals_at_risk", { n: i.atRiskGoals }));
   // Торговые/дневниковые пробелы считаем только после 3 будних дней в программе.
   const settled = !i.joinedOn || weekdaysBetween(i.joinedOn, i.today) >= 3;
   if (settled) {
     const gap = i.lastTradeDate ? weekdaysBetween(i.lastTradeDate, i.today) : null;
-    if (gap == null) out.push({ code: "no_trades", severity: "warn", text: "Нет ни одной сделки" });
-    else if (gap >= 3) out.push({ code: "no_trades", severity: gap >= 7 ? "critical" : "warn", text: `Не торгует ${gap} раб. дн. (последняя сделка ${ruDate(i.lastTradeDate ?? "")})` });
+    if (gap == null) out.push(reason("no_trades", "warn", "no_trades_never"));
+    else if (gap >= 3) out.push(reason("no_trades", gap >= 7 ? "critical" : "warn", "no_trades", { n: gap, date: fmtDateFor(lang, i.lastTradeDate ?? "", "short") }));
     const jgap = i.lastJournalDate ? weekdaysBetween(i.lastJournalDate, i.today) : null;
-    if (jgap == null) out.push({ code: "no_journal", severity: "warn", text: "Дневник ещё не вёлся" });
-    else if (jgap >= 3) out.push({ code: "no_journal", severity: "warn", text: `Дневник не заполнялся ${jgap} раб. дн.` });
+    if (jgap == null) out.push(reason("no_journal", "warn", "no_journal_never"));
+    else if (jgap >= 3) out.push(reason("no_journal", "warn", "no_journal", { n: jgap }));
   }
   return out;
 }
 
 export function lagScore(reasons: ReadonlyArray<LagReason>): number {
   return reasons.reduce((s, r) => s + (r.severity === "critical" ? 3 : 1), 0);
-}
-
-/** «из 1 дня», «из 21 дня», но «из 10 дней»: родительный падеж после «из N». */
-function pluralRuGen(n: number, one: string, many: string): string {
-  return n % 10 === 1 && n % 100 !== 11 ? one : many;
-}
-
-/** «2026-10-01» → «01.10.2026». */
-function ruDate(ymd: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(ymd);
-  return m ? `${m[3]}.${m[2]}.${m[1]}` : ymd;
-}
-
-function pluralRuNom(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
 }

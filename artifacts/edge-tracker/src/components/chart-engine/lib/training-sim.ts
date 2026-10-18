@@ -10,6 +10,7 @@
  * Money here is the trainee's own paper size, never another trader's $.
  */
 import type { Side, TrainingResult } from "../types";
+import { chartI18n } from "@/i18n/ns/chart";
 
 export type SimAction = "buy" | "sell" | "flat" | "half";
 export type SimFillReason = SimAction | "stop" | "target";
@@ -183,13 +184,13 @@ export function simLiveR(s: SimState, price: number | null): number | null {
   return simMark(s, price).total / s.firstRiskUsd;
 }
 
-/** Russian label of a paper fill for the decision log. */
+/** Label of a paper fill for the decision log (UI language). */
 export function simFillLabel(f: Pick<SimFill, "qty" | "reason">): string {
-  if (f.reason === "stop") return "Стоп";
-  if (f.reason === "target") return "Цель";
-  if (f.reason === "half") return "Половина";
-  if (f.reason === "flat") return "В ноль";
-  return f.qty > 0 ? "Купил" : "Продал";
+  if (f.reason === "stop") return chartI18n.t("training.fill.stop");
+  if (f.reason === "target") return chartI18n.t("training.fill.target");
+  if (f.reason === "half") return chartI18n.t("training.fill.half");
+  if (f.reason === "flat") return chartI18n.t("training.fill.flat");
+  return f.qty > 0 ? chartI18n.t("training.fill.buy") : chartI18n.t("training.fill.sell");
 }
 
 export type IdealMove = { perShare: number; side: Side; fromIdx: number; toIdx: number } | null;
@@ -268,13 +269,13 @@ export function scoreTraining(
 export type ScoreVerdict = { label: string; tone: "up" | "neutral" | "warn" | "down" };
 
 export function trainingVerdict(o: Pick<TrainingOutcome, "score" | "trades" | "pnlUsd">): ScoreVerdict {
-  if (o.trades === 0) return { label: "без сделок — тоже решение", tone: "neutral" };
-  if (o.pnlUsd < 0) return { label: "в минус", tone: "down" };
+  if (o.trades === 0) return { label: chartI18n.t("training.verdict.noTrades"), tone: "neutral" };
+  if (o.pnlUsd < 0) return { label: chartI18n.t("training.verdict.loss"), tone: "down" };
   const s = o.score ?? 0;
-  if (s >= 70) return { label: "забрал почти весь ход", tone: "up" };
-  if (s >= 40) return { label: "хорошо", tone: "up" };
-  if (s >= 15) return { label: "мало от возможного", tone: "warn" };
-  return { label: "почти ноль", tone: "warn" };
+  if (s >= 70) return { label: chartI18n.t("training.verdict.great"), tone: "up" };
+  if (s >= 40) return { label: chartI18n.t("training.verdict.good"), tone: "up" };
+  if (s >= 15) return { label: chartI18n.t("training.verdict.little"), tone: "warn" };
+  return { label: chartI18n.t("training.verdict.zero"), tone: "warn" };
 }
 
 /** Suggested stop for a new position: just beyond the extreme of the last `lookback` bars (incl. the cursor bar). */

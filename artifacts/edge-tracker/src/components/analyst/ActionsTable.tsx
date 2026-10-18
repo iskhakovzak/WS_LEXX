@@ -8,6 +8,8 @@ import { cn } from "@/lib/utils";
 import { GradeChange, Highlight, KindPill, Marks, ReactionChip, RowActions, TargetChange } from "./ActionRow";
 import type { Row } from "./rows";
 import { dayTitle, gapOf, nyKey, nyTime, SESSION_LABEL, sessionOf, WEIGHT_MIN_N, type SortKey } from "./lib";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
 
 export const ROW_H = 52;
 const HEAD_H = 33;
@@ -42,7 +44,7 @@ export const ActionsTable = React.forwardRef<HTMLDivElement, ActionsTableProps>(
 ) {
   const th = (k: SortKey) => ({ active: sortKey === k, dir: sortDir, onSort: () => onSort(k) });
   return (
-    <DataTable ref={ref} maxHeight={maxHeight} ariaLabel="Лента действий аналитиков" className="[&_tbody_td]:py-1.5">
+    <DataTable ref={ref} maxHeight={maxHeight} ariaLabel={analystI18n.t("table.aria")} className="[&_tbody_td]:py-1.5">
       {/* Fixed tracks sized to their content (sortable headers need label + sort icon); the firm column takes the rest.
           min-w keeps the firm column readable at ~1280 px — the table scrolls sideways instead of wrapping rows 5 lines tall. */}
       <table className="min-w-[1000px] table-fixed">
@@ -58,16 +60,16 @@ export const ActionsTable = React.forwardRef<HTMLDivElement, ActionsTableProps>(
         </colgroup>
         <thead>
           <tr>
-            <SortableTh {...th("time")}>Время ET</SortableTh>
-            <SortableTh {...th("ticker")}>Тикер</SortableTh>
-            <th scope="col">Действие</th>
-            <SortableTh {...th("weight")}>Фирма · вес</SortableTh>
-            <SortableTh {...th("pt")}>Таргет</SortableTh>
-            <SortableTh {...th("gap")} align="right">Гэп · RVOL</SortableTh>
+            <SortableTh {...th("time")}>{analystI18n.t("table.time")}</SortableTh>
+            <SortableTh {...th("ticker")}>{commonI18n.t("trading.ticker")}</SortableTh>
+            <th scope="col">{analystI18n.t("table.action")}</th>
+            <SortableTh {...th("weight")}>{analystI18n.t("table.firmWeight")}</SortableTh>
+            <SortableTh {...th("pt")}>{analystI18n.t("table.target")}</SortableTh>
+            <SortableTh {...th("gap")} align="right">{analystI18n.t("table.gapRvol")}</SortableTh>
             <th scope="col" className="text-right">
               <TermTooltip term="reaction" />
             </th>
-            <th scope="col"><span className="sr-only">Действия</span></th>
+            <th scope="col"><span className="sr-only">{analystI18n.t("table.actions")}</span></th>
           </tr>
         </thead>
         <VirtualRows
@@ -151,11 +153,11 @@ const ActionTr = React.memo(function ActionTr({
       )}
     >
       <td className="whitespace-nowrap">
-        <div className="text-xs font-medium tabular-nums text-foreground" title={session ? `${SESSION_LABEL[session]} (ET)` : undefined}>
+        <div className="text-xs font-medium tabular-nums text-foreground" title={session ? analystI18n.t("table.sessionEt", { session: SESSION_LABEL[session] }) : undefined}>
           {nyTime(a.gradedAt)}
         </div>
         <div className={cn("text-2xs", session === "pre" && day === today ? "text-primary" : "text-muted-foreground")}>
-          {day === today ? (session === "pre" ? "премаркет" : "сегодня") : dayTitle(day, today).toLowerCase()}
+          {day === today ? (session === "pre" ? analystI18n.t("table.premarket") : analystI18n.t("table.today")) : dayTitle(day, today).toLowerCase()}
         </div>
       </td>
       <td>
@@ -164,7 +166,7 @@ const ActionTr = React.memo(function ActionTr({
             type="button"
             onClick={(e) => { e.stopPropagation(); onOpen(r); }}
             className="truncate rounded text-sm font-semibold tracking-tight text-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={`${a.ticker}: история рейтингов и реакция`}
+            aria-label={analystI18n.t("table.historyAria", { ticker: a.ticker })}
           >
             <Highlight text={a.ticker} query={query} />
           </button>
@@ -181,12 +183,12 @@ const ActionTr = React.memo(function ActionTr({
       <td>
         <div className="flex min-w-0 items-center gap-1.5">
           <span className="truncate text-sm text-foreground" title={a.firm}><Highlight text={a.firm} query={query} /></span>
-          {r.top && <span className="shrink-0 rounded-full bg-primary/12 px-1.5 text-2xs font-medium text-accent-soft">топ</span>}
+          {r.top && <span className="shrink-0 rounded-full bg-primary/12 px-1.5 text-2xs font-medium text-accent-soft">{analystI18n.t("table.top")}</span>}
         </div>
         {w && (
-          <div className="text-2xs tabular-nums text-muted-foreground" title={`Вес фирмы: ход в день реакции в ${w.ratio?.toFixed(1)} раза больше обычного; ${w.n} событий`}>
-            вес <span className={cn("font-medium", (w.ratio ?? 0) >= 1.5 ? "text-purple" : "text-foreground")}>×{w.ratio?.toFixed(1) ?? "—"}</span>
-            {w.hit != null && <> · в сторону {Math.round(w.hit * 100)}%</>}
+          <div className="text-2xs tabular-nums text-muted-foreground" title={analystI18n.t("table.weightTitle", { ratio: w.ratio?.toFixed(1) ?? "—", count: w.n })}>
+            {analystI18n.t("table.weight")} <span className={cn("font-medium", (w.ratio ?? 0) >= 1.5 ? "text-purple" : "text-foreground")}>×{w.ratio?.toFixed(1) ?? "—"}</span>
+            {w.hit != null && analystI18n.t("table.hit", { pct: Math.round(w.hit * 100) })}
           </div>
         )}
       </td>

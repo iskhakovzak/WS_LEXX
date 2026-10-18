@@ -4,6 +4,7 @@
  * During replay the right edge follows the cursor and the far price edge is the current close.
  */
 import { fmtPrice } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label, layoutLabels, leader, measureLabel } from "./canvas";
 
 export type PositionZoneData = {
@@ -64,13 +65,13 @@ export class PositionZonePrimitive extends SeriesPrimitiveBase {
     // Labels with collision avoidance: entry above its line on the left, exit on the right beyond its
     // line; when the prices are close the boxes are pushed apart and a leader line points at the price.
     const opts = { size: 10 } as const;
-    const entryText = `${d.multipleEntries ? "Ср. вход" : "Вход"} ${fmtPrice(d.avgEntry)}`;
+    const entryText = chartI18n.t(d.multipleEntries ? "canvas.avgEntry" : "canvas.entry", { price: fmtPrice(d.avgEntry) });
     const entryBox = measureLabel(ctx, theme, entryText, opts);
     const items: { text: string; x: number; y: number; h: number; w: number; lineY: number; bg: string; leaderX: (bx: number, w: number) => number }[] = [
       { text: entryText, x: x1 + 4, y: yA - 4 - entryBox.h, h: entryBox.h, w: entryBox.w, lineY: yA, bg: theme.primary(0.9), leaderX: (bx) => bx + 6 },
     ];
     if (exitKnown && d.avgExit != null) {
-      const exitText = `Выход ${fmtPrice(d.avgExit)}`;
+      const exitText = chartI18n.t("canvas.exit", { price: fmtPrice(d.avgExit) });
       const box = measureLabel(ctx, theme, exitText, opts);
       items.push({ text: exitText, x: x2 - 4 - box.w, y: yB >= yA ? yB + 4 : yB - 4 - box.h, h: box.h, w: box.w, lineY: yB, bg: color(0.9), leaderX: (bx, w) => bx + w - 6 });
     }

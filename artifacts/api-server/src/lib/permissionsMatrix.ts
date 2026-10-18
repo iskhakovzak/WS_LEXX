@@ -3,6 +3,8 @@
  * routes/permissions.ts (overrides API) and scripts/check-permissions.mjs (offline check).
  * The frontend keeps a mirror in edge-tracker/src/lib/permissions.ts (same keys + defaults — the offline
  * check compares both files).
+ * Texts: the Russian label/description/group below are the source; EN/UZ are in src/i18n/{en,uz}/permissions.ts and
+ * lib/permissionsI18n.ts serves them per language (this file stays importable by Node without a bundler).
  *
  * Model
  *  - Role ∈ trader | curator | admin | guest.
@@ -45,7 +47,7 @@ export const CAPABILITIES = [
   // ── Trades ───────────────────────────────────────────────────────────────
   { key: "trades.read.own", group: "Сделки", label: "Смотреть свои сделки", own: true, description: "Журнал, исполнения, чек-листы своих сделок." },
   { key: "trades.read.team", group: "Сделки", label: "Смотреть сделки команды", team: true, description: "Сделки и исполнения других трейдеров." },
-  { key: "trades.write.own", group: "Сделки", label: "Вести свои сделки", own: true, description: "Создавать, править, удалять свои сделки и исполнения." },
+  { key: "trades.write.own", group: "Сделки", label: "Вести свои сделки", own: true, description: "Разметка своих сделок: сетап, теги, оценки, заметки (сделки приходят из PropReports)." },
   { key: "trades.write.any", group: "Сделки", label: "Править чужие сделки", team: true, description: "Редактировать/переназначать сделки других трейдеров, привязывать их к сетапам и событиям." },
   { key: "trades.review", group: "Сделки", label: "Разбор сделок куратором", team: true, description: "Оставлять разборы (POST /trades/:id/reviews), оценку качества." },
   { key: "trades.review.delete.any", group: "Сделки", label: "Удалять чужие разборы", adminOnly: true, description: "Удалять разборы других кураторов." },

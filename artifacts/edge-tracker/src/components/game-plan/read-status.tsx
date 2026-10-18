@@ -8,6 +8,8 @@ import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { gpApi, gpKeys, initials, type GamePlan, type GamePlanResponse } from "./types";
 import { fmtDate } from "@/lib/format";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Trader-side: "Отметить прочитанным" / read confirmation (optimistic). */
 export function MarkReadButton({
@@ -21,6 +23,7 @@ export function MarkReadButton({
   date: string;
   primary: boolean;
 }) {
+  const { t } = gpI18n.useT();
   const qc = useQueryClient();
   const stale = !!myReadAt && new Date(myReadAt) < new Date(plan.updatedAt);
   const m = useMutation({
@@ -39,7 +42,7 @@ export function MarkReadButton({
     },
     onError: (err, _v, ctx) => {
       if (ctx?.prev) qc.setQueryData(gpKeys.day(date), ctx.prev);
-      toast({ title: "Не удалось отметить", description: err instanceof Error ? err.message : undefined, variant: "destructive" });
+      toast({ title: t("reads.markFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" });
     },
     onSettled: () => {
       qc.invalidateQueries({ queryKey: gpKeys.day(date) });
@@ -51,7 +54,7 @@ export function MarkReadButton({
     return (
       <Pill tone="up" className="px-3 py-1.5 text-sm">
         <CheckCheck className="h-4 w-4" aria-hidden="true" />
-        Прочитано в {fmtDate(myReadAt, "time")}
+        {t("reads.readAt", { time: fmtDate(myReadAt, "time") })}
       </Pill>
     );
   }
@@ -59,15 +62,16 @@ export function MarkReadButton({
     <div className="flex flex-col items-end gap-1">
       <Button variant={primary ? "default" : "outline"} onClick={() => m.mutate()} disabled={m.isPending}>
         {stale ? <RefreshCw aria-hidden="true" /> : <Check aria-hidden="true" />}
-        {stale ? "Перечитал обновление" : "Отметить прочитанным"}
+        {stale ? t("reads.reread") : t("reads.markRead")}
       </Button>
-      {stale && <span className="text-xs text-[hsl(var(--chart-3))]">План обновлён после вашего прочтения</span>}
+      {stale && <span className="text-xs text-[hsl(var(--chart-3))]">{t("reads.updatedAfter")}</span>}
     </div>
   );
 }
 
 /** Curator-side: who has and hasn't read the plan. */
 export function ReadStatusPanel({ planId }: { planId: number }) {
+  const { t } = gpI18n.useT();
   const q = useQuery({
     queryKey: gpKeys.reads(planId),
     queryFn: () => gpApi.reads(planId),
@@ -76,7 +80,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
   const d = q.data;
   const pct = d && d.total ? Math.round((d.readCount / d.total) * 100) : 0;
   return (
-    <Panel title="Ознакомление" icon={Users} description="Кто прочитал план" aria-live="polite">
+    <Panel title={t("reads.title")} icon={Users} description={t("reads.desc")} aria-live="polite">
       {q.isLoading ? (
         <div className="flex flex-col gap-3">
           <Skeleton className="h-8 w-24 rounded-xl" />
@@ -88,7 +92,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
           </div>
         </div>
       ) : q.isError || !d ? (
-        <p className="text-sm text-muted-foreground">Статус прочтения недоступен.</p>
+        <p className="text-sm text-muted-foreground">{t("reads.unavailable")}</p>
       ) : (
         <div className="flex flex-col gap-4">
           <div className="flex items-baseline gap-2">
@@ -96,7 +100,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               {d.readCount}
               <span className="text-muted-foreground">/{d.total}</span>
             </span>
-            <span className="text-xs text-muted-foreground">прочитали · {pct}%</span>
+            <span className="text-xs text-muted-foreground">{t("reads.readPct", { pct })}</span>
           </div>
           <div
             className="h-1.5 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]"
@@ -104,17 +108,17 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={pct}
-            aria-label="Доля прочитавших"
+            aria-label={t("reads.progressAria")}
           >
             <div className="h-full rounded-full bg-up transition-[width] duration-300" style={{ width: `${pct}%` }} />
           </div>
           {d.read.length > 0 && (
             <div>
-              <p className="micro-label mb-2">Прочитали</p>
+              <p className="micro-label mb-2">{t("reads.read")}</p>
               <ul className="flex flex-wrap gap-1.5">
                 {d.read.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${r.trader} · ${fmtDate(r.readAt, "time")}${r.stale ? " · до обновления" : ""}`} />
+                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${r.trader} · ${fmtDate(r.readAt, "time")}${r.stale ? t("reads.beforeUpdate") : ""}`} />
                   </li>
                 ))}
               </ul>
@@ -122,11 +126,11 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
           )}
           {d.unread.length > 0 && (
             <div>
-              <p className="micro-label mb-2">Ещё не прочитали</p>
+              <p className="micro-label mb-2">{t("reads.unread")}</p>
               <ul className="flex flex-wrap gap-1.5">
                 {d.unread.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state="unread" hint={`${r.trader} · ${r.role === "trader" ? "трейдер" : r.role === "curator" ? "куратор" : "админ"}`} />
+                    <Avatar name={r.trader} state="unread" hint={`${r.trader} · ${commonI18n.t(r.role === "trader" ? "roles.trader" : r.role === "curator" ? "roles.curator" : "roles.admin")}`} />
                   </li>
                 ))}
               </ul>

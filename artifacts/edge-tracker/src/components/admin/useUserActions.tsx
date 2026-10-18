@@ -3,11 +3,16 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { ApiError, http } from "@/lib/api/http";
 import { ReasonDialog, type ReasonDialogState } from "./ReasonDialog";
-import { ROLE_LABEL, adminUrl } from "./api";
+import { adminUrl, roleLabel } from "./api";
 import { secretMinFor } from "@/lib/secret-policy";
 import { authI18n } from "@/i18n/ns/auth";
+import { adminI18n } from "@/i18n/ns/admin";
+import { commonI18n } from "@/i18n/ns/common";
 
-export const BAN_PRESETS = ["Спам в обсуждениях", "Оскорбления", "Нарушение риск-правил", "Ушёл из команды"];
+/** Quick-pick ban reasons in the UI language (the chosen text is stored as the reason). Call at render time. */
+export function banPresets(): string[] {
+  return adminI18n.t("userActions.banPresets").split("|");
+}
 
 type Target = { id: number; name: string; role: string };
 
@@ -17,6 +22,7 @@ type Target = { id: number; name: string; role: string };
  */
 export function useUserActions(actor: string, onChange?: () => void) {
   const { toast } = useToast();
+  const { t } = adminI18n.useT();
   const qc = useQueryClient();
   const [state, setState] = useState<ReasonDialogState>(null);
 
@@ -26,18 +32,18 @@ export function useUserActions(actor: string, onChange?: () => void) {
     }
     onChange?.();
   };
-  const onError = (e: Error) => toast({ title: "Ошибка", description: e.message, variant: "destructive" });
+  const onError = (e: Error) => toast({ title: commonI18n.t("states.error"), description: e.message, variant: "destructive" });
 
   const banMut = useMutation({
     mutationFn: ({ id, reason }: { id: number; reason: string }) =>
       http.post<{ name?: string }>(adminUrl(`/admin/users/${id}/ban`, actor), { actor, reason }),
-    onSuccess: (u) => { invalidate(); setState(null); toast({ title: `${u?.name ?? "Пользователь"} забанен`, description: "Сессии завершены." }); },
+    onSuccess: (u) => { invalidate(); setState(null); toast({ title: t("userActions.banned", { name: u?.name ?? t("userActions.user") }), description: t("userActions.bannedHint") }); },
     onError,
   });
   const unbanMut = useMutation({
     mutationFn: ({ id }: { id: number; reason: string }) =>
       http.post<{ name?: string }>(adminUrl(`/admin/users/${id}/unban`, actor), { actor }),
-    onSuccess: (u) => { invalidate(); setState(null); toast({ title: `${u?.name ?? "Пользователь"} разбанен` }); },
+    onSuccess: (u) => { invalidate(); setState(null); toast({ title: t("userActions.unbanned", { name: u?.name ?? t("userActions.user") }) }); },
     onError,
   });
   const roleMut = useMutation({
@@ -56,7 +62,7 @@ export function useUserActions(actor: string, onChange?: () => void) {
     onSuccess: (u) => {
       invalidate();
       setState(null);
-      toast({ title: "Роль обновлена", description: u?.name ? `${u.name} → ${ROLE_LABEL[u.role ?? ""] ?? u.role}` : undefined });
+      toast({ title: t("userActions.roleUpdated"), description: u?.name ? t("userActions.roleUpdatedHint", { name: u.name, role: roleLabel(u.role) }) : undefined });
     },
     onError,
   });
@@ -64,7 +70,7 @@ export function useUserActions(actor: string, onChange?: () => void) {
     mutationFn: async ({ id, password }: { id: number; name: string; password: string }) => {
       return http.patch(`/api/users/${id}`, { password });
     },
-    onSuccess: (_d, v) => { setState(null); toast({ title: `Пароль для ${v.name} обновлён`, description: "Активные сессии пользователя завершены." }); },
+    onSuccess: (_d, v) => { setState(null); toast({ title: t("userActions.passwordUpdated", { name: v.name }), description: t("userActions.passwordUpdatedHint") }); },
     onError,
   });
 
@@ -74,31 +80,31 @@ export function useUserActions(actor: string, onChange?: () => void) {
     busy,
     dialog: <ReasonDialog state={state} onClose={() => setState(null)} busy={busy} />,
     ban: (u: Target) => setState({
-      title: `Забанить ${u.name}?`,
-      description: "Пользователь будет разлогинен и не сможет войти до разбана. Действие попадёт в журнал аудита.",
-      confirmLabel: "Забанить",
+      title: t("userActions.ban.title", { name: u.name }),
+      description: t("userActions.ban.text"),
+      confirmLabel: t("userActions.ban.confirm"),
       destructive: true,
-      input: { label: "Причина", kind: "textarea", required: true, presets: BAN_PRESETS, placeholder: "Что произошло" },
+      input: { label: t("userActions.ban.reason"), kind: "textarea", required: true, presets: banPresets(), placeholder: t("userActions.ban.placeholder") },
       onConfirm: (reason) => banMut.mutate({ id: u.id, reason }),
     }),
     unban: (u: Target) => setState({
-      title: `Разбанить ${u.name}?`,
-      description: "Пользователь снова сможет войти. Разбан попадёт в журнал аудита.",
-      confirmLabel: "Разбанить",
+      title: t("userActions.unban.title", { name: u.name }),
+      description: t("userActions.unban.text"),
+      confirmLabel: t("userActions.unban.confirm"),
       onConfirm: (reason) => unbanMut.mutate({ id: u.id, reason }),
     }),
     changeRole: (u: Target, role: string) => setState({
-      title: `Сменить роль ${u.name}?`,
-      description: `${ROLE_LABEL[u.role] ?? u.role} → ${ROLE_LABEL[role] ?? role}. Пользователю нужно будет войти заново.`,
-      confirmLabel: "Сменить роль",
-      input: { label: "Причина (попадёт в аудит)", kind: "textarea", required: true, minLength: 3, presets: ["Повышение", "Изменение обязанностей"], placeholder: "Коротко: почему" },
+      title: t("userActions.role.title", { name: u.name }),
+      description: t("userActions.role.text", { from: roleLabel(u.role), to: roleLabel(role) }),
+      confirmLabel: t("userActions.role.confirm"),
+      input: { label: t("people.reasonLabel"), kind: "textarea", required: true, minLength: 3, presets: t("people.presets.role").split("|"), placeholder: t("people.reasonPlaceholder") },
       onConfirm: (reason) => roleMut.mutate({ id: u.id, role, reason }),
     }),
     setPassword: (u: Target) => setState({
-      title: `Новый пароль для ${u.name}`,
-      description: "Все активные сессии пользователя будут завершены.",
-      confirmLabel: "Сохранить пароль",
-      input: { label: "Новый пароль", kind: "password", minLength: secretMinFor(u.role), required: true, placeholder: authI18n.t("forced.tooShort", { min: secretMinFor(u.role) }) },
+      title: t("userActions.password.title", { name: u.name }),
+      description: t("userActions.password.text"),
+      confirmLabel: t("userActions.password.confirm"),
+      input: { label: t("userActions.password.label"), kind: "password", minLength: secretMinFor(u.role), required: true, placeholder: authI18n.t("forced.tooShort", { min: secretMinFor(u.role) }) },
       onConfirm: (password) => passwordMut.mutate({ id: u.id, name: u.name, password }),
     }),
   };

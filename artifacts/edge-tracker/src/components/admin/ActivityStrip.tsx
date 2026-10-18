@@ -1,6 +1,7 @@
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { adminI18n } from "@/i18n/ns/admin";
 
 function dayLabel(ymd: string) {
   return `${fmtWeekday(ymd, "short")} ${fmtDate(ymd, "dayMonthNumeric")}`;
@@ -31,7 +32,11 @@ export function ActivityStrip({
   const max = Math.max(1, ...trades);
   const totalTrades = trades.reduce((s, v) => s + v, 0);
   const totalNotes = journal ? journal.filter(Boolean).length : 0;
-  const label = `За ${days.length} дн: ${commonI18n.t("units.trades", { count: totalTrades })}${journal ? `, журнал ${totalNotes} дн` : ""}`;
+  const { t } = adminI18n.useT();
+  const tradesOf = (count: number) => commonI18n.t("units.trades", { count });
+  const label = journal
+    ? t("strip.ariaJournal", { days: days.length, trades: tradesOf(totalTrades), notes: totalNotes })
+    : t("strip.aria", { days: days.length, trades: tradesOf(totalTrades) });
   const cell = size === "sm" ? "h-3 w-2" : "h-4 w-2.5";
   return (
     <div role="img" aria-label={label} className={cn("inline-flex items-end gap-[3px]", className)}>
@@ -40,7 +45,7 @@ export function ActivityStrip({
         const wk = isWeekend(d);
         const intensity = n === 0 ? 0 : 0.3 + 0.7 * (n / max);
         return (
-          <span key={d} className="flex flex-col items-center gap-[2px]" title={`${dayLabel(d)}: ${commonI18n.t("units.trades", { count: n })}${journal ? (journal[i] ? " · журнал ✓" : " · без журнала") : ""}`}>
+          <span key={d} className="flex flex-col items-center gap-[2px]" title={t(journal ? (journal[i] ? "strip.cellJournal" : "strip.cellNoJournal") : "strip.cell", { day: dayLabel(d), trades: tradesOf(n) })}>
             <span
               className={cn(cell, "rounded-[3px]", n === 0 ? (wk ? "bg-[var(--glass-bg)] opacity-50" : "bg-[var(--glass-bg)] ring-1 ring-inset ring-[var(--glass-border)]") : "bg-primary")}
               style={n > 0 ? { opacity: intensity } : undefined}
@@ -57,9 +62,10 @@ export function ActivityStrip({
 
 /** Bar strip for desk-wide counts (overview tile). */
 export function BarStrip({ days, values, className }: { days: string[]; values: number[]; className?: string }) {
+  const { t } = adminI18n.useT();
   const max = Math.max(1, ...values);
   return (
-    <div role="img" aria-label={`Сделок по дням: ${values.join(", ")}`} className={cn("flex h-16 items-end gap-1", className)}>
+    <div role="img" aria-label={t("strip.barsAria", { values: values.join(", ") })} className={cn("flex h-16 items-end gap-1", className)}>
       {days.map((d, i) => {
         const v = values[i] ?? 0;
         return (

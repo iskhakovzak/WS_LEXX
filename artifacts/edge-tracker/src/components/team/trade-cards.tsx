@@ -12,18 +12,18 @@ import { TraderAvatar } from "./trader-avatar";
 import { allScreenshots, firstScreenshot, thumbUrl } from "./utils";
 import { fmtR, fmtUsd } from "@/lib/format";
 import { setupOf } from "./leaderboard";
-
-const RESULT_LABEL: Record<string, string> = { win: "Прибыль", loss: "Убыток", breakeven: "Безубыток", open: "Открыта" };
+import { teamI18n } from "@/i18n/ns/team";
+import { commonI18n } from "@/i18n/ns/common";
 
 export function ResultPill({ result }: { result: string }) {
   const tone = result === "win" ? "up" : result === "loss" ? "down" : result === "open" ? "accent" : "neutral";
-  return <Pill tone={tone}>{RESULT_LABEL[result] ?? result}</Pill>;
+  return <Pill tone={tone}>{teamI18n.tryT(`result.${result}`) ?? result}</Pill>;
 }
 
 export function SidePill({ side }: { side?: string | null }) {
   if (!side) return null;
   const long = side.toLowerCase() === "long";
-  return <Pill tone={long ? "up" : "down"}>{long ? "Лонг" : "Шорт"}</Pill>;
+  return <Pill tone={long ? "up" : "down"}>{long ? commonI18n.t("trading.long") : commonI18n.t("trading.short")}</Pill>;
 }
 
 /** Screenshot thumbnail with graceful fallback (TradingView links resolved to snapshot PNG). */
@@ -61,6 +61,7 @@ export function BestTradeCard({
   rank?: number;
   onOpen: (t: Trade) => void;
 }) {
+  const { t } = teamI18n.useT();
   const shot = firstScreenshot(trade.screenshotUrl);
   const r = signedR(trade);
   const net = netPnl(trade);
@@ -69,10 +70,10 @@ export function BestTradeCard({
       type="button"
       onClick={() => onOpen(trade)}
       className="glass-panel lift group flex min-w-0 flex-col overflow-hidden rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={`${trade.ticker}, ${fmtR(r)}, ${trade.trader ?? ""} — открыть детали`}
+      aria-label={t("card.openAria", { ticker: trade.ticker, r: fmtR(r), trader: trade.trader ?? "" })}
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden border-b border-border">
-        <ScreenshotThumb url={shot} alt={`График ${trade.ticker}`} className="h-full w-full" />
+        <ScreenshotThumb url={shot} alt={t("card.chartAlt", { ticker: trade.ticker })} className="h-full w-full" />
         {rank != null && (
           <span className="glass absolute left-2 top-2 rounded-full px-2 py-0.5 text-xs font-semibold tabular-nums">#{rank}</span>
         )}
@@ -92,7 +93,7 @@ export function BestTradeCard({
             <span className="truncate">{trade.trader ?? "—"}</span>
           </span>
           <span className={cn("tabular-nums", toneText(toneOf(net)))} title={net != null ? `${KPI_FORMULAS.netPnl}` : undefined}>
-            {net != null ? `${fmtUsd(net, { signed: true })} нетто` : closeDate(trade) ?? trade.date}
+            {net != null ? t("netSuffix", { value: fmtUsd(net, { signed: true }) }) : closeDate(trade) ?? trade.date}
           </span>
         </div>
       </div>
@@ -103,6 +104,8 @@ export function BestTradeCard({
 /** Right-side sheet with full trade details and a link into the trade journal. */
 export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onClose: () => void }) {
   const [, setLocation] = useLocation();
+  const { t } = teamI18n.useT();
+  const tc = commonI18n.useT().t;
   const shots = trade ? allScreenshots(trade.screenshotUrl) : [];
   const net = trade ? netPnl(trade) : null;
   const gross = trade ? grossPnl(trade) : null;
@@ -127,28 +130,28 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
             </SheetHeader>
 
             <div className="grid grid-cols-3 gap-2">
-              <Metric label="R" value={fmtR(r)} tone={toneText(toneOf(r))} title="R = результат сделки в единицах риска (знак по результату)" />
+              <Metric label="R" value={fmtR(r)} tone={toneText(toneOf(r))} title={t("sheet.rTitle")} />
               <Metric
-                label="P&L нетто"
+                label={t("cell.net")}
                 value={fmtUsd(net, { signed: true })}
                 tone={toneText(toneOf(net))}
-                title={net != null ? `${KPI_FORMULAS.netPnl}. Брутто ${fmtUsd(gross, { signed: true })}, комиссии ${fmtUsd(-Math.abs(fees), { signed: true })}` : KPI_FORMULAS.netPnl}
+                title={net != null ? t("cell.netTitle", { formula: KPI_FORMULAS.netPnl, gross: fmtUsd(gross, { signed: true }), fees: fmtUsd(-Math.abs(fees), { signed: true }) }) : KPI_FORMULAS.netPnl}
               />
-              <Metric label="Удержание" value={trade.holdTime || "—"} />
+              <Metric label={t("sheet.holdTime")} value={trade.holdTime || "—"} />
             </div>
 
             <div className="glass-panel rounded-xl px-4 py-2">
-              <StatRow label="Вход" value={trade.entry ?? "—"} />
-              <StatRow label="Выход" value={trade.exit ?? "—"} />
-              <StatRow label="Стоп" value={trade.stop ?? "—"} />
-              {trade.relativeVolume != null && <StatRow label="Отн. объём" value={`${trade.relativeVolume}×`} />}
-              {trade.float && <StatRow label="Флоат" value={trade.float} />}
-              {trade.marketCap && <StatRow label="Капитализация" value={trade.marketCap} />}
+              <StatRow label={tc("trading.entry")} value={trade.entry ?? "—"} />
+              <StatRow label={tc("trading.exit")} value={trade.exit ?? "—"} />
+              <StatRow label={tc("trading.stop")} value={trade.stop ?? "—"} />
+              {trade.relativeVolume != null && <StatRow label={t("sheet.relVolume")} value={`${trade.relativeVolume}×`} />}
+              {trade.float && <StatRow label={t("sheet.float")} value={trade.float} />}
+              {trade.marketCap && <StatRow label={tc("trading.marketCap")} value={trade.marketCap} />}
             </div>
 
             {shots.length > 0 && (
               <div className="flex flex-col gap-2">
-                <span className="micro-label">Скриншоты</span>
+                <span className="micro-label">{tc("fields.screenshots")}</span>
                 <div className="grid grid-cols-2 gap-2">
                   {shots.slice(0, 4).map((u, i) => (
                     <a
@@ -157,9 +160,9 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
                       target="_blank"
                       rel="noopener noreferrer"
                       className="group relative block overflow-hidden rounded-xl border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                      aria-label={`Открыть скриншот ${i + 1} в новой вкладке`}
+                      aria-label={t("sheet.screenshotOpen", { n: i + 1 })}
                     >
-                      <ScreenshotThumb url={u} alt={`Скриншот ${i + 1} — ${trade.ticker}`} className="aspect-video w-full" />
+                      <ScreenshotThumb url={u} alt={t("sheet.screenshotAlt", { n: i + 1, ticker: trade.ticker })} className="aspect-video w-full" />
                       <ExternalLink className="absolute right-1.5 top-1.5 h-3.5 w-3.5 text-foreground opacity-0 transition-opacity group-hover:opacity-100" aria-hidden="true" />
                     </a>
                   ))}
@@ -168,10 +171,10 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
             )}
 
             {[
-              ["Что сработало", trade.whatWorked],
-              ["Что не сработало", trade.whatFailed],
-              ["Вывод", trade.conclusion],
-              ["Заметки", trade.notes],
+              [t("sheet.whatWorked"), trade.whatWorked],
+              [t("sheet.whatFailed"), trade.whatFailed],
+              [t("sheet.conclusion"), trade.conclusion],
+              [tc("fields.notes"), trade.notes],
             ]
               .filter(([, v]) => v && String(v).trim())
               .map(([label, v]) => (
@@ -183,8 +186,8 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
 
             {trade.tags && (
               <div className="flex flex-wrap gap-1.5">
-                {trade.tags.split(",").map((t) => t.trim()).filter(Boolean).map((t) => (
-                  <Pill key={t}>{t}</Pill>
+                {trade.tags.split(",").map((s) => s.trim()).filter(Boolean).map((tag) => (
+                  <Pill key={tag}>{tag}</Pill>
                 ))}
               </div>
             )}
@@ -196,7 +199,7 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
                 setLocation(links.trade(trade.id));
               }}
             >
-              Открыть в журнале сделок <ArrowUpRight />
+              {t("sheet.openInJournal")} <ArrowUpRight />
             </Button>
           </div>
         )}

@@ -3,6 +3,7 @@ import { z } from "zod";
 import { eq, desc, isNull, and, sql, inArray } from "drizzle-orm";
 import { db, pool, tradesTable, preTradeChecklistResponsesTable } from "@workspace/db";
 import { logActivity } from "../lib/activity";
+import { activityTitle } from "../lib/activityText";
 import { asyncHandler } from "../lib/asyncHandler";
 import { logger } from "../lib/logger";
 import { scopeTrader } from "../lib/auth";
@@ -59,7 +60,7 @@ import {
   GetTradeResponse,
   UpdateTradeResponse,
 } from "@workspace/api-zod";
-import { badRequest, notFound, unauthorized } from "../lib/http";
+import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -154,13 +155,11 @@ const LegacyWindowQuery = z.object({
 router.get("/trades", asyncHandler(async (req, res): Promise<void> => {
   const query = ListTradesQueryParams.safeParse(req.query);
   if (!query.success) {
-    res.status(400).json({ error: query.error.message });
-    return;
+    throw query.error;
   }
   const win = LegacyWindowQuery.safeParse(compactQuery(req.query as Record<string, unknown>));
   if (!win.success) {
-    res.status(400).json({ error: win.error.message });
-    return;
+    throw win.error;
   }
   const { setup, eventType, session, trader, result } = query.data;
   const { from, to, limit } = win.data;
@@ -327,8 +326,7 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
    */
   const parsed = TradesPageQuery.safeParse(compactQuery(req.query as Record<string, unknown>));
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw parsed.error;
   }
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
@@ -342,8 +340,8 @@ router.get("/trades/page", asyncHandler(async (req, res): Promise<void> => {
   let cursor = null;
   if (q.cursor) {
     cursor = decodeCursor(q.cursor);
-    if (!cursor) { res.status(400).json({ error: "Некорректный cursor" }); return; }
-    if (cursor.s !== sort.col || cursor.d !== sort.dir) { res.status(400).json({ error: "cursor не соответствует сортировке (sort/dir)" }); return; }
+    if (!cursor) throw new AppError("INVALID_FIELD", undefined, { field: "cursor" });
+    if (cursor.s !== sort.col || cursor.d !== sort.dir) throw new AppError("INVALID_FIELD", undefined, { field: "cursor" });
   }
   const filters = moneyBlindFilters(pageFiltersOf(q, scope), showMoney);
 
@@ -494,8 +492,7 @@ const TradesDaysQuery = TradesPageQuery.extend({
 router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
   const parsed = TradesDaysQuery.safeParse(compactQuery(req.query as Record<string, unknown>));
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw parsed.error;
   }
   const q = parsed.data;
   const scope = await scopeTrader(req, q.trader);
@@ -544,8 +541,7 @@ router.get("/trades/days", asyncHandler(async (req, res): Promise<void> => {
 router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
   const parsed = CreateTradeBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw parsed.error;
   }
   const skipChecklist = req.query.skipChecklist === "true" || req.body?.skipChecklist === true;
   const submittedResponseId = typeof req.body?.checklistResponseId === "number" ? req.body.checklistResponseId : null;
@@ -563,29 +559,14 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
       .where(eq(preTradeChecklistResponsesTable.id, submittedResponseId))
       .limit(1);
     if (!row) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_INVALID_ID",
-        message: `Checklist response #${submittedResponseId} not found.`,
-      });
-      return;
+      throw new AppError("CHECKLIST_INVALID_ID", 422, undefined, { responseId: submittedResponseId });
     }
     if (row.ticker.toUpperCase() !== parsed.data.ticker.toUpperCase() || row.tradeDate !== parsed.data.date) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_MISMATCH",
-        message: `Checklist response #${submittedResponseId} does not match this trade (ticker/date).`,
-      });
-      return;
+      throw new AppError("CHECKLIST_MISMATCH", 422, undefined, { responseId: submittedResponseId });
     }
     const traderClaimed = parsed.data.trader ?? null;
     if (row.trader && traderClaimed && row.trader !== traderClaimed) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_MISMATCH",
-        message: `Checklist response #${submittedResponseId} belongs to a different trader.`,
-      });
-      return;
+      throw new AppError("CHECKLIST_MISMATCH", 422, undefined, { responseId: submittedResponseId });
     }
     validatedChecklist = { id: row.id, passed: row.passed };
   } else if (!skipChecklist) {
@@ -596,20 +577,10 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
     });
   }
   if (!skipChecklist && !validatedChecklist) {
-    res.status(422).json({
-      error: "Pre-trade checklist required",
-      code: "CHECKLIST_REQUIRED",
-      message: "Complete the pre-trade checklist before saving this trade. Pass skipChecklist=true to override (curator only).",
-    });
-    return;
+    throw new AppError("CHECKLIST_REQUIRED", 422);
   }
   if (!skipChecklist && validatedChecklist && !validatedChecklist.passed) {
-    res.status(422).json({
-      error: "Pre-trade checklist did not pass",
-      code: "CHECKLIST_NOT_PASSED",
-      message: `Checklist response #${validatedChecklist.id} is recorded as failed (passed=false). Re-complete the checklist with all required items checked, or pass skipChecklist=true to override (curator only).`,
-    });
-    return;
+    throw new AppError("CHECKLIST_NOT_PASSED", 422, undefined, { responseId: validatedChecklist.id });
   }
   const insertData: Record<string, unknown> = { ...parsed.data };
   // Canonical result code on write (win / loss / be / open), never a synonym (ARCHITECTURE.md §3.5).
@@ -646,8 +617,7 @@ router.post("/trades", asyncHandler(async (req, res): Promise<void> => {
 router.get("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   const params = GetTradeParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw params.error;
   }
   const [trade] = await db.select().from(tradesTable).where(and(eq(tradesTable.id, params.data.id), isNull(tradesTable.deletedAt)));
   if (!trade) {
@@ -655,23 +625,18 @@ router.get("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   }
   // Another trader's trade: via the matrix (trades.read.team), or because it is an example of a setup the viewer
   // reads (the playbook's «Открыть сделку»). Either way a non-staff viewer gets its $ redacted.
-  if (await forbiddenFor(req, "trades.read.team", trade.trader ?? null) && !(await isReadableExampleTrade(req, trade.id))) {
-    res.status(403).json({ error: "Можно просматривать только свои трейды" });
-    return;
-  }
+  if (await forbiddenFor(req, "trades.read.team", trade.trader ?? null) && !(await isReadableExampleTrade(req, trade.id))) throw new AppError("OWN_TRADES_ONLY");
   res.json(redactTradeRow(GetTradeResponse.parse(toTradeResponseShape(trade)), await loadMoneyViewer(req)));
 }));
 
 router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   const params = UpdateTradeParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw params.error;
   }
   const parsed = UpdateTradeBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
+    throw parsed.error;
   }
   const skipChecklist = req.query.skipChecklist === "true" || req.body?.skipChecklist === true;
   const ENTRY_DECISION_FIELDS = ["ticker", "date", "side", "setup", "entry", "stop", "eventType"] as const;
@@ -683,10 +648,7 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   if (!existing) {
     throw notFound("TRADE_NOT_FOUND");
   }
-  if (await forbiddenFor(req, "trades.write.any", existing.trader)) {
-    res.status(403).json({ error: "Можно редактировать только свои трейды" });
-    return;
-  }
+  if (await forbiddenFor(req, "trades.write.any", existing.trader)) throw new AppError("OWN_TRADES_ONLY");
   // Broker-imported trades: the entry already happened at the broker, a pre-trade checklist cannot be filled in
   // retroactively. Post-hoc classification (setup / event type / a reference stop for R) is review, not an entry
   // decision — same as setups-auto/accept, which writes trades.setup directly. Broker-owned fields still go through the gate.
@@ -706,20 +668,10 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
         trader: existing.trader ?? null,
       }));
     if (!effective) {
-      res.status(422).json({
-        error: "Pre-trade checklist required",
-        code: "CHECKLIST_REQUIRED",
-        message: "This trade has no linked checklist response. Complete one or pass skipChecklist=true to override (curator only). The gate fires only when entry-decision fields (ticker/date/side/setup/entry/stop/eventType) are touched; updating notes/conclusion/screenshots is unrestricted.",
-      });
-      return;
+      throw new AppError("CHECKLIST_REQUIRED", 422);
     }
     if (!effective.passed) {
-      res.status(422).json({
-        error: "Pre-trade checklist did not pass",
-        code: "CHECKLIST_NOT_PASSED",
-        message: `Checklist response #${effective.id} is recorded as failed (passed=false). Re-complete the checklist or pass skipChecklist=true to override (curator only).`,
-      });
-      return;
+      throw new AppError("CHECKLIST_NOT_PASSED", 422, undefined, { responseId: effective.id });
     }
   }
   const updateData: Record<string, unknown> = { ...parsed.data };
@@ -762,14 +714,10 @@ router.patch("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
 router.delete("/trades/:id", asyncHandler(async (req, res): Promise<void> => {
   const params = DeleteTradeParams.safeParse(req.params);
   if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
+    throw params.error;
   }
   const [owner] = await db.select({ trader: tradesTable.trader }).from(tradesTable).where(eq(tradesTable.id, params.data.id));
-  if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) {
-    res.status(403).json({ error: "Можно удалять только свои трейды" });
-    return;
-  }
+  if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) throw new AppError("OWN_TRADES_ONLY");
   const [trade] = await db
     .update(tradesTable)
     .set({ deletedAt: new Date() })
@@ -787,14 +735,14 @@ router.post("/trades/:id/restore", asyncHandler(async (req, res): Promise<void> 
   const id = Number(req.params.id);
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   const [owner] = await db.select({ trader: tradesTable.trader }).from(tradesTable).where(eq(tradesTable.id, id));
-  if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) { res.status(403).json({ error: "Можно восстанавливать только свои трейды" }); return; }
+  if (owner && (await forbiddenFor(req, "trades.write.any", owner.trader))) throw new AppError("OWN_TRADES_ONLY");
   const [trade] = await db
     .update(tradesTable)
     .set({ deletedAt: null })
     .where(eq(tradesTable.id, id))
     .returning();
   if (!trade) throw notFound("TRADE_NOT_FOUND");
-  logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: `${trade.ticker} (восстановлен)`, trader: trade.trader ?? undefined });
+  logActivity({ action: "created", section: "trades", entityId: String(trade.id), entityTitle: activityTitle("trade_restored", { ticker: trade.ticker }), trader: trade.trader ?? undefined, params: { titleKey: "trade_restored", ticker: trade.ticker } });
   invalidateDashboardCache();
   res.json({ success: true });
 }));
@@ -816,41 +764,26 @@ function splitTags(s: string | null | undefined): string[] {
 router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
   const b = (req.body ?? {}) as Record<string, unknown>;
   const action = b.action as BulkAction;
-  if (typeof action !== "string" || !(BULK_ACTIONS as readonly string[]).includes(action)) {
-    res.status(400).json({ error: `action must be one of: ${BULK_ACTIONS.join(", ")}` });
-    return;
-  }
+  if (typeof action !== "string" || !(BULK_ACTIONS as readonly string[]).includes(action)) throw new AppError("INVALID_FIELD", undefined, { field: "action" });
   const ids = Array.isArray(b.ids)
     ? Array.from(new Set(b.ids.filter((n): n is number => typeof n === "number" && Number.isInteger(n) && n > 0)))
     : [];
-  if (ids.length === 0 || ids.length > BULK_MAX_IDS) {
-    res.status(400).json({ error: `ids must contain 1..${BULK_MAX_IDS} positive integers` });
-    return;
-  }
+  if (ids.length === 0 || ids.length > BULK_MAX_IDS) throw new AppError("TOO_MANY", undefined, { field: "ids", max: BULK_MAX_IDS });
   let tags: string[] = [];
   if (action === "addTags" || action === "removeTags") {
     tags = Array.isArray(b.tags)
       ? Array.from(new Set(b.tags.filter((t): t is string => typeof t === "string").map((t) => t.replace(/,/g, " ").trim().slice(0, 40)).filter(Boolean)))
       : [];
-    if (tags.length === 0 || tags.length > 20) {
-      res.status(400).json({ error: "tags must contain 1..20 non-empty strings" });
-      return;
-    }
+    if (tags.length === 0 || tags.length > 20) throw new AppError("INVALID_FIELD", undefined, { field: "tags" });
   }
   let result: string | null = null;
   if (action === "setResult") {
-    if (typeof b.result !== "string" || !(BULK_RESULTS as readonly string[]).includes(b.result)) {
-      res.status(400).json({ error: `result must be one of: ${BULK_RESULTS.join(", ")}` });
-      return;
-    }
+    if (typeof b.result !== "string" || !(BULK_RESULTS as readonly string[]).includes(b.result)) throw new AppError("INVALID_FIELD", undefined, { field: "result" });
     result = b.result;
   }
   let setup: string | null = null;
   if (action === "setSetup") {
-    if (b.setup !== null && (typeof b.setup !== "string" || b.setup.trim().length > 120)) {
-      res.status(400).json({ error: "setup must be a string (≤120) or null" });
-      return;
-    }
+    if (b.setup !== null && (typeof b.setup !== "string" || b.setup.trim().length > 120)) throw new AppError("INVALID_FIELD", undefined, { field: "setup" });
     setup = typeof b.setup === "string" && b.setup.trim() ? b.setup.trim() : null;
   }
 
@@ -890,7 +823,8 @@ router.post("/trades/bulk", asyncHandler(async (req, res): Promise<void> => {
       action: action === "delete" ? "deleted" : action === "restore" ? "created" : "updated",
       section: "trades",
       entityId: targetIds.join(","),
-      entityTitle: `${targetIds.length} трейд(ов) · массово`,
+      entityTitle: activityTitle("trades_bulk", { count: targetIds.length }),
+      params: { titleKey: "trades_bulk", count: targetIds.length },
       trader: req.authUser?.name,
       details: action === "setResult" ? `result=${result}` : action === "setSetup" ? `setup=${setup ?? "—"}` : tags.length ? `${action}: ${tags.join(", ")}` : action,
     });

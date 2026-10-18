@@ -4,9 +4,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { cn } from "@/lib/utils";
 import type { Suggestion, SuggestionsResponse } from "./api";
-import { type Rule, ifNotPhrase, isApplied } from "./rules";
+import { type Rule, chipLabel, ifNotPhrase, isApplied } from "./rules";
 
 /**
  * Top of the simulator: the 3–5 best single rules found by the server grid search, as cards
@@ -26,11 +27,12 @@ export function SuggestionCards({
   periodLabel: string;
   onToggle: (s: Suggestion, applied: boolean) => void;
 }) {
+  const { t } = whatIfI18n.useT();
   if (isLoading || !data) {
     return (
       <div className="grid grid-cols-[repeat(auto-fill,minmax(16rem,1fr))] gap-[var(--grid-gap)]" aria-busy="true">
         {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
-        <span className="sr-only" role="status">Ищем правила, которые дали бы больше всего…</span>
+        <span className="sr-only" role="status">{t("suggestions.searching")}</span>
       </div>
     );
   }
@@ -40,8 +42,8 @@ export function SuggestionCards({
         <EmptyState
           compact
           icon={Lightbulb}
-          title="Нет простого «если бы», которое заметно помогло бы"
-          description="Ни одно правило не улучшило результат за период. Попробуй период длиннее или собери свой сценарий ниже."
+          title={t("suggestions.emptyTitle")}
+          description={t("suggestions.emptyHint")}
         />
       </div>
     );
@@ -51,6 +53,7 @@ export function SuggestionCards({
       {data.suggestions.slice(0, 5).map((s, i) => {
         const applied = isApplied(rules, s.rule);
         const weak = s.robust === false;
+        const name = chipLabel(s.rule);
         return (
           <article
             key={i}
@@ -68,22 +71,22 @@ export function SuggestionCards({
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button type="button" className="inline-flex items-center gap-1 underline decoration-dotted underline-offset-2 hover:text-foreground">
-                    от {fmtUsd(s.ci.lo, { signed: true, decimals: "auto" })} до {fmtUsd(s.ci.hi, { signed: true, decimals: "auto" })}
+                    {t("suggestions.range", { lo: fmtUsd(s.ci.lo, { signed: true, decimals: "auto" }), hi: fmtUsd(s.ci.hi, { signed: true, decimals: "auto" }) })}
                     <Info className="h-3 w-3" aria-hidden="true" />
                   </button>
                 </TooltipTrigger>
                 <TooltipContent side="bottom" className="max-w-xs text-xs">
-                  Диапазон, в который с вероятностью 95% попадает эффект, если перемешать торговые дни (бутстреп). Если нижняя граница выше нуля — это устойчивый результат, а не случайность.
+                  {t("suggestions.rangeHint")}
                 </TooltipContent>
               </Tooltip>
               <span aria-hidden="true">·</span>
-              <span>убирает {commonI18n.t("units.trades", { count: s.excluded })}</span>
+              <span>{t("suggestions.removes", { trades: commonI18n.t("units.trades", { count: s.excluded }) })}</span>
             </div>
             <div className="mt-auto flex items-center justify-between gap-2 pt-1">
               {weak ? (
-                <Pill tone="warn" title="Диапазон эффекта захватывает ноль: может быть случайностью">слабый сигнал</Pill>
+                <Pill tone="warn" title={t("suggestions.weakHint")}>{t("suggestions.weak")}</Pill>
               ) : (
-                <Pill tone="up" title="Нижняя граница диапазона выше нуля">устойчиво</Pill>
+                <Pill tone="up" title={t("suggestions.robustHint")}>{t("suggestions.robust")}</Pill>
               )}
               <button
                 type="button"
@@ -95,10 +98,11 @@ export function SuggestionCards({
                     ? "bg-[hsl(var(--primary)/0.15)] text-primary hover:bg-[hsl(var(--primary)/0.22)]"
                     : "bg-primary-solid text-primary-foreground hover:opacity-90",
                 )}
-                aria-label={applied ? `Убрать из сценария: ${s.label}` : `Применить: ${s.label}`}
+                aria-label={applied ? t("suggestions.removeAria", { label: name }) : t("suggestions.applyAria", { label: name })}
               >
                 {applied ? <Check className="h-4 w-4" aria-hidden="true" /> : <Plus className="h-4 w-4" aria-hidden="true" />}
-                {applied ? "Применено" : "Применить"}
+                {applied ? t("suggestions.applied") : t("suggestions.apply")}
+
               </button>
             </div>
           </article>

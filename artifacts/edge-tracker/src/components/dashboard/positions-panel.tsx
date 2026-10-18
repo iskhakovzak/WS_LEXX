@@ -5,20 +5,20 @@ import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import { shortDate } from "./fmt";
-import { fmtCount, fmtPrice, fmtR, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtCount, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import type { DashboardToday, Horizon, OpenPosition } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { HORIZON_LABEL as TRADES_HORIZON_LABEL } from "@/components/shared/trade-labels";
 
-export const HORIZON_LABEL: Record<Horizon, string> = {
-  intraday: "Интрадей",
-  overnight: "Овернайт",
-  swing: "Свинг",
-};
+/** Horizon code → label (current language); the trades area owns the labels. */
+export const HORIZON_LABEL: Record<Horizon, string> = TRADES_HORIZON_LABEL;
 
 const HORIZON_TONE = { intraday: "accent", overnight: "purple", swing: "warn" } as const;
 
 
 function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: boolean; today: string }) {
+  const { t } = dashboardI18n.useT();
   const isShort = (p.side ?? "").toLowerCase().startsWith("s");
   const eventSoon = p.nextEvent && p.nextEvent.date <= today.slice(0, 10) ? "today" : p.nextEvent ? "soon" : null;
   return (
@@ -30,7 +30,7 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
           </Link>
           {p.side && (
             <Pill tone={isShort ? "down" : "up"} className="px-1.5 text-2xs">
-              {isShort ? "Шорт" : "Лонг"}
+              {isShort ? commonI18n.t("trading.short") : commonI18n.t("trading.long")}
             </Pill>
           )}
           {showTrader && p.trader && <span className="truncate text-xs text-muted-foreground">{p.trader}</span>}
@@ -38,17 +38,17 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
             <Link
               href={links.events(p.ticker)}
               className={cn("inline-flex items-center gap-0.5 rounded text-2xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring", eventSoon === "today" ? "text-down" : "text-muted-foreground")}
-              title={`Ближайшее событие по ${p.ticker}: ${p.nextEvent.type ?? "событие"} ${p.nextEvent.date}`}
+              title={t("positions.nextEvent", { ticker: p.ticker, type: p.nextEvent.type ?? t("positions.eventFallback"), date: p.nextEvent.date })}
             >
               <CalendarClock className="h-3 w-3" aria-hidden="true" />
-              {p.nextEvent.type ?? "событие"} {shortDate(p.nextEvent.date)}
+              {p.nextEvent.type ?? t("positions.eventFallback")} {shortDate(p.nextEvent.date)}
             </Link>
           )}
         </div>
         <span className="text-right text-sm tabular-nums">
-          {p.daysHeld === 0 ? "сегодня" : `${commonI18n.t("units.days", { count: p.daysHeld })}`}
+          {p.daysHeld === 0 ? t("positions.today") : commonI18n.t("units.days", { count: p.daysHeld })}
         </span>
-        <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block" title="Вход → стоп">
+        <span className="hidden text-right text-xs tabular-nums text-muted-foreground sm:block" title={t("positions.entryStop")}>
           {p.entry != null || p.stop != null ? (
             <>
               {fmtPrice(p.entry)} <span aria-hidden="true">→</span> {fmtPrice(p.stop)}
@@ -58,13 +58,13 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
             "—"
           )}
         </span>
-        <span className="hidden text-right text-sm tabular-nums sm:block">{p.qty != null ? `${fmtCount(p.qty)} шт` : "—"}</span>
+        <span className="hidden text-right text-sm tabular-nums sm:block">{p.qty != null ? t("positions.shares", { count: fmtCount(p.qty) }) : "—"}</span>
         <span className="hidden text-right text-sm tabular-nums sm:block">
           {p.riskUsd != null ? (
             <span className="text-down">{fmtUsd(-Math.abs(p.riskUsd), { signed: true })}</span>
           ) : (
-            <span className="text-muted-foreground" title="Риск $ не указан: нет стопа или объёма">
-              риск —
+            <span className="text-muted-foreground" title={t("positions.noRiskTitle")}>
+              {t("positions.noRisk")}
             </span>
           )}
         </span>
@@ -74,6 +74,7 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
 }
 
 export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
+  const { t } = dashboardI18n.useT();
   // Shown only when something is actually open — no empty block on a flat day.
   if (!data || !data.positions || data.positions.length === 0) return null;
 
@@ -91,19 +92,19 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
 
   return (
     <Panel
-      title="Открытые позиции"
+      title={t("positions.title")}
       icon={Moon}
-      description={team ? "Открытые позиции команды" : "Ваши открытые позиции"}
+      description={team ? t("positions.team") : t("positions.mine")}
       actions={
         <div className="flex flex-wrap items-center gap-1.5">
           {carried.length > 0 && (
-            <span title="Суммарный плановый риск переносимых позиций (до стопа)">
-              <Pill tone="down">Риск на ночь {fmtUsd(-Math.abs(carriedRisk), { signed: true })}</Pill>
+            <span title={t("positions.carriedRiskTitle")}>
+              <Pill tone="down">{t("positions.carriedRisk", { amount: fmtUsd(-Math.abs(carriedRisk), { signed: true }) })}</Pill>
             </span>
           )}
           {!team && (
             <Link href={links.risk(data.viewer.name)} className="text-xs font-medium text-primary hover:underline">
-              Риск-деск
+              {t("attention.riskDesk")}
             </Link>
           )}
         </div>
@@ -113,7 +114,7 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
         {split && split.filter((h) => h.trades > 0).length > 1 && (
           <div>
             <div className="micro-label mb-2" title={KPI_FORMULAS.netPnl}>
-              Реализовано сегодня по горизонту · нетто
+              {t("positions.realizedByHorizon")}
             </div>
             <div className="grid grid-cols-3 gap-2">
               {split.map((h) => {
@@ -127,7 +128,7 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
                     <div className="truncate text-2xs text-muted-foreground">
                       {commonI18n.t("units.trades", { count: h.trades })}
                       {val != null && h.trades > 0 ? ` · ${fmtR(h.r)}` : ""}
-                      {h.fees ? ` · комиссии ${fmtUsd(-Math.abs(h.fees), { signed: true })}` : ""}
+                      {h.fees ? ` · ${t("positions.fees", { amount: fmtUsd(-Math.abs(h.fees), { signed: true }) })}` : ""}
                     </div>
                   </div>
                 );
@@ -140,8 +141,8 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
           <EmptyState
             icon={Layers}
             className="py-6"
-            title="Нет открытых позиций"
-            description="Сделки со статусом «открыта» появятся здесь с горизонтом, днями в позиции и риском."
+            title={t("positions.emptyTitle")}
+            description={t("positions.emptyHint")}
           />
         ) : (
           <div className="flex flex-col gap-3">
@@ -154,10 +155,10 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
                     </Pill>
                   </Link>
                   <span className="hidden text-2xs text-muted-foreground sm:grid sm:w-[386px] sm:grid-cols-[72px_110px_84px_96px] sm:gap-x-3 sm:text-right">
-                    <span>В позиции</span>
-                    <span>Вход → стоп</span>
-                    <span>Объём</span>
-                    <span>Риск $</span>
+                    <span className="truncate" title={t("positions.inPosition")}>{t("positions.inPosition")}</span>
+                    <span className="truncate" title={t("positions.entryStop")}>{t("positions.entryStop")}</span>
+                    <span className="truncate" title={t("positions.volume")}>{t("positions.volume")}</span>
+                    <span className="truncate" title={t("positions.riskUsd")}>{t("positions.riskUsd")}</span>
                   </span>
                 </div>
                 <ul className="divide-y divide-border/50">
@@ -169,9 +170,9 @@ export function PositionsPanel({ data }: { data: DashboardToday | undefined }) {
             ))}
             {(noRisk > 0 || staleIntraday.length > 0) && (
               <p className="px-2 text-xs text-muted-foreground">
-                {noRisk > 0 && `${noRisk} ${pluralRu(noRisk, "позиция", "позиции", "позиций")} на ночь без указанного риска $ (нет стопа или объёма). `}
+                {noRisk > 0 && `${t("positions.noRiskCount", { count: noRisk })} `}
                 {staleIntraday.length > 0 &&
-                  `Интрадей-позиция ${staleIntraday[0].ticker} открыта с ${shortDate(staleIntraday[0].date)} — закройте или смените горизонт на овернайт/свинг.`}
+                  t("positions.staleIntraday", { ticker: staleIntraday[0].ticker, date: shortDate(staleIntraday[0].date) })}
               </p>
             )}
           </div>

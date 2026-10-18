@@ -1,35 +1,18 @@
 /**
  * Rule model of the «Что если» simulator. A scenario is a list of API rules (`Rule[]`, at most one per type —
  * the server engine api-server/src/lib/whatIf.ts ignores duplicates), shown as chips. Everything here is pure:
- * merging / removing rules, Russian phrasing, URL encoding and a client-side preview of how many trades a single
+ * merging / removing rules, phrasing (whatIf namespace), URL encoding and a client-side preview of how many trades a single
  * rule touches (a mirror of the engine's per-rule logic, used only for the live counter — the scenario itself is
  * always computed by the server).
  */
 import { fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 
 
-export type Side = "long" | "short";
+import { GRADES, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
+export { GRADES, encodeRules, type CommissionPlan, type Grade, type Rule, type Side } from "@/components/shared/what-if-rules";
 
-export type CommissionPlan = { type: "commissionPlan"; perShare: number; minPerOrder: number; ecnPerShare: number; keepRegulatory?: boolean };
-
-export type Rule =
-  | { type: "dailyLossLimit"; usd: number }
-  | { type: "maxTradesPerDay"; n: number }
-  | { type: "stopAfterLosses"; n: number }
-  | { type: "timeWindow"; from?: string | null; to?: string | null }
-  | { type: "priceRange"; min?: number | null; max?: number | null }
-  | { type: "minHold"; seconds: number }
-  | { type: "excludeTickers"; tickers: string[] }
-  | { type: "excludeSide"; side: Side }
-  | CommissionPlan
-  | { type: "capLoss"; usd: number }
-  | { type: "sizeRange"; min?: number | null; max?: number | null }
-  | { type: "afterLoss"; minutes: number }
-  | { type: "excludeSetups"; setups: string[] }
-  | { type: "minGrade"; grade: Grade };
-
-export const GRADES = ["A+", "A", "B", "C"] as const;
-export type Grade = (typeof GRADES)[number];
 /** 0 = best (A+); null when not a known grade. Mirror of whatIf.gradeRank. */
 export function gradeRank(g: string | null | undefined): number | null {
   const i = GRADES.indexOf(String(g ?? "").trim().toUpperCase() as Grade);
@@ -65,9 +48,9 @@ export type PreviewTrade = {
 /* ─── Formatting helpers ─────────────────────────────────────────────────── */
 
 export function fmtHold(seconds: number): string {
-  if (seconds < 120) return `${Math.round(seconds)} с`;
-  if (seconds < 7200) return `${Math.round(seconds / 60)} мин`;
-  return `${Math.round(seconds / 3600)} ч`;
+  if (seconds < 120) return commonI18n.t("time.secondsShort", { count: Math.round(seconds) });
+  if (seconds < 7200) return commonI18n.t("time.minutesShort", { count: Math.round(seconds / 60) });
+  return commonI18n.t("time.hoursShort", { count: Math.round(seconds / 3600) });
 }
 
 /* ─── Scenario list operations ───────────────────────────────────────────── */
@@ -145,75 +128,67 @@ function normalise(r: Rule): Rule {
   }
 }
 
-/* ─── Russian phrasing ───────────────────────────────────────────────────── */
+/* ─── Phrasing (whatIf namespace, read at call time) ─────────────────────── */
+
+const usd = (v: number) => fmtUsd(v, { decimals: "trim" });
 
 /** Short chip label. */
 export function chipLabel(r: Rule): string {
+  const t = whatIfI18n.t;
   switch (r.type) {
-    case "dailyLossLimit": return `Стоп дня на −${fmtUsd(r.usd, { decimals: "trim" })}`;
-    case "maxTradesPerDay": return `Не больше ${r.n} сделок в день`;
-    case "stopAfterLosses": return `Стоп после ${r.n} убытков подряд`;
-    case "timeWindow": return r.from && r.to ? `Входы ${r.from}–${r.to}` : r.from ? `Не входить раньше ${r.from}` : r.to ? `Не входить после ${r.to}` : "Окно времени";
-    case "priceRange": return r.min != null && r.max != null ? `Цена $${r.min}–$${r.max}` : r.min != null ? `Без акций дешевле $${r.min}` : r.max != null ? `Без акций дороже $${r.max}` : "Цена";
-    case "minHold": return `Без сделок короче ${fmtHold(r.seconds)}`;
-    case "excludeTickers": return `Без ${r.tickers.join(", ")}`;
-    case "excludeSide": return r.side === "long" ? "Без лонгов" : "Без шортов";
-    case "commissionPlan": return `Тариф $${r.perShare}/акц. · мин. $${r.minPerOrder}`;
-    case "capLoss": return `Убыток сделки не больше −${fmtUsd(r.usd, { decimals: "trim" })} (оценка)`;
-    case "sizeRange": return r.min != null && r.max != null ? `Размер ${r.min}–${r.max} акц.` : r.min != null ? `Без позиций меньше ${r.min} акц.` : r.max != null ? `Без позиций больше ${r.max} акц.` : "Размер";
-    case "afterLoss": return `Пауза ${r.minutes} мин после убытка`;
-    case "excludeSetups": return `Без сетапов: ${r.setups.join(", ")}`;
-    case "minGrade": return r.grade === "A+" ? "Только A+" : `Только ${r.grade} и лучше`;
+    case "dailyLossLimit": return t("rules.chip.dailyLossLimit", { amount: usd(r.usd) });
+    case "maxTradesPerDay": return t("rules.chip.maxTradesPerDay", { count: r.n });
+    case "stopAfterLosses": return t("rules.chip.stopAfterLosses", { count: r.n });
+    case "timeWindow": return r.from && r.to ? t("rules.chip.windowBoth", { from: r.from, to: r.to }) : r.from ? t("rules.chip.windowFrom", { from: r.from }) : r.to ? t("rules.chip.windowTo", { to: r.to }) : t("rules.chip.window");
+    case "priceRange": return r.min != null && r.max != null ? t("rules.chip.priceBoth", { min: r.min, max: r.max }) : r.min != null ? t("rules.chip.priceMin", { min: r.min }) : r.max != null ? t("rules.chip.priceMax", { max: r.max }) : t("rules.chip.price");
+    case "minHold": return t("rules.chip.minHold", { hold: fmtHold(r.seconds) });
+    case "excludeTickers": return t("rules.chip.excludeTickers", { tickers: r.tickers.join(", ") });
+    case "excludeSide": return r.side === "long" ? t("rules.chip.noLongs") : t("rules.chip.noShorts");
+    case "commissionPlan": return t("rules.chip.commissionPlan", { perShare: r.perShare, min: r.minPerOrder });
+    case "capLoss": return t("rules.chip.capLoss", { amount: usd(r.usd) });
+    case "sizeRange": return r.min != null && r.max != null ? t("rules.chip.sizeBoth", { min: r.min, max: r.max }) : r.min != null ? t("rules.chip.sizeMin", { min: r.min }) : r.max != null ? t("rules.chip.sizeMax", { max: r.max }) : t("rules.chip.size");
+    case "afterLoss": return t("rules.chip.afterLoss", { minutes: r.minutes });
+    case "excludeSetups": return t("rules.chip.excludeSetups", { setups: r.setups.join(", ") });
+    case "minGrade": return r.grade === "A+" ? t("rules.chip.onlyAPlus") : t("rules.chip.minGrade", { grade: r.grade });
   }
 }
 
 /** «Если бы ты не …» — the suggestion card headline. */
 export function ifNotPhrase(r: Rule): string {
+  const t = whatIfI18n.t;
   switch (r.type) {
-    case "dailyLossLimit": return `Если бы ты останавливался, когда день уходит в −${fmtUsd(r.usd, { decimals: "trim" })}`;
-    case "maxTradesPerDay": return `Если бы ты не делал больше ${r.n} сделок в день`;
-    case "stopAfterLosses": return `Если бы ты заканчивал день после ${r.n} убытков подряд`;
+    case "dailyLossLimit": return t("rules.ifNot.dailyLossLimit", { amount: usd(r.usd) });
+    case "maxTradesPerDay": return t("rules.ifNot.maxTradesPerDay", { count: r.n });
+    case "stopAfterLosses": return t("rules.ifNot.stopAfterLosses", { count: r.n });
     case "timeWindow":
-      if (r.from && r.to) return `Если бы ты входил только с ${r.from} до ${r.to}`;
-      if (r.from) return `Если бы ты не входил раньше ${r.from}`;
-      if (r.to) return `Если бы ты не входил после ${r.to}`;
-      return "Если бы ты торговал в другое время";
+      if (r.from && r.to) return t("rules.ifNot.windowBoth", { from: r.from, to: r.to });
+      if (r.from) return t("rules.ifNot.windowFrom", { from: r.from });
+      if (r.to) return t("rules.ifNot.windowTo", { to: r.to });
+      return t("rules.ifNot.window");
     case "priceRange":
-      if (r.min != null && r.max != null) return `Если бы ты торговал только акции за $${r.min}–$${r.max}`;
-      if (r.min != null) return `Если бы ты не торговал акции дешевле $${r.min}`;
-      if (r.max != null) return `Если бы ты не торговал акции дороже $${r.max}`;
-      return "Если бы ты выбирал другие цены";
-    case "minHold": return `Если бы ты не закрывал сделки быстрее ${fmtHold(r.seconds)}`;
-    case "excludeTickers": return `Если бы ты не торговал ${r.tickers.join(", ")}`;
-    case "excludeSide": return r.side === "long" ? "Если бы ты не открывал лонги" : "Если бы ты не открывал шорты";
-    case "commissionPlan": return "Если бы у тебя был другой тариф";
-    case "capLoss": return `Если бы ты не давал сделке уйти дальше −${fmtUsd(r.usd, { decimals: "trim" })}`;
+      if (r.min != null && r.max != null) return t("rules.ifNot.priceBoth", { min: r.min, max: r.max });
+      if (r.min != null) return t("rules.ifNot.priceMin", { min: r.min });
+      if (r.max != null) return t("rules.ifNot.priceMax", { max: r.max });
+      return t("rules.ifNot.price");
+    case "minHold": return t("rules.ifNot.minHold", { hold: fmtHold(r.seconds) });
+    case "excludeTickers": return t("rules.ifNot.excludeTickers", { tickers: r.tickers.join(", ") });
+    case "excludeSide": return r.side === "long" ? t("rules.ifNot.noLongs") : t("rules.ifNot.noShorts");
+    case "commissionPlan": return t("rules.ifNot.commissionPlan");
+    case "capLoss": return t("rules.ifNot.capLoss", { amount: usd(r.usd) });
     case "sizeRange":
-      if (r.max != null && r.min == null) return `Если бы ты не брал позиции больше ${r.max} акций`;
-      if (r.min != null && r.max == null) return `Если бы ты не брал позиции меньше ${r.min} акций`;
-      return `Если бы ты держал размер ${r.min ?? 0}–${r.max ?? "∞"} акций`;
-    case "afterLoss": return `Если бы ты не входил ${r.minutes} мин после убыточной сделки`;
-    case "excludeSetups": return `Если бы ты не торговал ${r.setups.length > 1 ? "сетапы" : "сетап"} ${r.setups.join(", ")}`;
-    case "minGrade": return r.grade === "A+" ? "Если бы ты брал только сделки A+" : `Если бы ты брал только сделки ${r.grade} и лучше`;
+      if (r.max != null && r.min == null) return t("rules.ifNot.sizeMax", { max: r.max });
+      if (r.min != null && r.max == null) return t("rules.ifNot.sizeMin", { min: r.min });
+      return t("rules.ifNot.sizeBoth", { min: r.min ?? 0, max: r.max ?? "∞" });
+    case "afterLoss": return t("rules.ifNot.afterLoss", { minutes: r.minutes });
+    case "excludeSetups": return r.setups.length > 1 ? t("rules.ifNot.excludeSetups", { setups: r.setups.join(", ") }) : t("rules.ifNot.excludeSetup", { setups: r.setups.join(", ") });
+    case "minGrade": return r.grade === "A+" ? t("rules.ifNot.onlyAPlus") : t("rules.ifNot.minGrade", { grade: r.grade });
   }
 }
 
-export const REASON_LABEL: Record<string, string> = {
-  dailyLossLimit: "Стоп дня",
-  maxTradesPerDay: "Лимит сделок",
-  stopAfterLosses: "Серия убытков",
-  timeWindow: "Время входа",
-  priceRange: "Цена",
-  minHold: "Короткая",
-  excludeTickers: "Тикер",
-  excludeSide: "Сторона",
-  commissionPlan: "Тариф",
-  capLoss: "Кап убытка",
-  sizeRange: "Размер",
-  afterLoss: "После убытка",
-  excludeSetups: "Сетап",
-  minGrade: "Оценка",
-};
+/** Display name of an exclusion / change reason (rule type code); unknown codes are shown as they are. */
+export function reasonLabel(code: string): string {
+  return whatIfI18n.tryT(`rules.reason.${code}`) ?? code;
+}
 
 /* ─── URL state ──────────────────────────────────────────────────────────── */
 
@@ -222,14 +197,6 @@ const RULE_KEYS: Record<RuleType, string[]> = {
   minHold: ["seconds"], excludeTickers: ["tickers"], excludeSide: ["side"], commissionPlan: ["perShare", "minPerOrder", "ecnPerShare", "keepRegulatory"],
   capLoss: ["usd"], sizeRange: ["min", "max"], afterLoss: ["minutes"], excludeSetups: ["setups"], minGrade: ["grade"],
 };
-
-/** Rules → compact URL-safe string (base64url of JSON). Empty list → "". */
-export function encodeRules(rules: Rule[]): string {
-  if (!rules.length) return "";
-  const json = JSON.stringify(rules);
-  const b64 = typeof btoa === "function" ? btoa(unescape(encodeURIComponent(json))) : Buffer.from(json, "utf8").toString("base64");
-  return b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
 
 /** Inverse of encodeRules; drops anything that does not look like a valid rule. Never throws. */
 export function decodeRules(s: string | null | undefined): Rule[] {

@@ -15,6 +15,8 @@ import type {
   TickerHistory, TradeRow, WatchItem,
 } from "./types";
 import { watchCatalyst } from "./types";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
 
 /** New endpoints answer 404 until the API is rebuilt: never retry those (old-API fallback, phase E removes). */
 const retryUnless404 = (count: number, err: unknown) => !isNotFound(err) && count < 1;
@@ -192,13 +194,13 @@ export function useAddToWatchlist() {
     },
     onError: (e, o, ctx) => {
       if (ctx?.prev) qc.setQueryData(KEYS.watchlist(), ctx.prev);
-      toast({ title: `Не удалось добавить ${o.ticker}`, description: humanizeApiError(e), variant: "destructive" });
+      toast({ title: offeringsI18n.t("toast.addFailed", { ticker: o.ticker }), description: humanizeApiError(e), variant: "destructive" });
     },
     onSuccess: (_d, o) => {
       toast({
-        title: `${o.ticker} → вотчлист «Сегодня»`,
+        title: offeringsI18n.t("toast.addedWatch", { ticker: o.ticker }),
         description: watchCatalyst(o),
-        action: createElement(ToastAction, { altText: "Открыть в вотчлисте", onClick: () => navigate(links.watchlist(o.ticker)) }, "Открыть") as unknown as ToastActionElement,
+        action: createElement(ToastAction, { altText: offeringsI18n.t("toast.openInWatch"), onClick: () => navigate(links.watchlist(o.ticker)) }, commonI18n.t("actions.open")) as unknown as ToastActionElement,
       });
     },
     onSettled: () => qc.invalidateQueries({ queryKey: KEYS.watchlist() }),
@@ -218,17 +220,17 @@ export function useAddToPlan() {
       const draft = docToDraft(cur.plan?.doc);
       const t = o.ticker.toUpperCase();
       if (draft.inPlay.some((i) => i.ticker.trim().toUpperCase() === t)) return { already: true, date };
-      if (draft.inPlay.length >= MAX_TICKERS) throw new Error(`В плане уже ${MAX_TICKERS} тикеров`);
+      if (draft.inPlay.length >= MAX_TICKERS) throw new Error(offeringsI18n.t("toast.planFull", { count: MAX_TICKERS }));
       draft.inPlay.push(emptyTicker({ ticker: t, catalyst: watchCatalyst(o), bias: "bear" }));
       await gpApi.saveMy(date, { ...draftToDoc(draft), status: cur.plan?.status ?? "draft" });
       return { already: false, date };
     },
     onSuccess: (r, { o }) => {
       void qc.invalidateQueries({ queryKey: gpKeys.my(r.date) });
-      toast({ title: r.already ? `${o.ticker} уже в плане` : `${o.ticker} добавлен в план дня`, description: r.already ? undefined : watchCatalyst(o) });
+      toast({ title: r.already ? offeringsI18n.t("toast.alreadyInPlan", { ticker: o.ticker }) : offeringsI18n.t("toast.addedPlan", { ticker: o.ticker }), description: r.already ? undefined : watchCatalyst(o) });
     },
     onError: (e, { o }) => {
-      toast({ title: `Не удалось добавить ${o.ticker} в план`, description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: offeringsI18n.t("toast.addPlanFailed", { ticker: o.ticker }), description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     },
   });
 }

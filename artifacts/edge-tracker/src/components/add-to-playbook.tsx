@@ -19,6 +19,9 @@ import { useAuth } from "@/contexts/auth-context";
 import { http } from "@/lib/api/http";
 import { humanizeApiError } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
+import { SOURCE_LABELS } from "@/components/playbook/model";
 
 const LAST_FOLDER_KEY = "ws_lexx_playbook_last_folder";
 function readLastFolder(): string {
@@ -61,15 +64,6 @@ type PlaybookEntry = {
   sourceId: number | null;
 };
 
-const SOURCE_LABEL: Record<PlaybookPayload["sourceType"], string> = {
-  trade: "Сделка",
-  research: "Ресёрч",
-  event: "Событие",
-  watchlist: "Вотчлист",
-  trade_idea: "Идея",
-  dailyfeed: "Дневная лента",
-};
-
 /**
  * «В плейбук».
  * For a trade (sourceType "trade") it opens a 1–2-click popover: pick a setup (suggested by auto-classification,
@@ -81,7 +75,7 @@ export function AddToPlaybookButton({
   payload,
   size = "sm",
   className,
-  label = "В плейбук",
+  label,
 }: {
   payload: PlaybookPayload;
   size?: "sm" | "icon";
@@ -90,6 +84,7 @@ export function AddToPlaybookButton({
   /** Optional: trigger text for size="sm". */
   label?: string;
 }) {
+  const { t } = playbookDialogsI18n.useT();
   const [open, setOpen] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const quick = payload.sourceType === "trade" && Number.isSafeInteger(payload.sourceId) && payload.sourceId > 0;
@@ -98,19 +93,19 @@ export function AddToPlaybookButton({
   const trigger = size === "icon" ? (
     <button
       type="button"
-      aria-label="Добавить в плейбук"
+      aria-label={t("add.aria")}
       onClick={onTrigger}
       className={cn(
         "grid h-8 w-8 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
         className,
       )}
-      title="Добавить в плейбук"
+      title={t("add.aria")}
     >
       <BookOpen className="h-4 w-4" aria-hidden="true" />
     </button>
   ) : (
     <Button type="button" variant="outline" size="sm" onClick={onTrigger} className={className}>
-      <BookOpen aria-hidden="true" /> {label}
+      <BookOpen aria-hidden="true" /> {label ?? t("add.button")}
     </Button>
   );
 
@@ -146,6 +141,7 @@ export function AddToPlaybookButton({
 
 /** Full «Новый сетап» dialog for any source (also opened by «Новый сетап из сделки» from the trades list). */
 export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boolean; onOpenChange: (v: boolean) => void; payload: PlaybookPayload }) {
+  const { t } = playbookDialogsI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const { user } = useAuth();
@@ -278,15 +274,15 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
       onOpenChange(false);
       const id = created && typeof created.id === "number" ? created.id : null;
       toast({
-        title: "Добавлено в плейбук",
-        description: targetFolder ? `Папка: ${targetFolder}` : "Без папки",
+        title: t("add.added"),
+        description: targetFolder ? t("add.folder", { folder: targetFolder }) : commonI18n.t("fields.noFolder"),
         action: id ? (
-          <ToastAction altText="Открыть сетап в плейбуке" onClick={() => navigate(`/playbook?id=${id}`)}>Открыть</ToastAction>
+          <ToastAction altText={t("add.openAlt")} onClick={() => navigate(`/playbook?id=${id}`)}>{t("add.open")}</ToastAction>
         ) : undefined,
       });
     },
     onError: (e) => {
-      toast({ title: "Не удалось добавить в плейбук", description: humanizeApiError(e), variant: "destructive" });
+      toast({ title: t("add.failed"), description: humanizeApiError(e), variant: "destructive" });
     },
   });
 
@@ -309,10 +305,10 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
             <span className="grid h-8 w-8 place-items-center rounded-xl bg-primary/15 text-primary">
               <BookOpen className="h-4 w-4" aria-hidden="true" />
             </span>
-            Добавить в плейбук
+            {t("add.title")}
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            Сохраните сетап, чтобы разбирать и повторять его.
+            {t("add.description")}
           </DialogDescription>
         </DialogHeader>
 
@@ -323,7 +319,7 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
               <div className="relative h-16 w-24 shrink-0 overflow-hidden rounded-xl border border-[var(--field-border)]">
                 <img
                   src={previewUrl}
-                  alt="Скриншот, который будет перенесён"
+                  alt={t("add.shotAlt")}
                   className="h-full w-full object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }}
                 />
@@ -334,17 +330,17 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
             ) : null}
             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
               <div className="flex flex-wrap items-center gap-1.5">
-                <Pill tone="neutral">{SOURCE_LABEL[payload.sourceType] ?? "Источник"} #{payload.sourceId}</Pill>
+                <Pill tone="neutral">{SOURCE_LABELS[payload.sourceType] ?? t("add.source")} #{payload.sourceId}</Pill>
                 {payload.ticker && <Pill tone="accent">{payload.ticker.toUpperCase()}</Pill>}
                 {payload.setupType && <Pill tone="purple">{payload.setupType}</Pill>}
-                {payload.confidenceLevel != null && <Pill tone="neutral">Уверенность {payload.confidenceLevel}%</Pill>}
+                {payload.confidenceLevel != null && <Pill tone="neutral">{t("add.confidence", { level: payload.confidenceLevel })}</Pill>}
               </div>
               {tagList.length > 0 && (
                 <p className="truncate text-xs text-muted-foreground" title={tagList.join(", ")}>
                   {tagList.slice(0, 5).join(" · ")}{tagList.length > 5 ? ` · +${tagList.length - 5}` : ""}
                 </p>
               )}
-              {previewUrl && <p className="text-xs text-muted-foreground">Скриншоты и фундаментал будут перенесены</p>}
+              {previewUrl && <p className="text-xs text-muted-foreground">{t("add.shotsMoved")}</p>}
             </div>
           </div>
 
@@ -352,16 +348,16 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
             <div role="status" className="flex items-start gap-2 rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2 text-sm text-[hsl(var(--chart-3))]">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                Уже в плейбуке: «{duplicateSource.name}»{duplicateSource.folder ? ` · ${duplicateSource.folder}` : ""}
+                {duplicateSource.folder ? t("add.duplicateIn", { name: duplicateSource.name, folder: duplicateSource.folder }) : t("add.duplicate", { name: duplicateSource.name })}
               </span>
               <button type="button" onClick={() => openEntry(duplicateSource.id)} className="shrink-0 text-xs font-medium underline-offset-2 hover:underline">
-                Открыть
+                {t("add.open")}
               </button>
             </div>
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${fid}-name`} className="text-xs font-normal text-muted-foreground">Название сетапа</Label>
+            <Label htmlFor={`${fid}-name`} className="text-xs font-normal text-muted-foreground">{t("add.name")}</Label>
             <Input
               id={`${fid}-name`}
               value={name}
@@ -369,20 +365,20 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); save(); } }}
               aria-invalid={!name.trim() || undefined}
               aria-describedby={sameName ? `${fid}-same` : undefined}
-              placeholder="Например: Gap and Go — отчёт BMO"
+              placeholder={t("add.namePlaceholder")}
               className="h-10"
             />
             {sameName && !duplicateSource && (
               <p id={`${fid}-same`} className="text-xs text-muted-foreground">
-                В этой папке уже есть сетап с таким названием —{" "}
-                <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => openEntry(sameName.id)}>открыть</button>
-                {" "}или переименуйте.
+                {t("add.sameNameBefore")}{" "}
+                <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={() => openEntry(sameName.id)}>{t("add.sameNameOpen")}</button>
+                {" "}{t("add.sameNameAfter")}
               </p>
             )}
           </div>
 
           <fieldset className="flex flex-col gap-1.5">
-            <legend className="mb-1.5 text-xs text-muted-foreground">Папка</legend>
+            <legend className="mb-1.5 text-xs text-muted-foreground">{t("add.folderLegend")}</legend>
             {creatingFolder ? (
               <div className="flex gap-2">
                 <div className="relative min-w-0 flex-1">
@@ -391,21 +387,21 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
                     value={newFolder}
                     onChange={(e) => setNewFolder(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Escape") { e.stopPropagation(); e.preventDefault(); setCreatingFolder(false); } }}
-                    placeholder="Название новой папки"
-                    aria-label="Название новой папки"
+                    placeholder={t("add.newFolderPlaceholder")}
+                    aria-label={t("add.newFolderPlaceholder")}
                     className="h-9 pl-10"
                     maxLength={80}
                     autoFocus
                   />
                 </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => setCreatingFolder(false)} aria-label="Отменить создание папки" className="h-9 w-9">
+                <Button type="button" variant="ghost" size="icon" onClick={() => setCreatingFolder(false)} aria-label={t("add.cancelNewFolder")} title={t("add.cancelNewFolder")} className="h-9 w-9">
                   <X aria-hidden="true" />
                 </Button>
               </div>
             ) : (
-              <div className="flex max-h-[min(30dvh,200px)] flex-wrap gap-1.5 overflow-y-auto p-0.5" role="radiogroup" aria-label="Папка">
-                <FolderChip active={!folder} onClick={() => setFolder("")} icon={Inbox}>Без папки</FolderChip>
-                {foldersLoading && <span className="inline-flex items-center px-2 text-xs text-muted-foreground"><Loader2 className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />папки…</span>}
+              <div className="flex max-h-[min(30dvh,200px)] flex-wrap gap-1.5 overflow-y-auto p-0.5" role="radiogroup" aria-label={t("add.folderLegend")}>
+                <FolderChip active={!folder} onClick={() => setFolder("")} icon={Inbox}>{commonI18n.t("fields.noFolder")}</FolderChip>
+                {foldersLoading && <span className="inline-flex items-center px-2 text-xs text-muted-foreground"><Loader2 className="mr-1 h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("add.foldersLoading")}</span>}
                 {folders.map((f) => (
                   <FolderChip key={f} active={folder === f} onClick={() => setFolder(f)} icon={Folder}>{f}</FolderChip>
                 ))}
@@ -414,7 +410,7 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
                   onClick={() => setCreatingFolder(true)}
                   className="inline-flex min-h-8 items-center gap-1.5 rounded-full border border-dashed border-[var(--field-border)] px-3 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" /> Новая папка
+                  <FolderPlus className="h-3.5 w-3.5" aria-hidden="true" /> {t("add.newFolder")}
                 </button>
               </div>
             )}
@@ -423,14 +419,14 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
           {topLevelInFolder.length > 0 && (
             <div className="flex flex-col gap-1.5">
               <Label htmlFor={`${fid}-parent`} className="flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-                <GitBranch className="h-3.5 w-3.5" aria-hidden="true" /> Вложить в сетап (вариация)
+                <GitBranch className="h-3.5 w-3.5" aria-hidden="true" /> {t("add.parent")}
               </Label>
               <Select value={parentSetupId || "__none"} onValueChange={(v) => setParentSetupId(v === "__none" ? "" : v)}>
                 <SelectTrigger id={`${fid}-parent`} className="h-9">
-                  <SelectValue placeholder="Верхний уровень" />
+                  <SelectValue placeholder={t("add.topLevel")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="__none" className="text-muted-foreground">Верхний уровень (без родителя)</SelectItem>
+                  <SelectItem value="__none" className="text-muted-foreground">{t("add.topLevelNone")}</SelectItem>
                   {topLevelInFolder.map((e) => (
                     <SelectItem key={e.id} value={String(e.id)}>{e.name}</SelectItem>
                   ))}
@@ -440,13 +436,13 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
           )}
 
           <div className="flex flex-col gap-1.5">
-            <Label htmlFor={`${fid}-notes`} className="text-xs font-normal text-muted-foreground">Заметки</Label>
+            <Label htmlFor={`${fid}-notes`} className="text-xs font-normal text-muted-foreground">{t("add.notes")}</Label>
             <Textarea
               id={`${fid}-notes`}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               rows={3}
-              placeholder="Что сработало, триггер входа, где был стоп…"
+              placeholder={t("add.notesPlaceholder")}
               className="resize-none text-sm"
             />
           </div>
@@ -454,13 +450,13 @@ export function AddToPlaybookDialog({ open, onOpenChange, payload }: { open: boo
 
         <DialogFooter className="items-center gap-2 sm:justify-between">
           <span className="hidden items-center gap-1 text-xs text-muted-foreground sm:inline-flex">
-            <Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> сохранить
+            <Kbd>Ctrl</Kbd><Kbd>Enter</Kbd> {t("add.saveHint")}
           </span>
           <div className="flex gap-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Отмена</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{commonI18n.t("actions.cancel")}</Button>
             <Button type="button" onClick={save} disabled={!canSave} aria-busy={saveMut.isPending}>
               {saveMut.isPending && <Loader2 className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}
-              {saveMut.isPending ? "Сохраняем…" : duplicateSource ? "Добавить ещё раз" : "Сохранить"}
+              {saveMut.isPending ? t("add.saving") : duplicateSource ? t("add.addAgain") : commonI18n.t("actions.save")}
             </Button>
           </div>
         </DialogFooter>
@@ -478,6 +474,7 @@ function FolderChip({ active, onClick, icon: Icon, children }: { active: boolean
       data-active={active}
       onClick={onClick}
       className="chip inline-flex min-h-8 max-w-[220px] items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      title={typeof children === "string" ? children : undefined}
     >
       <Icon className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
       <span className="truncate">{children}</span>

@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { fmtDuration, fmtEtTimeSec } from "@/components/trade-chart-parts/chart-utils";
 import { useTradeQuality } from "./hooks";
-import { AFTER_EXIT_OPTIONS, DEFAULT_AFTER_EXIT, REASON_LABEL, type Excursion, type TradeQuality } from "./types";
+import { AFTER_EXIT_OPTIONS, DEFAULT_AFTER_EXIT, reasonLabel, type Excursion, type TradeQuality } from "./types";
+import { chartI18n } from "@/i18n/ns/chart";
 import { fmtNum, fmtPrice, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 const AFTER_EXIT_KEY = "ws.trades.quality.afterExit";
@@ -39,9 +40,15 @@ function excSeconds(e: Excursion): number {
 
 /** «через 1 мин 11 с» / «в момент входа» / «в момент выхода». */
 function whenText(seconds: number, atFill: "entry" | "exit" | null): string {
-  if (atFill === "entry") return "в момент входа";
-  if (atFill === "exit") return "в момент выхода";
-  return `через ${fmtDuration(seconds)}`;
+  if (atFill === "entry") return chartI18n.t("quality.whenEntry");
+  if (atFill === "exit") return chartI18n.t("quality.whenExit");
+  return chartI18n.t("quality.whenAfter", { dur: fmtDuration(seconds) });
+}
+
+/** «1 мин 11 с» / «в момент входа» — the same moment without «через». */
+function whenValue(seconds: number, atFill: "entry" | "exit" | null): string {
+  if (atFill) return whenText(seconds, atFill);
+  return fmtDuration(seconds);
 }
 
 /** Tone for exit efficiency: ≥0.6 good, 0.3–0.6 so-so, below — poor; negative — the exit lost more than the move gave. */
@@ -71,7 +78,8 @@ function Small({ label, value, tone = "neutral", explain }: { label: string; val
   );
 }
 
-const perShareText = (v: number, sign = 1) => `${fmtUsd(sign * v, { signed: true })}/акц.`;
+const perShareText = (v: number, sign = 1) => chartI18n.t("quality.perShare", { value: fmtUsd(sign * v, { signed: true }) });
+const perShareAbs = (v: number) => chartI18n.t("quality.perShare", { value: fmtUsd(v) });
 
 function rAndUsd(r: number | null, usd: number | null, perShare: number, sign = 1): string {
   const parts: string[] = [];
@@ -93,17 +101,24 @@ export function QualitySummaryLine({ q }: { q: TradeQuality }) {
   const eff = q.exitEfficiency;
   const capturedR = q.captured?.r;
   const mfeR = q.mfe.r;
+  const t = chartI18n.t;
+  const usdA = (v: number) => fmtUsd(v, { signed: true, decimals: "auto" });
   const text = eff == null
-    ? "Позиция ещё открыта — эффективность выхода появится после закрытия."
+    ? t("quality.stillOpen")
     : eff < 0
-      ? `Выход хуже входа: цена давала ${mfeR != null ? fmtR(mfeR) : q.mfe.usd != null ? fmtUsd(q.mfe.usd, { signed: true, decimals: "auto" }) : `${fmtUsd(q.mfe.perShare)}/акц.`} в плюс, но сделка закрыта в минус.`
-      : `Вы забрали ${fmtRate(eff)} движения: ${mfeR != null && capturedR != null ? `${fmtR(capturedR)} из ${fmtR(mfeR)} доступных` : q.captured?.usd != null && q.mfe.usd != null ? `${fmtUsd(q.captured.usd, { signed: true, decimals: "auto" })} из ${fmtUsd(q.mfe.usd, { signed: true, decimals: "auto" })} доступных` : `${fmtUsd(q.captured?.perShare ?? 0)} из ${fmtUsd(q.mfe.perShare)} на акцию`}.`;
+      ? t("quality.exitWorse", { mfe: mfeR != null ? fmtR(mfeR) : q.mfe.usd != null ? usdA(q.mfe.usd) : perShareAbs(q.mfe.perShare) })
+      : t("quality.captured", {
+          pct: fmtRate(eff),
+          detail: mfeR != null && capturedR != null ? t("quality.ofAvailable", { got: fmtR(capturedR), max: fmtR(mfeR) })
+            : q.captured?.usd != null && q.mfe.usd != null ? t("quality.ofAvailable", { got: usdA(q.captured.usd), max: usdA(q.mfe.usd) })
+            : t("quality.ofPerShare", { got: fmtUsd(q.captured?.perShare ?? 0), max: fmtUsd(q.mfe.perShare) }),
+        });
   return <p className="text-sm text-muted-foreground">{text}</p>;
 }
 
-const PARTIAL_BAR_NOTE = "Бары входа и выхода учитываются частично: внутри бара известен только путь «открытие → цена исполнения → закрытие», поэтому минимум/максимум, напечатанные до входа или после выхода, не считаются.";
 
 export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: { trade: Trade; afterExit: number; onAfterExitChange?: (n: number) => void; compact?: boolean }) {
+  const { t } = chartI18n.useT();
   const { data, isLoading, error, refresh, isFetching } = useTradeQuality(trade.id, afterExit);
   const [refreshing, setRefreshing] = React.useState(false);
 
@@ -119,22 +134,23 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
     return (
       <div className="flex items-center gap-2 rounded-2xl bg-[var(--glass-bg)] px-3.5 py-3 text-sm text-muted-foreground">
         <AlertTriangle className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
-        {status === 404 ? "Эндпоинт качества исполнения ещё не подключён на сервере." : `Не удалось посчитать качество исполнения${error ? `: ${(error as Error).message}` : ""}.`}
+        {status === 404 ? t("quality.notConnected") : error ? t("quality.failedWith", { message: (error as Error).message }) : t("quality.failed")}
       </div>
     );
   }
 
   const q = data.quality;
   const short = q.side === "short";
-  const dirWord = short ? "вниз" : "вверх";
+  const dirWord = short ? t("quality.down") : t("quality.up");
+  const PARTIAL_BAR_NOTE = t("quality.partialBarNote");
 
   if (q.status === "unavailable") {
     return (
       <div className="space-y-2 rounded-2xl bg-[var(--glass-bg)] px-3.5 py-3 text-sm">
-        <p className="flex items-center gap-2 text-muted-foreground"><AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-3))]" aria-hidden="true" /> Качество исполнения недоступно.</p>
-        <ul className="list-disc pl-5 text-xs text-muted-foreground">{q.reasons.map((r) => <li key={r}>{REASON_LABEL[r]}</li>)}</ul>
+        <p className="flex items-center gap-2 text-muted-foreground"><AlertTriangle className="h-4 w-4 text-[hsl(var(--chart-3))]" aria-hidden="true" /> {t("quality.unavailable")}</p>
+        <ul className="list-disc pl-5 text-xs text-muted-foreground">{q.reasons.map((r) => <li key={r}>{reasonLabel(r)}</li>)}</ul>
         <Button variant="outline" size="sm" className="gap-1.5" disabled={refreshing} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
-          <RotateCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> Пересчитать
+          <RotateCw className={cn("h-3.5 w-3.5", refreshing && "animate-spin")} /> {t("quality.recalc")}
         </Button>
       </div>
     );
@@ -153,18 +169,18 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
   const capturedTone: Tone = q.captured ? toneOf(q.captured.perShare) : q.unrealised ? toneOf(q.unrealised.perShare) : "neutral";
   const warnReasons = q.reasons.filter((r) => r !== "atr_from_day_range");
   const heatWorkedAt = q.heat ? (q.heat.workedAtSeconds != null ? q.heat.workedAtSeconds : q.heat.workedAtMinutes != null ? q.heat.workedAtMinutes * 60 : null) : null;
-  const windowTitle = `Свечи: ${q.interval}, ${q.barsUsed} баров${data.window ? ` · ${data.window.from}${data.window.to !== data.window.from ? ` → ${data.window.to}` : ""}` : ""}${timed ? `\n${PARTIAL_BAR_NOTE}` : "\nИсполнения без времени: бары входа и выхода считаются целиком."}`;
+  const windowTitle = `${t("quality.windowTitle", { interval: q.interval, bars: t("bars.count", { count: q.barsUsed }) })}${data.window ? ` · ${data.window.to !== data.window.from ? t("quality.windowRange", { from: data.window.from, to: data.window.to }) : data.window.from}` : ""}${timed ? `\n${PARTIAL_BAR_NOTE}` : `\n${t("quality.timedNote")}`}`;
 
   return (
     <div className="@container space-y-3">
       <div className="flex flex-wrap items-center gap-2">
         <QualitySummaryLine q={q} />
         <div className="ml-auto flex items-center gap-2">
-          {q.status === "partial" && <Pill tone="warn" className="px-1.5 text-2xs">частично</Pill>}
+          {q.status === "partial" && <Pill tone="warn" className="px-1.5 text-2xs">{t("quality.partial")}</Pill>}
           <span className="text-2xs text-muted-foreground" title={windowTitle}>
-            {q.interval} · {q.barsUsed} бар.{timed ? " · по времени исполнений" : ""}
+            {q.interval} · {t("quality.barsShort", { count: q.barsUsed })}{timed ? ` · ${t("quality.byFillTime")}` : ""}
           </span>
-          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label="Пересчитать" title="Пересчитать по свежим свечам" disabled={refreshing || isFetching} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
+          <Button variant="ghost" size="icon" className="h-7 w-7" aria-label={t("quality.recalc")} title={t("quality.recalcTitle")} disabled={refreshing || isFetching} onClick={async () => { setRefreshing(true); try { await refresh(); } finally { setRefreshing(false); } }}>
             <RotateCw className={cn("h-3.5 w-3.5", (refreshing || isFetching) && "animate-spin")} />
           </Button>
         </div>
@@ -174,66 +190,64 @@ export function QualityBlock({ trade, afterExit, onAfterExitChange, compact }: {
         <Big
           label="MFE"
           value={mfe ? excValue(mfe, 1) : "—"}
-          sub={mfe ? `${mfe.r != null && mfe.usd != null ? `${fmtUsd(mfe.usd, { signed: true, decimals: "auto" })} · ` : mfe.usd != null ? `${fmtUsd(mfe.perShare)}/акц. · ` : ""}до ${fmtPrice(mfe.price)} ${whenText(excSeconds(mfe), atFill(mfe))}` : undefined}
+          sub={mfe ? `${mfe.r != null && mfe.usd != null ? `${fmtUsd(mfe.usd, { signed: true, decimals: "auto" })} · ` : mfe.usd != null ? `${perShareAbs(mfe.perShare)} · ` : ""}${t("quality.toPrice", { price: fmtPrice(mfe.price), when: whenText(excSeconds(mfe), atFill(mfe)) })}` : undefined}
           tone="up"
-          explain={`Максимальное движение в вашу сторону (${dirWord}) от средней цены входа до выхода. Сколько сделка «давала» в лучший момент. ${timed ? PARTIAL_BAR_NOTE : ""}`}
+          explain={`${t("quality.mfeExplain", { dir: dirWord })} ${timed ? PARTIAL_BAR_NOTE : ""}`}
         />
         <Big
           label="MAE"
           value={mae ? excValue(mae, -1) : "—"}
-          sub={mae ? `${mae.r != null && mae.usd != null ? `${fmtUsd(-mae.usd, { signed: true, decimals: "auto" })} · ` : mae.usd != null ? `${fmtUsd(-mae.perShare)}/акц. · ` : ""}${mae.perShare > 0 ? `до ${fmtPrice(mae.price)} ${whenText(excSeconds(mae), atFill(mae))}` : "цена не ходила против позиции"}${q.gaps?.count ? " · с гэпом" : ""}` : undefined}
+          sub={mae ? `${mae.r != null && mae.usd != null ? `${fmtUsd(-mae.usd, { signed: true, decimals: "auto" })} · ` : mae.usd != null ? `${perShareAbs(-mae.perShare)} · ` : ""}${mae.perShare > 0 ? t("quality.toPrice", { price: fmtPrice(mae.price), when: whenText(excSeconds(mae), atFill(mae)) }) : t("quality.noAdverse")}${q.gaps?.count ? ` · ${t("quality.withGap")}` : ""}` : undefined}
           tone={mae && mae.perShare > 0 ? "down" : "neutral"}
-          explain={`Максимальное движение против позиции (просадка) до выхода. Если был овернайт-гэп, он включён.${hasStop ? " Сравните со стопом: MAE > 1R означает, что стоп должен был сработать." : ""} ${timed ? PARTIAL_BAR_NOTE : ""}`}
+          explain={`${t("quality.maeExplain")}${hasStop ? ` ${t("quality.maeStopNote")}` : ""} ${timed ? PARTIAL_BAR_NOTE : ""}`}
         />
         <Big
-          label="Эффективность выхода"
+          label={t("quality.exitEff")}
           value={fmtRate(q.exitEfficiency)}
-          sub={q.captured ? `забрали ${rAndUsd(q.captured.r, q.captured.usd, q.captured.perShare)}` : q.unrealised ? `открыто: ${rAndUsd(q.unrealised.r, q.unrealised.usd, q.unrealised.perShare)}` : undefined}
+          sub={q.captured ? t("quality.capturedSub", { value: rAndUsd(q.captured.r, q.captured.usd, q.captured.perShare) }) : q.unrealised ? t("quality.openSub", { value: rAndUsd(q.unrealised.r, q.unrealised.usd, q.unrealised.perShare) }) : undefined}
           tone={q.exitEfficiency == null ? capturedTone : exitEffTone(q.exitEfficiency)}
-          explain="Захваченное движение / MFE. 100% — вышли на самом лучшем баре; 50% — забрали половину того, что давал рынок; меньше 0 — закрылись в минус, хотя плюс был."
+          explain={t("quality.exitEffExplain")}
         />
         <Big
-          label={`Оставили на столе (${q.leftOnTable?.windowMinutes ?? afterExit} мин)`}
-          value={q.leftOnTable ? (q.leftOnTable.r != null ? fmtR(q.leftOnTable.r) : q.leftOnTable.usd != null ? fmtUsd(q.leftOnTable.usd, { signed: true, decimals: "auto" }) : `${fmtUsd(q.leftOnTable.perShare)}/акц.`) : "—"}
-          sub={q.leftOnTable ? `${q.leftOnTable.r != null && q.leftOnTable.usd != null ? `${fmtUsd(q.leftOnTable.usd, { signed: true, decimals: "auto" })} · ` : q.leftOnTable.usd != null ? `${fmtUsd(q.leftOnTable.perShare)}/акц. · ` : ""}лучшая ${fmtPrice(q.leftOnTable.bestPrice)}${q.leftOnTable.toCloseOfDay != null && q.leftOnTable.toCloseOfDay > q.leftOnTable.perShare ? ` · до закрытия ${fmtUsd(q.leftOnTable.toCloseOfDay)}` : ""}` : q.reasons.includes("no_bars_after_exit") ? "после выхода баров нет" : q.captured == null ? "позиция открыта" : "0 — вышли на максимуме окна"}
+          label={t("quality.left", { min: q.leftOnTable?.windowMinutes ?? afterExit })}
+          value={q.leftOnTable ? (q.leftOnTable.r != null ? fmtR(q.leftOnTable.r) : q.leftOnTable.usd != null ? fmtUsd(q.leftOnTable.usd, { signed: true, decimals: "auto" }) : perShareAbs(q.leftOnTable.perShare)) : "—"}
+          sub={q.leftOnTable ? `${q.leftOnTable.r != null && q.leftOnTable.usd != null ? `${fmtUsd(q.leftOnTable.usd, { signed: true, decimals: "auto" })} · ` : q.leftOnTable.usd != null ? `${perShareAbs(q.leftOnTable.perShare)} · ` : ""}${t("quality.leftBest", { price: fmtPrice(q.leftOnTable.bestPrice) })}${q.leftOnTable.toCloseOfDay != null && q.leftOnTable.toCloseOfDay > q.leftOnTable.perShare ? ` · ${t("quality.leftToClose", { value: fmtUsd(q.leftOnTable.toCloseOfDay) })}` : ""}` : q.reasons.includes("no_bars_after_exit") ? t("quality.noBarsAfter") : q.captured == null ? t("quality.openPosition") : t("quality.leftZero")}
           tone={q.leftOnTable ? (q.leftOnTable.r != null ? (q.leftOnTable.r >= 1 ? "down" : q.leftOnTable.r >= 0.5 ? "warn" : "up") : q.captured && q.captured.perShare > 0 && q.leftOnTable.perShare > q.captured.perShare ? "warn" : "neutral") : "neutral"}
-          explain="Насколько цена ушла дальше в вашу сторону после выхода в заданном окне (от момента выхода). Большое значение при раннем выходе — сигнал держать по плану, а не по эмоциям."
+          explain={t("quality.leftExplain")}
         />
         <Big
-          label={q.heat?.threshold === "1R" ? "Нагрев до +1R" : "Нагрев до пика"}
-          value={q.heat ? (q.heat.r != null ? fmtR(-q.heat.r) : q.heat.usd != null ? fmtUsd(-q.heat.usd, { signed: true, decimals: "auto" }) : `${fmtUsd(-q.heat.perShare)}/акц.`) : "—"}
+          label={q.heat?.threshold === "1R" ? t("quality.heat1R") : t("quality.heatPeak")}
+          value={q.heat ? (q.heat.r != null ? fmtR(-q.heat.r) : q.heat.usd != null ? fmtUsd(-q.heat.usd, { signed: true, decimals: "auto" }) : perShareAbs(-q.heat.perShare)) : "—"}
           sub={q.heat
             ? q.heat.threshold === "1R"
-              ? (heatWorkedAt != null ? `+1R через ${fmtDuration(heatWorkedAt)}` : "сделка не дошла до +1R")
-              : (heatWorkedAt != null ? `пик (MFE) через ${fmtDuration(heatWorkedAt)}` : mfe && mfe.perShare > 0 ? "до момента MFE" : "в плюс не ходила")
+              ? (heatWorkedAt != null ? t("quality.heat1RAt", { dur: fmtDuration(heatWorkedAt) }) : t("quality.heatNo1R"))
+              : (heatWorkedAt != null ? t("quality.heatPeakAt", { dur: fmtDuration(heatWorkedAt) }) : mfe && mfe.perShare > 0 ? t("quality.heatToMfe") : t("quality.heatNoPlus"))
             : undefined}
           tone={q.heat ? (q.heat.r != null ? (q.heat.r >= 0.8 ? "down" : q.heat.r >= 0.4 ? "warn" : "up") : q.heat.perShare > 0 ? "warn" : "neutral") : "neutral"}
-          explain={q.heat?.threshold === "1R"
-            ? "Максимальная просадка до того, как сделка пошла в плюс на 1R. Показывает, сколько приходилось «терпеть» на правильных идеях."
-            : "Стоп не задан, поэтому порог — лучшая точка сделки (MFE): максимальная просадка до того, как цена дошла до пика."}
+          explain={q.heat?.threshold === "1R" ? t("quality.heat1RExplain") : t("quality.heatPeakExplain")}
           className={compact ? "hidden" : undefined}
         />
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        <Small label="Вход в баре" value={fmtRate(q.entryEfficiency)} tone={q.entryEfficiency == null ? "neutral" : q.entryEfficiency >= 0.6 ? "up" : q.entryEfficiency >= 0.35 ? "warn" : "down"} explain="Где цена входа внутри диапазона бара входа: 100% — купили на минимуме бара (продали на максимуме), 0% — на худшей цене бара." />
-        <Small label="Выход в диапазоне" value={fmtRate(q.rangeEfficiency)} tone={q.rangeEfficiency == null ? "neutral" : q.rangeEfficiency >= 0.6 ? "up" : q.rangeEfficiency >= 0.35 ? "warn" : "down"} explain="Положение средней цены выхода внутри всего диапазона сделки (вход → выход): 100% — лучшая цена периода, 0% — худшая." />
-        {q.stopAtr && <Small label="Стоп в ATR" value={fmtNum(q.stopAtr.distanceAtr, { suffix: "×" })} tone={q.stopAtr.distanceAtr < 0.3 ? "down" : q.stopAtr.distanceAtr < 0.6 ? "warn" : "neutral"} explain={`Расстояние до стопа в ATR (${q.stopAtr.source === "dayRange" ? "ATR = диапазон дня сделки" : "ATR из карточки сделки"}). Меньше 0.3 ATR — стоп внутри шума.`} />}
-        {mfe && mfe.perShare > 0 && <Small label="Время до MFE" value={whenText(excSeconds(mfe), atFill(mfe)).replace(/^через /, "")} explain="Через сколько после входа цена достигла лучшей точки." />}
-        {holdSeconds != null && <Small label="В позиции" value={fmtDuration(holdSeconds)} explain={timed ? `От первого входа до последнего выхода по времени исполнений${q.entryAt != null && q.exitAt != null ? ` (${fmtEtTimeSec(q.entryAt)} → ${fmtEtTimeSec(q.exitAt)} ET)` : ""}.` : "Время от первого входа до последнего выхода по барам (исполнения без времени)."} />}
-        {q.gaps?.count ? <Small label="Гэпы" value={`${q.gaps.count} · худший ${q.gaps.worstR != null ? fmtR(q.gaps.worstR) : `${fmtUsd(q.gaps.worstPerShare ?? 0)}`}`} tone={q.gaps.worstPerShare != null && q.gaps.worstPerShare < 0 ? "down" : "up"} explain="Овернайт-гэпы внутри сделки: открытие следующего дня относительно закрытия предыдущего, в вашу сторону (+) или против (−)." /> : null}
-        {q.avgEntry != null && q.fillsUsed > 2 && <Small label="Ср. вход / выход" value={`${fmtPrice(q.avgEntry)} → ${q.avgExit != null ? fmtPrice(q.avgExit) : "—"}`} explain="Средние цены по всем исполнениям (доборы и частичные выходы учтены)." />}
+        <Small label={t("quality.entryInBar")} value={fmtRate(q.entryEfficiency)} tone={q.entryEfficiency == null ? "neutral" : q.entryEfficiency >= 0.6 ? "up" : q.entryEfficiency >= 0.35 ? "warn" : "down"} explain={t("quality.entryInBarExplain")} />
+        <Small label={t("quality.exitInRange")} value={fmtRate(q.rangeEfficiency)} tone={q.rangeEfficiency == null ? "neutral" : q.rangeEfficiency >= 0.6 ? "up" : q.rangeEfficiency >= 0.35 ? "warn" : "down"} explain={t("quality.exitInRangeExplain")} />
+        {q.stopAtr && <Small label={t("quality.stopAtr")} value={fmtNum(q.stopAtr.distanceAtr, { suffix: "×" })} tone={q.stopAtr.distanceAtr < 0.3 ? "down" : q.stopAtr.distanceAtr < 0.6 ? "warn" : "neutral"} explain={t("quality.stopAtrExplain", { source: q.stopAtr.source === "dayRange" ? t("quality.atrDayRange") : t("quality.atrTrade") })} />}
+        {mfe && mfe.perShare > 0 && <Small label={t("quality.timeToMfe")} value={whenValue(excSeconds(mfe), atFill(mfe))} explain={t("quality.timeToMfeExplain")} />}
+        {holdSeconds != null && <Small label={t("quality.inPosition")} value={fmtDuration(holdSeconds)} explain={timed ? (q.entryAt != null && q.exitAt != null ? t("quality.inPositionTimedRange", { from: fmtEtTimeSec(q.entryAt), to: fmtEtTimeSec(q.exitAt) }) : t("quality.inPositionTimed")) : t("quality.inPositionBars")} />}
+        {q.gaps?.count ? <Small label={t("quality.gaps")} value={t("quality.gapsValue", { count: q.gaps.count, worst: q.gaps.worstR != null ? fmtR(q.gaps.worstR) : fmtUsd(q.gaps.worstPerShare ?? 0) })} tone={q.gaps.worstPerShare != null && q.gaps.worstPerShare < 0 ? "down" : "up"} explain={t("quality.gapsExplain")} /> : null}
+        {q.avgEntry != null && q.fillsUsed > 2 && <Small label={t("quality.avgInOut")} value={`${fmtPrice(q.avgEntry)} → ${q.avgExit != null ? fmtPrice(q.avgExit) : "—"}`} explain={t("quality.avgInOutExplain")} />}
         {onAfterExitChange && (
           <span className="ml-auto inline-flex items-center gap-1.5 text-2xs text-muted-foreground">
-            окно после выхода
-            <Segmented size="sm" ariaLabel="Окно после выхода" value={String(afterExit)} onChange={(v) => onAfterExitChange(Number(v))} options={AFTER_EXIT_OPTIONS.map((n) => ({ value: String(n), label: `${n}м` }))} />
+            {t("quality.afterExitWindow")}
+            <Segmented size="sm" ariaLabel={t("quality.afterExitAria")} value={String(afterExit)} onChange={(v) => onAfterExitChange(Number(v))} options={AFTER_EXIT_OPTIONS.map((n) => ({ value: String(n), label: t("quality.minutesShort", { n }) }))} />
           </span>
         )}
       </div>
 
       {warnReasons.length > 0 && (
         <p className="text-2xs text-muted-foreground">
-          {warnReasons.map((r) => REASON_LABEL[r]).join(" · ")}
+          {warnReasons.map((r) => reasonLabel(r)).join(" · ")}
         </p>
       )}
     </div>

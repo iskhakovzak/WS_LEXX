@@ -1,14 +1,19 @@
 // «Спроси журнал» — client-side filters and aggregation over the loaded trade book (pure, no React, no fetch).
 // Money is net by default (net = pnl − |fees| via @/lib/trade-math); win rate = W/(W+L); PF null instead of ∞.
+// Every sentence is rendered in the UI language (askI18n) at answer time; follow-up questions too (./phrases).
 
 import { closeDate, computeKpis, feesOf, maxDrawdown, netPnl, num, resultOf, type TradeLike } from "@/lib/trade-math";
 import type { TradeResult } from "@/lib/trade-result";
+import { describeFilter, filterOf, weekdayOf, type AskDim, type AskFilter, type AskMetric, type AskQuery } from "./parse";
 import {
-  afterPhrase, describeFilter, describeSubject, filterOf, fmtClock, fmtDuration, METRIC_WORD, targetTitle, weekdayOf, weekdayPhrase,
-  type AskDim, type AskFilter, type AskMetric, type AskQuery,
-} from "./parse";
-import { fmtDate, fmtMonth, fmtNum, fmtRate, fmtUsd, fmtWeekday, pluralRu } from "@/lib/format";
+  canonicalText, cap, describeSubject, fmtClock, fmtDuration, metricBy, metricName, monthIn, sideOne, sidePl, targetTitle, weekdayPhrase,
+} from "./phrases";
+import { fmtDate, fmtMonth, fmtNum, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { askI18n } from "@/i18n/ns/ask";
+
+const t = askI18n.t;
+const nTrades = (n: number) => commonI18n.t("units.trades", { count: n });
 
 export interface AskTrade extends TradeLike {
   id: number;
@@ -39,16 +44,16 @@ export function entryMinutes(t: AskTrade): number | null {
   return m ? Number(m[1]) * 60 + Number(m[2]) : null;
 }
 
-/** «2h 29m», «17s», «1m», «1d 2h» → seconds. */
+/** «2h 29m», «17s», «1m», «1d 2h» → seconds (PropReports text; the Cyrillic units are legacy rows). */
 export function parseHoldTime(s: string | null | undefined): number | null {
   if (!s) return null;
-  const rx = /(\d+(?:\.\d+)?)\s*(d|h|m|s|д|ч|м|с)/gi;
+  const rx = /(\d+(?:\.\d+)?)\s*(d|h|m|s|д|ч|м|с)/gi; // i18n-ignore (data units)
   let total = 0, any = false, m: RegExpExecArray | null;
   while ((m = rx.exec(s))) {
     any = true;
     const n = Number(m[1]);
     const u = m[2].toLowerCase();
-    total += n * (u === "d" || u === "д" ? 86400 : u === "h" || u === "ч" ? 3600 : u === "m" || u === "м" ? 60 : 1);
+    total += n * (u === "d" || u === "д" ? 86400 : u === "h" || u === "ч" ? 3600 : u === "m" || u === "м" ? 60 : 1); // i18n-ignore (data units)
   }
   return any ? total : null;
 }
@@ -121,7 +126,7 @@ export interface FilterOutcome {
   noQty: number;
 }
 
-const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").trim();
+const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").trim(); // i18n-ignore (ё → е)
 
 export function applyFilter(trades: AskTrade[], f: AskFilter, idx: BookIndex): FilterOutcome {
   let noTime = 0, noHold = 0, noPrice = 0, noQty = 0;
@@ -205,7 +210,7 @@ export interface Agg {
   ids?: number[];
 }
 
-export function aggOf(trades: AskTrade[], key = "all", label = "Все", idx?: BookIndex): Agg {
+export function aggOf(trades: AskTrade[], key = "all", label = "", idx?: BookIndex): Agg {
   const k = computeKpis(trades);
   let pos = 0, neg = 0, nPos = 0, nNeg = 0, holdSum = 0, holdN = 0;
   for (const t of trades) {
@@ -255,13 +260,10 @@ export function fmtMetric(v: number | null | undefined, metric: AskMetric): stri
   }
 }
 
-/** Group label for a Monday-first weekday index (0 = Mon): "Пн" in the UI language. */
+/** Group label for a Monday-first weekday index (0 = Mon): short weekday in the UI language. */
 function wdLabel(wd: number): string {
-  const s = fmtWeekday((wd + 1) % 7, "short");
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  return cap(fmtWeekday((wd + 1) % 7, "short"));
 }
-/** Follow-up phrases go back through the Russian parser: keep these Russian. */
-const MON_PREP = ["январе", "феврале", "марте", "апреле", "мае", "июне", "июле", "августе", "сентябре", "октябре", "ноябре", "декабре"];
 
 function mondayOf(date: string): string {
   const d = new Date(`${date}T12:00:00Z`);
@@ -280,76 +282,81 @@ export const dm = (date: string) => fmtDate(date.slice(0, 10), "dayMonthNumeric"
 /** dd.MM.yyyy. */
 export const dmy = (date: string) => fmtDate(date.slice(0, 10), "short");
 
-export const SLOTS: Array<{ key: string; from: number; to: number; label: string; ask: string }> = [
-  { key: "0", from: 0, to: 570, label: "Премаркет (до 9:30)", ask: "в премаркете" },
-  { key: "1", from: 570, to: 600, label: "Открытие 9:30–10:00", ask: "на открытии" },
-  { key: "2", from: 600, to: 660, label: "Утро 10:00–11:00", ask: "с 10:00 до 11:00" },
-  { key: "3", from: 660, to: 840, label: "Обед 11:00–14:00", ask: "в обед" },
-  { key: "4", from: 840, to: 900, label: "После обеда 14:00–15:00", ask: "с 14:00 до 15:00" },
-  { key: "5", from: 900, to: 960, label: "Power hour 15:00–16:00", ask: "power hour" },
-  { key: "6", from: 960, to: 1440, label: "Постмаркет (после 16:00)", ask: "в постмаркете" },
+type SlotKey = "0" | "1" | "2" | "3" | "4" | "5" | "6";
+type BucketKey = "0" | "1" | "2" | "3" | "4";
+/** Time-of-day slots (ET); label and follow-up question in the UI language (slotLabel / slotAsk). */
+export const SLOTS: Array<{ key: SlotKey; from: number; to: number }> = [
+  { key: "0", from: 0, to: 570 }, { key: "1", from: 570, to: 600 }, { key: "2", from: 600, to: 660 }, { key: "3", from: 660, to: 840 },
+  { key: "4", from: 840, to: 900 }, { key: "5", from: 900, to: 960 }, { key: "6", from: 960, to: 1440 },
 ];
-export const HOLD_BUCKETS: Array<{ key: string; max: number; label: string; ask: string }> = [
-  { key: "0", max: 60, label: "< 1 мин", ask: "короче 1 минуты" },
-  { key: "1", max: 300, label: "1–5 мин", ask: "от 1 до 5 минут" },
-  { key: "2", max: 900, label: "5–15 мин", ask: "от 5 до 15 минут" },
-  { key: "3", max: 3600, label: "15–60 мин", ask: "от 15 до 60 минут" },
-  { key: "4", max: Infinity, label: "> 1 ч", ask: "дольше 1 часа" },
+export const HOLD_BUCKETS: Array<{ key: BucketKey; max: number }> = [
+  { key: "0", max: 60 }, { key: "1", max: 300 }, { key: "2", max: 900 }, { key: "3", max: 3600 }, { key: "4", max: Infinity },
 ];
-export const SIZE_BUCKETS: Array<{ key: string; max: number; label: string; ask: string }> = [
-  { key: "0", max: 50, label: "< 50 акций", ask: "размер меньше 50 акций" },
-  { key: "1", max: 100, label: "50–99 акций", ask: "размер от 50 до 100 акций" },
-  { key: "2", max: 200, label: "100–199 акций", ask: "размер от 100 до 200 акций" },
-  { key: "3", max: 500, label: "200–499 акций", ask: "размер от 200 до 500 акций" },
-  { key: "4", max: Infinity, label: "500+ акций", ask: "размер больше 500 акций" },
+export const SIZE_BUCKETS: Array<{ key: BucketKey; max: number }> = [
+  { key: "0", max: 50 }, { key: "1", max: 100 }, { key: "2", max: 200 }, { key: "3", max: 500 }, { key: "4", max: Infinity },
 ];
+function slotAsk(k: SlotKey): string {
+  switch (k) {
+    case "0": return t("q.premarket");
+    case "1": return t("q.open");
+    case "2": return t("q.timeRange", { from: "10:00", to: "11:00" });
+    case "3": return t("q.lunch");
+    case "4": return t("q.timeRange", { from: "14:00", to: "15:00" });
+    case "5": return t("q.powerHour");
+    default: return t("q.postmarket");
+  }
+}
 
 /** Group key + label + follow-up phrase (sortable key: chronological dims sort by key). */
-export function groupKey(t: AskTrade, dim: AskDim, idx: BookIndex): { key: string; label: string; ask: string } | null {
-  const m = metaOf(idx, t);
+export function groupKey(tr: AskTrade, dim: AskDim, idx: BookIndex): { key: string; label: string; ask: string } | null {
+  const m = metaOf(idx, tr);
   switch (dim) {
-    case "ticker": { const k = (t.ticker ?? "—").toUpperCase(); return { key: k, label: k, ask: k }; }
+    case "ticker": { const k = (tr.ticker ?? "—").toUpperCase(); return { key: k, label: k, ask: k }; }
     case "day": return m.day ? { key: m.day, label: `${wdLabel(m.wd)}, ${dmy(m.day)}`, ask: m.day } : null;
     case "hour": {
       if (m.min == null) return null;
       const h = Math.floor(m.min / 60);
-      return { key: String(h).padStart(2, "0"), label: `${fmtClock(h * 60)}–${fmtClock((h + 1) * 60)}`, ask: `с ${fmtClock(h * 60)} до ${fmtClock((h + 1) * 60)}` };
+      const range = { from: fmtClock(h * 60), to: fmtClock((h + 1) * 60) };
+      return { key: String(h).padStart(2, "0"), label: `${range.from}–${range.to}`, ask: t("q.timeRange", range) };
     }
     case "weekday": return { key: String(m.wd), label: wdLabel(m.wd), ask: weekdayPhrase([m.wd]) };
     case "month": {
       const mo = Number(m.day.slice(5, 7));
-      return { key: m.day.slice(0, 7), label: `${fmtMonth(mo - 1, "short")} ${m.day.slice(0, 4)}`, ask: `в ${MON_PREP[mo - 1]} ${m.day.slice(0, 4)}` };
+      return { key: m.day.slice(0, 7), label: `${fmtMonth(mo - 1, "short")} ${m.day.slice(0, 4)}`, ask: t("q.monthYear", { monthIn: monthIn(mo), year: m.day.slice(0, 4) }) };
     }
-    case "week": { const mon = mondayOf(m.day); return { key: mon, label: `нед. ${dm(mon)}–${dm(plusDays(mon, 4))}`, ask: `с ${mon} по ${plusDays(mon, 4)}` }; }
-    case "side": { const s = t.side === "Long" ? "Long" : t.side === "Short" ? "Short" : null; return s ? { key: s, label: s === "Long" ? "лонг" : "шорт", ask: s === "Long" ? "лонги" : "шорты" } : null; }
-    case "trade": return { key: String(t.id), label: `${t.ticker} ${dm(t.date)}`, ask: t.ticker };
-    case "setup": { const s = (t.setup ?? "").trim(); return s ? { key: s.toLowerCase(), label: s, ask: `сетап ${s}` } : { key: "—", label: "без сетапа", ask: "" }; }
-    case "trader": return t.trader ? { key: t.trader, label: t.trader, ask: t.trader } : null;
+    case "week": {
+      const mon = mondayOf(m.day), fri = plusDays(mon, 4);
+      return { key: mon, label: t("weekLabel", { from: dm(mon), to: dm(fri) }), ask: t("q.isoRange", { from: mon, to: fri }) };
+    }
+    case "side": { const s = tr.side === "Long" ? "Long" : tr.side === "Short" ? "Short" : null; return s ? { key: s, label: sideOne(s), ask: sidePl(s) } : null; }
+    case "trade": return { key: String(tr.id), label: `${tr.ticker} ${dm(tr.date)}`, ask: tr.ticker };
+    case "setup": { const s = (tr.setup ?? "").trim(); return s ? { key: s.toLowerCase(), label: s, ask: t("q.setup", { name: s }) } : { key: "—", label: t("noSetup"), ask: "" }; }
+    case "trader": return tr.trader ? { key: tr.trader, label: tr.trader, ask: tr.trader } : null;
     case "slot": {
       if (m.min == null) return null;
       const s = SLOTS.find((x) => m.min! >= x.from && m.min! < x.to) ?? SLOTS[SLOTS.length - 1];
-      return { key: s.key, label: s.label, ask: s.ask };
+      return { key: s.key, label: t(`slot.s${s.key}`), ask: slotAsk(s.key) };
     }
     case "holdBucket": {
       if (m.hold == null) return null;
       const b = HOLD_BUCKETS.find((x) => m.hold! < x.max)!;
-      return { key: b.key, label: b.label, ask: b.ask };
+      return { key: b.key, label: t(`holdBucket.b${b.key}`), ask: t(`q.hold.b${b.key}`) };
     }
     case "sizeBucket": {
       if (m.qty == null) return null;
       const b = SIZE_BUCKETS.find((x) => m.qty! < x.max)!;
-      return { key: b.key, label: b.label, ask: b.ask };
+      return { key: b.key, label: t(`sizeBucket.b${b.key}`), ask: t(`q.size.b${b.key}`) };
     }
   }
 }
 
 export function groupTrades(trades: AskTrade[], dim: AskDim, idx: BookIndex): Agg[] {
   const buckets = new Map<string, { label: string; ask: string; items: AskTrade[] }>();
-  for (const t of trades) {
-    const g = groupKey(t, dim, idx);
+  for (const tr of trades) {
+    const g = groupKey(tr, dim, idx);
     if (!g) continue;
     const b = buckets.get(g.key) ?? { label: g.label, ask: g.ask, items: [] };
-    b.items.push(t);
+    b.items.push(tr);
     buckets.set(g.key, b);
   }
   return [...buckets.entries()].map(([key, b]) => ({ ...aggOf(b.items, key, b.label, idx), ask: b.ask }));
@@ -357,56 +364,8 @@ export function groupTrades(trades: AskTrade[], dim: AskDim, idx: BookIndex): Ag
 
 const CHRONO: ReadonlySet<AskDim> = new Set(["day", "hour", "weekday", "month", "week", "slot", "holdBucket", "sizeBucket"]);
 
-// ── Formatting ────────────────────────────────────────────────────────────────
-
-// Money / percent / plurals: @/lib/format (fmtUsd, fmtRate, pluralRu) and commonI18n units.
-
-// ── Canonical text (follow-up questions round-trip through the parser) ────────
-
-function minutesText(sec: number): string {
-  if (sec % 3600 === 0) return `${sec / 3600} ${pluralRu(sec / 3600, "часа", "часов", "часов")}`;
-  if (sec % 60 === 0) return `${sec / 60} минут`;
-  return `${sec} секунд`;
-}
-
-/** A question text that parses back to the same filter. */
-export function canonicalText(f: AskFilter, opts: { allTraders?: boolean } = {}): string {
-  const p: string[] = [];
-  if (f.side) p.push(f.side === "Long" ? "лонги" : "шорты");
-  if (f.outcome) p.push(f.outcome === "win" ? "прибыльные" : f.outcome === "loss" ? "убыточные" : "безубыточные");
-  if (f.tickers.length) p.push(f.tickers.join(" "));
-  for (const s of f.setups) p.push(`сетап ${s}`);
-  if (f.date) p.push(f.date.from === f.date.to ? f.date.from : f.date.from <= "2000-01-01" ? `по ${Number(f.date.to.slice(8, 10))} ${["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"][Number(f.date.to.slice(5, 7)) - 1]} ${f.date.to.slice(0, 4)}` : `с ${f.date.from} по ${f.date.to}`);
-  if (f.weekdays) p.push(weekdayPhrase(f.weekdays));
-  if (f.time) {
-    const { fromMin: a, toMin: b } = f.time;
-    if (a != null && b != null) p.push(`с ${fmtClock(a)} до ${fmtClock(b)}`);
-    else if (a != null) p.push(`после ${fmtClock(a)}`);
-    else if (b != null) p.push(`до ${fmtClock(b)}`);
-  }
-  if (f.price) {
-    const { min, max } = f.price;
-    if (min != null && max != null) p.push(`цена от ${min} до ${max}$`);
-    else if (min != null) p.push(`дороже ${min}$`);
-    else if (max != null) p.push(`дешевле ${max}$`);
-  }
-  if (f.holdSec) {
-    const { min, max } = f.holdSec;
-    if (min != null) p.push(`дольше ${minutesText(min)}`);
-    if (max != null) p.push(`короче ${minutesText(max)}`);
-  }
-  if (f.qty) {
-    const { min, max } = f.qty;
-    if (min != null && max != null) p.push(`размер от ${min} до ${max} акций`);
-    else if (min != null) p.push(`размер от ${min} акций`);
-    else if (max != null) p.push(`размер меньше ${max} акций`);
-  }
-  if (f.after) p.push(afterPhrase(f.after));
-  if (f.lastN) p.push(`последние ${f.lastN} сделок`);
-  if (f.trader) p.push(f.trader);
-  else if (opts.allTraders) p.push("весь деск");
-  return p.join(" ");
-}
+// Follow-up questions round-trip through the parser: canonicalText lives in ./phrases (UI language).
+export { canonicalText };
 
 // ── Answer ────────────────────────────────────────────────────────────────────
 
@@ -470,11 +429,8 @@ export interface AnswerMeta {
   total?: number;
 }
 
-const DIM_TITLE: Record<AskDim, string> = {
-  ticker: "По тикерам", day: "По дням", hour: "По часам входа (ET)", weekday: "По дням недели", month: "По месяцам",
-  week: "По неделям", side: "Лонг / шорт", trade: "Сделки", setup: "По сетапам", slot: "По времени дня (ET)",
-  holdBucket: "По удержанию", sizeBucket: "По размеру позиции", trader: "По трейдерам",
-};
+const dimTitle = (d: AskDim) => t(`dim.${d}`);
+const byMetric = (title: string, metric: AskMetric) => `${title} — ${metricBy(metric)}`;
 
 export const MAX_LINK_IDS = 400;
 
@@ -490,8 +446,8 @@ function baseLink(f: AskFilter, kept: AskTrade[], maxIds: number): { link: AskLi
     else { link.from = f.date.from; link.to = f.date.to; }
   }
   if (needsIds(f) && kept.length) {
-    if (kept.length <= maxIds) link.ids = kept.map((t) => t.id);
-    else return { link, note: `В «Сделках» откроются тикер, сторона, результат и период; время, дни недели, удержание и размер не переносятся (больше ${maxIds} сделок).` };
+    if (kept.length <= maxIds) link.ids = kept.map((tr) => tr.id);
+    else return { link, note: t("ans.linkNote", { max: maxIds }) };
   }
   return { link };
 }
@@ -501,11 +457,12 @@ function sortChrono(trades: AskTrade[], idx: BookIndex, desc = true): AskTrade[]
   return desc ? s.reverse() : s;
 }
 
-function equityChart(trades: AskTrade[], idx: BookIndex, title = "Кривая нетто"): AskChart | null {
-  const s = sortChrono(trades, idx, false).filter((t) => netPnl(t) != null);
+function equityChart(trades: AskTrade[], idx: BookIndex): AskChart | null {
+  const title = t("ans.equity");
+  const s = sortChrono(trades, idx, false).filter((tr) => netPnl(tr) != null);
   if (s.length < 2) return null;
   let cum = 0;
-  const pts = s.map((t, i) => { cum += netPnl(t)!; return { i: i + 1, v: Math.round(cum * 100) / 100, label: `${t.ticker} · ${dm(t.date)}` }; });
+  const pts = s.map((tr, i) => { cum += netPnl(tr)!; return { i: i + 1, v: Math.round(cum * 100) / 100, label: `${tr.ticker} · ${dm(tr.date)}` }; });
   // Downsample to ≤ 300 points (keep the last one).
   if (pts.length > 300) {
     const step = Math.ceil(pts.length / 300);
@@ -515,7 +472,7 @@ function equityChart(trades: AskTrade[], idx: BookIndex, title = "Кривая �
 }
 
 function netHist(trades: AskTrade[]): AskChart | null {
-  const vals = trades.map((t) => netPnl(t)).filter((v): v is number => v != null);
+  const vals = trades.map((tr) => netPnl(tr)).filter((v): v is number => v != null);
   if (vals.length < 3) return null;
   const lo = Math.min(...vals), hi = Math.max(...vals);
   if (lo === hi) return null;
@@ -525,7 +482,7 @@ function netHist(trades: AskTrade[]): AskChart | null {
   for (const v of vals) counts[Math.min(bins - 1, Math.floor((v - lo) / w))]++;
   return {
     type: "hist",
-    title: "Распределение нетто по сделкам",
+    title: t("ans.hist"),
     bins: counts.map((c, i) => {
       const a = lo + i * w, b = a + w;
       return { label: `${fmtUsd(a, { signed: true })} … ${fmtUsd(b, { signed: true })}`, value: c, tone: b <= 0 ? "down" : a >= 0 ? "up" : "neutral" };
@@ -547,14 +504,14 @@ function bucketHist(trades: AskTrade[], dim: AskDim, idx: BookIndex, title: stri
 
 function statsOf(a: Agg): AskStat[] {
   const s: AskStat[] = [
-    { label: "Сделок", value: String(a.n) },
-    { label: "Нетто", value: fmtUsd(a.net, { signed: true }), tone: a.net, hint: "нетто = брутто − комиссии" },
-    { label: "Винрейт", value: fmtRate(a.winRate), hint: `W/(W+L): ${a.wins}W / ${a.losses}L` },
-    { label: "Комиссии", value: fmtUsd(a.fees) },
-    { label: "Среднее нетто", value: fmtUsd(a.avgNet, { signed: true }), tone: a.avgNet },
-    { label: "PF ($)", value: a.pf == null ? "—" : fmtNum(a.pf), hint: "Σ плюсов / |Σ минусов|" },
-    { label: "Ср. плюс / минус", value: a.avgWin != null || a.avgLoss != null ? `${fmtUsd(a.avgWin, { signed: true })} / ${fmtUsd(a.avgLoss, { signed: true })}` : "—" },
-    { label: "Ср. удержание", value: a.avgHold == null ? "—" : fmtDuration(a.avgHold) },
+    { label: t("ans.stTrades"), value: String(a.n) },
+    { label: t("ans.stNet"), value: fmtUsd(a.net, { signed: true }), tone: a.net, hint: t("ans.stNetHint") },
+    { label: t("ans.stWinRate"), value: fmtRate(a.winRate), hint: `W/(W+L): ${a.wins}W / ${a.losses}L` },
+    { label: t("ans.stFees"), value: fmtUsd(a.fees) },
+    { label: t("ans.stAvg"), value: fmtUsd(a.avgNet, { signed: true }), tone: a.avgNet },
+    { label: t("ans.stPf"), value: a.pf == null ? "—" : fmtNum(a.pf), hint: t("ans.stPfHint") },
+    { label: t("ans.stAvgWinLoss"), value: a.avgWin != null || a.avgLoss != null ? `${fmtUsd(a.avgWin, { signed: true })} / ${fmtUsd(a.avgLoss, { signed: true })}` : "—" },
+    { label: t("ans.stHold"), value: a.avgHold == null ? "—" : fmtDuration(a.avgHold) },
   ];
   return s.filter((x) => x.value !== "—" && x.value !== "— / —");
 }
@@ -562,18 +519,18 @@ function statsOf(a: Agg): AskStat[] {
 /** One extra sentence worth saying about a set of trades (fees eating the edge, payoff). */
 function takeaway(a: Agg): string | null {
   if (a.n < 3) return null;
-  if (a.gross != null && a.gross > 0 && a.fees / a.gross >= 0.5) return `Комиссии съели ${fmtRate(a.fees / a.gross)} брутто.`;
-  if (a.gross != null && a.gross > 0 && (a.net ?? 0) < 0) return `В плюсе до комиссий (${fmtUsd(a.gross, { signed: true })}), в минусе после.`;
+  if (a.gross != null && a.gross > 0 && a.fees / a.gross >= 0.5) return t("ans.tkFees", { share: fmtRate(a.fees / a.gross) });
+  if (a.gross != null && a.gross > 0 && (a.net ?? 0) < 0) return t("ans.tkGross", { gross: fmtUsd(a.gross, { signed: true }) });
   if (a.avgWin != null && a.avgLoss != null && a.winRate != null) {
     const payoff = a.avgWin / Math.abs(a.avgLoss);
-    if (a.winRate >= 0.5 && payoff < 0.8) return `Выигрываете чаще, но средний минус (${fmtUsd(a.avgLoss, { signed: true })}) больше среднего плюса (${fmtUsd(a.avgWin, { signed: true })}).`;
-    if (a.winRate < 0.5 && payoff > 1.3) return `Винрейт ниже 50%, но средний плюс в ${payoff.toFixed(1)} раза больше минуса.`;
+    if (a.winRate >= 0.5 && payoff < 0.8) return t("ans.tkPayoff", { loss: fmtUsd(a.avgLoss, { signed: true }), win: fmtUsd(a.avgWin, { signed: true }) });
+    if (a.winRate < 0.5 && payoff > 1.3) return t("ans.tkLowWr", { x: payoff.toFixed(1) });
   }
   return null;
 }
 
 function statLine(a: Agg): string {
-  return `${commonI18n.t("units.trades", { count: a.n })}, нетто ${fmtUsd(a.net, { signed: true })}, винрейт ${fmtRate(a.winRate)}`;
+  return t("ans.statLine", { trades: nTrades(a.n), net: fmtUsd(a.net, { signed: true }), wr: fmtRate(a.winRate) });
 }
 
 /** Smallest group size worth ranking (no «100% винрейт» from one trade). */
@@ -592,12 +549,77 @@ function rankRows(rows: Agg[], metric: AskMetric, best: boolean): Agg[] {
 }
 
 interface Ctx { q: AskQuery; f: AskFilter; idx: BookIndex; maxIds: number; total: number; notes: string[] }
+type Base = Omit<AskAnswer, "kind" | "headline" | "big" | "chart" | "groups" | "trades" | "tradesTitle">;
 
 function emptyAnswer(subject: string, c: Ctx, link: AskLinkParams, headline?: string): AskAnswer {
   return {
-    kind: "empty", subject, headline: headline ?? `${subject}: сделок нет`, big: { label: "Сделок", value: "0", tone: null },
-    stats: [], chart: null, groups: null, trades: [], tradesTitle: "Сделки", link, linkLabel: "Открыть в «Сделках»",
+    kind: "empty", subject, headline: headline ?? t("ans.empty", { subject }), big: { label: t("ans.stTrades"), value: "0", tone: null },
+    stats: [], chart: null, groups: null, trades: [], tradesTitle: t("ans.tradesTitle"), link, linkLabel: t("ans.open"),
     notes: c.notes, matched: 0, total: c.total, empty: true,
+  };
+}
+
+function topAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Base, listed: AskTrade[]): AskAnswer {
+  const { idx, f, maxIds, notes } = c;
+  const link = base.link;
+  const subject = base.subject;
+  const target = q.target!;
+  const intent = q.intent as "best" | "worst";
+  const best = intent === "best";
+  const metric = q.metric;
+  const N = Math.max(1, q.topN);
+  if (target === "trade") {
+    const withPnl = trades.filter((tr) => netPnl(tr) != null);
+    const sorted = [...withPnl].sort((x, y) => (best ? netPnl(y)! - netPnl(x)! : netPnl(x)! - netPnl(y)!));
+    const top = sorted[0];
+    if (!top) return emptyAnswer(subject, c, link, t("ans.noPnl", { subject }));
+    const n = netPnl(top)!;
+    const topList = sorted.slice(0, Math.max(N, 10));
+    const list = `${sorted.slice(0, 3).map((tr) => `${tr.ticker} ${dm(tr.date)} ${fmtUsd(netPnl(tr), { signed: true })}`).join(", ")}${N > 3 ? "…" : ""}`;
+    const one = { ticker: top.ticker, date: dmy(top.date), net: fmtUsd(n, { signed: true }) };
+    const side = top.side === "Short" || top.side === "Long" ? sideOne(top.side) : null;
+    const head = N > 1
+      ? t(best ? "ans.bestTrades" : "ans.worstTrades", { count: N, list })
+      : side ? t("ans.oneTrade", { ...one, side }) : t("ans.oneTradeNoSide", one);
+    return {
+      ...base, kind: "top", headline: head,
+      big: { label: `${targetTitle(intent, "trade")}: ${top.ticker} · ${dm(top.date)}`, value: fmtUsd(n, { signed: true }), tone: n },
+      chart: { type: "bars", title: best ? t("ans.topTradesChart") : t("ans.worstTradesChart"), metric: "net", rows: topList.map((tr) => ({ key: String(tr.id), label: `${tr.ticker} ${dm(tr.date)}`, value: netPnl(tr)!, highlight: sorted.indexOf(tr) < N })) },
+      groups: null, trades: topList, tradesTitle: N > 1 ? t("ans.topN", { n: topList.length }) : t("ans.tradeAndNext"), tradesByPnl: true,
+      link: { ...link, ids: sorted.slice(0, N).map((tr) => tr.id) }, linkLabel: N > 1 ? t("ans.openN", { count: N }) : t("ans.openTrade"),
+    };
+  }
+  const minN = minGroupN(trades.length, metric, target);
+  const rowsAll = groupTrades(trades, target, idx);
+  const rows = rankRows(rowsAll.filter((r) => r.n >= minN), metric, best);
+  if (minN > 1 && rowsAll.some((r) => r.n < minN)) notes.push(t("ans.minGroup", { count: minN, metric: metricBy(metric) }));
+  const top = rows[0];
+  if (!top) return emptyAnswer(subject, c, link, t("ans.fewData", { subject }));
+  const topRows = rows.slice(0, N);
+  const hl = topRows.map((r) => r.key);
+  const topIds = new Set(topRows.flatMap((r) => r.ids ?? []));
+  const v = metricValue(top, metric);
+  const titlePl = targetTitle(intent, target, true), title1 = targetTitle(intent, target);
+  const head = N > 1
+    ? `${titlePl}: ${topRows.slice(0, 3).map((r) => `${r.label} ${fmtMetric(metricValue(r, metric), metric)}`).join(", ")}${N > 3 ? "…" : ""}`
+    : t("ans.top1", { title: title1, label: top.label, metric: metricName(metric), value: fmtMetric(v, metric), stats: statLine(top) });
+  const narrowed: AskLinkParams = { ...link };
+  delete narrowed.ids;
+  if (N === 1 && target === "ticker") narrowed.ticker = top.key;
+  else if (N === 1 && target === "day") { narrowed.date = top.key; delete narrowed.from; delete narrowed.to; }
+  else if (N === 1 && target === "side") narrowed.side = top.key as "Long" | "Short";
+  else if (N === 1 && target === "trader") narrowed.trader = top.key;
+  if (needsIds(f) || !(N === 1 && ["ticker", "day", "side", "trader"].includes(target))) {
+    if (topIds.size <= maxIds) narrowed.ids = [...topIds];
+  }
+  const showRows = CHRONO.has(target) && rows.length <= 12 ? [...rows].sort((a, b) => a.key.localeCompare(b.key)) : rows.slice(0, 15);
+  return {
+    ...base, kind: "top", headline: head,
+    big: { label: N > 1 ? t("ans.bigTopN", { title: titlePl, label: top.label }) : `${title1}: ${top.label}`, value: fmtMetric(v, metric), tone: metric === "net" || metric === "avg" ? v : null, sub: statLine(top) },
+    chart: barsFrom(showRows, metric, byMetric(dimTitle(target), metric), hl),
+    groups: { dim: target, title: t(best ? "ans.groupsBest" : "ans.groupsWorst", { dim: dimTitle(target), metric: metricBy(metric) }), rows: rows.slice(0, 24), highlight: hl, metric },
+    trades: listed.filter((tr) => topIds.has(tr.id)), tradesTitle: N > 1 ? t("ans.topNTrades", { n: N }) : t("ans.tradesOf", { label: top.label }),
+    link: narrowed, linkLabel: N > 1 ? t("ans.openTopN", { n: N }) : t("ans.openLabel", { label: top.label }),
   };
 }
 
@@ -608,140 +630,84 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
   const { link, note } = baseLink(f, trades, maxIds);
   const notes: string[] = [];
   if (note) notes.push(note);
-  if (meta.noTime) notes.push(`${commonI18n.t("units.trades", { count: meta.noTime })} без времени входа не учтены (фильтр по времени).`);
-  if (meta.noHold) notes.push(`${commonI18n.t("units.trades", { count: meta.noHold })} без времени удержания не учтены.`);
-  if (meta.noPrice) notes.push(`${commonI18n.t("units.trades", { count: meta.noPrice })} без цены входа не учтены.`);
-  if (meta.noQty) notes.push(`${commonI18n.t("units.trades", { count: meta.noQty })} без размера позиции не учтены.`);
-  if (meta.truncated) notes.push("Загружены не все сделки (лимит 5000) — уточните период.");
+  if (meta.noTime) notes.push(t("ans.noTime", { count: meta.noTime }));
+  if (meta.noHold) notes.push(t("ans.noHold", { count: meta.noHold }));
+  if (meta.noPrice) notes.push(t("ans.noPrice", { count: meta.noPrice }));
+  if (meta.noQty) notes.push(t("ans.noQty", { count: meta.noQty }));
+  if (meta.truncated) notes.push(t("ans.truncated"));
   const c: Ctx = { q, f, idx, maxIds, total, notes };
 
   if (!trades.length) return emptyAnswer(subject, c, link);
 
-  const all = aggOf(trades, "all", "Все", idx);
+  const all = aggOf(trades, "all", t("ans.all"), idx);
   const stats = statsOf(all);
-  const base = { subject, stats, link, linkLabel: "Открыть в «Сделках» с этим фильтром", notes, matched: trades.length, total, empty: false };
+  const base: Base = { subject, stats, link, linkLabel: t("ans.openFiltered"), notes, matched: trades.length, total, empty: false };
   const listed = sortChrono(trades, idx);
 
-  // ── best / worst ──
-  if ((q.intent === "best" || q.intent === "worst") && q.target) {
-    const best = q.intent === "best";
-    const metric = q.metric;
-    const N = Math.max(1, q.topN);
-    if (q.target === "trade") {
-      const withPnl = trades.filter((t) => netPnl(t) != null);
-      const sorted = [...withPnl].sort((x, y) => (best ? netPnl(y)! - netPnl(x)! : netPnl(x)! - netPnl(y)!));
-      const top = sorted[0];
-      if (!top) return emptyAnswer(subject, c, link, `${subject}: нет сделок с P&L`);
-      const n = netPnl(top)!;
-      const topList = sorted.slice(0, Math.max(N, 10));
-      const head = N > 1
-        ? `${best ? "Лучшие" : "Худшие"} ${N} сделок: ${sorted.slice(0, 3).map((t) => `${t.ticker} ${dm(t.date)} ${fmtUsd(netPnl(t), { signed: true })}`).join(", ")}${N > 3 ? "…" : ""}`
-        : `${top.ticker}, ${dmy(top.date)}, ${top.side === "Short" ? "шорт" : top.side === "Long" ? "лонг" : ""}: нетто ${fmtUsd(n, { signed: true })}.`;
-      return {
-        ...base, kind: "top", headline: head.replace(/\s+:/, ":"),
-        big: { label: `${targetTitle(q.intent, "trade")}: ${top.ticker} · ${dm(top.date)}`, value: fmtUsd(n, { signed: true }), tone: n },
-        chart: { type: "bars", title: best ? "Топ сделок по нетто" : "Худшие сделки по нетто", metric: "net", rows: topList.map((t) => ({ key: String(t.id), label: `${t.ticker} ${dm(t.date)}`, value: netPnl(t)!, highlight: sorted.indexOf(t) < N })) },
-        groups: null, trades: topList, tradesTitle: N > 1 ? `Топ-${topList.length}` : "Сделка и следующие за ней", tradesByPnl: true,
-        link: { ...link, ids: sorted.slice(0, N).map((t) => t.id) }, linkLabel: N > 1 ? `Открыть ${N} сделок в «Сделках»` : "Открыть сделку в «Сделках»",
-      };
-    }
-    const minN = minGroupN(trades.length, metric, q.target);
-    const rowsAll = groupTrades(trades, q.target, idx);
-    const rows = rankRows(rowsAll.filter((r) => r.n >= minN), metric, best);
-    if (minN > 1 && rowsAll.some((r) => r.n < minN)) notes.push(`Группы меньше ${minN} сделок не участвуют в рейтинге ${METRIC_WORD[metric]}.`);
-    const top = rows[0];
-    if (!top) return emptyAnswer(subject, c, link, `${subject}: мало данных для рейтинга`);
-    const topRows = rows.slice(0, N);
-    const hl = topRows.map((r) => r.key);
-    const topIds = new Set(topRows.flatMap((r) => r.ids ?? []));
-    const v = metricValue(top, metric);
-    const head = N > 1
-      ? `${targetTitle(q.intent, q.target, true)}: ${topRows.slice(0, 3).map((r) => `${r.label} ${fmtMetric(metricValue(r, metric), metric)}`).join(", ")}${N > 3 ? "…" : ""}`
-      : `${targetTitle(q.intent, q.target)} — ${top.label}: ${METRIC_WORD[metric].replace(/^по /, "")} ${fmtMetric(v, metric)} (${statLine(top)}).`;
-    const narrowed: AskLinkParams = { ...link };
-    delete narrowed.ids;
-    if (N === 1 && q.target === "ticker") narrowed.ticker = top.key;
-    else if (N === 1 && q.target === "day") { narrowed.date = top.key; delete narrowed.from; delete narrowed.to; }
-    else if (N === 1 && q.target === "side") narrowed.side = top.key as "Long" | "Short";
-    else if (N === 1 && q.target === "trader") narrowed.trader = top.key;
-    if (needsIds(f) || !(N === 1 && ["ticker", "day", "side", "trader"].includes(q.target))) {
-      if (topIds.size <= maxIds) narrowed.ids = [...topIds];
-    }
-    const showRows = CHRONO.has(q.target) && rows.length <= 12 ? [...rows].sort((a, b) => a.key.localeCompare(b.key)) : rows.slice(0, 15);
-    return {
-      ...base, kind: "top", headline: head,
-      big: { label: N > 1 ? `${targetTitle(q.intent, q.target, true)} · №1 ${top.label}` : `${targetTitle(q.intent, q.target)}: ${top.label}`, value: fmtMetric(v, metric), tone: metric === "net" || metric === "avg" ? v : null, sub: statLine(top) },
-      chart: barsFrom(showRows, metric, `${DIM_TITLE[q.target]} — ${METRIC_WORD[metric]}`, hl),
-      groups: { dim: q.target, title: `${DIM_TITLE[q.target]} — ${best ? "лучшие" : "худшие"} ${METRIC_WORD[metric]}`, rows: rows.slice(0, 24), highlight: hl, metric },
-      trades: listed.filter((t) => topIds.has(t.id)), tradesTitle: N > 1 ? `Сделки топ-${N}` : `Сделки: ${top.label}`,
-      link: narrowed, linkLabel: N > 1 ? `Открыть сделки топ-${N}` : `Открыть «${top.label}» в «Сделках»`,
-    };
-  }
-
-  // ── streaks ──
+  if ((q.intent === "best" || q.intent === "worst") && q.target) return topAnswer(q, trades, c, base, listed);
   if (q.intent === "streak") return streakAnswer(q, trades, c, base, all);
-
-  // ── insight ──
   if (q.intent === "insight") return insightAnswer(q, trades, c, base);
 
   // ── list / count / sum / avg / winrate / fees / pf / hold / size / drawdown ──
   let big: AskAnswer["big"];
-  let headline = `${subject}: ${statLine(all)}.`;
+  let headline = t("ans.summary", { subject, stats: statLine(all) });
   let chart: AskChart | null = equityChart(trades, idx);
+  const sNet = fmtUsd(all.net, { signed: true }), sGross = fmtUsd(all.gross, { signed: true }), sWr = fmtRate(all.winRate);
   switch (q.intent) {
-    case "count": big = { label: "Сделок", value: String(all.n), tone: null, sub: `${all.wins}W / ${all.losses}L` }; break;
+    case "count": big = { label: t("ans.stTrades"), value: String(all.n), tone: null, sub: `${all.wins}W / ${all.losses}L` }; break;
     case "winrate":
-      big = { label: "Винрейт", value: fmtRate(all.winRate), tone: null, sub: `${all.wins} в плюс, ${all.losses} в минус (W/(W+L))` };
-      headline = `${subject}: винрейт ${fmtRate(all.winRate)} — ${all.wins} из ${all.wins + all.losses} закрыты в плюс.`;
+      big = { label: t("ans.wrLabel"), value: sWr, tone: null, sub: t("ans.wrSub", { w: all.wins, l: all.losses }) };
+      headline = t("ans.wrHead", { subject, wr: sWr, w: all.wins, n: all.wins + all.losses });
       chart = netHist(trades) ?? chart;
       break;
     case "fees": {
       const share = all.gross != null && all.gross > 0 ? all.fees / all.gross : null;
-      big = { label: "Комиссии", value: fmtUsd(all.fees), tone: null, sub: share != null ? `${fmtRate(share)} от брутто ${fmtUsd(all.gross, { signed: true })}` : `брутто ${fmtUsd(all.gross, { signed: true })}` };
+      big = { label: t("ans.feesLabel"), value: fmtUsd(all.fees), tone: null, sub: share != null ? t("ans.feesShare", { share: fmtRate(share), gross: sGross }) : t("ans.feesGross", { gross: sGross }) };
       headline = share != null
-        ? `Комиссии съели ${fmtUsd(all.fees)} — ${fmtRate(share)} брутто (${fmtUsd(all.gross, { signed: true })}); на руках нетто ${fmtUsd(all.net, { signed: true })}. В среднем ${fmtUsd(all.n ? all.fees / all.n : null)} на сделку.`
-        : `${subject}: комиссии ${fmtUsd(all.fees)} за ${commonI18n.t("units.trades", { count: all.n })} (брутто ${fmtUsd(all.gross, { signed: true })}, нетто ${fmtUsd(all.net, { signed: true })}).`;
-      const span = trades.length ? new Set(trades.map((t) => metaOf(idx, t).day.slice(0, 7))).size : 0;
+        ? t("ans.feesHead", { fees: fmtUsd(all.fees), share: fmtRate(share), gross: sGross, net: sNet, avg: fmtUsd(all.n ? all.fees / all.n : null) })
+        : t("ans.feesHeadNoGross", { subject, fees: fmtUsd(all.fees), trades: nTrades(all.n), gross: sGross, net: sNet });
+      const span = trades.length ? new Set(trades.map((tr) => metaOf(idx, tr).day.slice(0, 7))).size : 0;
       const rows = groupTrades(trades, span > 1 ? "month" : "day", idx).sort((a, b) => a.key.localeCompare(b.key));
-      chart = barsFrom(rows, "fees", span > 1 ? "Комиссии по месяцам" : "Комиссии по дням");
+      chart = barsFrom(rows, "fees", span > 1 ? t("ans.feesByMonth") : t("ans.feesByDay"));
       break;
     }
     case "avg":
-      big = { label: "Среднее нетто на сделку", value: fmtUsd(all.avgNet, { signed: true }), tone: all.avgNet, sub: `ср. плюс ${fmtUsd(all.avgWin, { signed: true })} · ср. минус ${fmtUsd(all.avgLoss, { signed: true })}` };
-      headline = `${subject}: в среднем ${fmtUsd(all.avgNet, { signed: true })} на сделку (${commonI18n.t("units.trades", { count: all.n })}, винрейт ${fmtRate(all.winRate)}).`;
+      big = { label: t("ans.avgLabel"), value: fmtUsd(all.avgNet, { signed: true }), tone: all.avgNet, sub: t("ans.avgSub", { win: fmtUsd(all.avgWin, { signed: true }), loss: fmtUsd(all.avgLoss, { signed: true }) }) };
+      headline = t("ans.avgHead", { subject, avg: fmtUsd(all.avgNet, { signed: true }), trades: nTrades(all.n), wr: sWr });
       chart = netHist(trades) ?? chart;
       break;
     case "pf":
-      big = { label: "Профит-фактор ($)", value: all.pf == null ? "—" : fmtNum(all.pf), tone: all.pf == null ? null : all.pf - 1, sub: "Σ плюсов / |Σ минусов|" };
-      headline = all.pf == null ? `${subject}: убыточных сделок нет — PF не считается.` : `${subject}: PF ${fmtNum(all.pf)} — на каждый потерянный $1 заработано $${fmtNum(all.pf)}.`;
+      big = { label: t("ans.pfLabel"), value: all.pf == null ? "—" : fmtNum(all.pf), tone: all.pf == null ? null : all.pf - 1, sub: t("ans.stPfHint") };
+      headline = all.pf == null ? t("ans.pfNone", { subject }) : t("ans.pfHead", { subject, pf: fmtNum(all.pf) });
       break;
     case "hold": {
-      const holds = trades.map((t) => metaOf(idx, t).hold).filter((h): h is number => h != null).sort((a, b) => a - b);
+      const holds = trades.map((tr) => metaOf(idx, tr).hold).filter((h): h is number => h != null).sort((a, b) => a - b);
       const med = holds.length ? holds[Math.floor(holds.length / 2)] : null;
-      big = { label: "Среднее удержание", value: all.avgHold == null ? "—" : fmtDuration(all.avgHold), tone: null, sub: med != null ? `медиана ${fmtDuration(med)}` : undefined };
-      const wins = trades.filter((t) => resultOf(t) === "win"), losses = trades.filter((t) => resultOf(t) === "loss");
+      const d = all.avgHold == null ? "—" : fmtDuration(all.avgHold);
+      big = { label: t("ans.holdLabel"), value: d, tone: null, sub: med != null ? t("ans.holdMedian", { d: fmtDuration(med) }) : undefined };
+      const wins = trades.filter((tr) => resultOf(tr) === "win"), losses = trades.filter((tr) => resultOf(tr) === "loss");
       const aw = aggOf(wins, "w", "w", idx).avgHold, al = aggOf(losses, "l", "l", idx).avgHold;
-      headline = `${subject}: в среднем ${all.avgHold == null ? "—" : fmtDuration(all.avgHold)} в позиции${aw != null && al != null ? `; прибыльные держите ${fmtDuration(aw)}, убыточные — ${fmtDuration(al)}` : ""}.`;
-      chart = bucketHist(trades, "holdBucket", idx, "Сделки по удержанию (цвет — знак нетто)") ?? chart;
+      headline = aw != null && al != null ? t("ans.holdHeadSplit", { subject, d, win: fmtDuration(aw), loss: fmtDuration(al) }) : t("ans.holdHead", { subject, d });
+      chart = bucketHist(trades, "holdBucket", idx, t("ans.holdChart")) ?? chart;
       break;
     }
     case "size": {
-      const qs = trades.map((t) => metaOf(idx, t).qty).filter((x): x is number => x != null);
+      const qs = trades.map((tr) => metaOf(idx, tr).qty).filter((x): x is number => x != null);
       const avg = qs.length ? qs.reduce((s, x) => s + x, 0) / qs.length : null;
-      big = { label: "Средний размер позиции", value: avg == null ? "—" : `${Math.round(avg)} акц.`, tone: null, sub: qs.length ? `от ${Math.min(...qs)} до ${Math.max(...qs)}` : undefined };
-      headline = `${subject}: средний размер ${avg == null ? "—" : Math.round(avg)} акций за ${commonI18n.t("units.trades", { count: all.n })}.`;
-      chart = bucketHist(trades, "sizeBucket", idx, "Сделки по размеру (цвет — знак нетто)") ?? chart;
+      big = { label: t("ans.sizeLabel"), value: avg == null ? "—" : t("ph.shares", { n: Math.round(avg) }), tone: null, sub: qs.length ? t("ans.sizeRange", { min: Math.min(...qs), max: Math.max(...qs) }) : undefined };
+      headline = t("ans.sizeHead", { subject, n: avg == null ? "—" : Math.round(avg), trades: nTrades(all.n) });
+      chart = bucketHist(trades, "sizeBucket", idx, t("ans.sizeChart")) ?? chart;
       break;
     }
     case "drawdown": {
-      const s = sortChrono(trades, idx, false).map((t) => netPnl(t)).filter((v): v is number => v != null);
-      const dd = maxDrawdown(s);
-      big = { label: "Макс. просадка (нетто, по сделкам)", value: fmtUsd(-Math.abs(dd), { signed: true }), tone: dd ? -1 : null };
-      headline = `${subject}: максимальная просадка от пика ${fmtUsd(-Math.abs(dd), { signed: true })} при итоге ${fmtUsd(all.net, { signed: true })}.`;
+      const s = sortChrono(trades, idx, false).map((tr) => netPnl(tr)).filter((v): v is number => v != null);
+      const dd = fmtUsd(-Math.abs(maxDrawdown(s)), { signed: true });
+      big = { label: t("ans.ddLabel"), value: dd, tone: maxDrawdown(s) ? -1 : null };
+      headline = t("ans.ddHead", { subject, dd, net: sNet });
       break;
     }
     default:
-      big = { label: "Нетто", value: fmtUsd(all.net, { signed: true }), tone: all.net, sub: `${commonI18n.t("units.trades", { count: all.n })} · винрейт ${fmtRate(all.winRate)}` };
+      big = { label: t("ans.netLabel"), value: sNet, tone: all.net, sub: t("ans.netSub", { trades: nTrades(all.n), wr: sWr }) };
   }
   const tk = takeaway(all);
   if (tk && q.intent !== "fees") headline += ` ${tk}`;
@@ -754,17 +720,19 @@ export function buildAnswer(q: AskQuery, f: AskFilter, trades: AskTrade[], idx: 
     if (CHRONO.has(q.groupBy)) rows.sort((x, y) => x.key.localeCompare(y.key));
     else rows.sort((x, y) => (metricValue(y, metric) ?? -Infinity) - (metricValue(x, metric) ?? -Infinity) || y.n - x.n);
     const shown = q.groupBy === "day" ? rows.slice(-31) : rows.slice(0, 40);
-    groups = { dim: q.groupBy, title: DIM_TITLE[q.groupBy], rows: shown, metric };
-    chart = barsFrom(shown, metric, `${DIM_TITLE[q.groupBy]} — ${METRIC_WORD[metric]}`) ?? chart;
+    groups = { dim: q.groupBy, title: dimTitle(q.groupBy), rows: shown, metric };
+    chart = barsFrom(shown, metric, byMetric(dimTitle(q.groupBy), metric)) ?? chart;
     const ranked = rankRows(rows.filter((r) => r.n >= minGroupN(trades.length, metric, q.groupBy!)), metric, true);
     if (ranked.length >= 2) {
       const b = ranked[0], w = ranked[ranked.length - 1];
-      headline = `${subject}: ${statLine(all)}. Лучше всего — ${b.label} (${fmtMetric(metricValue(b, metric), metric)}), хуже всего — ${w.label} (${fmtMetric(metricValue(w, metric), metric)}).`;
+      headline = t("ans.groupsHead", {
+        subject, stats: statLine(all), best: b.label, bestV: fmtMetric(metricValue(b, metric), metric), worst: w.label, worstV: fmtMetric(metricValue(w, metric), metric),
+      });
     }
     kind = "groups";
   }
 
-  return { ...base, kind, headline, big, chart, groups, trades: listed, tradesTitle: "Сделки по запросу" };
+  return { ...base, kind, headline, big, chart, groups, trades: listed, tradesTitle: t("ans.byQuery") };
 }
 
 // ── Comparison ────────────────────────────────────────────────────────────────
@@ -775,15 +743,15 @@ export function buildCompare(q: AskQuery, f: AskFilter, a: AskTrade[], b: AskTra
   const metric = q.metric;
   const ra = { ...aggOf(a, "a", c.a.label, idx), ask: canonicalText({ ...f, ...c.a.patch }, { allTraders: q.allTraders }) };
   const rb = { ...aggOf(b, "b", c.b.label, idx), ask: canonicalText({ ...f, ...c.b.patch }, { allTraders: q.allTraders }) };
-  const union = [...new Map([...a, ...b].map((t) => [t.id, t])).values()];
+  const union = [...new Map([...a, ...b].map((tr) => [tr.id, tr])).values()];
   const total = meta.total ?? union.length;
   const notes = [...(meta.notes ?? [])];
   const { link, note } = baseLink(f, union, meta.maxLinkIds ?? MAX_LINK_IDS);
   if (note) notes.push(note);
   if (!union.length) {
     return {
-      kind: "empty", subject, headline: `${subject}: сделок нет ни там, ни там`, big: { label: "Сделок", value: "0", tone: null }, stats: [], chart: null, groups: null,
-      trades: [], tradesTitle: "Сделки", link, linkLabel: "Открыть в «Сделках»", notes, matched: 0, total, empty: true,
+      kind: "empty", subject, headline: t("ans.cmpEmpty", { subject }), big: { label: t("ans.stTrades"), value: "0", tone: null }, stats: [], chart: null, groups: null,
+      trades: [], tradesTitle: t("ans.tradesTitle"), link, linkLabel: t("ans.open"), notes, matched: 0, total, empty: true,
     };
   }
   const va = metricValue(ra, metric), vb = metricValue(rb, metric);
@@ -791,25 +759,27 @@ export function buildCompare(q: AskQuery, f: AskFilter, a: AskTrade[], b: AskTra
   const higherBetter = metric !== "fees";
   const winner = diff == null || diff === 0 ? null : (diff > 0) === higherBetter ? ra : rb;
   const loser = winner === ra ? rb : ra;
-  const word = METRIC_WORD[metric].replace(/^по /, "");
+  const word = metricName(metric);
   const headline = winner
-    ? `Лучше — ${winner.label}: ${word} ${fmtMetric(metricValue(winner, metric), metric)} против ${fmtMetric(metricValue(loser, metric), metric)} (${commonI18n.t("units.trades", { count: winner.n })} vs ${commonI18n.t("units.trades", { count: loser.n })}; винрейт ${fmtRate(winner.winRate)} vs ${fmtRate(loser.winRate)}).`
-    : `${ra.label} и ${rb.label} — одинаково: ${word} ${fmtMetric(va, metric)}.`;
-  const diffFmt = diff == null ? "—" : metric === "winRate" ? `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(Math.round(diff * 100))} п.п.` : metric === "n" ? fmtNum(diff, { decimals: 0, signed: true }) : metric === "pf" ? fmtNum(diff, { signed: true }) : fmtUsd(diff, { signed: true });
-  const all = aggOf(union, "all", "Все", idx);
+    ? t("ans.cmpHead", {
+      winner: winner.label, metric: word, wv: fmtMetric(metricValue(winner, metric), metric), lv: fmtMetric(metricValue(loser, metric), metric),
+      wn: nTrades(winner.n), ln: nTrades(loser.n), wwr: fmtRate(winner.winRate), lwr: fmtRate(loser.winRate),
+    })
+    : cap(t("ans.cmpTie", { a: ra.label, b: rb.label, metric: word, v: fmtMetric(va, metric) }));
+  const pp = diff == null ? "" : `${diff > 0 ? "+" : diff < 0 ? "−" : ""}${Math.abs(Math.round(diff * 100))}`;
+  const diffFmt = diff == null ? "—" : metric === "winRate" ? commonI18n.t("units.percentPoints", { value: pp }) : metric === "n" ? fmtNum(diff, { decimals: 0, signed: true }) : metric === "pf" ? fmtNum(diff, { signed: true }) : fmtUsd(diff, { signed: true });
+  const all = aggOf(union, "all", t("ans.all"), idx);
   return {
     kind: "compare", subject, headline,
-    big: { label: `Разница ${word}: ${ra.label} − ${rb.label}`, value: diffFmt, tone: metric === "net" || metric === "avg" ? diff : null },
+    big: { label: cap(t("ans.cmpDiff", { metric: word, a: ra.label, b: rb.label })), value: diffFmt, tone: metric === "net" || metric === "avg" ? diff : null },
     stats: statsOf(all),
-    chart: barsFrom([ra, rb], metric, `${cap(ra.label)} vs ${rb.label} — ${METRIC_WORD[metric]}`, winner ? [winner.key] : []),
-    groups: { dim: "side", title: "Сравнение", rows: [ra, rb], highlight: winner ? [winner.key] : [], metric },
-    trades: sortChrono(union, idx), tradesTitle: "Сделки обеих групп",
-    link: union.length <= (meta.maxLinkIds ?? MAX_LINK_IDS) ? { ...link, ids: union.map((t) => t.id) } : link,
-    linkLabel: "Открыть обе группы в «Сделках»", notes, matched: union.length, total, empty: false,
+    chart: barsFrom([ra, rb], metric, byMetric(`${cap(ra.label)} vs ${rb.label}`, metric), winner ? [winner.key] : []),
+    groups: { dim: "side", title: t("ans.cmpTitle"), rows: [ra, rb], highlight: winner ? [winner.key] : [], metric },
+    trades: sortChrono(union, idx), tradesTitle: t("ans.cmpTrades"),
+    link: union.length <= (meta.maxLinkIds ?? MAX_LINK_IDS) ? { ...link, ids: union.map((tr) => tr.id) } : link,
+    linkLabel: t("ans.cmpOpen"), notes, matched: union.length, total, empty: false,
   };
 }
-
-const cap = (s: string) => (s ? s[0].toUpperCase() + s.slice(1) : s);
 
 // ── Streaks ───────────────────────────────────────────────────────────────────
 
@@ -820,10 +790,10 @@ function runsOf(trades: AskTrade[], idx: BookIndex, unit: "trade" | "day"): Run[
   const runs: Run[] = [];
   if (unit === "day") {
     const byDay = new Map<string, AskTrade[]>();
-    for (const t of s) { const d = metaOf(idx, t).day; byDay.set(d, [...(byDay.get(d) ?? []), t]); }
+    for (const tr of s) { const d = metaOf(idx, tr).day; byDay.set(d, [...(byDay.get(d) ?? []), tr]); }
     for (const [day, items] of byDay) {
-      const net = items.reduce((x, t) => x + (netPnl(t) ?? 0), 0);
-      if (net === 0) { runs.push({ kind: "win", items: [], net: 0 }); runs.pop(); continue; }
+      const net = items.reduce((x, tr) => x + (netPnl(tr) ?? 0), 0);
+      if (net === 0) continue;
       const kind = net > 0 ? "win" : "loss";
       const last = runs[runs.length - 1];
       if (last && last.kind === kind) { last.items.push(...items); last.days!.push(day); last.net += net; }
@@ -831,99 +801,97 @@ function runsOf(trades: AskTrade[], idx: BookIndex, unit: "trade" | "day"): Run[
     }
     return runs;
   }
-  for (const t of s) {
-    const r = resultOf(t);
+  for (const tr of s) {
+    const r = resultOf(tr);
     if (r !== "win" && r !== "loss") continue;
     const last = runs[runs.length - 1];
-    if (last && last.kind === r) { last.items.push(t); last.net += netPnl(t) ?? 0; }
-    else runs.push({ kind: r, items: [t], net: netPnl(t) ?? 0 });
+    if (last && last.kind === r) { last.items.push(tr); last.net += netPnl(tr) ?? 0; }
+    else runs.push({ kind: r, items: [tr], net: netPnl(tr) ?? 0 });
   }
   return runs;
 }
 
-function streakAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Omit<AskAnswer, "kind" | "headline" | "big" | "chart" | "groups" | "trades" | "tradesTitle">, all: Agg): AskAnswer {
+function streakAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Base, all: Agg): AskAnswer {
   const unit = q.streak?.unit ?? "trade";
   const runs = runsOf(trades, c.idx, unit);
   const len = (r: Run) => (unit === "day" ? r.days!.length : r.items.length);
   const longest = (k: "win" | "loss") => runs.filter((r) => r.kind === k).sort((x, y) => len(y) - len(x) || (k === "win" ? y.net - x.net : x.net - y.net))[0] ?? null;
   const lw = longest("win"), ll = longest("loss");
   const kind = q.streak?.kind ?? "win";
-  const focus = kind === "loss" ? ll : lw;
+  const loss = kind === "loss";
+  const focus = loss ? ll : lw;
   const cur = runs[runs.length - 1] ?? null;
-  const u = (n: number) => (unit === "day" ? commonI18n.t("units.days", { count: n }) : commonI18n.t("units.trades", { count: n }));
-  if (!focus) return { ...base, kind: "empty", headline: `${describeSubject(q)}: серий нет`, big: { label: "Серия", value: "0", tone: null }, chart: null, groups: null, trades: [], tradesTitle: "Сделки", empty: true };
+  const u = (n: number) => (unit === "day" ? commonI18n.t("units.days", { count: n }) : nTrades(n));
+  if (!focus) return { ...base, kind: "empty", headline: t("ans.stEmpty", { subject: describeSubject(q) }), big: { label: t("ans.stBig"), value: "0", tone: null }, chart: null, groups: null, trades: [], tradesTitle: t("ans.tradesTitle"), empty: true };
   const span = (r: Run) => { const s = sortChrono(r.items, c.idx, false); return s.length ? `${dm(s[0].date)}–${dm(s[s.length - 1].date)}` : ""; };
-  const other = kind === "loss" ? lw : ll;
-  const headline = `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"} — ${u(len(focus))} подряд (${span(focus)}, ${fmtUsd(focus.net, { signed: true })}).`
-    + (other ? ` Серия ${kind === "loss" ? "побед" : "убытков"}: ${u(len(other))}.` : "")
-    + (cur ? ` Сейчас: ${u(len(cur))} ${cur.kind === "win" ? "в плюс" : "в минус"} подряд.` : "");
+  const other = loss ? lw : ll;
+  const parts = [t(loss ? "ans.stLongestLoss" : "ans.stLongestWin", { n: u(len(focus)), span: span(focus), net: fmtUsd(focus.net, { signed: true }) })];
+  if (other) parts.push(t(loss ? "ans.stOtherWin" : "ans.stOtherLoss", { n: u(len(other)) }));
+  if (cur) parts.push(t(cur.kind === "win" ? "ans.stNowWin" : "ans.stNowLoss", { n: u(len(cur)) }));
   // Distribution of run lengths for the focused kind.
   const lens = runs.filter((r) => r.kind === kind).map(len);
   const maxL = Math.min(10, Math.max(...lens, 1));
-  const bins = Array.from({ length: maxL }, (_, i) => ({ label: i + 1 === maxL && Math.max(...lens) > maxL ? `${maxL}+` : String(i + 1), value: lens.filter((l) => (i + 1 === maxL ? l >= maxL : l === i + 1)).length, tone: (kind === "loss" ? "down" : "up") as "up" | "down" }));
+  const bins = Array.from({ length: maxL }, (_, i) => ({ label: i + 1 === maxL && Math.max(...lens) > maxL ? `${maxL}+` : String(i + 1), value: lens.filter((l) => (i + 1 === maxL ? l >= maxL : l === i + 1)).length, tone: (loss ? "down" : "up") as "up" | "down" }));
   const stats: AskStat[] = [
-    { label: "Макс. серия побед", value: lw ? u(len(lw)) : "—" },
-    { label: "Макс. серия убытков", value: ll ? u(len(ll)) : "—" },
-    { label: "Текущая серия", value: cur ? `${u(len(cur))} ${cur.kind === "win" ? "в плюс" : "в минус"}` : "—" },
-    { label: "Серий всего", value: String(runs.length) },
+    { label: t("ans.stMaxWin"), value: lw ? u(len(lw)) : "—" },
+    { label: t("ans.stMaxLoss"), value: ll ? u(len(ll)) : "—" },
+    { label: t("ans.stCurrent"), value: cur ? t(cur.kind === "win" ? "ans.stCurWin" : "ans.stCurLoss", { n: u(len(cur)) }) : "—" },
+    { label: t("ans.stTotal"), value: String(runs.length) },
     ...statsOf(all).slice(0, 3),
   ].filter((s) => s.value !== "—");
+  const chartKey = `${loss ? "loss" : "win"}${unit === "day" ? "Days" : "Trades"}` as "lossDays" | "lossTrades" | "winDays" | "winTrades";
   return {
-    ...base, kind: "streak", headline, stats,
-    big: { label: `Самая длинная серия ${kind === "loss" ? "убытков" : "побед"}`, value: u(len(focus)), tone: null, sub: `${span(focus)} · ${fmtUsd(focus.net, { signed: true })}` },
-    chart: { type: "hist", title: `Длина серий ${kind === "loss" ? "убытков" : "побед"} (${unit === "day" ? "дни" : "сделки"})`, bins },
-    groups: null, trades: sortChrono(focus.items, c.idx), tradesTitle: "Сделки этой серии",
-    link: focus.items.length <= c.maxIds ? { ...base.link, ids: focus.items.map((t) => t.id) } : base.link, linkLabel: "Открыть серию в «Сделках»",
+    ...base, kind: "streak", headline: parts.join(" "), stats,
+    big: { label: t(loss ? "ans.stBigLoss" : "ans.stBigWin"), value: u(len(focus)), tone: null, sub: `${span(focus)} · ${fmtUsd(focus.net, { signed: true })}` },
+    chart: { type: "hist", title: t(`ans.stChart.${chartKey}`), bins },
+    groups: null, trades: sortChrono(focus.items, c.idx), tradesTitle: t("ans.stSeriesTrades"),
+    link: focus.items.length <= c.maxIds ? { ...base.link, ids: focus.items.map((tr) => tr.id) } : base.link, linkLabel: t("ans.stOpen"),
   };
 }
 
 // ── Insight: «когда я теряю больше всего» ────────────────────────────────────
 
-const INSIGHT_DIMS: Array<{ dim: AskDim; title: string }> = [
-  { dim: "slot", title: "Время дня" }, { dim: "hour", title: "Час входа" }, { dim: "weekday", title: "День недели" },
-  { dim: "holdBucket", title: "Удержание" }, { dim: "sizeBucket", title: "Размер" }, { dim: "ticker", title: "Тикер" },
-  { dim: "side", title: "Сторона" }, { dim: "setup", title: "Сетап" },
-];
+const INSIGHT_DIMS = ["slot", "hour", "weekday", "holdBucket", "sizeBucket", "ticker", "side", "setup"] as const;
 
-function insightAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Omit<AskAnswer, "kind" | "headline" | "big" | "chart" | "groups" | "trades" | "tradesTitle">): AskAnswer {
+function insightAnswer(q: AskQuery, trades: AskTrade[], c: Ctx, base: Base): AskAnswer {
   const worst = q.insight !== "best";
   const minN = minGroupN(trades.length, "net", "insight");
   const baseText = canonicalText(c.f, { allTraders: q.allTraders });
   const findings: Agg[] = [];
-  for (const { dim, title } of INSIGHT_DIMS) {
+  for (const dim of INSIGHT_DIMS) {
     const groups = groupTrades(trades, dim, c.idx).filter((r) => dim !== "setup" || r.key !== "—");
     if (groups.length < 2) continue; // one bucket = nothing to compare against
     const rows = groups.filter((r) => r.n >= minN && r.net != null);
     const top = rankRows(rows, "net", !worst)[0];
     if (!top || top.net == null || (worst ? top.net >= 0 : top.net <= 0)) continue;
-    findings.push({ ...top, key: `${dim}:${top.key}`, label: `${title}: ${top.label}`, ask: [top.ask, baseText].filter(Boolean).join(" ") });
+    findings.push({ ...top, key: `${dim}:${top.key}`, label: `${t(`insightDim.${dim}`)}: ${top.label}`, ask: [top.ask, baseText].filter(Boolean).join(" ") });
   }
   // Context: right after a loss vs the rest.
-  const afterLoss = trades.filter((t) => metaOf(c.idx, t).prev[0] === "loss");
+  const afterLoss = trades.filter((tr) => metaOf(c.idx, tr).prev[0] === "loss");
   if (afterLoss.length >= minN) {
-    const a = aggOf(afterLoss, "ctx:afterLoss", "Контекст: сразу после убытка", c.idx);
-    if (a.net != null && (worst ? a.net < 0 : a.net > 0)) findings.push({ ...a, ask: ["после убытка", baseText].filter(Boolean).join(" ") });
+    const a = aggOf(afterLoss, "ctx:afterLoss", t("ans.afterLoss"), c.idx);
+    if (a.net != null && (worst ? a.net < 0 : a.net > 0)) findings.push({ ...a, ask: [t("ph.afterLoss"), baseText].filter(Boolean).join(" ") });
   }
   findings.sort((x, y) => (worst ? (x.net ?? 0) - (y.net ?? 0) : (y.net ?? 0) - (x.net ?? 0)));
   const top = findings[0];
   if (!top) {
     return {
-      ...base, kind: "insight", headline: worst ? "Явных зон потерь не нашлось: ни одна группа с достаточной выборкой не в минусе." : "Явных сильных зон не нашлось: ни одна группа с достаточной выборкой не в плюсе.",
-      big: { label: "Находок", value: "0", tone: null }, chart: equityChart(trades, c.idx), groups: null, trades: sortChrono(trades, c.idx), tradesTitle: "Сделки по запросу",
+      ...base, kind: "insight", headline: worst ? t("ans.inNoneWorst") : t("ans.inNoneBest"),
+      big: { label: t("ans.inFindings"), value: "0", tone: null }, chart: equityChart(trades, c.idx), groups: null, trades: sortChrono(trades, c.idx), tradesTitle: t("ans.byQuery"),
     };
   }
   const second = findings[1];
-  const headline = `${worst ? "Больше всего теряете" : "Больше всего зарабатываете"}: ${top.label.toLowerCase()} — ${fmtUsd(top.net, { signed: true })} за ${commonI18n.t("units.trades", { count: top.n })} (винрейт ${fmtRate(top.winRate)}).`
-    + (second ? ` Дальше: ${second.label.toLowerCase()} (${fmtUsd(second.net, { signed: true })}).` : "");
+  const head = t(worst ? "ans.inHeadWorst" : "ans.inHeadBest", { label: top.label.toLowerCase(), net: fmtUsd(top.net, { signed: true }), trades: nTrades(top.n), wr: fmtRate(top.winRate) });
+  const headline = second ? `${head} ${t("ans.inNext", { label: second.label.toLowerCase(), net: fmtUsd(second.net, { signed: true }) })}` : head;
   const ids = new Set(top.ids ?? []);
-  c.notes.push(`Сравниваются группы от ${minN} сделок по ${INSIGHT_DIMS.length + 1} срезам; по каждому срезу берётся ${worst ? "самая убыточная" : "самая прибыльная"} группа.`);
+  c.notes.push(t(worst ? "ans.inNoteWorst" : "ans.inNoteBest", { count: minN, k: INSIGHT_DIMS.length + 1 }));
   return {
     ...base, kind: "insight", headline,
-    big: { label: top.label, value: fmtUsd(top.net, { signed: true }), tone: top.net, sub: `${commonI18n.t("units.trades", { count: top.n })} · винрейт ${fmtRate(top.winRate)} · ср. ${fmtUsd(top.avgNet, { signed: true })}` },
-    chart: barsFrom(findings, "net", worst ? "Где уходят деньги" : "Где приходят деньги", [top.key]),
-    groups: { dim: "insight", title: worst ? "Зоны потерь (по нетто)" : "Сильные зоны (по нетто)", rows: findings, highlight: [top.key], metric: "net" },
-    trades: sortChrono(trades.filter((t) => ids.has(t.id)), c.idx), tradesTitle: `Сделки: ${top.label}`,
-    link: ids.size <= c.maxIds ? { ...base.link, ids: [...ids] } : base.link, linkLabel: "Открыть эти сделки в «Сделках»",
+    big: { label: top.label, value: fmtUsd(top.net, { signed: true }), tone: top.net, sub: t("ans.inSub", { trades: nTrades(top.n), wr: fmtRate(top.winRate), avg: fmtUsd(top.avgNet, { signed: true }) }) },
+    chart: barsFrom(findings, "net", worst ? t("ans.inChartWorst") : t("ans.inChartBest"), [top.key]),
+    groups: { dim: "insight", title: worst ? t("ans.inGroupsWorst") : t("ans.inGroupsBest"), rows: findings, highlight: [top.key], metric: "net" },
+    trades: sortChrono(trades.filter((tr) => ids.has(tr.id)), c.idx), tradesTitle: t("ans.tradesOf", { label: top.label }),
+    link: ids.size <= c.maxIds ? { ...base.link, ids: [...ids] } : base.link, linkLabel: t("ans.inOpen"),
   };
 }
 

@@ -9,7 +9,7 @@ import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
 import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { getSessionState, type SessionPhase } from "@/components/dashboard/market-session";
+import { formatCountdown, getSessionState, type NextKey, type SessionPhase } from "@/components/dashboard/market-session";
 import { shellI18n } from "@/i18n/ns/shell";
 import { fmtDate } from "@/i18n/format";
 
@@ -49,20 +49,8 @@ const PHASE: Record<SessionPhase, { dot: string; text: string }> = {
   closed: { dot: "bg-muted-foreground", text: "text-muted-foreground" },
 };
 
-/** What the countdown points to (language-neutral; the clock translates it, `nextLabel` stays for old callers). */
-export type NextKey = "toOpen" | "toClose" | "toAfterEnd" | "toPremarket";
-const NEXT_BY_PHASE: Record<SessionPhase, NextKey> = { pre: "toOpen", regular: "toClose", after: "toAfterEnd", closed: "toOpen" };
-
-/** "HH:MM:SS", with a localized day prefix past 24 h ("1д 02:03:04" / "1d …" / "1k …"). */
-function countdownText(ms: number): string {
-  const total = Math.max(0, Math.floor(ms / 1000));
-  const days = Math.floor(total / 86400);
-  const h = Math.floor((total % 86400) / 3600);
-  const m = Math.floor((total % 3600) / 60);
-  const sec = total % 60;
-  const hms = `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-  return days > 0 ? `${shellI18n.t("clock.daysPrefix", { count: days })} ${hms}` : hms;
-}
+/** What the countdown points to (language-neutral; `nextLabel` is the same in the UI language). */
+export type { NextKey };
 
 /** Ticking session state (1 s). Exported so pages can share the same clock logic. */
 export function useMarketClock() {
@@ -77,7 +65,7 @@ export function useMarketClock() {
     // When closed, the next transition is the premarket start (always 5.5 h before the open).
     let msToNext = s.msToNext;
     let nextLabel = s.nextLabel;
-    let nextKey: NextKey = NEXT_BY_PHASE[s.phase];
+    let nextKey: NextKey = s.nextKey;
     if (s.phase === "closed" && msToNext > PREMARKET_TO_OPEN_MS) {
       msToNext -= PREMARKET_TO_OPEN_MS;
       nextKey = "toPremarket";
@@ -99,7 +87,7 @@ export function MarketClock({ className, fit = "viewport" }: { className?: strin
   const next = t(`clock.next.${s.nextKey}`);
   const reason = s.phase === "closed" ? (s.holiday ? s.holiday : s.weekend ? t("clock.weekend") : null) : null;
   const hm = s.nyTime.slice(0, 5);
-  const countdown = countdownText(s.msToNext);
+  const countdown = formatCountdown(s.msToNext);
   const local = fmtDate(new Date(), "time");
 
   return (

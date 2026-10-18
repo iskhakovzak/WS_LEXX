@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import {
@@ -22,28 +22,22 @@ import {
 } from "./use-journal-days";
 import type { RuleViolation } from "./DayTrades";
 import { stepWeekday } from "./utils";
-import { fmtDate, pluralRu } from "@/lib/format";
+import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { journalI18n } from "@/i18n/ns/journal";
+import { tagLabel } from "@/components/shared/trade-labels";
+import { MOOD_LABELS, DISCIPLINE_LABELS } from "./vocab";
 
-export const MOOD_LABELS = ["Тильт", "Плохо", "Ровно", "Хорошо", "В потоке"] as const;
-export const DISCIPLINE_LABELS = ["Хаос", "Слабо", "Средне", "Хорошо", "Идеально"] as const;
+export { MOOD_LABELS, DISCIPLINE_LABELS };
 
+// Stored tag codes: the day's tags keep the Russian word; `tagLabel` shows it in the UI language.
 /** Rule-violation tags (stored in the day's tags; same taxonomy as the per-trade review). */
-export const MISTAKE_TAGS = ["FOMO", "Ранний вход", "Поздний выход", "Двигал стоп", "Овертрейдинг", "Реванш", "Без плана", "Большой размер"];
+export const MISTAKE_TAGS = ["FOMO", "Ранний вход", "Поздний выход", "Двигал стоп", "Овертрейдинг", "Реванш", "Без плана", "Большой размер"]; // i18n-ignore (stored codes)
 /** Legacy positive tags — still shown when present, no longer offered as chips. */
-export const GOOD_TAGS = ["По плану", "Терпение", "Чистый выход", "Резал убыток"];
+export const GOOD_TAGS = ["По плану", "Терпение", "Чистый выход", "Резал убыток"]; // i18n-ignore (stored codes)
 /** Emotions of the day (stored in the day's tags). */
-export const EMOTION_TAGS = ["Спокойствие", "Уверенность", "Азарт", "Нетерпение", "Страх", "Жадность", "Скука", "Раздражение"];
-const CALM_EMOTIONS = new Set(["Спокойствие", "Уверенность"]);
-
-const PLAN_TEMPLATE = `Фокус-лист:
--
-
-Ключевые уровни:
--
-
-Лимит убытка на день:
-Правило дня: `;
+export const EMOTION_TAGS = ["Спокойствие", "Уверенность", "Азарт", "Нетерпение", "Страх", "Жадность", "Скука", "Раздражение"]; // i18n-ignore (stored codes)
+const CALM_EMOTIONS = new Set(["Спокойствие", "Уверенность"]); // i18n-ignore (stored codes)
 
 const TEXT_LIMIT = 4000; // eod summary fields (repeat / stop) are capped server-side
 
@@ -87,6 +81,7 @@ export function DayJournalEditor({
   onOpenTradeReview?: () => void;
 }) {
   const { toast } = useToast();
+  const { t } = journalI18n.useT();
   const save = useSaveJournalDay();
   const key = `${trader}|${date}`;
   const isFuture = date > today;
@@ -131,7 +126,7 @@ export function DayJournalEditor({
             setStatus({ kind: "saved", at: new Date() });
             setFromLegacy(false);
           }
-          if (!quiet) toast({ title: "Дневник сохранён", description: fmtDate(e.date, "dayMonth") });
+          if (!quiet) toast({ title: journalI18n.t("editor.saved"), description: fmtDate(e.date, "dayMonth") });
         },
         onError: (err) => {
           if (err instanceof JournalConflict) {
@@ -142,12 +137,12 @@ export function DayJournalEditor({
               dirtyRef.current = false;
               setStatus({ kind: "idle" });
             }
-            toast({ title: "Запись изменена в другой вкладке", description: "Загружена актуальная версия — проверьте и допишите, что нужно." });
+            toast({ title: journalI18n.t("editor.conflictTitle"), description: journalI18n.t("editor.conflictDesc") });
             return;
           }
           dirtyRef.current = true;
-          setStatus({ kind: "error", message: (err as Error)?.message ?? "Ошибка" });
-          toast({ title: "Не удалось сохранить дневник", description: (err as Error)?.message, variant: "destructive" });
+          setStatus({ kind: "error", message: (err as Error)?.message ?? commonI18n.t("states.error") });
+          toast({ title: journalI18n.t("editor.saveFailed"), description: (err as Error)?.message, variant: "destructive" });
         },
         onSettled: () => { inFlightRef.current = false; },
       });
@@ -206,9 +201,9 @@ export function DayJournalEditor({
     return () => window.removeEventListener("keydown", onKey);
   }, [editable, persist]);
 
-  const toggleTag = (t: string) => {
-    const has = draft.tags.some((x) => sameTag(x, t));
-    update({ tags: has ? draft.tags.filter((x) => !sameTag(x, t)) : [...draft.tags, t] });
+  const toggleTag = (tag: string) => {
+    const has = draft.tags.some((x) => sameTag(x, tag));
+    update({ tags: has ? draft.tags.filter((x) => !sameTag(x, tag)) : [...draft.tags, tag] });
   };
 
   // ── Close / reopen the day (EOD) ─────────────────────────────────────────
@@ -217,8 +212,10 @@ export function DayJournalEditor({
     (out) => {
       const s = out.streaks;
       toast({
-        title: `День ${fmtDate(date, "dayMonth")} закрыт`,
-        description: `Разбор отправлен куратору.${s.closedStreak > 1 ? ` Серия: ${commonI18n.t("units.days", { count: s.closedStreak })} подряд.` : ""}`,
+        title: journalI18n.t("editor.dayClosed", { date: fmtDate(date, "dayMonth") }),
+        description: s.closedStreak > 1
+          ? journalI18n.t("editor.sentToCuratorStreak", { days: commonI18n.t("units.days", { count: s.closedStreak }) })
+          : journalI18n.t("editor.sentToCurator"),
       });
     },
   );
@@ -248,8 +245,8 @@ export function DayJournalEditor({
           const err = e as Error & { status?: number; body?: { missing?: MissingItem[] } };
           const n = err.body?.missing?.length ?? 0;
           toast({
-            title: "День не закрыт",
-            description: err.status === 422 && n ? `У ${n} ${pluralRu(n, "сделки", "сделок", "сделок")} нет сетапа или грейда — отметьте их в разборе по сделкам.` : err.message,
+            title: journalI18n.t("editor.notClosed"),
+            description: err.status === 422 && n ? journalI18n.t("editor.missingSetup", { count: n }) : err.message,
             variant: "destructive",
           });
         },
@@ -259,13 +256,13 @@ export function DayJournalEditor({
 
   const reviewFilled = hasReview(draft);
   const progress = [draft.mood != null, !!draft.well.trim(), !!draft.mistakes.trim(), !!draft.lessons.trim(), !!focusText.trim()];
-  const otherTags = draft.tags.filter((t) => ![...MISTAKE_TAGS, ...EMOTION_TAGS].some((x) => sameTag(x, t)));
+  const otherTags = draft.tags.filter((tag) => ![...MISTAKE_TAGS, ...EMOTION_TAGS].some((x) => sameTag(x, tag)));
 
   return (
     <Panel
-      title="Дневник дня"
+      title={t("editor.title")}
       icon={NotebookPen}
-      description={editable ? (isFuture ? "План на этот день" : "Пара минут после закрытия: что было, чему научился, фокус на завтра") : `Запись трейдера ${trader}`}
+      description={editable ? (isFuture ? t("editor.descFuture") : t("editor.descToday")) : t("editor.descReadOnly", { trader })}
       actions={<SaveIndicator status={status} mode={mode} editable={editable} onRetry={() => persist(draftRef.current, false)} />}
     >
       {isLoading ? (
@@ -285,48 +282,48 @@ export function DayJournalEditor({
           />
 
           {isFuture ? (
-            <p className="text-sm text-muted-foreground">Разбор откроется после торгового дня.</p>
+            <p className="text-sm text-muted-foreground">{t("editor.reviewLater")}</p>
           ) : !editable && isEntryEmpty(entry) ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">{trader} ещё не заполнил разбор за этот день.</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader })}</p>
           ) : (
             <>
               {fromLegacy && (
                 <p className="rounded-xl bg-primary/10 px-3 py-2 text-xs text-primary">
-                  Заметка из прежней версии дневника перенесена в «Урок». Отредактируйте или сохраните (Ctrl+S).
+                  {t("editor.legacyMoved")}
                 </p>
               )}
 
-              <Step n={1} title="Как прошёл день" aside={<MorningCheckin trader={trader} date={date} />}>
+              <Step n={1} title={t("editor.step1")} aside={<MorningCheckin trader={trader} date={date} />}>
                 <div className="grid gap-4 md:grid-cols-2">
-                  <ScaleField label="Настроение" labels={MOOD_LABELS} value={draft.mood} editable={editable} onChange={(v) => update({ mood: v })} />
-                  <ScaleField label="Дисциплина" labels={DISCIPLINE_LABELS} value={draft.discipline} editable={editable} onChange={(v) => update({ discipline: v })} />
+                  <ScaleField label={t("editor.mood")} labels={MOOD_LABELS} value={draft.mood} editable={editable} onChange={(v) => update({ mood: v })} />
+                  <ScaleField label={t("editor.discipline")} labels={DISCIPLINE_LABELS} value={draft.discipline} editable={editable} onChange={(v) => update({ discipline: v })} />
                 </div>
                 <ChipGroup
-                  label="Эмоции"
+                  label={t("editor.emotions")}
                   options={EMOTION_TAGS}
                   selected={draft.tags}
                   editable={editable}
-                  toneOf={(t) => (CALM_EMOTIONS.has(t) ? "up" : "warn")}
+                  toneOf={(tag) => (CALM_EMOTIONS.has(tag) ? "up" : "warn")}
                   onToggle={toggleTag}
                 />
               </Step>
 
-              <Step n={2} title="Что сработало и что нет">
+              <Step n={2} title={t("editor.step2")}>
                 <div className="grid gap-3 md:grid-cols-2">
-                  <ReviewField id="journal-well" label="Что сработало" tone="up" value={draft.well} editable={editable}
-                    placeholder="Лучшие решения, точные входы, что повторять…" onChange={(v) => update({ well: v })} />
-                  <ReviewField id="journal-mistakes" label="Что не сработало" tone="down" value={draft.mistakes} editable={editable}
-                    placeholder="Где поспешил, что стоило денег…" onChange={(v) => update({ mistakes: v })} />
+                  <ReviewField id="journal-well" label={t("editor.well")} tone="up" value={draft.well} editable={editable}
+                    placeholder={t("editor.wellPlaceholder")} onChange={(v) => update({ well: v })} />
+                  <ReviewField id="journal-mistakes" label={t("editor.mistakes")} tone="down" value={draft.mistakes} editable={editable}
+                    placeholder={t("editor.mistakesPlaceholder")} onChange={(v) => update({ mistakes: v })} />
                 </div>
               </Step>
 
-              <Step n={3} title="Урок и правила">
-                <ReviewField id="journal-lessons" label="Урок дня" tone="accent" value={draft.lessons} editable={editable} rows="min-h-[72px]"
-                  placeholder="Одна мысль, которую забираю в завтра…" onChange={(v) => update({ lessons: v })} />
+              <Step n={3} title={t("editor.step3")}>
+                <ReviewField id="journal-lessons" label={t("editor.lesson")} tone="accent" value={draft.lessons} editable={editable} rows="min-h-[72px]"
+                  placeholder={t("editor.lessonPlaceholder")} onChange={(v) => update({ lessons: v })} />
                 <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span className="text-xs text-muted-foreground" id="journal-followed">Торговал по правилам?</span>
+                  <span className="text-xs text-muted-foreground" id="journal-followed">{t("editor.followedRules")}</span>
                   <div role="group" aria-labelledby="journal-followed" className="flex gap-1.5">
-                    {([[true, "Да"], [false, "Нет"]] as const).map(([v, l]) => (
+                    {([[true, commonI18n.t("yes")], [false, commonI18n.t("no")]] as const).map(([v, l]) => (
                       <button
                         key={l}
                         type="button"
@@ -343,41 +340,41 @@ export function DayJournalEditor({
                     ))}
                   </div>
                 </div>
-                {(draft.followedPlan === false || MISTAKE_TAGS.some((m) => draft.tags.some((t) => sameTag(t, m))) || !editable) && (
-                  <ChipGroup label="Что нарушил" options={MISTAKE_TAGS} selected={draft.tags} editable={editable} toneOf={() => "down"} onToggle={toggleTag} />
+                {(draft.followedPlan === false || MISTAKE_TAGS.some((m) => draft.tags.some((tag) => sameTag(tag, m))) || !editable) && (
+                  <ChipGroup label={t("editor.broke")} options={MISTAKE_TAGS} selected={draft.tags} editable={editable} toneOf={() => "down"} onToggle={toggleTag} />
                 )}
                 {otherTags.length > 0 && (
                   <div className="flex flex-wrap items-center gap-1.5">
-                    {otherTags.map((t) =>
+                    {otherTags.map((tag) =>
                       editable ? (
-                        <button key={t} type="button" onClick={() => toggleTag(t)} aria-label={`Убрать тег ${t}`}
+                        <button key={tag} type="button" onClick={() => toggleTag(tag)} aria-label={t("editor.removeTag", { tag: tagLabel(tag) })}
                           className="chip inline-flex min-h-7 items-center gap-1 px-2.5 text-xs font-medium !text-foreground">
-                          {t}<X className="h-3 w-3" aria-hidden="true" />
+                          {tagLabel(tag)}<X className="h-3 w-3" aria-hidden="true" />
                         </button>
                       ) : (
-                        <Pill key={t} tone={GOOD_TAGS.includes(t) ? "up" : "neutral"}>{t}</Pill>
+                        <Pill key={tag} tone={GOOD_TAGS.includes(tag) ? "up" : "neutral"}>{tagLabel(tag)}</Pill>
                       ),
                     )}
                   </div>
                 )}
                 {violations.length > 0 && (
-                  <ul className="space-y-1 rounded-xl bg-warn/10 px-3 py-2" aria-label="Нарушения, найденные автоматически">
+                  <ul className="space-y-1 rounded-xl bg-warn/10 px-3 py-2" aria-label={t("editor.autoViolations")}>
                     {violations.slice(0, 5).map((v) => (
                       <li key={v.id} className="flex items-start gap-2 text-xs">
                         <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" aria-hidden="true" />
                         <span>
-                          <span className="font-medium">{v.ruleName ?? "Правило"}</span>
+                          <span className="font-medium">{v.ruleName ?? t("editor.rule")}</span>
                           {v.ticker && <span className="text-muted-foreground"> · {v.ticker}</span>}
                           {v.message && <span className="text-muted-foreground"> — {v.message}</span>}
                         </span>
                       </li>
                     ))}
-                    {violations.length > 5 && <li className="text-2xs text-muted-foreground">и ещё {violations.length - 5}</li>}
+                    {violations.length > 5 && <li className="text-2xs text-muted-foreground">{t("editor.andMore", { count: violations.length - 5 })}</li>}
                   </ul>
                 )}
               </Step>
 
-              <Step n={4} title={`Фокус на завтра · ${fmtDate(nextDate, "dayMonth")}`}>
+              <Step n={4} title={t("editor.step4", { date: fmtDate(nextDate, "dayMonth") })}>
                 <TomorrowFocus
                   key={`${trader}|${nextDate}`}
                   trader={trader}
@@ -401,7 +398,7 @@ export function DayJournalEditor({
               closing={close.isPending}
               reopening={reopen.isPending}
               onClose={() => { void doClose(); }}
-              onReopen={() => reopen.mutate(undefined, { onError: (e) => toast({ title: "Не удалось открыть день", description: (e as Error).message, variant: "destructive" }) })}
+              onReopen={() => reopen.mutate(undefined, { onError: (e) => toast({ title: t("editor.reopenFailed"), description: (e as Error).message, variant: "destructive" }) })}
               onOpenTradeReview={onOpenTradeReview}
             />
           )}
@@ -429,23 +426,24 @@ function Step({ n, title, aside, children }: { n: number; title: ReactNode; asid
 }
 
 function PlanBlock({ value, editable, prominent, onChange }: { value: string; editable: boolean; prominent: boolean; onChange: (v: string) => void }) {
+  const { t } = journalI18n.useT();
   const [open, setOpen] = useState(prominent || !!value.trim());
   useEffect(() => { if (prominent || value.trim()) setOpen(true); }, [prominent, value]);
   if (!editable && !value.trim()) return null;
   if (!open) {
     return (
       <button type="button" onClick={() => setOpen(true)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-xs font-medium">
-        <Plus className="h-3.5 w-3.5" aria-hidden="true" />План / фокус дня
+        <Plus className="h-3.5 w-3.5" aria-hidden="true" />{t("editor.planChip")}
       </button>
     );
   }
   return (
     <div className="space-y-1.5 rounded-xl bg-[var(--glass-bg)] p-3">
       <div className="flex items-center justify-between gap-2">
-        <label htmlFor="journal-plan" className="micro-label">План и фокус дня</label>
+        <label htmlFor="journal-plan" className="micro-label">{t("editor.planLabel")}</label>
         {editable && !value.trim() && (
-          <Button variant="ghost" size="sm" onClick={() => onChange(PLAN_TEMPLATE)}>
-            <Plus aria-hidden="true" />Шаблон
+          <Button variant="ghost" size="sm" onClick={() => onChange(t("planTemplate"))}>
+            <Plus aria-hidden="true" />{t("editor.template")}
           </Button>
         )}
       </div>
@@ -454,7 +452,7 @@ function PlanBlock({ value, editable, prominent, onChange }: { value: string; ed
         readOnly={!editable}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        placeholder="Что торгую сегодня и при каких условиях не вхожу…"
+        placeholder={t("editor.planPlaceholder")}
         className={cn("leading-relaxed", prominent ? "min-h-[140px]" : "min-h-[64px]")}
       />
     </div>
@@ -469,6 +467,7 @@ function TomorrowFocus({
   trader, date, nextDate, editable, onText,
 }: { trader: string; date: string; nextDate: string; editable: boolean; onText: (t: string) => void }) {
   const { toast } = useToast();
+  const { t } = journalI18n.useT();
   const range = useJournalRange(trader, nextDate, nextDate, !!trader);
   const loaded = range.entries.find((e) => e.trader === trader && e.date === nextDate) ?? null;
   const save = useSaveJournalDay();
@@ -507,7 +506,7 @@ function TomorrowFocus({
           return;
         }
         dirty.current = true;
-        toast({ title: "Фокус на завтра не сохранён", description: (err as Error).message, variant: "destructive" });
+        toast({ title: journalI18n.t("editor.focusNotSaved"), description: (err as Error).message, variant: "destructive" });
       },
       onSettled: () => { inFlight.current = false; },
     });
@@ -527,22 +526,22 @@ function TomorrowFocus({
   if (!editable) {
     return text.trim()
       ? <p className="whitespace-pre-wrap rounded-xl bg-[var(--glass-bg)] p-3 text-sm leading-relaxed">{text}</p>
-      : <p className="text-xs text-muted-foreground">Не заполнен.</p>;
+      : <p className="text-xs text-muted-foreground">{t("editor.notFilled")}</p>;
   }
   return (
     <div className="space-y-2">
       <Textarea
-        aria-label="Фокус на завтра"
+        aria-label={t("editor.focusAria")}
         value={text}
         maxLength={6000}
         onChange={(e) => change(e.target.value)}
         onBlur={() => flushRef.current()}
-        placeholder="1–2 правила или сетапа, на которых держу фокус завтра…"
+        placeholder={t("editor.focusPlaceholder")}
         className="min-h-[72px] leading-relaxed"
       />
       {suggestions.length > 0 && (
         <div className="space-y-1">
-          <div className="text-2xs text-muted-foreground">Подсказки из разбора дня — нажмите, чтобы добавить:</div>
+          <div className="text-2xs text-muted-foreground">{t("editor.suggestions")}</div>
           <ul className="flex flex-col gap-1">
             {suggestions.map((s) => {
               const added = text.includes(s.text);
@@ -563,18 +562,19 @@ function TomorrowFocus({
           </ul>
         </div>
       )}
-      <p className="text-2xs text-muted-foreground">Сохранится как план на {fmtDate(nextDate, "dayMonth")} — утром он будет первым в дневнике.</p>
+      <p className="text-2xs text-muted-foreground">{t("editor.focusSavesAs", { date: fmtDate(nextDate, "dayMonth") })}</p>
     </div>
   );
 }
 
 function CuratorFeedback({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
+  const { t } = journalI18n.useT();
   return (
-    <section className="rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label="Отзыв куратора">
+    <section className="rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label={t("editor.curatorFeedback")}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="font-semibold">Отзыв куратора · {day.reviewedBy}</span>
-        <Pill tone="accent">оценка {day.curatorScore ?? "—"}/5</Pill>
+        <span className="font-semibold">{t("editor.curatorFeedbackBy", { name: day.reviewedBy ?? "—" })}</span>
+        <Pill tone="accent">{t("editor.curatorScore", { score: day.curatorScore ?? "—" })}</Pill>
         {day.reviewedAt && <span className="text-muted-foreground">{fmtDate(day.reviewedAt, "dateTime")}</span>}
       </div>
       {day.curatorComment && <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed">{day.curatorComment}</p>}
@@ -588,11 +588,12 @@ function CloseBar({
   eod: EodDayPayload; editable: boolean; hasTrades: boolean; reviewFilled: boolean; progress: number; untaggedIds: number[];
   closing: boolean; reopening: boolean; onClose: () => void; onReopen: () => void; onOpenTradeReview?: () => void;
 }) {
+  const { t } = journalI18n.useT();
   const { blocking } = splitMissing(eod);
   if (eod.status === "reviewed") {
     return (
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs text-muted-foreground">
-        <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />День закрыт и проверен куратором.
+        <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" />{t("editor.closedReviewed")}
       </div>
     );
   }
@@ -600,10 +601,10 @@ function CloseBar({
     return (
       <div className="flex flex-wrap items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs">
         <Lock className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="text-muted-foreground">День закрыт — разбор ждёт куратора.</span>
+        <span className="text-muted-foreground">{t("editor.closedWaiting")}</span>
         {editable && (
           <Button variant="ghost" size="sm" className="ml-auto" disabled={reopening} onClick={onReopen}>
-            <LockOpen aria-hidden="true" />Открыть заново
+            <LockOpen aria-hidden="true" />{t("editor.reopen")}
           </Button>
         )}
       </div>
@@ -612,7 +613,7 @@ function CloseBar({
   if (!editable) {
     return (
       <div className="flex items-center gap-2 border-t border-[var(--glass-border)] pt-3 text-xs text-muted-foreground">
-        <LockOpen className="h-4 w-4" aria-hidden="true" />Трейдер ещё не закрыл этот день.
+        <LockOpen className="h-4 w-4" aria-hidden="true" />{t("editor.traderNotClosed")}
       </div>
     );
   }
@@ -621,34 +622,34 @@ function CloseBar({
       {blocking.length > 0 && (
         <p className="flex flex-wrap items-center gap-1.5 text-xs">
           <AlertTriangle className="h-3.5 w-3.5 text-warn" aria-hidden="true" />
-          У {blocking.length} {pluralRu(blocking.length, "сделки", "сделок", "сделок")} нет сетапа или грейда:
+          {t("editor.blocking", { count: blocking.length })}
           {blocking.map((m) => <span key={m.tradeId} className="font-medium">{m.ticker}</span>)}
         </p>
       )}
       <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-muted-foreground tabular-nums">Заполнено {progress}/5</span>
+        <span className="text-xs text-muted-foreground tabular-nums">{t("editor.filled", { done: progress })}</span>
         {untaggedIds.length > 0 && (
           <Link href={links.trades({ ids: untaggedIds })} className="inline-flex items-center gap-1 text-xs text-primary hover:underline">
-            у {untaggedIds.length} {pluralRu(untaggedIds.length, "сделки", "сделок", "сделок")} нет сетапа — отметить<ArrowUpRight className="h-3 w-3" aria-hidden="true" />
+            {t("editor.markSetups", { untagged: t("untaggedTrades", { count: untaggedIds.length }) })}<ArrowUpRight className="h-3 w-3" aria-hidden="true" />
           </Link>
         )}
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {hasTrades && onOpenTradeReview && (
             <Button variant="ghost" size="sm" onClick={onOpenTradeReview}>
-              <ListChecks aria-hidden="true" />Разбор по сделкам
+              <ListChecks aria-hidden="true" />{t("editor.tradeReview")}
             </Button>
           )}
           <Button
             size="sm"
             disabled={closing || !reviewFilled || blocking.length > 0}
-            title={!reviewFilled ? "Заполните хотя бы настроение или пару строк разбора" : undefined}
+            title={!reviewFilled ? t("editor.fillFirst") : undefined}
             onClick={onClose}
           >
-            <Lock aria-hidden="true" />{closing ? "Закрываю…" : "Закрыть день"}
+            <Lock aria-hidden="true" />{closing ? t("editor.closing") : t("editor.closeDay")}
           </Button>
         </span>
       </div>
-      {!reviewFilled && <p className="text-2xs text-muted-foreground">Чтобы закрыть день, заполните хотя бы настроение или пару строк разбора — куратор увидит его в очереди.</p>}
+      {!reviewFilled && <p className="text-2xs text-muted-foreground">{t("editor.closeHint")}</p>}
     </div>
   );
 }
@@ -659,29 +660,29 @@ function ChipGroup({
   label: string; options: string[]; selected: string[]; editable: boolean;
   toneOf: (t: string) => "up" | "down" | "warn"; onToggle: (t: string) => void;
 }) {
-  const active = (t: string) => selected.some((x) => sameTag(x, t));
+  const active = (tag: string) => selected.some((x) => sameTag(x, tag));
   const shown = editable ? options : options.filter(active);
-  const id = `chips-${label}`;
+  const id = useId();
   return (
     <div className="flex flex-wrap items-center gap-1.5" role="group" aria-labelledby={id}>
       <span id={id} className="mr-1 text-xs text-muted-foreground">{label}</span>
       {shown.length === 0 && <span className="text-xs text-muted-foreground">—</span>}
-      {shown.map((t) => {
-        const on = active(t);
-        const tone = toneOf(t);
+      {shown.map((tag) => {
+        const on = active(tag);
+        const tone = toneOf(tag);
         return (
           <button
-            key={t}
+            key={tag}
             type="button"
             disabled={!editable}
             aria-pressed={on}
-            onClick={() => onToggle(t)}
+            onClick={() => onToggle(tag)}
             className={cn(
               "chip min-h-7 px-2.5 text-xs font-medium disabled:cursor-default",
               on && (tone === "up" ? "!border-transparent !bg-up/15 !text-up" : tone === "down" ? "!border-transparent !bg-down/15 !text-down" : "!border-transparent !bg-warn/15 !text-warn"),
             )}
           >
-            {t}
+            {tagLabel(tag)}
           </button>
         );
       })}
@@ -698,7 +699,7 @@ function ScaleField({
   editable: boolean;
   onChange: (v: number | null) => void;
 }) {
-  const id = `scale-${label}`;
+  const id = useId();
   return (
     <div className="space-y-1.5">
       <div className="flex items-baseline justify-between gap-2">
@@ -765,27 +766,28 @@ function ReviewField({
 }
 
 function SaveIndicator({ status, mode, editable, onRetry }: { status: SaveState; mode: StorageMode; editable: boolean; onRetry: () => void }) {
-  if (!editable) return <Pill>Только чтение</Pill>;
+  const { t } = journalI18n.useT();
+  if (!editable) return <Pill>{commonI18n.t("states.readOnly")}</Pill>;
   return (
     <div className="flex items-center gap-2 text-xs text-muted-foreground" aria-live="polite">
       {mode === "local" && (
-        <span className="inline-flex items-center gap-1" title="Сервер недоступен — записи хранятся в этом браузере">
-          <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />В браузере
+        <span className="inline-flex items-center gap-1" title={t("editor.localTitle")}>
+          <CloudOff className="h-3.5 w-3.5" aria-hidden="true" />{t("editor.local")}
         </span>
       )}
       {status.kind === "saving" && (
-        <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />Сохраняю…</span>
+        <span className="inline-flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin motion-reduce:animate-none" aria-hidden="true" />{t("editor.saving")}</span>
       )}
       {status.kind === "saved" && (
         <span className="inline-flex items-center gap-1 text-up">
           <Check className="h-3.5 w-3.5" aria-hidden="true" />
-          Сохранено {fmtDate(status.at, "time")}
+          {t("editor.savedAt", { time: fmtDate(status.at, "time") })}
         </span>
       )}
       {status.kind === "error" && (
-        <Button variant="ghost" size="sm" className="text-down" onClick={onRetry}>Ошибка — повторить</Button>
+        <Button variant="ghost" size="sm" className="text-down" onClick={onRetry}>{t("editor.errorRetry")}</Button>
       )}
-      {status.kind === "idle" && <span>Автосохранение</span>}
+      {status.kind === "idle" && <span>{t("editor.autosave")}</span>}
     </div>
   );
 }
@@ -795,17 +797,19 @@ type CheckinRow = {
   freeText: string | null;
 } | null;
 
-const CHECKIN_FLAGS: Array<{ key: keyof NonNullable<CheckinRow>; label: string; good: boolean }> = [
-  { key: "sleepWell", label: "Выспался", good: true },
-  { key: "focused", label: "Фокус", good: true },
-  { key: "stressed", label: "Стресс", good: false },
-  { key: "anxious", label: "Тревога", good: false },
-  { key: "tilted", label: "Тильт", good: false },
-  { key: "revenge", label: "Реванш", good: false },
+type CheckinFlag = "sleepWell" | "focused" | "stressed" | "anxious" | "tilted" | "revenge";
+const CHECKIN_FLAGS: Array<{ key: CheckinFlag; good: boolean }> = [
+  { key: "sleepWell", good: true },
+  { key: "focused", good: true },
+  { key: "stressed", good: false },
+  { key: "anxious", good: false },
+  { key: "tilted", good: false },
+  { key: "revenge", good: false },
 ];
 
 /** Morning check-in (from the dashboard) for this trader/day — one line of context next to the mood. */
 function MorningCheckin({ trader, date }: { trader: string; date: string }) {
+  const { t } = journalI18n.useT();
   const { data } = useQuery({
     queryKey: ["journal-checkin", trader, date],
     enabled: !!trader,
@@ -817,8 +821,8 @@ function MorningCheckin({ trader, date }: { trader: string; date: string }) {
   const flags = CHECKIN_FLAGS.filter((f) => data[f.key] === true);
   return (
     <span className="flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground" title={data.freeText ?? undefined}>
-      <Sunrise className="h-3.5 w-3.5 text-warn" aria-hidden="true" />утром:
-      {flags.length === 0 ? <span>без отметок</span> : flags.map((f) => <Pill key={f.key} tone={f.good ? "up" : "down"}>{f.label}</Pill>)}
+      <Sunrise className="h-3.5 w-3.5 text-warn" aria-hidden="true" />{t("editor.morning")}
+      {flags.length === 0 ? <span>{t("editor.noMarks")}</span> : flags.map((f) => <Pill key={f.key} tone={f.good ? "up" : "down"}>{t(`editor.checkin.${f.key}`)}</Pill>)}
     </span>
   );
 }

@@ -10,6 +10,10 @@ import { cn } from "@/lib/utils";
 import { HORIZON_LABEL, feesOf, grossPnl, netPnl, signedR, splitTags, tradeOutcome, tradeRiskPct, type Trade } from "./utils";
 import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { journalI18n } from "@/i18n/ns/journal";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { RESULT_LABEL, sessionLabel } from "@/components/shared/trade-labels";
+import { tagLabel } from "@/components/shared/trade-labels";
 
 export type RuleViolation = {
   id: number;
@@ -25,12 +29,6 @@ export type RuleViolation = {
 
 const PREVIEW = 15;
 
-const SESSION_LABEL: Record<string, string> = {
-  premarket: "Премаркет",
-  regular: "Основная сессия",
-  afterhours: "Афтермаркет",
-  postmarket: "Афтермаркет",
-};
 
 const OUTCOME_BAR: Record<ReturnType<typeof tradeOutcome>, string> = {
   win: "bg-up",
@@ -39,12 +37,8 @@ const OUTCOME_BAR: Record<ReturnType<typeof tradeOutcome>, string> = {
   open: "bg-primary",
 };
 
-const OUTCOME_LABEL: Record<ReturnType<typeof tradeOutcome>, string> = {
-  win: "Профит",
-  loss: "Убыток",
-  be: "В ноль",
-  open: "Открыта",
-};
+/** Outcome label in the current language (shared result labels of the trades area). */
+const outcomeLabel = (o: ReturnType<typeof tradeOutcome>) => RESULT_LABEL[o === "be" ? "breakeven" : o];
 
 export function DayTrades({
   trades,
@@ -68,6 +62,8 @@ export function DayTrades({
   showTrader: boolean;
   emptyAction?: ReactNode;
 }) {
+  const { t: tj } = journalI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [ticker, setTicker] = useState<string | null>(null);
   const [open, setOpen] = useState<Set<number>>(new Set());
 
@@ -120,7 +116,7 @@ export function DayTrades({
 
   return (
     <Panel
-      title="Сделки дня"
+      title={tj("trades.title")}
       icon={ListOrdered}
       description={trades.length > 0 ? commonI18n.t("units.trades", { count: trades.length }) : undefined}
       actions={
@@ -130,7 +126,7 @@ export function DayTrades({
             size="sm"
             onClick={() => setOpen(allOpen ? new Set() : new Set(visible.map((t) => t.id)))}
           >
-            {allOpen ? "Свернуть все" : "Развернуть все"}
+            {allOpen ? tj("trades.collapseAll") : tj("trades.expandAll")}
           </Button>
         ) : undefined
       }
@@ -144,8 +140,8 @@ export function DayTrades({
       ) : trades.length === 0 && carried.length === 0 && opened.length === 0 ? (
         <EmptyState
           icon={ListOrdered}
-          title="В этот день сделок нет"
-          description="Используйте день для плана и подготовки, либо перейдите к последнему торговому дню."
+          title={tj("trades.emptyTitle")}
+          description={tj("trades.emptyDesc")}
           action={emptyAction}
           className="py-8"
         />
@@ -153,13 +149,13 @@ export function DayTrades({
         <div className="space-y-3">
           {trades.length === 0 && (
             <p className="text-sm text-muted-foreground">
-              {opened.length > 0 ? "Результатов в этот день нет — позиции открыты и закрываются позже." : "Новых сделок в этот день нет — только перенесённые позиции."}
+              {opened.length > 0 ? tj("trades.onlyOpened") : tj("trades.onlyCarried")}
             </p>
           )}
           {tickers.length > 1 && (
-            <div className="flex flex-wrap gap-1.5" role="group" aria-label="Фильтр по тикеру">
+            <div className="flex flex-wrap gap-1.5" role="group" aria-label={tj("trades.tickerFilter")}>
               <FilterChip active={!activeTicker} onClick={() => setTicker(null)} count={ordered.length}>
-                Все
+                {tc("states.all")}
               </FilterChip>
               {tickers.map(([k, g]) => (
                 <FilterChip key={k} active={activeTicker === k} onClick={() => setTicker(activeTicker === k ? null : k)}>
@@ -186,7 +182,7 @@ export function DayTrades({
 
           {filtered.length > visible.length && (
             <Button variant="ghost" size="sm" onClick={() => setShowAll(true)}>
-              Показать все {filtered.length}
+              {tc("actions.showAllCount", { count: filtered.length })}
             </Button>
           )}
 
@@ -195,8 +191,8 @@ export function DayTrades({
           {opened.length > 0 && (
             <div className="space-y-2 border-t border-[var(--glass-border)] pt-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="micro-label">Открыты в этот день</span>
-                <span className="text-2xs text-muted-foreground">результат учитывается в день закрытия</span>
+                <span className="micro-label">{tj("trades.openedHere")}</span>
+                <span className="text-2xs text-muted-foreground">{tj("trades.openedHereHint")}</span>
               </div>
               <ol className="space-y-2">
                 {opened.map((t) => (
@@ -218,8 +214,8 @@ export function DayTrades({
           {carried.length > 0 && (
             <div className="space-y-2 border-t border-[var(--glass-border)] pt-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="micro-label">Перенесённые позиции</span>
-                <span className="text-2xs text-muted-foreground">открыты раньше, удерживаются в этот день</span>
+                <span className="micro-label">{tj("trades.carried")}</span>
+                <span className="text-2xs text-muted-foreground">{tj("trades.carriedHint")}</span>
               </div>
               <ol className="space-y-2">
                 {carried.map((t) => (
@@ -267,6 +263,9 @@ function TradeItem({
   showTrader: boolean;
 }) {
   const reduce = useReducedMotion();
+  const { t: tj } = journalI18n.useT();
+  const { t: tc } = commonI18n.useT();
+  const { t: tt } = tradesI18n.useT();
   const r = signedR(t);
   const net = netPnl(t);
   const gross = grossPnl(t);
@@ -295,10 +294,10 @@ function TradeItem({
             {t.side && <Pill>{isShort ? "↘ Short" : "↗ Long"}</Pill>}
             {t.setup && <span className="truncate text-xs text-muted-foreground">{t.setup}</span>}
             {t.horizon && t.horizon !== "intraday" && <Pill tone="purple">{HORIZON_LABEL[t.horizon] ?? t.horizon}</Pill>}
-            {carriedFrom && <Pill>с {fmtDate(carriedFrom, "dayMonth")}</Pill>}
-            {closesToday && <Pill tone="accent">закрыта в этот день</Pill>}
+            {carriedFrom && <Pill>{tj("trades.since", { date: fmtDate(carriedFrom, "dayMonth") })}</Pill>}
+            {closesToday && <Pill tone="accent">{tj("trades.closesToday")}</Pill>}
             {openedHere !== undefined && (
-              <Pill tone="purple">{openedHere ? `открыта, закрыта ${fmtDate(openedHere, "dayMonth")}` : "открыта, ещё держится"}</Pill>
+              <Pill tone="purple">{openedHere ? tj("trades.openedClosedOn", { date: fmtDate(openedHere, "dayMonth") }) : tj("trades.openedStillHeld")}</Pill>
             )}
             {violations.length > 0 && (
               <Pill tone="warn"><ShieldAlert className="h-3 w-3" aria-hidden="true" />{violations.length}</Pill>
@@ -306,18 +305,18 @@ function TradeItem({
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground tabular-nums">
             {showTrader && t.trader && <span className="text-foreground/80">{t.trader}</span>}
-            {t.session && <span>{SESSION_LABEL[t.session] ?? t.session}</span>}
+            {t.session && <span>{sessionLabel(t.session, { full: true })}</span>}
             <span>
               {t.entry ?? "—"} → {t.exit ?? "…"}
             </span>
-            {t.stop != null && <span>стоп {t.stop}</span>}
+            {t.stop != null && <span>{tj("trades.stopShort", { price: t.stop })}</span>}
           </span>
         </span>
         <span className="flex shrink-0 flex-col items-end">
           {net != null ? (
             <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(net)))}>{fmtUsd(net, { signed: true, decimals: "auto" })}</span>
           ) : (
-            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(r)))}>{r != null ? fmtR(r) : OUTCOME_LABEL[outcome]}</span>
+            <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(r)))}>{r != null ? fmtR(r) : outcomeLabel(outcome)}</span>
           )}
           {net != null && r != null && (
             <span className={cn("text-xs tabular-nums", toneText(toneOf(r)))}>{fmtR(r)}</span>
@@ -341,29 +340,29 @@ function TradeItem({
           >
             <div className="space-y-3 border-t border-[var(--glass-border)] py-3 pl-4 pr-3 sm:pl-12">
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs sm:grid-cols-4">
-                <Fact label="Вход" value={t.entry} />
-                <Fact label="Выход" value={t.exit} />
-                <Fact label="Стоп" value={t.stop} />
-                <Fact label="Риск на акцию" value={riskPct != null ? fmtRate(riskPct) : null} />
-                <Fact label="Удержание" value={t.holdTime} />
-                <Fact label="Проскальзывание" value={t.slippage != null ? `${t.slippage}¢` : null} />
+                <Fact label={tc("trading.entry")} value={t.entry} />
+                <Fact label={tc("trading.exit")} value={t.exit} />
+                <Fact label={tc("trading.stop")} value={t.stop} />
+                <Fact label={tj("trades.riskPerShare")} value={riskPct != null ? fmtRate(riskPct) : null} />
+                <Fact label={tc("trading.holdTime")} value={t.holdTime} />
+                <Fact label={tj("trades.slippage")} value={t.slippage != null ? `${t.slippage}¢` : null} />
                 <Fact label="RVOL" value={t.relativeVolume != null ? `${t.relativeVolume}×` : null} />
-                <Fact label="Результат" value={OUTCOME_LABEL[outcome]} />
-                <Fact label="Кол-во" value={t.qty != null ? fmtCount(t.qty) : null} />
-                <Fact label="P&L брутто" value={gross != null ? fmtUsd(gross, { signed: true, decimals: "auto" }) : null} />
-                <Fact label="Комиссии" value={fees != null ? fmtUsd(-fees, { signed: true, decimals: "auto" }) : null} />
-                <Fact label="P&L нетто" value={net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : null} />
-                <Fact label="Риск, $" value={t.riskUsd != null ? fmtUsd(Math.abs(t.riskUsd), { decimals: "auto" }) : null} />
-                <Fact label="Горизонт" value={t.horizon ? HORIZON_LABEL[t.horizon] ?? t.horizon : null} />
-                <Fact label="Дата выхода" value={t.exitDate ? fmtDate(t.exitDate, "dayMonth") : null} />
+                <Fact label={tc("trading.result")} value={outcomeLabel(outcome)} />
+                <Fact label={tj("trades.qty")} value={t.qty != null ? fmtCount(t.qty) : null} />
+                <Fact label={tj("trades.grossPnl")} value={gross != null ? fmtUsd(gross, { signed: true, decimals: "auto" }) : null} />
+                <Fact label={tc("trading.fees")} value={fees != null ? fmtUsd(-fees, { signed: true, decimals: "auto" }) : null} />
+                <Fact label={tc("trading.netPnl")} value={net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : null} />
+                <Fact label={tj("trades.riskUsd")} value={t.riskUsd != null ? fmtUsd(Math.abs(t.riskUsd), { decimals: "auto" }) : null} />
+                <Fact label={tc("trading.horizon")} value={t.horizon ? HORIZON_LABEL[t.horizon] ?? t.horizon : null} />
+                <Fact label={tj("trades.exitDate")} value={t.exitDate ? fmtDate(t.exitDate, "dayMonth") : null} />
               </dl>
 
               {hasText && (
                 <div className="grid gap-2 sm:grid-cols-2">
-                  {t.notes && <TextBlock label="Заметки" text={t.notes} className="sm:col-span-2" />}
-                  {t.whatWorked && <TextBlock label="Что сработало" text={t.whatWorked} tone="up" />}
-                  {t.whatFailed && <TextBlock label="Что не сработало" text={t.whatFailed} tone="down" />}
-                  {t.conclusion && <TextBlock label="Вывод" text={t.conclusion} className="sm:col-span-2" />}
+                  {t.notes && <TextBlock label={tc("fields.notes")} text={t.notes} className="sm:col-span-2" />}
+                  {t.whatWorked && <TextBlock label={tt("reviewFields.whatWorked")} text={t.whatWorked} tone="up" />}
+                  {t.whatFailed && <TextBlock label={tt("reviewFields.whatFailed")} text={t.whatFailed} tone="down" />}
+                  {t.conclusion && <TextBlock label={tj("trades.conclusion")} text={t.conclusion} className="sm:col-span-2" />}
                 </div>
               )}
 
@@ -373,7 +372,7 @@ function TradeItem({
                     <li key={v.id} className="flex items-start gap-2 text-xs">
                       <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-warn" aria-hidden="true" />
                       <span>
-                        <span className="font-medium">{v.ruleName ?? "Правило"}</span>
+                        <span className="font-medium">{v.ruleName ?? tj("trades.rule")}</span>
                         {v.message && <span className="text-muted-foreground"> — {v.message}</span>}
                       </span>
                     </li>
@@ -383,20 +382,20 @@ function TradeItem({
 
               <div className="flex flex-wrap items-center gap-1.5">
                 {tags.map((tg) => (
-                  <Pill key={tg}>{tg}</Pill>
+                  <Pill key={tg}>{tagLabel(tg)}</Pill>
                 ))}
                 <span className="ml-auto flex flex-wrap gap-1.5">
                   {t.screenshotUrl && /^https?:\/\//i.test(t.screenshotUrl) && (
                     <Button asChild variant="ghost" size="sm">
                       <a href={t.screenshotUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink aria-hidden="true" />График
+                        <ExternalLink aria-hidden="true" />{tj("trades.chart")}
                       </a>
                     </Button>
                   )}
                   <AddToPlaybookButton payload={{ name: `${t.ticker} ${String(t.date ?? "").slice(0, 10)}`, ticker: t.ticker, sourceType: "trade", sourceId: t.id }} />
                   <Button asChild variant="outline" size="sm">
                     <Link href={`/trades?highlight=${t.id}`}>
-                      <ArrowUpRight aria-hidden="true" />Открыть сделку
+                      <ArrowUpRight aria-hidden="true" />{tj("trades.openTrade")}
                     </Link>
                   </Button>
                 </span>
@@ -426,6 +425,8 @@ const TH = "px-2 py-1.5 font-medium";
 /** Per-ticker summary — only real, computed columns. Headers sort; «Итого» stays in the footer. */
 function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
   const { rows: sorted, thProps } = useTableSort(rows, TICKER_ACCESSORS, "net");
+  const { t: tj } = journalI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const sum = (k: keyof TickerAgg) =>
     rows.reduce<number | null>((acc, [, g]) => (g[k] == null ? acc : (acc ?? 0) + (g[k] as number)), null);
   const total: TickerAgg = { count: sum("count") ?? 0, r: sum("r"), qty: sum("qty"), gross: sum("gross"), fees: sum("fees"), net: sum("net") };
@@ -446,15 +447,15 @@ function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
   return (
     <TableScroll>
       <table className={cn("w-full text-xs tabular-nums", showMoney && "min-w-[480px]")}>
-        <caption className="sr-only">Итоги по тикерам</caption>
+        <caption className="sr-only">{tj("trades.tickerTotals")}</caption>
         <thead>
           <tr className="border-b border-[var(--glass-border)] text-muted-foreground">
-            <SortableTh {...thProps("ticker")} className={cn(TH, "text-left")}>Тикер</SortableTh>
-            <SortableTh {...thProps("count")} align="right" className={TH}>Сделки</SortableTh>
-            {showQty && <SortableTh {...thProps("qty")} align="right" className={TH}>Кол-во</SortableTh>}
-            {showMoney && <SortableTh {...thProps("gross")} align="right" className={TH}>Брутто</SortableTh>}
-            {showMoney && <SortableTh {...thProps("fees")} align="right" className={TH}>Комиссии</SortableTh>}
-            {showMoney && <SortableTh {...thProps("net")} align="right" className={TH}>Нетто</SortableTh>}
+            <SortableTh {...thProps("ticker")} className={cn(TH, "text-left")}>{tc("trading.ticker")}</SortableTh>
+            <SortableTh {...thProps("count")} align="right" className={TH}>{tc("trading.trades")}</SortableTh>
+            {showQty && <SortableTh {...thProps("qty")} align="right" className={TH}>{tj("trades.qty")}</SortableTh>}
+            {showMoney && <SortableTh {...thProps("gross")} align="right" className={TH}>{tc("trading.gross")}</SortableTh>}
+            {showMoney && <SortableTh {...thProps("fees")} align="right" className={TH}>{tc("trading.fees")}</SortableTh>}
+            {showMoney && <SortableTh {...thProps("net")} align="right" className={TH}>{tc("trading.net")}</SortableTh>}
             {showR && <SortableTh {...thProps("r")} align="right" className={TH}>R</SortableTh>}
           </tr>
         </thead>
@@ -469,7 +470,7 @@ function TickerTable({ rows }: { rows: Array<[string, TickerAgg]> }) {
         {rows.length > 1 && (
           <tfoot>
             <tr className="font-semibold">
-              <th scope="row" className="px-2 py-1.5 text-left">Итого</th>
+              <th scope="row" className="px-2 py-1.5 text-left">{tc("fields.total")}</th>
               {cells(total)}
             </tr>
           </tfoot>

@@ -26,6 +26,7 @@ import { AddTradesToPlaybookDialog } from "./quick-add";
 import { moneyTone, tierMeta, type PlaybookEntry, type SpaceTab } from "./model";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { playbookI18n } from "@/i18n/ns/playbook";
 
 type Days = "7" | "14" | "30";
 
@@ -43,6 +44,7 @@ export function PlaybookInbox({ onNewSetup }: {
   /** «Новый сетап из сделки»: the page opens its setup form; the trade is attached as an example on save. */
   onNewSetup?: (t: InboxTrade) => void;
 } = {}) {
+  const { t: tr } = playbookI18n.useT();
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -75,22 +77,22 @@ export function PlaybookInbox({ onNewSetup }: {
       setSelected((prev) => new Set([...prev].filter((id) => !ids.includes(id))));
       qc.invalidateQueries({ queryKey: ["playbook-inbox"] });
       toast({
-        title: ids.length === 1 ? "Сделка скрыта из разбора" : `Скрыто из разбора: ${commonI18n.t("units.trades", { count: ids.length })}`,
-        description: "Она по-прежнему в журнале сделок; в плейбук её можно добавить из карточки сделки.",
+        title: ids.length === 1 ? tr("inbox.hiddenOne") : tr("inbox.hiddenMany", { count: ids.length }),
+        description: tr("inbox.hiddenDesc"),
         action: (
           <ToastAction
-            altText="Вернуть в разбор"
+            altText={tr("inbox.undoAlt")}
             onClick={async () => {
               try { await call("DELETE"); qc.invalidateQueries({ queryKey: ["playbook-inbox"] }); }
-              catch (e) { toast({ title: "Не удалось вернуть", description: (e as Error)?.message, variant: "destructive" }); }
+              catch (e) { toast({ title: tr("inbox.undoFailed"), description: (e as Error)?.message, variant: "destructive" }); }
             }}
           >
-            Вернуть
+            {tr("inbox.undo")}
           </ToastAction>
         ),
       });
     } catch (e) {
-      toast({ title: "Не удалось скрыть", description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
+      toast({ title: tr("inbox.hideFailed"), description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
     }
   }
   const openSelected = () => {
@@ -104,27 +106,29 @@ export function PlaybookInbox({ onNewSetup }: {
     <Panel
       title={
         <span className="inline-flex flex-wrap items-center gap-2">
-          Разобрать сделки
+          {tr("inbox.title")}
           {data && data.total > 0 && <Pill tone="accent">{data.total}</Pill>}
         </span>
       }
       description={
         data && data.total > 0
-          ? `Ваши сделки без эталона${week > 0 && days !== "7" ? ` · за неделю ${commonI18n.t("units.trades", { count: week })}` : ""}. Лучшие — в Tier 1, ошибки — в Tier 3 «на разбор».`
-          : "Ваши сделки, которые ещё не добавлены ни в один сетап."
+          ? week > 0 && days !== "7"
+            ? tr("inbox.descWithWeek", { trades: commonI18n.t("units.trades", { count: week }) })
+            : tr("inbox.descWithTrades")
+          : tr("inbox.descEmpty")
       }
       icon={Inbox}
-      actions={<Segmented<Days> ariaLabel="Период" size="sm" value={days} onChange={setDays} options={[{ value: "7", label: "7 дн" }, { value: "14", label: "14 дн" }, { value: "30", label: "30 дн" }]} />}
+      actions={<Segmented<Days> ariaLabel={tr("inbox.periodAria")} size="sm" value={days} onChange={setDays} options={(["7", "14", "30"] as Days[]).map((d) => ({ value: d, label: tr("inbox.days", { count: d }) }))} />}
       footer={selected.size > 0 ? (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm tabular-nums text-muted-foreground">Выбрано: {selected.size}</span>
+          <span className="text-sm tabular-nums text-muted-foreground">{tr("inbox.selected", { count: selected.size })}</span>
           <Button size="sm" className="ml-auto h-9 bg-primary-solid" onClick={openSelected}>
-            <BookOpen className="h-4 w-4" aria-hidden="true" /> В плейбук · {selected.size}
+            <BookOpen className="h-4 w-4" aria-hidden="true" /> {tr("inbox.toPlaybookN", { count: selected.size })}
           </Button>
-          <Button size="sm" variant="outline" className="h-9" onClick={() => dismiss(rows.filter((t) => selected.has(t.id)).map((t) => t.id))} title="Скрыть выбранные из разбора — сделки останутся в журнале">
-            <EyeOff className="h-4 w-4" aria-hidden="true" /> Не для плейбука
+          <Button size="sm" variant="outline" className="h-9" onClick={() => dismiss(rows.filter((t) => selected.has(t.id)).map((t) => t.id))} title={tr("inbox.dismissSelectedTitle")}>
+            <EyeOff className="h-4 w-4" aria-hidden="true" /> {tr("inbox.notForPlaybook")}
           </Button>
-          <Button size="sm" variant="ghost" className="h-9" onClick={() => setSelected(new Set())}>Снять</Button>
+          <Button size="sm" variant="ghost" className="h-9" onClick={() => setSelected(new Set())}>{tr("inbox.clearSelection")}</Button>
         </div>
       ) : undefined}
     >
@@ -134,7 +138,7 @@ export function PlaybookInbox({ onNewSetup }: {
         </div>
       ) : !trades.length ? (
         <p className="flex items-center gap-2 py-3 text-sm text-muted-foreground">
-          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> Все сделки за {days} дней разобраны — или их не было.
+          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> {tr("inbox.allDone", { count: days })}
         </p>
       ) : (
         <div className="-mx-[var(--panel-p)] max-h-[min(62dvh,560px)] overflow-auto overscroll-contain">
@@ -142,15 +146,15 @@ export function PlaybookInbox({ onNewSetup }: {
             <thead className="[&_th]:sticky [&_th]:top-0 [&_th]:z-raised [&_th]:border-b [&_th]:border-[var(--glass-border)] [&_th]:bg-surface-solid [&_th]:px-2 [&_th]:py-2 [&_th]:text-left [&_th]:text-xs [&_th]:font-medium [&_th]:text-muted-foreground">
               <tr>
                 <th className="w-10 !pl-[var(--panel-p)]">
-                  <Checkbox aria-label={allOn ? "Снять выбор" : "Выбрать все"} checked={allOn} onCheckedChange={() => setSelected(allOn ? new Set() : new Set(rows.map((t) => t.id)))} />
+                  <Checkbox aria-label={allOn ? tr("inbox.deselectAll") : tr("inbox.selectAll")} checked={allOn} onCheckedChange={() => setSelected(allOn ? new Set() : new Set(rows.map((t) => t.id)))} />
                 </th>
-                <SortableTh {...thProps("date")}>Дата</SortableTh>
-                <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-                <SortableTh {...thProps("setup")} className="hidden 2xl:table-cell">Метка сделки</SortableTh>
-                <SortableTh {...thProps("suggestion")}>Подсказка</SortableTh>
+                <SortableTh {...thProps("date")}>{tr("inbox.colDate")}</SortableTh>
+                <SortableTh {...thProps("ticker")}>{tr("inbox.colTicker")}</SortableTh>
+                <SortableTh {...thProps("setup")} className="hidden 2xl:table-cell">{tr("inbox.colLabel")}</SortableTh>
+                <SortableTh {...thProps("suggestion")}>{tr("inbox.colSuggestion")}</SortableTh>
                 <SortableTh {...thProps("r")} align="right">R</SortableTh>
-                <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-                <th className="!pr-[var(--panel-p)] text-right"><span className="sr-only">Действие</span></th>
+                <SortableTh {...thProps("net")} align="right">{tr("inbox.colNet")}</SortableTh>
+                <th className="!pr-[var(--panel-p)] text-right"><span className="sr-only">{tr("inbox.colAction")}</span></th>
               </tr>
             </thead>
             <tbody className="[&_td]:border-b [&_td]:border-border/40 [&_td]:px-2 [&_td]:py-1.5 [&_tr:last-child_td]:border-b-0">
@@ -162,19 +166,19 @@ export function PlaybookInbox({ onNewSetup }: {
                   <tr key={t.id} className={cn("transition-colors hover:bg-[var(--tile-hover-bg)]", on && "bg-primary/5")}>
                     <td className="!pl-[var(--panel-p)]">
                       <Checkbox
-                        aria-label={`Выбрать ${t.ticker} ${fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}`}
+                        aria-label={tr("inbox.selectRow", { ticker: t.ticker, date: fmtDate(t.closeDate ?? t.date, "dayMonthNumeric") })}
                         checked={on}
                         onCheckedChange={() => setSelected((prev) => { const n = new Set(prev); if (n.has(t.id)) n.delete(t.id); else n.add(t.id); return n; })}
                       />
                     </td>
                     <td className="whitespace-nowrap text-muted-foreground">{fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}</td>
                     <td className="max-w-[200px] whitespace-nowrap">
-                      <button type="button" className="max-w-[160px] truncate align-bottom font-semibold text-foreground hover:underline" onClick={() => navigate(links.trade(t.id))} title={`Открыть сделку ${t.ticker}`}>
+                      <button type="button" className="max-w-[160px] truncate align-bottom font-semibold text-foreground hover:underline" onClick={() => navigate(links.trade(t.id))} title={tr("inbox.openTrade", { ticker: t.ticker })}>
                         {t.ticker}
                       </button>
                       {t.side && <span className={cn("ml-1.5 text-xs", short ? "text-down" : "text-up")}>{short ? "S" : "L"}</span>}
                     </td>
-                    <td className="hidden max-w-[180px] truncate text-xs text-muted-foreground 2xl:table-cell" title={t.autoSetup ? `Автоклассификация: ${t.autoSetup}` : undefined}>
+                    <td className="hidden max-w-[180px] truncate text-xs text-muted-foreground 2xl:table-cell" title={t.autoSetup ? tr("inbox.autoSetup", { setup: t.autoSetup }) : undefined}>
                       {t.setup ?? t.autoSetup ?? "—"}
                     </td>
                     <td className="max-w-[260px]">
@@ -184,7 +188,7 @@ export function PlaybookInbox({ onNewSetup }: {
                           <span className="min-w-0 truncate text-xs text-foreground" title={t.suggestion.reason}>
                             <Sparkles className="mr-1 inline h-3 w-3 text-primary" aria-hidden="true" />{t.suggestion.name}
                           </span>
-                        ) : <span className="text-xs text-muted-foreground">выберите сетап</span>}
+                        ) : <span className="text-xs text-muted-foreground">{tr("inbox.pickSetup")}</span>}
                       </span>
                     </td>
                     <td className={cn("whitespace-nowrap text-right font-medium", toneText(moneyTone(t.signedR)))}>{fmtR(t.signedR)}</td>
@@ -192,15 +196,15 @@ export function PlaybookInbox({ onNewSetup }: {
                     <td className="!pr-[var(--panel-p)] text-right">
                       <span className="inline-flex items-center justify-end gap-1">
                         <IconAction
-                          aria-label={`${t.ticker}: не для плейбука`}
-                          title="Не для плейбука — скрыть из разбора"
+                          aria-label={tr("inbox.rowDismissAria", { ticker: t.ticker })}
+                          title={tr("inbox.rowDismissTitle")}
                           onClick={() => dismiss([t.id])}
                           className="h-8 w-8 [&_svg]:h-3.5 [&_svg]:w-3.5"
                         >
                           <EyeOff />
                         </IconAction>
-                        <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2.5" onClick={() => openOne(t)} aria-label={`${t.ticker}: в плейбук`}>
-                          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden 2xl:inline">В плейбук</span>
+                        <Button size="sm" variant="outline" className="h-8 gap-1.5 px-2.5" onClick={() => openOne(t)} aria-label={tr("inbox.rowAddAria", { ticker: t.ticker })} title={tr("inbox.rowAddAria", { ticker: t.ticker })}>
+                          <BookOpen className="h-3.5 w-3.5" aria-hidden="true" /> <span className="hidden 2xl:inline">{tr("inbox.toPlaybook")}</span>
                         </Button>
                       </span>
                     </td>
@@ -210,7 +214,7 @@ export function PlaybookInbox({ onNewSetup }: {
             </tbody>
           </table>
           {data && data.total > trades.length && (
-            <p className="px-[var(--panel-p)] pt-2 text-xs text-muted-foreground">Показаны последние {trades.length} из {data.total}. Остальные — в списке сделок.</p>
+            <p className="px-[var(--panel-p)] pt-2 text-xs text-muted-foreground">{tr("inbox.shownOf", { shown: trades.length, total: data.total })}</p>
           )}
         </div>
       )}
@@ -239,6 +243,7 @@ export function Tier1Strip({
   onOpenSetup: (id: number) => void;
   onOpenGallery: () => void;
 }) {
+  const { t } = playbookI18n.useT();
   const q = useGallery({ tier: 1, space: serverSpace(scope), limit: 24 });
   const byId = React.useMemo(() => new Map(entries.map((e) => [e.id, e])), [entries]);
   const items = React.useMemo(() => {
@@ -248,10 +253,10 @@ export function Tier1Strip({
   if (q.isError || (!q.isLoading && !items.length)) return null;
   return (
     <Panel
-      title="Эталоны Tier 1"
-      description="Показательные сделки этого пространства — так выглядит сетап, сыгранный по плану"
+      title={t("tier1Strip.title")}
+      description={t("tier1Strip.description")}
       icon={Trophy}
-      actions={<Button variant="ghost" size="sm" className="h-8" onClick={onOpenGallery}>Вся галерея →</Button>}
+      actions={<Button variant="ghost" size="sm" className="h-8" onClick={onOpenGallery}>{t("tier1Strip.allGallery")}</Button>}
     >
       {q.isLoading ? (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3" aria-busy="true">
@@ -275,7 +280,7 @@ export function Tier1Strip({
                     onClick={() => onOpenSetup(ex.playbookId)}
                     className="-mx-1 truncate rounded px-1 text-left text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {ex.setupName ?? setup?.name ?? `Сетап #${ex.playbookId}`}
+                    {ex.setupName ?? setup?.name ?? t("setupN", { id: ex.playbookId })}
                     {ex.setupSpace === "personal" && ex.setupOwner && ex.setupOwner !== viewerName && <span className="font-normal text-muted-foreground"> · {ex.setupOwner}</span>}
                   </button>
                 }

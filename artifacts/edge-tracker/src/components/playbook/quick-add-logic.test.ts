@@ -17,10 +17,10 @@ describe("quick add: setup rows", () => {
   it("groups suggested → recent → mine → office → shared, each setup once, no read-only ones", () => {
     const rows = buildQuickRows({ setups, suggested: [{ id: 5 }, { id: 4 }], recent: [5, 1], search: "" });
     expect(rows.map((r) => [r.s.id, r.group])).toEqual([
-      [5, "Подходят по сделке"],
-      [1, "Недавние"],
-      [2, "Мой плейбук"],
-      [3, "Общие"],
+      [5, "suggested"],
+      [1, "recent"],
+      [2, "mine"],
+      [3, "shared"],
     ]);
   });
 

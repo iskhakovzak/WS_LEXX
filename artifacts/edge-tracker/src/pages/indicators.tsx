@@ -10,6 +10,9 @@ import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
+import { commonI18n } from "@/i18n/ns/common";
+import { fmtR } from "@/lib/format";
 import {
   CATEGORY_META, CATEGORY_ORDER, DESK_PRESETS, HORIZON_META, LIBRARY, LIB_BY_ID, type Horizon, type LibCategory, type LibIndicator,
 } from "@/components/indicators/library";
@@ -27,16 +30,11 @@ type CategoryFilter = LibCategory | "all" | "favorites";
 type HorizonFilter = Horizon | "all";
 type SortKey = "recommended" | "mine" | "avgR" | "alpha";
 
-const SORT_LABEL: Record<SortKey, string> = {
-  recommended: "Рекомендованные",
-  mine: "Чаще в моих сделках",
-  avgR: "Лучший средний R",
-  alpha: "По алфавиту",
-};
+const SORT_KEYS: readonly SortKey[] = ["recommended", "mine", "avgR", "alpha"];
 
 const isCategory = (v: string): v is CategoryFilter => v === "all" || v === "favorites" || v in CATEGORY_META;
 const isHorizon = (v: string): v is HorizonFilter => v === "all" || v in HORIZON_META;
-const isSort = (v: string): v is SortKey => v in SORT_LABEL;
+const isSort = (v: string): v is SortKey => (SORT_KEYS as readonly string[]).includes(v);
 
 function matches(ind: LibIndicator, q: string, note: string) {
   const hay = [ind.shortName, ind.name, ind.enName, ind.summary, ind.deskUse, ind.tags.join(" "), CATEGORY_META[ind.category].label, note]
@@ -48,6 +46,7 @@ function matches(ind: LibIndicator, q: string, note: string) {
 /** Desk reference: 25 technical indicators, the trader's set, notes and per-tag stats. */
 function IndicatorLibrary() {
   const { toast } = useToast();
+  const { t } = indicatorsI18n.useT();
   const initialPrefs = useMemo(loadPrefs, []);
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<CategoryFilter>(isCategory(initialPrefs.category) ? initialPrefs.category : "all");
@@ -118,7 +117,7 @@ function IndicatorLibrary() {
     setSyncMode("local");
     if (!serverFailedToast.current) {
       serverFailedToast.current = true;
-      toast({ title: "Сервер недоступен", description: "Изменения сохранены только в этом браузере", variant: "destructive" });
+      toast({ title: indicatorsI18n.t("toast.serverDown"), description: indicatorsI18n.t("toast.savedLocally"), variant: "destructive" });
     }
   }, [toast]);
 
@@ -129,7 +128,7 @@ function IndicatorLibrary() {
     const cached = saveFavorites(next);
     void pushFavoritesDiff(prev, next).then((ok) => {
       onServerResult(ok);
-      if (!ok && !cached) toast({ title: "Не удалось сохранить набор", description: "Ни сервер, ни хранилище браузера недоступны", variant: "destructive" });
+      if (!ok && !cached) toast({ title: indicatorsI18n.t("toast.setSaveFailed"), description: indicatorsI18n.t("toast.noStorage"), variant: "destructive" });
     });
   }, [toast, onServerResult]);
 
@@ -148,9 +147,9 @@ function IndicatorLibrary() {
     setNotes(next);
     const cached = saveNotes(next);
     void pushIndicator(id, { note: clean }).then((ok) => {
-      if (ok) { onServerResult(true); toast({ title: clean ? "Заметка сохранена" : "Заметка удалена" }); return; }
+      if (ok) { onServerResult(true); toast({ title: indicatorsI18n.t(clean ? "toast.noteSaved" : "toast.noteDeleted") }); return; }
       onServerResult(false);
-      if (!cached) toast({ title: "Не удалось сохранить заметку", description: "Ни сервер, ни хранилище браузера недоступны", variant: "destructive" });
+      if (!cached) toast({ title: indicatorsI18n.t("toast.noteSaveFailed"), description: indicatorsI18n.t("toast.noStorage"), variant: "destructive" });
     });
   }, [toast, onServerResult]);
 
@@ -239,7 +238,7 @@ function IndicatorLibrary() {
     const add = p.ids.filter((id) => !prev.includes(id));
     if (!add.length) return;
     commitFavorites([...prev, ...add]);
-    toast({ title: `Добавлено в набор: ${add.length}`, description: p.label });
+    toast({ title: indicatorsI18n.t("toast.addedToSet", { count: add.length }), description: p.label });
   }, [commitFavorites, toast]);
 
   const exportMd = useCallback(() => {
@@ -257,15 +256,15 @@ function IndicatorLibrary() {
   const copySet = useCallback(async () => {
     try {
       await navigator.clipboard.writeText(buildMarkdown(favorites, notes, statsMap));
-      toast({ title: "Набор скопирован", description: "Вставь в гейм-план или чат деска" });
+      toast({ title: indicatorsI18n.t("toast.setCopied"), description: indicatorsI18n.t("toast.setCopiedHint") });
     } catch {
-      toast({ title: "Не удалось скопировать", description: "Буфер обмена недоступен — скачай .md", variant: "destructive" });
+      toast({ title: commonI18n.t("states.copyFailed"), description: indicatorsI18n.t("toast.copyFailedHint"), variant: "destructive" });
     }
   }, [favorites, notes, statsMap, toast]);
   const importSet = useCallback(async (file: File) => {
     const data = file.size < 512_000 ? parseImport(await file.text()) : null;
     if (!data) {
-      toast({ title: "Файл не распознан", description: "Нужен JSON, выгруженный из «Мой набор»", variant: "destructive" });
+      toast({ title: indicatorsI18n.t("toast.fileUnknown"), description: indicatorsI18n.t("toast.fileUnknownHint"), variant: "destructive" });
       return;
     }
     const prevFav = favRef.current;
@@ -280,19 +279,23 @@ function IndicatorLibrary() {
       for (const [k, v] of Object.entries(data.notes)) if (nextNotes[k] === v) fresh[k] = v;
       void pushNotes(fresh, true).then(onServerResult);
     }
-    toast({ title: "Набор импортирован", description: `${data.favorites.length} индикаторов${added ? `, заметок: ${added}` : ""}` });
+    const count = indicatorsI18n.t("toast.importedCount", { count: data.favorites.length });
+    toast({
+      title: indicatorsI18n.t("toast.imported"),
+      description: added ? indicatorsI18n.t("toast.importedNotes", { indicators: count, notes: added }) : count,
+    });
   }, [commitFavorites, toast, onServerResult]);
 
   const filtersActive = search.trim() !== "" || category !== "all" || horizon !== "all";
   const resetFilters = () => { setSearch(""); setCategory("all"); setHorizon("all"); };
 
   const categoryOptions = [
-    { value: "all", label: "Все", count: counts.all },
-    { value: "favorites", label: "Мой набор", count: counts.favorites },
+    { value: "all", label: t("library.all"), count: counts.all },
+    { value: "favorites", label: t("library.mySet"), count: counts.favorites },
     ...CATEGORY_ORDER.map((c) => ({ value: c, label: CATEGORY_META[c].label, count: counts[c] ?? 0 })),
   ];
   const horizonOptions = [
-    { value: "all", label: "Любой горизонт" },
+    { value: "all", label: t("library.anyHorizon") },
     { value: "intraday", label: HORIZON_META.intraday.label },
     { value: "overnight", label: HORIZON_META.overnight.label },
     { value: "swing", label: HORIZON_META.swing.label },
@@ -322,8 +325,8 @@ function IndicatorLibrary() {
                       if (first) { e.preventDefault(); if (e.key === "Enter" && filtered.length === 1) setOpenId(filtered[0].id); else first.focus(); }
                     }
                   }}
-                  placeholder="Поиск: VWAP, гэп, уровни, свои заметки…"
-                  aria-label="Поиск индикаторов"
+                  placeholder={t("library.searchPlaceholder")}
+                  aria-label={t("library.searchAria")}
                   className="pl-10 pr-16"
                 />
                 <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
@@ -333,7 +336,7 @@ function IndicatorLibrary() {
                   <button
                     type="button"
                     onClick={() => { setSearch(""); searchRef.current?.focus(); }}
-                    aria-label="Очистить поиск"
+                    aria-label={commonI18n.t("actions.clearSearch")}
                     className="absolute right-2 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
                   >
                     <X className="h-4 w-4" />
@@ -342,46 +345,46 @@ function IndicatorLibrary() {
               </div>
               {/* Row 1: search + filters + view; row 2: categories (the main column is too narrow for all in one line). */}
               <div className="order-last min-w-0 basis-full">
-                <Segmented ariaLabel="Категории индикаторов" value={category} onChange={setCategory} options={categoryOptions} size="sm" />
+                <Segmented ariaLabel={t("library.categoriesAria")} value={category} onChange={setCategory} options={categoryOptions} size="sm" />
               </div>
               <div className="ml-auto flex items-center gap-2">
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" size="sm" aria-label={`Фильтры${extraFilters ? `: активно ${extraFilters}` : ""}`}>
+                    <Button variant="outline" size="sm" aria-label={extraFilters ? t("library.filtersActive", { count: extraFilters }) : t("library.filters")}>
                       <SlidersHorizontal className="h-3.5 w-3.5" aria-hidden="true" />
-                      Фильтры
+                      {t("library.filters")}
                       {extraFilters > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-xs tabular-nums text-accent-soft">{extraFilters}</span>}
                     </Button>
                   </PopoverTrigger>
                   <PopoverContent align="end" className="flex w-[22rem] flex-col gap-3">
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">Горизонт удержания</span>
-                      <Segmented size="sm" ariaLabel="Горизонт удержания" value={horizon} onChange={setHorizon} options={horizonOptions} />
+                      <span className="text-xs font-medium text-muted-foreground">{t("library.holdHorizon")}</span>
+                      <Segmented size="sm" ariaLabel={t("library.holdHorizon")} value={horizon} onChange={setHorizon} options={horizonOptions} />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <span className="text-xs font-medium text-muted-foreground">Сортировка</span>
+                      <span className="text-xs font-medium text-muted-foreground">{t("sort.label")}</span>
                       <Select value={sort} onValueChange={(v) => { if (isSort(v)) setSort(v); }}>
-                        <SelectTrigger className="h-9 w-full" aria-label="Сортировка">
+                        <SelectTrigger className="h-9 w-full" aria-label={t("sort.label")}>
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {(Object.keys(SORT_LABEL) as SortKey[]).map((k) => <SelectItem key={k} value={k}>{SORT_LABEL[k]}</SelectItem>)}
+                          {SORT_KEYS.map((k) => <SelectItem key={k} value={k}>{t(`sort.${k}`)}</SelectItem>)}
                         </SelectContent>
                       </Select>
                     </div>
                     {extraFilters > 0 && (
-                      <Button variant="ghost" size="sm" className="self-start" onClick={() => { setHorizon("all"); setSort("recommended"); }}>Сбросить</Button>
+                      <Button variant="ghost" size="sm" className="self-start" onClick={() => { setHorizon("all"); setSort("recommended"); }}>{commonI18n.t("actions.reset")}</Button>
                     )}
                   </PopoverContent>
                 </Popover>
                 <Segmented
-                  ariaLabel="Вид"
+                  ariaLabel={t("library.viewAria")}
                   size="sm"
                   value={view}
                   onChange={setView}
                   options={[
-                    { value: "cards", label: <><LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> Карточки</> },
-                    { value: "table", label: <><Rows3 className="h-3.5 w-3.5" aria-hidden="true" /> Мой эдж</> },
+                    { value: "cards", label: <><LayoutGrid className="h-3.5 w-3.5" aria-hidden="true" /> {t("library.viewCards")}</> },
+                    { value: "table", label: <><Rows3 className="h-3.5 w-3.5" aria-hidden="true" /> {t("library.viewTable")}</> },
                   ]}
                 />
               </div>
@@ -390,20 +393,20 @@ function IndicatorLibrary() {
 
           <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-xs text-muted-foreground">
             <span aria-live="polite">
-              {filtered.length === LIBRARY.length ? `${filtered.length} индикаторов` : `Найдено ${filtered.length} из ${LIBRARY.length}`}
-              {favorites.length > 0 && " · набор сверху"}
-              {horizon !== "all" && ` · подходят для: ${HORIZON_META[horizon].label.toLowerCase()}`}
+              {filtered.length === LIBRARY.length ? t("library.countAll", { count: filtered.length }) : t("library.countFound", { count: filtered.length, total: LIBRARY.length })}
+              {favorites.length > 0 && ` · ${t("library.setOnTop")}`}
+              {horizon !== "all" && ` · ${t("library.fitsFor", { horizon: HORIZON_META[horizon].label.toLowerCase() })}`}
             </span>
             {(best || (!statsLoading && total > 0 && !!coverage)) && (
               <span className="tabular-nums">
                 {best && (
                   <button type="button" onClick={() => setOpenId(best.i.id)} className="rounded-sm hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-                    Лучший по R: <span className="font-medium text-foreground">{best.i.shortName}</span>{" "}
-                    <span className={best.s.avgR! > 0 ? "text-up" : "text-down"}>{best.s.avgR! > 0 ? "+" : "−"}{Math.abs(best.s.avgR!).toFixed(2)}R</span> · {best.s.count} сд.
+                    {t("library.bestByR")} <span className="font-medium text-foreground">{best.i.shortName}</span>{" "}
+                    <span className={best.s.avgR! > 0 ? "text-up" : "text-down"}>{fmtR(best.s.avgR)}</span> · {commonI18n.t("units.tradesShort", { count: best.s.count })}
                   </button>
                 )}
                 {best && !!coverage && " · "}
-                {!!coverage && total > 0 && `с тегом индикатора ${coverage}% сделок`}
+                {!!coverage && total > 0 && t("library.coverage", { pct: coverage })}
               </span>
             )}
           </div>
@@ -412,13 +415,13 @@ function IndicatorLibrary() {
             <div className="glass-panel rounded-2xl">
               <EmptyState
                 icon={category === "favorites" ? Layers : Search}
-                title={category === "favorites" && favorites.length === 0 ? "Твой набор пока пуст" : "Ничего не найдено"}
+                title={category === "favorites" && favorites.length === 0 ? t("library.emptySetTitle") : t("library.emptyTitle")}
                 description={
                   category === "favorites" && favorites.length === 0
-                    ? "Отметь ★ индикаторы, которыми реально пользуешься, или добавь готовый пресет деска справа."
-                    : "Измени запрос, категорию или горизонт."
+                    ? t("library.emptySetText")
+                    : t("library.emptyText")
                 }
-                action={filtersActive ? <Button variant="outline" size="sm" onClick={resetFilters}>Сбросить фильтры</Button> : undefined}
+                action={filtersActive ? <Button variant="outline" size="sm" onClick={resetFilters}>{commonI18n.t("actions.resetFilters")}</Button> : undefined}
               />
             </div>
           ) : view === "table" ? (
@@ -437,7 +440,7 @@ function IndicatorLibrary() {
               onKeyDown={onGridKeyDown}
               className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-3"
               role="list"
-              aria-label="Индикаторы"
+              aria-label={t("library.listAria")}
             >
               {filtered.map((ind, i) => (
                 <div key={ind.id} role="listitem">
@@ -459,7 +462,7 @@ function IndicatorLibrary() {
           )}
         </div>
 
-        <aside className="lg:sticky lg:top-[var(--sticky-top)]" aria-label="Мой набор">
+        <aside className="lg:sticky lg:top-[var(--sticky-top)]" aria-label={t("library.mySet")}>
           <MySetPanel
             ids={favorites}
             stats={statsMap}
@@ -498,23 +501,22 @@ function IndicatorLibrary() {
 type IndicatorsTab = "market" | "library";
 
 export default function Indicators() {
+  const { t } = indicatorsI18n.useT();
   const [tab, setTab] = usePersistentState<IndicatorsTab>("indicators.tab", "market");
   return (
     <Page>
       <PageHeader
-        title="Индикаторы"
+        title={t("page.title")}
         icon={Compass}
-        description={tab === "market"
-          ? "Какой сегодня рынок и как ты торгуешь в такие дни: режим, ключевые индикаторы, твой результат по условиям и похожие сессии"
-          : "Справочник деска: как и когда работает инструмент, на каком горизонте, и что он даёт в твоих сделках"}
+        description={tab === "market" ? t("page.descMarket") : t("page.descLibrary")}
       />
       <SectionTabs
-        ariaLabel="Разделы индикаторов"
+        ariaLabel={t("page.tabsAria")}
         value={tab}
         onChange={setTab}
         tabs={[
-          { value: "market", label: "Рынок и мой эдж", icon: Activity },
-          { value: "library", label: "Справочник", icon: BookOpen },
+          { value: "market", label: t("page.tabMarket"), icon: Activity },
+          { value: "library", label: t("page.tabLibrary"), icon: BookOpen },
         ]}
       />
       {tab === "market" ? <MarketView /> : <IndicatorLibrary />}

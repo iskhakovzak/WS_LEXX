@@ -3,7 +3,7 @@ import { eq, desc } from "drizzle-orm";
 import { db, big7CatalystsTable } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
 import { creatorName, requireRowOwnerOrStaff } from "../lib/ownedRows";
-import { badRequest, notFound } from "../lib/http";
+import { AppError, badRequest, notFound } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -20,10 +20,7 @@ router.get("/big7/catalysts", asyncHandler(async (_req, res): Promise<void> => {
 
 router.post("/big7/catalysts", asyncHandler(async (req, res): Promise<void> => {
   const { ticker, date, type, description, impact } = req.body as Record<string, unknown>;
-  if (!ticker || !date || !type || !String(ticker).trim()) {
-    res.status(400).json({ error: "ticker, date, and type are required" });
-    return;
-  }
+  if (!ticker || !date || !type || !String(ticker).trim()) throw new AppError("FIELD_REQUIRED", undefined, { field: "ticker, date, type" });
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(date)) || Number.isNaN(Date.parse(String(date)))) {
     throw badRequest("INVALID_DATE");
   }
@@ -64,17 +61,17 @@ router.patch("/big7/catalysts/:id", asyncHandler(async (req, res): Promise<void>
   }
   if (type !== undefined) {
     const t = String(type).trim();
-    if (!t || t.length > 40) { res.status(400).json({ error: "invalid type" }); return; }
+    if (!t || t.length > 40) throw new AppError("INVALID_FIELD", undefined, { field: "type" });
     patch.type = t;
   }
   if (description !== undefined) {
     patch.description = description != null && String(description).trim() !== "" ? String(description).slice(0, 500) : null;
   }
   if (impact !== undefined) {
-    if (!VALID_IMPACT.has(String(impact))) { res.status(400).json({ error: "impact must be low|medium|high" }); return; }
+    if (!VALID_IMPACT.has(String(impact))) throw new AppError("INVALID_FIELD", undefined, { field: "impact" });
     patch.impact = String(impact);
   }
-  if (Object.keys(patch).length === 0) { res.status(400).json({ error: "nothing to update" }); return; }
+  if (Object.keys(patch).length === 0) throw new AppError("NO_FIELDS");
   const [row] = await db.update(big7CatalystsTable).set(patch).where(eq(big7CatalystsTable.id, id)).returning();
   if (!row) throw notFound();
   res.json(row);

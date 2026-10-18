@@ -9,6 +9,7 @@ import { KEYS, POLL, STALE } from "@/lib/api/keys";
 import { openTradesQuery, type OpenTradeRow } from "@/lib/api/queries";
 import { gpApi, gpKeys, type InPlayItem, type PlanDoc } from "@/components/game-plan/types";
 import type { FeedAction, FeedResponse, OpenPosition, Quote } from "./lib";
+import { analystI18n } from "@/i18n/ns/analyst";
 
 export function useAnalystFeed(opts: { days: number; minCapB: number; includeUnknownCap: boolean }) {
   const qs = useMemo(() => {
@@ -155,7 +156,7 @@ export function useAddToWatchlist() {
         ticker: vars.ticker,
         catalyst: vars.catalyst,
         status: "watching",
-        tags: "аналитики",
+        tags: analystI18n.t("watchTag"),
         ...(vars.sector ? { sector: vars.sector } : {}),
         ...(vars.longName ? { longName: vars.longName } : {}),
       }),
@@ -312,7 +313,7 @@ export function useAddToPlan() {
       const list = Array.isArray(doc.inPlay) ? doc.inPlay : [];
       const t = vars.ticker.toUpperCase();
       if (list.some((i) => String(i.ticker).toUpperCase() === t)) return { already: true as const };
-      if (list.length >= MAX_IN_PLAY) throw new Error(`В плане уже ${MAX_IN_PLAY} тикеров`);
+      if (list.length >= MAX_IN_PLAY) throw new Error(analystI18n.t("planFull", { count: MAX_IN_PLAY }));
       const item: InPlayItem = {
         ticker: t, catalyst: vars.catalyst.slice(0, 240), bias: vars.bias, grade: null,
         levels: { support: [], resistance: [] }, plan: "", horizon: "intraday", risk_note: "",

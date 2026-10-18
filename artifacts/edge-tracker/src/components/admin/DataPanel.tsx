@@ -18,23 +18,14 @@ import { useDataQuality, useHealth, type DataCheck } from "./console-api";
 import { fmtCount, fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
+import { adminI18n } from "@/i18n/ns/admin";
 import { JobsPanel } from "./JobsPanel";
 
-/** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
-
-const EXPORT_TABLES: { key: string; label: string }[] = [
-  { key: "trades", label: "Сделки" },
-  { key: "playbook", label: "Плейбук" },
-  { key: "tradeIdeas", label: "Идеи" },
-  { key: "watchlist", label: "Вотчлист" },
-  { key: "marketEvents", label: "События" },
-  { key: "research", label: "Исследования" },
-  { key: "tradingRules", label: "Правила" },
-  { key: "big7Tickers", label: "Big7 тикеры" },
-  { key: "big7Levels", label: "Big7 уровни" },
-  { key: "big7Catalysts", label: "Big7 катализаторы" },
-  { key: "users", label: "Пользователи" },
-];
+/** Export table keys (sent to the server as is; labels: adminI18n `data.exportTables.*`). */
+const EXPORT_TABLES = [
+  "trades", "playbook", "tradeIdeas", "watchlist", "marketEvents", "research", "tradingRules",
+  "big7Tickers", "big7Levels", "big7Catalysts", "users",
+] as const;
 
 /**
  * «Данные и интеграции»: PropReports status/schedule (read-only — imports, account mapping and reconciliation
@@ -42,6 +33,7 @@ const EXPORT_TABLES: { key: string; label: string }[] = [
  * exports and backups.
  */
 export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
+  const { t } = adminI18n.useT();
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] xl:grid-cols-2">
@@ -54,12 +46,12 @@ export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean 
         <ExportCard actor={actor} />
         <BackupsCard actor={actor} isAdmin={isAdmin} />
       </div>
-      <Panel title="Другие инструменты" icon={Settings2}>
+      <Panel title={t("data.tools.title")} icon={Settings2}>
         <ul className="grid grid-cols-1 gap-x-4 md:grid-cols-3">
           {[
-            { href: "/integrations", label: "Интеграции", desc: "Импорт отчётов PropReports, счета, сверка, история" },
-            { href: "/error-tracker", label: "Правила и нарушения", desc: "Риск-правила трейдеров и журнал нарушений" },
-            { href: "/scaling", label: "План масштабирования", desc: "Лестница тиров, предложения, история" },
+            { href: "/integrations", label: t("data.tools.integrations"), desc: t("data.tools.integrationsHint") },
+            { href: "/error-tracker", label: t("data.tools.rules"), desc: t("data.tools.rulesHint") },
+            { href: "/scaling", label: t("data.tools.scaling"), desc: t("data.tools.scalingHint") },
           ].map((it) => (
             <li key={it.href}>
               <Link href={it.href} className="group flex items-center gap-3 rounded-xl px-2 py-2.5 transition-colors hover:bg-[var(--glass-bg)]">
@@ -78,17 +70,18 @@ export function DataPanel({ actor, isAdmin }: { actor: string; isAdmin: boolean 
 }
 
 function IntegrationStatusCard() {
+  const { t } = adminI18n.useT();
   const status = useStatus();
   const health = useHealth();
   const st = status.data;
   const errors = health.data?.errors24h;
   return (
     <Panel
-      title="PropReports: статус и расписание"
+      title={t("data.status.title")}
       icon={Plug}
       fill
-      description="Только просмотр. Импорт, счета и сверка — в «Интеграциях»."
-      actions={<Button asChild variant="outline" size="sm"><Link href="/integrations">Интеграции <ArrowRight /></Link></Button>}
+      description={t("data.status.description")}
+      actions={<Button asChild variant="outline" size="sm"><Link href="/integrations">{t("data.tools.integrations")} <ArrowRight /></Link></Button>}
     >
       {status.isError ? (
         <QueryError error={status.error} onRetry={() => status.refetch()} />
@@ -98,39 +91,39 @@ function IntegrationStatusCard() {
         <div className="flex flex-col gap-3">
           <div className="flex flex-col">
             <StatRow
-              label="Подключение по API"
+              label={t("data.status.api")}
               value={st.config.configured
-                ? <Pill tone="up" dot>настроено · {st.config.authMode === "token" ? "токен" : "логин"}</Pill>
-                : <Pill tone="neutral">не настроено</Pill>}
+                ? <Pill tone="up" dot>{t("data.status.configured", { mode: st.config.authMode === "token" ? t("data.status.token") : t("data.status.login") })}</Pill>
+                : <Pill tone="neutral">{t("data.status.notConfigured")}</Pill>}
             />
             {!st.config.configured && st.config.missing.length > 0 && (
               <p className="pb-1 text-xs text-muted-foreground">
-                Не заданы переменные окружения: {st.config.missing.map((m, i) => <span key={m}>{i > 0 && ", "}<code>{m}</code></span>)}. Пока сделки загружаются из файлов отчёта.
+                {t("data.status.missingEnv", { vars: st.config.missing.join(", ") })}
               </p>
             )}
             <StatRow
-              label="Расписание синка"
+              label={t("data.status.schedule")}
               value={st.scheduler.enabled
-                ? `каждые ${st.scheduler.minutes} мин`
-                : st.config.syncMinutes ? `каждые ${st.config.syncMinutes} мин (не запущено)` : "выключено"}
+                ? t("data.status.every", { minutes: st.scheduler.minutes ?? 0 })
+                : st.config.syncMinutes ? t("data.status.everyStopped", { minutes: st.config.syncMinutes }) : t("data.status.off")}
               tone={st.scheduler.enabled ? "up" : "neutral"}
             />
             {st.scheduler.enabled && (
-              <StatRow label="Следующий запуск" value={st.scheduler.running ? "идёт сейчас" : st.scheduler.nextRunAt ? fmtDate(st.scheduler.nextRunAt, "numericDateTime") : "—"} />
+              <StatRow label={t("data.status.next")} value={st.scheduler.running ? t("data.status.runningNow") : st.scheduler.nextRunAt ? fmtDate(st.scheduler.nextRunAt, "numericDateTime") : "—"} />
             )}
-            <StatRow label="Последний синк" value={st.lastRun ? `${timeAgo(st.lastRun.startedAt)} · ${st.lastRun.source === "file" ? "файл" : "API"}` : "ещё не было"} />
-            <StatRow label="Сделок из брокера" value={fmtCount(Number(st.trades.imported))} />
+            <StatRow label={t("data.status.lastSync")} value={st.lastRun ? t("data.status.lastSyncValue", { ago: timeAgo(st.lastRun.startedAt), source: st.lastRun.source === "file" ? t("data.status.file") : "API" }) : t("data.status.never")} />
+            <StatRow label={t("data.status.imported")} value={fmtCount(Number(st.trades.imported))} />
             <StatRow
-              label="Счета"
-              value={`${st.accounts.mapped}/${st.accounts.total} привязано${st.settings.unmatched.length ? ` · новых ${st.settings.unmatched.length}` : ""}`}
+              label={t("data.status.accounts")}
+              value={`${t("data.status.accountsValue", { mapped: st.accounts.mapped, total: st.accounts.total })}${st.settings.unmatched.length ? t("data.status.accountsNew", { count: st.settings.unmatched.length }) : ""}`}
               tone={st.accounts.unmapped.length || st.settings.unmatched.length ? "warn" : "neutral"}
             />
-            <StatRow label="Ждут сверки" value={st.pendingCount} tone={st.pendingCount ? "warn" : "neutral"} />
-            <StatRow label="Комиссии" value={st.settings.feesConfirmedAt ? "подтверждены" : "не подтверждены"} tone={st.settings.feesConfirmedAt ? "neutral" : "warn"} />
+            <StatRow label={t("data.status.pending")} value={st.pendingCount} tone={st.pendingCount ? "warn" : "neutral"} />
+            <StatRow label={t("data.status.fees")} value={st.settings.feesConfirmedAt ? t("data.status.feesConfirmed") : t("data.status.feesNotConfirmed")} tone={st.settings.feesConfirmedAt ? "neutral" : "warn"} />
           </div>
           <div className="rounded-xl bg-[var(--glass-bg)] p-3">
             <div className="mb-1 flex items-center justify-between gap-2 text-xs">
-              <span className="font-medium text-foreground">Ошибки за 24 ч</span>
+              <span className="font-medium text-foreground">{t("data.status.errors24h")}</span>
               <Pill tone={errors?.count ? "down" : "up"}>{errors ? errors.count : "—"}</Pill>
             </div>
             {errors && errors.items.length > 0 ? (
@@ -140,7 +133,7 @@ function IntegrationStatusCard() {
                 ))}
               </ul>
             ) : (
-              <p className="text-xs text-muted-foreground">Ошибок синка и планировщика нет.</p>
+              <p className="text-xs text-muted-foreground">{t("data.status.noErrors")}</p>
             )}
           </div>
         </div>
@@ -149,50 +142,46 @@ function IntegrationStatusCard() {
   );
 }
 
-const RUN_STATUS: Record<string, { label: string; tone: Tone }> = {
-  ok: { label: "успешно", tone: "up" },
-  partial: { label: "частично", tone: "warn" },
-  error: { label: "ошибка", tone: "down" },
-  running: { label: "идёт", tone: "accent" },
-};
+const RUN_TONE: Record<string, Tone> = { ok: "up", partial: "warn", error: "down", running: "accent" };
 
 function ImportHistoryCard() {
+  const { t } = adminI18n.useT();
   const runs = useRuns(10);
   return (
     <Panel
-      title="История импорта"
+      title={t("data.history.title")}
       icon={History}
       fill
-      description="Последние 10 загрузок сделок"
-      actions={<Button asChild variant="ghost" size="sm"><Link href="/integrations?tab=history">Вся история <ArrowRight /></Link></Button>}
+      description={t("data.history.description")}
+      actions={<Button asChild variant="ghost" size="sm"><Link href="/integrations?tab=history">{t("data.history.all")} <ArrowRight /></Link></Button>}
     >
       {runs.isError ? (
         <QueryError error={runs.error} onRetry={() => runs.refetch()} />
       ) : runs.isLoading ? (
         <ListSkeleton rows={4} dense />
       ) : !runs.data?.length ? (
-        <EmptyState compact icon={History} title="Импортов ещё не было" description="Отчёт PropReports загружается в «Интеграциях»." />
+        <EmptyState compact icon={History} title={t("data.history.empty")} description={t("data.history.emptyHint")} />
       ) : (
-        <DataTable ariaLabel="История импорта" maxHeight={360}>
+        <DataTable ariaLabel={t("data.history.title")} maxHeight={360}>
           <table>
             <thead>
               <tr>
-                <th scope="col">Когда · источник</th>
-                <th scope="col">Итог</th>
-                <th scope="col" className="text-right" title="Новых сделок">Новых</th>
-                <th scope="col" className="text-right" title="Обновлённых сделок">Обнов.</th>
-                <th scope="col" className="text-right" title="Отправлено на сверку">Сверка</th>
+                <th scope="col">{t("data.history.col.when")}</th>
+                <th scope="col">{t("data.history.col.result")}</th>
+                <th scope="col" className="text-right" title={t("data.history.colTitle.inserted")}>{t("data.history.col.inserted")}</th>
+                <th scope="col" className="text-right" title={t("data.history.colTitle.updated")}>{t("data.history.col.updated")}</th>
+                <th scope="col" className="text-right" title={t("data.history.colTitle.conflicts")}>{t("data.history.col.conflicts")}</th>
               </tr>
             </thead>
             <tbody>
               {runs.data.map((r) => {
-                const s = RUN_STATUS[r.status] ?? { label: r.status, tone: "neutral" as Tone };
+                const s = { label: adminI18n.tryT(`data.runStatus.${r.status}`) ?? r.status, tone: RUN_TONE[r.status] ?? ("neutral" as Tone) };
                 return (
                   <tr key={r.id}>
                     <td className="max-w-[11rem]">
                       <div className="whitespace-nowrap tabular-nums" title={fmtDate(r.startedAt, "shortDateTimeSeconds")}>{fmtDate(r.startedAt, "numericDateTime")}</div>
                       <div className="truncate text-2xs text-muted-foreground" title={[r.fileName, r.actor].filter(Boolean).join(" · ") || undefined}>
-                        {r.source === "file" ? (r.fileName ?? "файл") : "API"}{r.actor ? ` · ${r.actor}` : ""}
+                        {r.source === "file" ? (r.fileName ?? t("data.history.file")) : "API"}{r.actor ? ` · ${r.actor}` : ""}
                       </div>
                     </td>
                     <td>
@@ -213,30 +202,28 @@ function ImportHistoryCard() {
   );
 }
 
-const SEVERITY: Record<DataCheck["severity"], { label: string; tone: Tone }> = {
-  high: { label: "важно", tone: "down" },
-  medium: { label: "проверить", tone: "warn" },
-  low: { label: "мелочь", tone: "neutral" },
-};
+const SEVERITY_TONE: Record<DataCheck["severity"], Tone> = { high: "down", medium: "warn", low: "neutral" };
 
-const CHECK_LINK: Record<string, { href: string; label: string }> = {
-  no_trader: { href: "/integrations?tab=accounts", label: "Счета" },
-  unmapped_account: { href: "/integrations?tab=accounts", label: "Счета" },
-  unknown_trader: { href: "/integrations?tab=accounts", label: "Счета" },
-  duplicates: { href: "/integrations?tab=reconcile", label: "Сверка" },
-  pending_reconcile: { href: "/integrations?tab=reconcile", label: "Сверка" },
+const CHECK_LINK: Record<string, { href: string; label: "linkAccounts" | "linkReconcile" }> = {
+  no_trader: { href: "/integrations?tab=accounts", label: "linkAccounts" },
+  unmapped_account: { href: "/integrations?tab=accounts", label: "linkAccounts" },
+  unknown_trader: { href: "/integrations?tab=accounts", label: "linkAccounts" },
+  duplicates: { href: "/integrations?tab=reconcile", label: "linkReconcile" },
+  pending_reconcile: { href: "/integrations?tab=reconcile", label: "linkReconcile" },
 };
 
 function sampleText(row: Record<string, unknown>): string {
-  if (Array.isArray(row.ids)) return `${row.trader ?? "?"} · ${row.ticker ?? ""} · ${row.date ?? ""} · ${row.n} шт (#${(row.ids as unknown[]).join(", #")})`;
-  if (row.account && row.n != null) return `Счёт ${row.account}: ${commonI18n.t("units.trades", { count: Number(row.n) })}`;
-  const parts = [row.date, row.ticker, row.trader ?? "без трейдера"];
-  if (row.openedDate) parts.push(`открыта ${row.openedDate}`);
-  if (row.exitDate) parts.push(`выход ${row.exitDate}`);
+  const t = adminI18n.t;
+  if (Array.isArray(row.ids)) return t("data.quality.sampleDup", { trader: String(row.trader ?? "?"), ticker: String(row.ticker ?? ""), date: String(row.date ?? ""), count: Number(row.n) || 0, ids: `#${(row.ids as unknown[]).join(", #")}` });
+  if (row.account && row.n != null) return t("data.quality.sampleAccount", { account: String(row.account), trades: commonI18n.t("units.trades", { count: Number(row.n) }) });
+  const parts = [row.date, row.ticker, row.trader ?? t("data.quality.noTrader")];
+  if (row.openedDate) parts.push(t("data.quality.opened", { date: String(row.openedDate) }));
+  if (row.exitDate) parts.push(t("data.quality.exit", { date: String(row.exitDate) }));
   return parts.filter(Boolean).map(String).join(" · ");
 }
 
 function DataQualityCard() {
+  const { t } = adminI18n.useT();
   const quality = useDataQuality();
   const [showAll, setShowAll] = useState(false);
   const checks = quality.data?.checks ?? [];
@@ -244,13 +231,13 @@ function DataQualityCard() {
   const visible = showAll ? checks : problems;
   return (
     <Panel
-      title="Качество данных"
+      title={t("data.quality.title")}
       icon={ShieldCheck}
-      description="Сделки без трейдера, дубликаты, даты не по Нью-Йорку. Только проверка — автоматически ничего не меняется."
+      description={t("data.quality.description")}
       actions={
         <>
-          {checks.length > 0 && <FilterChip active={showAll} onClick={() => setShowAll((v) => !v)}>Все проверки</FilterChip>}
-          <Button variant="outline" size="icon" className="h-8 w-8" aria-label="Проверить заново" onClick={() => quality.refetch()} disabled={quality.isFetching}>
+          {checks.length > 0 && <FilterChip active={showAll} onClick={() => setShowAll((v) => !v)}>{t("data.quality.allChecks")}</FilterChip>}
+          <Button variant="outline" size="icon" className="h-8 w-8" aria-label={t("data.quality.recheck")} onClick={() => quality.refetch()} disabled={quality.isFetching}>
             <RefreshCw className={cn(quality.isFetching && "animate-spin motion-reduce:animate-none")} />
           </Button>
         </>
@@ -261,30 +248,31 @@ function DataQualityCard() {
       ) : quality.isLoading ? (
         <ListSkeleton rows={4} />
       ) : quality.data === null || quality.data === undefined ? (
-        <EmptyState compact icon={AlertTriangle} title="Проверка ещё не подключена" description="Появится после перезапуска API (новый роутер admin-console)." />
+        <EmptyState compact icon={AlertTriangle} title={t("data.quality.notConnected")} description={t("data.quality.notConnectedHint")} />
       ) : visible.length === 0 ? (
-        <EmptyState compact icon={CheckCircle2} title="Проблем не найдено" description={`Проверено правил: ${checks.length} · ${fmtDate(quality.data.generatedAt, "numericDateTime")}`} />
+        <EmptyState compact icon={CheckCircle2} title={t("data.quality.clean")} description={t("data.quality.cleanHint", { count: checks.length, at: fmtDate(quality.data.generatedAt, "numericDateTime") })} />
       ) : (
         <ul className="flex flex-col gap-2">
           {visible.map((c) => {
-            const sev = SEVERITY[c.severity] ?? SEVERITY.low;
+            const sevKey = SEVERITY_TONE[c.severity] ? c.severity : "low";
+            const sev = { tone: SEVERITY_TONE[sevKey], label: t(`data.quality.severity.${sevKey}`) };
             const link = CHECK_LINK[c.key];
             return (
               <li key={c.key} className="rounded-xl bg-[var(--glass-bg)] p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{c.label}</span>
-                  <Pill tone={c.count ? sev.tone : "up"}>{c.count ? `${c.count}${c.groups ? ` в ${c.groups} группах` : ""}` : "ок"}</Pill>
+                  <Pill tone={c.count ? sev.tone : "up"}>{c.count ? (c.groups ? t("data.quality.inGroups", { count: c.count, groups: c.groups }) : c.count) : t("data.quality.ok")}</Pill>
                   {c.count > 0 && <span className="text-2xs uppercase tracking-wide text-muted-foreground">{sev.label}</span>}
                   {link && c.count > 0 && (
                     <Button asChild variant="ghost" size="sm" className="ml-auto h-7">
-                      <Link href={link.href}>{link.label} <ArrowRight /></Link>
+                      <Link href={link.href}>{t(`data.quality.${link.label}`)} <ArrowRight /></Link>
                     </Button>
                   )}
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{c.hint}</p>
                 {c.sample.length > 0 && (
                   <details className="mt-1.5 text-xs">
-                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">Примеры ({Math.min(c.sample.length, 25)})</summary>
+                    <summary className="cursor-pointer text-muted-foreground hover:text-foreground">{t("data.quality.examples", { count: Math.min(c.sample.length, 25) })}</summary>
                     <ul className="mt-1 flex flex-col gap-0.5 tabular-nums">
                       {c.sample.slice(0, 25).map((row, i) => (
                         <li key={i} className="break-words">
@@ -308,8 +296,9 @@ function DataQualityCard() {
 
 function ExportCard({ actor }: { actor: string }) {
   const { toast } = useToast();
+  const { t } = adminI18n.useT();
   const qc = useQueryClient();
-  const [picked, setPicked] = useState<Set<string>>(() => new Set(EXPORT_TABLES.map((t) => t.key)));
+  const [picked, setPicked] = useState<Set<string>>(() => new Set(EXPORT_TABLES));
   const [busy, setBusy] = useState(false);
   const all = picked.size === EXPORT_TABLES.length;
 
@@ -333,9 +322,9 @@ function ExportCard({ actor }: { actor: string }) {
         summary = commonI18n.t("units.entries", { count: total });
       } catch { /* ignore */ }
       qc.invalidateQueries({ queryKey: ["admin-audit"] });
-      toast({ title: "Экспорт готов", description: summary || undefined });
+      toast({ title: t("data.export.done"), description: summary || undefined });
     } catch (e) {
-      toast({ title: "Ошибка экспорта", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: t("data.export.failed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setBusy(false);
     }
@@ -343,24 +332,24 @@ function ExportCard({ actor }: { actor: string }) {
 
   return (
     <Panel
-      title="Экспорт данных"
-      description="JSON-выгрузка таблиц БД. Полный набор — совместим с импортом бэкапа в «Настройках»."
+      title={t("data.export.title")}
+      description={t("data.export.description")}
       icon={FileJson}
       fill
     >
       <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Таблицы для экспорта">
-          <FilterChip active={all} onClick={() => setPicked(all ? new Set() : new Set(EXPORT_TABLES.map((t) => t.key)))}>Все</FilterChip>
-          {EXPORT_TABLES.map((t) => (
-            <FilterChip key={t.key} active={picked.has(t.key)} onClick={() => toggle(t.key)}>{t.label}</FilterChip>
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("data.export.tablesAria")}>
+          <FilterChip active={all} onClick={() => setPicked(all ? new Set() : new Set(EXPORT_TABLES))}>{t("data.export.all")}</FilterChip>
+          {EXPORT_TABLES.map((k) => (
+            <FilterChip key={k} active={picked.has(k)} onClick={() => toggle(k)}>{t(`data.exportTables.${k}`)}</FilterChip>
           ))}
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs text-muted-foreground">
-            {all ? "Полный бэкап" : `${picked.size} из ${EXPORT_TABLES.length} таблиц`} · пароли не выгружаются · действие пишется в аудит
+            {all ? t("data.export.full") : t("data.export.some", { count: picked.size, total: EXPORT_TABLES.length })} · {t("data.export.note")}
           </span>
           <Button onClick={run} disabled={busy || !picked.size}>
-            <Download /> {busy ? "Готовлю…" : "Скачать JSON"}
+            <Download /> {busy ? t("data.export.preparing") : t("data.export.download")}
           </Button>
         </div>
       </div>
@@ -373,12 +362,13 @@ interface BackupMeta { name: string; objectName: string; file?: string; createdA
 
 function fmtMsk(iso: string) {
   try {
-    return fmtDate(iso, "shortDateTime", { timeZone: "Europe/Moscow" }) + " МСК";
+    return adminI18n.t("data.backups.msk", { date: fmtDate(iso, "shortDateTime", { timeZone: "Europe/Moscow" }) });
   } catch { return iso; }
 }
 
 function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
   const { t: tj } = adminJobsI18n.useT();
+  const { t } = adminI18n.useT();
   const { toast } = useToast();
   const [triggering, setTriggering] = useState(false);
   const [downloading, setDownloading] = useState<string | null>(null);
@@ -392,10 +382,10 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
     setTriggering(true);
     try {
       const d = await http.post<{ name: string; sizeKb: number }>(adminUrl("/admin/backups/trigger", actor));
-      toast({ title: "Бэкап создан", description: `${d.name} · ${d.sizeKb} KB` });
+      toast({ title: t("data.backups.created"), description: `${d.name} · ${t("data.backups.size", { size: fmtCount(d.sizeKb) })}` });
       refetch();
     } catch (e) {
-      toast({ title: "Ошибка", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: commonI18n.t("states.error"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setTriggering(false);
     }
@@ -412,7 +402,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
       a.click();
       document.body.removeChild(a);
     } catch (e) {
-      toast({ title: "Ошибка скачивания", description: e instanceof Error ? e.message : String(e), variant: "destructive" });
+      toast({ title: t("data.backups.downloadFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
     } finally {
       setDownloading(null);
     }
@@ -420,18 +410,18 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
 
   return (
     <Panel
-      title="Бэкапы БД"
+      title={t("data.backups.title")}
       description={tj("backups.description")}
       icon={Database}
       fill
       actions={
         <>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Обновить список бэкапов" onClick={() => refetch()} disabled={isFetching}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("data.backups.refresh")} onClick={() => refetch()} disabled={isFetching}>
             <RefreshCw className={cn(isFetching && "animate-spin motion-reduce:animate-none")} />
           </Button>
           {isAdmin && (
             <Button variant="outline" size="sm" onClick={trigger} disabled={triggering} data-testid="button-trigger-backup">
-              {triggering ? "Создаётся…" : "Создать сейчас"}
+              {triggering ? t("data.backups.creating") : t("data.backups.create")}
             </Button>
           )}
         </>
@@ -441,13 +431,13 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
         <div className="flex flex-col gap-2">{[0, 1].map((i) => <Skeleton key={i} className="h-11 w-full rounded-xl" />)}</div>
       ) : isError ? (
         <div className="flex flex-wrap items-center gap-2 text-sm text-down">
-          {error instanceof Error ? error.message : "Не удалось получить список бэкапов"}
-          <Button variant="link" size="sm" onClick={() => refetch()}>Повторить</Button>
+          {error instanceof Error ? error.message : t("data.backups.loadFailed")}
+          <Button variant="link" size="sm" onClick={() => refetch()}>{commonI18n.t("actions.retry")}</Button>
         </div>
       ) : !backups || backups.length === 0 ? (
         <p className="text-sm text-muted-foreground">
           {tj("backups.empty")}{isAdmin ? ` ${tj("backups.emptyAdmin")}` : ""} {tj("backups.emptyHint")}
-          {!isAdmin && <span className="mt-1 block text-xs">Скачивание доступно только администраторам.</span>}
+          {!isAdmin && <span className="mt-1 block text-xs">{t("data.backups.adminOnly")}</span>}
         </p>
       ) : (
         <div className="flex flex-col gap-1">
@@ -457,9 +447,9 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 text-sm tabular-nums">
                     {fmtMsk(b.createdAt)}
-                    {i === 0 && <Pill tone="up">последний</Pill>}
+                    {i === 0 && <Pill tone="up">{t("data.backups.latest")}</Pill>}
                   </div>
-                  <div className="truncate text-xs text-muted-foreground">{fmtCount(b.sizeKb)} КБ · {b.file ?? `${b.name}.sql.gz`}</div>
+                  <div className="truncate text-xs text-muted-foreground">{t("data.backups.size", { size: fmtCount(b.sizeKb) })} · {b.file ?? `${b.name}.sql.gz`}</div>
                 </div>
                 {isAdmin && (
                   <Button
@@ -467,7 +457,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
                     size="sm"
                     onClick={() => download(b.name, b.file ?? `${b.name}.sql.gz`)}
                     disabled={downloading === b.name}
-                    aria-label={`Скачать бэкап ${b.name}`}
+                    aria-label={t("data.backups.downloadAria", { name: b.name })}
                     data-testid={`button-download-backup-${b.name}`}
                   >
                     <Download /> {downloading === b.name ? "…" : "SQL.GZ"}
@@ -476,7 +466,7 @@ function BackupsCard({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
               </li>
             ))}
           </ul>
-          <p className="px-2 pt-1 text-xs text-muted-foreground">Восстановление: <code>pg_restore</code> или <code>psql</code></p>
+          <p className="px-2 pt-1 text-xs text-muted-foreground">{t("data.backups.restore")} <code>pg_restore</code> {t("data.backups.or")} <code>psql</code></p>
         </div>
       )}
     </Panel>

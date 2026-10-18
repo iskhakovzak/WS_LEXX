@@ -6,14 +6,17 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
-import { STAGE_LABEL, type Audience, type AudienceMember, type AudienceStage } from "./author-model";
+import { stageLabel, type Audience, type AudienceMember, type AudienceStage } from "./author-model";
+import { commonI18n } from "@/i18n/ns/common";
+import { notesI18n } from "@/i18n/ns/notes";
+import { rich, slots } from "@/i18n/rich";
 
 const STAGE_TONE: Record<AudienceStage, Tone> = { trainee: "warn", junior: "accent", trader: "neutral", senior: "purple" };
 
 function MemberBadge({ m }: { m: AudienceMember }) {
-  if (m.role === "curator" || m.role === "admin") return <Pill>{m.role === "admin" ? "Админ" : "Куратор"}</Pill>;
+  if (m.role === "curator" || m.role === "admin") return <Pill>{commonI18n.t(m.role === "admin" ? "roles.admin" : "roles.curator")}</Pill>;
   if (!m.stage) return null;
-  return <Pill tone={STAGE_TONE[m.stage]}>{STAGE_LABEL[m.stage]}</Pill>;
+  return <Pill tone={STAGE_TONE[m.stage]}>{stageLabel(m.stage)}</Pill>;
 }
 
 function MemberRow({ m }: { m: AudienceMember }) {
@@ -56,6 +59,8 @@ export function AuthorAudience({
   error: boolean;
 }) {
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const [showRead, setShowRead] = React.useState(false);
   const unread = data?.members.filter((m) => !m.readAt) ?? [];
   const read = data?.members.filter((m) => m.readAt) ?? [];
@@ -64,51 +69,52 @@ export function AuthorAudience({
   const copyUnread = async () => {
     try {
       await navigator.clipboard.writeText(unread.map((m) => m.name).join(", "));
-      toast({ title: "Имена скопированы", description: "Вставь в чат деска, чтобы напомнить" });
+      toast({ title: t("author.audience.copied"), description: t("author.audience.copiedDesc") });
     } catch {
-      toast({ title: "Не удалось скопировать", variant: "destructive" });
+      toast({ title: tc("states.copyFailed"), variant: "destructive" });
     }
   };
 
   return (
     <Panel
-      title="Охват сводки"
+      title={t("author.audience.title")}
       icon={Users}
-      description="Кто из команды уже прочитал"
+      description={t("author.audience.description")}
       actions={
         unread.length > 0 ? (
           <Button variant="ghost" size="sm" className="gap-1" onClick={() => void copyUnread()}>
-            <Copy className="h-3.5 w-3.5" aria-hidden="true" />Имена
+            <Copy className="h-3.5 w-3.5" aria-hidden="true" />{t("author.audience.names")}
           </Button>
         ) : undefined
       }
     >
       {!hasNote ? (
-        <p className="text-sm text-muted-foreground">Появится после первого сохранения — команда увидит сводку в ленте.</p>
+        <p className="text-sm text-muted-foreground">{t("author.audience.noNote")}</p>
       ) : loading ? (
-        <div className="flex flex-col gap-2" aria-busy="true" aria-label="Загрузка охвата">
+        <div className="flex flex-col gap-2" aria-busy="true" aria-label={t("author.audience.loading")}>
           <Skeleton className="h-6 w-full rounded-full" />
           <Skeleton className="h-9 w-full rounded-xl" />
           <Skeleton className="h-9 w-full rounded-xl" />
         </div>
       ) : error || !data ? (
-        <p className="text-sm text-muted-foreground">Охват пока недоступен.</p>
+        <p className="text-sm text-muted-foreground">{t("author.audience.unavailable")}</p>
       ) : data.total === 0 ? (
-        <p className="text-sm text-muted-foreground">В команде пока нет других участников.</p>
+        <p className="text-sm text-muted-foreground">{t("author.audience.empty")}</p>
       ) : (
         <div className="flex flex-col gap-3">
           <div className="flex flex-col gap-1.5">
             <div className="flex items-baseline justify-between gap-2">
-              <span className="text-sm">
-                <span className="text-lg font-semibold tabular-nums">{data.read}</span>
-                <span className="text-muted-foreground"> из {data.total} прочитали</span>
+              <span className="text-sm text-muted-foreground">
+                {rich(t("author.audience.readOfTotal", { ...slots("read"), total: data.total }), {
+                  read: <span className="text-lg font-semibold tabular-nums text-foreground">{data.read}</span>,
+                })}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground">{pct}%</span>
             </div>
             <div
               className="h-1.5 overflow-hidden rounded-full bg-[var(--glass-bg)]"
               role="progressbar"
-              aria-label="Доля прочитавших"
+              aria-label={t("author.audience.progressAria")}
               aria-valuemin={0}
               aria-valuemax={data.total}
               aria-valuenow={data.read}
@@ -119,13 +125,13 @@ export function AuthorAudience({
 
           {unread.length > 0 ? (
             <div className="flex flex-col gap-1">
-              <span className="micro-label">Ещё не прочитали · {unread.length}</span>
+              <span className="micro-label">{t("author.audience.unreadList", { count: unread.length })}</span>
               <ul className="-mx-2 flex flex-col">
                 {unread.map((m) => <MemberRow key={m.name} m={m} />)}
               </ul>
             </div>
           ) : (
-            <p className="text-sm text-up">Прочитали все.</p>
+            <p className="text-sm text-up">{t("author.audience.allRead")}</p>
           )}
 
           {read.length > 0 && (
@@ -137,7 +143,7 @@ export function AuthorAudience({
                 className="inline-flex items-center gap-1 self-start text-xs font-medium text-muted-foreground hover:text-foreground"
               >
                 <ChevronDown className={cn("h-3.5 w-3.5 transition-transform", showRead && "rotate-180")} aria-hidden="true" />
-                Прочитали · {read.length}
+                {t("author.audience.readList", { count: read.length })}
               </button>
               {showRead && (
                 <ul className="-mx-2 flex flex-col">

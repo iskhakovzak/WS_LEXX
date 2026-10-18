@@ -7,27 +7,22 @@ import { Pill, QueryState, Segmented } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { curatorApi, useCuratorMutation, useRiskTemplates, type TierTemplate } from "./api";
-import { fmtUsd, pluralRu } from "@/lib/format";
+import { fmtUsd } from "@/lib/format";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { commonI18n } from "@/i18n/ns/common";
 
 const LADDER = ["trainee", "junior", "trader", "senior"];
 
 const fmt = (v: number | boolean | null | undefined, field: string) => {
   if (v == null) return "—";
-  if (typeof v === "boolean") return v ? "да" : "нет";
+  if (typeof v === "boolean") return v ? curatorI18n.t("template.yes") : curatorI18n.t("template.no");
   return field === "maxOpenPositions" ? String(v) : fmtUsd(v, { decimals: 0 });
 };
 
-const TEMPLATE_ROWS: { field: keyof TierTemplate; label: string }[] = [
-  { field: "dailyLossLimit", label: "Дневной лимит" },
-  { field: "weeklyLossLimit", label: "Недельный лимит" },
-  { field: "maxDrawdown", label: "Макс. просадка" },
-  { field: "maxRiskPerTrade", label: "Риск на сделку" },
-  { field: "maxPositionUsd", label: "Макс. позиция" },
-  { field: "maxOpenPositions", label: "Открытых позиций" },
-  { field: "maxOvernightExposure", label: "Овернайт-экспозиция" },
-  { field: "allowOvernight", label: "Овернайт" },
-  { field: "allowSwing", label: "Свинг" },
-];
+const TEMPLATE_FIELDS = ["dailyLossLimit", "weeklyLossLimit", "maxDrawdown", "maxRiskPerTrade", "maxPositionUsd", "maxOpenPositions",
+  "maxOvernightExposure", "allowOvernight", "allowSwing"] as const satisfies readonly (keyof TierTemplate)[];
+/** Rows with labels in the current language (call in render). */
+const templateRows = () => TEMPLATE_FIELDS.map((field) => ({ field, label: curatorI18n.t(`template.rows.${field}`) }));
 
 /**
  * «Применить шаблон тира»: one action sets every limit of the selected traders to the tier template
@@ -42,6 +37,9 @@ export function TemplateDialog({
   defaultTier?: string | null;
 }) {
   const { toast } = useToast();
+  const { t } = curatorI18n.useT();
+  const tc = commonI18n.useT().t;
+  const TEMPLATE_ROWS = templateRows();
   const q = useRiskTemplates(open);
   const tiers = React.useMemo(() => (q.data?.tiers ?? []).filter((t) => LADDER.includes(t.key) || t.key === defaultTier), [q.data, defaultTier]);
   const [tierKey, setTierKey] = React.useState<string>(defaultTier ?? "trainee");
@@ -58,13 +56,13 @@ export function TemplateDialog({
       onSuccess: (r) => {
         const failed = r.results.filter((x) => !x.ok);
         toast({
-          title: r.applied ? `Шаблон «${tier.name}» применён: ${r.applied}` : "Шаблон не применён",
-          description: failed.length ? failed.map((f) => `${f.trader}: ${f.error}`).join("; ") : "Трейдеры получили уведомление об изменении лимитов",
+          title: r.applied ? t("template.applied", { name: tier.name, count: r.applied }) : t("template.notApplied"),
+          description: failed.length ? failed.map((f) => `${f.trader}: ${f.error}`).join("; ") : t("template.notified"),
           variant: r.applied ? undefined : "destructive",
         });
         if (r.applied) onOpenChange(false);
       },
-      onError: (e) => toast({ title: "Не удалось применить", description: (e as Error).message, variant: "destructive" }),
+      onError: (e) => toast({ title: t("template.applyFailed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
 
@@ -72,17 +70,17 @@ export function TemplateDialog({
     <Dialog open={open} onOpenChange={(v) => { if (!apply.isPending) onOpenChange(v); }}>
       <DialogContent className="sm:max-w-4xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />Шаблон лимитов по тиру</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />{t("template.title")}</DialogTitle>
           <DialogDescription>
-            {traders.length === 1 ? `Все лимиты ${traders[0]} станут как в шаблоне тира.` : `Лимиты ${traders.length} ${pluralRu(traders.length, "трейдера", "трейдеров", "трейдеров")} станут как в шаблоне тира.`} Заметки к лимитам сохраняются, изменение попадёт в журнал лимитов и аудит.
+            {traders.length === 1 ? t("template.descOne", { name: traders[0] }) : t("template.descMany", { count: traders.length })} {t("template.descTail")}
           </DialogDescription>
         </DialogHeader>
         <QueryState query={q} skeleton={<div className="h-48" />}>
           {() => !q.data?.canEdit ? (
-            <p className="text-sm text-muted-foreground">У вас нет права менять лимиты.</p>
+            <p className="text-sm text-muted-foreground">{t("template.noRight")}</p>
           ) : (
             <div className="flex flex-col gap-4">
-              <Segmented ariaLabel="Тир" value={tierKey} onChange={setTierKey} options={tiers.map((t) => ({ value: t.key, label: t.stageLabel ?? t.name }))} />
+              <Segmented ariaLabel={t("template.tierAria")} value={tierKey} onChange={setTierKey} options={tiers.map((t) => ({ value: t.key, label: t.stageLabel ?? t.name }))} />
               {tier && (
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-[1fr_1.2fr]">
                   <dl className="tile grid grid-cols-[1fr_auto] gap-x-4 gap-y-1 p-3 text-sm">
@@ -95,7 +93,7 @@ export function TemplateDialog({
                     {tier.description && <dd className="col-span-2 mt-1 text-xs text-muted-foreground">{tier.description}</dd>}
                   </dl>
                   <div className="flex min-w-0 flex-col gap-2">
-                    <span className="text-xs font-medium text-muted-foreground">Что изменится</span>
+                    <span className="text-xs font-medium text-muted-foreground">{t("template.whatChanges")}</span>
                     <ul className="flex max-h-[50dvh] flex-col gap-1.5 overflow-auto pr-1">
                       {traders.map((name) => {
                         const row = rows.find((r) => r.trader === name);
@@ -109,8 +107,8 @@ export function TemplateDialog({
                           <li key={name} className="tile flex flex-col gap-1 p-2.5">
                             <div className="flex items-center gap-2 text-sm">
                               <span className="font-medium text-foreground">{name}</span>
-                              <span className="text-xs text-muted-foreground">{row?.tierName ?? "без тира"}{row?.tier && row.tier !== tier.key ? ` → ${tier.stageLabel ?? tier.name}` : ""}</span>
-                              <span className="ml-auto">{!cur ? <Pill tone="warn">лимитов нет</Pill> : changed.length ? <Pill tone="accent">{changed.length} изм.</Pill> : <Pill tone="up">совпадает</Pill>}</span>
+                              <span className="text-xs text-muted-foreground">{row?.tierName ?? t("template.noTier")}{row?.tier && row.tier !== tier.key ? ` → ${tier.stageLabel ?? tier.name}` : ""}</span>
+                              <span className="ml-auto">{!cur ? <Pill tone="warn">{t("template.noLimits")}</Pill> : changed.length ? <Pill tone="accent">{t("template.changes", { count: changed.length })}</Pill> : <Pill tone="up">{t("template.matches")}</Pill>}</span>
                             </div>
                             {cur && changed.length > 0 && (
                               <p className="text-xs tabular-nums text-muted-foreground">
@@ -124,14 +122,14 @@ export function TemplateDialog({
                   </div>
                 </div>
               )}
-              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Причина (видна трейдеру и в журнале лимитов)" maxLength={500} aria-label="Причина изменения" />
+              <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder={t("template.reasonPlaceholder")} maxLength={500} aria-label={t("template.reasonAria")} />
             </div>
           )}
         </QueryState>
         <DialogFooter>
-          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={apply.isPending}>Отмена</Button>
+          <Button type="button" variant="ghost" onClick={() => onOpenChange(false)} disabled={apply.isPending}>{tc("actions.cancel")}</Button>
           <Button type="button" onClick={submit} disabled={!tier || !q.data?.canEdit || apply.isPending} className={cn(!traders.length && "opacity-50")}>
-            {apply.isPending ? "Применяю…" : `Применить${traders.length > 1 ? ` к ${traders.length}` : ""}`}
+            {apply.isPending ? t("template.applying") : traders.length > 1 ? t("template.applyTo", { count: traders.length }) : t("template.apply")}
           </Button>
         </DialogFooter>
       </DialogContent>

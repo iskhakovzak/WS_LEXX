@@ -17,7 +17,6 @@ export const links = {
   trade: (id: number) => href("/trades", { highlight: id }),
   trades: (p: { ticker?: string; date?: string; from?: string; to?: string; playbookId?: number; setup?: string; horizon?: string; source?: string; ids?: number[]; side?: string; outcome?: string; trader?: string } = {}) =>
     href("/trades", { ...p, ids: p.ids?.length ? p.ids.join(",") : undefined }),
-  newTrade: (p: { ticker?: string; fromIdea?: number } = {}) => href("/trades", { new: 1, ...p }),
   journalDay: (date: string, trader?: string) => href("/journal", { date, trader }),
   dayReport: (date: string, trader?: string) => href("/day-report", { date, trader }),
   behavior: (p: { trader?: string; from?: string; to?: string } = {}) => href("/behavior", p),

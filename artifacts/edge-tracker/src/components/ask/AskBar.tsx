@@ -1,5 +1,5 @@
 /**
- * «Спроси журнал» query bar — a combobox whose dropdown is a Radix Popover portal (z-popover) anchored to the
+ * «Спроси журнал» (Ask the journal) query bar — a combobox whose dropdown is a Radix Popover portal (z-popover) anchored to the
  * field, so it never hides under the answer panels and never pushes the layout. The «понял как» preview lives
  * inside the dropdown (debounced), not under the field.
  *
@@ -12,13 +12,14 @@ import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover"
 import { Kbd, Pill } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { parseAsk, type ParseContext } from "@/lib/ask/parse";
-import { ASK_EXAMPLES } from "@/lib/ask/examples";
+import { askExamples } from "@/lib/ask/examples";
+import { askI18n } from "@/i18n/ns/ask";
+import { commonI18n } from "@/i18n/ns/common";
 
 type ItemKind = "complete" | "pinned" | "history" | "example";
 interface Item { kind: ItemKind; text: string; label: string; meta?: string }
 
 const KIND_ICON: Record<ItemKind, typeof History> = { complete: Tag, pinned: Pin, history: History, example: Sparkles };
-const KIND_TITLE: Record<ItemKind, string> = { complete: "Дополнить", pinned: "Закреплённые", history: "Недавние", example: "Примеры" };
 
 /** The word being typed (last run of letters/digits at the end of the text). */
 function lastWord(text: string): { word: string; start: number } | null {
@@ -61,6 +62,7 @@ export function AskBar({
   busy?: boolean;
   className?: string;
 }) {
+  const { t } = askI18n.useT();
   const inputRef = React.useRef<HTMLInputElement>(null);
   const anchorRef = React.useRef<HTMLDivElement>(null);
   const contentRef = React.useRef<HTMLDivElement>(null);
@@ -81,10 +83,10 @@ export function AskBar({
       const tick = /^[a-z]{1,5}$/i.test(lw.word)
         ? tickers.filter((t) => t.value.toLowerCase().startsWith(w) && t.value.toLowerCase() !== w).slice(0, 5)
         : [];
-      for (const t of tick) out.push({ kind: "complete", text: `${head}${t.value} `, label: t.value, meta: `${t.n} сд.` });
+      for (const tk of tick) out.push({ kind: "complete", text: `${head}${tk.value} `, label: tk.value, meta: commonI18n.t("units.tradesShort", { count: tk.n }) });
       if (w.length >= 2) {
         for (const s of setups.filter((s) => s.value.toLowerCase().startsWith(w) && s.value.toLowerCase() !== w).slice(0, 3)) {
-          out.push({ kind: "complete", text: `${head}${s.value} `, label: `сетап ${s.value}`, meta: `${s.n} сд.` });
+          out.push({ kind: "complete", text: `${head}${s.value} `, label: t("bar.setup", { name: s.value }), meta: commonI18n.t("units.tradesShort", { count: s.n }) });
         }
       }
     }
@@ -102,9 +104,10 @@ export function AskBar({
     };
     add("pinned", pinned, q ? 3 : 5);
     add("history", history, q ? 4 : 6);
-    add("example", ASK_EXAMPLES, q ? 4 : 6);
+    // Fewer examples once the person has their own questions (choice overload: 3–5 options at a glance).
+    add("example", askExamples(), q ? 4 : pinned.length || history.length ? 3 : 6);
     return out;
-  }, [value, q, tickers, setups, history, pinned]);
+  }, [value, q, tickers, setups, history, pinned, t]);
 
   // «Понял как» preview, debounced so typing stays smooth.
   const debounced = useDebounced(value, 150);
@@ -196,8 +199,8 @@ export function AskBar({
               setOpen(false);
             }}
             onKeyDown={onKeyDown}
-            placeholder="Спросите журнал: «винрейт по пятницам», «утро vs после обеда», «когда я теряю больше всего»"
-            aria-label="Вопрос к журналу"
+            placeholder={t("bar.placeholder")}
+            aria-label={t("bar.aria")}
             role="combobox"
             aria-expanded={open && hasContent}
             aria-controls={listId}
@@ -211,7 +214,7 @@ export function AskBar({
           {value && (
             <button
               type="button"
-              aria-label="Очистить"
+              aria-label={t("bar.clear")}
               onMouseDown={(e) => e.preventDefault()}
               onClick={() => { onChange(""); inputRef.current?.focus(); setOpen(true); }}
               className="chip grid h-7 w-7 shrink-0 place-items-center"
@@ -226,7 +229,7 @@ export function AskBar({
             disabled={!value.trim() || busy}
             className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full bg-primary-solid px-3 text-xs font-medium text-primary-foreground transition-opacity duration-[var(--dur-1)] disabled:opacity-50"
           >
-            Спросить <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
+            {t("bar.submit")} <CornerDownLeft className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         </div>
       </PopoverAnchor>
@@ -247,19 +250,19 @@ export function AskBar({
           <div className="flex flex-wrap items-center gap-1.5 border-b border-[var(--glass-border)] px-3 py-2.5 text-xs text-muted-foreground" aria-live="polite">
             {preview.tokens.length ? (
               <>
-                <span>Понял как:</span>
+                <span>{t("bar.understood")}</span>
                 {preview.tokens.map((t) => <Pill key={t.key} tone={t.kind === "intent" || t.kind === "compare" || t.kind === "group" ? "accent" : "neutral"}>{t.label}</Pill>)}
-                {preview.unknown.length > 0 && <span>· пропущу: «{preview.unknown.join(" ")}»</span>}
+                {preview.unknown.length > 0 && <span>{t("bar.skip", { words: preview.unknown.join(" ") })}</span>}
               </>
             ) : (
-              <span>Пока не понял — допишите тикер, период или вопрос («нетто», «винрейт», «топ 5 тикеров»).</span>
+              <span>{t("bar.notYet")}</span>
             )}
           </div>
         )}
         {items.length > 0 && (
-          <ul id={listId} role="listbox" aria-label="Подсказки" className="max-h-[min(360px,calc(var(--radix-popover-content-available-height)-56px))] overflow-y-auto overscroll-contain p-1.5">
+          <ul id={listId} role="listbox" aria-label={t("bar.suggestions")} className="max-h-[min(360px,calc(var(--radix-popover-content-available-height)-56px))] overflow-y-auto overscroll-contain p-1.5">
             {items.map((it, i) => {
-              const header = it.kind !== lastKind ? KIND_TITLE[it.kind] : null;
+              const header = it.kind !== lastKind ? t(`bar.kinds.${it.kind}`) : null;
               lastKind = it.kind;
               const Icon = KIND_ICON[it.kind];
               return (
@@ -286,10 +289,10 @@ export function AskBar({
           </ul>
         )}
         <div className="flex items-center gap-3 border-t border-[var(--glass-border)] px-3 py-2 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> выбор</span>
-          <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> спросить</span>
-          <span className="inline-flex items-center gap-1"><Kbd>Tab</Kbd> дополнить</span>
-          <span className="ml-auto inline-flex items-center gap-1"><Kbd>Esc</Kbd> закрыть</span>
+          <span className="inline-flex items-center gap-1"><Kbd>↑</Kbd><Kbd>↓</Kbd> {t("bar.keyMove")}</span>
+          <span className="inline-flex items-center gap-1"><Kbd>↵</Kbd> {t("bar.keyAsk")}</span>
+          <span className="inline-flex items-center gap-1"><Kbd>Tab</Kbd> {t("bar.keyComplete")}</span>
+          <span className="ml-auto inline-flex items-center gap-1"><Kbd>Esc</Kbd> {t("bar.keyClose")}</span>
         </div>
       </PopoverContent>
     </Popover>

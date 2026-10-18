@@ -6,14 +6,15 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { commonI18n } from "@/i18n/ns/common";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
 import type { FeeGroupRow, FeesResponse, Preset } from "./api";
-
-type EatenRow = FeesResponse["eaten"][number];
 import { TARIFF_EXAMPLES } from "./presets";
 import { type CommissionPlan, type PreviewTrade, type Rule, isApplied, planSummary } from "./rules";
-import { fmtNum, fmtRate, fmtUsd, pluralRu } from "@/lib/format";
+import { fmtDate, fmtNum, fmtRate, fmtUsd } from "@/lib/format";
+
+type EatenRow = FeesResponse["eaten"][number];
 
 
 /** 0 → transparent, 1+ → full warn tint. Colour plus the number, never colour alone. */
@@ -41,6 +42,7 @@ export function FeesBlock({
   rules,
   canApplyPlan,
   onApplyPlan,
+  costsByGroup,
 }: {
   trades: PreviewTrade[];
   data: FeesResponse | undefined;
@@ -49,7 +51,10 @@ export function FeesBlock({
   rules: Rule[];
   canApplyPlan: boolean;
   onApplyPlan: (r: CommissionPlan) => void;
+  /** The per-trader / account / month / setup / horizon cost table (/api/edge/costs), composed by the page. */
+  costsByGroup?: React.ReactNode;
 }) {
+  const { t } = whatIfI18n.useT();
   const fact = useMemo(() => planSummary(trades, null), [trades]);
   const [custom, setCustom] = useState({ perShare: "0.003", minPerOrder: "0.5", ecnPerShare: "0.002" });
   const customPlan = useMemo<PlanParams | null>(() => {
@@ -63,8 +68,8 @@ export function FeesBlock({
       const r = p.rules.find((x): x is CommissionPlan => x.type === "commissionPlan");
       if (r && p.rules.length === 1) fromPresets.push({ id: `preset-${p.id}`, label: p.label, note: p.description, plan: { perShare: r.perShare, minPerOrder: r.minPerOrder, ecnPerShare: r.ecnPerShare, keepRegulatory: r.keepRegulatory } });
     }
-    return [{ id: "fact", label: "Как сейчас", note: "фактические комиссии брокера", plan: null }, ...fromPresets, ...EXAMPLE_PLANS];
-  }, [presets]);
+    return [{ id: "fact", label: t("fees.current"), note: t("fees.currentNote"), plan: null }, ...fromPresets, ...EXAMPLE_PLANS];
+  }, [presets, t]);
 
   const eatenPct = fact.feePctOfGross;
   const grossPositive = fact.gross > 0;
@@ -75,14 +80,14 @@ export function FeesBlock({
         <div className="min-w-0">
           <p className="text-2xl font-semibold leading-tight tracking-tight sm:text-3xl">
             {grossPositive && eatenPct != null ? (
-              <>Комиссии съедают <span className={cn("tabular-nums", eatenPct >= 0.5 ? "text-down" : eatenPct >= 0.25 ? "text-warn" : "text-foreground")}>{fmtRate(eatenPct)}</span> <TermTooltip term="gross">брутто</TermTooltip></>
+              <EatsHeadline pct={eatenPct} />
             ) : (
-              <>Комиссии за период: <span className="tabular-nums">{fmtUsd(Math.abs(fact.fees))}</span></>
+              <>{t("fees.period", { amount: "" })}<span className="tabular-nums">{fmtUsd(Math.abs(fact.fees))}</span></>
             )}
           </p>
           <p className="mt-1 text-sm text-muted-foreground tabular-nums">
-            Брутто {fmtUsd(fact.gross, { signed: true, decimals: "auto" })} → нетто <span className={cn("font-medium", toneOf(fact.net) === "down" ? "text-down" : "text-foreground")}>{fmtUsd(fact.net, { signed: true, decimals: "auto" })}</span>: брокер забрал {fmtUsd(Math.abs(fact.fees))} за {commonI18n.t("units.trades", { count: fact.trades })}
-            {fact.trades ? ` (≈ ${fmtUsd(Math.abs(fact.fees / fact.trades))} на сделку)` : ""}
+            {t("fees.flow", { gross: fmtUsd(fact.gross, { signed: true, decimals: "auto" }) })} <span className={cn("font-medium", toneOf(fact.net) === "down" ? "text-down" : "text-foreground")}>{fmtUsd(fact.net, { signed: true, decimals: "auto" })}</span>{t("fees.took", { fees: fmtUsd(Math.abs(fact.fees)), trades: commonI18n.t("units.trades", { count: fact.trades }) })}
+            {fact.trades ? ` ${t("fees.perTrade", { amount: fmtUsd(Math.abs(fact.fees / fact.trades)) })}` : ""}
           </p>
         </div>
       </div>
@@ -90,42 +95,42 @@ export function FeesBlock({
       <div className="grid grid-cols-1 gap-[var(--grid-gap)] md:grid-cols-3">
         <Fact
           icon={Target}
-          title="Безубыток на акцию"
+          title={t("fees.breakEven")}
           value={fmtNum(fact.breakEvenCents, { decimals: 1, suffix: " ¢" })}
           text={
             data?.breakEvenCents != null && data.typicalQty != null
-              ? `Столько цена должна пройти в твою сторону, чтобы покрыть комиссию. При типичном размере ${Math.round(data.typicalQty)} акц. — ${fmtNum(data.breakEvenCents, { decimals: 1, suffix: " ¢" })}.`
-              : "Столько цена должна пройти в твою сторону, чтобы только покрыть комиссию."
+              ? t("fees.breakEvenText", { qty: Math.round(data.typicalQty), cents: fmtNum(data.breakEvenCents, { decimals: 1, suffix: " ¢" }) })
+              : t("fees.breakEvenTextBare")
           }
         />
         <Fact
           icon={Scissors}
-          title="Съедено комиссией"
+          title={t("fees.eatenTitle")}
           value={isLoading || !data ? "…" : commonI18n.t("units.trades", { count: data.eatenCount })}
           tone={data?.eatenCount ? "down" : undefined}
-          text={data ? `Были в плюсе до комиссии и ушли в минус после.${data.feesOverGrossCount ? ` Ещё в ${data.feesOverGrossCount} ${pluralRu(data.feesOverGrossCount, "сделке", "сделках", "сделках")} комиссия больше всего хода.` : ""}` : "Сделки, которые были в плюсе до комиссии, а после — в минусе."}
+          text={data ? `${t("fees.eatenText")}${data.feesOverGrossCount ? ` ${t("fees.overGross", { count: data.feesOverGrossCount })}` : ""}` : t("fees.eatenTextBare")}
         />
         <Fact
           icon={Receipt}
-          title="Из чего состоит"
+          title={t("fees.composition")}
           value={data?.byType[0] ? `${data.byType[0].label} ${fmtRate(data.byType[0].share)}` : "…"}
-          text={data?.byType.length ? data.byType.slice(1, 4).map((b) => `${b.label} ${fmtRate(b.share)}`).join(" · ") || "единственная статья" : "Комиссия, ECN и регуляторные сборы."}
+          text={data?.byType.length ? data.byType.slice(1, 4).map((b) => `${b.label} ${fmtRate(b.share)}`).join(" · ") || t("fees.onlyItem") : t("fees.compositionBare")}
         />
       </div>
 
       <div>
-        <p className="mb-2 text-sm font-semibold">Сравнить тарифы на твоих сделках</p>
-        <DataTable ariaLabel="Сравнение тарифов">
+        <p className="mb-2 text-sm font-semibold">{t("fees.compare")}</p>
+        <DataTable ariaLabel={t("fees.compareAria")}>
           <table>
             <thead>
               <tr>
-                <th scope="col">Тариф</th>
-                <th scope="col" className="text-right">Комиссии</th>
-                <th scope="col" className="text-right">Нетто</th>
-                <th scope="col" className="text-right">от брутто</th>
-                <th scope="col" className="text-right" title="Ход цены на акцию, который покрывает комиссию">Безубыток</th>
-                <th scope="col" className="text-right">Разница</th>
-                <th scope="col" className="w-0"><span className="sr-only">Действие</span></th>
+                <th scope="col">{t("fees.colPlan")}</th>
+                <th scope="col" className="text-right">{t("fees.colFees")}</th>
+                <th scope="col" className="text-right">{t("fees.colNet")}</th>
+                <th scope="col" className="text-right">{t("fees.colOfGross")}</th>
+                <th scope="col" className="text-right" title={t("fees.colBreakEvenTitle")}>{t("fees.colBreakEven")}</th>
+                <th scope="col" className="text-right">{t("fees.colDiff")}</th>
+                <th scope="col" className="w-0"><span className="sr-only">{t("fees.colAction")}</span></th>
               </tr>
             </thead>
             <tbody>
@@ -133,7 +138,7 @@ export function FeesBlock({
                 <PlanTr key={row.id} row={row} trades={trades} fact={fact.net} rules={rules} canApply={canApplyPlan} onApply={onApplyPlan} />
               ))}
               <PlanTr
-                row={{ id: "custom", label: "Свой тариф", plan: customPlan }}
+                row={{ id: "custom", label: t("fees.custom"), plan: customPlan }}
                 trades={trades}
                 fact={fact.net}
                 rules={rules}
@@ -141,9 +146,9 @@ export function FeesBlock({
                 onApply={onApplyPlan}
                 editor={
                   <span className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-                    $<Input aria-label="Цена за акцию, $" value={custom.perShare} onChange={(e) => setCustom((c) => ({ ...c, perShare: e.target.value }))} className="h-7 w-16 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />/акц.
-                    мин. $<Input aria-label="Минимум за ордер, $" value={custom.minPerOrder} onChange={(e) => setCustom((c) => ({ ...c, minPerOrder: e.target.value }))} className="h-7 w-14 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />
-                    ECN $<Input aria-label="ECN за акцию, $" value={custom.ecnPerShare} onChange={(e) => setCustom((c) => ({ ...c, ecnPerShare: e.target.value }))} className="h-7 w-16 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />
+                    $<Input aria-label={t("fees.perShareAria")} value={custom.perShare} onChange={(e) => setCustom((c) => ({ ...c, perShare: e.target.value }))} className="h-7 w-16 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />{t("fees.perShareUnit")}{" "}
+                    {t("fees.minLabel")}<Input aria-label={t("fees.minAria")} value={custom.minPerOrder} onChange={(e) => setCustom((c) => ({ ...c, minPerOrder: e.target.value }))} className="h-7 w-14 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />
+                    ECN $<Input aria-label={t("fees.ecnAria")} value={custom.ecnPerShare} onChange={(e) => setCustom((c) => ({ ...c, ecnPerShare: e.target.value }))} className="h-7 w-16 rounded-full px-2 text-xs tabular-nums" inputMode="decimal" />
                   </span>
                 }
               />
@@ -151,7 +156,7 @@ export function FeesBlock({
           </table>
         </DataTable>
         <p className="mt-1.5 text-xs text-muted-foreground">
-          Регуляторные сборы (SEC, TAF и т. п.) остаются как были. Ордеров на сделку — по числу исполнений, минимум два. «Применить» добавляет тариф в сценарий выше.
+          {t("fees.note")}
         </p>
       </div>
 
@@ -161,8 +166,22 @@ export function FeesBlock({
         </ul>
       ) : null}
 
-      <FeeDetails data={data} isLoading={isLoading} />
+      <FeeDetails data={data} isLoading={isLoading} costsByGroup={costsByGroup} />
     </div>
+  );
+}
+
+/** «Комиссии съедают 34% брутто» — the share and the glossary term are styled parts of one sentence. */
+function EatsHeadline({ pct }: { pct: number }) {
+  const { t } = whatIfI18n.useT();
+  const parts = t("fees.eats", { pct: "\u0000", gross: "\u0001" }).split(/(\u0000|\u0001)/);
+  return (
+    <>
+      {parts.map((p, i) =>
+        p === "\u0000" ? <span key={i} className={cn("tabular-nums", pct >= 0.5 ? "text-down" : pct >= 0.25 ? "text-warn" : "text-foreground")}>{fmtRate(pct)}</span>
+          : p === "\u0001" ? <TermTooltip key={i} term="gross">{t("fees.grossWord")}</TermTooltip>
+            : p)}
+    </>
   );
 }
 
@@ -185,6 +204,7 @@ function PlanTr({
   const d = row.plan ? s.net - fact : null;
   const rule: CommissionPlan | null = row.plan ? { type: "commissionPlan", ...row.plan, keepRegulatory: row.plan.keepRegulatory ?? true } : null;
   const applied = rule ? isApplied(rules, rule) : false;
+  const { t } = whatIfI18n.useT();
   return (
     <tr className={cn("[&>td:not(:first-child)]:whitespace-nowrap", !row.plan && "bg-[var(--glass-bg)]")}>
       <td>
@@ -204,10 +224,10 @@ function PlanTr({
             disabled={applied}
             onClick={() => onApply(rule)}
             className={cn("inline-flex min-h-7 items-center gap-1 whitespace-nowrap rounded-full px-2.5 text-xs font-medium", applied ? "text-primary" : "chip")}
-            aria-label={applied ? `Тариф «${row.label}» уже в сценарии` : `Применить тариф «${row.label}»`}
+            aria-label={applied ? t("fees.inScenarioAria", { name: row.label }) : t("fees.applyAria", { name: row.label })}
           >
             {applied ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : <Plus className="h-3.5 w-3.5" aria-hidden="true" />}
-            {applied ? "В сценарии" : "Применить"}
+            {applied ? t("fees.inScenario") : t("fees.apply")}
           </button>
         )}
       </td>
@@ -232,6 +252,7 @@ const GROUP_ACCESSORS = {
 function GroupTable({ title, rows, description, keyLabel, defaultSort = "order", maxHeight = 440 }: {
   title: string; rows: FeeGroupRow[]; description?: string; keyLabel: string; defaultSort?: "order" | "fees"; maxHeight?: number | string;
 }) {
+  const { t } = whatIfI18n.useT();
   const data = useMemo(() => rows.filter((r) => r.trades > 0).map((r, order) => ({ ...r, order })), [rows]);
   const { rows: sorted, thProps } = useTableSort(data, GROUP_ACCESSORS, defaultSort, defaultSort === "order" ? "asc" : "desc");
   return (
@@ -242,13 +263,13 @@ function GroupTable({ title, rows, description, keyLabel, defaultSort = "order",
             <thead>
               <tr>
                 <SortableTh {...thProps("key")}>{keyLabel}</SortableTh>
-                <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
-                <SortableTh {...thProps("gross")} align="right">Брутто</SortableTh>
-                <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
-                <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-                <SortableTh {...thProps("feePct")} align="right"><span title="Комиссии / |брутто|">от брутто</span></SortableTh>
-                <SortableTh {...thProps("breakEven")} align="right"><span title="Ход цены на акцию, который покрывает комиссию">Безубыток</span></SortableTh>
-                <SortableTh {...thProps("eaten")} align="right"><span title="Были в плюсе до комиссии, после — в минусе">Съедено</span></SortableTh>
+                <SortableTh {...thProps("trades")} align="right">{t("fees.colTrades")}</SortableTh>
+                <SortableTh {...thProps("gross")} align="right">{t("fees.gross")}</SortableTh>
+                <SortableTh {...thProps("fees")} align="right">{t("fees.fees")}</SortableTh>
+                <SortableTh {...thProps("net")} align="right">{t("fees.net")}</SortableTh>
+                <SortableTh {...thProps("feePct")} align="right"><span title={t("fees.pctTitle")}>{t("fees.colOfGross")}</span></SortableTh>
+                <SortableTh {...thProps("breakEven")} align="right"><span title={t("fees.colBreakEvenTitle")}>{t("fees.colBreakEven")}</span></SortableTh>
+                <SortableTh {...thProps("eaten")} align="right"><span title={t("fees.eatenColTitle")}>{t("fees.eatenCol")}</span></SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -268,19 +289,20 @@ function GroupTable({ title, rows, description, keyLabel, defaultSort = "order",
           </table>
         </DataTable>
       ) : (
-        <p className="px-3 py-6 text-center text-sm text-muted-foreground">Нет данных</p>
+        <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("fees.noData")}</p>
       )}
     </Panel>
   );
 }
 
-function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoading: boolean }) {
+function FeeDetails({ data, isLoading, costsByGroup }: { data: FeesResponse | undefined; isLoading: boolean; costsByGroup?: React.ReactNode }) {
+  const { t } = whatIfI18n.useT();
   const [open, setOpen] = useState(false);
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger className="inline-flex items-center gap-1.5 rounded-full px-1 text-sm font-medium text-primary hover:underline">
         <ChevronDown className={cn("h-4 w-4 transition-transform duration-[var(--dur-1)]", open && "rotate-180")} aria-hidden="true" />
-        {open ? "Скрыть подробности" : "Где комиссии съедают больше всего — по цене, размеру, удержанию, часу и тикеру"}
+        {open ? t("fees.hideDetails") : t("fees.showDetails")}
       </CollapsibleTrigger>
       <CollapsibleContent className="mt-3">
         {isLoading || !data ? (
@@ -288,23 +310,24 @@ function FeeDetails({ data, isLoading }: { data: FeesResponse | undefined; isLoa
         ) : (
           <div className="flex flex-col gap-4">
             <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-              <GroupTable title="По цене акции" keyLabel="Цена входа" rows={data.byPrice} description="У дешёвых акций сборы съедают больше хода" />
-              <GroupTable title="По размеру позиции" keyLabel="Размер" rows={data.bySize} description="Минимум за ордер бьёт по маленьким позициям" />
-              <GroupTable title="По времени удержания" keyLabel="Удержание" rows={data.byHold} description="Короткие сделки: ход маленький, комиссия та же" />
-              <GroupTable title="По часу входа (ET)" keyLabel="Час" rows={data.byHour} />
+              <GroupTable title={t("fees.byPrice")} keyLabel={t("fees.byPriceKey")} rows={data.byPrice} description={t("fees.byPriceHint")} />
+              <GroupTable title={t("fees.bySize")} keyLabel={t("fees.bySizeKey")} rows={data.bySize} description={t("fees.bySizeHint")} />
+              <GroupTable title={t("fees.byHold")} keyLabel={t("fees.byHoldKey")} rows={data.byHold} description={t("fees.byHoldHint")} />
+              <GroupTable title={t("fees.byHour")} keyLabel={t("fees.byHourKey")} rows={data.byHour} />
             </div>
-            <GroupTable title="По тикеру (топ-25 по комиссиям)" keyLabel="Тикер" rows={data.byTicker} defaultSort="fees" maxHeight="60vh" />
+            <GroupTable title={t("fees.byTicker")} keyLabel={t("fees.byTickerKey")} rows={data.byTicker} defaultSort="fees" maxHeight="60vh" />
+            {costsByGroup}
             <Panel
-              title="Сделки, которые съела комиссия"
+              title={t("fees.eatenPanel")}
               icon={Scissors}
-              description={`${commonI18n.t("units.trades", { count: data.eatenCount })}: в плюсе до комиссии, в минусе после${data.eatenCount > data.eaten.length ? ` (показаны ${data.eaten.length})` : ""}`}
+              description={`${t("fees.eatenPanelHint", { trades: commonI18n.t("units.trades", { count: data.eatenCount }) })}${data.eatenCount > data.eaten.length ? ` ${t("fees.shown", { count: data.eaten.length })}` : ""}`}
               padded={false}
               bodyClassName="p-2 sm:p-3"
             >
               {data.eaten.length ? (
                 <EatenTable rows={data.eaten} />
               ) : (
-                <p className="px-3 py-6 text-center text-sm text-muted-foreground">Таких сделок нет</p>
+                <p className="px-3 py-6 text-center text-sm text-muted-foreground">{t("fees.noEaten")}</p>
               )}
             </Panel>
           </div>
@@ -329,24 +352,26 @@ const EATEN_ACCESSORS = {
 } as const;
 
 function EatenTable({ rows }: { rows: EatenRow[] }) {
+  const { t } = whatIfI18n.useT();
   const { rows: sorted, thProps } = useTableSort(rows, EATEN_ACCESSORS, "day");
   return (
-    <DataTable maxHeight="60vh" ariaLabel="Сделки, съеденные комиссией">
+    <DataTable maxHeight="60vh" ariaLabel={t("fees.eatenAria")}>
       <table>
         <thead>
           <tr>
-            <SortableTh {...thProps("day")}>Дата</SortableTh>
-            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-            <SortableTh {...thProps("qty")} align="right">Акций</SortableTh>
-            <SortableTh {...thProps("gross")} align="right">Брутто</SortableTh>
-            <SortableTh {...thProps("fees")} align="right">Комиссии</SortableTh>
-            <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
+            <SortableTh {...thProps("day")}>{t("fees.colDate")}</SortableTh>
+            <SortableTh {...thProps("ticker")}>{t("fees.colTicker")}</SortableTh>
+            <SortableTh {...thProps("qty")} align="right">{t("fees.colShares")}</SortableTh>
+            <SortableTh {...thProps("gross")} align="right">{t("fees.gross")}</SortableTh>
+            <SortableTh {...thProps("fees")} align="right">{t("fees.fees")}</SortableTh>
+            <SortableTh {...thProps("net")} align="right">{t("fees.net")}</SortableTh>
           </tr>
         </thead>
         <tbody>
           {sorted.map((e) => (
             <tr key={e.id}>
-              <td className="whitespace-nowrap">{e.day}</td>
+              <td className="whitespace-nowrap">{fmtDate(e.day, "short")}</td>
+
               <td><Link href={links.trade(e.id)} className="font-medium text-primary underline-offset-4 hover:underline">{e.ticker}</Link></td>
               <td className="text-right">{e.qty ?? "—"}</td>
               <td className="text-right text-up">{fmtUsd(e.gross, { signed: true, decimals: "auto" })}</td>

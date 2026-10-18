@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { PERIOD_HINT, dayHref, usePeriodNav } from "@/lib/period-links";
 import type { DayPoint } from "./api";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { benchmarkI18n } from "@/i18n/ns/benchmark";
 
 export type EquitySeries = { name: string; color: string; unit: "usd" | "r" | null; points: DayPoint[] };
 
@@ -41,11 +42,11 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
     kind: "day",
     dates: days,
     trader: series.length === 1 ? series[0].name : null,
-    label: `Кривая капитала: ${series.map((s) => s.name).join(", ")}`,
+    label: benchmarkI18n.t("charts.equityAria", { names: series.map((s) => s.name).join(", ") }),
     describe: (i) => fmtDate(days[i], "shortYY"),
   });
   if (days.length < 2) {
-    return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>Недостаточно дней для кривой</div>;
+    return <div className={cn("grid h-40 place-items-center text-sm text-muted-foreground", className)}>{benchmarkI18n.t("charts.tooFewDays")}</div>;
   }
   const x = (i: number) => PL + (i / (days.length - 1)) * (W - PL - PR);
   const y = (v: number) => PT + (1 - (v - min) / (max - min)) * (H - PT - PB);
@@ -77,7 +78,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
   const shown = hover ?? (nav.active >= 0 ? nav.active : null);
   return (
     <div {...nav.wrapperProps} className={cn("relative", nav.wrapperProps.className, className)}>
-      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={`Кривая капитала: ${series.map((s) => s.name).join(", ")}`}>
+      <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={benchmarkI18n.t("charts.equityAria", { names: series.map((s) => s.name).join(", ") })}>
         {ticks.map((t, i) => (
           <g key={i}>
             <line x1={PL} x2={W - PR} y1={y(t)} y2={y(t)} stroke="hsl(var(--border))" strokeDasharray={t === 0 ? undefined : "2 4"} strokeWidth={1} />
@@ -114,7 +115,7 @@ export function EquityLines({ series, height = 260, className }: { series: Equit
               <span className="ml-auto pl-2 text-foreground">{l.vals[shown] == null ? "—" : fmt(l.vals[shown] as number)}</span>
             </div>
           ))}
-          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? "Клик" : "Enter"} — {PERIOD_HINT.day.toLowerCase()} →</div>
+          <div className="mt-1 text-2xs font-medium text-primary">{hover != null ? benchmarkI18n.t("charts.click") : benchmarkI18n.t("charts.enter")} — {PERIOD_HINT.day.toLowerCase()} →</div>
         </div>
       )}
       <div className="mt-1 flex flex-wrap gap-3 text-xs text-muted-foreground">
@@ -137,13 +138,13 @@ const RADAR_PAD_X = 64;
 export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis[]; series: RadarSeries[]; size?: number; className?: string }) {
   const c = size / 2, R = size / 2 - 52;
   const n = axes.length;
-  if (n < 3) return <div className="text-sm text-muted-foreground">Нужно ≥ 3 метрик</div>;
+  if (n < 3) return <div className="text-sm text-muted-foreground">{benchmarkI18n.t("charts.needAxes")}</div>;
   const ang = (i: number) => -Math.PI / 2 + (i / n) * Math.PI * 2;
   const pt = (i: number, v: number) => [c + Math.cos(ang(i)) * R * v, c + Math.sin(ang(i)) * R * v] as const;
   return (
     // Side padding: the axis labels («Лучший день / прибыль») run outward from the circle and must not be clipped.
     <svg viewBox={`${-RADAR_PAD_X} 0 ${size + RADAR_PAD_X * 2} ${size}`} className={cn("h-auto w-full max-w-[440px] overflow-visible", className)} role="img"
-      aria-label={`Радар перцентилей: ${series.map((s) => s.name).join(" vs ")}`}>
+      aria-label={benchmarkI18n.t("charts.radarAria", { names: series.map((s) => s.name).join(" vs ") })}>
       {[0.25, 0.5, 0.75, 1].map((g) => (
         <polygon key={g} points={axes.map((_, i) => pt(i, g).join(",")).join(" ")} fill="none" stroke="hsl(var(--border))" strokeDasharray={g === 0.5 ? undefined : "2 3"} />
       ))}
@@ -165,7 +166,8 @@ export function Radar({ axes, series, size = 320, className }: { axes: RadarAxis
         const v = s.values[a.key];
         if (v == null) return null;
         const [px, py] = pt(i, v);
-        return <circle key={`${s.name}-${a.key}`} cx={px} cy={py} r={2.6} fill={s.color}><title>{`${s.name} · ${a.label}: перцентиль ${Math.round(v * 100)}`}</title></circle>;
+        return <circle key={`${s.name}-${a.key}`} cx={px} cy={py} r={2.6} fill={s.color}><title>{benchmarkI18n.t("charts.percentile", { name: s.name, axis: a.label, value: Math.round(v * 100) })}</title>
+</circle>;
       }))}
     </svg>
   );

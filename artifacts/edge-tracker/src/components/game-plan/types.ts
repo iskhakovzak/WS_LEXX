@@ -1,4 +1,5 @@
 import { http, ApiError } from "@/lib/api/http";
+import { gpI18n } from "@/i18n/ns/gamePlan";
 import { nyDate } from "@/lib/trading-date";
 import type { Tone } from "@/components/ds";
 
@@ -133,7 +134,7 @@ export type PlanPayload = PlanDoc;
 /** An API build without the game-plan routes answers a bare 404 → a readable message (UI matches «не подключён»). */
 function notDeployed(e: unknown): never {
   if (e instanceof ApiError && e.status === 404 && !e.field("error")) {
-    throw new ApiError({ status: 404, code: e.code, message: "Раздел «План дня» ещё не подключён на сервере", body: e.body, method: e.method, url: e.url });
+    throw new ApiError({ status: 404, code: e.code, message: gpI18n.t("labels.notDeployed"), body: e.body, method: e.method, url: e.url });
   }
   throw e;
 }
@@ -190,31 +191,33 @@ export function dateObj(date: string): Date {
 }
 
 // ── Labels / tones ────────────────────────────────────────────────────────────
-export const MARKET_BIAS: Record<MarketBias, { label: string; tone: Tone }> = {
-  bull: { label: "Бычий", tone: "up" },
-  bear: { label: "Медвежий", tone: "down" },
-  neutral: { label: "Нейтральный", tone: "neutral" },
-  mixed: { label: "Смешанный", tone: "warn" },
+// Labels are getters: they read the current UI language at render time (never frozen at module load).
+const L = (key: Parameters<typeof gpI18n.t>[0]) => gpI18n.t(key);
+export const MARKET_BIAS: Record<MarketBias, { readonly label: string; tone: Tone }> = {
+  bull: { get label() { return L("labels.bias.bull"); }, tone: "up" },
+  bear: { get label() { return L("labels.bias.bear"); }, tone: "down" },
+  neutral: { get label() { return L("labels.bias.neutral"); }, tone: "neutral" },
+  mixed: { get label() { return L("labels.bias.mixed"); }, tone: "warn" },
 };
-export const TICKER_BIAS: Record<TickerBias, { label: string; tone: Tone }> = {
-  bull: { label: "Лонг", tone: "up" },
-  bear: { label: "Шорт", tone: "down" },
-  neutral: { label: "Оба направления", tone: "neutral" },
+export const TICKER_BIAS: Record<TickerBias, { readonly label: string; tone: Tone }> = {
+  bull: { get label() { return L("labels.tickerBias.bull"); }, tone: "up" },
+  bear: { get label() { return L("labels.tickerBias.bear"); }, tone: "down" },
+  neutral: { get label() { return L("labels.tickerBias.neutral"); }, tone: "neutral" },
 };
-export const HORIZON: Record<Horizon, { label: string; tone: Tone; hint: string }> = {
-  intraday: { label: "Интрадей", tone: "accent", hint: "Закрыть до конца сессии" },
-  overnight: { label: "Овернайт", tone: "warn", hint: "Перенос через ночь — гэп-риск" },
-  swing: { label: "Свинг", tone: "purple", hint: "Удержание дни–недели" },
+export const HORIZON: Record<Horizon, { readonly label: string; tone: Tone; readonly hint: string }> = {
+  intraday: { get label() { return L("labels.horizon.intraday"); }, tone: "accent", get hint() { return L("labels.horizon.intradayHint"); } },
+  overnight: { get label() { return L("labels.horizon.overnight"); }, tone: "warn", get hint() { return L("labels.horizon.overnightHint"); } },
+  swing: { get label() { return L("labels.horizon.swing"); }, tone: "purple", get hint() { return L("labels.horizon.swingHint"); } },
 };
-export const RISK_MODE: Record<RiskMode, { label: string; tone: Tone; hint: string }> = {
-  normal: { label: "Обычный размер", tone: "neutral", hint: "Стандартный риск на сделку" },
-  reduced: { label: "Сниженный размер", tone: "warn", hint: "Size down: риск на сделку ×0.5, только A+ сетапы" },
-  aggressive: { label: "Повышенный размер", tone: "up", hint: "Size up на A+ сетапах в рамках лимитов" },
+export const RISK_MODE: Record<RiskMode, { readonly label: string; tone: Tone; readonly hint: string }> = {
+  normal: { get label() { return L("labels.riskMode.normal"); }, tone: "neutral", get hint() { return L("labels.riskMode.normalHint"); } },
+  reduced: { get label() { return L("labels.riskMode.reduced"); }, tone: "warn", get hint() { return L("labels.riskMode.reducedHint"); } },
+  aggressive: { get label() { return L("labels.riskMode.aggressive"); }, tone: "up", get hint() { return L("labels.riskMode.aggressiveHint"); } },
 };
-export const IMPACT: Record<Impact, { label: string; tone: Tone }> = {
-  high: { label: "Высокое", tone: "down" },
-  medium: { label: "Среднее", tone: "warn" },
-  low: { label: "Низкое", tone: "neutral" },
+export const IMPACT: Record<Impact, { readonly label: string; tone: Tone }> = {
+  high: { get label() { return L("labels.impact.high"); }, tone: "down" },
+  medium: { get label() { return L("labels.impact.medium"); }, tone: "warn" },
+  low: { get label() { return L("labels.impact.low"); }, tone: "neutral" },
 };
 
 export function initials(name: string): string {

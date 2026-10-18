@@ -24,6 +24,7 @@ import { StreaksPanel } from "@/components/dashboard/streaks-panel";
 import { RecentTradesPanel } from "@/components/dashboard/recent-trades-panel";
 import { DeskTodayPanel } from "@/components/dashboard/team-heat-strip";
 import { CustomizePopover } from "@/components/dashboard/customize-popover";
+import { dashboardI18n } from "@/i18n/ns/dashboard";
 import {
   SECTION_WIDTH,
   useDashboardEquity,
@@ -174,7 +175,7 @@ export default function Dashboard() {
         return today?.positions && today.positions.length > 0 ? <PositionsPanel data={today} /> : null;
       case "checkin":
         return (
-          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label="Утренний чек-ин" className="scroll-mt-24 outline-none">
+          <section id={RITUAL_ANCHOR} tabIndex={-1} aria-label={dashboardI18n.t("sections.checkin.label")} className="scroll-mt-24 outline-none">
             <MorningCheckin />
           </section>
         );

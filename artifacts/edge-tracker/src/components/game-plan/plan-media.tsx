@@ -10,6 +10,8 @@ import { imageFilesFrom, uploadPlanImage, useMediaUrl, type MediaContext } from 
 import { PlanLightbox, type LightboxItem } from "./plan-lightbox";
 import { extractTradingViewUrls, parseTradingViewUrl, tradingViewChartFor, type TradingViewLink } from "./tradingview";
 import type { MediaRef } from "./types";
+import { gpI18n } from "@/i18n/ns/gamePlan";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ── Paste routing ─────────────────────────────────────────────────────────────
  * Ctrl+V anywhere in the editor: images go to the block that holds focus (a ticker card or the plan),
@@ -98,15 +100,16 @@ export function useEditorPaste(rootRef: React.RefObject<HTMLElement | null>, fal
 
 /* ── Thumbnails ────────────────────────────────────────────────────────────── */
 function MediaImg({ id, alt, className }: { id: number; alt: string; className?: string }) {
+  const { t } = gpI18n.useT();
   const src = useMediaUrl(id);
   if (src === "error")
     return (
       <span className={cn("flex flex-col items-center justify-center gap-1 text-muted-foreground", className)}>
         <ImageOff className="h-5 w-5" aria-hidden="true" />
-        <span className="text-xs">Недоступно</span>
+        <span className="text-xs">{t("media.unavailable")}</span>
       </span>
     );
-  if (!src) return <span className={cn("block animate-pulse bg-[var(--glass-bg)] motion-reduce:animate-none", className)} aria-label="Загрузка" />;
+  if (!src) return <span className={cn("block animate-pulse bg-[var(--glass-bg)] motion-reduce:animate-none", className)} aria-label={commonI18n.t("states.loading")} />;
   return <img src={src} alt={alt} loading="lazy" draggable={false} className={cn("object-cover", className)} />;
 }
 
@@ -138,6 +141,7 @@ export function MediaStrip({
   onAddTvLinks?: (urls: string[]) => void;
   disabled?: boolean;
 }) {
+  const { t } = gpI18n.useT();
   const [pending, setPending] = useState<Pending[]>([]);
   const [over, setOver] = useState(false);
   const [lb, setLb] = useState<number | null>(null);
@@ -149,14 +153,14 @@ export function MediaStrip({
     (files: File[]) => {
       if (disabled) return;
       const take = files.slice(0, room);
-      if (take.length < files.length) toast({ title: `Не больше ${max} скриншотов в блоке «${label}»` });
+      if (take.length < files.length) toast({ title: gpI18n.t("media.tooMany", { max, label }) });
       for (const f of take) {
         const key = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
         const preview = URL.createObjectURL(f);
         setPending((p) => [...p, { key, preview }]);
         uploadPlanImage(f, context, date)
           .then((m) => onChange((prev) => (prev.some((r) => r.id === m.id) ? prev : [...prev, { id: m.id, caption: "" }])))
-          .catch((err) => toast({ title: "Скриншот не загружен", description: err instanceof Error ? err.message : undefined, variant: "destructive" }))
+          .catch((err) => toast({ title: gpI18n.t("media.uploadFailed"), description: err instanceof Error ? err.message : undefined, variant: "destructive" }))
           .finally(() => {
             setPending((p) => p.filter((x) => x.key !== key));
             URL.revokeObjectURL(preview);
@@ -174,14 +178,14 @@ export function MediaStrip({
     onChange((prev) => prev.filter((r) => r.id !== id));
     if (removed)
       toast({
-        title: "Скриншот убран",
-        description: "Удалится при сохранении плана",
+        title: t("media.removed"),
+        description: t("media.removedDesc"),
         action: (
           <ToastAction
-            altText="Вернуть скриншот"
+            altText={t("media.restoreAlt")}
             onClick={() => onChange((prev) => (prev.some((r) => r.id === id) ? prev : [...prev.slice(0, idx), removed, ...prev.slice(idx)]))}
           >
-            Вернуть
+            {t("media.restore")}
           </ToastAction>
         ),
       });
@@ -210,18 +214,18 @@ export function MediaStrip({
       }}
     >
       {(refs.length > 0 || pending.length > 0) && (
-        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={`Скриншоты: ${label}`}>
+        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3" aria-label={t("media.stripAria", { label })}>
           {refs.map((r, i) => (
             <li key={r.id} className="flex min-w-0 flex-col gap-1">
               <div className="group relative aspect-video overflow-hidden rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)]">
-                <button type="button" className="block h-full w-full" onClick={() => setLb(i)} aria-label={`Открыть скриншот ${i + 1}`}>
-                  <MediaImg id={r.id} alt={r.caption || `Скриншот ${i + 1}`} className="h-full w-full" />
+                <button type="button" className="block h-full w-full" onClick={() => setLb(i)} aria-label={t("media.open", { n: i + 1 })}>
+                  <MediaImg id={r.id} alt={r.caption || t("media.alt", { n: i + 1 })} className="h-full w-full" />
                 </button>
                 <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
-                  <TileBtn label={`Открыть скриншот ${i + 1}`} onClick={() => setLb(i)}>
+                  <TileBtn label={t("media.open", { n: i + 1 })} onClick={() => setLb(i)}>
                     <Maximize2 />
                   </TileBtn>
-                  <TileBtn label={`Убрать скриншот ${i + 1}`} onClick={() => remove(r.id)} danger>
+                  <TileBtn label={t("media.remove", { n: i + 1 })} onClick={() => remove(r.id)} danger>
                     <Trash2 />
                   </TileBtn>
                 </div>
@@ -233,8 +237,8 @@ export function MediaStrip({
                   const v = e.target.value;
                   onChange((prev) => prev.map((x) => (x.id === r.id ? { ...x, caption: v } : x)));
                 }}
-                placeholder="Подпись: уровень, сетап…"
-                aria-label={`Подпись к скриншоту ${i + 1}`}
+                placeholder={t("media.captionPlaceholder")}
+                aria-label={t("media.captionAria", { n: i + 1 })}
                 className="h-8 px-3 text-xs"
               />
             </li>
@@ -243,7 +247,7 @@ export function MediaStrip({
             <li key={p.key} className="relative aspect-video overflow-hidden rounded-xl border border-[var(--field-border)]">
               <img src={p.preview} alt="" className="h-full w-full object-cover opacity-50" />
               <span className="absolute inset-0 grid place-items-center">
-                <Loader2 className="h-5 w-5 animate-spin text-foreground motion-reduce:animate-none" aria-label="Загрузка скриншота" />
+                <Loader2 className="h-5 w-5 animate-spin text-foreground motion-reduce:animate-none" aria-label={t("media.uploading")} />
               </span>
             </li>
           ))}
@@ -259,9 +263,9 @@ export function MediaStrip({
         >
           <ImagePlus className="h-4 w-4 shrink-0" aria-hidden="true" />
           <span className="min-w-0 flex-1">
-            {over ? "Отпустите, чтобы добавить" : (
+            {over ? t("media.dropHere") : (
               <>
-                <span className="text-foreground">Ctrl+V</span> скриншот, перетащите файл или
+                <span className="text-foreground">Ctrl+V</span> {t("media.dropHint")}
               </>
             )}
           </span>
@@ -279,7 +283,7 @@ export function MediaStrip({
           />
           <Button type="button" variant="ghost" size="sm" className="h-7 px-2.5" onClick={() => fileRef.current?.click()}>
             <Plus aria-hidden="true" />
-            Файл
+            {t("media.file")}
           </Button>
         </div>
       )}
@@ -320,6 +324,7 @@ export function TvLinkCard({
   onRemove?: () => void;
   compact?: boolean;
 }) {
+  const { t } = gpI18n.useT();
   const tv = useMemo(() => parseTradingViewUrl(url), [url]);
   const [failed, setFailed] = useState(false);
   useEffect(() => setFailed(false), [url]);
@@ -328,8 +333,8 @@ export function TvLinkCard({
     <button
       type="button"
       onClick={onRemove}
-      aria-label="Убрать ссылку TradingView"
-      title="Убрать ссылку"
+      aria-label={t("media.removeTv")}
+      title={t("media.removeTvShort")}
       className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-background/80 text-muted-foreground backdrop-blur hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <X className="h-3.5 w-3.5" aria-hidden="true" />
@@ -343,11 +348,11 @@ export function TvLinkCard({
           type="button"
           onClick={() => onOpenImage?.(tv.imageUrl, tv.url)}
           className={cn("block w-full", compact ? "aspect-[16/9]" : "aspect-video")}
-          aria-label="Открыть снимок TradingView"
+          aria-label={t("media.openTvSnapshot")}
         >
           <img
             src={tv.imageUrl}
-            alt="Снимок графика TradingView"
+            alt={t("media.tvSnapshotAlt")}
             referrerPolicy="no-referrer"
             loading="lazy"
             onError={() => setFailed(true)}
@@ -368,6 +373,7 @@ export function TvLinkCard({
 }
 
 function TvChartRow({ tv, removeBtn }: { tv: TradingViewLink; removeBtn?: React.ReactNode }) {
+  const { t } = gpI18n.useT();
   const symbol = tv.kind === "chart" ? tv.symbol : null;
   const exchange = tv.kind === "chart" ? tv.exchange : null;
   return (
@@ -377,7 +383,7 @@ function TvChartRow({ tv, removeBtn }: { tv: TradingViewLink; removeBtn?: React.
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">
-          {symbol ?? (tv.kind === "snapshot" ? "Снимок графика" : "График TradingView")}
+          {symbol ?? (tv.kind === "snapshot" ? t("media.snapshot") : t("media.tvChart"))}
           {exchange && <span className="ml-1.5 text-xs font-normal text-muted-foreground">{exchange}</span>}
         </p>
         <p className="truncate text-xs text-muted-foreground">{tv.url.replace(/^https:\/\/(www\.)?/, "")}</p>
@@ -390,7 +396,7 @@ function TvChartRow({ tv, removeBtn }: { tv: TradingViewLink; removeBtn?: React.
         className="chip inline-flex min-h-8 shrink-0 items-center gap-1.5 px-3 text-xs font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
         <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
-        Открыть в TradingView
+        {t("media.openInTv")}
       </a>
       {removeBtn}
     </div>
@@ -402,8 +408,8 @@ export function TvLinkField({
   links,
   onChange,
   max,
-  label = "Ссылка TradingView",
-  placeholder = "https://www.tradingview.com/x/… или /chart/…",
+  label: labelProp,
+  placeholder: placeholderProp,
 }: {
   links: string[];
   onChange: (links: string[]) => void;
@@ -411,17 +417,20 @@ export function TvLinkField({
   label?: string;
   placeholder?: string;
 }) {
+  const { t } = gpI18n.useT();
+  const label = labelProp ?? t("media.tvLink");
+  const placeholder = placeholderProp ?? t("media.tvPlaceholder");
   const [draft, setDraft] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [lb, setLb] = useState<{ src: string; href: string } | null>(null);
   const id = useId();
 
   const commit = (text: string) => {
-    const t = text.trim();
-    if (!t) return;
-    const found = extractTradingViewUrls(t);
+    const s = text.trim();
+    if (!s) return;
+    const found = extractTradingViewUrls(s);
     if (found.length === 0) {
-      setErr("Нужна https-ссылка на tradingview.com (снимок /x/… или график)");
+      setErr(t("media.tvInvalid"));
       return;
     }
     const next = [...links, ...found.filter((u) => !links.includes(u))].slice(0, max);
@@ -510,6 +519,7 @@ export function MediaGallery({
   className?: string;
   dense?: boolean;
 }) {
+  const { t } = gpI18n.useT();
   const [lb, setLb] = useState<number | null>(null);
   const refs = media ?? [];
   const tvs = (tvLinks ?? []).map((u) => (u ? parseTradingViewUrl(u) : null)).filter((t): t is TradingViewLink => !!t);
@@ -523,17 +533,17 @@ export function MediaGallery({
   return (
     <div className={cn("flex flex-col gap-2", className)}>
       {items.length > 0 && (
-        <ul className={cn("grid gap-2", dense ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3")} aria-label={ticker ? `Скриншоты ${ticker}` : "Скриншоты плана"}>
+        <ul className={cn("grid gap-2", dense ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3")} aria-label={ticker ? t("media.galleryOf", { ticker }) : t("media.galleryPlan")}>
           {items.map((it, i) => (
             <li key={it.kind === "media" ? `m${it.id}` : `t${it.src}`} className="min-w-0">
               <button
                 type="button"
                 onClick={() => setLb(i)}
                 className="lift group relative block aspect-video w-full overflow-hidden rounded-xl border border-[var(--field-border)] bg-[var(--glass-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Открыть ${it.caption || `скриншот ${i + 1}`}`}
+                aria-label={t("media.openItem", { name: it.caption || t("media.itemN", { n: i + 1 }) })}
               >
                 {it.kind === "media" ? (
-                  <MediaImg id={it.id} alt={it.caption || `Скриншот ${i + 1}`} className="h-full w-full" />
+                  <MediaImg id={it.id} alt={it.caption || t("media.alt", { n: i + 1 })} className="h-full w-full" />
                 ) : (
                   <SnapshotImg src={it.src} />
                 )}
@@ -557,16 +567,17 @@ export function MediaGallery({
 }
 
 function SnapshotImg({ src }: { src: string }) {
+  const { t } = gpI18n.useT();
   const [failed, setFailed] = useState(false);
   if (failed)
     return (
       <span className="flex h-full w-full flex-col items-center justify-center gap-1 text-muted-foreground">
         <ImageOff className="h-5 w-5" aria-hidden="true" />
-        <span className="text-xs">Снимок недоступен</span>
+        <span className="text-xs">{t("media.snapshotUnavailable")}</span>
       </span>
     );
   return (
-    <img src={src} alt="Снимок графика TradingView" referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
+    <img src={src} alt={t("media.tvSnapshotAlt")} referrerPolicy="no-referrer" loading="lazy" onError={() => setFailed(true)} className="h-full w-full object-cover" />
   );
 }
 

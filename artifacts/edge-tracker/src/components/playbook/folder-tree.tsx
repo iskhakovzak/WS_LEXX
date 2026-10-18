@@ -17,6 +17,8 @@ import { FOLDER_SWATCHES, PICKER_SWATCH_INDICES, folderSwatch, isSameLocalDay, s
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { setupTypeLabel } from "@/i18n/ns/dataCodes";
+import { playbookI18n } from "@/i18n/ns/playbook";
+const pt = playbookI18n.t; // called at render time only
 
 /** Optional row decorations: the author for personal/shared setups, and a drop-target highlight while dragging an example. */
 type RowExtras = { showOwner?: boolean; dropTargetId?: number | null; canDragSetup?: (e: PlaybookEntry) => boolean };
@@ -73,7 +75,7 @@ const SetupRow = memo(function SetupRow({
       >
         {showFolder && <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", folderSwatch(e.folder, folderColors).bg)} aria-hidden="true" />}
         <span className="min-w-0 flex-1">
-          <span className={cn("block truncate text-sm", selected ? "font-semibold" : "font-medium")}>
+          <span className={cn("block truncate text-sm", selected ? "font-semibold" : "font-medium")} title={e.name}>
             <Highlight text={e.name} query={query} />
           </span>
           <span className="flex min-w-0 items-center gap-1.5">
@@ -85,8 +87,8 @@ const SetupRow = memo(function SetupRow({
             ) : null}
           </span>
         </span>
-        {today && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-xs text-primary">сегодня</span>}
-        {!e.reviewed && spaceOf(e) === "office" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--chart-3))]" title="Не проверен куратором" aria-label="Не проверен" />}
+        {today && <span className="shrink-0 rounded-full bg-primary/15 px-1.5 text-xs text-primary">{pt("tree.today")}</span>}
+        {!e.reviewed && spaceOf(e) === "office" && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-[hsl(var(--chart-3))]" title={pt("tree.unreviewedTitle")} aria-label={pt("tree.unreviewed")} />}
       </button>
     </li>
   );
@@ -124,9 +126,9 @@ export function FolderTree({
   /** Folder header under the pointer while a setup / folder is dragged (key, or null). */
   const [dropKey, setDropKey] = useState<string | null>(null);
   if (flat) {
-    if (flat.length === 0) return <p className="px-3 py-6 text-center text-sm text-muted-foreground">Ничего не найдено</p>;
+    if (flat.length === 0) return <p className="px-3 py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.nothingFound")}</p>;
     return (
-      <ul className="space-y-0.5" aria-label="Сетапы">
+      <ul className="space-y-0.5" aria-label={commonI18n.t("trading.setups")}>
         {flat.map((e) => (
           <SetupRow key={e.id} e={e} selected={selectedId === e.id} s={summary.get(e.id)} onSelect={onSelect} query={query} showFolder folderColors={folderColors} showOwner={showOwner} dropTargetId={dropTargetId} canDragSetup={canDragSetup} />
         ))}
@@ -134,10 +136,10 @@ export function FolderTree({
     );
   }
 
-  if (groups.length === 0) return <p className="px-3 py-6 text-center text-sm text-muted-foreground">Ничего не найдено</p>;
+  if (groups.length === 0) return <p className="px-3 py-6 text-center text-sm text-muted-foreground">{commonI18n.t("states.nothingFound")}</p>;
 
   return (
-    <ul className="space-y-1" aria-label="Папки плейбука">
+    <ul className="space-y-1" aria-label={pt("tree.foldersAria")}>
       {groups.map((g) => {
         const key = g.folder ?? "__unfiled";
         const open = openFolders.has(key) || (selectedId != null && g.entries.some((e) => e.id === selectedId || childrenOf.get(e.id)?.some((c) => c.id === selectedId)));
@@ -188,7 +190,7 @@ export function FolderTree({
               >
                 <ChevronRight className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-[var(--dur-1)] motion-reduce:transition-none", open && "rotate-90")} aria-hidden="true" />
                 <span className={cn("h-2.5 w-2.5 shrink-0 rounded-full", sw.bg)} aria-hidden="true" />
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={g.folder ?? "Без папки"}>{g.folder ?? "Без папки"}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground" title={g.folder ?? commonI18n.t("fields.noFolder")}>{g.folder ?? commonI18n.t("fields.noFolder")}</span>
                 {edge.n > 0 && (
                   <span className="hidden shrink-0 text-xs tabular-nums sm:inline" title={`${commonI18n.t("units.trades", { count: edge.n })}`}>
                     <span className={toneText(winrateTone(edge.wr ?? 0, edge.n))}>{fmtRate(edge.wr)}</span>
@@ -201,18 +203,18 @@ export function FolderTree({
               {canEdit && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <IconAction aria-label={`Действия с папкой ${g.folder ?? "Без папки"}`} className="md:opacity-0 md:group-hover/folder:opacity-100 md:focus-visible:opacity-100 md:data-[state=open]:opacity-100">
+                    <IconAction aria-label={pt("tree.folderActions", { folder: g.folder ?? commonI18n.t("fields.noFolder") })} className="md:opacity-0 md:group-hover/folder:opacity-100 md:focus-visible:opacity-100 md:data-[state=open]:opacity-100">
                       <MoreHorizontal />
                     </IconAction>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuItem onSelect={() => actions.onNewIn(g.folder)}><Plus className="h-4 w-4" aria-hidden="true" /> Новый сетап здесь</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => actions.onNewIn(g.folder)}><Plus className="h-4 w-4" aria-hidden="true" /> {pt("tree.newHere")}</DropdownMenuItem>
                     {g.folder && (
                       <>
-                        <DropdownMenuItem onSelect={() => actions.onRename(g.folder!)}><Pencil className="h-4 w-4" aria-hidden="true" /> Переименовать</DropdownMenuItem>
-                        {actions.onCopyLink && <DropdownMenuItem onSelect={() => actions.onCopyLink!(g.folder!)}><LinkIcon className="h-4 w-4" aria-hidden="true" /> Скопировать ссылку</DropdownMenuItem>}
+                        <DropdownMenuItem onSelect={() => actions.onRename(g.folder!)}><Pencil className="h-4 w-4" aria-hidden="true" /> {pt("tree.rename")}</DropdownMenuItem>
+                        {actions.onCopyLink && <DropdownMenuItem onSelect={() => actions.onCopyLink!(g.folder!)}><LinkIcon className="h-4 w-4" aria-hidden="true" /> {pt("tree.copyLink")}</DropdownMenuItem>}
                         {actions.onColor && <DropdownMenuSub>
-                          <DropdownMenuSubTrigger><Palette className="h-4 w-4" aria-hidden="true" /> Цвет</DropdownMenuSubTrigger>
+                          <DropdownMenuSubTrigger><Palette className="h-4 w-4" aria-hidden="true" /> {pt("tree.color")}</DropdownMenuSubTrigger>
                           <DropdownMenuSubContent>
                             {PICKER_SWATCH_INDICES.map((i) => (
                               <DropdownMenuItem key={i} onSelect={() => actions.onColor?.(g.folder!, i)}>
@@ -225,14 +227,14 @@ export function FolderTree({
                         </DropdownMenuSub>}
                         {actions.onMove && (
                           <>
-                            <DropdownMenuItem disabled={idx <= 0} onSelect={() => actions.onMove?.(g.folder!, -1)}><ArrowUp className="h-4 w-4" aria-hidden="true" /> Выше</DropdownMenuItem>
-                            <DropdownMenuItem disabled={idx < 0 || idx >= folderOrder.length - 1} onSelect={() => actions.onMove?.(g.folder!, 1)}><ArrowDown className="h-4 w-4" aria-hidden="true" /> Ниже</DropdownMenuItem>
+                            <DropdownMenuItem disabled={idx <= 0} onSelect={() => actions.onMove?.(g.folder!, -1)}><ArrowUp className="h-4 w-4" aria-hidden="true" /> {pt("tree.up")}</DropdownMenuItem>
+                            <DropdownMenuItem disabled={idx < 0 || idx >= folderOrder.length - 1} onSelect={() => actions.onMove?.(g.folder!, 1)}><ArrowDown className="h-4 w-4" aria-hidden="true" /> {pt("tree.down")}</DropdownMenuItem>
                           </>
                         )}
                         {actions.onDelete && (
                           <>
                             <DropdownMenuSeparator />
-                            <DropdownMenuItem onSelect={() => actions.onDelete!(g.folder!)} className="text-down focus:text-down"><Trash2 className="h-4 w-4" aria-hidden="true" /> Удалить папку…</DropdownMenuItem>
+                            <DropdownMenuItem onSelect={() => actions.onDelete!(g.folder!)} className="text-down focus:text-down"><Trash2 className="h-4 w-4" aria-hidden="true" /> {pt("tree.deleteFolder")}</DropdownMenuItem>
                           </>
                         )}
                       </>
@@ -258,7 +260,7 @@ export function FolderTree({
                     canDragSetup={canDragSetup}
                   />
                 ))}
-                {g.entries.length === 0 && <li className="px-3 py-1.5 text-xs text-muted-foreground">Нет сетапов под фильтр</li>}
+                {g.entries.length === 0 && <li className="px-3 py-1.5 text-xs text-muted-foreground">{pt("tree.noneUnderFilter")}</li>}
               </ul>
             )}
           </li>

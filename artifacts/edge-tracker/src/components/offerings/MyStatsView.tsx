@@ -6,7 +6,11 @@ import { cn } from "@/lib/utils";
 import { MiniBar } from "./bits";
 import { isMissingEndpoint, useMyOfferingStats } from "./use-offerings-data";
 import { fmtDay, type DayBucket } from "./types";
-import { fmtUsd, pluralRu } from "@/lib/format";
+import { fmtUsd } from "@/lib/format";
+import { humanizeApiError } from "@/lib/api/errors";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
+import { rich } from "@/i18n/rich";
 
 const wr = (b: DayBucket | undefined) => (b?.winRate != null ? `${Math.round(b.winRate)}%` : "—");
 
@@ -34,16 +38,17 @@ const TICKER_ACCESSORS: Record<TickerKey, (b: TickerBucket) => number | string |
 
 function ByTickerTable({ rows, onOpenTicker }: { rows: TickerBucket[]; onOpenTicker: (t: string) => void }) {
   const { rows: sorted, thProps } = useTableSort(rows, TICKER_ACCESSORS, "net");
+  const { t } = offeringsI18n.useT();
   return (
-    <DataTable maxHeight="70dvh" ariaLabel="Мои сделки по тикерам в дни размещений">
+    <DataTable maxHeight="70dvh" ariaLabel={t("stats.tableAria")}>
       <table>
         <thead>
           <tr>
-            <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-            <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
+            <SortableTh {...thProps("ticker")}>{commonI18n.t("trading.ticker")}</SortableTh>
+            <SortableTh {...thProps("trades")} align="right">{t("stats.colTrades")}</SortableTh>
             <SortableTh {...thProps("net")} align="right">Net</SortableTh>
             <SortableTh {...thProps("wr")} align="right">WR</SortableTh>
-            <SortableTh {...thProps("avg")} align="right">Ср.</SortableTh>
+            <SortableTh {...thProps("avg")} align="right">{t("stats.colAvg")}</SortableTh>
           </tr>
         </thead>
         <tbody>
@@ -62,6 +67,8 @@ function ByTickerTable({ rows, onOpenTicker }: { rows: TickerBucket[]; onOpenTic
  * Trades come from the journal (PropReports), offering days from SEC submissions.
  */
 export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => void }) {
+  const { t } = offeringsI18n.useT();
+  const trades = (n: number) => commonI18n.t("units.trades", { count: n });
   const [win, setWin] = useWindow();
   const q = useMyOfferingStats(win, true);
   const s = q.data;
@@ -69,13 +76,13 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
   if (isMissingEndpoint(q.error)) {
     return (
       <Panel>
-        <EmptyState icon={ServerCog} title="Статистика появится после обновления сервера"
-          description="Сравнение «дни размещений / обычные дни» считается на сервере по SEC и вашим сделкам. Нужна пересборка API." />
+        <EmptyState icon={ServerCog} title={t("stats.needsServer")}
+          description={t("stats.needsServerText")} />
       </Panel>
     );
   }
   if (q.error) {
-    return <Panel><EmptyState icon={BarChart3} title="Не удалось посчитать статистику" description={q.error instanceof Error ? q.error.message : undefined} /></Panel>;
+    return <Panel><EmptyState icon={BarChart3} title={t("stats.failed")} description={humanizeApiError(q.error)} /></Panel>;
   }
 
   const off = s?.offering;
@@ -88,62 +95,62 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
     <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
       <div className="flex flex-wrap items-center gap-3">
         <Segmented<"0" | "1">
-          ariaLabel="Окно дня размещения"
+          ariaLabel={t("stats.windowAria")}
           size="sm"
           value={String(win) as "0" | "1"}
           onChange={(v) => setWin(v === "1" ? 1 : 0)}
-          options={[{ value: "0", label: "День сделки" }, { value: "1", label: "+ следующая сессия" }]}
+          options={[{ value: "0", label: t("stats.dealDay") }, { value: "1", label: t("stats.plusNext") }]}
         />
         <span className="text-xs text-muted-foreground">
-          {s ? `SEC проверено ${s.coverage.covered} из ${s.coverage.tickers} ${pluralRu(s.coverage.tickers, "тикера", "тикеров", "тикеров")} · ${s.coverage.trades} ${pluralRu(s.coverage.trades, "сделка", "сделки", "сделок")}` : "Сверяем ваши тикеры с SEC…"}
+          {s ? t("stats.coverage", { covered: s.coverage.covered, tickers: t("stats.coverageTickers", { count: s.coverage.tickers }), trades: trades(s.coverage.trades) }) : t("stats.checking")}
         </span>
-        {pending > 0 && <MiniBar value={s!.coverage.covered} max={s!.coverage.tickers} className="w-32" label="Прогресс проверки SEC" />}
+        {pending > 0 && <MiniBar value={s!.coverage.covered} max={s!.coverage.tickers} className="w-32" label={t("stats.progress")} />}
         {s && <UpdatedAgo at={s.fetchedAt} className="ml-auto" />}
       </div>
 
       {empty ? (
-        <Panel><EmptyState icon={BarChart3} title="Сделок пока нет" description="Как только сделки появятся в журнале, здесь будет сравнение дней размещений с обычными." /></Panel>
+        <Panel><EmptyState icon={BarChart3} title={t("stats.emptyTitle")} description={t("stats.emptyText")} /></Panel>
       ) : (
         <>
           <StatGrid min="12rem">
-            <StatCard loading={!s} label="Net в дни размещений" value={off ? fmtUsd(off.net, { signed: true, compact: true }) : "—"} tone={toneOf(off?.net)}
-              hint={off ? `${off.trades} ${pluralRu(off.trades, "сделка", "сделки", "сделок")} · ${off.tickers} ${pluralRu(off.tickers, "тикер", "тикера", "тикеров")}` : undefined} />
-            <StatCard loading={!s} label="Win rate в дни размещений" value={wr(off)}
-              delta={diffWr != null ? `${diffWr > 0 ? "+" : ""}${Math.round(diffWr)} п.п. к обычным` : undefined}
+            <StatCard loading={!s} label={t("stats.netOffering")} value={off ? fmtUsd(off.net, { signed: true, compact: true }) : "—"} tone={toneOf(off?.net)}
+              hint={off ? t("stats.tradesTickers", { trades: trades(off.trades), tickers: commonI18n.t("units.tickers", { count: off.tickers }) }) : undefined} />
+            <StatCard loading={!s} label={t("stats.wrOffering")} value={wr(off)}
+              delta={diffWr != null ? t("stats.vsNormal", { value: `${diffWr > 0 ? "+" : ""}${Math.round(diffWr)}` }) : undefined}
               deltaTone={diffWr == null ? "neutral" : diffWr >= 0 ? "up" : "down"} term="winrate" />
-            <StatCard loading={!s} label="Net в обычные дни" value={norm ? fmtUsd(norm.net, { signed: true, compact: true }) : "—"} tone={toneOf(norm?.net)}
-              hint={norm ? `${norm.trades} ${pluralRu(norm.trades, "сделка", "сделки", "сделок")} · WR ${wr(norm)}` : undefined} />
-            <StatCard loading={!s} label="Средняя сделка: размещение / обычный"
+            <StatCard loading={!s} label={t("stats.netNormal")} value={norm ? fmtUsd(norm.net, { signed: true, compact: true }) : "—"} tone={toneOf(norm?.net)}
+              hint={norm ? t("stats.tradesWr", { trades: trades(norm.trades), wr: wr(norm) }) : undefined} />
+            <StatCard loading={!s} label={t("stats.avgTrade")}
               value={off && norm ? <span className="text-xl">{fmtUsd(off.avgNet, { signed: true, compact: true })} <span className="text-muted-foreground">/</span> {fmtUsd(norm.avgNet, { signed: true, compact: true })}</span> : "—"}
-              hint="net на сделку" />
+              hint={t("stats.perTrade")} />
           </StatGrid>
 
           {s && s.excludedWksi.length > 0 && (
             <p className="text-xs text-muted-foreground" title={s.excludedWksi.join(", ")}>
-              Не учтены {s.excludedWksi.length} крупных эмитентов с автоматическим шелфом (мкап ≥ $30B): их 424B5 — в основном облигации, не <TermTooltip term="dilution">разводнение</TermTooltip>.
+              {rich(t("stats.excluded", { count: s.excludedWksi.length, dilution: "{dilution}" }), { dilution: <TermTooltip term="dilution">{t("stats.dilution")}</TermTooltip> })}
             </p>
           )}
 
           <div className="grid min-w-0 items-start gap-[var(--grid-gap)] xl:grid-cols-2">
-            <Panel title="По тикерам" description="Где вы торговали в дни их размещений" padded={false} bodyClassName="p-2">
+            <Panel title={t("stats.byTicker")} description={t("stats.byTickerText")} padded={false} bodyClassName="p-2">
               {!s ? <div className="skeleton m-2 h-48 rounded-xl" /> : s.byTicker.length === 0 ? (
-                <EmptyState compact icon={BarChart3} title={pending > 0 ? "Ещё проверяем SEC…" : "Сделок в дни размещений нет"} />
+                <EmptyState compact icon={BarChart3} title={pending > 0 ? t("stats.stillChecking") : t("stats.noTrades")} />
               ) : (
                 <ByTickerTable rows={s.byTicker} onOpenTicker={onOpenTicker} />
               )}
             </Panel>
 
             <div className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
-              <Panel title="По типу заявки" padded={false} bodyClassName="p-2">
+              <Panel title={t("stats.byForm")} padded={false} bodyClassName="p-2">
                 {!s ? <div className="skeleton m-2 h-24 rounded-xl" /> : s.byForm.length === 0 ? (
-                  <EmptyState compact icon={BarChart3} title="Нет данных" />
+                  <EmptyState compact icon={BarChart3} title={commonI18n.t("states.noData")} />
                 ) : (
                   <DataTable>
                     <table>
-                      <thead><tr><th>Форма</th><th className="text-right">Сделок</th><th className="text-right">Net</th><th className="text-right">WR</th><th className="text-right">Ср.</th></tr></thead>
+                      <thead><tr><th>{t("stats.colForm")}</th><th className="text-right">{t("stats.colTrades")}</th><th className="text-right">Net</th><th className="text-right">WR</th><th className="text-right">{t("stats.colAvg")}</th></tr></thead>
                       <tbody>
                         {s.byForm.map((f) => (
-                          <BucketRow key={f.form} b={f} label={<span title={f.form === "424B4" ? "Андеррайтинговое размещение (IPO / SPO)" : f.form === "424B5" ? "Сделка с шелфа (SPO / direct / ATM)" : f.form === "424B7" ? "Перепродажа акционерами" : undefined}>{f.form}</span>} />
+                          <BucketRow key={f.form} b={f} label={<span title={f.form === "424B4" ? t("stats.form424b4") : f.form === "424B5" ? t("stats.form424b5") : f.form === "424B7" ? t("stats.form424b7") : undefined}>{f.form}</span>} />
                         ))}
                       </tbody>
                     </table>
@@ -151,19 +158,19 @@ export function MyStatsView({ onOpenTicker }: { onOpenTicker: (t: string) => voi
                 )}
               </Panel>
 
-              <Panel title="Последние сделки в дни размещений" padded={false} bodyClassName="p-2">
+              <Panel title={t("stats.recent")} padded={false} bodyClassName="p-2">
                 {!s ? <div className="skeleton m-2 h-40 rounded-xl" /> : s.recent.length === 0 ? (
-                  <EmptyState compact icon={BarChart3} title="Пока нет" />
+                  <EmptyState compact icon={BarChart3} title={t("stats.nothingYet")} />
                 ) : (
                   <ul className="max-h-[60dvh] divide-y divide-border/50 overflow-y-auto text-sm">
-                    {s.recent.map((t) => (
-                      <li key={t.id}>
-                        <Link href={links.trade(t.id)} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--glass-hover-bg)]">
-                          <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(t.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
-                          <span className="font-medium text-foreground">{t.ticker}</span>
-                          {t.form && <Pill tone="purple" className="px-1.5 text-2xs">{t.form}</Pill>}
-                          {t.offeringDay !== t.date && <span className="text-2xs text-muted-foreground">день после</span>}
-                          <span className={cn("ml-auto tabular-nums", t.net == null ? "text-muted-foreground" : t.net >= 0 ? "text-up" : "text-down")}>{fmtUsd(t.net, { signed: true, compact: true })}</span>
+                    {s.recent.map((r) => (
+                      <li key={r.id}>
+                        <Link href={links.trade(r.id)} className="flex items-center gap-3 rounded-lg px-2 py-1.5 hover:bg-[var(--glass-hover-bg)]">
+                          <span className="w-20 shrink-0 tabular-nums text-muted-foreground">{fmtDay(r.date, { day: "numeric", month: "short", year: "2-digit" })}</span>
+                          <span className="font-medium text-foreground">{r.ticker}</span>
+                          {r.form && <Pill tone="purple" className="px-1.5 text-2xs">{r.form}</Pill>}
+                          {r.offeringDay !== r.date && <span className="text-2xs text-muted-foreground">{t("stats.dayAfter")}</span>}
+                          <span className={cn("ml-auto tabular-nums", r.net == null ? "text-muted-foreground" : r.net >= 0 ? "text-up" : "text-down")}>{fmtUsd(r.net, { signed: true, compact: true })}</span>
                         </Link>
                       </li>
                     ))}

@@ -29,7 +29,7 @@ import { useDictation } from "@/components/notes/author-dictation";
 import { AuthorAudience } from "@/components/notes/author-audience";
 import { AuthorPrevPlan } from "@/components/notes/author-prev-plan";
 import {
-  FOLLOW_HEADER, findPrevPlan, followThroughBlock, moneyMentions, sectionForDigit, type FollowItem,
+  findPrevPlan, followThroughBlock, hasFollowBlock, moneyMentions, sectionForDigit, type FollowItem,
 } from "@/components/notes/author-plan";
 import {
   AN_KEYS, BUILTIN_TEMPLATES, MOODS, SECTIONS, addDays, appendText, applyTemplate,
@@ -40,6 +40,8 @@ import { fmtDate } from "@/lib/format";
 import { http } from "@/lib/api/http";
 import { isNotFound } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
+import { notesI18n } from "@/i18n/ns/notes";
+import { commonI18n } from "@/i18n/ns/common";
 
 type View = "write" | "feed" | "history";
 type SaveStatus = "idle" | "dirty" | "saving" | "saved" | "error";
@@ -71,29 +73,32 @@ function upsertHistory(list: AuthorNote[] | undefined, note: AuthorNote): Author
 }
 
 function SaveIndicator({ status, savedAt, now, onRetry }: { status: SaveStatus; savedAt: number | null; now: number; onRetry: () => void }) {
+  const { t } = notesI18n.useT();
   if (status === "saving") {
-    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />Сохраняю…</span>;
+    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" />{t("savingNow")}</span>;
   }
   if (status === "error") {
     return (
       <span role="alert" className="inline-flex items-center gap-1.5 text-xs text-down">
-        <AlertCircle className="h-3 w-3" aria-hidden="true" />Не сохранено
-        <button type="button" onClick={onRetry} className="font-medium underline-offset-2 hover:underline">Повторить</button>
+        <AlertCircle className="h-3 w-3" aria-hidden="true" />{t("author.save.notSaved")}
+        <button type="button" onClick={onRetry} className="font-medium underline-offset-2 hover:underline">{commonI18n.t("actions.retry")}</button>
       </span>
     );
   }
   if (status === "dirty") {
-    return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" aria-hidden="true" />Есть изменения</span>;
+    return <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><span className="h-1.5 w-1.5 rounded-full bg-[hsl(var(--chart-3))]" aria-hidden="true" />{t("dirty")}</span>;
   }
   if (status === "saved" && savedAt) {
-    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3 w-3 text-up" aria-hidden="true" />Сохранено · {relTime(savedAt, now)}</span>;
+    return <span role="status" className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><Check className="h-3 w-3 text-up" aria-hidden="true" />{t("author.save.saved", { ago: relTime(savedAt, now) })}</span>;
   }
-  return <span className="text-xs text-muted-foreground">Черновик — сохранится автоматически</span>;
+  return <span className="text-xs text-muted-foreground">{t("author.save.draft")}</span>;
 }
 
 export default function AuthorNotesPage() {
   const { user, canEdit } = useAuth();
   const { toast } = useToast();
+  const { t } = notesI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const qc = useQueryClient();
   const trader = user?.traderName ?? "";
   const today = localToday();
@@ -238,7 +243,7 @@ export default function AuthorNotesPage() {
       return data;
     } catch (e) {
       if (d === dateRef.current) setStatus("error");
-      toast({ title: "Сводка не сохранилась", description: e instanceof Error ? e.message : "Проверь подключение", variant: "destructive" });
+      toast({ title: notesI18n.t("author.toast.saveFailed"), description: e instanceof Error ? e.message : notesI18n.t("author.toast.checkConnection"), variant: "destructive" });
       return null;
     }
   }, [trader, qc, toast]);
@@ -279,7 +284,7 @@ export default function AuthorNotesPage() {
   const manualSave = async () => {
     cancelAutosave();
     const saved = await save({ force: true });
-    if (saved) toast({ title: "Сводка сохранена" });
+    if (saved) toast({ title: t("noteSaved") });
   };
 
   /* ── Dictation ── */
@@ -334,7 +339,7 @@ export default function AuthorNotesPage() {
   const applyTpl = (tpl: NoteTemplate) => {
     setMode("sections");
     edit((prev) => applyTemplate(prev, tpl));
-    toast({ title: `Шаблон «${tpl.name}»`, description: "Заполнены только пустые блоки" });
+    toast({ title: t("author.toast.tplApplied", { name: tpl.name }), description: t("author.toast.tplAppliedDesc") });
   };
 
   const saveTemplate = () => {
@@ -343,13 +348,13 @@ export default function AuthorNotesPage() {
     const p = parseNote(raw);
     const sections: NoteTemplate["sections"] = {};
     for (const s of SECTIONS) if (p.sections[s.key].trim()) sections[s.key] = p.sections[s.key];
-    if (!Object.keys(sections).length) { toast({ title: "Заполни хотя бы один блок", variant: "destructive" }); return; }
-    const next = [{ id: `c${Date.now()}`, name, description: "Мой шаблон", sections, custom: true }, ...templates.filter((t) => t.name !== name)];
+    if (!Object.keys(sections).length) { toast({ title: t("author.toast.fillOneBlock"), variant: "destructive" }); return; }
+    const next = [{ id: `c${Date.now()}`, name, description: t("myTemplate"), sections, custom: true }, ...templates.filter((x) => x.name !== name)];
     setTemplates(next);
     saveCustomTemplates(next);
     setTplDialog(false);
     setTplName("");
-    toast({ title: "Шаблон сохранён" });
+    toast({ title: t("author.toast.tplSaved") });
   };
 
   const removeTemplate = (id: string) => {
@@ -396,8 +401,8 @@ export default function AuthorNotesPage() {
   /* ── «План vs факт» from the previous note into «Уроки» ── */
   const insertFollowThrough = (items: FollowItem[]) => {
     if (!prevPlan) return;
-    if (parseNote(rawRef.current).sections.lessons.includes(FOLLOW_HEADER)) {
-      toast({ title: "«План vs факт» уже в уроках" });
+    if (hasFollowBlock(parseNote(rawRef.current).sections.lessons)) {
+      toast({ title: t("author.toast.followExists") });
       focusSection("lessons");
       return;
     }
@@ -413,7 +418,7 @@ export default function AuthorNotesPage() {
 
   /* ── AI improve (user-triggered) ── */
   const improve = async () => {
-    if (!raw.trim()) { toast({ title: "Сначала запиши мысли", variant: "destructive" }); return; }
+    if (!raw.trim()) { toast({ title: t("author.toast.writeFirst"), variant: "destructive" }); return; }
     setImproving(true);
     try {
       cancelAutosave();
@@ -425,10 +430,10 @@ export default function AuthorNotesPage() {
         setNote((prev) => (prev && prev.id === saved.id ? updated : prev));
         qc.setQueryData<AuthorNote[]>(AN_KEYS.history(trader), (prev) => upsertHistory(prev, updated));
         setShowAi(true);
-        toast({ title: "AI-версия готова" });
+        toast({ title: t("aiReady") });
       }
     } catch (e) {
-      toast({ title: "AI не ответил", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: t("author.toast.aiFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     } finally {
       setImproving(false);
     }
@@ -448,10 +453,10 @@ export default function AuthorNotesPage() {
         if (dictation.recording) dictation.stop();
         setNote(null); setRaw(""); setMood(""); setShowAi(false); setStatus("idle"); setSavedAt(null);
       }
-      toast({ title: "Сводка удалена" });
+      toast({ title: t("noteDeleted") });
       setConfirmDelete(null);
     } catch (e) {
-      toast({ title: "Не удалось удалить", description: e instanceof Error ? e.message : undefined, variant: "destructive" });
+      toast({ title: tc("states.deleteFailed"), description: e instanceof Error ? e.message : undefined, variant: "destructive" });
     } finally {
       setDeleting(false);
     }
@@ -460,9 +465,9 @@ export default function AuthorNotesPage() {
   const copyText = async () => {
     try {
       await navigator.clipboard.writeText(raw);
-      toast({ title: "Текст скопирован" });
+      toast({ title: t("author.toast.copied") });
     } catch {
-      toast({ title: "Не удалось скопировать", variant: "destructive" });
+      toast({ title: tc("states.copyFailed"), variant: "destructive" });
     }
   };
 
@@ -502,25 +507,25 @@ export default function AuthorNotesPage() {
   const planEmpty = mode === "sections" && filledCount >= 2 && !filled.sections.hold.trim() && !filled.sections.open.trim();
 
   const viewOptions = [
-    ...(canEdit ? [{ value: "write", label: <span className="inline-flex items-center gap-1.5">Запись</span> }] : []),
+    ...(canEdit ? [{ value: "write", label: <span className="inline-flex items-center gap-1.5">{t("author.views.write")}</span> }] : []),
     {
       value: "feed",
       label: (
         <span className="inline-flex items-center gap-1.5">
-          Лента команды
-          {unreadCount > 0 && <span className="rounded-full bg-down px-1.5 text-2xs font-semibold tabular-nums text-primary-foreground" aria-label={`${unreadCount} непрочитанных`}>{unreadCount}</span>}
+          {t("author.views.feed")}
+          {unreadCount > 0 && <span className="rounded-full bg-down px-1.5 text-2xs font-semibold tabular-nums text-primary-foreground" aria-label={t("author.unreadAria", { count: unreadCount })}>{unreadCount}</span>}
         </span>
       ),
     },
-    ...(canEdit ? [{ value: "history", label: "История" }] : []),
+    ...(canEdit ? [{ value: "history", label: t("author.views.history") }] : []),
   ];
 
   if (!user || user.role === "guest" || !trader) {
     return (
       <Page>
-        <PageHeader title="Сводка автора" icon={NotebookPen} description="Итоги дня от head-трейдера: рынок, сделки, уроки и план на завтра" />
+        <PageHeader title={t("author.title")} icon={NotebookPen} description={t("author.description")} />
         <Panel>
-          <EmptyState icon={NotebookPen} title="Войди, чтобы читать сводки" description="Сводки доступны участникам команды." />
+          <EmptyState icon={NotebookPen} title={t("author.guestTitle")} description={t("author.guestDescription")} />
         </Panel>
       </Page>
     );
@@ -528,23 +533,23 @@ export default function AuthorNotesPage() {
 
   const dateNav = view !== "history" && (
     <div className="flex items-center gap-1.5">
-      <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Предыдущий день" title="Предыдущий день  [" onClick={() => changeDate(addDays(date, -1))} disabled={dictation.recording}>
+      <Button variant="outline" size="icon" className="h-9 w-9" aria-label={t("author.prevDay")} title={t("author.prevDayTitle")} onClick={() => changeDate(addDays(date, -1))} disabled={dictation.recording}>
         <ChevronLeft className="h-4 w-4" />
       </Button>
       <Input
         type="date"
-        aria-label="Дата сводки"
+        aria-label={t("noteDate")}
         value={date}
         max={today}
         disabled={dictation.recording}
         onChange={(e) => changeDate(e.target.value)}
         className="h-9 w-[150px] tabular-nums"
       />
-      <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Следующий день" title="Следующий день  ]" onClick={() => changeDate(addDays(date, 1))} disabled={date >= today || dictation.recording}>
+      <Button variant="outline" size="icon" className="h-9 w-9" aria-label={t("author.nextDay")} title={t("author.nextDayTitle")} onClick={() => changeDate(addDays(date, 1))} disabled={date >= today || dictation.recording}>
         <ChevronRight className="h-4 w-4" />
       </Button>
       {date !== today && (
-        <Button variant="ghost" size="sm" onClick={() => changeDate(today)} disabled={dictation.recording}>Сегодня</Button>
+        <Button variant="ghost" size="sm" onClick={() => changeDate(today)} disabled={dictation.recording}>{tc("time.today")}</Button>
       )}
     </div>
   );
@@ -552,12 +557,12 @@ export default function AuthorNotesPage() {
   return (
     <Page>
       <PageHeader
-        title="Сводка автора"
+        title={t("author.title")}
         icon={NotebookPen}
-        description="Итоги дня от head-трейдера: рынок, сделки, уроки и план на завтра"
+        description={t("author.description")}
         actions={dateNav}
       >
-        <Segmented ariaLabel="Раздел" value={view} onChange={(v) => setView(v as View)} options={viewOptions} />
+        <Segmented ariaLabel={t("author.viewsAria")} value={view} onChange={(v) => setView(v as View)} options={viewOptions} />
       </PageHeader>
 
       {view === "write" && canEdit && (
@@ -572,37 +577,37 @@ export default function AuthorNotesPage() {
                     <SaveIndicator status={status} savedAt={savedAt} now={now} onRetry={() => void save({ force: true })} />
                     {audienceQ.data && audienceQ.data.total > 0 && (
                       <span className="inline-flex items-center gap-1 text-xs tabular-nums text-muted-foreground">
-                        <Eye className="h-3 w-3" aria-hidden="true" />Прочитали {audienceQ.data.read} из {audienceQ.data.total}
+                        <Eye className="h-3 w-3" aria-hidden="true" />{t("author.readOf", { read: audienceQ.data.read, total: audienceQ.data.total })}
                       </span>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Segmented
-                    ariaLabel="Режим редактора"
+                    ariaLabel={t("author.modeAria")}
                     size="sm"
                     value={mode}
                     onChange={(m) => setMode(m as EditorMode)}
-                    options={[{ value: "sections", label: "Блоки" }, { value: "free", label: "Текст" }]}
+                    options={[{ value: "sections", label: t("author.modeSections") }, { value: "free", label: t("author.modeFree") }]}
                   />
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon-sm" aria-label="Ещё действия" disabled={editorDisabled}>
+                      <Button variant="ghost" size="icon-sm" aria-label={tc("actions.moreActions")} disabled={editorDisabled}>
                         <MoreHorizontal className="h-4 w-4" />
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onSelect={() => { setTplName(""); setTplDialog(true); }}>
-                        <BookmarkPlus className="mr-2 h-4 w-4" />Сохранить как шаблон
+                        <BookmarkPlus className="mr-2 h-4 w-4" />{t("author.saveAsTemplate")}
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={() => void copyText()} disabled={!raw.trim()}>
-                        <Copy className="mr-2 h-4 w-4" />Копировать текст
+                        <Copy className="mr-2 h-4 w-4" />{t("author.copyText")}
                       </DropdownMenuItem>
                       {note && (
                         <>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-down focus:text-down" onSelect={() => setConfirmDelete(note)}>
-                            <Trash2 className="mr-2 h-4 w-4" />Удалить сводку
+                            <Trash2 className="mr-2 h-4 w-4" />{t("deleteNote")}
                           </DropdownMenuItem>
                         </>
                       )}
@@ -613,7 +618,7 @@ export default function AuthorNotesPage() {
 
               {/* Mood */}
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs text-muted-foreground" id="author-mood-label">Состояние</span>
+                <span className="text-xs text-muted-foreground" id="author-mood-label">{t("stateLabel")}</span>
                 <div role="group" aria-labelledby="author-mood-label" className="flex flex-wrap gap-1.5">
                   {MOODS.map((m) => (
                     <button
@@ -636,27 +641,27 @@ export default function AuthorNotesPage() {
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="outline" size="sm" className="gap-1.5" disabled={editorDisabled}>
-                      <LayoutTemplate className="h-3.5 w-3.5" aria-hidden="true" />Шаблон
+                      <LayoutTemplate className="h-3.5 w-3.5" aria-hidden="true" />{t("template")}
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" className="w-72">
-                    <DropdownMenuLabel className="text-xs text-muted-foreground">Заполнит только пустые блоки</DropdownMenuLabel>
-                    {BUILTIN_TEMPLATES.map((t) => (
-                      <DropdownMenuItem key={t.id} onSelect={() => applyTpl(t)} className="flex flex-col items-start gap-0.5">
-                        <span className="text-sm font-medium">{t.name}</span>
-                        <span className="text-xs text-muted-foreground">{t.description}</span>
+                    <DropdownMenuLabel className="text-xs text-muted-foreground">{t("author.fillsEmptyBlocks")}</DropdownMenuLabel>
+                    {BUILTIN_TEMPLATES.map((tpl) => (
+                      <DropdownMenuItem key={tpl.id} onSelect={() => applyTpl(tpl)} className="flex flex-col items-start gap-0.5">
+                        <span className="text-sm font-medium">{tpl.name}</span>
+                        <span className="text-xs text-muted-foreground">{tpl.description}</span>
                       </DropdownMenuItem>
                     ))}
                     {templates.length > 0 && <DropdownMenuSeparator />}
-                    {templates.map((t) => (
-                      <div key={t.id} className="flex items-center">
-                        <DropdownMenuItem onSelect={() => applyTpl(t)} className="min-w-0 flex-1">
-                          <span className="truncate text-sm">{t.name}</span>
+                    {templates.map((tpl) => (
+                      <div key={tpl.id} className="flex items-center">
+                        <DropdownMenuItem onSelect={() => applyTpl(tpl)} className="min-w-0 flex-1">
+                          <span className="truncate text-sm" title={tpl.name}>{tpl.name}</span>
                         </DropdownMenuItem>
                         <button
                           type="button"
-                          aria-label={`Удалить шаблон ${t.name}`}
-                          onClick={() => removeTemplate(t.id)}
+                          aria-label={t("author.deleteTemplateAria", { name: tpl.name })}
+                          onClick={() => removeTemplate(tpl.id)}
                           className="mr-1 grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
                         >
                           <X className="h-3.5 w-3.5" />
@@ -676,25 +681,25 @@ export default function AuthorNotesPage() {
                     onClick={dictation.recording ? dictation.stop : startDictation}
                   >
                     {dictation.recording ? <MicOff className="h-3.5 w-3.5" aria-hidden="true" /> : <Mic className="h-3.5 w-3.5" aria-hidden="true" />}
-                    {dictation.recording ? "Стоп" : "Диктовать"}
+                    {dictation.recording ? t("author.dictateStop") : t("author.dictate")}
                   </Button>
                 ) : (
-                  <span className="text-xs text-muted-foreground">Голосовой ввод — в Chrome / Edge</span>
+                  <span className="text-xs text-muted-foreground">{t("author.dictationUnsupported")}</span>
                 )}
                 {dictation.recording && (
                   <span className="inline-flex items-center gap-1.5 text-xs text-down" role="status">
                     <span className="h-2 w-2 rounded-full bg-down motion-safe:animate-pulse" aria-hidden="true" />
-                    Пишу в «{activeKey === "free" || !activeKey ? (mode === "free" ? "Текст" : "Общее") : SECTIONS.find((s) => s.key === activeKey)?.label}» · <Kbd>Esc</Kbd>
+                    {t("author.writingTo", { target: activeKey === "free" || !activeKey ? (mode === "free" ? t("author.modeFree") : t("author.general")) : SECTIONS.find((s) => s.key === activeKey)?.label ?? "" })} · <Kbd>Esc</Kbd>
                   </span>
                 )}
 
                 <div className="ml-auto flex items-center gap-2">
                   <span className="hidden text-xs tabular-nums text-muted-foreground sm:inline">
-                    {mode === "sections" ? `${filledCount}/${SECTIONS.length} блоков · ` : ""}{words} сл.
+                    {mode === "sections" ? `${t("author.blocksCount", { filled: filledCount, total: SECTIONS.length })} · ` : ""}{t("wordsShort", { count: words })}
                   </span>
                   <Button size="sm" className="gap-1.5" onClick={() => void improve()} disabled={improving || editorDisabled || !raw.trim()}>
                     {improving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" aria-hidden="true" /> : <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />}
-                    {improving ? "AI обрабатывает…" : "Улучшить с AI"}
+                    {improving ? t("improving") : t("improve")}
                   </Button>
                 </div>
               </div>
@@ -705,17 +710,14 @@ export default function AuthorNotesPage() {
                   {money.length > 0 && (
                     <p className="flex items-start gap-1.5 text-xs text-warn">
                       <AlertTriangle className="mt-px h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                      <span>
-                        В тексте есть суммы в $ ({money.slice(0, 3).join(", ")}{money.length > 3 ? "…" : ""}) — сводку читает вся команда,
-                        для джунов и стажёров лучше в R.
-                      </span>
+                      <span>{t("author.moneyNudge", { amounts: `${money.slice(0, 3).join(", ")}${money.length > 3 ? "…" : ""}` })}</span>
                     </p>
                   )}
                   {planEmpty && (
                     <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
-                      План на завтра пуст — джуны читают его первым.
+                      {t("author.planEmpty")}
                       <button type="button" onClick={() => focusSection("open")} className="font-medium text-primary underline-offset-2 hover:underline">
-                        Заполнить
+                        {t("author.fill")}
                       </button>
                       <span className="hidden md:inline"><Kbd>Alt</Kbd> <Kbd>7</Kbd></span>
                     </p>
@@ -725,7 +727,7 @@ export default function AuthorNotesPage() {
 
               {/* Body */}
               {loadState === "loading" ? (
-                <div className="flex flex-col gap-4" aria-busy="true" aria-label="Загрузка сводки">
+                <div className="flex flex-col gap-4" aria-busy="true" aria-label={t("author.loadingNote")}>
                   {[0, 1, 2, 3].map((i) => (
                     <div key={i} className="flex flex-col gap-2">
                       <Skeleton className="h-4 w-32 rounded-full" />
@@ -736,8 +738,8 @@ export default function AuthorNotesPage() {
               ) : loadState === "error" ? (
                 <EmptyState
                   icon={AlertCircle}
-                  title="Не удалось загрузить сводку"
-                  action={<Button variant="outline" onClick={() => void loadNote(date)}>Повторить</Button>}
+                  title={t("noteLoadFailed")}
+                  action={<Button variant="outline" onClick={() => void loadNote(date)}>{tc("actions.retry")}</Button>}
                 />
               ) : (
                 <AuthorEditor
@@ -754,22 +756,22 @@ export default function AuthorNotesPage() {
               )}
 
               <p className="hidden flex-wrap items-center gap-x-3 gap-y-1 text-2xs text-muted-foreground md:flex">
-                <span><Kbd>Ctrl</Kbd> <Kbd>S</Kbd> сохранить</span>
-                <span><Kbd>Alt</Kbd> <Kbd>1</Kbd>–<Kbd>7</Kbd> к блоку</span>
-                <span><Kbd>[</Kbd> <Kbd>]</Kbd> день назад / вперёд</span>
-                <span><Kbd>N</Kbd> к записи</span>
-                <span><Kbd>1</Kbd>–<Kbd>3</Kbd> разделы</span>
+                <span><Kbd>Ctrl</Kbd> <Kbd>S</Kbd> {t("author.shortcuts.save")}</span>
+                <span><Kbd>Alt</Kbd> <Kbd>1</Kbd>–<Kbd>7</Kbd> {t("author.shortcuts.toBlock")}</span>
+                <span><Kbd>[</Kbd> <Kbd>]</Kbd> {t("author.shortcuts.dayNav")}</span>
+                <span><Kbd>N</Kbd> {t("author.shortcuts.toWrite")}</span>
+                <span><Kbd>1</Kbd>–<Kbd>3</Kbd> {t("author.shortcuts.views")}</span>
               </p>
             </section>
 
             {note?.refined_text && (
               <Panel
-                title="AI-версия"
+                title={t("aiVersion")}
                 icon={Sparkles}
-                description="Структурированный вариант твоей записи — оригинал не меняется"
+                description={t("author.aiPanelDescription")}
                 actions={
                   <Button variant="ghost" size="sm" onClick={() => setShowAi((v) => !v)} aria-expanded={showAi}>
-                    {showAi ? "Свернуть" : "Показать"}
+                    {showAi ? tc("actions.collapse") : tc("actions.show")}
                   </Button>
                 }
               >
@@ -780,7 +782,7 @@ export default function AuthorNotesPage() {
             )}
           </div>
 
-          <aside className="flex min-w-0 flex-col gap-4" aria-label="Контекст дня">
+          <aside className="flex min-w-0 flex-col gap-4" aria-label={t("contextAria")}>
             {prevPlan && (
               <AuthorPrevPlan
                 plan={prevPlan}
@@ -837,19 +839,19 @@ export default function AuthorNotesPage() {
       <AlertDialog open={!!confirmDelete} onOpenChange={(o) => { if (!o && !deleting) setConfirmDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить сводку?</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteNoteQ")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {confirmDelete ? `Запись за ${fmtDate(confirmDelete.note_date, "weekdayDayMonthLong")} удалится вместе с AI-версией и отметками «прочитано».` : ""}
+              {confirmDelete ? t("author.deleteDescription", { date: fmtDate(confirmDelete.note_date, "weekdayDayMonthLong") }) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={deleting}>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={(e) => { e.preventDefault(); void doDelete(); }}
               disabled={deleting}
               className="bg-down text-primary-foreground hover:brightness-110"
             >
-              {deleting ? "Удаляю…" : "Удалить"}
+              {deleting ? t("deleting") : tc("actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -858,18 +860,18 @@ export default function AuthorNotesPage() {
       <Dialog open={tplDialog} onOpenChange={setTplDialog}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>Сохранить как шаблон</DialogTitle>
-            <DialogDescription>Заполненные блоки этой сводки станут заготовкой. Шаблоны хранятся в этом браузере.</DialogDescription>
+            <DialogTitle>{t("author.saveAsTemplate")}</DialogTitle>
+            <DialogDescription>{t("author.tplDialogDescription")}</DialogDescription>
           </DialogHeader>
           <form
             onSubmit={(e) => { e.preventDefault(); saveTemplate(); }}
             className="flex flex-col gap-3"
           >
-            <label htmlFor="author-tpl-name" className="text-sm font-medium">Название</label>
-            <Input id="author-tpl-name" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder="Например: День ФРС" autoFocus maxLength={40} />
+            <label htmlFor="author-tpl-name" className="text-sm font-medium">{t("author.tplName")}</label>
+            <Input id="author-tpl-name" value={tplName} onChange={(e) => setTplName(e.target.value)} placeholder={t("author.tplPlaceholder")} autoFocus maxLength={40} />
             <DialogFooter>
-              <Button type="button" variant="ghost" onClick={() => setTplDialog(false)}>Отмена</Button>
-              <Button type="submit" disabled={!tplName.trim()}>Сохранить</Button>
+              <Button type="button" variant="ghost" onClick={() => setTplDialog(false)}>{tc("actions.cancel")}</Button>
+              <Button type="submit" disabled={!tplName.trim()}>{tc("actions.save")}</Button>
             </DialogFooter>
           </form>
         </DialogContent>

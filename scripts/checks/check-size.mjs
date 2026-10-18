@@ -2,7 +2,8 @@
 /**
  * Ratchet: oversized files and functions (ARCHITECTURE.md §1 rule 10: a component function ≤ 300 lines,
  * a file ≤ 600 lines). Existing offenders are recorded with their current size and may only shrink;
- * a new offender fails. Applies to artifacts/{edge-tracker,api-server}/src, tests excluded.
+ * a new offender fails. Applies to artifacts/{edge-tracker,api-server}/src, tests excluded. Translation dictionaries
+ * (web src/i18n/locales/**, api src/i18n/{ru,en,uz}/**) are data, not code, and are skipped.
  * Function = function declaration / expression / arrow / method, named after its binding (nested: outer>inner).
  *
  *   node scripts/checks/check-size.mjs [--list | --update | --force]
@@ -67,6 +68,7 @@ for (const [pkg, short] of [["edge-tracker", "web"], ["api-server", "api"]]) {
   for (const f of walk(path.join(REPO, "artifacts", pkg, "src"), /\.(tsx?|mts)$/)) {
     if (isTestFile(f) || f.endsWith(".d.ts")) continue;
     const r = rel(f);
+    if (/\/src\/i18n\/(locales\/)?(ru|en|uz)\//.test(r)) continue; // dictionaries: data, not code
     const { lines, fns } = scanFile(f);
     if (lines > MAX_FILE) files[r] = lines;
     for (const [name, len] of fns) functions[`${r}#${name}`] = len;

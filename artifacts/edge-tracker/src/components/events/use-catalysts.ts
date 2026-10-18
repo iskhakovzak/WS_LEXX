@@ -16,6 +16,7 @@ import {
   prevTradingDay, type BookTrade, type MacroRow, type TickerHistory,
 } from "./catalyst-math";
 import { dayOf } from "./event-meta";
+import { eventsI18n } from "@/i18n/ns/events";
 
 const TICKER_RE = /^[A-Z][A-Z0-9.\-]{0,9}$/;
 
@@ -161,4 +162,4 @@ export function edgesFrom(trades: BookTrade[], tickers: string[], histories: Map
 }
 
 export const callLabel = (c: CallType | string | null | undefined) =>
-  c === "BMO" ? "до открытия" : c === "AMC" ? "после закрытия" : "время не указано";
+  eventsI18n.t(c === "BMO" ? "call.bmo" : c === "AMC" ? "call.amc" : "call.unknown");

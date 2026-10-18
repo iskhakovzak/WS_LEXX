@@ -9,7 +9,7 @@ import {
   buildDigest,
   sendDigestToTrader,
 } from "../lib/digest";
-import { sendError, unauthorized } from "../lib/http";
+import { AppError, sendError, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -21,11 +21,8 @@ const router: IRouter = Router();
 async function ensureSelf(req: Request, res: Response, trader: string): Promise<boolean> {
   const actor = getActor(req);
   if (!actor) { sendError(res, unauthorized()); return false; }
-  if (isGuest(req)) { res.status(403).json({ error: "Гостевой режим: дайджест недоступен" }); return false; }
-  if (actor !== trader && !(await can(req, "digest.manage.any", { trader }))) {
-    res.status(403).json({ error: "Нет доступа к дайджесту другого трейдера" });
-    return false;
-  }
+  if (isGuest(req)) throw new AppError("GUEST_UNAVAILABLE");
+  if (actor !== trader && !(await can(req, "digest.manage.any", { trader }))) throw new AppError("OWN_DATA_ONLY");
   return true;
 }
 
@@ -61,10 +58,7 @@ router.put("/digest/subscription", asyncHandler(async (req, res): Promise<void> 
   if (!(await ensureSelf(req, res, subject))) return;
 
   const VALID_CHANNELS = ["none", "telegram", "email", "both"];
-  if (channel !== undefined && !VALID_CHANNELS.includes(String(channel))) {
-    res.status(400).json({ error: `channel must be one of: ${VALID_CHANNELS.join(", ")}` });
-    return;
-  }
+  if (channel !== undefined && !VALID_CHANNELS.includes(String(channel))) throw new AppError("INVALID_FIELD", undefined, { field: "channel" });
 
   const patch: Parameters<typeof upsertSubscription>[1] = {};
   if (enabled !== undefined) patch.enabled = Boolean(enabled);

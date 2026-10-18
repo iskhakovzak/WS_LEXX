@@ -8,6 +8,7 @@ import {
   horizonOf as horizonOfTrade,
 } from "@/lib/trade-math";
 import { fmtR, fmtUsd, fmtWeekday } from "@/lib/format";
+import { statsI18n } from "@/i18n/ns/stats";
 
 /*
  * R / P&L / result buckets come from @/lib/trade-math — the single desk definition shared with /analytics,
@@ -25,26 +26,26 @@ export const tx = (t: Trade) => t as TradeX;
 
 export type Horizon = "intraday" | "overnight" | "swing";
 export type HorizonFilter = "all" | Horizon;
-export const HORIZON_OPTIONS: { value: HorizonFilter; label: string }[] = [
-  { value: "all", label: "Все" },
-  { value: "intraday", label: "Интрадей" },
-  { value: "overnight", label: "Овернайт" },
-  { value: "swing", label: "Свинг" },
-];
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+const HORIZON_FILTERS: HorizonFilter[] = ["all", "intraday", "overnight", "swing"];
+/** Horizon filter options (labels are getters: they follow the UI language). */
+export const HORIZON_OPTIONS: { value: HorizonFilter; readonly label: string }[] = HORIZON_FILTERS.map((value) => ({
+  value, get label() { return statsI18n.t(`horizon.${value}`); },
+}));
+/** "Интрадей" / "Intraday" — read at call time. */
+export const horizonLabel = (h: Horizon): string => statsI18n.t(`horizon.${h}`);
 /** Null / unknown horizon is treated as intraday. */
 export function horizonOf(t: Trade): Horizon {
   return horizonOfTrade(t);
 }
 export type PeriodKey = "7d" | "30d" | "90d" | "ytd" | "all";
 
-export const PERIOD_OPTIONS: { value: PeriodKey; label: string; long: string }[] = [
-  { value: "7d", label: "7 дней", long: "последние 7 дней" },
-  { value: "30d", label: "30 дней", long: "последние 30 дней" },
-  { value: "90d", label: "90 дней", long: "последние 90 дней" },
-  { value: "ytd", label: "С начала года", long: "с начала года" },
-  { value: "all", label: "Всё время", long: "всё время" },
-];
+const PERIOD_KEYS: PeriodKey[] = ["7d", "30d", "90d", "ytd", "all"];
+/** Period options (labels are getters: they follow the UI language). */
+export const PERIOD_OPTIONS: { value: PeriodKey; readonly label: string; readonly long: string }[] = PERIOD_KEYS.map((value) => ({
+  value,
+  get label() { return statsI18n.t(`period.${value}.label`); },
+  get long() { return statsI18n.t(`period.${value}.long`); },
+}));
 
 /** Short weekday for a Monday-first index 0–6 (weekdayIdx): «Пн» / «Mon» / «Du». Language read at call time. */
 export function weekdayLabel(i: number): string {
@@ -357,31 +358,31 @@ export function groupBy(trades: Trade[], keyFn: (t: Trade) => string | null | un
   }));
 }
 
-export const SESSION_LABELS: Record<string, string> = {
-  premarket: "Премаркет",
-  pre: "Премаркет",
-  regular: "Основная",
-  rth: "Основная",
-  afterhours: "Постмаркет",
-  "after-hours": "Постмаркет",
-  postmarket: "Постмаркет",
-  after: "Постмаркет",
+/** Raw session values → session code. */
+const SESSION_CODES: Record<string, "premarket" | "regular" | "afterhours"> = {
+  premarket: "premarket",
+  pre: "premarket",
+  regular: "regular",
+  rth: "regular",
+  afterhours: "afterhours",
+  "after-hours": "afterhours",
+  postmarket: "afterhours",
+  after: "afterhours",
 };
 
 export function sessionKey(t: Trade): string {
   const s = (t.session ?? "").toString().trim().toLowerCase();
   if (!s) return "none";
-  const label = SESSION_LABELS[s];
-  if (label === "Премаркет") return "premarket";
-  if (label === "Основная") return "regular";
-  if (label === "Постмаркет") return "afterhours";
-  return s;
+  return SESSION_CODES[s] ?? s;
 }
 
+/** Display text of a session code; unknown raw values are shown as they are. */
 export function sessionLabel(k: string): string {
-  if (k === "none") return "Не указана";
-  return SESSION_LABELS[k] ?? k;
+  if (k === "none" || k === "premarket" || k === "regular" || k === "afterhours") return statsI18n.t(`session.${k}`);
+  const code = SESSION_CODES[k];
+  return code ? statsI18n.t(`session.${code}`) : k;
 }
+
 
 /* ───────────── formatting ───────────── */
 

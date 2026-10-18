@@ -7,6 +7,9 @@
  * триггера сэкономило бы эти деньги. Деньги — нетто, торговая дата — NY (как в behaviorEngine).
  */
 import type { BehaviorTrade } from "./behaviorEngine";
+import { behaviorT } from "./behaviorI18n";
+import { DEFAULT_LANG, isLang, type Lang } from "../i18n";
+import type { ErrorCode } from "./http";
 
 export type TriggerKind =
   | "loss_streak" | "quick_after_loss" | "max_trades_day" | "daily_loss" | "size_up_after_loss"
@@ -14,56 +17,86 @@ export type TriggerKind =
 
 export type TriggerField = { key: string; label: string; default: number; min: number; max: number; step?: number; unit?: string };
 
-export const TRIGGER_KINDS: { kind: TriggerKind; label: string; hint: string; fields: TriggerField[] }[] = [
-  { kind: "loss_streak", label: "N убытков подряд", hint: "После N-го убытка подряд за день — стоп. Под триггером все сделки дня после серии.", fields: [{ key: "n", label: "Убытков подряд", default: 3, min: 2, max: 10 }] },
-  { kind: "quick_after_loss", label: "Сделка вскоре после убытка", hint: "Вход раньше, чем через M минут после выхода из убыточной сделки.", fields: [{ key: "minutes", label: "Минут", default: 2, min: 1, max: 120, unit: "мин" }] },
-  { kind: "max_trades_day", label: "Больше N сделок за день", hint: "Каждая сделка сверх N за день.", fields: [{ key: "n", label: "Сделок в день", default: 8, min: 1, max: 100 }] },
-  { kind: "daily_loss", label: "Дневной убыток больше $X", hint: "После того как нетто дня опустилось до −$X, все следующие сделки дня — под триггером.", fields: [{ key: "usd", label: "Убыток, $", default: 300, min: 1, max: 1_000_000, unit: "$" }] },
-  { kind: "size_up_after_loss", label: "Рост размера после убытка", hint: "Нотионал сделки ≥ ×K от предыдущей убыточной.", fields: [{ key: "ratio", label: "Во сколько раз", default: 1.3, min: 1.05, max: 10, step: 0.05, unit: "×" }] },
-  { kind: "after_big_win", label: "Сделка сразу после крупного выигрыша", hint: "Вход раньше, чем через M минут после выигрыша ≥ $X.", fields: [{ key: "usd", label: "Выигрыш от, $", default: 100, min: 1, max: 1_000_000, unit: "$" }, { key: "minutes", label: "Минут", default: 15, min: 1, max: 240, unit: "мин" }] },
-  { kind: "long_loser_hold", label: "Убыточная держится дольше M мин", hint: "Тайм-стоп: убыточная сделка с удержанием больше M минут.", fields: [{ key: "minutes", label: "Минут", default: 20, min: 1, max: 1440, unit: "мин" }] },
-  { kind: "red_morning", label: "Красное утро", hint: "Если к 11:00 нетто ≤ −$X — сделки после 11:00 под триггером.", fields: [{ key: "usd", label: "Убыток утра, $", default: 150, min: 1, max: 1_000_000, unit: "$" }] },
-  { kind: "custom", label: "Напоминание", hint: "Текстовое правило без автоматической проверки.", fields: [] },
+type TriggerKindDef = { kind: TriggerKind; label: string; hint: string; fields: TriggerField[] };
+type RawField = Omit<TriggerField, "label" | "unit"> & { unit?: "$" | "×" | "min" };
+
+/** Kinds without texts: labels, hints and field labels come from `behavior.triggers.kinds.*`. */
+const RAW_KINDS: { kind: TriggerKind; fields: RawField[] }[] = [
+  { kind: "loss_streak", fields: [{ key: "n", default: 3, min: 2, max: 10 }] },
+  { kind: "quick_after_loss", fields: [{ key: "minutes", default: 2, min: 1, max: 120, unit: "min" }] },
+  { kind: "max_trades_day", fields: [{ key: "n", default: 8, min: 1, max: 100 }] },
+  { kind: "daily_loss", fields: [{ key: "usd", default: 300, min: 1, max: 1_000_000, unit: "$" }] },
+  { kind: "size_up_after_loss", fields: [{ key: "ratio", default: 1.3, min: 1.05, max: 10, step: 0.05, unit: "×" }] },
+  { kind: "after_big_win", fields: [{ key: "usd", default: 100, min: 1, max: 1_000_000, unit: "$" }, { key: "minutes", default: 15, min: 1, max: 240, unit: "min" }] },
+  { kind: "long_loser_hold", fields: [{ key: "minutes", default: 20, min: 1, max: 1440, unit: "min" }] },
+  { kind: "red_morning", fields: [{ key: "usd", default: 150, min: 1, max: 1_000_000, unit: "$" }] },
+  { kind: "custom", fields: [] },
 ];
+
+const kindsCache = new Map<Lang, TriggerKindDef[]>();
+/** Trigger kinds with texts in `lang` (GET /behavior/triggers → kinds). */
+export function triggerKindsFor(lang: Lang | null | undefined = DEFAULT_LANG): TriggerKindDef[] {
+  const l: Lang = isLang(lang) ? lang : DEFAULT_LANG;
+  const hit = kindsCache.get(l);
+  if (hit) return hit;
+  const tr = (key: string) => behaviorT.tryFor(l, key) ?? key;
+  const out = RAW_KINDS.map((k) => ({
+    kind: k.kind,
+    label: tr(`triggers.kinds.${k.kind}.label`),
+    hint: tr(`triggers.kinds.${k.kind}.hint`),
+    fields: k.fields.map(({ unit, ...f }) => ({
+      ...f,
+      label: tr(`triggers.kinds.${k.kind}.fields.${f.key}`),
+      ...(unit ? { unit: unit === "min" ? tr("triggers.unitMin") : unit } : {}),
+    })),
+  }));
+  kindsCache.set(l, out);
+  return out;
+}
+
+/** Russian kinds (historical export). */
+export const TRIGGER_KINDS: TriggerKindDef[] = triggerKindsFor(DEFAULT_LANG);
 
 export const TRIGGER_KIND_SET = new Set<string>(TRIGGER_KINDS.map((k) => k.kind));
 
-/** Параметры по описанию вида: недостающие — по умолчанию, вне диапазона — ошибка. */
-export function validateTriggerParams(kind: string, raw: unknown): { ok: true; value: Record<string, number> } | { ok: false; error: string } {
-  const def = TRIGGER_KINDS.find((k) => k.kind === kind);
-  if (!def) return { ok: false, error: "Неизвестный вид триггера" };
+/**
+ * Параметры по описанию вида: недостающие — по умолчанию, вне диапазона — ошибка (код API + подпись поля в `lang`).
+ */
+export function validateTriggerParams(kind: string, raw: unknown, lang: Lang = DEFAULT_LANG):
+  { ok: true; value: Record<string, number> } | { ok: false; code: ErrorCode; params?: { field: string; min: number; max: number } } {
+  const def = triggerKindsFor(lang).find((k) => k.kind === kind);
+  if (!def) return { ok: false, code: "TRIGGER_KIND_INVALID" };
   const src = raw && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
   const out: Record<string, number> = {};
   for (const f of def.fields) {
     const v = src[f.key];
     if (v === undefined || v === null || v === "") { out[f.key] = f.default; continue; }
     const n = Number(v);
-    if (!Number.isFinite(n) || n < f.min || n > f.max) return { ok: false, error: `«${f.label}»: число от ${f.min} до ${f.max}` };
+    if (!Number.isFinite(n) || n < f.min || n > f.max) return { ok: false, code: "TRIGGER_PARAM_RANGE", params: { field: f.label, min: f.min, max: f.max } };
     out[f.key] = Math.round(n * 100) / 100;
   }
   return { ok: true, value: out };
 }
 
-const plural = (n: number, one: string, few: string, many: string) => {
-  const m10 = n % 10, m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-};
-
-/** Человекочитаемое название триггера по параметрам («3 убытка подряд»). */
-export function describeTrigger(kind: string, p: Record<string, number>): string {
+/** Человекочитаемое название триггера по параметрам («3 убытка подряд») на языке `lang`. */
+export function describeTrigger(kind: string, p: Record<string, number>, lang: Lang = DEFAULT_LANG): string {
+  const t = behaviorT.tFor(lang);
   switch (kind) {
-    case "loss_streak": return `${p.n} ${plural(p.n, "убыток", "убытка", "убытков")} подряд`;
-    case "quick_after_loss": return `Сделка < ${p.minutes} мин после убытка`;
-    case "max_trades_day": return `Больше ${p.n} ${plural(p.n, "сделки", "сделок", "сделок")} за день`;
-    case "daily_loss": return `Дневной убыток ≥ $${p.usd}`;
-    case "size_up_after_loss": return `Размер ×${p.ratio}+ после убытка`;
-    case "after_big_win": return `Сделка < ${p.minutes} мин после выигрыша ≥ $${p.usd}`;
-    case "long_loser_hold": return `Убыточная дольше ${p.minutes} мин`;
-    case "red_morning": return `Утро ≤ −$${p.usd} → после 11:00 не торгую`;
-    default: return "Напоминание";
+    case "loss_streak": return t("triggers.names.loss_streak", { count: p.n });
+    case "quick_after_loss": return t("triggers.names.quick_after_loss", { minutes: p.minutes });
+    case "max_trades_day": return t("triggers.names.max_trades_day", { count: p.n });
+    case "daily_loss": return t("triggers.names.daily_loss", { usd: p.usd });
+    case "size_up_after_loss": return t("triggers.names.size_up_after_loss", { ratio: p.ratio });
+    case "after_big_win": return t("triggers.names.after_big_win", { minutes: p.minutes, usd: p.usd });
+    case "long_loser_hold": return t("triggers.names.long_loser_hold", { minutes: p.minutes });
+    case "red_morning": return t("triggers.names.red_morning", { usd: p.usd });
+    default: return t("triggers.names.custom");
   }
+}
+
+/** Was `name` generated by describeTrigger (in any language)? Then it follows the params when they change. */
+export function isAutoTriggerName(kind: string, p: Record<string, number>, name: string): boolean {
+  return (["ru", "en", "uz"] as const).some((l) => describeTrigger(kind, p, l) === name);
 }
 
 export type TriggerHit = { id: number; ticker: string; date: string; net: number | null; note: string };
@@ -89,7 +122,8 @@ const fmtUsd = (v: number | null) => (v == null ? "—" : `${v > 0 ? "+" : v < 0
 const notional = (t: BehaviorTrade) => (t.qty == null ? null : t.entry != null && t.entry > 0 ? Math.abs(t.qty) * t.entry : Math.abs(t.qty));
 
 /** Проверка одного триггера по сделкам, сгруппированным по дням в порядке входа (behaviorEngine.groupByDay). */
-export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: Map<string, BehaviorTrade[]>): TriggerEval {
+export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: Map<string, BehaviorTrade[]>, lang: Lang = DEFAULT_LANG): TriggerEval {
+  const tr = behaviorT.tFor(lang);
   const hits: { t: BehaviorTrade; note: string }[] = [];
   const fireDays = new Set<string>();
   let fires = 0;
@@ -105,7 +139,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
             if (t.result === "loss") streak++; else if (t.result === "win" || t.result === "be") streak = 0;
             if (streak >= p.n) {
               fires++; fireDays.add(date);
-              for (const a of day.slice(i + 1)) hits.push({ t: a, note: `после ${p.n} убытков подряд (с ${t.ticker})` });
+              for (const a of day.slice(i + 1)) hits.push({ t: a, note: tr("triggers.notes.lossStreak", { n: p.n, ticker: t.ticker }) });
               break;
             }
           }
@@ -118,7 +152,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
             const gap = (t.entryAt - prev.exitAt) / 60000;
             if (gap >= 0 && gap < p.minutes) {
               fires++; fireDays.add(date);
-              hits.push({ t, note: `${gap < 1 ? "<1" : Math.round(gap)} мин после убытка ${prev.ticker} (${fmtUsd(prev.net)})` });
+              hits.push({ t, note: tr("triggers.notes.quickAfterLoss", { gap: gap < 1 ? "<1" : Math.round(gap), ticker: prev.ticker, net: fmtUsd(prev.net) }) });
             }
           }
           break;
@@ -126,7 +160,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
         case "max_trades_day": {
           if (day.length > p.n) {
             fires++; fireDays.add(date);
-            day.slice(p.n).forEach((t, i) => hits.push({ t, note: `сделка №${p.n + i + 1} из ${day.length}` }));
+            day.slice(p.n).forEach((t, i) => hits.push({ t, note: tr("triggers.notes.maxTrades", { no: p.n + i + 1, total: day.length }) }));
           }
           break;
         }
@@ -136,7 +170,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
             cum += day[i].net ?? 0;
             if (cum <= -p.usd) {
               fires++; fireDays.add(date);
-              for (const a of day.slice(i + 1)) hits.push({ t: a, note: `день уже ${fmtUsd(Math.round(cum))}` });
+              for (const a of day.slice(i + 1)) hits.push({ t: a, note: tr("triggers.notes.dailyLoss", { net: fmtUsd(Math.round(cum)) }) });
               break;
             }
           }
@@ -149,7 +183,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
             const n0 = notional(prev), n1 = notional(t);
             if (n0 && n1 && n1 / n0 >= p.ratio) {
               fires++; fireDays.add(date);
-              hits.push({ t, note: `размер ×${(n1 / n0).toFixed(1)} после убытка ${prev.ticker}` });
+              hits.push({ t, note: tr("triggers.notes.sizeUp", { ratio: (n1 / n0).toFixed(1), ticker: prev.ticker }) });
             }
           }
           break;
@@ -161,7 +195,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
               const gap = (t.entryAt - lastBig.exitAt) / 60000;
               if (gap >= 0 && gap < p.minutes) {
                 fires++; fireDays.add(date);
-                hits.push({ t, note: `${gap < 1 ? "<1" : Math.round(gap)} мин после выигрыша ${lastBig.ticker} (${fmtUsd(lastBig.net)})` });
+                hits.push({ t, note: tr("triggers.notes.afterBigWin", { gap: gap < 1 ? "<1" : Math.round(gap), ticker: lastBig.ticker, net: fmtUsd(lastBig.net) }) });
               }
             }
             if (t.result === "win" && (t.net ?? 0) >= p.usd) lastBig = t;
@@ -172,7 +206,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
           for (const t of day) {
             if (t.result === "loss" && t.holdMin != null && t.holdMin > p.minutes) {
               fires++; fireDays.add(date);
-              hits.push({ t, note: `удержание ${Math.round(t.holdMin)} мин` });
+              hits.push({ t, note: tr("triggers.notes.longHold", { n: Math.round(t.holdMin) }) });
             }
           }
           break;
@@ -183,7 +217,7 @@ export function evaluateTrigger(kind: string, p: Record<string, number>, byDay: 
           if (any && morning <= -p.usd) {
             const later = day.filter((t) => t.entryMin != null && t.entryMin >= 660);
             fires++; fireDays.add(date);
-            for (const t of later) hits.push({ t, note: `утро ${fmtUsd(Math.round(morning))}` });
+            for (const t of later) hits.push({ t, note: tr("triggers.notes.redMorning", { net: fmtUsd(Math.round(morning)) }) });
           }
           break;
         }

@@ -8,6 +8,7 @@ import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { KEYS } from "@/lib/api/keys";
 import { num, type Quote, type WatchlistItem } from "./lib";
+import { watchlistI18n } from "@/i18n/ns/watchlist";
 
 /**
  * One-click "create idea" from a watchlist row: prefilled TradeIdeaForm (ticker, side from levels, stop/target,
@@ -19,6 +20,7 @@ export function IdeaFromWatchlistDialog({
 }: { item: WatchlistItem | null; quote?: Quote; thenTrade: boolean; onClose: () => void }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = watchlistI18n.useT();
   const [, setLocation] = useLocation();
 
   const initial = React.useMemo<Partial<TradeIdeaFormData> | null>(() => {
@@ -57,22 +59,22 @@ export function IdeaFromWatchlistDialog({
       qc.invalidateQueries({ queryKey: KEYS.watchlist() });
       onClose();
       if (thenTrade && row?.id) {
-        toast({ title: `Идея по ${row.ticker} сохранена`, description: "Открываем форму сделки…" });
+        toast({ title: watchlistI18n.t("idea.savedThenTrade", { ticker: row.ticker }), description: watchlistI18n.t("idea.openingTrade") });
         setLocation(`/trades?fromIdea=${row.id}`);
       } else {
-        toast({ title: `Идея по ${row?.ticker ?? ""} сохранена как черновик` });
+        toast({ title: watchlistI18n.t("idea.savedDraft", { ticker: row?.ticker ?? "" }) });
       }
     },
-    onError: (e) => toast({ title: "Не удалось сохранить идею", description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
+    onError: (e) => toast({ title: watchlistI18n.t("idea.saveFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }),
   });
 
   return (
     <Dialog open={!!item} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-h-[92vh] w-full max-w-2xl overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{thenTrade ? `Идея → сделка: ${item?.ticker ?? ""}` : `Новая идея: ${item?.ticker ?? ""}`}</DialogTitle>
+          <DialogTitle>{thenTrade ? t("idea.titleTrade", { ticker: item?.ticker ?? "" }) : t("idea.titleNew", { ticker: item?.ticker ?? "" })}</DialogTitle>
           <DialogDescription>
-            Поля заполнены из вотчлиста. {thenTrade ? "После сохранения откроется форма сделки с этой идеей." : "Идея сохранится черновиком и будет связана с тикером."}
+            {thenTrade ? t("idea.descTrade") : t("idea.descNew")}
           </DialogDescription>
         </DialogHeader>
         {initial && (
@@ -82,7 +84,7 @@ export function IdeaFromWatchlistDialog({
             onSubmit={(d) => createMut.mutate(d)}
             onCancel={onClose}
             submitting={createMut.isPending}
-            submitLabel={thenTrade ? "Сохранить и открыть сделку" : "Сохранить идею"}
+            submitLabel={thenTrade ? t("idea.submitTrade") : t("idea.submitNew")}
           />
         )}
       </DialogContent>

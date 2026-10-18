@@ -6,6 +6,7 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ReferenceLine, Res
 import type { CSSProperties } from "react";
 import { fmtMetric, type AskChart as AskChartData } from "@/lib/ask/aggregate";
 import { fmtUsd } from "@/lib/format";
+import { askI18n } from "@/i18n/ns/ask";
 
 const TOOLTIP: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.95)",
@@ -26,6 +27,7 @@ const MUTED = "hsl(var(--muted-foreground) / 0.45)";
 const ZERO_DOMAIN: [(v: number) => number, (v: number) => number] = [(min) => Math.min(0, min), (max) => Math.max(0, max)];
 
 export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartData; height?: number; onBarClick?: (ask: string) => void }) {
+  const { t } = askI18n.useT();
   const reduce = useReducedMotion();
   const anim = !reduce;
   const gid = React.useId().replace(/:/g, "");
@@ -53,7 +55,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
                 contentStyle={TOOLTIP}
                 cursor={{ stroke: GRID }}
                 labelFormatter={(_, p) => (p?.[0]?.payload ? `#${p[0].payload.i} · ${p[0].payload.label}` : "")}
-                formatter={(v: number) => [fmtUsd(v, { signed: true }), "Нетто, накопл."]}
+                formatter={(v: number) => [fmtUsd(v, { signed: true }), t("chart.cumNet")]}
               />
               <Area type="monotone" dataKey="v" stroke={color} strokeWidth={2} fill={`url(#eq-${gid})`} isAnimationActive={anim} animationDuration={240} dot={false} />
             </AreaChart>
@@ -83,7 +85,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
                 <XAxis type="number" {...AXIS} domain={ZERO_DOMAIN} tickFormatter={money ? (v: number) => fmtUsd(v, { compact: true }) : undefined} />
                 <YAxis type="category" dataKey="label" {...AXIS} width={labelW} interval={0} tickFormatter={(v: string) => (v.length > 30 ? `${v.slice(0, 29)}…` : v)} />
                 <ReferenceLine x={0} stroke={GRID} />
-                <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), "Значение"]} />
+                <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), t("chart.value")]} />
                 <Bar dataKey="value" radius={[0, 4, 4, 0]} isAnimationActive={anim} animationDuration={240} cursor={clickable ? "pointer" : undefined} onClick={onClick}>
                   {chart.rows.map((r) => <Cell key={r.key} fill={fill(r.value, r.highlight)} fillOpacity={chart.rows.some((x) => x.highlight) && !r.highlight ? 0.45 : 0.9} />)}
                 </Bar>
@@ -94,7 +96,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
                 <XAxis dataKey="label" {...AXIS} interval={0} />
                 <YAxis {...AXIS} width={56} domain={ZERO_DOMAIN} tickFormatter={money ? (v: number) => fmtUsd(v, { compact: true }) : undefined} />
                 <ReferenceLine y={0} stroke={GRID} />
-                <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), "Значение"]} />
+                <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [fmt(v), t("chart.value")]} />
                 <Bar dataKey="value" radius={[4, 4, 0, 0]} maxBarSize={56} isAnimationActive={anim} animationDuration={240} cursor={clickable ? "pointer" : undefined} onClick={onClick}>
                   {chart.rows.map((r) => <Cell key={r.key} fill={fill(r.value, r.highlight)} fillOpacity={chart.rows.some((x) => x.highlight) && !r.highlight ? 0.45 : 0.9} />)}
                 </Bar>
@@ -116,7 +118,7 @@ export function AskChart({ chart, height = 200, onBarClick }: { chart: AskChartD
             <CartesianGrid stroke={GRID} vertical={false} strokeOpacity={0.5} />
             <XAxis dataKey="label" {...AXIS} tick={chart.bins.length > 8 ? false : undefined} interval={0} />
             <YAxis {...AXIS} width={40} allowDecimals={false} />
-            <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [v, "Сделок"]} />
+            <Tooltip contentStyle={TOOLTIP} cursor={CURSOR} formatter={(v: number) => [v, t("chart.trades")]} />
             <Bar dataKey="value" radius={[3, 3, 0, 0]} isAnimationActive={anim} animationDuration={240}>
               {chart.bins.map((b, i) => <Cell key={i} fill={b.tone === "up" ? UP : b.tone === "down" ? DOWN : MUTED} fillOpacity={0.85} />)}
             </Bar>

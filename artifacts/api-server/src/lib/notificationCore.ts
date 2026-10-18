@@ -1,5 +1,5 @@
 /**
- * Pure notification model — no DB, no Express — shared by lib/notifyUtils.ts (producers) and
+ * Pure notification model — no DB queries, no Express — shared by lib/notifyUtils.ts (producers) and
  * routes/notifications.ts (inbox API). Kept dependency-free so it can be exercised by an offline
  * node script (scratchpad check) and by unit tests.
  *
@@ -15,82 +15,101 @@
  *   read_at / archived_at / created_at
  */
 
+import { notificationsT } from "../i18n/ns";
+import type { Lang } from "../i18n";
+
 export type Severity = "info" | "warn" | "critical";
 
 export type NotificationGroup = "team" | "ideas" | "review" | "risk" | "scaling" | "academy" | "sync" | "system";
 
-export type NotificationTypeMeta = {
-  type: string;
+type NotificationTypeDef = { type: string; group: NotificationGroup; severity: Severity };
+
+export type NotificationTypeMeta = NotificationTypeDef & {
+  /** Label in the requested language (notifications namespace `types.<type>.label`). */
   label: string;
-  group: NotificationGroup;
-  severity: Severity;
-  /** One-line explanation shown in the preferences panel. */
+  /** One-line explanation shown in the preferences panel (`types.<type>.description`). */
   description: string;
 };
 
 export const SEVERITIES: readonly Severity[] = ["info", "warn", "critical"];
 
-/** Canonical registry: every producer should use one of these keys. Order = order in the UI. */
-export const NOTIFICATION_TYPES: readonly NotificationTypeMeta[] = [
+/**
+ * Canonical registry: every producer should use one of these keys. Order = order in the UI.
+ * Labels and descriptions live in the server `notifications` namespace (`types.<type>`, `groups.<group>`).
+ */
+const TYPE_DEFS: readonly NotificationTypeDef[] = [
   // team
-  { type: "mention", label: "Упоминание", group: "team", severity: "info", description: "Кто-то упомянул вас через @имя в обсуждении, идее или заметке" },
-  { type: "reply", label: "Ответ", group: "team", severity: "info", description: "Ответ на ваш пост или в вашем обсуждении, отметка «решение»" },
-  { type: "review_request", label: "Запрос разбора", group: "team", severity: "info", description: "Трейдер просит куратора разобрать сделку или тему" },
-  { type: "thread_new", label: "Новая тема", group: "team", severity: "info", description: "В «Обсуждениях» появилась тема для вас (для всех, вашей ступени, кураторов или вашей когорты)" },
+  { type: "mention", group: "team", severity: "info" },
+  { type: "reply", group: "team", severity: "info" },
+  { type: "review_request", group: "team", severity: "info" },
+  { type: "thread_new", group: "team", severity: "info" },
   // ideas
-  { type: "idea_submitted", label: "Новая идея", group: "ideas", severity: "info", description: "Трейдер опубликовал идею на ревью" },
-  { type: "idea_review", label: "Решение по идее", group: "ideas", severity: "info", description: "Куратор одобрил, отклонил или вернул идею на доработку" },
-  { type: "idea_comment", label: "Комментарий к идее", group: "ideas", severity: "info", description: "Публичный комментарий или личный ответ к идее" },
+  { type: "idea_submitted", group: "ideas", severity: "info" },
+  { type: "idea_review", group: "ideas", severity: "info" },
+  { type: "idea_comment", group: "ideas", severity: "info" },
   // review loop
-  { type: "eod_review_request", label: "День закрыт — ждёт разбора", group: "review", severity: "info", description: "Трейдер закрыл торговый день, он попал в очередь куратора" },
-  { type: "eod_overdue", label: "Разбор дня просрочен", group: "review", severity: "warn", description: "Закрытый день ждёт разбора дольше SLA (24 ч)" },
-  { type: "eod_reviewed", label: "Разбор дня готов", group: "review", severity: "info", description: "Куратор оставил комментарий и оценку за день" },
-  { type: "weekly_review", label: "Отчёт недели", group: "review", severity: "info", description: "Самооценка отправлена / куратор завершил разбор недели / цели обновлены" },
-  { type: "rating", label: "Оценка куратора", group: "review", severity: "info", description: "Новая или изменённая недельная оценка" },
-  { type: "rating_ack", label: "Оценка подтверждена", group: "review", severity: "info", description: "Трейдер прочитал и подтвердил вашу оценку" },
+  { type: "eod_review_request", group: "review", severity: "info" },
+  { type: "eod_overdue", group: "review", severity: "warn" },
+  { type: "eod_reviewed", group: "review", severity: "info" },
+  { type: "weekly_review", group: "review", severity: "info" },
+  { type: "rating", group: "review", severity: "info" },
+  { type: "rating_ack", group: "review", severity: "info" },
   // risk
-  { type: "risk_warn", label: "Близко к лимиту", group: "risk", severity: "warn", description: "Использовано ≥ 70 % дневного / недельного лимита или просадки" },
-  { type: "risk_breach", label: "Лимит превышен", group: "risk", severity: "critical", description: "Дневной / недельный лимит или максимальная просадка пробиты — стоп торговли" },
-  { type: "risk_repeat_breach", label: "Повторное нарушение", group: "risk", severity: "critical", description: "Трейдер второй раз за неделю пробил лимит — нужен разбор куратора" },
-  { type: "risk_breach_review", label: "Разбор нарушения", group: "risk", severity: "info", description: "Куратор записал разбор вашего нарушения лимита" },
-  { type: "limit_change", label: "Изменение лимитов", group: "risk", severity: "info", description: "Куратор изменил ваши лимиты риска или тир" },
-  { type: "rule_violation", label: "Нарушение правила", group: "risk", severity: "warn", description: "Сканер нашёл нарушение правила дисциплины или куратор вынес по нему решение" },
+  { type: "risk_warn", group: "risk", severity: "warn" },
+  { type: "risk_breach", group: "risk", severity: "critical" },
+  { type: "risk_repeat_breach", group: "risk", severity: "critical" },
+  { type: "risk_breach_review", group: "risk", severity: "info" },
+  { type: "limit_change", group: "risk", severity: "info" },
+  { type: "rule_violation", group: "risk", severity: "warn" },
   // scaling
-  { type: "scaling_proposal", label: "Предложение по масштабированию", group: "scaling", severity: "info", description: "Создано предложение повысить / понизить тир" },
-  { type: "scaling_decision", label: "Решение по масштабированию", group: "scaling", severity: "info", description: "Предложение одобрено или отклонено" },
+  { type: "scaling_proposal", group: "scaling", severity: "info" },
+  { type: "scaling_decision", group: "scaling", severity: "info" },
   // academy
-  { type: "academy_promotion_ready", label: "Готов к переводу", group: "academy", severity: "info", description: "Выполнены критерии перевода на следующую ступень" },
-  { type: "academy_promotion_request", label: "Заявка на перевод", group: "academy", severity: "info", description: "Ученик подал заявку на перевод на следующую ступень" },
-  { type: "academy_promotion_decision", label: "Решение по переводу", group: "academy", severity: "info", description: "Заявка на перевод одобрена или отклонена" },
-  { type: "academy_challenge_assigned", label: "Назначен экзамен", group: "academy", severity: "info", description: "Вам назначен экзамен с правилами и сроками" },
-  { type: "academy_challenge_passed", label: "Экзамен сдан", group: "academy", severity: "info", description: "Все правила экзамена выполнены" },
-  { type: "academy_challenge_failed", label: "Экзамен провален", group: "academy", severity: "warn", description: "Нарушено правило экзамена или истекло время" },
-  { type: "academy_enrolled", label: "Зачисление", group: "academy", severity: "info", description: "Вас зачислили в когорту Академии" },
-  { type: "academy_stage_change", label: "Смена ступени", group: "academy", severity: "info", description: "Изменилась ступень или статус обучения" },
-  { type: "academy_goal_assigned", label: "Новая цель ИПР", group: "academy", severity: "info", description: "Наставник поставил цель в индивидуальном плане" },
-  { type: "academy_goal_achieved", label: "Цель ИПР достигнута", group: "academy", severity: "info", description: "Цель индивидуального плана выполнена" },
-  { type: "academy_goal_missed", label: "Цель ИПР не достигнута", group: "academy", severity: "warn", description: "Срок цели прошёл, а метрика не выполнена" },
-  { type: "academy_action_assigned", label: "Новая договорённость", group: "academy", severity: "info", description: "По итогам встречи 1:1 появилась договорённость" },
-  { type: "academy_action_overdue", label: "Договорённость просрочена", group: "academy", severity: "warn", description: "Срок договорённости прошёл" },
-  { type: "academy_submitted", label: "Задание на проверку", group: "academy", severity: "info", description: "Ученик сдал задание курса на проверку" },
-  { type: "academy_graded", label: "Задание проверено", group: "academy", severity: "info", description: "Наставник проверил ваше задание" },
+  { type: "academy_promotion_ready", group: "academy", severity: "info" },
+  { type: "academy_promotion_request", group: "academy", severity: "info" },
+  { type: "academy_promotion_decision", group: "academy", severity: "info" },
+  { type: "academy_challenge_assigned", group: "academy", severity: "info" },
+  { type: "academy_challenge_passed", group: "academy", severity: "info" },
+  { type: "academy_challenge_failed", group: "academy", severity: "warn" },
+  { type: "academy_enrolled", group: "academy", severity: "info" },
+  { type: "academy_stage_change", group: "academy", severity: "info" },
+  { type: "academy_goal_assigned", group: "academy", severity: "info" },
+  { type: "academy_goal_achieved", group: "academy", severity: "info" },
+  { type: "academy_goal_missed", group: "academy", severity: "warn" },
+  { type: "academy_action_assigned", group: "academy", severity: "info" },
+  { type: "academy_action_overdue", group: "academy", severity: "warn" },
+  { type: "academy_submitted", group: "academy", severity: "info" },
+  { type: "academy_graded", group: "academy", severity: "info" },
   // sync
-  { type: "sync", label: "Синхронизация PropReports", group: "sync", severity: "info", description: "Итог синхронизации или импорта: добавлено / обновлено / ошибки" },
-  { type: "sync_unmatched", label: "Несопоставленные счета", group: "sync", severity: "warn", description: "В выписке есть счета, не привязанные к трейдерам" },
+  { type: "sync", group: "sync", severity: "info" },
+  { type: "sync_unmatched", group: "sync", severity: "warn" },
   // system
-  { type: "system", label: "Системное", group: "system", severity: "info", description: "Служебные сообщения" },
+  { type: "system", group: "system", severity: "info" },
 ];
 
-export const GROUP_LABELS: Record<NotificationGroup, string> = {
-  team: "Команда",
-  ideas: "Идеи",
-  review: "Разбор",
-  risk: "Риск",
-  scaling: "Масштабирование",
-  academy: "Академия",
-  sync: "Синхронизация",
-  system: "Система",
-};
+const GROUPS: readonly NotificationGroup[] = ["team", "ideas", "review", "risk", "scaling", "academy", "sync", "system"];
+
+function withText(d: NotificationTypeDef, lang: Lang): NotificationTypeMeta {
+  return {
+    ...d,
+    label: notificationsT.tryFor(lang, `types.${d.type}.label`) ?? d.type,
+    description: notificationsT.tryFor(lang, `types.${d.type}.description`) ?? "",
+  };
+}
+
+/** The registry with labels in `lang` (GET /notifications/types). */
+export function notificationTypes(lang: Lang = "ru"): NotificationTypeMeta[] {
+  return TYPE_DEFS.map((d) => withText(d, lang));
+}
+
+/** Group labels in `lang`. */
+export function groupLabels(lang: Lang = "ru"): Record<NotificationGroup, string> {
+  return Object.fromEntries(GROUPS.map((g) => [g, notificationsT.tryFor(lang, `groups.${g}`) ?? g])) as Record<NotificationGroup, string>;
+}
+
+/** RU registry (kept for older imports). */
+export const NOTIFICATION_TYPES: readonly NotificationTypeMeta[] = notificationTypes("ru");
+export const GROUP_LABELS: Record<NotificationGroup, string> = groupLabels("ru");
 
 /** Legacy `notifications.type` values written by older code → canonical type. */
 export const LEGACY_TYPE_ALIASES: Readonly<Record<string, string>> = {
@@ -101,7 +120,7 @@ export const LEGACY_TYPE_ALIASES: Readonly<Record<string, string>> = {
   review: "eod_reviewed",
 };
 
-const TYPE_INDEX: ReadonlyMap<string, NotificationTypeMeta> = new Map(NOTIFICATION_TYPES.map((t) => [t.type, t]));
+const TYPE_INDEX: ReadonlyMap<string, NotificationTypeDef> = new Map(TYPE_DEFS.map((t) => [t.type, t]));
 
 /** "*" = all types (used by notification_prefs for a global mute). */
 export const ALL_TYPES_KEY = "*";
@@ -116,9 +135,11 @@ export function normalizeType(raw: string | null | undefined): string {
   return LEGACY_TYPE_ALIASES[t] ?? t;
 }
 
-export function typeMeta(raw: string | null | undefined): NotificationTypeMeta {
+/** Type metadata with its label in `lang` (unknown types: label = the key, group "system"). */
+export function typeMeta(raw: string | null | undefined, lang: Lang = "ru"): NotificationTypeMeta {
   const type = normalizeType(raw);
-  return TYPE_INDEX.get(type) ?? { type, label: type, group: "system", severity: "info", description: "" };
+  const def = TYPE_INDEX.get(type);
+  return def ? withText(def, lang) : { type, label: type, group: "system", severity: "info", description: "" };
 }
 
 export function isSeverity(v: unknown): v is Severity {

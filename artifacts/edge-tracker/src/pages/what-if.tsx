@@ -9,6 +9,9 @@ import { EmptyState, Page, PageHeader, Panel, Pill, Segmented } from "@/componen
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
+import { whatIfI18n } from "@/i18n/ns/whatIf";
+import { localeTag } from "@/lib/format";
+import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/components/analytics-page/metrics";
 import {
   type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
 } from "@/components/what-if/api";
@@ -19,6 +22,7 @@ import { BootstrapDetails, DeltaHeadline, KeyMetrics, MetricsTable } from "@/com
 import { ChartSkeleton, DailyHistogram, EquityChart } from "@/components/what-if/equity-chart";
 import { RuleBuilder } from "@/components/what-if/rule-builder";
 import { FeesBlock } from "@/components/what-if/fees-tab";
+import { CostsByGroup } from "@/components/analytics-page/CostsTab";
 import { ExcludedTable } from "@/components/what-if/excluded-table";
 import { ChangedDays, QuestionsBar } from "@/components/what-if/questions-bar";
 import { type Question, buildQuestions, changedDays } from "@/components/what-if/presets";
@@ -31,16 +35,12 @@ import { PersonSelect } from "@/components/people/person-select";
  * result first (before → after in $ and R, the difference big, equity curves, the days that change most — each
  * opens /day-report) → suggestions found in the data → own rule builder → fees. The scenario, period and trader
  * live in the URL (?r=…&p=…&trader=…), so a link opens exactly the same view. Nothing is stored unless
- * a scenario is saved explicitly.
+ * a scenario is saved explicitly. This is the one place for rule and fee what-ifs: the analytics «Что если» tab
+ * is a compact summary that links here (with #fees for the fee block).
  */
 
 type PeriodKey = "30d" | "90d" | "ytd" | "all";
-const PERIODS: { value: PeriodKey; label: string; phrase: string }[] = [
-  { value: "30d", label: "30 дней", phrase: "за 30 дней" },
-  { value: "90d", label: "90 дней", phrase: "за 90 дней" },
-  { value: "ytd", label: "С начала года", phrase: "с начала года" },
-  { value: "all", label: "Всё время", phrase: "за всё время" },
-];
+const PERIOD_KEYS: PeriodKey[] = ["30d", "90d", "ytd", "all"];
 const ALL = "__all__";
 const PREFS_KEY = "ws.simulator.prefs.v1";
 
@@ -53,7 +53,7 @@ function periodFrom(p: PeriodKey, today: string): string {
   }
 }
 
-const isPeriod = (v: unknown): v is PeriodKey => PERIODS.some((o) => o.value === v);
+const isPeriod = (v: unknown): v is PeriodKey => PERIOD_KEYS.includes(v as PeriodKey);
 
 function loadPrefs(): { period: PeriodKey; trader: string } {
   try {
@@ -77,6 +77,7 @@ function initialState(me: string) {
 }
 
 export default function WhatIf() {
+  const { t } = whatIfI18n.useT();
   const { user, isCurator, canEdit, dbUsers } = useAuth();
   const { toast } = useToast();
   const [, navigate] = useLocation();
@@ -107,10 +108,13 @@ export default function WhatIf() {
   const scopeTrader = isCurator ? (trader === ALL ? "" : trader) : "";
   const scope = useMemo<Scope>(() => ({ trader: scopeTrader, from: periodFrom(period, today), to: "" }), [scopeTrader, period, today]);
   const scenarioOwner = isCurator ? (trader === ALL ? "" : trader) : me;
-  const periodPhrase = PERIODS.find((p) => p.value === period)?.phrase ?? "";
+  const periodPhrase = t(`period.${period}.phrase`);
+  const periodOptions = PERIOD_KEYS.map((value) => ({ value, label: t(`period.${value}.label`) }));
+  // Fee table by trader / account / month / setup / horizon (/api/edge/costs) — same trader and period as the page.
+  const costFilters = useMemo<AnalyticsFilters>(() => ({ ...DEFAULT_FILTERS, period, trader: scopeTrader }), [period, scopeTrader]);
 
   const traders = useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")),
+    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag())),
     [dbUsers],
   );
 
@@ -120,8 +124,8 @@ export default function WhatIf() {
   const supported = useMemo(() => new Set<RuleType>(base.data?.ruleTypes ?? LEGACY_RULE_TYPES), [base.data?.ruleTypes]);
   const sendable = useMemo(() => rules.filter((r) => supported.has(r.type)), [rules, supported]);
   const unsupported = useMemo(
-    () => rules.filter((r) => !supported.has(r.type)).map((r) => ({ rule: r.type, reason: "эта версия сервера ещё не умеет такое правило" })),
-    [rules, supported],
+    () => rules.filter((r) => !supported.has(r.type)).map((r) => ({ rule: r.type, reason: t("unsupportedRule") })),
+    [rules, supported, t],
   );
 
   const rulesKey = JSON.stringify(sendable);
@@ -141,43 +145,50 @@ export default function WhatIf() {
   const toggleSuggestion = (s: Suggestion, applied: boolean) => setRules((rs) => (applied ? subtractRule(rs, s.rule) : mergeRule(rs, s.rule)));
   const toggleQuestion = (q: Question, applied: boolean) => { if (q.rule) { const rule = q.rule; setRules((rs) => (applied ? subtractRule(rs, rule) : mergeRule(rs, rule))); } };
   const questions = useMemo(
-    () => buildQuestions(base.data?.trades ?? [], base.data?.presets ?? []).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: "сервер ещё не умеет такое правило" } : q)),
-    [base.data?.trades, base.data?.presets, supported],
+    () => buildQuestions(base.data?.trades ?? [], base.data?.presets ?? []).map((q) => (q.rule && !supported.has(q.rule.type) ? { ...q, rule: null, disabled: t("unsupportedQuestion") } : q)),
+    [base.data?.trades, base.data?.presets, supported, t],
   );
   const dayTrader = isCurator ? (trader === ALL ? "" : trader) : "";
   const openDay = (day: string) => navigate(`/day-report?date=${day}${dayTrader ? `&trader=${encodeURIComponent(dayTrader)}` : ""}`);
 
   const recalculating = hasRules && (run.isFetching || pendingRecalc);
+  // A link with #fees (e.g. from the analytics «Что если» tab) scrolls to the fee block once it is rendered.
+  const feesReady = !!base.data && (base.data.trades.length ?? 0) > 0;
+  useEffect(() => {
+    if (!feesReady || window.location.hash !== "#fees") return;
+    const id = window.setTimeout(() => document.getElementById("fees")?.scrollIntoView({ block: "start" }), 50);
+    return () => window.clearTimeout(id);
+  }, [feesReady]);
   const controls = (
     <>
-      <Segmented<PeriodKey> ariaLabel="Период" value={period} onChange={setPeriod} options={PERIODS} />
+      <Segmented<PeriodKey> ariaLabel={t("periodAria")} value={period} onChange={setPeriod} options={periodOptions} />
       {isCurator && (
         <PersonSelect
           value={trader || ALL}
           onValueChange={setTrader}
           allValue={ALL}
-          allLabel="Вся команда"
+          allLabel={t("wholeTeam")}
           options={[
-            ...(me && traders.includes(me) ? [{ value: me, label: `Мои сделки (${me})` }] : []),
+            ...(me && traders.includes(me) ? [{ value: me, label: t("myTrades", { name: me }) }] : []),
             ...traders.filter((t) => t !== me),
             ...(trader && trader !== ALL && !traders.includes(trader) ? [trader] : []),
           ]}
           className="h-10 w-[200px]"
-          ariaLabel="Трейдер"
+          ariaLabel={t("traderAria")}
         />
       )}
     </>
   );
   const header = (
     <PageHeader
-      title="Что если"
+      title={t("title")}
       icon={FlaskConical}
-      description="Те же твои сделки, но с другими правилами: что было бы, если бы ты не делал того, что стоит денег"
+      description={t("description")}
       meta={
         recalculating ? (
-          <Pill tone="accent"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> пересчитываем…</Pill>
+          <Pill tone="accent"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> {t("recalculating")}</Pill>
         ) : base.data ? (
-          <span className="tabular-nums">{commonI18n.t("units.trades", { count: base.data.trades.length })} · {base.data.baseline.days} торговых дн. {periodPhrase}</span>
+          <span className="tabular-nums">{t("meta", { trades: commonI18n.t("units.trades", { count: base.data.trades.length }), days: t("tradingDays", { count: base.data.baseline.days }), period: periodPhrase })}</span>
         ) : null
       }
       actions={controls}
@@ -191,9 +202,9 @@ export default function WhatIf() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title="Не удалось загрузить сделки"
-            description={(base.error as Error | null)?.message ?? "Проверь соединение и попробуй ещё раз."}
-            action={<Button variant="outline" className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> Повторить</Button>}
+            title={t("loadError")}
+            description={(base.error as Error | null)?.message ?? t("loadErrorHint")}
+            action={<Button variant="outline" className="rounded-full" onClick={() => void base.refetch()} disabled={base.isFetching}><RefreshCw className="mr-1.5 h-4 w-4" aria-hidden="true" /> {commonI18n.t("actions.retry")}</Button>}
           />
         </Panel>
       </Page>
@@ -208,7 +219,7 @@ export default function WhatIf() {
           {Array.from({ length: 4 }, (_, i) => <Skeleton key={i} className="h-[168px] rounded-2xl" />)}
         </div>
         <Skeleton className="h-[560px] rounded-2xl" />
-        <span className="sr-only" role="status">Загрузка сделок…</span>
+        <span className="sr-only" role="status">{t("loadingTrades")}</span>
       </Page>
     );
   }
@@ -221,9 +232,9 @@ export default function WhatIf() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title={`Нет закрытых сделок${scopeTrader ? ` у ${scopeTrader}` : ""} ${periodPhrase}`}
-            description={`Симулятор считает по закрытым сделкам с известным результатом. ${period !== "all" ? "Выбери период подлиннее" : "Они появятся после синхронизации с PropReports"}${isCurator ? " или выбери другого трейдера" : ""}.`}
-            action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>Показать всё время</Button> : undefined}
+            title={scopeTrader ? t("empty.titleOf", { trader: scopeTrader, period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
+            description={period !== "all" ? (isCurator ? t("empty.longerCurator") : t("empty.longer")) : (isCurator ? t("empty.syncCurator") : t("empty.sync"))}
+            action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : undefined}
           />
         </Panel>
       </Page>
@@ -244,7 +255,7 @@ export default function WhatIf() {
       <QuestionsBar questions={questions} rules={rules} onToggle={toggleQuestion} />
 
 
-      <Panel title="Результат" icon={TrendingUp} aria-busy={recalculating || undefined}>
+      <Panel title={t("result")} icon={TrendingUp} aria-busy={recalculating || undefined}>
         <div className="flex flex-col gap-4">
           <ScenarioBar
             rules={rules}
@@ -253,25 +264,25 @@ export default function WhatIf() {
             onClear={() => setRules([])}
             onLoad={(rs, name) => {
               setRules(decodeRules(encodeRules(rs)));
-              toast({ title: "Сценарий открыт", description: name });
+              toast({ title: t("toast.opened"), description: name });
             }}
             saved={saved.data ?? []}
             canSave={canEdit && !!scenarioOwner}
             saving={save.isPending}
             onSave={(name) =>
               save.mutate({ name, rules: sendable }, {
-                onSuccess: () => toast({ title: "Сценарий сохранён", description: name }),
-                onError: (e) => toast({ title: "Не удалось сохранить", description: (e as Error).message, variant: "destructive" }),
+                onSuccess: () => toast({ title: t("toast.saved"), description: name }),
+                onError: (e) => toast({ title: t("toast.saveFailed"), description: (e as Error).message, variant: "destructive" }),
               })
             }
             onDelete={(id) => del.mutate(id, {
-              onSuccess: () => toast({ title: "Сценарий убран из списка" }),
-              onError: (e) => toast({ title: "Не удалось убрать", description: (e as Error).message, variant: "destructive" }),
+              onSuccess: () => toast({ title: t("toast.removed") }),
+              onError: (e) => toast({ title: t("toast.removeFailed"), description: (e as Error).message, variant: "destructive" }),
             })}
           />
           {run.isError && hasRules && (
             <p className="rounded-xl bg-[hsl(var(--down)/0.1)] px-3 py-2 text-sm text-down">
-              Не удалось пересчитать сценарий: {(run.error as Error | null)?.message ?? "ошибка сервера"}. Показано, как было.
+              {t("runError", { message: (run.error as Error | null)?.message ?? t("serverError") })}
             </p>
           )}
           <div className={cn("flex flex-col gap-4 transition-opacity duration-[var(--dur-2)] motion-reduce:transition-none", recalculating && "opacity-60")}>
@@ -290,37 +301,38 @@ export default function WhatIf() {
       <section aria-labelledby="sim-suggestions" className="flex flex-col gap-3">
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 id="sim-suggestions" className="flex items-center gap-2 text-sm font-semibold">
-            <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> Что ещё дало бы больше всего
+            <Lightbulb className="h-4 w-4 text-muted-foreground" aria-hidden="true" /> {t("suggestionsTitle")}
           </h2>
-          <p className="text-xs text-muted-foreground">Подбираем по твоим сделкам {periodPhrase}. Это история, а не обещание.</p>
+          <p className="text-xs text-muted-foreground">{t("suggestionsHint", { period: periodPhrase })}</p>
         </div>
         <SuggestionCards data={suggestions.data} isLoading={suggestions.isLoading} rules={rules} periodLabel={periodPhrase} onToggle={toggleSuggestion} />
-        {suggestions.isError && <p className="text-xs text-down">Подсказки не загрузились — собери сценарий вручную ниже.</p>}
+        {suggestions.isError && <p className="text-xs text-down">{t("suggestionsError")}</p>}
       </section>
 
-      <Panel title="Свой сценарий" icon={SlidersHorizontal} description="Опиши правило словами — сразу видно, сколько сделок оно заденет">
+      <Panel title={t("ownTitle")} icon={SlidersHorizontal} description={t("ownHint")}>
         <RuleBuilder trades={b.trades} supported={supported} rules={rules} presets={b.presets} onAdd={addRule} onApplyPreset={(p) => setRules((rs) => p.rules.filter((x) => supported.has(x.type)).reduce(mergeRule, rs))} />
       </Panel>
 
-      <Panel title="Комиссии" icon={Receipt} id="fees">
-        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} presets={b.presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} />
+      <Panel title={t("feesTitle")} icon={Receipt} id="fees" className="scroll-mt-[calc(var(--sticky-top,0px)+1rem)]">
+        <FeesBlock trades={b.trades} data={fees.data} isLoading={fees.isLoading} presets={b.presets} rules={rules} canApplyPlan={supported.has("commissionPlan")} onApplyPlan={addRule} costsByGroup={<CostsByGroup filters={costFilters} isCurator={isCurator} />} />
       </Panel>
 
       {showScenario && (
-        <Fold title="Какие сделки убраны" icon={ListX} hint={`${commonI18n.t("units.trades", { count: r!.excluded.length })}${r!.changed.length ? ` · изменено ${r!.changed.length}` : ""}`}>
+        <Fold title={t("removedTitle")} icon={ListX} hint={`${commonI18n.t("units.trades", { count: r!.excluded.length })}${r!.changed.length ? ` · ${t("changedCount", { count: r!.changed.length })}` : ""}`}>
           <ExcludedTable excluded={r!.excluded} changed={r!.changed} />
         </Fold>
       )}
-      <Fold title="Все показатели и надёжность" icon={BarChart3} hint="таблица, дни по результату, как считаем">
+      <Fold title={t("allTitle")} icon={BarChart3} hint={t("allHint")}>
         <div className="flex flex-col gap-5">
           <MetricsTable baseline={baselineM} scenario={scenarioM} hasScenario={showScenario} />
           <div>
-            <p className="mb-1 text-sm font-semibold">Дни по результату</p>
+            <p className="mb-1 text-sm font-semibold">{t("daysByResult")}</p>
             <DailyHistogram base={r?.baselineDaily ?? b.daily} scenario={r?.scenarioDaily ?? []} hasScenario={showScenario} />
           </div>
           {showScenario && (
             <div>
-              <p className="mb-2 text-sm font-semibold">Насколько этому верить</p>
+              <p className="mb-2 text-sm font-semibold">{t("howReliable")}</p>
+
               <BootstrapDetails b={r!.bootstrap} />
             </div>
           )}

@@ -10,6 +10,8 @@ import {
   type FilterPreset, type OfferingFilters,
 } from "./filters";
 import { DEAL_TYPE_HINT, DEAL_TYPE_LABEL, type DealType } from "./score";
+import { commonI18n } from "@/i18n/ns/common";
+import { offeringsI18n } from "@/i18n/ns/offerings";
 
 const TYPES: DealType[] = ["spo", "direct", "pipe", "atm", "ipo", "shelf", "s1"];
 
@@ -71,6 +73,7 @@ export function FilterBar({
   shown: number;
   total: number;
 }) {
+  const { t } = offeringsI18n.useT();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const nameRef = useRef<HTMLInputElement>(null);
@@ -87,12 +90,12 @@ export function FilterBar({
           ref={searchRef}
           value={query}
           onChange={(e) => onQuery(e.target.value)}
-          placeholder="Тикер, компания, банк"
-          aria-label="Поиск по размещениям"
+          placeholder={t("filters.searchPlaceholder")}
+          aria-label={t("filters.searchAria")}
           className="h-8 w-48 pl-9 pr-9"
         />
         {query ? (
-          <button type="button" onClick={() => onQuery("")} className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground" aria-label="Очистить поиск">
+          <button type="button" onClick={() => onQuery("")} className="absolute right-2 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground" aria-label={commonI18n.t("actions.clearSearch")}>
             <X className="h-3.5 w-3.5" aria-hidden="true" />
           </button>
         ) : <Kbd className="absolute right-2 top-1/2 -translate-y-1/2">/</Kbd>}
@@ -100,41 +103,41 @@ export function FilterBar({
 
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger asChild>
-          <Button variant={count ? "secondary" : "outline"} size="sm" className="h-8" aria-label={`Фильтры${count ? `: ${count}` : ""}`}>
-            <SlidersHorizontal aria-hidden="true" /> Фильтры
+          <Button variant={count ? "secondary" : "outline"} size="sm" className="h-8" aria-label={count ? t("filters.filtersAria", { count }) : commonI18n.t("actions.filters")}>
+            <SlidersHorizontal aria-hidden="true" /> {commonI18n.t("actions.filters")}
             {count > 0 && <span className="rounded-full bg-primary/15 px-1.5 text-2xs tabular-nums text-primary">{count}</span>}
           </Button>
         </PopoverTrigger>
         <PopoverContent align="start" className="w-[22rem] space-y-3">
           <div>
-            <div className="mb-1.5 text-xs text-muted-foreground">Тип сделки</div>
+            <div className="mb-1.5 text-xs text-muted-foreground">{t("filters.dealType")}</div>
             <div className="flex flex-wrap gap-1">
-              {TYPES.map((t) => {
-                const on = filters.types.includes(t);
+              {TYPES.map((dt) => {
+                const on = filters.types.includes(dt);
                 return (
-                  <button key={t} type="button" aria-pressed={on} title={DEAL_TYPE_HINT[t]}
-                    onClick={() => set({ types: on ? filters.types.filter((x) => x !== t) : [...filters.types, t] })}
+                  <button key={dt} type="button" aria-pressed={on} title={DEAL_TYPE_HINT[dt]}
+                    onClick={() => set({ types: on ? filters.types.filter((x) => x !== dt) : [...filters.types, dt] })}
                     className="chip inline-flex min-h-7 items-center px-2.5 text-xs font-medium">
-                    {DEAL_TYPE_LABEL[t]}
+                    {DEAL_TYPE_LABEL[dt]}
                   </button>
                 );
               })}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <NumField label="Размер от, % мкап" value={filters.minPctMcap} onChange={(v) => set({ minPctMcap: v })} suffix="%" />
-            <NumField label="Дисконт от" value={filters.minDiscount} onChange={(v) => set({ minDiscount: v })} suffix="%" />
-            <NumField label="Цена от" value={filters.priceMin} onChange={(v) => set({ priceMin: v })} suffix="$" step={0.5} />
-            <NumField label="Цена до" value={filters.priceMax} onChange={(v) => set({ priceMax: v })} suffix="$" step={0.5} />
-            <NumField label="Флоут до, млн акций" value={filters.floatMaxM} onChange={(v) => set({ floatMaxM: v })} suffix="M" />
-            <NumField label="Мкап до, $M" value={filters.mcapMaxM} onChange={(v) => set({ mcapMaxM: v })} suffix="M" step={50} />
-            <NumField label="Скор от" value={filters.minScore} onChange={(v) => set({ minScore: v == null ? null : Math.min(100, v) })} />
+            <NumField label={t("filters.minPctMcap")} value={filters.minPctMcap} onChange={(v) => set({ minPctMcap: v })} suffix="%" />
+            <NumField label={t("filters.minDiscount")} value={filters.minDiscount} onChange={(v) => set({ minDiscount: v })} suffix="%" />
+            <NumField label={t("filters.priceMin")} value={filters.priceMin} onChange={(v) => set({ priceMin: v })} suffix="$" step={0.5} />
+            <NumField label={t("filters.priceMax")} value={filters.priceMax} onChange={(v) => set({ priceMax: v })} suffix="$" step={0.5} />
+            <NumField label={t("filters.floatMax")} value={filters.floatMaxM} onChange={(v) => set({ floatMaxM: v })} suffix="M" />
+            <NumField label={t("filters.mcapMax")} value={filters.mcapMaxM} onChange={(v) => set({ mcapMaxM: v })} suffix="M" step={50} />
+            <NumField label={t("filters.minScore")} value={filters.minScore} onChange={(v) => set({ minScore: v == null ? null : Math.min(100, v) })} />
             <label className="flex items-end gap-2 pb-1.5 text-xs text-foreground">
               <input type="checkbox" checked={filters.mine} onChange={(e) => set({ mine: e.target.checked })} className="h-4 w-4 accent-[hsl(var(--primary))]" />
-              Только мои тикеры
+              {t("filters.mineOnly")}
             </label>
           </div>
-          <p className="text-2xs text-muted-foreground">Строки без значения (нет мкап, флоута, дисконта) числовой фильтр не проходят.</p>
+          <p className="text-2xs text-muted-foreground">{t("filters.numericHint")}</p>
           <form
             className="flex items-center gap-2 border-t border-[var(--glass-border)] pt-3"
             onSubmit={(e) => {
@@ -145,21 +148,21 @@ export function FilterBar({
               setName("");
             }}
           >
-            <Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder="Название набора" aria-label="Название набора фильтров" className="h-8 flex-1" maxLength={40} />
+            <Input ref={nameRef} value={name} onChange={(e) => setName(e.target.value)} placeholder={t("filters.presetName")} aria-label={t("filters.presetNameAria")} className="h-8 flex-1" maxLength={40} />
             <Button type="submit" size="sm" variant="outline" className="h-8" disabled={count === 0 || !name.trim()}>
-              <Bookmark aria-hidden="true" /> Сохранить
+              <Bookmark aria-hidden="true" /> {commonI18n.t("actions.save")}
             </Button>
           </form>
           <div className="flex justify-between">
-            <Button type="button" variant="ghost" size="sm" className="h-8" disabled={count === 0} onClick={() => onChange(EMPTY_FILTERS)}>Сбросить</Button>
-            <Button type="button" size="sm" className="h-8" onClick={() => setOpen(false)}>Готово</Button>
+            <Button type="button" variant="ghost" size="sm" className="h-8" disabled={count === 0} onClick={() => onChange(EMPTY_FILTERS)}>{commonI18n.t("actions.reset")}</Button>
+            <Button type="button" size="sm" className="h-8" onClick={() => setOpen(false)}>{commonI18n.t("actions.done")}</Button>
           </div>
         </PopoverContent>
       </Popover>
 
-      <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label="Наборы фильтров">
+      <div className="flex min-w-0 flex-wrap items-center gap-1.5" role="group" aria-label={t("filters.presetsAria")}>
         <FilterChip active={filters.mine} onClick={() => set({ mine: !filters.mine })} count={mineCount} className="min-h-8 text-xs">
-          Мои тикеры
+          {t("filters.myTickers")}
         </FilterChip>
         {all.map((p) => {
           const on = activePreset?.id === p.id;
@@ -169,7 +172,7 @@ export function FilterBar({
                 {p.name}
               </FilterChip>
               {!p.builtin && (
-                <button type="button" onClick={() => onDeletePreset(p.id)} aria-label={`Удалить набор «${p.name}»`}
+                <button type="button" onClick={() => onDeletePreset(p.id)} aria-label={t("filters.deletePreset", { name: p.name })}
                   className="absolute right-1.5 top-1/2 inline-flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground hover:text-foreground">
                   <X className="h-3 w-3" aria-hidden="true" />
                 </button>
@@ -180,8 +183,8 @@ export function FilterBar({
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{shown === total ? `${total}` : `${shown} из ${total}`}</span>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onExport} disabled={!canExport} aria-label="Скачать CSV" title="Скачать CSV">
+        <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">{shown === total ? `${total}` : commonI18n.t("states.ofTotal", { value: shown, total })}</span>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onExport} disabled={!canExport} aria-label={t("filters.downloadCsv")} title={t("filters.downloadCsv")}>
           <Download aria-hidden="true" />
         </Button>
       </div>

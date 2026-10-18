@@ -18,6 +18,7 @@ import {
 } from "./api";
 import { fmtNum, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { dayReportI18n } from "@/i18n/ns/dayReport";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -30,13 +31,10 @@ const TOOLTIP_STYLE: CSSProperties = {
   fontVariantNumeric: "tabular-nums",
 };
 
-export const LEAK_SHORT: Record<LeakKind, string> = {
-  fee_over_gross: "комиссия > брутто",
-  after_peak: "после пика",
-  revenge: "реванш",
-  size_up: "размер ↑",
-  after_limit: "после лимита",
-};
+/** Leak kind → short label in the current language (read on access). */
+export const LEAK_SHORT: Record<LeakKind, string> = Object.defineProperties({} as Record<LeakKind, string>, Object.fromEntries(
+  (["fee_over_gross", "after_peak", "revenge", "size_up", "after_limit"] as const).map((k) => [k, { get: () => dayReportI18n.t(`leakShort.${k}`), enumerable: true }]),
+));
 
 function Money({ v, signed = true, className }: { v: number | null | undefined; signed?: boolean; className?: string }) {
   return <span className={cn("tabular-nums", toneText(toneOf(v)), className)}>{fmtUsd(v, { signed })}</span>;
@@ -52,6 +50,7 @@ function TradeLink({ t }: { t: Pick<TradeRef, "id" | "ticker"> }) {
 
 // ── 1. Header KPIs ───────────────────────────────────────────────────────────
 export function SummaryBento({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   const s = doc.summary;
   const c = doc.comparison;
   const feeShare = s.feeShareOfGross;
@@ -59,24 +58,28 @@ export function SummaryBento({ doc }: { doc: DayReport }) {
   return (
     <StatGrid className="xl:grid-cols-5">
       <StatCard
-        label="Нетто за день"
+        label={t("summary.net")}
         value={fmtUsd(s.net, { signed: true })}
         tone={toneOf(s.net)}
-        hint={`брутто ${fmtUsd(s.gross, { signed: true })} · комиссии ${fmtUsd(s.fees)}${feeShare != null ? ` (${fmtRate(feeShare, 1)} брутто)` : ""}`}
+        hint={feeShare != null
+          ? t("summary.netHintShare", { gross: fmtUsd(s.gross, { signed: true }), fees: fmtUsd(s.fees), share: fmtRate(feeShare, 1) })
+          : t("summary.netHint", { gross: fmtUsd(s.gross, { signed: true }), fees: fmtUsd(s.fees) })}
       />
       <StatCard
-        label="Сделки · win rate"
-        value={`${s.closed}${s.open ? ` +${s.open} откр.` : ""} · ${fmtRate(s.winRate)}`}
-        hint={`${s.wins}W / ${s.losses}L${s.be ? ` / ${s.be} BE` : ""} · средняя ${fmtUsd(s.expectancy, { signed: true })}`}
+        label={t("summary.tradesWr")}
+        value={s.open ? t("summary.tradesValueOpen", { closed: s.closed, open: s.open, wr: fmtRate(s.winRate) }) : t("summary.tradesValue", { closed: s.closed, wr: fmtRate(s.winRate) })}
+        hint={s.be
+          ? t("summary.wlBe", { wins: s.wins, losses: s.losses, be: s.be, avg: fmtUsd(s.expectancy, { signed: true }) })
+          : t("summary.wl", { wins: s.wins, losses: s.losses, avg: fmtUsd(s.expectancy, { signed: true }) })}
       />
       <StatCard
-        label="Profit factor ($ нетто)"
-        value={s.profitFactor != null ? fmtNum(s.profitFactor) : s.wins > 0 ? "без убытков" : "—"}
+        label={t("summary.pf")}
+        value={s.profitFactor != null ? fmtNum(s.profitFactor) : s.wins > 0 ? t("summary.noLosses") : "—"}
         tone={s.profitFactor == null ? (s.wins > 0 ? "up" : "neutral") : s.profitFactor >= 1 ? "up" : "down"}
-        hint={`ср. плюс ${fmtUsd(s.avgWin, { signed: true })} · ср. минус ${fmtUsd(s.avgLoss, { signed: true })}`}
+        hint={t("summary.avgWinLoss", { win: fmtUsd(s.avgWin, { signed: true }), loss: fmtUsd(s.avgLoss, { signed: true }) })}
       />
       <StatCard
-        label="Лучшая / худшая"
+        label={t("summary.bestWorst")}
         value={
           <span className="flex items-baseline gap-2 text-xl">
             <Money v={s.best?.net} />
@@ -87,10 +90,12 @@ export function SummaryBento({ doc }: { doc: DayReport }) {
         hint={s.best && s.worst ? `${s.best.ticker} · ${s.worst.ticker}` : "—"}
       />
       <StatCard
-        label={`vs ${c.days || 20} торговых дней`}
-        value={c.betterThanPct != null && s.closed > 0 ? `лучше ${fmtRate(c.betterThanPct)}` : "—"}
+        label={t("summary.vsDays", { days: c.days || 20 })}
+        value={c.betterThanPct != null && s.closed > 0 ? t("summary.better", { pct: fmtRate(c.betterThanPct) }) : "—"}
         tone={cmpTone}
-        hint={c.avg != null ? `среднее ${fmtUsd(c.avg, { signed: true })}${c.z != null ? ` · z ${fmtNum(c.z, { signed: true })}` : ""}` : c.label}
+        hint={c.avg != null
+          ? c.z != null ? t("summary.avgZ", { avg: fmtUsd(c.avg, { signed: true }), z: fmtNum(c.z, { signed: true }) }) : t("summary.avg", { avg: fmtUsd(c.avg, { signed: true }) })
+          : c.label}
       />
     </StatGrid>
   );
@@ -98,6 +103,7 @@ export function SummaryBento({ doc }: { doc: DayReport }) {
 
 // ── 2. Intraday equity ───────────────────────────────────────────────────────
 export function EquityPanel({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   const e = doc.equity;
   const timed = e.points.every((p) => p.t != null);
   const data = e.points.map((p, i) => ({ ...p, x: timed ? p.t! : i }));
@@ -109,27 +115,27 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
     return p?.time?.slice(0, 5) ?? "";
   };
   const color = e.final >= 0 ? "hsl(var(--up))" : "hsl(var(--down))";
-  const srcLabel = e.timeSource === "executions" ? "по времени исполнений (выход), ET" : e.timeSource === "snapshot" ? "по времени брокера (выход), ET" : "по порядку сделок — время неизвестно";
+  const srcLabel = e.timeSource === "executions" ? t("equity.srcExecutions") : e.timeSource === "snapshot" ? t("equity.srcSnapshot") : t("equity.srcOrder");
   return (
     <Panel
-      title="Кривая дня"
-      description={`Нарастающее нетто ${srcLabel}`}
+      title={t("equity.title")}
+      description={t("equity.desc", { src: srcLabel })}
       icon={LineChart}
       className="min-w-0"
       actions={
         <div className="flex flex-wrap gap-1.5">
-          <Pill tone="up" title="Максимум нарастающего нетто">пик {fmtUsd(e.peak.value, { signed: true })}{e.peak.time ? ` · ${e.peak.time.slice(0, 5)}` : ""}</Pill>
-          <Pill tone={e.maxDrawdown.value > 0 ? "down" : "neutral"} title="Максимальная просадка от пика внутри дня">
+          <Pill tone="up" title={t("equity.peakTitle")}>{t("equity.peak", { amount: fmtUsd(e.peak.value, { signed: true }) })}{e.peak.time ? ` · ${e.peak.time.slice(0, 5)}` : ""}</Pill>
+          <Pill tone={e.maxDrawdown.value > 0 ? "down" : "neutral"} title={t("equity.ddTitle")}>
             max DD {fmtUsd(-e.maxDrawdown.value)}{e.maxDrawdown.fromTime && e.maxDrawdown.toTime ? ` · ${e.maxDrawdown.fromTime.slice(0, 5)}→${e.maxDrawdown.toTime.slice(0, 5)}` : ""}
           </Pill>
-          {e.giveback > 0 && <Pill tone="warn" title="Пик минус закрытие дня">отдано {fmtUsd(e.giveback)}</Pill>}
+          {e.giveback > 0 && <Pill tone="warn" title={t("equity.givebackTitle")}>{t("equity.giveback", { amount: fmtUsd(e.giveback) })}</Pill>}
         </div>
       }
     >
       {data.length < 2 ? (
-        <EmptyState icon={LineChart} title="Нет закрытых сделок" description="Кривая строится по закрытым сделкам дня." className="py-8" />
+        <EmptyState icon={LineChart} title={t("equity.emptyTitle")} description={t("equity.emptyDesc")} className="py-8" />
       ) : (
-        <div className="h-56 w-full" role="img" aria-label={`Кривая нетто за день: пик ${fmtUsd(e.peak.value, { signed: true })}, закрытие ${fmtUsd(e.final, { signed: true })}, максимальная просадка ${fmtUsd(e.maxDrawdown.value)}`}>
+        <div className="h-56 w-full" role="img" aria-label={t("equity.aria", { peak: fmtUsd(e.peak.value, { signed: true }), close: fmtUsd(e.final, { signed: true }), dd: fmtUsd(e.maxDrawdown.value) })}>
           <ResponsiveContainer width="100%" height="100%">
             <AreaChart data={data} margin={{ top: 10, right: 12, bottom: 0, left: 0 }}>
               <defs>
@@ -153,14 +159,14 @@ export function EquityPanel({ doc }: { doc: DayReport }) {
               />
               <YAxis width={64} tick={{ fontSize: 11, fill: "hsl(var(--muted-foreground))" }} axisLine={false} tickLine={false} tickFormatter={(v: number) => fmtUsd(v)} />
               <ReferenceLine y={0} stroke="hsl(var(--border))" />
-              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: "дневной лимит", fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomLeft" }} />}
+              {doc.dailyLossLimit != null && <ReferenceLine y={-doc.dailyLossLimit} stroke="hsl(var(--down))" strokeDasharray="4 4" label={{ value: t("equity.dailyLimit"), fill: "hsl(var(--down))", fontSize: 10, position: "insideBottomLeft" }} />}
               <Tooltip
                 contentStyle={TOOLTIP_STYLE}
                 labelFormatter={(x: number) => {
                   const p = data.find((d) => d.x === x);
-                  return p ? `${p.time ?? ""}${p.ticker ? ` · ${p.ticker}` : " · старт"}` : "";
+                  return p ? `${p.time ?? ""} · ${p.ticker || t("equity.start")}` : "";
                 }}
-                formatter={(v: number, _n, item) => [`${fmtUsd(v, { signed: true })}${item?.payload?.tradeId ? ` (сделка ${fmtUsd(item.payload.net, { signed: true })})` : ""}`, "Нетто нарастающим"]}
+                formatter={(v: number, _n, item) => [`${fmtUsd(v, { signed: true })}${item?.payload?.tradeId ? ` ${t("equity.tradeNet", { amount: fmtUsd(item.payload.net, { signed: true }) })}` : ""}`, t("equity.cumulative")]}
               />
               <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#dr-eq)" isAnimationActive={false} dot={{ r: 2.5, fill: color }} />
               {peakPt && <ReferenceDot x={peakPt.x} y={peakPt.cum} r={5} fill="hsl(var(--up))" stroke="hsl(var(--background))" />}
@@ -195,35 +201,41 @@ export function TimelinePanel({ doc }: { doc: DayReport }) {
     for (const l of doc.leaks) for (const id of l.tradeIds) m.set(id, [...(m.get(id) ?? []), l.kind]);
     return m;
   }, [doc.leaks]);
+  const { t } = dayReportI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const rows = doc.timeline;
   // Default: chronological (# = order of entry). Any header re-sorts, e.g. by net to find the day's worst trades.
   const { rows: sorted, thProps } = useTableSort(rows, TIMELINE_ACCESSORS, "index", "asc");
   return (
     <Panel
-      title="Хронология сделок"
-      description={`${commonI18n.t("units.trades", { count: rows.length })} по времени входа, ET${doc.firstEntry && doc.lastExit ? ` · ${doc.firstEntry.slice(0, 5)}–${doc.lastExit.slice(0, 5)}` : ""}${doc.activeMinutes != null ? ` · в рынке ${fmtHold(doc.activeMinutes)}` : ""}`}
+      title={t("timeline.title")}
+      description={[
+        t("timeline.desc", { trades: tc("units.trades", { count: rows.length }) }),
+        doc.firstEntry && doc.lastExit ? t("timeline.span", { from: doc.firstEntry.slice(0, 5), to: doc.lastExit.slice(0, 5) }) : null,
+        doc.activeMinutes != null ? t("timeline.inMarket", { time: fmtHold(doc.activeMinutes) }) : null,
+      ].filter(Boolean).join(" · ")}
       icon={ListOrdered}
       className="min-w-0"
       padded={false}
       bodyClassName="px-2 pb-2 sm:px-3"
     >
-      <DataTable ariaLabel="Хронология сделок дня">
+      <DataTable ariaLabel={t("timeline.aria")}>
         <table>
           <thead>
             <tr>
               <SortableTh {...thProps("index")}>#</SortableTh>
-              <SortableTh {...thProps("entry")}>Вход</SortableTh>
-              <SortableTh {...thProps("exit")}>Выход</SortableTh>
-              <SortableTh {...thProps("ticker")}>Тикер</SortableTh>
-              <SortableTh {...thProps("side")}>Сторона</SortableTh>
-              <SortableTh {...thProps("qty")} align="right" className="!text-right">Кол-во</SortableTh>
-              <SortableTh {...thProps("hold")} align="right" className="!text-right">Удержание</SortableTh>
-              <SortableTh {...thProps("gross")} align="right" className="!text-right">Брутто</SortableTh>
-              <SortableTh {...thProps("fees")} align="right" className="!text-right">Комиссия</SortableTh>
-              <SortableTh {...thProps("net")} align="right" className="!text-right">Нетто</SortableTh>
-              <SortableTh {...thProps("cum")} align="right" className="!text-right">Итог дня</SortableTh>
-              <SortableTh {...thProps("gap")}>Пауза</SortableTh>
-              <th scope="col">Флаги</th>
+              <SortableTh {...thProps("entry")}>{t("timeline.entry")}</SortableTh>
+              <SortableTh {...thProps("exit")}>{t("timeline.exit")}</SortableTh>
+              <SortableTh {...thProps("ticker")}>{tc("trading.ticker")}</SortableTh>
+              <SortableTh {...thProps("side")}>{t("timeline.side")}</SortableTh>
+              <SortableTh {...thProps("qty")} align="right" className="!text-right">{t("timeline.qty")}</SortableTh>
+              <SortableTh {...thProps("hold")} align="right" className="!text-right">{t("timeline.hold")}</SortableTh>
+              <SortableTh {...thProps("gross")} align="right" className="!text-right">{tc("trading.gross")}</SortableTh>
+              <SortableTh {...thProps("fees")} align="right" className="!text-right">{t("timeline.fee")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right" className="!text-right">{tc("trading.net")}</SortableTh>
+              <SortableTh {...thProps("cum")} align="right" className="!text-right">{t("timeline.dayTotal")}</SortableTh>
+              <SortableTh {...thProps("gap")}>{t("timeline.gap")}</SortableTh>
+              <th scope="col">{t("timeline.flags")}</th>
             </tr>
           </thead>
           <tbody>
@@ -236,6 +248,7 @@ export function TimelinePanel({ doc }: { doc: DayReport }) {
 }
 
 function TimelineTr({ t, flags }: { t: TimelineRow; flags: LeakKind[] }) {
+  const { t: td } = dayReportI18n.useT();
   return (
     <tr className={cn(flags.length > 0 && "bg-[hsl(var(--chart-3)/0.06)]")}>
       <td className="text-muted-foreground">{t.index}</td>
@@ -250,8 +263,8 @@ function TimelineTr({ t, flags }: { t: TimelineRow; flags: LeakKind[] }) {
       <td className="text-right font-medium"><Money v={t.net} /></td>
       <td className="text-right"><Money v={t.cumAfter} /></td>
       <td className="whitespace-nowrap text-xs text-muted-foreground">
-        {t.overlap ? <Pill tone="purple" title="Вход при ещё открытой предыдущей позиции">параллельно</Pill> : t.gapMin != null ? fmtHold(t.gapMin) : "—"}
-        {t.afterLoss && !t.overlap && <span className="ml-1 text-down" title="Предыдущая закрытая сделка — убыток">после −</span>}
+        {t.overlap ? <Pill tone="purple" title={td("timeline.overlapTitle")}>{td("timeline.overlap")}</Pill> : t.gapMin != null ? fmtHold(t.gapMin) : "—"}
+        {t.afterLoss && !t.overlap && <span className="ml-1 text-down" title={td("timeline.afterLossTitle")}>{td("timeline.afterLoss")}</span>}
       </td>
       <td>
         <div className="flex flex-wrap gap-1">
@@ -273,6 +286,8 @@ const BUCKET_ACCESSORS = {
 } as const;
 
 function BucketTable({ title, rows: input, ariaLabel, defaultSort = "order" }: { title: string; rows: Bucket[]; ariaLabel: string; defaultSort?: "order" | "net" }) {
+  const { t } = dayReportI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const indexed = React.useMemo(() => input.map((r, order) => ({ ...r, order })), [input]);
   const { rows, thProps } = useTableSort(indexed, BUCKET_ACCESSORS, defaultSort, defaultSort === "order" ? "asc" : "desc");
   const max = Math.max(0, ...rows.map((r) => Math.abs(r.net)));
@@ -280,16 +295,16 @@ function BucketTable({ title, rows: input, ariaLabel, defaultSort = "order" }: {
     <div className="min-w-0">
       <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{title}</h3>
       {rows.length === 0 ? (
-        <p className="py-3 text-sm text-muted-foreground">Нет данных</p>
+        <p className="py-3 text-sm text-muted-foreground">{t("breakdown.noData")}</p>
       ) : (
         <DataTable ariaLabel={ariaLabel}>
           <table>
             <thead>
               <tr>
                 <SortableTh {...thProps("label")}>{title}</SortableTh>
-                <SortableTh {...thProps("trades")} align="right" className="!text-right">Сд.</SortableTh>
+                <SortableTh {...thProps("trades")} align="right" className="!text-right">{t("breakdown.tradesShort")}</SortableTh>
                 <SortableTh {...thProps("wins")} align="right" className="!text-right">W/L</SortableTh>
-                <SortableTh {...thProps("net")} align="right" className="!text-right">Нетто</SortableTh>
+                <SortableTh {...thProps("net")} align="right" className="!text-right">{tc("trading.net")}</SortableTh>
               </tr>
             </thead>
             <tbody>
@@ -317,12 +332,13 @@ function BucketTable({ title, rows: input, ariaLabel, defaultSort = "order" }: {
 }
 
 export function BreakdownPanel({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   return (
-    <Panel title="Разрезы" description="Нетто по тикеру, часу входа (ET) и стороне" icon={BarChart3} className="min-w-0">
+    <Panel title={t("breakdown.title")} description={t("breakdown.desc")} icon={BarChart3} className="min-w-0">
       <div className="grid gap-4 lg:grid-cols-3">
-        <BucketTable title="Тикер" rows={doc.breakdown.byTicker} ariaLabel="Нетто по тикерам" defaultSort="net" />
-        <BucketTable title="Час (ET)" rows={doc.breakdown.byHour} ariaLabel="Нетто по часу входа" />
-        <BucketTable title="Сторона" rows={doc.breakdown.bySide} ariaLabel="Нетто по стороне" />
+        <BucketTable title={t("breakdown.ticker")} rows={doc.breakdown.byTicker} ariaLabel={t("breakdown.tickerAria")} defaultSort="net" />
+        <BucketTable title={t("breakdown.hour")} rows={doc.breakdown.byHour} ariaLabel={t("breakdown.hourAria")} />
+        <BucketTable title={t("breakdown.side")} rows={doc.breakdown.bySide} ariaLabel={t("breakdown.sideAria")} />
       </div>
     </Panel>
   );
@@ -330,23 +346,23 @@ export function BreakdownPanel({ doc }: { doc: DayReport }) {
 
 // ── 5. Leaks ─────────────────────────────────────────────────────────────────
 const SEVERITY_TONE: Record<Leak["severity"], Tone> = { high: "down", medium: "warn", low: "neutral" };
-const SEVERITY_LABEL: Record<Leak["severity"], string> = { high: "сильная", medium: "средняя", low: "слабая" };
 
 export function LeaksPanel({ doc }: { doc: DayReport }) {
-  const tickerOf = React.useMemo(() => new Map(doc.timeline.map((t) => [t.id, t.ticker])), [doc.timeline]);
+  const { t } = dayReportI18n.useT();
+  const tickerOf = React.useMemo(() => new Map(doc.timeline.map((row) => [row.id, row.ticker])), [doc.timeline]);
   return (
     <Panel
-      title="Утечки"
+      title={t("leaks.title")}
       description={doc.dailyLossLimit != null
-        ? `Правила дня · дневной лимит ${fmtUsd(doc.dailyLossLimit)}${doc.dailyLossLimitSource === "tier" ? " (уровень скейлинга)" : ""}`
-        : "Правила дня · дневной лимит не задан — проверка лимита пропущена"}
+        ? t(doc.dailyLossLimitSource === "tier" ? "leaks.rulesLimitTier" : "leaks.rulesLimit", { limit: fmtUsd(doc.dailyLossLimit) })
+        : t("leaks.rulesNoLimit")}
       icon={AlertTriangle}
       className="min-w-0"
-      actions={doc.leaks.length > 0 ? <Pill tone="down" title="Убыточные помеченные сделки без двойного счёта">≈ {fmtUsd(-doc.leaksTotalUsd)}</Pill> : undefined}
+      actions={doc.leaks.length > 0 ? <Pill tone="down" title={t("leaks.totalTitle")}>≈ {fmtUsd(-doc.leaksTotalUsd)}</Pill> : undefined}
     >
       {doc.leaks.length === 0 ? (
         <div className="flex items-center gap-2 py-2 text-sm text-muted-foreground">
-          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> Утечек по правилам не найдено.
+          <CheckCircle2 className="h-4 w-4 text-up" aria-hidden="true" /> {t("leaks.none")}
         </div>
       ) : (
         <ul className="flex flex-col divide-y divide-border/50">
@@ -355,7 +371,7 @@ export function LeaksPanel({ doc }: { doc: DayReport }) {
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium">{l.title}</span>
-                  <Pill tone={SEVERITY_TONE[l.severity]}>{SEVERITY_LABEL[l.severity]}</Pill>
+                  <Pill tone={SEVERITY_TONE[l.severity]}>{t(`leaks.severity.${l.severity}`)}</Pill>
                 </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">{l.detail}</p>
                 <div className="mt-1 flex flex-wrap gap-1.5 text-xs">
@@ -368,7 +384,7 @@ export function LeaksPanel({ doc }: { doc: DayReport }) {
               </div>
               <div className="text-right">
                 <div className={cn("text-sm font-semibold tabular-nums", l.costUsd > 0 ? "text-down" : "text-muted-foreground")}>{l.costUsd > 0 ? fmtUsd(-l.costUsd) : "$0.00"}</div>
-                <div className="text-2xs text-muted-foreground">нетто сделок {fmtUsd(l.netUsd, { signed: true })}</div>
+                <div className="text-2xs text-muted-foreground">{t("leaks.tradesNet", { amount: fmtUsd(l.netUsd, { signed: true }) })}</div>
               </div>
             </li>
           ))}
@@ -380,12 +396,13 @@ export function LeaksPanel({ doc }: { doc: DayReport }) {
 
 // ── 6. Strengths ─────────────────────────────────────────────────────────────
 export function StrengthsPanel({ doc }: { doc: DayReport }) {
+  const { t: td } = dayReportI18n.useT();
   const s = doc.strengths;
   const nothing = s.topTrades.length === 0;
   return (
-    <Panel title="Что получилось" description="Лучшие сделки и то, где в этот день было преимущество" icon={Sparkles} className="min-w-0">
+    <Panel title={td("strengths.title")} description={td("strengths.desc")} icon={Sparkles} className="min-w-0">
       {nothing ? (
-        <p className="py-2 text-sm text-muted-foreground">Прибыльных сделок в этот день нет.</p>
+        <p className="py-2 text-sm text-muted-foreground">{td("strengths.none")}</p>
       ) : (
         <div className="flex flex-col gap-3">
           <ol className="flex flex-col gap-1.5">
@@ -400,11 +417,11 @@ export function StrengthsPanel({ doc }: { doc: DayReport }) {
             ))}
           </ol>
           <div className="flex flex-col gap-1">
-            {s.tickers.length > 0 && <EdgeRow label="Тикеры с преимуществом" items={s.tickers.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
-            {s.setups.length > 0 && <EdgeRow label="Сетапы" items={s.setups.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })} (${x.wins}/${x.trades})`)} />}
-            {s.sides.length > 0 && <EdgeRow label="Сторона" items={s.sides.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
-            {s.bestHour && <EdgeRow label="Лучший час (ET)" items={[`${s.bestHour.label} ${fmtUsd(s.bestHour.net, { signed: true })}`]} />}
-            {s.setups.length === 0 && <p className="text-xs text-muted-foreground">Сетапы у сделок не указаны — разметьте их в журнале, чтобы видеть преимущество по сетапам.</p>}
+            {s.tickers.length > 0 && <EdgeRow label={td("strengths.tickers")} items={s.tickers.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
+            {s.setups.length > 0 && <EdgeRow label={td("strengths.setups")} items={s.setups.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })} (${x.wins}/${x.trades})`)} />}
+            {s.sides.length > 0 && <EdgeRow label={td("strengths.side")} items={s.sides.map((x) => `${x.label} ${fmtUsd(x.net, { signed: true })}`)} />}
+            {s.bestHour && <EdgeRow label={td("strengths.bestHour")} items={[`${s.bestHour.label} ${fmtUsd(s.bestHour.net, { signed: true })}`]} />}
+            {s.setups.length === 0 && <p className="text-xs text-muted-foreground">{td("strengths.noSetups")}</p>}
           </div>
         </div>
       )}
@@ -423,10 +440,11 @@ function EdgeRow({ label, items }: { label: string; items: string[] }) {
 
 // ── 7. Plan ──────────────────────────────────────────────────────────────────
 export function PlanPanel({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   return (
-    <Panel title="План на завтра" description="Правила из флагов дня — без ИИ, по шаблонам" icon={Target} className="min-w-0">
+    <Panel title={t("plan.title")} description={t("plan.desc")} icon={Target} className="min-w-0">
       {doc.plan.length === 0 ? (
-        <p className="py-2 text-sm text-muted-foreground">Нет рекомендаций — в этот день не было закрытых сделок.</p>
+        <p className="py-2 text-sm text-muted-foreground">{t("plan.none")}</p>
       ) : (
         <ol className="flex flex-col gap-2.5">
           {doc.plan.map((p, i) => (
@@ -434,7 +452,7 @@ export function PlanPanel({ doc }: { doc: DayReport }) {
               <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary">{i + 1}</span>
               <div className="min-w-0">
                 <p className="text-sm text-foreground">{p.text}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{p.source === "stat" ? "статистика дня" : `флаг «${LEAK_SHORT[p.source]}»`} · {p.reason}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{p.source === "stat" ? t("plan.sourceStat") : t("plan.sourceFlag", { flag: LEAK_SHORT[p.source] })} · {p.reason}</p>
               </div>
             </li>
           ))}
@@ -446,31 +464,33 @@ export function PlanPanel({ doc }: { doc: DayReport }) {
 
 // ── Comparison detail ────────────────────────────────────────────────────────
 export function ComparisonPanel({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   const c = doc.comparison;
   return (
-    <Panel title="На фоне последних дней" description={c.label} icon={CalendarDays} className="min-w-0">
-      <StatRow label="Сегодня (нетто)" value={fmtUsd(doc.summary.net, { signed: true })} tone={toneOf(doc.summary.net)} />
-      <StatRow label={`Среднее за ${c.days} дн.`} value={fmtUsd(c.avg, { signed: true })} tone={toneOf(c.avg)} />
-      <StatRow label="Ст. отклонение" value={c.std != null ? fmtUsd(c.std) : "—"} />
+    <Panel title={t("comparison.title")} description={c.label} icon={CalendarDays} className="min-w-0">
+      <StatRow label={t("comparison.today")} value={fmtUsd(doc.summary.net, { signed: true })} tone={toneOf(doc.summary.net)} />
+      <StatRow label={t("comparison.avg", { days: c.days })} value={fmtUsd(c.avg, { signed: true })} tone={toneOf(c.avg)} />
+      <StatRow label={t("comparison.std")} value={c.std != null ? fmtUsd(c.std) : "—"} />
       <StatRow label="z-score" value={fmtNum(c.z, { signed: true })} tone={toneOf(c.z)} />
-      <StatRow label="Место в окне" value={c.rank != null && c.days ? `${c.rank} из ${c.days + 1}` : "—"} />
-      <StatRow label="Лучший день окна" value={c.bestDay ? `${fmtUsd(c.bestDay.net, { signed: true })} · ${fmtDayShort(c.bestDay.date)}` : "—"} />
-      <StatRow label="Худший день окна" value={c.worstDay ? `${fmtUsd(c.worstDay.net, { signed: true })} · ${fmtDayShort(c.worstDay.date)}` : "—"} />
+      <StatRow label={t("comparison.rank")} value={c.rank != null && c.days ? t("comparison.rankValue", { rank: c.rank, total: c.days + 1 }) : "—"} />
+      <StatRow label={t("comparison.best")} value={c.bestDay ? `${fmtUsd(c.bestDay.net, { signed: true })} · ${fmtDayShort(c.bestDay.date)}` : "—"} />
+      <StatRow label={t("comparison.worst")} value={c.worstDay ? `${fmtUsd(c.worstDay.net, { signed: true })} · ${fmtDayShort(c.worstDay.date)}` : "—"} />
     </Panel>
   );
 }
 
 // ── 8. Links ─────────────────────────────────────────────────────────────────
 export function LinksPanel({ doc }: { doc: DayReport }) {
+  const { t } = dayReportI18n.useT();
   const items: { href: string; label: string; icon: typeof NotebookPen }[] = [
-    { href: links.journalDay(doc.date, doc.trader || undefined), label: "Журнал дня", icon: NotebookPen },
-    { href: links.trades({ date: doc.date }), label: `Сделки дня (${doc.summary.trades})`, icon: ListChecks },
-    { href: links.weeklyReview({ trader: doc.trader || undefined, week: weekKeyOf(doc.date) }), label: "Отчёт недели", icon: Clock },
+    { href: links.journalDay(doc.date, doc.trader || undefined), label: t("links.journal"), icon: NotebookPen },
+    { href: links.trades({ date: doc.date }), label: t("links.trades", { count: doc.summary.trades }), icon: ListChecks },
+    { href: links.weeklyReview({ trader: doc.trader || undefined, week: weekKeyOf(doc.date) }), label: t("links.weekly"), icon: Clock },
   ];
   return (
     <div className="flex flex-wrap gap-2" data-print-hide>
       {items.map((it) => (
-        <Link key={it.label} href={it.href} className="glass-field inline-flex min-h-9 items-center gap-2 px-3.5 text-sm font-medium hover:text-primary">
+        <Link key={it.href} href={it.href} className="glass-field inline-flex min-h-9 items-center gap-2 px-3.5 text-sm font-medium hover:text-primary">
           <it.icon className="h-4 w-4" aria-hidden="true" /> {it.label} <ExternalLink className="h-3 w-3 opacity-60" aria-hidden="true" />
         </Link>
       ))}

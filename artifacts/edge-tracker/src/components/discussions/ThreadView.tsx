@@ -29,27 +29,29 @@ import { Avatar } from "./ThreadList";
 import type { ReportTarget } from "./ReportDialog";
 import {
   type Thread, type VoteMap, type PositionStatus, type ParsedComment, TYPE_LABELS, TYPE_TONE, STATUS_LABELS, STATUS_TONE,
-  buildCommentTree, buildCommentText, teamPositions, splitNotes, userTags, isPinned, isResolved, toggleTag,
+  buildCommentTree, buildCommentText, parseComment, teamPositions, splitNotes, userTags, isPinned, isResolved, toggleTag,
   TAG_PINNED, TAG_RESOLVED, relTime, absTime,
 } from "./lib";
 import { rankPeople, usePeopleAliases } from "@/components/people/search";
-import { pluralRu } from "@/lib/format";
+import { discussionsI18n } from "@/i18n/ns/discussions";
+import { commonI18n } from "@/i18n/ns/common";
 
 type StatusChoice = PositionStatus | "none";
 
 function VoteControl({ id, votes, disabled, onVote }: { id: number; votes: VoteMap; disabled: boolean; onVote: (id: number, v: 1 | -1) => void }) {
+  const { t } = discussionsI18n.useT();
   const v = votes[id];
   const score = v?.score ?? 0;
   return (
-    <div className="glass-field inline-flex items-center gap-0.5 p-0.5" role="group" aria-label="Голосование">
-      <button type="button" aria-label="Полезно" aria-pressed={v?.myVote === 1} disabled={disabled} onClick={() => onVote(id, 1)}
+    <div className="glass-field inline-flex items-center gap-0.5 p-0.5" role="group" aria-label={t("thread.voteAria")}>
+      <button type="button" aria-label={t("thread.upvote")} aria-pressed={v?.myVote === 1} disabled={disabled} onClick={() => onVote(id, 1)}
         className={cn("grid h-8 w-8 place-items-center rounded-full transition-colors disabled:opacity-50", v?.myVote === 1 ? "bg-up/15 text-up" : "text-muted-foreground hover:text-up")}>
         <ArrowBigUp className="h-4 w-4" />
       </button>
-      <span className={cn("min-w-6 text-center text-sm font-semibold tabular-nums", toneText(toneOf(score)))} title={`За: ${v?.upvotes ?? 0} · Против: ${v?.downvotes ?? 0}`}>
+      <span className={cn("min-w-6 text-center text-sm font-semibold tabular-nums", toneText(toneOf(score)))} title={t("thread.votesTitle", { up: v?.upvotes ?? 0, down: v?.downvotes ?? 0 })}>
         {score > 0 ? `+${score}` : score < 0 ? `−${Math.abs(score)}` : 0}
       </span>
-      <button type="button" aria-label="Не согласен" aria-pressed={v?.myVote === -1} disabled={disabled} onClick={() => onVote(id, -1)}
+      <button type="button" aria-label={t("thread.downvote")} aria-pressed={v?.myVote === -1} disabled={disabled} onClick={() => onVote(id, -1)}
         className={cn("grid h-8 w-8 place-items-center rounded-full transition-colors disabled:opacity-50", v?.myVote === -1 ? "bg-down/15 text-down" : "text-muted-foreground hover:text-down")}>
         <ArrowBigDown className="h-4 w-4" />
       </button>
@@ -68,6 +70,8 @@ function CommentItem({
   onSaveEdit: () => void; savingEdit: boolean; replyToAuthor?: string | null; compact?: boolean;
   accepted?: boolean; canAccept?: boolean; onAccept?: (c: Comment) => void;
 }) {
+  const { t } = discussionsI18n.useT();
+  const tc = commonI18n.useT().t;
   const isOwn = !!c.trader && c.trader === me;
   const isEditing = editing?.id === c.id;
   const pending = c.id < 0;
@@ -76,41 +80,41 @@ function CommentItem({
       <Avatar name={c.trader} size={compact ? "sm" : "md"} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold text-foreground">{c.trader ?? "Гость"}</span>
+          <span className="text-sm font-semibold text-foreground">{c.trader ?? tc("roles.guest")}</span>
           {parsed.status && <Pill tone={STATUS_TONE[parsed.status]} dot className="py-0 text-2xs">{STATUS_LABELS[parsed.status]}</Pill>}
           {replyToAuthor && <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><CornerDownRight className="h-3 w-3" aria-hidden="true" />{replyToAuthor}</span>}
-          <span className="text-xs text-muted-foreground tabular-nums" title={absTime(c.createdAt)}>{pending ? "отправка…" : relTime(c.createdAt)}</span>
-          {isNew && <Pill tone="accent" className="py-0 text-2xs">новое</Pill>}
-          {accepted && <Pill tone="up" className="py-0 text-2xs"><Award className="h-3 w-3" aria-hidden="true" />Принятый ответ</Pill>}
+          <span className="text-xs text-muted-foreground tabular-nums" title={absTime(c.createdAt)}>{pending ? t("thread.sending") : relTime(c.createdAt)}</span>
+          {isNew && <Pill tone="accent" className="py-0 text-2xs">{t("thread.new")}</Pill>}
+          {accepted && <Pill tone="up" className="py-0 text-2xs"><Award className="h-3 w-3" aria-hidden="true" />{t("thread.accepted")}</Pill>}
           {!isEditing && !pending && canEdit && (
             <div className="ml-auto flex items-center gap-0.5 opacity-100 transition-opacity sm:opacity-0 sm:group-focus-within:opacity-100 sm:group-hover:opacity-100">
               {canAccept && onAccept && (
-                <button type="button" aria-label={accepted ? "Снять отметку «принятый ответ»" : "Отметить как принятый ответ"} title={accepted ? "Снять отметку" : "Принятый ответ"} onClick={() => onAccept(c)} className={cn("grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]", accepted ? "text-up" : "text-muted-foreground hover:text-up")}><Award className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={accepted ? t("thread.unaccept") : t("thread.accept")} title={accepted ? t("thread.unacceptShort") : t("thread.accepted")} onClick={() => onAccept(c)} className={cn("grid h-8 w-8 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]", accepted ? "text-up" : "text-muted-foreground hover:text-up")}><Award className="h-3.5 w-3.5" /></button>
               )}
-              <button type="button" aria-label="Ответить" title="Ответить" onClick={() => onReply(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Reply className="h-3.5 w-3.5" /></button>
+              <button type="button" aria-label={t("thread.reply")} title={t("thread.reply")} onClick={() => onReply(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Reply className="h-3.5 w-3.5" /></button>
               {isOwn && (
-                <button type="button" aria-label="Редактировать комментарий" title="Редактировать" onClick={() => setEditing({ id: c.id, text: parsed.body })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={t("thread.editComment")} title={tc("actions.edit")} onClick={() => setEditing({ id: c.id, text: parsed.body })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"><Pencil className="h-3.5 w-3.5" /></button>
               )}
               {(isOwn || canModerate) && (
-                <button type="button" aria-label="Удалить комментарий" title="Удалить" onClick={() => onDelete(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-down/15 hover:text-down"><Trash2 className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={t("thread.deleteComment")} title={tc("actions.delete")} onClick={() => onDelete(c)} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-down/15 hover:text-down"><Trash2 className="h-3.5 w-3.5" /></button>
               )}
               {!isOwn && (
-                <button type="button" aria-label="Пожаловаться на комментарий" title="Пожаловаться" onClick={() => onReport({ type: "comment", id: c.id, preview: plainPreview(parsed.body, 120), author: c.trader })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down"><Flag className="h-3.5 w-3.5" /></button>
+                <button type="button" aria-label={t("thread.reportComment")} title={t("thread.report")} onClick={() => onReport({ type: "comment", id: c.id, preview: plainPreview(parsed.body, 120), author: c.trader })} className="grid h-8 w-8 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-down"><Flag className="h-3.5 w-3.5" /></button>
               )}
             </div>
           )}
         </div>
         {isEditing ? (
           <div className="mt-1.5 space-y-2">
-            <Textarea aria-label="Текст комментария" autoFocus rows={3} value={editing!.text}
+            <Textarea aria-label={t("thread.commentText")} autoFocus rows={3} value={editing!.text}
               onChange={(e) => setEditing({ id: c.id, text: e.target.value })}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); onSaveEdit(); }
                 if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); setEditing(null); }
               }} />
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}><X className="h-3.5 w-3.5" />Отмена</Button>
-              <Button size="sm" variant="outline" onClick={onSaveEdit} disabled={savingEdit || !editing!.text.trim()}><Check className="h-3.5 w-3.5" />{savingEdit ? "Сохраняем…" : "Сохранить"}</Button>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}><X className="h-3.5 w-3.5" />{tc("actions.cancel")}</Button>
+              <Button size="sm" variant="outline" onClick={onSaveEdit} disabled={savingEdit || !editing!.text.trim()}><Check className="h-3.5 w-3.5" />{savingEdit ? tc("states.saving") : tc("actions.save")}</Button>
             </div>
           </div>
         ) : (
@@ -144,6 +148,8 @@ export function ThreadView({
 }) {
   const qc = useQueryClient();
   const { toast } = useToast();
+  const { t } = discussionsI18n.useT();
+  const tc = commonI18n.useT().t;
   // Unsent comment survives a reload / switching threads (per user, per thread; browser-local only).
   const draftKey = (id: number) => `ws_lexx.disc.draft.${me}.${id}`;
   const loadDraft = (id: number) => { try { return localStorage.getItem(draftKey(id)) ?? ""; } catch { return ""; } };
@@ -212,7 +218,7 @@ export function ThreadView({
       onError: (e: unknown, vars, ctx) => {
         if (ctx?.prev) qc.setQueryData(listKey, ctx.prev);
         setDraft((d) => d || parseBody(vars.data.text));
-        toast({ title: "Ошибка", description: (e as { data?: { error?: string } })?.data?.error ?? String(e), variant: "destructive" });
+        toast({ title: tc("states.error"), description: humanizeApiError(e, tc("states.saveFailed")), variant: "destructive" });
       },
       onSettled: () => qc.invalidateQueries({ queryKey: listKey }),
     },
@@ -237,16 +243,16 @@ export function ThreadView({
     const orig = comments.find((c) => c.id === editing.id);
     if (!orig) return;
     const body = editing.text.trim();
-    if (!body) { toast({ title: "Комментарий не может быть пустым", variant: "destructive" }); return; }
-    const prefix = orig.text.match(/^(\[(?:Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:\d+\]\s*)?/)?.[0] ?? "";
+    if (!body) { toast({ title: t("thread.emptyComment"), variant: "destructive" }); return; }
+    const prefix = parseComment(orig.text).prefix;
     setSavingEdit(true);
     try {
       await http.patch(`/api/discussions/${thread.id}/comments/${editing.id}`, { text: `${prefix}${body}` });
       qc.invalidateQueries({ queryKey: listKey });
       setEditing(null);
-      toast({ title: "Комментарий обновлён" });
+      toast({ title: t("thread.commentUpdated") });
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось сохранить комментарий"), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("thread.commentSaveFailed")), variant: "destructive" });
     } finally {
       setSavingEdit(false);
     }
@@ -259,9 +265,9 @@ export function ThreadView({
       await http.del(`/api/discussions/${thread.id}/comments/${deletingComment.id}`, undefined, { responseType: "auto" });
       qc.invalidateQueries({ queryKey: listKey });
       setDeletingComment(null);
-      toast({ title: "Комментарий удалён" });
+      toast({ title: t("thread.commentDeleted") });
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось удалить комментарий"), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("thread.commentDeleteFailed")), variant: "destructive" });
     } finally {
       setDeletingBusy(false);
     }
@@ -277,10 +283,10 @@ export function ThreadView({
       : d));
     try {
       await http.patch(`/api/discussions/${thread.id}`, { tags: nextTags });
-      toast({ title: tag === TAG_PINNED ? (on ? "Тема закреплена" : "Тема откреплена") : (on ? "Отмечено как решённое" : "Тема снова открыта") });
+      toast({ title: tag === TAG_PINNED ? (on ? t("thread.pinned") : t("thread.unpinned")) : (on ? t("thread.resolvedToast") : t("thread.reopened")) });
     } catch (e) {
       if (prev) qc.setQueryData(listKey, prev);
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить тему"), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("thread.updateFailed")), variant: "destructive" });
     } finally {
       setFlagBusy(false);
       qc.invalidateQueries({ queryKey: listKey });
@@ -294,9 +300,9 @@ export function ThreadView({
     setAcceptBusy(true);
     try {
       await http.patch(`/api/discussions/${thread.id}`, { acceptedCommentId: next });
-      toast({ title: next ? "Ответ отмечен как принятый — тема решена" : "Отметка снята" });
+      toast({ title: next ? t("thread.acceptedToast") : t("thread.unacceptedToast") });
     } catch (e) {
-      toast({ title: "Ошибка", description: humanizeApiError(e, "Не удалось обновить тему"), variant: "destructive" });
+      toast({ title: tc("states.error"), description: humanizeApiError(e, t("thread.updateFailed")), variant: "destructive" });
     } finally {
       setAcceptBusy(false);
       qc.invalidateQueries({ queryKey: listKey });
@@ -306,8 +312,8 @@ export function ThreadView({
   function copyLink() {
     const url = `${window.location.origin}${window.location.pathname}?thread=${thread.id}`;
     navigator.clipboard?.writeText(url).then(
-      () => toast({ title: "Ссылка скопирована" }),
-      () => toast({ title: "Не удалось скопировать", description: url }),
+      () => toast({ title: t("thread.linkCopied") }),
+      () => toast({ title: tc("states.copyFailed"), description: url }),
     );
   }
 
@@ -352,60 +358,60 @@ export function ThreadView({
       {/* Header */}
       <div className="border-b border-[var(--field-border)] px-4 pb-3 pt-4 sm:px-5">
         <div className="flex flex-wrap items-start gap-2">
-          <Button variant="ghost" size="icon" onClick={onBack} aria-label="Назад к списку тем" className="-ml-2 h-9 w-9 shrink-0 lg:hidden">
+          <Button variant="ghost" size="icon" onClick={onBack} aria-label={t("thread.back")} className="-ml-2 h-9 w-9 shrink-0 lg:hidden">
             <ArrowLeft className="h-4 w-4" />
           </Button>
           {/* min width: on phones the vote/menu cluster wraps below instead of squeezing the topic into a narrow column */}
           <div className="min-w-[min(100%,14rem)] flex-1">
             <div className="flex flex-wrap items-center gap-1.5">
-              {pinned && <Pill tone="accent" className="py-0 text-2xs"><Pin className="h-3 w-3" aria-hidden="true" />Закреплено</Pill>}
+              {pinned && <Pill tone="accent" className="py-0 text-2xs"><Pin className="h-3 w-3" aria-hidden="true" />{t("thread.pinnedPill")}</Pill>}
               {thread.type && <Pill tone={TYPE_TONE[thread.type] ?? "neutral"} className="py-0 text-2xs">{TYPE_LABELS[thread.type] ?? thread.type}</Pill>}
               {thread.ticker && <TickerLink ticker={thread.ticker} variant="chip" onFilter={onTickerFilter} />}
-              {resolved && <Pill tone="up" className="py-0 text-2xs"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />Решено</Pill>}
+              {resolved && <Pill tone="up" className="py-0 text-2xs"><CheckCircle2 className="h-3 w-3" aria-hidden="true" />{t("thread.resolvedPill")}</Pill>}
               {restricted && (
-                <Pill tone="purple" className="max-w-full py-0 text-2xs" title="Тему видят только эти группы, автор и кураторы">
+                <Pill tone="purple" className="max-w-full py-0 text-2xs" title={t("thread.restrictedTitle")}>
                   <Lock className="h-3 w-3 shrink-0" aria-hidden="true" />
-                  <span className="truncate">Видна: {audienceText(thread.audience, audienceOpts.data)}</span>
+                  <span className="truncate">{t("thread.visibleTo", { who: audienceText(thread.audience, audienceOpts.data) })}</span>
                 </Pill>
               )}
             </div>
             <h2 className="mt-1.5 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">{thread.topic}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ?? "Гость"}</span>
+              <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ?? tc("roles.guest")}</span>
               <span title={absTime(thread.createdAt)}>{relTime(thread.createdAt)}</span>
-              <span>· {comments.length} {pluralRu(comments.length, "ответ", "ответа", "ответов")}</span>
+              <span>· {t("thread.replies", { count: comments.length })}</span>
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1.5">
             <VoteControl id={thread.id} votes={votes} disabled={!canEdit} onVote={onVote} />
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" aria-label="Действия с темой" className="h-9 w-9"><MoreHorizontal className="h-4 w-4" /></Button>
+                <Button variant="ghost" size="icon" aria-label={t("thread.actionsAria")} className="h-9 w-9"><MoreHorizontal className="h-4 w-4" /></Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuItem onSelect={copyLink}><Link2 className="mr-2 h-4 w-4" />Скопировать ссылку</DropdownMenuItem>
+                <DropdownMenuItem onSelect={copyLink}><Link2 className="mr-2 h-4 w-4" />{t("thread.copyLink")}</DropdownMenuItem>
                 {canManage && (
                   <>
-                    <DropdownMenuItem onSelect={() => onEdit(thread)}><Pencil className="mr-2 h-4 w-4" />Редактировать</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onEdit(thread)}><Pencil className="mr-2 h-4 w-4" />{tc("actions.edit")}</DropdownMenuItem>
                     <DropdownMenuItem disabled={flagBusy} onSelect={() => setFlag(TAG_RESOLVED, !resolved)}>
-                      {resolved ? <><RotateCcw className="mr-2 h-4 w-4" />Открыть снова</> : <><CheckCircle2 className="mr-2 h-4 w-4" />Отметить решённой</>}
+                      {resolved ? <><RotateCcw className="mr-2 h-4 w-4" />{t("thread.reopen")}</> : <><CheckCircle2 className="mr-2 h-4 w-4" />{t("thread.markResolved")}</>}
                     </DropdownMenuItem>
                   </>
                 )}
                 {canEdit && isMod && (
                   <DropdownMenuItem disabled={flagBusy} onSelect={() => setFlag(TAG_PINNED, !pinned)}>
-                    {pinned ? <><PinOff className="mr-2 h-4 w-4" />Открепить</> : <><Pin className="mr-2 h-4 w-4" />Закрепить сверху</>}
+                    {pinned ? <><PinOff className="mr-2 h-4 w-4" />{tc("actions.unpin")}</> : <><Pin className="mr-2 h-4 w-4" />{t("thread.pinTop")}</>}
                   </DropdownMenuItem>
                 )}
                 {canEdit && !isAuthor && (
                   <DropdownMenuItem onSelect={() => onReport({ type: "discussion", id: thread.id, preview: thread.topic, author: thread.trader })}>
-                    <Flag className="mr-2 h-4 w-4" />Пожаловаться
+                    <Flag className="mr-2 h-4 w-4" />{t("thread.report")}
                   </DropdownMenuItem>
                 )}
                 {canManage && (
                   <>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem onSelect={() => onDelete(thread)} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />Удалить тему</DropdownMenuItem>
+                    <DropdownMenuItem onSelect={() => onDelete(thread)} className="text-down focus:text-down"><Trash2 className="mr-2 h-4 w-4" />{t("thread.deleteThread")}</DropdownMenuItem>
                   </>
                 )}
               </DropdownMenuContent>
@@ -429,7 +435,7 @@ export function ThreadView({
 
         {posCount > 0 && (
           <div className="rounded-xl bg-[var(--glass-bg)] p-3">
-            <div className="mb-2 flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="micro-label">Позиции команды</span></div>
+            <div className="mb-2 flex items-center gap-1.5"><Users className="h-3.5 w-3.5 text-muted-foreground" aria-hidden="true" /><span className="micro-label">{t("thread.teamPositions")}</span></div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
               {(["in_position", "observing", "exited"] as PositionStatus[]).map((s) => (
                 <div key={s} className="min-w-0">
@@ -446,11 +452,11 @@ export function ThreadView({
 
         <div>
           <div className="mb-1 flex items-center justify-between">
-            <span className="micro-label">Обсуждение</span>
+            <span className="micro-label">{t("thread.discussion")}</span>
           </div>
           {tree.length === 0 ? (
             <p className="rounded-xl border border-dashed border-[var(--field-border)] px-4 py-6 text-center text-sm text-muted-foreground">
-              Ответов пока нет. Поделитесь мнением или отметьте, что вы в позиции.
+              {t("thread.noReplies")}
             </p>
           ) : (
             <div className="space-y-1">
@@ -490,27 +496,27 @@ export function ThreadView({
           {replyTo && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-1.5 text-xs">
               <Reply className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">Ответ <span className="font-semibold">{replyTo.trader ?? "Гость"}</span>: {plainPreview(parseBody(replyTo.text), 80)}</span>
-              <button type="button" aria-label="Отменить ответ" onClick={() => setReplyTo(null)} className="grid h-7 w-7 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
+              <span className="min-w-0 flex-1 truncate">{t("thread.replyTo", { name: replyTo.trader ?? tc("roles.guest"), preview: plainPreview(parseBody(replyTo.text), 80) })}</span>
+              <button type="button" aria-label={t("thread.cancelReply")} onClick={() => setReplyTo(null)} className="grid h-7 w-7 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}
           <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <Segmented<StatusChoice>
-              ariaLabel="Ваш статус по теме"
+              ariaLabel={t("thread.statusAria")}
               size="sm"
               value={status}
               onChange={setStatus}
               options={[
-                { value: "none", label: "Без статуса" },
+                { value: "none", label: t("thread.noStatus") },
                 { value: "observing", label: STATUS_LABELS.observing },
                 { value: "in_position", label: STATUS_LABELS.in_position },
                 { value: "exited", label: STATUS_LABELS.exited },
               ]}
             />
-            <span className="hidden text-2xs text-muted-foreground md:inline">**жирный** · `код` · &gt; цитата · $TICKER · @имя</span>
+            <span className="hidden text-2xs text-muted-foreground md:inline">{t("thread.formatHint")}</span>
           </div>
           {mentionOptions.length > 0 && (
-            <div className="mb-2 flex flex-wrap gap-1.5" role="listbox" aria-label="Упомянуть участника">
+            <div className="mb-2 flex flex-wrap gap-1.5" role="listbox" aria-label={t("thread.mentionAria")}>
               {mentionOptions.map((n) => (
                 <button
                   key={n}
@@ -529,10 +535,10 @@ export function ThreadView({
           <div className="flex items-end gap-2">
             <Textarea
               ref={composerRef}
-              aria-label="Новый комментарий"
+              aria-label={t("thread.newComment")}
               value={draft}
               rows={2}
-              placeholder={replyTo ? "Ваш ответ…" : "Комментарий… (Ctrl+Enter — отправить)"}
+              placeholder={replyTo ? t("thread.replyPlaceholder") : t("thread.commentPlaceholder")}
               className="max-h-48 min-h-[44px] flex-1 resize-y"
               onChange={(e) => { setDraft(e.target.value); setCaret(e.target.selectionStart ?? e.target.value.length); }}
               onSelect={(e) => setCaret((e.target as HTMLTextAreaElement).selectionStart ?? 0)}
@@ -554,8 +560,8 @@ export function ThreadView({
                 }
               }}
             />
-            <Button onClick={send} disabled={!draft.trim() || addMut.isPending} aria-label="Отправить комментарий" className="h-11 shrink-0 gap-1.5">
-              <Send className="h-4 w-4" /><span className="hidden sm:inline">Отправить</span>
+            <Button onClick={send} disabled={!draft.trim() || addMut.isPending} aria-label={t("thread.sendComment")} className="h-11 shrink-0 gap-1.5">
+              <Send className="h-4 w-4" /><span className="hidden sm:inline">{tc("actions.send")}</span>
             </Button>
           </div>
         </div>
@@ -564,13 +570,13 @@ export function ThreadView({
       <AlertDialog open={!!deletingComment} onOpenChange={(v) => { if (!v && !deletingBusy) setDeletingComment(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить комментарий?</AlertDialogTitle>
-            <AlertDialogDescription>Комментарий будет удалён без возможности восстановления.</AlertDialogDescription>
+            <AlertDialogTitle>{t("thread.deleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>{t("thread.deleteHint")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={deletingBusy}>Отмена</AlertDialogCancel>
+            <AlertDialogCancel disabled={deletingBusy}>{tc("actions.cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={(e) => { e.preventDefault(); confirmDeleteComment(); }} disabled={deletingBusy} className="bg-destructive text-destructive-foreground">
-              {deletingBusy ? "Удаляем…" : "Удалить"}
+              {deletingBusy ? t("thread.deleting") : tc("actions.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

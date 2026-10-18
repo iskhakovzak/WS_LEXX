@@ -9,6 +9,7 @@ import { nullIfMissing } from "@/lib/api/errors";
 import { POLL, } from "@/lib/api/keys";
 import { addDays, nyDate, prevWeekday } from "@/lib/trading-date";
 import type { AuditEntry } from "./api";
+import { adminI18n } from "@/i18n/ns/admin";
 
 /* ── Types ───────────────────────────────────────────────────────────────── */
 
@@ -95,7 +96,7 @@ export interface AuditResult {
 export class NotDeployedError extends Error {
   readonly notDeployed = true;
   constructor(what: string) {
-    super(`${what} станет доступно после перезапуска API (новый роутер admin-console).`);
+    super(adminI18n.t("notDeployed", { what }));
   }
 }
 
@@ -188,8 +189,11 @@ export function useHealth() {
       const since = Date.now() - 86_400_000;
       const items = runs
         .filter((r) => r.startedAt && Date.parse(r.startedAt) >= since && (r.status === "error" || r.status === "partial" || r.errors > 0))
-        .map((r) => ({ at: r.startedAt, source: "propreports", text: `Синк #${r.id}: ${r.status}${r.errors ? `, ошибок ${r.errors}` : ""}${r.errorText ? ` — ${r.errorText}` : ""}` }));
-      if (st.scheduler?.lastError) items.push({ at: null, source: "scheduler", text: `Планировщик: ${st.scheduler.lastError}` });
+        .map((r) => {
+          const head = r.errors ? adminI18n.t("fallback.syncRunErrors", { id: r.id, status: r.status, errors: r.errors }) : adminI18n.t("fallback.syncRun", { id: r.id, status: r.status });
+          return { at: r.startedAt, source: "propreports", text: r.errorText ? `${head} — ${r.errorText}` : head };
+        });
+      if (st.scheduler?.lastError) items.push({ at: null, source: "scheduler", text: adminI18n.t("fallback.scheduler", { error: st.scheduler.lastError }) });
       return {
         source: "fallback",
         today: nyDate(),
@@ -274,7 +278,7 @@ export function nyDayOf(iso: string): string {
 
 export function useAuditSearch(actor: string, query: AuditQuery) {
   return useQuery<AuditResult>({
-    queryKey: [...consoleKeys.audit, query],
+    queryKey: [...consoleKeys.audit, actor, query],
     queryFn: async () => {
       const direct = await http.get<Omit<AuditResult, "source">>("/api/admin/console/audit", { query: { ...query, limit: 1000 } }).catch(nullIfMissing);
       if (direct) return { ...direct, source: "console" };
@@ -321,16 +325,12 @@ export interface PeopleActionInput {
 
 export interface PeopleActionResult { done: string[]; skipped: { name?: string; error: string }[] }
 
-const ACTION_NAME: Record<PeopleActionKind, string> = {
-  freeze: "Заморозка", unfreeze: "Разморозка", archive: "Архивирование", restore: "Возврат из архива",
-  sessions: "Сброс сессий", curator: "Назначение куратора", role: "Смена роли", tier: "Смена тира",
-};
 
 async function runOne(actor: string, kind: PeopleActionKind, p: Pick<Person, "id" | "name">, input: PeopleActionInput): Promise<void> {
   if (kind === "tier") {
     // Existing audited endpoint (scaling.assign); the reason goes into the history comment.
     const r = await send("POST", "/scaling/assign", { trader: p.name, tierKey: input.tierKey, comment: input.reason });
-    if (isNotFound(r)) throw new Error("Не удалось сменить тир");
+    if (isNotFound(r)) throw new Error(adminI18n.t("fallback.tierFailed"));
     return;
   }
   const path = kind === "sessions" ? `/admin/console/people/${p.id}/sessions/reset` : `/admin/console/people/${p.id}/${kind}`;
@@ -340,21 +340,21 @@ async function runOne(actor: string, kind: PeopleActionKind, p: Pick<Person, "id
   // Fallbacks — existing audited admin routes only.
   if (kind === "freeze") {
     const b = await send("POST", `/admin/users/${p.id}/ban?actor=${encodeURIComponent(actor)}`, { actor, reason: input.reason });
-    if (isNotFound(b)) throw new Error("Пользователь не найден");
+    if (isNotFound(b)) throw new Error(adminI18n.t("fallback.userNotFound"));
     return;
   }
   if (kind === "unfreeze") {
     const b = await send("POST", `/admin/users/${p.id}/unban?actor=${encodeURIComponent(actor)}`, { actor });
-    if (isNotFound(b)) throw new Error("Пользователь не найден");
+    if (isNotFound(b)) throw new Error(adminI18n.t("fallback.userNotFound"));
     return;
   }
   if (kind === "role") {
     // Legacy route requires users.manage.admins (admins only).
     const b = await send("POST", `/admin/users/${p.id}/role?actor=${encodeURIComponent(actor)}`, { actor, role: input.role });
-    if (isNotFound(b)) throw new Error("Пользователь не найден");
+    if (isNotFound(b)) throw new Error(adminI18n.t("fallback.userNotFound"));
     return;
   }
-  throw new NotDeployedError(ACTION_NAME[kind]);
+  throw new NotDeployedError(adminI18n.t(`fallback.action.${kind}`));
 }
 
 export function usePeopleAction(actor: string) {
@@ -395,7 +395,7 @@ export function useSetNameLatin() {
   return useMutation<{ ok: true; name: string; nameLatin: string | null }, Error, { id: number; nameLatin: string | null }>({
     mutationFn: async ({ id, nameLatin }) => {
       const r = await send<{ ok: true; name: string; nameLatin: string | null }>("POST", `/admin/console/people/${id}/name-latin`, { nameLatin });
-      if (isNotFound(r)) throw new NotDeployedError("Латинское имя");
+      if (isNotFound(r)) throw new NotDeployedError(adminI18n.t("fallback.action.latin"));
       return r;
     },
     onSettled: () => {
@@ -409,7 +409,7 @@ export function useCreatePerson() {
   return useMutation<{ id: number; name: string }, Error, { name: string; password: string; role: string; curator: string | null; reason: string }>({
     mutationFn: async (body) => {
       const r = await send<{ id: number; name: string }>("POST", "/admin/console/people", body);
-      if (isNotFound(r)) throw new NotDeployedError("Создание учётки с записью в аудит");
+      if (isNotFound(r)) throw new NotDeployedError(adminI18n.t("fallback.action.create"));
       return r;
     },
     onSuccess: () => {
@@ -427,7 +427,7 @@ export function useMapAccount() {
       if (!isNotFound(r)) return { legacy: false };
       // Existing audited route (propreports.accounts.update) — it has no reason field.
       const p = await send("PUT", "/propreports/accounts", { accounts: [{ account: body.account, trader: body.trader }] });
-      if (isNotFound(p)) throw new Error("Не удалось привязать счёт");
+      if (isNotFound(p)) throw new Error(adminI18n.t("fallback.mapFailed"));
       return { legacy: true };
     },
     onSuccess: () => {

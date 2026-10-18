@@ -1,9 +1,11 @@
 import { db, tradesTable, emotionalStateLogTable, weeklyPsychologyReportsTable } from "@workspace/db";
 import { eq, and, gte, lte, isNull, desc } from "drizzle-orm";
 import { logger } from "./logger";
+import { psychologyT } from "./behaviorI18n";
+import { DEFAULT_LANG, type Lang } from "../i18n";
 
 function isWin(result: string) {
-  return result === "win" || result === "прибыль";
+  return result === "win" || result === "прибыль"; // i18n-ignore (legacy stored result value)
 }
 
 // Local calendar date (YYYY-MM-DD). toISOString() converts to UTC first, which on
@@ -93,25 +95,18 @@ export function readinessScore(s: {
   return Math.max(0, Math.min(100, score));
 }
 
-export const STATE_LABELS_RU: Record<string, string> = {
-  focused: "в фокусе",
-  stressed: "стресс",
-  tilted: "тильт",
-  revenge: "отыгрыш",
-  anxious: "тревога",
-  normal: "без отметок",
-};
+/** State labels of the weekly report in `lang` (keys: focused, stressed, tilted, revenge, anxious, normal). */
+export function stateLabelFor(state: string, lang: Lang = DEFAULT_LANG): string {
+  return psychologyT.tryFor(lang, `weekly.states.${state}`) ?? state;
+}
+/** Russian labels (historical export). */
+export const STATE_LABELS_RU: Record<string, string> = Object.fromEntries(
+  ["focused", "stressed", "tilted", "revenge", "anxious", "normal"].map((k) => [k, stateLabelFor(k, "ru")]),
+);
 
 const pct = (x: number) => Math.round(x * 100);
 const money = (x: number) => `${x < 0 ? "−" : ""}$${Math.abs(Math.round(x)).toLocaleString("en-US")}`;
 
-function plural(n: number, one: string, few: string, many: string): string {
-  const m10 = n % 10;
-  const m100 = n % 100;
-  if (m10 === 1 && m100 !== 11) return one;
-  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
-  return many;
-}
 
 type InsightInput = {
   totalTrades: number;
@@ -124,10 +119,11 @@ type InsightInput = {
 };
 
 /**
- * Russian insights computed from stored stats. Deterministic, so reports saved
- * earlier with English text are re-rendered in Russian when read.
+ * Insights computed from stored stats in `lang`. Deterministic, so stored reports (whatever language their saved
+ * text is in) are re-rendered in the reader's language when read.
  */
-export function buildInsights(r: InsightInput, prev?: InsightInput | null): string[] {
+export function buildInsights(r: InsightInput, prev?: InsightInput | null, lang: Lang = DEFAULT_LANG): string[] {
+  const t = psychologyT.tFor(lang);
   const out: string[] = [];
   const breakdown = (r.emotionalBreakdown ?? {}) as Record<string, StateSummary | undefined>;
   const raw = (r.rawStats ?? {}) as { checkinCountByState?: Record<string, number> };
@@ -137,18 +133,15 @@ export function buildInsights(r: InsightInput, prev?: InsightInput | null): stri
   const n = r.totalTrades;
 
   if (n === 0) {
-    out.push("На этой неделе сделок нет.");
+    out.push(t("weekly.noTrades"));
   } else {
-    out.push(
-      `За неделю: ${n} ${plural(n, "сделка", "сделки", "сделок")}, винрейт ${pct(wr)}%` +
-        (pnl !== 0 ? `, P&L ${money(pnl)}.` : "."),
-    );
+    out.push(pnl !== 0 ? t("weekly.summaryPnl", { count: n, wr: pct(wr), pnl: money(pnl) }) : t("weekly.summary", { count: n, wr: pct(wr) }));
   }
 
   if (prev && prev.totalTrades > 0 && n > 0) {
     const d = pct(wr) - pct(Number(prev.winRate) || 0);
     if (Math.abs(d) >= 5) {
-      out.push(`Винрейт ${d > 0 ? "вырос" : "снизился"} на ${Math.abs(d)} п.п. к прошлой неделе.`);
+      out.push(t(d > 0 ? "weekly.wrUp" : "weekly.wrDown", { pp: Math.abs(d) }));
     }
   }
 
@@ -160,43 +153,40 @@ export function buildInsights(r: InsightInput, prev?: InsightInput | null): stri
   if (focused && normal && focused.count >= 1 && normal.count >= 1) {
     const diff = pct(focused.winRate - normal.winRate);
     if (diff > 0) {
-      out.push(`В дни «в фокусе» винрейт выше на ${diff} п.п. (${pct(focused.winRate)}% против ${pct(normal.winRate)}%).`);
+      out.push(t("weekly.focusUp", { pp: diff, a: pct(focused.winRate), b: pct(normal.winRate) }));
     } else if (diff < 0) {
-      out.push(`В дни «в фокусе» винрейт ниже на ${Math.abs(diff)} п.п. — проверьте, не переторговываете ли вы на уверенности.`);
+      out.push(t("weekly.focusDown", { pp: Math.abs(diff) }));
     }
   }
 
   if (stressed && normal && stressed.count >= 1 && normal.count >= 1) {
     const d = pct(stressed.winRate - normal.winRate);
-    if (d < 0) out.push(`Стресс стоит ${Math.abs(d)} п.п. винрейта (${pct(stressed.winRate)}% против ${pct(normal.winRate)}%).`);
+    if (d < 0) out.push(t("weekly.stressCost", { pp: Math.abs(d), a: pct(stressed.winRate), b: pct(normal.winRate) }));
   }
 
   const stressedDays = counts.stressed ?? 0;
   if (stressedDays >= 3) {
-    out.push(`Стресс отмечен ${stressedDays} ${plural(stressedDays, "день", "дня", "дней")} — пересмотрите утреннюю рутину.`);
+    out.push(t("weekly.stressDays", { count: stressedDays }));
   }
   const tiltDays = counts.tilted ?? 0;
   if (tiltDays >= 1) {
-    out.push(`Тильт отмечен ${tiltDays} ${plural(tiltDays, "день", "дня", "дней")} — в такие сессии следите за овертрейдингом и дневным лимитом.`);
+    out.push(t("weekly.tiltDays", { count: tiltDays }));
   }
   if (revenge && revenge.count >= 1) {
-    out.push(
-      `${revenge.count} ${plural(revenge.count, "сделка", "сделки", "сделок")} в режиме отыгрыша` +
-        (revenge.avgR != null
-          ? ` — в среднем ${revenge.avgR > 0 ? "+" : ""}${revenge.avgR}R.`
-          : ` — винрейт ${pct(revenge.winRate)}%.`),
-    );
+    out.push(revenge.avgR != null
+      ? t("weekly.revengeR", { count: revenge.count, r: `${revenge.avgR > 0 ? "+" : ""}${revenge.avgR}` })
+      : t("weekly.revengeWr", { count: revenge.count, wr: pct(revenge.winRate) }));
   }
 
   const best = r.bestState ? breakdown[r.bestState] : undefined;
   if (r.bestState && r.bestState !== "normal" && best) {
-    out.push(`Лучшее состояние недели — «${STATE_LABELS_RU[r.bestState] ?? r.bestState}» (${pct(best.winRate)}% винрейт).`);
+    out.push(t("weekly.bestState", { state: stateLabelFor(r.bestState, lang), wr: pct(best.winRate) }));
   }
 
   if (r.totalCheckins === 0 && n > 0) {
-    out.push("Чек-инов на этой неделе нет — без них не видно, как состояние влияет на результат.");
+    out.push(t("weekly.noCheckins"));
   } else if (r.totalCheckins > 0 && r.totalCheckins < 3) {
-    out.push(`Чек-ин заполнен ${r.totalCheckins} из 5 дней — чем больше данных, тем точнее выводы.`);
+    out.push(t("weekly.fewCheckins", { n: r.totalCheckins }));
   }
 
   return out;

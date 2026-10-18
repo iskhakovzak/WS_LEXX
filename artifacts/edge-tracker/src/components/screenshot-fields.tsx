@@ -8,13 +8,18 @@ import {
   Camera, Plus, X, ExternalLink, StickyNote, Pencil, Check, ChevronLeft, ChevronRight,
   ZoomIn, ZoomOut, Maximize2, Minimize2, RotateCcw, Trash2, ImageOff, Link2, MoveLeft, MoveRight, ImagePlus,
 } from "lucide-react";
+import { commonI18n } from "@/i18n/ns/common";
+import { screenshotsI18n } from "@/i18n/ns/screenshots";
+
+const st = screenshotsI18n.t; // called at render / call time only
+const altOf = (n: number, note?: string) => (note ? st("altNote", { n, note }) : st("alt", { n }));
 
 interface ScreenshotFieldsProps {
   urls: string[];
   onChange: (urls: string[]) => void;
   notes?: string[];
   onNotesChange?: (notes: string[]) => void;
-  /** Optional: custom section label (default «Скриншоты»). */
+  /** Optional: custom section label (default: «Скриншоты» in the UI language). */
   label?: string;
   /** Optional: hide the section label (when the parent renders its own). */
   hideLabel?: boolean;
@@ -96,17 +101,17 @@ function ShotTile({
             type="button"
             onClick={onOpen}
             className="flex h-full w-full flex-col items-center justify-center gap-1 px-2 text-center text-muted-foreground"
-            aria-label={`Открыть скриншот ${index + 1}`}
+            aria-label={st("open", { n: index + 1 })}
           >
             <ImageOff className="h-5 w-5" aria-hidden="true" />
-            <span className="text-2xs">Превью недоступно</span>
+            <span className="text-2xs">{st("previewUnavailable")}</span>
             <span className="max-w-full truncate text-2xs opacity-80">{hostOf(url)}</span>
           </button>
         ) : (
-          <button type="button" onClick={onOpen} className="block h-full w-full" aria-label={`Открыть скриншот ${index + 1}`}>
+          <button type="button" onClick={onOpen} className="block h-full w-full" aria-label={st("open", { n: index + 1 })}>
             <img
               src={url}
-              alt={note ? `Скриншот ${index + 1}: ${note}` : `Скриншот ${index + 1}`}
+              alt={altOf(index + 1, note)}
               loading="lazy"
               className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-[1.02] motion-reduce:transform-none"
               onError={() => setFailed(true)}
@@ -120,35 +125,36 @@ function ShotTile({
 
         {/* Actions: hover-reveal on desktop, always visible on touch */}
         {confirming ? (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/85 p-2 backdrop-blur-sm" role="alertdialog" aria-label="Подтвердите удаление">
-            <span className="text-xs font-medium text-foreground">Удалить скриншот?</span>
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background/85 p-2 backdrop-blur-sm" role="alertdialog" aria-label={st("confirmAria")}>
+            <span className="text-xs font-medium text-foreground">{st("confirmDelete")}</span>
             <div className="flex gap-1.5">
               <Button type="button" size="sm" variant="destructive" onClick={onRemove} autoFocus>
-                Удалить
+                {commonI18n.t("actions.delete")}
               </Button>
               <Button type="button" size="sm" variant="outline" onClick={() => setConfirming(false)}>
-                Отмена
+                {commonI18n.t("actions.cancel")}
               </Button>
             </div>
           </div>
         ) : (
           <div className="absolute right-1.5 top-1.5 flex gap-1 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
             {total > 1 && index > 0 && (
-              <TileBtn label={`Сдвинуть скриншот ${index + 1} влево`} onClick={() => onMove(-1)}><MoveLeft /></TileBtn>
+              <TileBtn label={st("moveLeft", { n: index + 1 })} onClick={() => onMove(-1)}><MoveLeft /></TileBtn>
             )}
             {total > 1 && index < total - 1 && (
-              <TileBtn label={`Сдвинуть скриншот ${index + 1} вправо`} onClick={() => onMove(1)}><MoveRight /></TileBtn>
+              <TileBtn label={st("moveRight", { n: index + 1 })} onClick={() => onMove(1)}><MoveRight /></TileBtn>
             )}
             <a
               href={url}
               target="_blank"
               rel="noopener noreferrer"
-              aria-label={`Открыть скриншот ${index + 1} в новой вкладке`}
+              aria-label={st("openNewTab", { n: index + 1 })}
+              title={st("openNewTab", { n: index + 1 })}
               className="grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground backdrop-blur hover:bg-background [&_svg]:h-3.5 [&_svg]:w-3.5"
             >
               <ExternalLink aria-hidden="true" />
             </a>
-            <TileBtn label={`Удалить скриншот ${index + 1}`} onClick={() => setConfirming(true)} danger><Trash2 /></TileBtn>
+            <TileBtn label={st("remove", { n: index + 1 })} onClick={() => setConfirming(true)} danger><Trash2 /></TileBtn>
           </div>
         )}
       </div>
@@ -156,8 +162,8 @@ function ShotTile({
         <Input
           value={note}
           onChange={(e) => onNote(e.target.value)}
-          placeholder="Заметка: вход, уровень, ошибка…"
-          aria-label={`Заметка к скриншоту ${index + 1}`}
+          placeholder={st("notePlaceholder")}
+          aria-label={st("noteAria", { n: index + 1 })}
           className="h-8 px-3 text-xs"
         />
       )}
@@ -182,7 +188,8 @@ function TileBtn({ label, onClick, children, danger }: { label: string; onClick:
   );
 }
 
-export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label = "Скриншоты", hideLabel, max }: ScreenshotFieldsProps) {
+export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label: labelProp, hideLabel, max }: ScreenshotFieldsProps) {
+  const label = labelProp ?? st("label");
   // Work on the non-empty links only; notes stay aligned by index (same as persistence, which drops blanks).
   const pairs = urls
     .map((u, i) => ({ url: (u ?? "").trim(), note: notes?.[i] ?? "" }))
@@ -207,7 +214,7 @@ export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label =
     const room = max != null ? Math.max(0, max - shots.length) : fresh.length;
     const take = fresh.slice(0, room);
     if (take.length === 0) {
-      setHint(list.length > 0 ? (full ? `Не больше ${max} скриншотов` : "Этот скриншот уже добавлен") : null);
+      setHint(list.length > 0 ? (full && max != null ? st("maxReached", { count: max }) : st("duplicate")) : null);
       return 0;
     }
     commit([...shots, ...take], [...shotNotes, ...take.map(() => "")]);
@@ -220,7 +227,7 @@ export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label =
     if (!text) return;
     const found = extractUrls(text);
     if (found.length === 0) {
-      setHint("Нужна ссылка, начинающаяся с http:// или https://");
+      setHint(st("needUrl"));
       return;
     }
     if (addMany(found) > 0) setDraft("");
@@ -240,7 +247,7 @@ export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label =
     const hasFile = Array.from(dt.items ?? []).some((it) => it.kind === "file") || (dt.files?.length ?? 0) > 0;
     if (hasFile) {
       e.preventDefault();
-      setHint("Файлы не загружаются напрямую — загрузите картинку (imgur, TradingView «Сохранить снимок») и вставьте ссылку");
+      setHint(st("noFiles"));
       return true;
     }
     return false;
@@ -315,7 +322,7 @@ export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label =
                 onChange={(e) => { setDraft(e.target.value); if (hint) setHint(null); }}
                 onPaste={(e) => { handleTransfer(e.clipboardData, e); }}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); submitDraft(); } }}
-                placeholder="Вставьте ссылку на скриншот"
+                placeholder={st("urlPlaceholder")}
                 aria-label={hideLabel ? label : undefined}
                 aria-describedby={hint ? `${inputId}-hint` : undefined}
                 inputMode="url"
@@ -324,13 +331,13 @@ export function ScreenshotFields({ urls, onChange, notes, onNotesChange, label =
             </div>
             <Button type="button" variant="outline" size="sm" onClick={submitDraft} disabled={!draft.trim()} className="h-9 shrink-0">
               <Plus aria-hidden="true" />
-              <span className="hidden sm:inline">Добавить</span>
-              <span className="sr-only sm:hidden">Добавить скриншот</span>
+              <span className="hidden sm:inline">{st("add")}</span>
+              <span className="sr-only sm:hidden">{st("addAria")}</span>
             </Button>
           </div>
           <p className="flex items-center gap-1.5 px-1 text-2xs text-muted-foreground">
             <ImagePlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-            {dragOver ? "Отпустите, чтобы добавить" : "Ctrl+V или перетащите картинку из браузера · можно сразу несколько ссылок"}
+            {dragOver ? st("dropHint") : st("pasteHint")}
           </p>
         </div>
       )}
@@ -509,7 +516,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
       ref={containerRef}
       role="dialog"
       aria-modal="true"
-      aria-label={`Просмотр скриншота ${idx + 1} из ${urls.length}`}
+      aria-label={st("viewerAria", { n: idx + 1, total: urls.length })}
       className="pointer-events-auto fixed inset-0 z-modal select-none overflow-hidden bg-background/95"
       onClick={onClose}
       onMouseMove={onMouseMove}
@@ -524,25 +531,25 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
           {idx + 1} / {urls.length}
         </span>
         <div className="glass-field flex items-center gap-0.5 p-1">
-          <LbBtn label="Уменьшить (−)" onClick={zoomOut} disabled={zoom <= ZOOM_MIN}><ZoomOut aria-hidden="true" /></LbBtn>
+          <LbBtn label={st("zoomOut")} onClick={zoomOut} disabled={zoom <= ZOOM_MIN}><ZoomOut aria-hidden="true" /></LbBtn>
           <span className="hidden w-11 text-center text-xs tabular-nums text-muted-foreground sm:inline">{Math.round(zoom * 100)}%</span>
-          <LbBtn label="Увеличить (+)" onClick={zoomIn} disabled={zoom >= ZOOM_MAX}><ZoomIn aria-hidden="true" /></LbBtn>
-          <LbBtn label="Сбросить масштаб (0)" onClick={resetView} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}><RotateCcw aria-hidden="true" /></LbBtn>
+          <LbBtn label={st("zoomIn")} onClick={zoomIn} disabled={zoom >= ZOOM_MAX}><ZoomIn aria-hidden="true" /></LbBtn>
+          <LbBtn label={st("zoomReset")} onClick={resetView} disabled={zoom === 1 && pan.x === 0 && pan.y === 0}><RotateCcw aria-hidden="true" /></LbBtn>
           <span className="hidden sm:contents">
-            <LbBtn label="На весь экран (F)" onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</LbBtn>
+            <LbBtn label={st("fullscreen")} onClick={toggleFullscreen}>{isFullscreen ? <Minimize2 aria-hidden="true" /> : <Maximize2 aria-hidden="true" />}</LbBtn>
           </span>
           <a
             href={urls[idx]}
             target="_blank"
             rel="noopener noreferrer"
             onClick={(e) => e.stopPropagation()}
-            title="Открыть в новой вкладке"
-            aria-label="Открыть в новой вкладке"
+            title={st("newTab")}
+            aria-label={st("newTab")}
             className="grid h-9 w-9 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ExternalLink className="h-[18px] w-[18px]" aria-hidden="true" />
           </a>
-          <LbBtn label="Закрыть (Esc)" onClick={onClose} btnRef={closeBtnRef}><X aria-hidden="true" /></LbBtn>
+          <LbBtn label={st("close")} onClick={onClose} btnRef={closeBtnRef}><X aria-hidden="true" /></LbBtn>
         </div>
       </div>
 
@@ -551,7 +558,8 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
         <>
           <button
             type="button"
-            aria-label="Предыдущий скриншот"
+            aria-label={st("prev")}
+            title={st("prev")}
             onClick={(e) => { e.stopPropagation(); goPrev(); }}
             className="glass-field absolute left-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
           >
@@ -559,7 +567,8 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
           </button>
           <button
             type="button"
-            aria-label="Следующий скриншот"
+            aria-label={st("next")}
+            title={st("next")}
             onClick={(e) => { e.stopPropagation(); goNext(); }}
             className="glass-field absolute right-3 top-1/2 z-raised hidden h-11 w-11 -translate-y-1/2 place-items-center text-foreground sm:grid"
           >
@@ -578,7 +587,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
         <img
           key={urls[idx]}
           src={urls[idx]}
-          alt={notes[idx] ? `Скриншот ${idx + 1}: ${notes[idx]}` : `Скриншот ${idx + 1}`}
+          alt={altOf(idx + 1, notes[idx])}
           className="rounded-xl shadow-2xl motion-reduce:!transition-none"
           style={{
             maxWidth: "100%",
@@ -612,7 +621,7 @@ export function Lightbox({ urls, notes, initialIndex, onClose }: {
               <button
                 key={i}
                 type="button"
-                aria-label={`Скриншот ${i + 1}`}
+                aria-label={st("alt", { n: i + 1 })}
                 aria-current={i === idx ? "true" : undefined}
                 onClick={(e) => { e.stopPropagation(); setIdx(i); resetView(); }}
                 className={cn(
@@ -657,8 +666,8 @@ export function ScreenshotThumbs({ urls, notes, max = 3, thumbClass }: {
               "group relative block overflow-hidden rounded-lg border border-[var(--field-border)] transition-colors hover:border-primary/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               thumbClass || "h-10 w-14",
             )}
-            title="Открыть превью"
-            aria-label={`Открыть скриншот ${i + 1}`}
+            title={st("openPreview")}
+            aria-label={st("open", { n: i + 1 })}
           >
             <img src={url} alt="" className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100" onError={(e) => { (e.target as HTMLImageElement).style.visibility = "hidden"; }} />
             <span className="absolute inset-0 grid place-items-center bg-background/0 transition-colors group-hover:bg-background/30">
@@ -671,7 +680,8 @@ export function ScreenshotThumbs({ urls, notes, max = 3, thumbClass }: {
             type="button"
             onClick={(e) => { e.stopPropagation(); setLightboxIdx(visible.length); }}
             className="grid h-6 min-w-6 place-items-center self-end rounded-full bg-[var(--glass-bg)] px-1.5 text-2xs font-medium tabular-nums text-muted-foreground hover:text-primary"
-            aria-label={`Ещё ${extra} скриншотов`}
+            aria-label={st("more", { count: extra })}
+            title={st("more", { count: extra })}
           >
             +{extra}
           </button>
@@ -704,7 +714,7 @@ export function ScreenshotDisplay({ urls, notes, onNotesChange }: ScreenshotDisp
       <div className="flex flex-col gap-2.5">
         <div className="micro-label flex items-center gap-1.5">
           <Camera className="h-3.5 w-3.5" aria-hidden="true" />
-          Скриншоты · {list.length}
+          {st("countLabel", { count: list.length })}
         </div>
         <div className={cn("grid gap-3", list.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2 lg:grid-cols-3")}>
           {list.map((url, i) => (
@@ -765,14 +775,14 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
             className="flex aspect-video flex-col items-center justify-center gap-1 text-muted-foreground hover:text-foreground"
           >
             <ImageOff className="h-5 w-5" aria-hidden="true" />
-            <span className="text-xs">Превью недоступно — открыть ссылку</span>
+            <span className="text-xs">{st("previewOpenLink")}</span>
             <span className="max-w-[90%] truncate text-2xs">{hostOf(safeUrl)}</span>
           </a>
         ) : (
-          <button type="button" onClick={onZoom} className="block w-full" aria-label={`Увеличить скриншот ${index + 1}`}>
+          <button type="button" onClick={onZoom} className="block w-full" aria-label={st("zoomShot", { n: index + 1 })}>
             <img
               src={safeUrl}
-              alt={note ? `Скриншот ${index + 1}: ${note}` : `Скриншот ${index + 1}`}
+              alt={altOf(index + 1, note)}
               loading="lazy"
               className={cn("w-full object-contain", single ? "max-h-[28rem]" : "max-h-64")}
               onError={() => setFailed(true)}
@@ -789,7 +799,8 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
           href={safeUrl}
           target="_blank"
           rel="noopener noreferrer"
-          aria-label={`Открыть скриншот ${index + 1} в новой вкладке`}
+          aria-label={st("openNewTab", { n: index + 1 })}
+          title={st("openNewTab", { n: index + 1 })}
           className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-background/80 text-foreground opacity-100 backdrop-blur transition-opacity hover:bg-background md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100"
         >
           <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -802,18 +813,18 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
             onChange={(e) => setDraft(e.target.value)}
             rows={2}
             autoFocus
-            aria-label={`Заметка к скриншоту ${index + 1}`}
+            aria-label={st("noteAria", { n: index + 1 })}
             className="glass-field min-h-[60px] flex-1 resize-none !rounded-xl px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            placeholder="Заметка к скриншоту…"
+            placeholder={st("noteEditPlaceholder")}
             onKeyDown={(e) => {
               if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); save(); }
               if (e.key === "Escape") { e.stopPropagation(); setEditing(false); }
             }}
           />
-          <button type="button" aria-label="Сохранить заметку (Ctrl+Enter)" title="Сохранить (Ctrl+Enter)" onClick={save} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-up hover:bg-up/15">
+          <button type="button" aria-label={st("saveNoteAria")} title={st("saveNoteTitle")} onClick={save} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-up hover:bg-up/15">
             <Check className="h-4 w-4" aria-hidden="true" />
           </button>
-          <button type="button" aria-label="Отменить редактирование" title="Отмена" onClick={() => setEditing(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
+          <button type="button" aria-label={st("cancelEdit")} title={commonI18n.t("actions.cancel")} onClick={() => setEditing(false)} className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground">
             <X className="h-4 w-4" aria-hidden="true" />
           </button>
         </div>
@@ -824,7 +835,8 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
           {onNoteChange && (
             <button
               type="button"
-              aria-label="Редактировать заметку"
+              aria-label={st("editNote")}
+              title={st("editNote")}
               onClick={startEdit}
               className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-muted-foreground opacity-100 transition-opacity hover:text-primary focus-visible:opacity-100 md:opacity-0 md:group-hover/note:opacity-100"
             >
@@ -834,7 +846,7 @@ function ScreenshotItem({ url, index, note, onNoteChange, onZoom, single }: {
         </figcaption>
       ) : onNoteChange ? (
         <button type="button" onClick={startEdit} className="inline-flex min-h-7 items-center gap-1.5 self-start rounded-full px-2 text-xs text-muted-foreground transition-colors hover:bg-[var(--glass-hover-bg)] hover:text-primary">
-          <StickyNote className="h-3.5 w-3.5" aria-hidden="true" /> Добавить заметку
+          <StickyNote className="h-3.5 w-3.5" aria-hidden="true" /> {st("addNote")}
         </button>
       ) : null}
     </figure>

@@ -29,6 +29,8 @@
  * behaviour engine (routes/behavior + lib/behaviorEngine), F1 learning tables, F2 enrollments.
  */
 import { Router, type IRouter, type Request, type Response } from "express";
+import { academyPathT, stageDescriptionFor, stageNameFor } from "../lib/academyI18n";
+import { langOf, type Lang } from "../i18n";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -41,15 +43,15 @@ import { execSpanJoin } from "../lib/execSpan";
 import { notifyUser, notifyUsers, assignedStaffOf } from "../lib/notifyUtils";
 import { DEFAULT_TIERS, OPS, windowStart, type Op, type Tier } from "../lib/scalingEngine";
 import {
-  DEFAULT_CRITERIA, DEFAULT_STAGES, LEGACY_TRAINEE_DESCRIPTION, TRAINEE_DESCRIPTION, PROMO_METRICS, PROMO_METRIC_KEYS, STAGE_KEYS, evaluatePromotion, isStageKey,
+  DEFAULT_CRITERIA, DEFAULT_STAGES, LEGACY_TRAINEE_DESCRIPTION, TRAINEE_DESCRIPTION, promoMetricsFor, PROMO_METRIC_KEYS, STAGE_KEYS, evaluatePromotion, isStageKey,
   resolveWindow, sortStages, type Criterion, type LearningInput, type PromoMetricKey, type PromoTrade, type PromotionInput,
   type ReadinessReport, type StageKey, type StageMeta,
 } from "../lib/promotionEngine";
 import {
-  STATUS_LABELS, TEMPLATES, TEMPLATE_BY_KEY, endDateFor, evaluateChallenge, normalizeRules,
+  statusLabelsFor, templatesFor, challengeNameFor, TEMPLATE_BY_KEY, endDateFor, evaluateChallenge, normalizeRules,
   type ChallengeResult, type ChallengeRules, type ChallengeStatus, type ChallengeTrade,
 } from "../lib/challengeEngine";
-import { badRequest, notFound, sendError, unauthorized } from "../lib/http";
+import { AppError, badRequest, conflict, notFound, sendError, unauthorized, type ErrorCode } from "../lib/http";
 
 const router: IRouter = Router();
 
@@ -202,7 +204,7 @@ async function staffOnly(req: Request, res: Response): Promise<Viewer | null> {
   if (!requireMember(req, res)) return null;
   const v = await viewer(req, res);
   if (!v) return null;
-  if (!v.staff) { res.status(403).json({ error: "Только для наставников (куратор/админ)" }); return null; }
+  if (!v.staff) { sendError(res, new AppError("STAFF_ONLY")); return null; }
   return v;
 }
 /** Which single user a read is about: staff → requested or self; trader → self; guest → sentinel (empty). */
@@ -216,8 +218,21 @@ function clientDate(raw: unknown): string {
   const s = typeof raw === "string" ? raw.trim() : "";
   return YMD_RE.test(s) ? s : nyDate();
 }
-function bad(res: Response, err: z.ZodError, msg = "Проверьте поля"): void {
-  res.status(400).json({ error: msg, issues: err.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
+function bad(res: Response, err: z.ZodError): void {
+  sendError(res, badRequest("VALIDATION", err.issues.map((i) => ({ path: i.path.join("."), message: i.message }))));
+}
+
+/** Stage with its display name / description in `lang` (stored values are kept in `storedName` for editors). */
+function localizeStage<T extends StageMeta | null>(s: T, lang: Lang): T {
+  if (!s) return s;
+  return { ...s, storedName: s.name, name: stageNameFor(s.key, s.name, lang), description: stageDescriptionFor(s.key, s.description, lang) } as T;
+}
+
+/** Stored decision comments written by the system (RU seed) → reader's language; a mentor's comment stays. */
+function systemComment(c: string | null, lang: Lang): string | null {
+  if (c === academyPathT.tFor("ru")("route.withdrawnDirect")) return academyPathT.tFor(lang)("route.withdrawnDirect");
+  if (c === academyPathT.tFor("ru")("route.demo")) return academyPathT.tFor(lang)("route.demo");
+  return c;
 }
 
 // ─── config loaders ─────────────────────────────────────────────────────────
@@ -397,7 +412,7 @@ async function loadViolationDates(user: string, from: string): Promise<string[]>
   return out;
 }
 
-async function buildReport(user: string, today: string, ctx?: { stages: StageMeta[]; criteria: Criterion[]; tiers: Tier[]; info?: StageInfo }): Promise<ReadinessReport & { stageSource: StageInfo["source"]; cohortId: number | null }> {
+async function buildReport(user: string, today: string, ctx?: { stages: StageMeta[]; criteria: Criterion[]; tiers: Tier[]; info?: StageInfo }, lang: Lang = "ru"): Promise<ReadinessReport & { stageSource: StageInfo["source"]; cohortId: number | null }> {
   const [stages, criteria, tiers] = ctx ? [ctx.stages, ctx.criteria, ctx.tiers] : await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   const info = ctx?.info ?? (await loadStageInfo([user])).get(user) ?? { stage: null, since: null, source: null, cohortId: null };
   const mine = criteria.filter((c) => c.enabled && c.fromStage === info.stage);
@@ -428,8 +443,8 @@ async function buildReport(user: string, today: string, ctx?: { stages: StageMet
     learning,
     challengesPassed: passed,
   };
-  const report = evaluatePromotion(input, criteria, stages, tiers);
-  return { ...report, stageSource: info.source, cohortId: info.cohortId };
+  const report = evaluatePromotion(input, criteria, stages, tiers, lang);
+  return { ...report, stage: localizeStage(report.stage, lang), nextStage: localizeStage(report.nextStage, lang), stageSource: info.source, cohortId: info.cohortId };
 }
 
 /** One notification per (user, stage) when the report first becomes "ready". */
@@ -442,7 +457,8 @@ async function maybeNotifyReady(report: ReadinessReport): Promise<void> {
     );
     if (!rowCount) return;
     // Text as data: rendered per reader language (lib/notificationText.ts, i18n `notifications`).
-    const params = { user: report.user, total: report.total, from: report.stage.name, to: report.nextStage.name };
+    // Names in RU (fallback text); readers see the seeded stage names in their language via the keys.
+    const params = { user: report.user, total: report.total, from: (report.stage as { storedName?: string }).storedName ?? report.stage.name, to: (report.nextStage as { storedName?: string }).storedName ?? report.nextStage.name, fromKey: report.stage.key, toKey: report.nextStage.key };
     await notifyUser({ userName: report.user, type: "academy_promotion_ready", params, link: PATH_LINK(), entityType: "academy_stage", entityId: report.stage.key, source: "academy" });
     const staff = await mentorsOf(report.user);
     await notifyUsers(staff, { type: "academy_promotion_ready", params: { ...params, variant: "staff" }, link: PATH_LINK(report.user), entityType: "academy_stage", entityId: report.stage.key, source: "academy" }, report.user);
@@ -481,7 +497,9 @@ router.get("/academy/path/config", asyncHandler(async (req, res): Promise<void> 
   const [stages, criteria, tiers] = await Promise.all([loadStages(), loadCriteria(), loadTiers()]);
   res.json({
     stages, criteria, tiers: tiers.map((t) => ({ key: t.key, name: t.name, accountSize: t.accountSize, dailyLossLimit: t.dailyLossLimit, maxDrawdown: t.maxDrawdown })),
-    meta: { metrics: PROMO_METRICS, ops: OPS }, templates: TEMPLATES, canEdit: v.staff, me: v.name,
+    meta: { metrics: promoMetricsFor(langOf(req)), ops: OPS }, templates: templatesFor(langOf(req)), canEdit: v.staff, me: v.name,
+    // Display names of the (possibly seeded) stages in the reader's language; `stages` keeps the stored values for editing.
+    stageLabels: Object.fromEntries(stages.map((s) => [s.key, stageNameFor(s.key, s.name, langOf(req))])),
   });
 }));
 
@@ -497,7 +515,7 @@ router.put("/academy/path/stages", asyncHandler(async (req, res): Promise<void> 
   if (!v) return;
   await ensureTables();
   const parsed = z.array(StageBody).min(1).max(4).safeParse(req.body);
-  if (!parsed.success) { bad(res, parsed.error, "Проверьте ступени"); return; }
+  if (!parsed.success) { bad(res, parsed.error); return; }
   for (const s of parsed.data) {
     const order = STAGE_KEYS.indexOf(s.key) + 1;
     await pool.query(
@@ -526,7 +544,7 @@ router.put("/academy/path/criteria", asyncHandler(async (req, res): Promise<void
   if (!v) return;
   await ensureTables();
   const parsed = z.array(CriterionBody).max(120).safeParse(req.body);
-  if (!parsed.success) { bad(res, parsed.error, "Проверьте критерии"); return; }
+  if (!parsed.success) { bad(res, parsed.error); return; }
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
@@ -570,12 +588,13 @@ router.get("/academy/path/report", asyncHandler(async (req, res): Promise<void> 
   if (user === undefined) throw unauthorized();
   const today = clientDate(req.query.date);
   if (user === GUEST_SCOPE) { res.json({ report: null, guest: true }); return; }
-  const report = await buildReport(user, today);
+  const lang = langOf(req);
+  const report = await buildReport(user, today, undefined, lang);
   const [{ rows: pending }, { rows: hist }] = await Promise.all([
     pool.query(`SELECT * FROM academy_promotion_requests WHERE user_name = $1 AND status = 'pending' AND archived_at IS NULL LIMIT 1`, [user]),
     pool.query(`SELECT * FROM academy_stage_history WHERE user_name = $1 ORDER BY created_at DESC LIMIT 20`, [user]),
   ]);
-  res.json({ report, pendingRequest: pending[0] ? rowToRequest(pending[0]) : null, history: hist.map(rowToHistory), canDecide: v.staff && user !== v.name });
+  res.json({ report, pendingRequest: pending[0] ? rowToRequest(pending[0], lang) : null, history: hist.map(rowToHistory), canDecide: v.staff && user !== v.name });
 }));
 
 router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> => {
@@ -583,6 +602,7 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
   if (!v) return;
   await ensureTables();
   const today = clientDate(req.query.date);
+  const lang = langOf(req);
   const [stages, criteria, tiers, info, usersRes, pendingRes] = await Promise.all([
     loadStages(), loadCriteria(), loadTiers(), loadStageInfo(null),
     pool.query(`SELECT name, role FROM users WHERE active = true AND COALESCE(banned, false) = false`),
@@ -595,7 +615,7 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
   for (const [n, role] of roles) if (role === "trader") names.add(n);
   const people = await Promise.all([...names].map(async (name) => {
     const i = info.get(name) ?? { stage: null, since: null, source: null, cohortId: null };
-    const r = await buildReport(name, today, { stages, criteria, tiers, info: i });
+    const r = await buildReport(name, today, { stages, criteria, tiers, info: i }, lang);
     const p = pending.get(name);
     return {
       user: name, role: roles.get(name) ?? null, stage: i.stage, since: i.since, stageSource: i.source, cohortId: i.cohortId,
@@ -605,19 +625,19 @@ router.get("/academy/path/funnel", asyncHandler(async (req, res): Promise<void> 
     };
   }));
   people.sort((a, b) => Number(b.ready) - Number(a.ready) || (b.total ? b.passed / b.total : 0) - (a.total ? a.passed / a.total : 0) || a.user.localeCompare(b.user, "ru"));
-  const columns = [...stages.map((s) => ({ key: s.key as string, name: s.name, people: people.filter((p) => p.stage === s.key) })),
-    { key: "none", name: "Ступень не назначена", people: people.filter((p) => !p.stage) }];
-  res.json({ today, stages, columns, totals: { people: people.length, ready: people.filter((p) => p.ready).length, pending: pending.size } });
+  const columns = [...stages.map((s) => ({ key: s.key as string, name: stageNameFor(s.key, s.name, lang), people: people.filter((p) => p.stage === s.key) })),
+    { key: "none", name: academyPathT.tFor(lang)("stages.none"), people: people.filter((p) => !p.stage) }];
+  res.json({ today, stages: stages.map((s) => localizeStage(s, lang)), columns, totals: { people: people.length, ready: people.filter((p) => p.ready).length, pending: pending.size } });
 }));
 
 // ─── promotion requests ─────────────────────────────────────────────────────
 
-function rowToRequest(r: any) {
+function rowToRequest(r: any, lang: Lang = "ru") {
   return {
     id: Number(r.id), user: String(r.user_name), fromStage: r.from_stage ?? null, toStage: String(r.to_stage), status: String(r.status),
     passed: Number(r.passed), total: Number(r.total), ready: r.ready === true, comment: r.comment ?? null, requestedBy: String(r.requested_by),
     createdAt: new Date(r.created_at).toISOString(), decidedBy: r.decided_by ?? null, decidedAt: r.decided_at ? new Date(r.decided_at).toISOString() : null,
-    decisionComment: r.decision_comment ?? null, report: r.report ?? null,
+    decisionComment: systemComment(r.decision_comment ?? null, lang), report: r.report ?? null,
   };
 }
 function rowToHistory(r: any) {
@@ -640,7 +660,8 @@ router.get("/academy/path/requests", asyncHandler(async (req, res): Promise<void
       ORDER BY (status = 'pending') DESC, created_at DESC LIMIT 200`,
     [scope, status],
   );
-  res.json({ requests: rows.map(rowToRequest) });
+  const lang = langOf(req);
+  res.json({ requests: rows.map((x) => rowToRequest(x, lang)) });
 }));
 
 const RequestBody = z.object({ user: z.string().trim().min(1).max(120).optional(), comment: z.string().trim().max(2000).optional() }).strict();
@@ -653,10 +674,10 @@ router.post("/academy/path/requests", asyncHandler(async (req, res): Promise<voi
   const parsed = RequestBody.safeParse(req.body ?? {});
   if (!parsed.success) { bad(res, parsed.error); return; }
   const user = v.staff && parsed.data.user ? parsed.data.user : v.name;
-  if (!v.staff && parsed.data.user && parsed.data.user !== v.name) { res.status(403).json({ error: "Заявку можно подать только за себя" }); return; }
+  if (!v.staff && parsed.data.user && parsed.data.user !== v.name) throw new AppError("PROMOTION_SELF_ONLY");
   const report = await buildReport(user, nyDate());
-  if (!report.stage) { res.status(400).json({ error: "Ступень не назначена — сначала назначьте ступень" }); return; }
-  if (!report.nextStage) { res.status(400).json({ error: "Это высшая ступень" }); return; }
+  if (!report.stage) throw badRequest("STAGE_NOT_ASSIGNED");
+  if (!report.nextStage) throw badRequest("STAGE_TOP");
   try {
     const { rows } = await pool.query(
       `INSERT INTO academy_promotion_requests (user_name, from_stage, to_stage, passed, total, ready, report, comment, requested_by)
@@ -664,13 +685,17 @@ router.post("/academy/path/requests", asyncHandler(async (req, res): Promise<voi
       [user, report.stage.key, report.nextStage.key, report.passed, report.total, report.ready, JSON.stringify(report), parsed.data.comment ?? null, v.name],
     );
     const r = rowToRequest(rows[0]);
-    const text = `${user}: заявка на перевод «${report.stage.name}» → «${report.nextStage.name}» (${report.passed} из ${report.total} критериев).`;
-    await notifyUsers(await mentorsOf(user), { type: "academy_promotion_request", title: "Заявка на перевод", message: text, link: PATH_LINK(user), entityType: "academy_promotion_request", entityId: r.id, actor: v.name, source: "academy" }, v.name);
-    if (user !== v.name) await notifyUser({ userName: user, type: "academy_promotion_request", title: "Наставник подал заявку на ваш перевод", message: text, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: r.id, actor: v.name, source: "academy" });
+    // Text as data (lib/notificationRenderers/academy.ts): rendered per reader; RU title/body are filled from it.
+    const params = {
+      user, fromKey: report.stage.key, toKey: report.nextStage.key, passed: report.passed, total: report.total,
+      from: (report.stage as { storedName?: string }).storedName ?? report.stage.name, to: (report.nextStage as { storedName?: string }).storedName ?? report.nextStage.name,
+    };
+    await notifyUsers(await mentorsOf(user), { type: "academy_promotion_request", params: { ...params, variant: "staff" }, link: PATH_LINK(user), entityType: "academy_promotion_request", entityId: r.id, actor: v.name, source: "academy" }, v.name);
+    if (user !== v.name) await notifyUser({ userName: user, type: "academy_promotion_request", params: { ...params, variant: "user" }, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: r.id, actor: v.name, source: "academy" });
     await logAudit({ actor: v.name, action: "academy.promotion.request", targetType: "academy_promotion_request", targetId: String(r.id), details: { user, to: report.nextStage.key, passed: report.passed, total: report.total } });
     res.status(201).json({ request: r });
   } catch (e: any) {
-    if (e?.code === "23505") { res.status(409).json({ error: "Уже есть заявка на рассмотрении" }); return; }
+    if (e?.code === "23505") throw conflict("PROMOTION_PENDING_EXISTS");
     throw e;
   }
 }));
@@ -708,22 +733,22 @@ router.post("/academy/path/requests/:id/approve", asyncHandler(async (req, res):
   if (!Number.isInteger(id) || !parsed.success) throw badRequest();
   const { rows } = await pool.query(`SELECT * FROM academy_promotion_requests WHERE id = $1 AND archived_at IS NULL`, [id]);
   const r = rows[0];
-  if (!r) { res.status(404).json({ error: "Заявка не найдена" }); return; }
-  if (r.status !== "pending") { res.status(409).json({ error: "Заявка уже рассмотрена" }); return; }
-  if (r.user_name === v.name) { res.status(403).json({ error: "Нельзя одобрить собственный перевод" }); return; }
+  if (!r) throw notFound("PROMOTION_REQUEST_NOT_FOUND");
+  if (r.status !== "pending") throw conflict("PROMOTION_REQUEST_DECIDED");
+  if (r.user_name === v.name) throw new AppError("PROMOTION_SELF_APPROVE");
   const report = await buildReport(String(r.user_name), nyDate());
   const comment = parsed.data.comment?.trim() || null;
-  if (!report.ready && !comment) { res.status(400).json({ error: `Критерии выполнены не все (${report.passed} из ${report.total}) — укажите обоснование решения` }); return; }
-  if (report.stage?.key !== r.from_stage) { res.status(409).json({ error: "Ступень ученика изменилась после подачи заявки — создайте новую" }); return; }
+  if (!report.ready && !comment) throw badRequest("PROMOTION_COMMENT_REQUIRED", undefined, { passed: report.passed, total: report.total });
+  if (report.stage?.key !== r.from_stage) throw conflict("PROMOTION_STAGE_CHANGED");
   const upd = await pool.query(
     `UPDATE academy_promotion_requests SET status = 'approved', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE id = $1 AND status = 'pending' RETURNING *`,
     [id, v.name, comment],
   );
-  if (!upd.rows[0]) { res.status(409).json({ error: "Заявка уже рассмотрена" }); return; }
+  if (!upd.rows[0]) throw conflict("PROMOTION_REQUEST_DECIDED");
   await setStage(String(r.user_name), r.from_stage, r.to_stage, v.name, "promote", comment, id, report);
   const stages = await loadStages();
   const toName = stages.find((s) => s.key === r.to_stage)?.name ?? r.to_stage;
-  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", title: `Перевод одобрен: «${toName}»`, message: `${v.name}: перевод на ступень «${toName}» одобрен.${comment ? ` Комментарий: ${comment}` : ""}`, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy" });
+  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", params: { variant: "approved", actor: v.name, toKey: r.to_stage, to: toName, comment }, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy" });
   await logAudit({ actor: v.name, action: "academy.promotion.approve", targetType: "academy_promotion_request", targetId: String(id), details: { user: r.user_name, from: r.from_stage, to: r.to_stage, ready: report.ready, passed: report.passed, total: report.total } });
   res.json({ request: rowToRequest(upd.rows[0]) });
 }));
@@ -736,18 +761,18 @@ router.post("/academy/path/requests/:id/reject", asyncHandler(async (req, res): 
   const parsed = DecisionBody.safeParse(req.body ?? {});
   if (!Number.isInteger(id) || !parsed.success) throw badRequest();
   const comment = parsed.data.comment?.trim();
-  if (!comment) { res.status(400).json({ error: "Укажите причину отказа и что улучшить" }); return; }
+  if (!comment) throw badRequest("PROMOTION_REJECT_REASON");
   const upd = await pool.query(
     `UPDATE academy_promotion_requests SET status = 'rejected', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE id = $1 AND status = 'pending' AND archived_at IS NULL RETURNING *`,
     [id, v.name, comment],
   );
   const r = upd.rows[0];
-  if (!r) { res.status(409).json({ error: "Заявка не найдена или уже рассмотрена" }); return; }
+  if (!r) throw conflict("PROMOTION_REQUEST_DECIDED");
   await pool.query(
     `INSERT INTO academy_stage_history (user_name, from_stage, to_stage, action, request_id, actor, comment) VALUES ($1,$2,$3,'reject',$4,$5,$6)`,
     [r.user_name, r.from_stage, r.to_stage, id, v.name, comment],
   );
-  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", title: "Перевод пока отклонён", message: `${v.name}: ${comment}`, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy", severity: "warn" });
+  await notifyUser({ userName: r.user_name, type: "academy_promotion_decision", params: { variant: "rejected", actor: v.name, toKey: r.to_stage, to: r.to_stage, comment }, link: PATH_LINK(), entityType: "academy_promotion_request", entityId: id, actor: v.name, source: "academy", severity: "warn" });
   await logAudit({ actor: v.name, action: "academy.promotion.reject", targetType: "academy_promotion_request", targetId: String(id), details: { user: r.user_name } });
   res.json({ request: rowToRequest(r) });
 }));
@@ -763,14 +788,14 @@ router.post("/academy/path/requests/:id/withdraw", asyncHandler(async (req, res)
     `UPDATE academy_promotion_requests SET status = 'withdrawn', decided_by = $2, decided_at = NOW() WHERE id = $1 AND status = 'pending' AND (user_name = $2 OR requested_by = $2 OR $3) RETURNING *`,
     [id, v.name, v.staff],
   );
-  if (!upd.rows[0]) { res.status(404).json({ error: "Заявка не найдена" }); return; }
+  if (!upd.rows[0]) throw notFound("PROMOTION_REQUEST_NOT_FOUND");
   res.json({ request: rowToRequest(upd.rows[0]) });
 }));
 
 const AssignBody = z.object({
   user: z.string().trim().min(1).max(120),
   stage: z.enum(STAGE_KEYS as [StageKey, ...StageKey[]]),
-  comment: z.string().trim().min(3, "Укажите причину").max(2000),
+  comment: z.string().trim().min(3).max(2000),
 }).strict();
 
 router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void> => {
@@ -783,13 +808,13 @@ router.post("/academy/path/assign", asyncHandler(async (req, res): Promise<void>
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [user]);
   if (!exists.rows.length) throw notFound("USER_NOT_FOUND");
   const cur = (await loadStageInfo([user])).get(user)?.stage ?? null;
-  if (cur === stage) { res.status(409).json({ error: "Уже на этой ступени" }); return; }
+  if (cur === stage) throw conflict("STAGE_ALREADY");
   const action = cur == null ? "assign" : STAGE_KEYS.indexOf(stage) > STAGE_KEYS.indexOf(cur) ? "promote" : "demote";
   await setStage(user, cur, stage, v.name, action, comment, null, null);
   // A pending request for the old stage no longer makes sense.
-  await pool.query(`UPDATE academy_promotion_requests SET status = 'withdrawn', decided_by = $2, decided_at = NOW(), decision_comment = 'ступень изменена напрямую' WHERE user_name = $1 AND status = 'pending'`, [user, v.name]);
+  await pool.query(`UPDATE academy_promotion_requests SET status = 'withdrawn', decided_by = $2, decided_at = NOW(), decision_comment = $3 WHERE user_name = $1 AND status = 'pending'`, [user, v.name, academyPathT.tFor("ru")("route.withdrawnDirect")]);
   const name = (await loadStages()).find((s) => s.key === stage)?.name ?? stage;
-  await notifyUser({ userName: user, type: "academy_promotion_decision", title: `Ступень: «${name}»`, message: `${v.name}: установлена ступень «${name}». ${comment}`, link: PATH_LINK(), entityType: "academy_stage", entityId: stage, actor: v.name, source: "academy", severity: action === "demote" ? "warn" : "info" });
+  await notifyUser({ userName: user, type: "academy_promotion_decision", params: { variant: "assigned", actor: v.name, toKey: stage, to: name, comment }, link: PATH_LINK(), entityType: "academy_stage", entityId: stage, actor: v.name, source: "academy", severity: action === "demote" ? "warn" : "info" });
   await logAudit({ actor: v.name, action: `academy.stage.${action}`, targetType: "academy_trader_stage", targetId: user, details: { from: cur, to: stage } });
   res.json({ ok: true, user, from: cur, to: stage, action });
 }));
@@ -865,9 +890,14 @@ function rowToChallenge(r: any): ChallengeRow | null {
 }
 
 /** Pure evaluation of a challenge against its trades — read paths only, writes nothing. */
-async function evaluateRow(c: ChallengeRow, today: string): Promise<ChallengeResult> {
+async function evaluateRow(c: ChallengeRow, today: string, lang: Lang = "ru"): Promise<ChallengeResult> {
   const trades = await loadChallengeTrades(c.user, c.startsOn, c.endsOn < today ? c.endsOn : today);
-  return evaluateChallenge({ startsOn: c.startsOn, endsOn: c.endsOn, rules: c.rules }, trades, today);
+  return evaluateChallenge({ startsOn: c.startsOn, endsOn: c.endsOn, rules: c.rules }, trades, today, lang);
+}
+
+/** A challenge row for display: built-in template name and system comment in `lang` (custom texts unchanged). */
+function localizeChallenge(c: ChallengeRow, lang: Lang): ChallengeRow {
+  return { ...c, name: challengeNameFor(c.templateKey, c.name, lang), comment: systemComment(c.comment, lang) };
 }
 
 /** Write path: caches a status change and notifies once per terminal transition (trader + mentors). */
@@ -887,7 +917,11 @@ async function persistResult(c: ChallengeRow, result: ChallengeResult, notifiedS
       const passed = result.status === "passed";
       const type = passed ? "academy_challenge_passed" : "academy_challenge_failed";
       // Text as data (lib/notificationText.ts). `reason` is the engine's Russian text until the challenge engine gets codes.
-      const params = { name: c.name, user: c.user, outcome: result.status, net: usd(result.stats.net), days: result.stats.tradingDays, reason: passed ? null : result.reason };
+      // `reasonData` renders the reason in each reader's language (lib/notificationRenderers/academy.ts); `reason` is the RU fallback.
+      const params = {
+        name: c.name, templateKey: c.templateKey, user: c.user, outcome: result.status, net: usd(result.stats.net), days: result.stats.tradingDays,
+        reason: passed ? null : result.reason, reasonData: passed ? null : JSON.stringify(result.reasonData),
+      };
       await notifyUser({ userName: c.user, type, params, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" });
       await notifyUsers(await mentorsOf(c.user), { type, params: { ...params, variant: "staff" }, link: CH_LINK(c.id), entityType: "academy_challenge", entityId: c.id, source: "academy", severity: passed ? "info" : "warn" }, c.user);
     }
@@ -958,7 +992,7 @@ export async function refreshReadinessNotices(users?: string[] | null): Promise<
 router.get("/academy/challenges/templates", asyncHandler(async (req, res): Promise<void> => {
   const v = await viewer(req, res);
   if (!v) return;
-  res.json({ templates: TEMPLATES, statuses: STATUS_LABELS });
+  res.json({ templates: templatesFor(langOf(req)), statuses: statusLabelsFor(langOf(req)) });
 }));
 
 router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> => {
@@ -970,6 +1004,7 @@ router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> =
   if (scope === undefined) throw unauthorized();
   const archived = req.query.archived === "1";
   const today = clientDate(req.query.date);
+  const lang = langOf(req);
   const { rows } = await pool.query(
     `SELECT * FROM academy_challenges WHERE ($1::text IS NULL OR user_name = $1) AND (${archived ? "archived_at IS NOT NULL" : "archived_at IS NULL"})
       ORDER BY starts_on DESC, id DESC LIMIT 300`,
@@ -980,10 +1015,10 @@ router.get("/academy/challenges", asyncHandler(async (req, res): Promise<void> =
   for (const r of rows) {
     const c = rowToChallenge(r);
     if (!c) continue;
-    const result = await evaluateRow(c, today);
+    const result = await evaluateRow(c, today, lang);
     if (status && result.status !== status) continue;
     const { timeline, ...light } = result;
-    items.push({ ...c, result: { ...light, lastDays: timeline.slice(-10).map((d) => ({ date: d.date, net: d.net, cum: d.cum, events: d.events.length })) } });
+    items.push({ ...localizeChallenge(c, lang), result: { ...light, lastDays: timeline.slice(-10).map((d) => ({ date: d.date, net: d.net, cum: d.cum, events: d.events.length })) } });
   }
   res.json({ challenges: items, today, canCreate: v.staff });
 }));
@@ -997,12 +1032,14 @@ router.get("/academy/challenges/:id", asyncHandler(async (req, res): Promise<voi
   const { rows } = await pool.query(`SELECT * FROM academy_challenges WHERE id = $1`, [id]);
   const r = rows[0];
   const c = r ? rowToChallenge(r) : null;
-  if (!c) { res.status(404).json({ error: "Экзамен не найден" }); return; }
+  if (!c) throw notFound("CHALLENGE_NOT_FOUND");
   const scope = await scopeTrader(req, c.user);
-  if (scope !== c.user) { res.status(404).json({ error: "Экзамен не найден" }); return; }
+  if (scope !== c.user) throw notFound("CHALLENGE_NOT_FOUND");
   const today = clientDate(req.query.date);
-  const result = await evaluateRow(c, today);
-  res.json({ challenge: c, result, template: c.templateKey ? TEMPLATE_BY_KEY[c.templateKey] ?? null : null, canManage: v.staff });
+  const lang = langOf(req);
+  const result = await evaluateRow(c, today, lang);
+  const template = c.templateKey ? templatesFor(lang).find((x) => x.key === c.templateKey) ?? null : null;
+  res.json({ challenge: localizeChallenge(c, lang), result, template, canManage: v.staff });
 }));
 
 const RulesBody = z.object({
@@ -1030,13 +1067,13 @@ const ChallengeBody = z.object({
   comment: z.string().trim().max(2000).optional(),
 }).strict();
 
-async function createChallenge(user: string, templateKey: string, startsOn: string, endsOn: string | undefined, name: string | undefined, overrides: Partial<ChallengeRules> | undefined, comment: string | null, actor: string): Promise<{ id: number } | { error: string; status: number }> {
+async function createChallenge(user: string, templateKey: string, startsOn: string, endsOn: string | undefined, name: string | undefined, overrides: Partial<ChallengeRules> | undefined, comment: string | null, actor: string): Promise<{ id: number } | { error: ErrorCode }> {
   const tpl = TEMPLATE_BY_KEY[templateKey];
-  if (!tpl) return { error: "Шаблон не найден", status: 400 };
+  if (!tpl) return { error: "CHALLENGE_TEMPLATE_NOT_FOUND" };
   const rules = normalizeRules({ ...tpl.rules, ...(overrides ?? {}) });
-  if (!rules) return { error: "Неверные правила", status: 400 };
+  if (!rules) return { error: "CHALLENGE_RULES_INVALID" };
   const end = endsOn ?? endDateFor(startsOn, tpl.durationTradingDays);
-  if (end < startsOn) return { error: "Дата окончания раньше начала", status: 400 };
+  if (end < startsOn) return { error: "DATE_RANGE_INVALID" };
   const { rows } = await pool.query(
     `INSERT INTO academy_challenges (user_name, template_key, name, rules, starts_on, ends_on, status, comment, created_by)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
@@ -1050,13 +1087,17 @@ router.post("/academy/challenges", asyncHandler(async (req, res): Promise<void> 
   if (!v) return;
   await ensureTables();
   const parsed = ChallengeBody.safeParse(req.body);
-  if (!parsed.success) { bad(res, parsed.error, "Проверьте параметры экзамена"); return; }
+  if (!parsed.success) { bad(res, parsed.error); return; }
   const b = parsed.data;
   const exists = await pool.query(`SELECT 1 FROM users WHERE name = $1 AND active = true LIMIT 1`, [b.user]);
   if (!exists.rows.length) throw notFound("USER_NOT_FOUND");
   const out = await createChallenge(b.user, b.templateKey, b.startsOn, b.endsOn, b.name, b.rules as Partial<ChallengeRules> | undefined, b.comment ?? null, v.name);
-  if ("error" in out) { res.status(out.status).json({ error: out.error }); return; }
-  await notifyUser({ userName: b.user, type: "academy_challenge_assigned", title: "Назначен экзамен", message: `${v.name}: назначен экзамен «${b.name ?? TEMPLATE_BY_KEY[b.templateKey].name}» с ${b.startsOn}.`, link: CH_LINK(out.id), entityType: "academy_challenge", entityId: out.id, actor: v.name, source: "academy" });
+  if ("error" in out) throw badRequest(out.error);
+  await notifyUser({
+    userName: b.user, type: "academy_challenge_assigned",
+    params: { actor: v.name, name: b.name ?? TEMPLATE_BY_KEY[b.templateKey].name, templateKey: b.templateKey, date: b.startsOn },
+    link: CH_LINK(out.id), entityType: "academy_challenge", entityId: out.id, actor: v.name, source: "academy",
+  });
   await logAudit({ actor: v.name, action: "academy.challenge.create", targetType: "academy_challenge", targetId: String(out.id), details: { user: b.user, template: b.templateKey, startsOn: b.startsOn } });
   res.status(201).json({ id: out.id });
 }));
@@ -1068,7 +1109,7 @@ router.post("/academy/challenges/:id/archive", asyncHandler(async (req, res): Pr
   const id = Number(req.params.id);
   if (!Number.isInteger(id)) throw badRequest("INVALID_ID");
   const upd = await pool.query(`UPDATE academy_challenges SET archived_at = NOW(), archived_by = $2 WHERE id = $1 AND archived_at IS NULL RETURNING id`, [id, v.name]);
-  if (!upd.rowCount) { res.status(404).json({ error: "Экзамен не найден" }); return; }
+  if (!upd.rowCount) throw notFound("CHALLENGE_NOT_FOUND");
   await logAudit({ actor: v.name, action: "academy.challenge.archive", targetType: "academy_challenge", targetId: String(id) });
   res.json({ ok: true });
 }));
@@ -1089,7 +1130,7 @@ router.post("/academy/path/seed-demo", asyncHandler(async (req, res): Promise<vo
     const user = String(r.trader);
     const ex = await pool.query(`SELECT id FROM academy_challenges WHERE user_name = $1 AND template_key = 'trainee_to_junior' AND starts_on = $2 AND archived_at IS NULL LIMIT 1`, [user, start]);
     if (ex.rows.length) continue;
-    const out = await createChallenge(user, "trainee_to_junior", start, undefined, undefined, undefined, "демо", v.name);
+    const out = await createChallenge(user, "trainee_to_junior", start, undefined, undefined, undefined, academyPathT.tFor("ru")("route.demo"), v.name);
     if ("id" in out) created.push({ user, id: out.id });
   }
   await logAudit({ actor: v.name, action: "academy.path.seed_demo", targetType: "academy_challenges", details: { created } });

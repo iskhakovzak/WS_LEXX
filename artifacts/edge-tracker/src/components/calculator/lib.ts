@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import type React from "react";
 import { fmtNum } from "@/lib/format";
 import { ApiError, http } from "@/lib/api/http";
+import { calculatorI18n } from "@/i18n/ns/calculator";
 
 const LS_PREFIX = "ws_lexx_calc_";
 
@@ -33,15 +34,15 @@ export function num(s: string | number | null | undefined): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-/** Fetch error → readable Russian message (server may return non-JSON). */
-/** Text for a failed options-chain request (ApiError from lib/api/http; network / unknown → `fallback`). */
+/** Text for a failed options-chain request in the UI language (ApiError from lib/api/http; network / unknown → `fallback`). */
 export function fetchErrorMessage(err: unknown, fallback: string): string {
   if (!(err instanceof ApiError) || err.isNetwork) return fallback;
   const error = err.field<string>("error");
-  if (err.status === 400) return "Некорректный тикер";
-  if (err.status === 404) return error?.startsWith("Expiration") ? "Эта экспирация больше недоступна — выберите другую" : "Для этого тикера нет опционов";
-  if (err.status === 401 || err.status === 403) return "Нет доступа — войдите заново";
-  if (err.status >= 500) return "Источник данных недоступен, попробуйте позже";
+  const t = calculatorI18n.t;
+  if (err.status === 400) return t("errors.badTicker");
+  if (err.status === 404) return error?.startsWith("Expiration") ? t("errors.expirationGone") : t("errors.noOptions");
+  if (err.status === 401 || err.status === 403) return t("errors.noAccess");
+  if (err.status >= 500) return t("errors.sourceDown");
   return error || fallback;
 }
 

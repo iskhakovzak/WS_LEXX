@@ -12,7 +12,9 @@ import { dayHints, type DayHint, type HintTone } from "./day-hints";
 import { netPnl, type DayStats } from "./utils";
 import { fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { journalI18n } from "@/i18n/ns/journal";
 import { dayHref } from "@/lib/period-links";
+import { rich as withNodes } from "@/i18n/rich";
 
 const TOOLTIP_STYLE: CSSProperties = {
   backgroundColor: "hsl(var(--popover) / 0.92)",
@@ -56,6 +58,8 @@ export function DaySummary({
   /** Shown instead of the body when the day has no trades. */
   empty?: ReactNode;
 }) {
+  const { t } = journalI18n.useT();
+  const { t: tc } = commonI18n.useT();
   const hasTrades = stats.trades > 0;
   const report = useDayReport(trader || null, date, !!trader && hasTrades);
   const doc = report.data && report.data.date === date ? report.data : null;
@@ -67,7 +71,7 @@ export function DaySummary({
 
   return (
     <Panel
-      title="Итог дня"
+      title={t("summary.title")}
       icon={ListChecks}
       actions={
         <div className="flex flex-wrap items-center gap-2">
@@ -75,7 +79,7 @@ export function DaySummary({
           {trader && hasTrades && (
             <Button asChild variant="outline" size="sm">
               <Link href={dayReportHref(date, trader)}>
-                Разбор дня<ArrowUpRight aria-hidden="true" />
+                {t("summary.dayReport")}<ArrowUpRight aria-hidden="true" />
               </Link>
             </Button>
           )}
@@ -94,27 +98,27 @@ export function DaySummary({
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
             <div className="min-w-0 space-y-3">
               <div>
-                <div className="text-xs text-muted-foreground">P&L нетто</div>
+                <div className="text-xs text-muted-foreground">{tc("trading.netPnl")}</div>
                 <div className={cn("text-3xl font-semibold tabular-nums tracking-tight", toneText(toneOf(net)))}>
                   {net != null ? fmtUsd(net, { signed: true, decimals: "auto" }) : stats.r != null ? fmtR(stats.r) : "—"}
                 </div>
                 {stats.gross != null && (
                   <div className="text-xs text-muted-foreground tabular-nums">
-                    брутто {fmtUsd(stats.gross, { signed: true, decimals: "auto" })} · комиссии {stats.fees != null ? fmtUsd(-stats.fees, { signed: true, decimals: "auto" }) : "—"}
+                    {t("summary.grossFees", { gross: fmtUsd(stats.gross, { signed: true, decimals: "auto" }), fees: stats.fees != null ? fmtUsd(-stats.fees, { signed: true, decimals: "auto" }) : "—" })}
                   </div>
                 )}
               </div>
               <dl className="grid grid-cols-2 gap-x-4 gap-y-2 sm:grid-cols-4">
-                <Mini label="Сделки" value={stats.trades} hint={`${stats.wins} в плюс · ${stats.losses} в минус${stats.open ? ` · ${stats.open} откр.` : ""}`} />
-                <Mini label="Винрейт" value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? `${stats.wins} из ${decided}` : undefined} />
+                <Mini label={tc("trading.trades")} value={stats.trades} hint={stats.open ? t("summary.winsLossesOpen", { wins: stats.wins, losses: stats.losses, open: stats.open }) : t("summary.winsLosses", { wins: stats.wins, losses: stats.losses })} />
+                <Mini label={tc("trading.winRate")} value={decided ? fmtRate(stats.wins / decided) : "—"} hint={decided ? t("summary.winsOf", { wins: stats.wins, decided }) : undefined} />
                 <Mini
-                  label="Лучшая"
+                  label={t("summary.best")}
                   value={best != null ? fmtUsd(best, { signed: true, decimals: "auto" }) : "—"}
                   tone={toneOf(best)}
                   hint={stats.best?.ticker}
                 />
                 <Mini
-                  label="Худшая"
+                  label={t("summary.worst")}
                   value={worst != null ? fmtUsd(worst, { signed: true, decimals: "auto" }) : "—"}
                   tone={toneOf(worst)}
                   hint={worst != null ? stats.worst?.ticker : undefined}
@@ -122,7 +126,7 @@ export function DaySummary({
               </dl>
               {stats.r != null && (
                 <p className="text-xs text-muted-foreground tabular-nums">
-                  Сумма R {fmtR(stats.r)}{stats.expectancyR != null ? ` · в среднем ${fmtR(stats.expectancyR)} на сделку` : ""}
+                  {stats.expectancyR != null ? t("summary.totalRAvg", { r: fmtR(stats.r), avg: fmtR(stats.expectancyR) }) : t("summary.totalR", { r: fmtR(stats.r) })}
                 </p>
               )}
             </div>
@@ -135,7 +139,7 @@ export function DaySummary({
               <Skeleton className="h-14 w-full rounded-xl" />
             </div>
           ) : hints.length > 0 && (
-            <ul className="grid gap-2 md:grid-cols-2" aria-label="Подсказки по дню">
+            <ul className="grid gap-2 md:grid-cols-2" aria-label={t("summary.hintsAria")}>
               {hints.map((h) => (
                 <HintRow key={h.id} hint={h} href={h.id === "untagged" ? links.trades({ ids: untaggedIds }) : h.tradeIds?.length ? links.trades({ ids: h.tradeIds }) : undefined} />
               ))}
@@ -151,8 +155,8 @@ function Mini({ label, value, hint, tone }: { label: string; value: ReactNode; h
   return (
     <div className="min-w-0">
       <dt className="text-2xs text-muted-foreground">{label}</dt>
-      <dd className={cn("truncate text-base font-semibold tabular-nums", tone ? toneText(tone) : "")}>{value}</dd>
-      {hint && <dd className="truncate text-2xs text-muted-foreground">{hint}</dd>}
+      <dd className={cn("truncate text-base font-semibold tabular-nums", tone ? toneText(tone) : "")} title={typeof value === "string" ? value : undefined}>{value}</dd>
+      {hint && <dd className="truncate text-2xs text-muted-foreground" title={typeof hint === "string" ? hint : undefined}>{hint}</dd>}
     </div>
   );
 }
@@ -191,11 +195,12 @@ function HintRow({ hint, href }: { hint: DayHint; href?: string }) {
 }
 
 function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; loading: boolean; team?: boolean }) {
+  const { t } = journalI18n.useT();
   if (team) {
     // The intraday curve is per trader (day report); a whole-team day has none — say so instead of «no closed trades».
     return (
       <div className="tile grid h-32 place-items-center px-4 text-center text-xs text-muted-foreground">
-        Кривая дня строится по одному трейдеру — выберите его в списке «Команда за день»
+        {t("summary.curveTeam")}
       </div>
     );
   }
@@ -204,7 +209,7 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
   if (!e || e.points.length < 2) {
     return (
       <div className="tile grid h-32 place-items-center text-xs text-muted-foreground">
-        Кривая появится, когда закроется хотя бы одна сделка
+        {t("summary.curveEmpty")}
       </div>
     );
   }
@@ -215,17 +220,17 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
   return (
     <div className="tile min-w-0 p-3">
       <div className="flex items-center justify-between gap-2 text-2xs text-muted-foreground">
-        <span>Кривая дня, нетто{timed ? ", ET" : ""}</span>
+        <span>{timed ? t("summary.curveTitleEt") : t("summary.curveTitle")}</span>
         <span className="tabular-nums">
-          пик <span className="text-up">{fmtUsd(e.peak.value, { signed: true, decimals: "auto" })}</span>
-          {e.maxDrawdown.value > 0 && <> · просадка <span className="text-down">{fmtUsd(-e.maxDrawdown.value, { signed: true, decimals: "auto" })}</span></>}
-          {e.giveback > 0 && <> · отдано {fmtUsd(Math.abs(e.giveback), { decimals: "auto" })}</>}
+          {withNodes(t("summary.peak", { amount: "{amount}" }), { amount: <span className="text-up">{fmtUsd(e.peak.value, { signed: true, decimals: "auto" })}</span> })}
+          {e.maxDrawdown.value > 0 && <> · {withNodes(t("summary.drawdown", { amount: "{amount}" }), { amount: <span className="text-down">{fmtUsd(-e.maxDrawdown.value, { signed: true, decimals: "auto" })}</span> })}</>}
+          {e.giveback > 0 && <> · {t("summary.giveback", { amount: fmtUsd(Math.abs(e.giveback), { decimals: "auto" }) })}</>}
         </span>
       </div>
       <div
         className="mt-1 h-24 w-full"
         role="img"
-        aria-label={`Кривая нетто за день: пик ${fmtUsd(e.peak.value, { signed: true, decimals: "auto" })}, закрытие ${fmtUsd(e.final, { signed: true, decimals: "auto" })}, максимальная просадка ${fmtUsd(Math.abs(e.maxDrawdown.value), { decimals: "auto" })}`}
+        aria-label={t("summary.curveAria", { peak: fmtUsd(e.peak.value, { signed: true, decimals: "auto" }), close: fmtUsd(e.final, { signed: true, decimals: "auto" }), dd: fmtUsd(Math.abs(e.maxDrawdown.value), { decimals: "auto" }) })}
       >
         <ResponsiveContainer width="100%" height="100%">
           <AreaChart data={data} margin={{ top: 4, right: 4, bottom: 0, left: 4 }}>
@@ -242,9 +247,9 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
               contentStyle={TOOLTIP_STYLE}
               labelFormatter={(x: number) => {
                 const p = data.find((d) => d.x === x);
-                return p ? `${p.time?.slice(0, 5) ?? ""}${p.ticker ? ` · ${p.ticker}` : " · старт"}` : "";
+                return p ? `${p.time?.slice(0, 5) ?? ""} · ${p.ticker || t("summary.start")}` : "";
               }}
-              formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), "Нетто нарастающим"]}
+              formatter={(v: number) => [fmtUsd(v, { signed: true, decimals: "auto" }), t("summary.cumulative")]}
             />
             <Area type="stepAfter" dataKey="cum" stroke={color} strokeWidth={2} fill="url(#jn-eq)" isAnimationActive={false} />
           </AreaChart>
@@ -261,5 +266,5 @@ function IntradayCurve({ doc, loading, team = false }: { doc: DayReport | null; 
 }
 
 export function untaggedCount(n: number): string {
-  return `${commonI18n.t("units.trades", { count: n })} без сетапа`;
+  return journalI18n.t("summary.untagged", { trades: commonI18n.t("units.trades", { count: n }) });
 }

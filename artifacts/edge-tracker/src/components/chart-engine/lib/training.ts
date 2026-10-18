@@ -1,4 +1,5 @@
 import type { Side } from "../types";
+import { chartI18n } from "@/i18n/ns/chart";
 
 /**
  * Exit score for the training mode, 0–100.
@@ -41,9 +42,9 @@ export type ScoreVerdict = { label: string; tone: "up" | "neutral" | "warn" | "d
 
 export function scoreVerdict(score: number | null | undefined): ScoreVerdict | null {
   if (score == null) return null;
-  if (score >= 85) return { label: "почти идеальный выход", tone: "up" };
-  if (score >= 65) return { label: "хороший выход", tone: "up" };
-  if (score >= 40) return { label: "средне", tone: "neutral" };
-  if (score >= 20) return { label: "слабо", tone: "warn" };
-  return { label: "почти худший момент", tone: "down" };
+  if (score >= 85) return { label: chartI18n.t("training.exitVerdict.perfect"), tone: "up" };
+  if (score >= 65) return { label: chartI18n.t("training.exitVerdict.good"), tone: "up" };
+  if (score >= 40) return { label: chartI18n.t("training.exitVerdict.average"), tone: "neutral" };
+  if (score >= 20) return { label: chartI18n.t("training.exitVerdict.weak"), tone: "warn" };
+  return { label: chartI18n.t("training.exitVerdict.worst"), tone: "down" };
 }

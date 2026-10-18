@@ -4,6 +4,7 @@
 import { memo, useMemo, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import type { SparkKind } from "./library";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 const W = 120;
 const H = 48;
@@ -256,7 +257,7 @@ function build(kind: SparkKind, seed: number): ReactNode[] {
 export const IndicatorSpark = memo(function IndicatorSpark({ id, kind, className }: { id: string; kind: SparkKind; className?: string }) {
   const nodes = useMemo(() => build(kind, hash(id)), [id, kind]);
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={cn("block h-12 w-full", className)} role="img" aria-label="Иллюстративный график">
+    <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className={cn("block h-12 w-full", className)} role="img" aria-label={indicatorsI18n.t("card.sparkAria")}>
       {nodes}
     </svg>
   );

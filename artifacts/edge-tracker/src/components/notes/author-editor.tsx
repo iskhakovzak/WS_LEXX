@@ -5,7 +5,8 @@ import {
   SECTION_GROUPS, SECTIONS, parseNote, serializeNote,
   type Horizon, type SectionKey,
 } from "./author-model";
-import { pluralRu } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { notesI18n } from "@/i18n/ns/notes";
 
 export type EditorTarget = SectionKey | "free";
 export type EditorMode = "sections" | "free";
@@ -52,6 +53,7 @@ export function AuthorEditor({
   horizonCounts?: Partial<Record<Horizon, number>>;
   firstFieldRef?: React.Ref<HTMLTextAreaElement>;
 }) {
+  const { t } = notesI18n.useT();
   const parsed = React.useMemo(() => parseNote(raw), [raw]);
   const [revealed, setRevealed] = React.useState<Set<SectionKey>>(new Set());
   const pendingFocus = React.useRef<SectionKey | null>(null);
@@ -68,7 +70,7 @@ export function AuthorEditor({
   if (mode === "free") {
     return (
       <div className="flex flex-col gap-1">
-        <label htmlFor="author-note-free" className="sr-only">Текст сводки</label>
+        <label htmlFor="author-note-free" className="sr-only">{t("author.editor.freeLabel")}</label>
         <textarea
           id="author-note-free"
           ref={firstFieldRef}
@@ -79,7 +81,7 @@ export function AuthorEditor({
             const v = e.target.value;
             onEdit(() => v);
           }}
-          placeholder="Что было на рынке, что сработало, что нет, что несёшь через ночь и что делаешь на открытии…"
+          placeholder={t("author.editor.freePlaceholder")}
           className={cn(FIELD, "min-h-[360px]")}
         />
         {recording && activeKey === "free" && <Caption text={interim} />}
@@ -111,7 +113,7 @@ export function AuthorEditor({
     <div className="flex flex-col gap-5">
       {parsed.free.trim() && (
         <div className="flex flex-col gap-1">
-          <label htmlFor="author-note-intro" className="px-3 text-xs font-medium text-muted-foreground">Общее</label>
+          <label htmlFor="author-note-intro" className="px-3 text-xs font-medium text-muted-foreground">{t("author.general")}</label>
           <textarea
             id="author-note-intro"
             value={parsed.free}
@@ -148,7 +150,7 @@ export function AuthorEditor({
                       {s.label}
                       {count != null && count > 0 && (
                         <span className="rounded-full bg-primary/15 px-1.5 text-2xs font-medium tabular-nums text-primary">
-                          {count} {pluralRu(count, "сделка", "сделки", "сделок")}
+                          {commonI18n.t("units.trades", { count })}
                         </span>
                       )}
                     </label>

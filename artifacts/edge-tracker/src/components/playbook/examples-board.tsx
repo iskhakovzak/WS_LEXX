@@ -33,7 +33,11 @@ import {
   TIERS, moneyTone, tierMeta, type PlaybookEntry, type SetupAccess, type SetupExample, type Tier,
 } from "./model";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
-import { REDACTED_HINT, RedactedHint } from "./setup-bits";
+import { redactedHint, RedactedHint } from "./setup-bits";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
+
+const et = playbookExamplesI18n.t; // called at render / call time only
 
 /** dataTransfer type for dragging an example card (the page's sidebar accepts it to move between setups). */
 export const EXAMPLE_DND_TYPE = "application/x-ws-playbook-example";
@@ -75,6 +79,7 @@ export function ExamplesBoard({
   targets: PlaybookEntry[];
   onAddExamples: () => void;
 }) {
+  const { t: tr } = playbookExamplesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const q = useSetupExamples(entry.id);
@@ -101,7 +106,7 @@ export function ExamplesBoard({
     qc.setQueryData<SetupExample[]>(key, (old = []) => fn(old));
     return prev;
   };
-  const fail = (e: unknown, prev: SetupExample[] | undefined, title = "Не удалось изменить эталон") => {
+  const fail = (e: unknown, prev: SetupExample[] | undefined, title = et("board.changeFailed")) => {
     if (prev) qc.setQueryData(key, prev);
     toast({ title, description: notLiveMessage(e) ?? (e as Error)?.message, variant: "destructive" });
   };
@@ -135,18 +140,18 @@ export function ExamplesBoard({
       await http.post(`/api/playbook/${entry.id}/examples`, { tradeIds: [ex.tradeId], tier: ex.tier, note: ex.note, checklistMarks: ex.checklistMarks, link: false });
       invalidateExamples(qc, entry.id);
     } catch (e) {
-      toast({ title: "Не удалось вернуть эталон", description: (e as Error)?.message, variant: "destructive" });
+      toast({ title: et("board.restoreFailed"), description: (e as Error)?.message, variant: "destructive" });
     }
   };
 
   const remove = useMutation({
     mutationFn: (ex: SetupExample) => http.del(`/api/playbook/${entry.id}/examples/${ex.id}`),
     onMutate: (ex) => ({ prev: setLocal((list) => list.filter((x) => x.id !== ex.id)) }),
-    onError: (e, _v, ctx) => fail(e, ctx?.prev, "Не удалось убрать эталон"),
+    onError: (e, _v, ctx) => fail(e, ctx?.prev, et("board.removeFailed")),
     onSuccess: (_d, ex) =>
       toast({
-        title: `${ex.ticker} ${fmtDate(ex.closeDate ?? ex.date, "dayMonthNumeric")} убран из эталонов`,
-        action: <ToastAction altText="Вернуть эталон" onClick={() => restore(ex)}>Вернуть</ToastAction>,
+        title: et("board.removed", { ticker: ex.ticker, date: fmtDate(ex.closeDate ?? ex.date, "dayMonthNumeric") }),
+        action: <ToastAction altText={et("board.restoreAlt")} onClick={() => restore(ex)}>{et("board.restore")}</ToastAction>,
       }),
     onSettled: () => invalidateExamples(qc, entry.id),
   });
@@ -165,13 +170,13 @@ export function ExamplesBoard({
     const ids = col.map((x) => x.id);
     [ids[i], ids[j]] = [ids[j], ids[i]];
     reorder.mutate({ tier: ex.tier, ids });
-    setAnnounce(`${ex.ticker}: позиция ${j + 1} из ${col.length}`);
+    setAnnounce(et("board.position", { ticker: ex.ticker, pos: j + 1, total: col.length }));
     window.setTimeout(() => document.querySelector<HTMLElement>(`[data-example-card="${ex.id}"]`)?.focus(), 30);
   };
   const moveToSetup = (ex: SetupExample, target: PlaybookEntry) => {
     patch.mutate(
       { ex, body: { playbookId: target.id } },
-      { onSuccess: (r) => toast({ title: r?.merged ? `Объединено с эталоном в «${target.name}»` : `Перенесено в «${target.name}»` }) },
+      { onSuccess: (r) => toast({ title: r?.merged ? et("board.merged", { name: target.name }) : et("board.moved", { name: target.name }) }) },
     );
   };
 
@@ -204,9 +209,9 @@ export function ExamplesBoard({
       <div className="glass-panel rounded-2xl">
         <EmptyState
           icon={Trophy}
-          title={live ? "Эталоны включатся после обновления сервера" : "Не удалось загрузить эталоны"}
-          description={live ? "Новые таблицы уже готовы — нужен перезапуск API." : (q.error as Error)?.message}
-          action={live ? undefined : <Button variant="outline" onClick={() => q.refetch()}>Повторить</Button>}
+          title={live ? tr("board.notLive") : tr("board.loadFailed")}
+          description={live ? tr("board.notLiveDesc") : (q.error as Error)?.message}
+          action={live ? undefined : <Button variant="outline" onClick={() => q.refetch()}>{commonI18n.t("actions.retry")}</Button>}
         />
       </div>
     );
@@ -216,9 +221,9 @@ export function ExamplesBoard({
       <div className="glass-panel rounded-2xl">
         <EmptyState
           icon={Trophy}
-          title="Эталонов пока нет"
-          description="Добавьте сделки, которые идеально отыграли сетап (Tier 1), хорошие с отклонениями (Tier 2) и ошибки (Tier 3). Их видно всем, кто видит сетап."
-          action={access.canAddExamples ? <Button onClick={onAddExamples}><Plus className="h-4 w-4" aria-hidden="true" /> Добавить примеры</Button> : undefined}
+          title={tr("board.emptyTitle")}
+          description={tr("board.emptyDesc")}
+          action={access.canAddExamples ? <Button onClick={onAddExamples}><Plus className="h-4 w-4" aria-hidden="true" /> {tr("board.addExamples")}</Button> : undefined}
         />
       </div>
     );
@@ -249,7 +254,7 @@ export function ExamplesBoard({
               </header>
               {col.length === 0 && (
                 <p className="rounded-xl border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">
-                  Перетащите сюда карточку или нажмите {t.tier} на выбранной
+                  {tr("board.dropHere", { tier: t.tier })}
                 </p>
               )}
               {col.map((ex) => (
@@ -272,7 +277,7 @@ export function ExamplesBoard({
         })}
       </div>
       <p className="px-1 text-xs text-muted-foreground">
-        Перетаскивайте карточки между колонками или на сетап слева. С клавиатуры: 1/2/3 — тир, Alt+↑/↓ — порядок, M — перенести.
+        {tr("board.help")}
       </p>
       {items.some((x) => x.redacted) && <RedactedHint className="px-1" />}
     </div>
@@ -288,7 +293,7 @@ export function exampleFigure(ex: SetupExample): { text: string; tone: ReturnTyp
   if (ex.signedR != null) return { text: fmtR(ex.signedR), tone: moneyTone(ex.signedR) };
   // Someone else's trade without a stop: no $ and no R — show the outcome word instead of «—».
   const r = (ex.result ?? "").toLowerCase();
-  return r === "win" ? { text: "Плюс", tone: "up" } : r === "loss" ? { text: "Минус", tone: "down" } : r === "be" ? { text: "В ноль", tone: "neutral" } : { text: "—", tone: "neutral" };
+  return r === "win" ? { text: commonI18n.t("trading.win"), tone: "up" } : r === "loss" ? { text: commonI18n.t("trading.loss"), tone: "down" } : r === "be" ? { text: commonI18n.t("trading.breakeven"), tone: "neutral" } : { text: "—", tone: "neutral" };
 }
 
 /** Price path for the card. Another trader's trade: pass the known prices / fill times instead of loading it by id. */
@@ -352,7 +357,7 @@ export function ExampleCard({
       const up = await uploadPlaybookImage(f, setupId);
       onPatch({ mediaId: up.id });
     } catch (e) {
-      toast({ title: "Не удалось загрузить скриншот", description: (e as Error)?.message, variant: "destructive" });
+      toast({ title: et("card.shotFailed"), description: (e as Error)?.message, variant: "destructive" });
     } finally {
       setUploading(false);
     }
@@ -369,6 +374,7 @@ export function ExampleCard({
     if (e.altKey && (e.key === "ArrowUp" || e.key === "ArrowDown")) { e.preventDefault(); onMove?.(e.key === "ArrowUp" ? -1 : 1); return; }
     if (e.key === "Enter") { e.preventDefault(); setEditingNote(true); return; }
     if (e.key === "Delete" || e.key === "Backspace") { e.preventDefault(); onRemove?.(); return; }
+    // i18n-ignore (RU keyboard layout key)
     if (e.key === "m" || e.key === "M" || e.key === "ь") { e.preventDefault(); setMenuOpen(true); }
   };
 
@@ -387,7 +393,7 @@ export function ExampleCard({
         const files = imageFilesFrom(e.clipboardData);
         if (files.length) { e.preventDefault(); attach(files); }
       }}
-      aria-label={`${ex.ticker} ${fmtDate(day, "dayMonthNumeric")} · ${figure.text}${ex.redacted ? " (суммы скрыты)" : ""} · ${tierMeta(ex.tier).label}`}
+      aria-label={et(ex.redacted ? "card.ariaRedacted" : "card.aria", { ticker: ex.ticker, date: fmtDate(day, "dayMonthNumeric"), figure: figure.text, tier: tierMeta(ex.tier).label })}
       className={cn(
         "group flex min-w-0 flex-col gap-2 rounded-xl border border-border/60 bg-[hsl(var(--card))] p-3 outline-none",
         "focus-visible:ring-2 focus-visible:ring-ring",
@@ -397,25 +403,25 @@ export function ExampleCard({
       {header}
       <div className="flex items-center gap-2">
         <span className="font-semibold text-foreground">{ex.ticker}</span>
-        {ex.side && <span className={cn("text-xs", ex.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{ex.side.toLowerCase().startsWith("s") ? "Шорт" : "Лонг"}</span>}
+        {ex.side && <span className={cn("text-xs", ex.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{ex.side.toLowerCase().startsWith("s") ? commonI18n.t("trading.short") : commonI18n.t("trading.long")}</span>}
         <span className="text-xs tabular-nums text-muted-foreground">{fmtDate(day, "dayMonthNumeric")}</span>
         <span
           className={cn("ml-auto text-sm font-semibold tabular-nums", toneText(figure.tone))}
-          title={ex.redacted ? REDACTED_HINT : "P&L нетто"}
+          title={ex.redacted ? redactedHint() : commonI18n.t("trading.netPnl")}
         >
           {figure.text}
         </span>
         {(onTier || onRemove || onMoveTo) && (
           <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen}>
             <DropdownMenuTrigger asChild>
-              <IconAction aria-label="Действия с эталоном" className="-mr-1 h-7 w-7"><MoreHorizontal /></IconAction>
+              <IconAction aria-label={et("card.actions")} title={et("card.actions")} className="-mr-1 h-7 w-7"><MoreHorizontal /></IconAction>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onSelect={() => navigate(links.trade(ex.tradeId))}><ExternalLink className="h-4 w-4" aria-hidden="true" /> Открыть сделку</DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => navigate(links.trade(ex.tradeId))}><ExternalLink className="h-4 w-4" aria-hidden="true" /> {et("card.openTrade")}</DropdownMenuItem>
               {editable && onTier && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">Тир</DropdownMenuLabel>
+                  <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">{et("card.tier")}</DropdownMenuLabel>
                   {TIERS.map((t) => (
                     <DropdownMenuItem key={t.tier} disabled={t.tier === ex.tier} onSelect={() => onTier(t.tier)}>
                       <span className={cn("h-2 w-2 rounded-full bg-current", toneText(t.tone))} aria-hidden="true" /> {t.label}
@@ -426,7 +432,7 @@ export function ExampleCard({
               )}
               {editable && onMoveTo && targets && targets.length > 0 && (
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger><ArrowRightLeft className="h-4 w-4" aria-hidden="true" /> В другой сетап</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger><ArrowRightLeft className="h-4 w-4" aria-hidden="true" /> {et("card.toOtherSetup")}</DropdownMenuSubTrigger>
                   <DropdownMenuSubContent className="max-h-[min(60dvh,440px)] w-72 overflow-y-auto">
                     {targets.slice(0, 200).map((t) => (
                       <DropdownMenuItem key={t.id} onSelect={() => onMoveTo(t)}>
@@ -439,15 +445,15 @@ export function ExampleCard({
               {editable && onPatch && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={() => setEditingNote(true)}><StickyNote className="h-4 w-4" aria-hidden="true" /> Заметка</DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => fileRef.current?.click()}><ImagePlus className="h-4 w-4" aria-hidden="true" /> {ex.mediaId ? "Заменить скриншот" : "Скриншот"}</DropdownMenuItem>
-                  {ex.mediaId && <DropdownMenuItem onSelect={() => onPatch({ mediaId: null })}>Убрать скриншот</DropdownMenuItem>}
+                  <DropdownMenuItem onSelect={() => setEditingNote(true)}><StickyNote className="h-4 w-4" aria-hidden="true" /> {et("card.note")}</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={() => fileRef.current?.click()}><ImagePlus className="h-4 w-4" aria-hidden="true" /> {ex.mediaId ? et("card.replaceShot") : et("card.shot")}</DropdownMenuItem>
+                  {ex.mediaId && <DropdownMenuItem onSelect={() => onPatch({ mediaId: null })}>{et("card.removeShot")}</DropdownMenuItem>}
                 </>
               )}
               {editable && onRemove && (
                 <>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem onSelect={onRemove} className="text-down focus:text-down"><Trash2 className="h-4 w-4" aria-hidden="true" /> Убрать из эталонов</DropdownMenuItem>
+                  <DropdownMenuItem onSelect={onRemove} className="text-down focus:text-down"><Trash2 className="h-4 w-4" aria-hidden="true" /> {et("card.removeFromExamples")}</DropdownMenuItem>
                 </>
               )}
             </DropdownMenuContent>
@@ -457,17 +463,17 @@ export function ExampleCard({
 
       {/* One media box height for chart and screenshot, so cards in a row line up. */}
       {ex.mediaId ? (
-        <ExampleShot id={ex.mediaId} alt={`Скриншот ${ex.ticker} ${fmtDate(day, "dayMonthNumeric")}`} compact={compact} />
+        <ExampleShot id={ex.mediaId} alt={et("card.shotAlt", { ticker: ex.ticker, date: fmtDate(day, "dayMonthNumeric") })} compact={compact} />
       ) : (
         <div className={cn("flex items-center justify-center overflow-hidden rounded-lg", compact ? "h-24" : "h-32")}>
           <ExampleChart ex={ex} compact={compact} />
         </div>
       )}
-      {uploading && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> Загружаем скриншот…</p>}
+      {uploading && <p className="flex items-center gap-1.5 text-xs text-muted-foreground"><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" aria-hidden="true" /> {et("card.uploading")}</p>}
 
       {editingNote ? (
         <Textarea
-          aria-label="Заметка к эталону"
+          aria-label={et("card.noteAria")}
           value={note}
           onChange={(e) => setNote(e.target.value)}
           onBlur={saveNote}
@@ -478,7 +484,7 @@ export function ExampleCard({
           }}
           rows={3}
           autoFocus
-          placeholder="Почему это эталон / что было не так"
+          placeholder={et("card.notePlaceholder")}
           className="resize-y text-sm"
         />
       ) : ex.note ? (
@@ -492,7 +498,7 @@ export function ExampleCard({
         </button>
       ) : editable && !compact ? (
         <button type="button" onClick={() => setEditingNote(true)} className="text-left text-xs text-muted-foreground hover:text-foreground">
-          + заметка
+          {et("card.addNote")}
         </button>
       ) : null}
 
@@ -500,13 +506,13 @@ export function ExampleCard({
         {checklist.length > 0 && (
           <Popover>
             <PopoverTrigger asChild>
-              <button type="button" className="chip inline-flex min-h-6 items-center gap-1 px-2 text-xs" aria-label={`Чеклист: ${checked} из ${checklist.length}`}>
+              <button type="button" className="chip inline-flex min-h-6 items-center gap-1 px-2 text-xs" aria-label={et("card.checklistAria", { checked, total: checklist.length })} title={et("card.checklistAria", { checked, total: checklist.length })}>
                 <ListChecks className="h-3 w-3" aria-hidden="true" />
                 <span className="tabular-nums">{checked}/{checklist.length}</span>
               </button>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-72">
-              <p className="mb-2 text-xs text-muted-foreground">Что из чеклиста было выполнено в этой сделке</p>
+              <p className="mb-2 text-xs text-muted-foreground">{et("card.checklistHint")}</p>
               <ul className="flex flex-col gap-1.5">
                 {checklist.map((c) => (
                   <li key={c.id} className="flex items-start gap-2 text-sm">
@@ -524,7 +530,7 @@ export function ExampleCard({
           </Popover>
         )}
         {ex.trader && <span className="text-xs text-muted-foreground">{ex.trader}</span>}
-        {ex.addedBy && ex.addedBy !== ex.trader && <span className="text-xs text-muted-foreground">· добавил {ex.addedBy}</span>}
+        {ex.addedBy && ex.addedBy !== ex.trader && <span className="text-xs text-muted-foreground">{et("card.addedBy", { name: ex.addedBy })}</span>}
         {/* Redacted cards already show R as the headline figure. */}
         {ex.signedR != null && !ex.redacted && <Pill tone="neutral" className="ml-auto">{ex.signedR > 0 ? "+" : ""}{ex.signedR.toFixed(1)}R</Pill>}
       </div>
@@ -541,7 +547,7 @@ export function ExampleCard({
 
 function ExampleShot({ id, alt, compact }: { id: number; alt: string; compact?: boolean }) {
   const url = usePlaybookMediaUrl(id);
-  if (url === "error") return <div className={cn("grid place-items-center rounded-lg bg-[var(--glass-bg)] text-xs text-muted-foreground", compact ? "h-24" : "h-32")}>Скриншот недоступен</div>;
+  if (url === "error") return <div className={cn("grid place-items-center rounded-lg bg-[var(--glass-bg)] text-xs text-muted-foreground", compact ? "h-24" : "h-32")}>{et("card.shotUnavailable")}</div>;
   if (!url) return <div className={cn("animate-pulse rounded-lg bg-[var(--glass-bg)] motion-reduce:animate-none", compact ? "h-24" : "h-32")} />;
   return (
     <a href={url} target="_blank" rel="noreferrer" className="block overflow-hidden rounded-lg border border-border/60" draggable={false}>

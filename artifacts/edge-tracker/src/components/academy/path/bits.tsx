@@ -4,9 +4,13 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, Check, CircleDashed, Lock, X 
 import { Pill, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import {
-  type ChallengeStatus, type CriterionResult, type EventKind, type RuleProgress, type RuleState, type StageKey, type StageMeta, type TimelineDay, type Trend,
+  type ChallengeStatus, type CriterionResult, type DrawdownMode, type EventKind, type RuleProgress, type RuleState, type StageKey, type StageMeta, type TimelineDay, type Trend,
 } from "./api";
 import { fmtDate, fmtUsd } from "@/lib/format";
+import { academyPathI18n } from "@/i18n/ns/academyPath";
+import {
+  challengeStatusLabel, criterionLabel, fmtPromo, fmtPromoTarget, metricHint, noteText, ruleLabel, ruleStateLabel, stageDescription, stageTitle, windowLabel,
+} from "./labels";
 
 // ─── ladder ─────────────────────────────────────────────────────────────────
 
@@ -19,12 +23,15 @@ export function StageLadder({ stages, current, readyFor, counts }: {
   /** Optional people count per stage (staff funnel). */
   counts?: Partial<Record<StageKey, number>>;
 }) {
+  const { t } = academyPathI18n.useT();
   const idx = current ? stages.findIndex((s) => s.key === current) : -1;
   return (
-    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label="Ступени пути трейдера">
+    <ol className="grid grid-cols-2 gap-2 sm:grid-cols-4" aria-label={t("stage.ladderAria")}>
       {stages.map((s, i) => {
         const state = idx < 0 ? "locked" : i < idx ? "done" : i === idx ? "current" : i === idx + 1 ? "next" : "locked";
         const Icon = state === "done" ? Check : state === "current" ? CircleDashed : state === "next" ? ArrowRight : Lock;
+        const name = stageTitle(s);
+        const description = stageDescription(s);
         return (
           <li
             key={s.key}
@@ -38,15 +45,15 @@ export function StageLadder({ stages, current, readyFor, counts }: {
             )}
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">Ступень {i + 1}</span>
+              <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">{t("stage.step", { n: i + 1 })}</span>
               <Icon className={cn("h-4 w-4", state === "done" && "text-up", state === "current" && "text-primary", state === "next" && "text-muted-foreground", state === "locked" && "text-muted-foreground")} aria-hidden="true" />
             </div>
-            <span className="truncate text-base font-semibold text-foreground">{s.name}</span>
-            <span className="line-clamp-2 text-xs text-muted-foreground">{s.description}</span>
+            <span className="truncate text-base font-semibold text-foreground" title={name}>{name}</span>
+            <span className="line-clamp-2 text-xs text-muted-foreground" title={description}>{description}</span>
             <span className="sr-only">
-              {state === "done" ? "пройдена" : state === "current" ? "текущая ступень" : state === "next" ? (readyFor === s.key ? "следующая, критерии выполнены" : "следующая") : "закрыта"}
+              {t(state === "done" ? "stage.state.done" : state === "current" ? "stage.state.current" : state === "next" ? (readyFor === s.key ? "stage.state.nextReady" : "stage.state.next") : "stage.state.locked")}
             </span>
-            {counts && <span className="mt-1 text-xs tabular-nums text-muted-foreground">{counts[s.key] ?? 0} чел.</span>}
+            {counts && <span className="mt-1 text-xs tabular-nums text-muted-foreground">{t("stage.people", { count: counts[s.key] ?? 0 })}</span>}
           </li>
         );
       })}
@@ -56,17 +63,18 @@ export function StageLadder({ stages, current, readyFor, counts }: {
 
 // ─── criteria ───────────────────────────────────────────────────────────────
 
-export function TrendMark({ trend, prev, unitLabel }: { trend: Trend | null; prev: number | null; unitLabel?: string }) {
+/** `prev` = the already formatted value of the previous equal window. */
+export function TrendMark({ trend, prev }: { trend: Trend | null; prev: string | null }) {
+  const { t } = academyPathI18n.useT();
   if (!trend) return <span className="text-xs text-muted-foreground">—</span>;
   const Icon = trend === "better" ? ArrowUpRight : trend === "worse" ? ArrowDownRight : ArrowRight;
-  const word = trend === "better" ? "лучше" : trend === "worse" ? "хуже" : "без изменений";
   return (
     <span
-      className={cn("inline-flex items-center gap-0.5 text-xs", trend === "better" ? "text-up" : trend === "worse" ? "text-down" : "text-muted-foreground")}
-      title={prev != null ? `Прошлое такое же окно: ${prev}${unitLabel ?? ""}` : undefined}
+      className={cn("inline-flex items-center gap-0.5 whitespace-nowrap text-xs", trend === "better" ? "text-up" : trend === "worse" ? "text-down" : "text-muted-foreground")}
+      title={prev != null ? t("trend.prevTitle", { value: prev }) : undefined}
     >
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-      {word}
+      {t(`trend.${trend}`)}
     </span>
   );
 }
@@ -84,29 +92,43 @@ function Bar({ pct, tone, label }: { pct: number; tone: "up" | "down" | "warn" |
   );
 }
 
-export function CriterionRow({ c }: { c: CriterionResult }) {
+/**
+ * One promotion criterion. `stage` = the stage these criteria belong to (translates seeded labels); `configuredWindow` =
+ * the criterion's window from the config (undefined → the server's text); `action` = a link to where it can be improved.
+ */
+export function CriterionRow({ c, stage, configuredWindow, stageSince, action }: {
+  c: CriterionResult; stage: StageKey | null; configuredWindow?: number | null; stageSince: string | null; action?: React.ReactNode;
+}) {
+  const { t } = academyPathI18n.useT();
   const pass = c.status === "pass", na = c.status === "na";
+  const label = criterionLabel(c.label, c.metric, stage);
+  const sub = [windowLabel(c, configuredWindow, stageSince), noteText(c.note)].filter(Boolean).join(" · ");
   return (
     <li className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 items-start gap-2">
           <span className={cn("mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full", pass ? "bg-up/15 text-up" : na ? "bg-[var(--glass-bg)] text-muted-foreground" : "bg-down/15 text-down")}>
             {pass ? <Check className="h-3.5 w-3.5" aria-hidden="true" /> : na ? <CircleDashed className="h-3.5 w-3.5" aria-hidden="true" /> : <X className="h-3.5 w-3.5" aria-hidden="true" />}
-            <span className="sr-only">{pass ? "выполнено" : na ? "не учитывается" : "не выполнено"}</span>
+            <span className="sr-only">{t(`criterion.status.${c.status}`)}</span>
           </span>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground" title={c.hint}>{c.label}</p>
-            <p className="text-xs text-muted-foreground">{c.windowLabel}{c.note ? ` · ${c.note}` : ""}</p>
+            <p className="text-sm font-medium text-foreground" title={metricHint(c.metric, c.hint)}>{label}</p>
+            <p className="text-xs text-muted-foreground">{sub}</p>
           </div>
         </div>
         <div className="flex items-center gap-3 text-sm tabular-nums">
-          <span className={cn("font-semibold", pass ? "text-up" : na ? "text-muted-foreground" : "text-foreground")}>{c.display}</span>
-          <span className="text-xs text-muted-foreground">цель {c.targetDisplay}</span>
-          <TrendMark trend={c.trend} prev={c.prevValue} />
+          <span className={cn("font-semibold", pass ? "text-up" : na ? "text-muted-foreground" : "text-foreground")}>{fmtPromo(c.unit, c.value)}</span>
+          <span className="whitespace-nowrap text-xs text-muted-foreground">{t("criterion.target", { value: fmtPromoTarget(c.unit, c.op, c.target) })}</span>
+          <TrendMark trend={c.trend} prev={c.prevValue == null ? null : fmtPromo(c.unit, c.prevValue)} />
         </div>
       </div>
-      {!na && <Bar pct={c.progress} tone={pass ? "up" : c.progress >= 0.8 ? "warn" : "down"} label={`${c.label}: ${Math.round(c.progress * 100)}% до цели`} />}
-      {c.advice && <p className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs text-foreground/90"><span className="font-medium">Что улучшить: </span>{c.advice}</p>}
+      {!na && <Bar pct={c.progress} tone={pass ? "up" : c.progress >= 0.8 ? "warn" : "down"} label={t("criterion.progressAria", { label, pct: Math.round(c.progress * 100) })} />}
+      {(c.advice || action) && (
+        <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs text-foreground/90">
+          {c.advice && <p className="min-w-0 flex-1"><span className="font-medium">{t("criterion.advice")} </span>{c.advice}</p>}
+          {action}
+        </div>
+      )}
     </li>
   );
 }
@@ -114,25 +136,28 @@ export function CriterionRow({ c }: { c: CriterionResult }) {
 // ─── challenges ─────────────────────────────────────────────────────────────
 
 export const CH_TONE: Record<ChallengeStatus, Tone> = { scheduled: "neutral", active: "accent", passed: "up", failed: "down", expired: "warn" };
-export function ChallengeStatusPill({ status, label }: { status: ChallengeStatus; label: string }) {
-  return <Pill tone={CH_TONE[status]} dot>{label}</Pill>;
+export function ChallengeStatusPill({ status }: { status: ChallengeStatus }) {
+  academyPathI18n.useT();
+  return <Pill tone={CH_TONE[status]} dot className="shrink-0">{challengeStatusLabel(status)}</Pill>;
 }
 
 const RULE_TONE: Record<RuleState, "up" | "down" | "warn" | "accent" | "muted"> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", na: "muted" };
-const RULE_WORD: Record<RuleState, string> = { ok: "в норме", met: "выполнено", warn: "внимание", breached: "нарушено", pending: "в процессе", na: "нет данных" };
 const RULE_PILL: Record<RuleState, Tone> = { ok: "up", met: "up", warn: "warn", breached: "down", pending: "accent", na: "neutral" };
 
-export function RuleBar({ p }: { p: RuleProgress }) {
+/** One challenge rule; `mode` = the exam's drawdown mode (shown next to «Макс. просадка»). */
+export function RuleBar({ p, mode }: { p: RuleProgress; mode?: DrawdownMode }) {
+  academyPathI18n.useT();
+  const label = ruleLabel(p.key, mode);
   return (
     <li className="flex flex-col gap-1.5">
       <div className="flex flex-wrap items-baseline justify-between gap-2 text-sm">
-        <span className="font-medium text-foreground">{p.label}</span>
+        <span className="font-medium text-foreground">{label}</span>
         <span className="flex items-center gap-2 tabular-nums">
           <span className="text-foreground">{p.display}</span>
-          <Pill tone={RULE_PILL[p.state]}>{RULE_WORD[p.state]}</Pill>
+          <Pill tone={RULE_PILL[p.state]} className="shrink-0">{ruleStateLabel(p.state)}</Pill>
         </span>
       </div>
-      {p.pct != null && <Bar pct={p.pct} tone={RULE_TONE[p.state]} label={`${p.label}: ${Math.round(p.pct * 100)}%`} />}
+      {p.pct != null && <Bar pct={p.pct} tone={RULE_TONE[p.state]} label={`${label}: ${Math.round(p.pct * 100)}%`} />}
       <p className="text-xs text-muted-foreground">{p.detail}</p>
     </li>
   );
@@ -144,21 +169,22 @@ const EVENT_TONE: Record<EventKind, Tone> = {
 
 /** Day-by-day timeline: a mini bar per day (net), cumulative P&L, floor room and events. */
 export function ChallengeTimeline({ days, accountSize }: { days: TimelineDay[]; accountSize: number }) {
+  const { t } = academyPathI18n.useT();
   const maxAbs = Math.max(1, ...days.map((d) => Math.abs(d.net)));
-  if (!days.length) return <p className="text-sm text-muted-foreground">Экзамен ещё не начался.</p>;
+  if (!days.length) return <p className="text-sm text-muted-foreground">{t("timeline.notStarted")}</p>;
   return (
     <div className="-mx-1 overflow-x-auto px-1">
       <table className="w-full min-w-[640px] text-sm">
-        <caption className="sr-only">Хронология экзамена по дням</caption>
+        <caption className="sr-only">{t("timeline.caption")}</caption>
         <thead>
           <tr className="text-left text-xs text-muted-foreground">
-            <th scope="col" className="py-1.5 pr-3 font-medium">День</th>
-            <th scope="col" className="py-1.5 pr-3 text-right font-medium">Сделок</th>
-            <th scope="col" className="py-1.5 pr-3 font-medium">P&amp;L дня</th>
-            <th scope="col" className="py-1.5 pr-3 text-right font-medium">Итого</th>
-            <th scope="col" className="py-1.5 pr-3 text-right font-medium" title="Минимальный внутридневной результат">Мин. дня</th>
-            <th scope="col" className="py-1.5 pr-3 text-right font-medium" title="Запас до уровня просадки">Запас DD</th>
-            <th scope="col" className="py-1.5 font-medium">События</th>
+            <th scope="col" className="py-1.5 pr-3 font-medium">{t("timeline.cols.day")}</th>
+            <th scope="col" className="py-1.5 pr-3 text-right font-medium">{t("timeline.cols.trades")}</th>
+            <th scope="col" className="py-1.5 pr-3 font-medium">{t("timeline.cols.pnl")}</th>
+            <th scope="col" className="py-1.5 pr-3 text-right font-medium">{t("timeline.cols.total")}</th>
+            <th scope="col" className="py-1.5 pr-3 text-right font-medium" title={t("timeline.cols.dayLowTitle")}>{t("timeline.cols.dayLow")}</th>
+            <th scope="col" className="py-1.5 pr-3 text-right font-medium" title={t("timeline.cols.ddRoomTitle")}>{t("timeline.cols.ddRoom")}</th>
+            <th scope="col" className="py-1.5 font-medium">{t("timeline.cols.events")}</th>
           </tr>
         </thead>
         <tbody>
@@ -182,7 +208,7 @@ export function ChallengeTimeline({ days, accountSize }: { days: TimelineDay[]; 
                 </td>
                 <td className={cn("py-2 pr-3 text-right tabular-nums", d.cum > 0 ? "text-up" : d.cum < 0 ? "text-down" : "text-foreground")}>{fmtUsd(d.cum, { decimals: 0 })}</td>
                 <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground">{fmtUsd(d.dayLow, { decimals: 0 })}</td>
-                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground" title={d.floor != null ? `Уровень ${fmtUsd(d.floor, { decimals: 0 })} при счёте ${fmtUsd(accountSize, { decimals: 0 })}` : undefined}>{d.ddRoom != null ? fmtUsd(d.ddRoom, { decimals: 0 }) : "—"}</td>
+                <td className="py-2 pr-3 text-right tabular-nums text-muted-foreground" title={d.floor != null ? t("timeline.floorTitle", { floor: fmtUsd(d.floor, { decimals: 0 }), account: fmtUsd(accountSize, { decimals: 0 }) }) : undefined}>{d.ddRoom != null ? fmtUsd(d.ddRoom, { decimals: 0 }) : "—"}</td>
                 <td className="py-2">
                   <div className="flex flex-wrap gap-1">
                     {d.events.map((e, i) => (

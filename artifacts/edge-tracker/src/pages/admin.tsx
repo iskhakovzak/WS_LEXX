@@ -15,6 +15,7 @@ import { AuditLog } from "@/components/admin/AuditLog";
 import { DataPanel } from "@/components/admin/DataPanel";
 import { AppErrorsPanel } from "@/components/admin/AppErrorsPanel";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
+import { adminI18n } from "@/i18n/ns/admin";
 import { useDataQuality, useEodQueueCount, useEodStatus, useHealth, useTiers } from "@/components/admin/console-api";
 
 const TABS: AdminTab[] = ["overview", "people", "moderation", "roles", "data", "audit", "errors"];
@@ -48,13 +49,14 @@ function initialView(): PeopleView {
 
 export default function AdminPage() {
   const { isCurator } = useAuth();
+  const { t } = adminI18n.useT();
   if (!isCurator) {
     return (
       <Page>
         <EmptyState
           icon={ShieldAlert}
-          title="Доступ запрещён"
-          description="Пульт деска доступен только кураторам и администраторам."
+          title={t("page.deniedTitle")}
+          description={t("page.deniedText")}
           className="py-24"
         />
       </Page>
@@ -65,6 +67,7 @@ export default function AdminPage() {
 
 function AdminConsole() {
   const { user, isAdmin, can } = useAuth();
+  const { t } = adminI18n.useT();
   // «Ошибки» (internal error tracker) is admin-only (capability admin.errors).
   const showErrors = isAdmin && can("admin.errors");
   const tabs = showErrors ? TABS : TABS.filter((x) => x !== "errors");
@@ -148,12 +151,12 @@ function AdminConsole() {
     <Page>
       <PageHeader
         icon={Shield}
-        title="Пульт деска"
-        description="Что требует внимания, люди и права, данные PropReports и журнал изменений"
+        title={t("page.title")}
+        description={t("page.description")}
         actions={
           <>
             <UpdatedAgo at={pulse.dataUpdatedAt} className="hidden sm:inline-flex" />
-            <Button variant="outline" size="icon" className="h-9 w-9" aria-label="Обновить данные" onClick={refreshAll} disabled={fetching}>
+            <Button variant="outline" size="icon" className="h-9 w-9" aria-label={t("page.refresh")} onClick={refreshAll} disabled={fetching}>
               <RefreshCw className={cn(fetching && "animate-spin motion-reduce:animate-none")} />
             </Button>
           </>
@@ -164,25 +167,25 @@ function AdminConsole() {
 
       <div className="flex flex-col gap-1">
         <SectionTabs<AdminTab>
-          ariaLabel="Разделы пульта"
+          ariaLabel={t("page.sectionsAria")}
           value={tab}
           onChange={setTab}
           tabs={[
-            { value: "overview", label: "Обзор", icon: Activity },
-            { value: "people", label: "Люди", icon: Users, count: unmatchedCount || undefined },
-            { value: "moderation", label: "Модерация", icon: Flag, count: openReports || undefined },
-            { value: "roles", label: "Роли и права", icon: KeyRound },
-            { value: "data", label: "Данные", icon: Database },
-            { value: "audit", label: "Аудит", icon: ScrollText },
+            { value: "overview", label: t("page.tabs.overview"), icon: Activity },
+            { value: "people", label: t("page.tabs.people"), icon: Users, count: unmatchedCount || undefined },
+            { value: "moderation", label: t("page.tabs.moderation"), icon: Flag, count: openReports || undefined },
+            { value: "roles", label: t("page.tabs.roles"), icon: KeyRound },
+            { value: "data", label: t("page.tabs.data"), icon: Database },
+            { value: "audit", label: t("page.tabs.audit"), icon: ScrollText },
             ...(showErrors ? [{ value: "errors" as const, label: appErrorsI18n.t("tab"), icon: Bug }] : []),
           ]}
         />
         <p className="hidden items-center gap-1 self-end text-2xs text-muted-foreground md:inline-flex">
-          <Kbd>1</Kbd>–<Kbd>{tabs.length}</Kbd> разделы
+          <Kbd>1</Kbd>–<Kbd>{tabs.length}</Kbd> {t("page.shortcutHint")}
         </p>
       </div>
 
-      <div role="tabpanel" aria-label="Содержимое раздела">
+      <div role="tabpanel" aria-label={t("page.panelAria")}>
         {tab === "overview" && (
           <OverviewPanel
             pulse={pulse.data}

@@ -3,10 +3,16 @@
  * for the storage helpers, which guard every access.
  */
 import type { Drawing, DrawingPoint, DrawingType } from "../types";
+import { chartI18n } from "@/i18n/ns/chart";
 
 export const FIB_LEVELS: readonly number[] = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
 
-export const DRAWING_LABEL: Record<DrawingType, string> = { hline: "Уровень", trend: "Тренд", rect: "Прямоугольник", fib: "Фибо" };
+export const DRAWING_LABEL: Readonly<Record<DrawingType, string>> = {
+  get hline() { return chartI18n.t("drawing.hline"); },
+  get trend() { return chartI18n.t("drawing.trend"); },
+  get rect() { return chartI18n.t("drawing.rect"); },
+  get fib() { return chartI18n.t("drawing.fib"); },
+};
 
 /** Points a tool needs before it is complete. */
 export const DRAWING_POINTS: Record<DrawingType, number> = { hline: 1, trend: 2, rect: 2, fib: 2 };

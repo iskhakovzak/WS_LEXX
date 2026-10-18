@@ -5,6 +5,7 @@ import { http } from "@/lib/api/http";
 import { isNotFound, nullIfMissing } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
 import { riskMeQuery } from "@/lib/api/queries";
+import { big7I18n } from "@/i18n/ns/big7";
 import {
   DAY_CHANGE_EVENT, big7Today, getTickerDay, updateTickerDayField, getMarketContext, saveMarketContext,
   type AutoEarning, type Catalyst, type GapRiskResponse, type MarketCtx, type RiskMeLite, type StockQuote, type TickerDay,
@@ -181,7 +182,7 @@ export function useCatalystMutations() {
       try {
         return await http.patch<Catalyst>(`/api/big7/catalysts/${id}`, body);
       } catch (e) {
-        if (isNotFound(e)) throw new Error("Редактирование появится после обновления API");
+        if (isNotFound(e)) throw new Error(big7I18n.t("catalyst.editNotDeployed"));
         throw e;
       }
     },
@@ -252,7 +253,7 @@ export function useMarketCtx(): [MarketCtx, (key: keyof MarketCtx, val: string) 
   return [ctx, update];
 }
 
-/** Ticks every `ms` so "обновлено N сек назад" stays fresh. */
+/** Ticks every `ms` so relative times ("updated N s ago") stay fresh. */
 export function useNow(ms = 5000) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -262,12 +263,3 @@ export function useNow(ms = 5000) {
   return now;
 }
 
-export function agoLabel(ts: number | undefined, now: number) {
-  if (!ts) return "нет данных";
-  const s = Math.max(0, Math.round((now - ts) / 1000));
-  if (s < 10) return "только что";
-  if (s < 60) return `${s} сек назад`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} мин назад`;
-  return `${Math.round(m / 60)} ч назад`;
-}

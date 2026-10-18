@@ -3,6 +3,7 @@ import { getListTradesQueryKey } from "@workspace/api-client-react";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
 import { JOURNAL_DAYS_KEY } from "@/components/journal/use-journal-days";
+import { eodI18n } from "@/i18n/ns/eod";
 
 /**
  * «Закрытие дня» client: types + fetchers for /api/eod/* (see api-server/src/routes/eod.ts for the contract).
@@ -251,11 +252,19 @@ export function useEodMutation<TArgs, TOut>(fn: (a: TArgs) => Promise<TOut>, onD
   });
 }
 
-export const STATUS_LABEL: Record<EodStatus, string> = { open: "День открыт", closed: "День закрыт", reviewed: "Проверен куратором" };
-export const MOOD_LABELS = ["Тильт", "Плохо", "Ровно", "Хорошо", "В потоке"] as const;
-export const DISCIPLINE_LABELS = ["Хаос", "Слабо", "Средне", "Хорошо", "Идеально"] as const;
-/** Mistake taxonomy for per-trade review (desk language; matches the journal day tags). */
-export const MISTAKE_TAGS = ["FOMO", "Ранний вход", "Поздний выход", "Двигал стоп", "Овертрейдинг", "Реванш", "Без плана", "Большой размер", "Не по сетапу", "Ранний выход"];
+/** Day status → label in the current language (read on access). */
+export const STATUS_LABEL: Record<EodStatus, string> = Object.defineProperties({} as Record<EodStatus, string>, {
+  open: { get: () => eodI18n.t("status.open"), enumerable: true },
+  closed: { get: () => eodI18n.t("status.closed"), enumerable: true },
+  reviewed: { get: () => eodI18n.t("status.reviewed"), enumerable: true },
+});
+/** 1–5 scale labels (shared with the journal; language-aware). */
+export { MOOD_LABELS, DISCIPLINE_LABELS } from "@/components/shared/day-labels";
+/**
+ * Mistake taxonomy for per-trade review (desk language; matches the journal day tags). Stored codes: the Russian word
+ * is what the review keeps; show it with `tagLabel` from components/trades/review-presets.
+ */
+export const MISTAKE_TAGS = ["FOMO", "Ранний вход", "Поздний выход", "Двигал стоп", "Овертрейдинг", "Реванш", "Без плана", "Большой размер", "Не по сетапу", "Ранний выход"]; // i18n-ignore (stored codes)
 
 export function gradeTone(g: string | null | undefined): "up" | "accent" | "warn" | "down" | "neutral" {
   if (g === "A+") return "up";
@@ -266,9 +275,9 @@ export function gradeTone(g: string | null | undefined): "up" | "accent" | "warn
 }
 
 export function hoursText(h: number): string {
-  if (h < 1) return "меньше часа";
-  if (h < 48) return `${Math.round(h)} ч`;
-  return `${Math.floor(h / 24)} дн ${Math.round(h % 24)} ч`;
+  if (h < 1) return eodI18n.t("hours.lessThanHour");
+  if (h < 48) return eodI18n.t("hours.h", { h: Math.round(h) });
+  return eodI18n.t("hours.dh", { d: Math.floor(h / 24), h: Math.round(h % 24) });
 }
 
 /**
@@ -284,7 +293,7 @@ export function splitMissing(d: EodDayPayload): { blocking: MissingItem[]; soft:
 /** SLA text for a waiting day: «осталось 5 ч» / «просрочено на 3 ч». */
 export function slaText(hoursWaiting: number, slaHours: number): string {
   const left = slaHours - hoursWaiting;
-  return left >= 0 ? `осталось ${hoursText(left)}` : `просрочено на ${hoursText(-left)}`;
+  return left >= 0 ? eodI18n.t("sla.left", { time: hoursText(left) }) : eodI18n.t("sla.overdue", { time: hoursText(-left) });
 }
 
 /** Queue row for a closed day opened from the day view (curator «Проверить» outside the queue). */

@@ -11,11 +11,12 @@ import { downloadCsv } from "@/components/analytics-page/metrics";
 import { DataTable, EmptyState, Panel, Pill, SortableTh, StatCard, StatGrid, useTableSort } from "@/components/ds";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { STAGE_LABELS, useProgressMatrix, type ProgressStudent, type Stage } from "./api";
+import { stageLabelOf, useProgressMatrix, type ProgressStudent } from "./api";
 import { PctBar } from "./bits";
 import { academyLinks } from "./links";
 import { relativeDays } from "./time";
-import { pluralRu } from "@/lib/format";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
 
 function cellTone(pct: number, total: number) {
   if (!total) return "text-muted-foreground";
@@ -26,7 +27,11 @@ function cellTone(pct: number, total: number) {
 
 type SortKey = "name" | "pct" | "activity" | "pending";
 
+/** Quiz titles often start with «Тест:» (author content) — the column header already says it. */
+const stripQuizPrefix = (title: string) => title.replace(/^(Тест|Quiz|Test):\s*/i, ""); // i18n-ignore: matches author-written title prefixes
+
 export function ProgressMatrix({ programId, cohortId }: { programId: number | null; cohortId: number | null }) {
+  const { t } = academyI18n.useT();
   const q = useProgressMatrix(programId, cohortId);
   const d = q.data;
   const rows = d?.students ?? [];
@@ -39,54 +44,54 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
   const sort = useTableSort<ProgressStudent, SortKey>(rows, sorter, "pct");
 
   if (q.isLoading) return <Skeleton className="h-64 rounded-2xl" />;
-  if (q.isError) return <Panel><p className="text-sm text-down">Не удалось загрузить прогресс: {(q.error as Error).message}</p></Panel>;
-  if (!d?.program) return <Panel><EmptyState icon={Users} title="Программ ещё нет" description="Создайте программу в редакторе контента или загрузите демо-курс." /></Panel>;
+  if (q.isError) return <Panel><p className="text-sm text-down">{t("matrix.loadFailed", { message: (q.error as Error).message })}</p></Panel>;
+  if (!d?.program) return <Panel><EmptyState icon={Users} title={t("matrix.noPrograms")} description={t("matrix.noProgramsDesc")} /></Panel>;
 
   const s = d.summary;
   return (
     <div className="flex flex-col gap-4">
       {!d.enrollmentsAvailable && (
-        <p className="text-xs text-muted-foreground">Модуль когорт ещё не подключён: показаны все, кто начал эту программу.</p>
+        <p className="text-xs text-muted-foreground">{t("matrix.noCohorts")}</p>
       )}
       <StatGrid>
-        <StatCard label="Учеников" value={s.students} />
-        <StatCard label="Средний прогресс" value={s.avgPct != null ? `${s.avgPct}%` : "—"} hint={s.medianPct != null ? `медиана ${s.medianPct}%` : undefined} />
-        <StatCard label="Закончили" value={s.completed} tone={s.completed ? "up" : "neutral"} />
-        <StatCard label="Без активности 7+ дней" value={s.stale.length} tone={s.stale.length ? "warn" : "neutral"} hint={s.stale.slice(0, 3).join(", ") || undefined} />
+        <StatCard label={t("matrix.students")} value={s.students} />
+        <StatCard label={t("matrix.avg")} value={s.avgPct != null ? `${s.avgPct}%` : "—"} hint={s.medianPct != null ? t("matrix.median", { pct: s.medianPct }) : undefined} />
+        <StatCard label={t("matrix.finished")} value={s.completed} tone={s.completed ? "up" : "neutral"} />
+        <StatCard label={t("matrix.stale")} value={s.stale.length} tone={s.stale.length ? "warn" : "neutral"} hint={s.stale.slice(0, 3).join(", ") || undefined} />
       </StatGrid>
 
       {!rows.length ? (
-        <Panel><EmptyState icon={Users} title="Нет учеников" description={cohortId ? "В этой когорте пока нет зачисленных." : "Никто ещё не начал эту программу."} /></Panel>
+        <Panel><EmptyState icon={Users} title={t("matrix.noStudents")} description={cohortId ? t("matrix.noStudentsCohort") : t("matrix.noStudentsAll")} /></Panel>
       ) : (
-        <Panel padded={false} title={d.program.title} description={`${d.modules.length} ${pluralRu(d.modules.length, "модуль", "модуля", "модулей")} · клик по ученику — его прогресс глазами ученика`}
+        <Panel padded={false} title={d.program.title} description={t("matrix.tableDesc", { modules: t("units.modules", { count: d.modules.length }) })}
           actions={
-            <Button variant="outline" size="sm" className="h-8" title="Прогресс учеников — CSV для Excel / Google Таблиц" onClick={() => {
+            <Button variant="outline" size="sm" className="h-8" title={t("matrix.csvTitle")} onClick={() => {
               const quizzes = d.quizzes ?? [];
               downloadCsv(
                 `academy_progress_${d.program!.id}.csv`,
-                ["Ученик", "Ступень", "Прогресс, %", ...d.modules.map((m, i) => `М${i + 1}. ${m.title}`), ...quizzes.map((qz) => qz.title), "На проверке", "Последняя активность", "Дальше"],
+                [t("matrix.student"), t("matrix.stage"), t("matrix.progressPct"), ...d.modules.map((m, i) => t("matrix.moduleShort", { n: i + 1, title: m.title })), ...quizzes.map((qz) => qz.title), t("matrix.pending"), t("matrix.lastActivity"), t("matrix.next")],
                 sort.rows.map((r) => [
-                  r.userName, r.stage ? STAGE_LABELS[r.stage as Stage] ?? r.stage : "", Math.round(r.pct),
-                  ...r.modules.map((m) => (m.total ? `${m.done} из ${m.total}` : "")), // «4/4» would turn into a date in Excel
+                  r.userName, stageLabelOf(r.stage), Math.round(r.pct),
+                  ...r.modules.map((m) => (m.total ? commonI18n.t("states.ofTotal", { value: m.done, total: m.total }) : "")), // «4/4» would turn into a date in Excel
                   ...quizzes.map((qz) => { const v = r.quizBest[String(qz.id)]; return v == null ? "" : Math.round(v); }),
-                  r.pendingReviews, r.lastActivity ?? "", r.next?.title ?? "курс пройден",
+                  r.pendingReviews, r.lastActivity ?? "", r.next?.title ?? t("matrix.courseDone"),
                 ]),
               );
             }}>
               <Download className="mr-1.5 h-4 w-4" aria-hidden="true" />CSV
             </Button>
           }>
-          <DataTable ariaLabel="Прогресс учеников" stickyFirstCol maxHeight="65vh">
+          <DataTable ariaLabel={t("matrix.tableAria")} stickyFirstCol maxHeight="65vh">
             <table>
               <thead>
                 <tr>
-                  <SortableTh {...sort.thProps("name")}>Ученик</SortableTh>
-                  <SortableTh {...sort.thProps("pct")}>Прогресс</SortableTh>
-                  {d.modules.map((m, i) => <th key={m.id} scope="col" title={m.title} className="max-w-[9rem] truncate">М{i + 1}. {m.title}</th>)}
-                  {(d.quizzes ?? []).map((qz) => <th key={qz.id} scope="col" title={qz.title}>Тест: {qz.title.replace(/^Тест:\s*/, "").slice(0, 18)}</th>)}
-                  <SortableTh {...sort.thProps("pending")}>На проверке</SortableTh>
-                  <SortableTh {...sort.thProps("activity")}>Активность</SortableTh>
-                  <th scope="col">Дальше</th>
+                  <SortableTh {...sort.thProps("name")}>{t("matrix.student")}</SortableTh>
+                  <SortableTh {...sort.thProps("pct")}>{t("matrix.progress")}</SortableTh>
+                  {d.modules.map((m, i) => <th key={m.id} scope="col" title={m.title} className="max-w-[9rem] truncate">{t("matrix.moduleShort", { n: i + 1, title: m.title })}</th>)}
+                  {(d.quizzes ?? []).map((qz) => <th key={qz.id} scope="col" title={qz.title} className="max-w-[10rem] truncate">{t("matrix.quizCol", { title: stripQuizPrefix(qz.title).slice(0, 18) })}</th>)}
+                  <SortableTh {...sort.thProps("pending")}>{t("matrix.pending")}</SortableTh>
+                  <SortableTh {...sort.thProps("activity")}>{t("matrix.activity")}</SortableTh>
+                  <th scope="col">{t("matrix.next")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -94,11 +99,11 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
                   <tr key={r.userName}>
                     <td>
                       <Link href={academyLinks.learn({ program: d.program!.id, user: r.userName })} className="font-medium text-foreground hover:text-primary">{r.userName}</Link>
-                      {r.stage && <span className="ml-2 text-xs text-muted-foreground">{STAGE_LABELS[r.stage as Stage] ?? r.stage}</span>}
+                      {r.stage && <span className="ml-2 text-xs text-muted-foreground">{stageLabelOf(r.stage)}</span>}
                     </td>
                     <td className="min-w-[9rem]">
                       <div className="flex items-center gap-2">
-                        <PctBar pct={r.pct} className="w-20" label={`Прогресс ${r.userName}`} />
+                        <PctBar pct={r.pct} className="w-20" label={t("matrix.rowProgress", { name: r.userName })} />
                         <span className="tabular-nums">{Math.round(r.pct)}%</span>
                       </div>
                     </td>
@@ -117,7 +122,7 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
                     })}
                     <td className="text-center tabular-nums">{r.pendingReviews ? <Pill tone="accent">{r.pendingReviews}</Pill> : <span className="text-muted-foreground">0</span>}</td>
                     <td className={cn("whitespace-nowrap", s.stale.includes(r.userName) && "text-[hsl(var(--chart-3))]")}>{relativeDays(r.lastActivity)}</td>
-                    <td className="max-w-[14rem] truncate text-muted-foreground" title={r.next?.title}>{r.next ? r.next.title : <span className="text-up">курс пройден</span>}</td>
+                    <td className="max-w-[14rem] truncate text-muted-foreground" title={r.next?.title}>{r.next ? r.next.title : <span className="text-up">{t("matrix.courseDone")}</span>}</td>
                   </tr>
                 ))}
               </tbody>

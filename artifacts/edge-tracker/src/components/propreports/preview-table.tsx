@@ -6,11 +6,15 @@ import * as React from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { DataTable, Pill, Segmented, SortableTh, StatCard, StatGrid, useTableSort, type Tone } from "@/components/ds";
 import { cn } from "@/lib/utils";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import {
-  ACTION_LABEL, FIELD_LABEL, feeLabel, orderedFeeKeys, HORIZON_LABEL, REASON_LABEL, SESSION_LABEL,
-  fmtPrice, type PlanAction, type PlanItemView, type Preview, type TripView,
+  actionLabel, feeLabel, fieldLabel, horizonLabel, orderedFeeKeys, reasonLabel, resultLabel, sessionLabel,
+  fmtPrice, type ApplyResult, type IntegrationsTab, type PlanAction, type PlanItemView, type Preview, type TripView,
 } from "./api";
 import { fmtUsd } from "@/lib/format";
+import { propreportsI18n } from "@/i18n/ns/propreports";
+import { commonI18n } from "@/i18n/ns/common";
 
 const ACTION_TONE: Record<PlanAction, Tone> = { insert: "up", update: "accent", unchanged: "neutral", adopt: "purple", conflict: "warn", skip: "down" };
 type Filter = "all" | PlanAction;
@@ -52,21 +56,21 @@ export function FeesBreakdown({ fees, total }: { fees: Record<string, number>; t
 }
 
 export function ExecutionsList({ trip }: { trip: TripView }) {
-  const KIND: Record<string, string> = { entry: "вход", add: "добор", trim: "частичный", exit: "выход" };
+  const { t } = propreportsI18n.useT();
   return (
     <div className="grid gap-1 text-xs tabular-nums">
       {trip.executions.map((e, i) => (
         <div key={i} className="flex flex-wrap items-center gap-x-3 gap-y-0.5">
-          <span className="w-16 text-muted-foreground">{KIND[e.kind] ?? e.kind}</span>
+          <span className="w-20 text-muted-foreground">{propreportsI18n.tryT(`preview.exec.${e.kind}`) ?? e.kind}</span>
           <span className={cn("w-8 font-medium", e.side === "B" || e.side === "C" ? "text-up" : "text-down")}>{e.side}</span>
           <span className="w-14 text-right">{e.qty}</span>
           <span className="w-20 text-right">@ {fmtPrice(e.price)}</span>
           <span className="text-muted-foreground">{e.at.replace("T", " ")}</span>
-          {e.fees ? <span className="text-muted-foreground">комиссия {fmtUsd(e.fees)}</span> : null}
+          {e.fees ? <span className="text-muted-foreground">{t("preview.execFee", { value: fmtUsd(e.fees) })}</span> : null}
           {e.fillId && <span className="text-2xs text-muted-foreground">#{e.fillId}</span>}
         </div>
       ))}
-      {trip.open && <div className="text-muted-foreground">Позиция ещё открыта: {trip.openQty} шт.</div>}
+      {trip.open && <div className="text-muted-foreground">{t("preview.stillOpen", { count: trip.openQty })}</div>}
     </div>
   );
 }
@@ -78,7 +82,7 @@ function ChangeList({ changes }: { changes: PlanItemView["changes"] }) {
     <ul className="grid gap-0.5 text-xs">
       {changes.map((c) => (
         <li key={c.field} className="flex flex-wrap gap-1.5">
-          <span className="text-muted-foreground">{FIELD_LABEL[c.field] ?? c.field}:</span>
+          <span className="text-muted-foreground">{fieldLabel(c.field)}:</span>
           <span className="line-through opacity-70">{show(c.from)}</span>
           <span>→</span>
           <span className="font-medium">{show(c.to)}</span>
@@ -88,30 +92,47 @@ function ChangeList({ changes }: { changes: PlanItemView["changes"] }) {
   );
 }
 
+/** After a write: the next step (reconcile the conflicts, map new accounts), so the run doesn't end in a dead end. */
+export function NextSteps({ result, onGoTab }: { result: Pick<ApplyResult, "conflicts" | "unmappedAccounts">; onGoTab?: (tab: IntegrationsTab) => void }) {
+  const { t } = propreportsI18n.useT();
+  if (!onGoTab || (!result.conflicts && !result.unmappedAccounts.length)) return null;
+  return (
+    <div className="flex w-full flex-wrap gap-2">
+      {result.conflicts > 0 && (
+        <Button size="sm" variant="outline" onClick={() => onGoTab("reconcile")}>{t("next.reconcile", { count: result.conflicts })} <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" /></Button>
+      )}
+      {result.unmappedAccounts.length > 0 && (
+        <Button size="sm" variant="outline" onClick={() => onGoTab("accounts")}>{t("next.accounts", { count: result.unmappedAccounts.length })} <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden="true" /></Button>
+      )}
+    </div>
+  );
+}
+
 export function PreviewSummary({ preview }: { preview: Preview }) {
+  const { t } = propreportsI18n.useT();
   const s = preview.summary;
   const c = preview.counts;
   return (
     <div className="grid gap-3">
       <StatGrid>
-        <StatCard label="Раунд-трипов" value={s.trips} hint={`${s.closed} закрытых · ${s.open} открытых · ${s.tradingDays} дн.`} />
-        <StatCard label="Net P&L (по брокеру)" value={fmtUsd(s.net, { signed: true })} tone={s.net > 0 ? "up" : s.net < 0 ? "down" : "neutral"} hint={`gross ${fmtUsd(s.gross, { signed: true })} · комиссии ${fmtUsd(s.fees)}`} />
-        <StatCard label="Новых / обновится" value={`${c.insert} / ${c.update}`} tone={c.insert ? "up" : "neutral"} hint={`${c.unchanged} без изменений · ${c.adopt} привяжется`} />
-        <StatCard label="На сверку / пропуск" value={`${c.conflict} / ${c.skip}`} tone={c.conflict ? "warn" : c.skip ? "down" : "neutral"} hint={`${s.byHorizon.intraday} интрадей · ${s.byHorizon.overnight} овернайт · ${s.byHorizon.swing} свинг`} />
+        <StatCard label={t("preview.trips")} value={s.trips} hint={t("preview.tripsHint", { closed: s.closed, open: s.open, days: s.tradingDays })} />
+        <StatCard label={t("preview.net")} value={fmtUsd(s.net, { signed: true })} tone={s.net > 0 ? "up" : s.net < 0 ? "down" : "neutral"} hint={t("preview.netHint", { gross: fmtUsd(s.gross, { signed: true }), fees: fmtUsd(s.fees) })} />
+        <StatCard label={t("preview.newUpdated")} value={`${c.insert} / ${c.update}`} tone={c.insert ? "up" : "neutral"} hint={t("preview.newUpdatedHint", { unchanged: c.unchanged, adopt: c.adopt })} />
+        <StatCard label={t("preview.conflictSkip")} value={`${c.conflict} / ${c.skip}`} tone={c.conflict ? "warn" : c.skip ? "down" : "neutral"} hint={t("preview.horizonHint", { intraday: s.byHorizon.intraday, overnight: s.byHorizon.overnight, swing: s.byHorizon.swing })} />
       </StatGrid>
       <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-        {preview.kind === "fills" && preview.fills != null && <Pill tone="neutral">{preview.fills} fills{preview.skippedRows ? ` · ${preview.skippedRows} отменённых пропущено` : ""}</Pill>}
-        {preview.reportRows != null && <Pill tone="neutral">{preview.reportRows} строк отчёта</Pill>}
-        {!!preview.unmappedAccounts.length && <Pill tone="warn" dot>Счета без трейдера: {preview.unmappedAccounts.join(", ")}</Pill>}
-        {!!preview.inactiveAccounts.length && <Pill tone="neutral">Выключенные счета: {preview.inactiveAccounts.join(", ")}</Pill>}
-        {!!preview.orphanCount && <Pill tone="warn">{preview.orphanCount} fills закрывают позицию, открытую до начала периода — не учтены</Pill>}
-        {!!preview.issueCount && <Pill tone="down">{preview.issueCount} строк не распознано</Pill>}
-        {preview.truncated && <Pill tone="warn">Показаны первые 3000</Pill>}
+        {preview.kind === "fills" && preview.fills != null && <Pill tone="neutral">{preview.skippedRows ? t("preview.fillsCancelled", { count: preview.fills, cancelled: preview.skippedRows }) : t("preview.fills", { count: preview.fills })}</Pill>}
+        {preview.reportRows != null && <Pill tone="neutral">{t("preview.reportRows", { count: preview.reportRows })}</Pill>}
+        {!!preview.unmappedAccounts.length && <Pill tone="warn" dot>{t("preview.unmapped", { list: preview.unmappedAccounts.join(", ") })}</Pill>}
+        {!!preview.inactiveAccounts.length && <Pill tone="neutral">{t("preview.inactive", { list: preview.inactiveAccounts.join(", ") })}</Pill>}
+        {!!preview.orphanCount && <Pill tone="warn">{t("preview.orphans", { count: preview.orphanCount })}</Pill>}
+        {!!preview.issueCount && <Pill tone="down">{t("preview.issues", { count: preview.issueCount })}</Pill>}
+        {preview.truncated && <Pill tone="warn">{t("preview.truncated")}</Pill>}
       </div>
       {!!preview.issues?.length && (
         <details className="text-xs text-muted-foreground">
-          <summary className="cursor-pointer">Проблемные строки</summary>
-          <ul className="mt-1 grid gap-0.5">{preview.issues.map((i, n) => <li key={n}>строка {i.line}: {i.message}</li>)}</ul>
+          <summary className="cursor-pointer">{t("preview.problemRows")}</summary>
+          <ul className="mt-1 grid gap-0.5">{preview.issues.map((i, n) => <li key={n}>{t("preview.row", { line: i.line, message: i.message })}</li>)}</ul>
         </details>
       )}
     </div>
@@ -119,6 +140,7 @@ export function PreviewSummary({ preview }: { preview: Preview }) {
 }
 
 export function PreviewTable({ preview }: { preview: Preview }) {
+  const { t } = propreportsI18n.useT();
   const [filter, setFilter] = React.useState<Filter>("all");
   const [open, setOpen] = React.useState<Set<string>>(() => new Set());
   const filtered = React.useMemo(() => (filter === "all" ? preview.items : preview.items.filter((i) => i.action === filter)), [filter, preview.items]);
@@ -126,65 +148,65 @@ export function PreviewTable({ preview }: { preview: Preview }) {
   const items = sort.rows;
   const toggle = (id: string) => setOpen((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const options: Array<{ value: Filter; label: string; count: number }> = [
-    { value: "all", label: "Все", count: preview.items.length },
-    ...(["insert", "update", "adopt", "conflict", "unchanged", "skip"] as PlanAction[]).filter((a) => preview.counts[a]).map((a) => ({ value: a as Filter, label: ACTION_LABEL[a], count: preview.counts[a] })),
+    { value: "all", label: t("preview.all"), count: preview.items.length },
+    ...(["insert", "update", "adopt", "conflict", "unchanged", "skip"] as PlanAction[]).filter((a) => preview.counts[a]).map((a) => ({ value: a as Filter, label: actionLabel(a), count: preview.counts[a] })),
   ];
   return (
     <div className="grid gap-3">
-      <Segmented ariaLabel="Фильтр предпросмотра" size="sm" value={filter} onChange={setFilter} options={options} />
-      <DataTable maxHeight="70vh" ariaLabel="Предпросмотр импорта">
+      <Segmented ariaLabel={t("preview.filterAria")} size="sm" value={filter} onChange={setFilter} options={options} />
+      <DataTable maxHeight="70vh" ariaLabel={t("preview.tableAria")}>
         <table>
           <thead>
             <tr>
               <th className="w-6" />
-              <SortableTh {...sort.thProps("action")}>Действие</SortableTh>
-              <SortableTh {...sort.thProps("account")}>Счёт / трейдер</SortableTh>
-              <SortableTh {...sort.thProps("date")}>Дата</SortableTh>
-              <SortableTh {...sort.thProps("symbol")}>Тикер</SortableTh>
-              <SortableTh {...sort.thProps("side")}>Сторона</SortableTh>
-              <SortableTh {...sort.thProps("qty")} align="right">Объём</SortableTh>
-              <SortableTh {...sort.thProps("entry")} align="right">Вход</SortableTh>
-              <SortableTh {...sort.thProps("exit")} align="right">Выход</SortableTh>
-              <SortableTh {...sort.thProps("gross")} align="right">Gross</SortableTh>
-              <SortableTh {...sort.thProps("fees")} align="right">Комиссии</SortableTh>
-              <SortableTh {...sort.thProps("net")} align="right">Net</SortableTh>
-              <SortableTh {...sort.thProps("horizon")}>Горизонт</SortableTh>
-              <SortableTh {...sort.thProps("hold")}>Удерж.</SortableTh>
-              <SortableTh {...sort.thProps("result")}>Итог</SortableTh>
+              <SortableTh {...sort.thProps("action")}>{t("preview.col.action")}</SortableTh>
+              <SortableTh {...sort.thProps("account")}>{t("preview.col.account")}</SortableTh>
+              <SortableTh {...sort.thProps("date")}>{t("preview.col.date")}</SortableTh>
+              <SortableTh {...sort.thProps("symbol")}>{t("preview.col.symbol")}</SortableTh>
+              <SortableTh {...sort.thProps("side")}>{t("preview.col.side")}</SortableTh>
+              <SortableTh {...sort.thProps("qty")} align="right">{t("preview.col.qty")}</SortableTh>
+              <SortableTh {...sort.thProps("entry")} align="right">{t("preview.col.entry")}</SortableTh>
+              <SortableTh {...sort.thProps("exit")} align="right">{t("preview.col.exit")}</SortableTh>
+              <SortableTh {...sort.thProps("gross")} align="right">{t("preview.col.gross")}</SortableTh>
+              <SortableTh {...sort.thProps("fees")} align="right">{t("preview.col.fees")}</SortableTh>
+              <SortableTh {...sort.thProps("net")} align="right">{t("preview.col.net")}</SortableTh>
+              <SortableTh {...sort.thProps("horizon")}>{t("preview.col.horizon")}</SortableTh>
+              <SortableTh {...sort.thProps("hold")}>{t("preview.col.hold")}</SortableTh>
+              <SortableTh {...sort.thProps("result")}>{t("preview.col.result")}</SortableTh>
             </tr>
           </thead>
           <tbody>
             {items.map((it) => {
-              const t = it.trip;
+              const tr = it.trip;
               const isOpen = open.has(it.externalId);
               return (
                 <React.Fragment key={it.externalId}>
                   <tr className={cn(it.action === "conflict" && "bg-[hsl(var(--chart-3))]/5", it.action === "skip" && "opacity-60")}>
                     <td>
-                      <button type="button" onClick={() => toggle(it.externalId)} aria-expanded={isOpen} aria-label="Показать исполнения" className="rounded p-0.5 text-muted-foreground hover:text-foreground">
+                      <button type="button" onClick={() => toggle(it.externalId)} aria-expanded={isOpen} aria-label={t("preview.showExec")} className="rounded p-0.5 text-muted-foreground hover:text-foreground">
                         {isOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
                       </button>
                     </td>
                     <td>
-                      <Pill tone={ACTION_TONE[it.action]}>{ACTION_LABEL[it.action]}</Pill>
-                      {it.reason && <div className="text-2xs text-muted-foreground">{REASON_LABEL[it.reason] ?? it.reason}</div>}
+                      <Pill tone={ACTION_TONE[it.action]}>{actionLabel(it.action)}</Pill>
+                      {it.reason && <div className="text-2xs text-muted-foreground">{reasonLabel(it.reason)}</div>}
                     </td>
                     <td className="whitespace-nowrap">
                       <div className="text-xs">{it.account}</div>
-                      <div className={cn("text-2xs", it.trader ? "text-muted-foreground" : "text-[hsl(var(--chart-3))]")}>{it.trader ?? "не привязан"}</div>
+                      <div className={cn("text-2xs", it.trader ? "text-muted-foreground" : "text-[hsl(var(--chart-3))]")}>{it.trader ?? t("notMapped")}</div>
                     </td>
-                    <td className="whitespace-nowrap">{t.date}{t.exitDate && t.exitDate !== t.date ? <span className="text-muted-foreground"> → {t.exitDate}</span> : null}</td>
-                    <td className="font-medium">{t.symbol}</td>
-                    <td><span className={t.side === "Long" ? "text-up" : "text-down"}>{t.side === "Long" ? "Лонг" : "Шорт"}</span></td>
-                    <td className="text-right">{t.qty}{t.open && t.openQty ? <span className="text-muted-foreground"> ({t.openQty} откр.)</span> : null}</td>
-                    <td className="text-right">{fmtPrice(t.avgEntry)}</td>
-                    <td className="text-right">{fmtPrice(t.avgExit)}</td>
-                    <td className={cn("text-right", t.grossPnl > 0 ? "text-up" : t.grossPnl < 0 ? "text-down" : "")}>{fmtUsd(t.grossPnl, { signed: true })}</td>
-                    <td className="text-right"><FeesBreakdown fees={t.fees} total={t.totalFees} /></td>
-                    <td className={cn("text-right font-medium", t.netPnl > 0 ? "text-up" : t.netPnl < 0 ? "text-down" : "")}>{fmtUsd(t.netPnl, { signed: true })}</td>
-                    <td className="whitespace-nowrap text-xs">{HORIZON_LABEL[t.horizon]} <span className="text-muted-foreground">· {SESSION_LABEL[t.session]}</span></td>
-                    <td className="whitespace-nowrap text-xs">{t.holdTime ?? "—"}</td>
-                    <td><Pill tone={resultTone(t.result)}>{t.result === "open" ? "Открыта" : t.result === "win" ? "Прибыль" : t.result === "loss" ? "Убыток" : "В ноль"}</Pill></td>
+                    <td className="whitespace-nowrap">{tr.date}{tr.exitDate && tr.exitDate !== tr.date ? <span className="text-muted-foreground"> → {tr.exitDate}</span> : null}</td>
+                    <td className="font-medium">{tr.symbol}</td>
+                    <td><span className={tr.side === "Long" ? "text-up" : "text-down"}>{commonI18n.t(tr.side === "Long" ? "trading.long" : "trading.short")}</span></td>
+                    <td className="text-right">{tr.qty}{tr.open && tr.openQty ? <span className="text-muted-foreground"> {t("preview.openQty", { count: tr.openQty })}</span> : null}</td>
+                    <td className="text-right">{fmtPrice(tr.avgEntry)}</td>
+                    <td className="text-right">{fmtPrice(tr.avgExit)}</td>
+                    <td className={cn("text-right", tr.grossPnl > 0 ? "text-up" : tr.grossPnl < 0 ? "text-down" : "")}>{fmtUsd(tr.grossPnl, { signed: true })}</td>
+                    <td className="text-right"><FeesBreakdown fees={tr.fees} total={tr.totalFees} /></td>
+                    <td className={cn("text-right font-medium", tr.netPnl > 0 ? "text-up" : tr.netPnl < 0 ? "text-down" : "")}>{fmtUsd(tr.netPnl, { signed: true })}</td>
+                    <td className="whitespace-nowrap text-xs">{horizonLabel(tr.horizon)} <span className="text-muted-foreground">· {sessionLabel(tr.session)}</span></td>
+                    <td className="whitespace-nowrap text-xs">{tr.holdTime ?? "—"}</td>
+                    <td><Pill tone={resultTone(tr.result)}>{resultLabel(tr.result)}</Pill></td>
                   </tr>
                   {(isOpen || it.changes.length > 0 || it.candidates.length > 0) && (
                     <tr>
@@ -194,12 +216,12 @@ export function PreviewTable({ preview }: { preview: Preview }) {
                           {it.changes.length > 0 && <ChangeList changes={it.changes} />}
                           {it.candidates.length > 0 && (
                             <div className="text-xs">
-                              <span className="text-[hsl(var(--chart-3))]">Совпадает с ручной записью:</span>{" "}
+                              <span className="text-[hsl(var(--chart-3))]">{t("preview.matchesManual")}</span>{" "}
                               {it.candidates.map((c) => `#${c.id} ${c.ticker} ${c.side ?? ""} ${c.date}${c.pnl != null ? ` (${fmtUsd(c.pnl, { signed: true })})` : ""}`).join("; ")}
-                              <span className="text-muted-foreground"> — после импорта появится во «Входящих на сверку»</span>
+                              <span className="text-muted-foreground">{t("preview.matchesHint")}</span>
                             </div>
                           )}
-                          {isOpen && <ExecutionsList trip={t} />}
+                          {isOpen && <ExecutionsList trip={tr} />}
                         </div>
                       </td>
                     </tr>
@@ -208,7 +230,7 @@ export function PreviewTable({ preview }: { preview: Preview }) {
               );
             })}
             {!items.length && (
-              <tr><td colSpan={15} className="py-6 text-center text-sm text-muted-foreground">Пусто</td></tr>
+              <tr><td colSpan={15} className="py-6 text-center text-sm text-muted-foreground">{t("preview.empty")}</td></tr>
             )}
           </tbody>
         </table>

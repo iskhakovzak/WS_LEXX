@@ -152,7 +152,7 @@ router.get("/admin/app-errors/:id", asyncHandler(async (req, res): Promise<void>
       WHERE o.error_id = $1 ORDER BY o.at DESC LIMIT 20`,
     [id],
   );
-  res.json({ error: rows[0], occurrences });
+  res.json({ occurrences, error: rows[0] }); // `error` = the error record (data, not an error answer)
 }));
 
 const ResolveBody = z.object({ resolved: z.boolean() });
@@ -170,7 +170,7 @@ router.post("/admin/app-errors/:id/resolve", asyncHandler(async (req, res): Prom
   );
   if (!rows[0]) throw notFound();
   await logAudit({ actor, action: parsed.data.resolved ? "app_error.resolve" : "app_error.reopen", targetType: "app_error", targetId: String(id) });
-  res.json({ error: rows[0] });
+  res.json({ occurrences: undefined, error: rows[0] }); // `error` = the error record (data)
 }));
 
 export default router;

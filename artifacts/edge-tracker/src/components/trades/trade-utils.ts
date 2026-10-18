@@ -12,21 +12,17 @@ import { normalizeResult } from "@/lib/trade-result";
 import { signedR, priceR, netPnl as sharedNetPnl, isOpen as sharedIsOpen } from "@/lib/trade-math";
 import type { Tone } from "@/components/ds";
 import type { PlaybookPayload } from "@/components/add-to-playbook";
+import { tradesI18n } from "@/i18n/ns/trades";
+import { HORIZONS, type Horizon } from "@/components/shared/trade-labels";
+export { RESULTS, HORIZONS, HORIZON_LABEL, EVENT_LABEL, SESSION_LABEL, RESULT_LABEL, eventLabel, sessionLabel, type Horizon } from "@/components/shared/trade-labels";
 
 export const EVENT_TYPES = ["earnings", "momentum", "news", "ipo", "fed", "macro", "other"];
-export const RESULTS = ["win", "loss", "breakeven", "open"] as const;
 export const SESSIONS = ["premarket", "regular", "afterhours"];
 export const SIDES = ["Long", "Short"];
 export const GRADES = ["A+", "A", "B", "C"] as const;
-export const HORIZONS = ["intraday", "overnight", "swing"] as const;
-export type Horizon = (typeof HORIZONS)[number];
-export const HORIZON_LABEL: Record<Horizon, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
 
-export const EVENT_LABEL: Record<string, string> = {
-  earnings: "Отчётность", momentum: "Моментум", news: "Новость", ipo: "IPO", fed: "ФРС", macro: "Макро", other: "Другое",
-};
-export const SESSION_LABEL: Record<string, string> = { premarket: "Премаркет", regular: "Основная", afterhours: "Постмаркет" };
-export const RESULT_LABEL: Record<string, string> = { win: "Профит", loss: "Убыток", breakeven: "В ноль", open: "Открыта" };
+
+
 
 export function resultKey(result: string | null | undefined): "win" | "loss" | "breakeven" | "open" {
   const r = normalizeResult(result);
@@ -155,7 +151,11 @@ export function tradePlaybookPayload(t: Trade): PlaybookPayload {
     name: `${t.ticker} ${t.setup || t.eventType || ""} (${dayOf(t)})`.trim(),
     setupType: t.setup || t.eventType || undefined,
     conditions: t.notes || undefined,
-    notes: [t.whatWorked ? `Что сработало: ${t.whatWorked}` : "", t.whatFailed ? `Что не сработало: ${t.whatFailed}` : "", t.conclusion ? `Вывод: ${t.conclusion}` : ""].filter(Boolean).join("\n") || undefined,
+    notes: [
+      t.whatWorked ? tradesI18n.t("playbookNotes.worked", { text: t.whatWorked }) : "",
+      t.whatFailed ? tradesI18n.t("playbookNotes.failed", { text: t.whatFailed }) : "",
+      t.conclusion ? tradesI18n.t("playbookNotes.conclusion", { text: t.conclusion }) : "",
+    ].filter(Boolean).join("\n") || undefined,
     screenshotUrl: t.screenshotUrl || undefined,
     screenshotNotes: t.screenshotNotes || undefined,
     tags: t.tags || undefined,
@@ -213,14 +213,15 @@ export function holdSeconds(t: Pick<Trade, "contextSnapshot" | "holdTime">): num
   return parseHoldText(t.holdTime);
 }
 
-/** Compact hold: «45с», «5м», «1ч 20м», «2д». */
+/** Compact hold in the current language: «45с», «5м», «1ч 20м», «2д» (EN «45s», «1h 20m»). */
 export function fmtHold(sec: number | null | undefined): string {
   if (sec == null || !Number.isFinite(sec)) return "—";
   const s = Math.max(0, Math.round(sec));
-  if (s < 60) return `${s}с`;
-  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return m < 10 && r ? `${m}м ${r}с` : `${m}м`; }
-  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return m ? `${h}ч ${m}м` : `${h}ч`; }
-  return `${Math.floor(s / 86400)}д`;
+  const t = tradesI18n.t;
+  if (s < 60) return t("hold.s", { s });
+  if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return m < 10 && r ? t("hold.ms", { m, s: r }) : t("hold.m", { m }); }
+  if (s < 86400) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return m ? t("hold.hm", { h, m }) : t("hold.h", { h }); }
+  return t("hold.d", { d: Math.floor(s / 86400) });
 }
 
 /**

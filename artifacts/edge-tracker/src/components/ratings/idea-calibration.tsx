@@ -5,12 +5,14 @@ import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Panel, Pill, Segmented, toneOf, toneText } from "@/components/ds";
 import { CHART_CURSOR, CHART_TOOLTIP, OutcomeBar, useStoredState } from "./shared";
-import { fmtR } from "@/lib/format";
+import { fmtNum, fmtR } from "@/lib/format";
+import { ratingsI18n } from "@/i18n/ns/ratings";
 import { calibVerdict, calibrationOf, qualityCalibration, scoreCalibration, type EnrichedIdea, type OutcomeBasis } from "./idea-metrics";
 
 type Mode = "score" | "quality";
 
 export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { ideas: EnrichedIdea[]; basis?: OutcomeBasis; pending?: boolean }) {
+  const { t } = ratingsI18n.useT();
   const byPrice = basis === "price";
   const [mode, setMode] = useStoredState<Mode>("ideaStats.calibMode", "score", ["score", "quality"]);
   const rows = useMemo(() => (mode === "score" ? scoreCalibration(ideas) : qualityCalibration(ideas)), [ideas, mode]);
@@ -27,17 +29,17 @@ export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { 
   return (
     <Panel
       icon={Gauge}
-      title="Калибровка"
+      title={t("calib.title")}
       description={mode === "score"
-        ? byPrice ? "Совпадает ли скор идеи с тем, дошла ли цена до цели" : "Совпадает ли скор идеи с реальным исходом сделки"
-        : "Совпадает ли качество сетапа (A+…D) с исходом"}
+        ? byPrice ? t("calib.descScorePrice") : t("calib.descScoreTrades")
+        : t("calib.descQuality")}
       actions={
         <Segmented
-          ariaLabel="Группировка калибровки"
+          ariaLabel={t("calib.groupAria")}
           size="sm"
           value={mode}
           onChange={setMode}
-          options={[{ value: "score", label: "По скору" }, { value: "quality", label: "По качеству" }]}
+          options={[{ value: "score", label: t("calib.byScore") }, { value: "quality", label: t("calib.byQuality") }]}
         />
       }
       className="h-full"
@@ -45,9 +47,9 @@ export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { 
       <div className="flex flex-col gap-4">
         {mode === "score" && (
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="text-muted-foreground">Корреляция скор ↔ R:</span>
+            <span className="text-muted-foreground">{t("calib.correlation")}</span>
             <span className={cn("font-semibold tabular-nums", toneText(calib.r == null ? "neutral" : toneOf(calib.r)))}>
-              {calib.r == null ? "—" : `${calib.r >= 0 ? "+" : "−"}${Math.abs(calib.r).toFixed(2)}`}
+              {fmtNum(calib.r, { decimals: 2, signed: true })}
             </span>
             <Pill tone={verdict.tone}>{verdict.text}</Pill>
             <span className="text-xs text-muted-foreground">n = {calib.n}</span>
@@ -57,7 +59,7 @@ export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { 
         {pending ? (
           <Skeleton className="h-52 w-full rounded-xl" />
         ) : hasOutcomes ? (
-          <div className="h-52 w-full" role="img" aria-label="Hit rate и средний R по группам">
+          <div className="h-52 w-full" role="img" aria-label={t("calib.chartAria")}>
             <ResponsiveContainer width="100%" height="100%">
               <ComposedChart data={chartRows} margin={{ top: 8, right: 4, bottom: 0, left: -16 }}>
                 <CartesianGrid stroke="hsl(var(--border))" strokeDasharray="3 3" vertical={false} />
@@ -70,8 +72,8 @@ export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { 
                   formatter={(v, name, p) => {
                     const n = v == null ? null : Number(v);
                     return name === "hit"
-                      ? [n == null ? "—" : `${n}% (${(p?.payload as { closed?: number } | undefined)?.closed ?? 0} закрыто)`, "Hit rate"]
-                      : [fmtR(n), "Средний R"];
+                      ? [n == null ? "—" : t("calib.closed", { value: n, count: (p?.payload as { closed?: number } | undefined)?.closed ?? 0 }), "Hit rate"]
+                      : [fmtR(n), t("calib.avgR")];
                   }}
                 />
                 <Bar isAnimationActive={false} yAxisId="hit" dataKey="hit" fill="hsl(var(--chart-1))" radius={[6, 6, 0, 0]} maxBarSize={36} />
@@ -82,27 +84,26 @@ export function IdeaCalibration({ ideas, basis = "trades", pending = false }: { 
         ) : (
           <p className="rounded-xl bg-[var(--glass-bg)] p-4 text-sm text-muted-foreground">
             {byPrice
-              ? "Пока ни одна идея не дошла до цели или стопа. Когда цена отработает уровни, здесь появится сравнение"
-              : "Пока нет закрытых сделок из идей. Когда идеи будут конвертированы в сделки с результатом, здесь появится сравнение"}{" "}
-            hit rate и среднего R по {mode === "score" ? "диапазонам скора" : "качеству сетапа"}.
+              ? t(mode === "score" ? "calib.emptyPrice" : "calib.emptyPriceQuality")
+              : t(mode === "score" ? "calib.emptyTrades" : "calib.emptyTradesQuality")}
           </p>
         )}
 
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-sm bg-[hsl(var(--chart-1))]" aria-hidden="true" /> Hit rate, %</span>
-          <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-3 rounded bg-[hsl(var(--chart-3))]" aria-hidden="true" /> Средний R</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-2 w-3 rounded-sm bg-[hsl(var(--chart-1))]" aria-hidden="true" /> {t("calib.legendHit")}</span>
+          <span className="inline-flex items-center gap-1.5"><span className="h-0.5 w-3 rounded bg-[hsl(var(--chart-3))]" aria-hidden="true" /> {t("calib.avgR")}</span>
         </div>
 
         <table className="w-full text-sm">
-          <caption className="sr-only">Калибровка по группам</caption>
+          <caption className="sr-only">{t("calib.caption")}</caption>
           <thead className="text-xs text-muted-foreground">
             <tr className="border-b border-border">
-              <th scope="col" className="py-2 text-left font-medium">{mode === "score" ? "Скор" : "Качество"}</th>
-              <th scope="col" className="py-2 text-right font-medium">Идей</th>
-              <th scope="col" className="hidden py-2 text-right font-medium sm:table-cell">В сделках</th>
-              <th scope="col" className="w-1/4 py-2 pl-3 text-left font-medium">Исходы</th>
+              <th scope="col" className="py-2 text-left font-medium">{mode === "score" ? t("calib.colScore") : t("calib.colQuality")}</th>
+              <th scope="col" className="py-2 text-right font-medium">{t("calib.colIdeas")}</th>
+              <th scope="col" className="hidden py-2 text-right font-medium sm:table-cell">{t("calib.colInTrades")}</th>
+              <th scope="col" className="w-1/4 py-2 pl-3 text-left font-medium">{t("calib.colOutcomes")}</th>
               <th scope="col" className="py-2 text-right font-medium">Hit</th>
-              <th scope="col" className="py-2 text-right font-medium">Ср. R</th>
+              <th scope="col" className="py-2 text-right font-medium">{t("calib.colAvgR")}</th>
             </tr>
           </thead>
           <tbody>

@@ -2,6 +2,7 @@
  * Series primitive: stop / target lines with R labels (+1R / +2R guides when a stop exists).
  */
 import { fmtPrice, fmtR } from "@/lib/format";
+import { chartI18n } from "@/i18n/ns/chart";
 import { SeriesPrimitiveBase, type RenderCtx, hline, label } from "./canvas";
 
 export type StopTargetData = {
@@ -41,7 +42,7 @@ export class StopTargetPrimitive extends SeriesPrimitiveBase {
       const y = rc.y(d.stop);
       if (y != null) {
         hline(ctx, 0, width, y, theme.down(0.9), 1, [6, 4]);
-        label(ctx, theme, `Стоп ${fmtPrice(d.stop)}${risk ? " · −1R" : ""}`, 6, y + 3, { anchor: "tl", bg: theme.down(0.85), clamp: { width, height }, size: 10 });
+        label(ctx, theme, `${chartI18n.t("canvas.stop", { price: fmtPrice(d.stop) })}${risk ? " · −1R" : ""}`, 6, y + 3, { anchor: "tl", bg: theme.down(0.85), clamp: { width, height }, size: 10 });
       }
     }
     if (d.target != null) {
@@ -49,7 +50,7 @@ export class StopTargetPrimitive extends SeriesPrimitiveBase {
       if (y != null) {
         const r = rOf(d.target);
         hline(ctx, 0, width, y, theme.up(0.9), 1, [6, 4]);
-        label(ctx, theme, `Цель ${fmtPrice(d.target)}${r != null ? ` · ${fmtR(r)}` : ""}`, 6, y - 3, { anchor: "bl", bg: theme.up(0.85), clamp: { width, height }, size: 10 });
+        label(ctx, theme, `${chartI18n.t("canvas.target", { price: fmtPrice(d.target) })}${r != null ? ` · ${fmtR(r)}` : ""}`, 6, y - 3, { anchor: "bl", bg: theme.up(0.85), clamp: { width, height }, size: 10 });
       }
     }
     if (risk && d.avgEntry != null) {

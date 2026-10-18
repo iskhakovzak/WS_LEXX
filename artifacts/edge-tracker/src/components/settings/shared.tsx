@@ -3,26 +3,38 @@ import { AlertTriangle, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Tone } from "@/components/ds";
+import { commonI18n } from "@/i18n/ns/common";
+import { settingsI18n } from "@/i18n/ns/settings";
 
-export const ROLE_LABEL: Record<string, string> = { trader: "Трейдер", curator: "Куратор", admin: "Админ" };
+/** Role names in the UI language (getters: read at render). Unknown roles: index returns undefined → show the code. */
+export const ROLE_LABEL: Readonly<Record<string, string>> = {
+  get trader() { return commonI18n.t("roles.trader"); },
+  get curator() { return commonI18n.t("roles.curator"); },
+  get admin() { return commonI18n.t("roles.admin"); },
+};
 export const ROLE_TONE: Record<string, Tone> = { trader: "accent", curator: "purple", admin: "warn" };
 
-export const HORIZON_LABEL: Record<string, string> = { intraday: "Интрадей", overnight: "Овернайт", swing: "Свинг" };
+export const HORIZON_LABEL: Readonly<Record<string, string>> = {
+  get intraday() { return commonI18n.t("trading.intraday"); },
+  get overnight() { return commonI18n.t("trading.overnight"); },
+  get swing() { return commonI18n.t("trading.swing"); },
+};
 
-/** "сегодня", "вчера", "5 дн. назад" for YYYY-MM-DD dates. */
+/** "сегодня", "вчера", "5 дн. назад" for YYYY-MM-DD dates (UI language). */
 export function fmtDaysAgo(ymd: string | null | undefined): string {
-  if (!ymd) return "нет сделок";
+  const t = settingsI18n.t;
+  if (!ymd) return t("shared.noTrades");
   const d = new Date(`${ymd.slice(0, 10)}T12:00:00`);
   if (Number.isNaN(d.getTime())) return "—";
   const today = new Date();
   today.setHours(12, 0, 0, 0);
   const days = Math.round((today.getTime() - d.getTime()) / 86400_000);
-  if (days <= 0) return "сегодня";
-  if (days === 1) return "вчера";
-  if (days < 30) return `${days} дн. назад`;
+  if (days <= 0) return t("shared.today");
+  if (days === 1) return t("shared.yesterday");
+  if (days < 30) return t("shared.daysAgo", { count: days });
   // Longer gaps: a short relative form — the exact date sits in the card hint, and a full date truncates.
-  if (days < 365) return `${Math.floor(days / 30)} мес. назад`;
-  return "больше года назад";
+  if (days < 365) return t("shared.monthsAgo", { count: Math.floor(days / 30) });
+  return t("shared.overYear");
 }
 
 export function initials(name: string): string {
@@ -82,7 +94,7 @@ export function InlineError({ message, onRetry }: { message: string; onRetry?: (
       <span className="flex items-center gap-2"><AlertTriangle className="h-4 w-4 shrink-0" aria-hidden="true" /> {message}</span>
       {onRetry && (
         <Button size="sm" variant="outline" onClick={onRetry} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> Повторить
+          <RefreshCw className="h-3.5 w-3.5" aria-hidden="true" /> {commonI18n.t("actions.retry")}
         </Button>
       )}
     </div>

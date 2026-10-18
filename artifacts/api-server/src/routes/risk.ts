@@ -39,15 +39,17 @@ import { logger } from "../lib/logger";
 import { assignedStaffOf, notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
-import { limitsDiff, riskDedupKey, riskNotice, uniqueRecipients } from "../lib/notifyEventsCore";
+import { haltedStopText, limitsDiff, limitsDiffItems, limitsDiffParams, riskDedupKey, riskNotice, uniqueRecipients } from "../lib/notifyEventsCore";
 import { logAudit } from "../lib/audit";
 import { ensureCuratorTables, rowToBreachReview } from "../lib/curatorStore";
 import {
-  BREACH_CONSEQUENCE_KEYS, BREACH_CONSEQUENCES, BREACH_REASON_KEYS, BREACH_REASONS, STAGE_LABELS, STAGE_TIER_KEYS,
-  breachStats, normalizeBreachActions, repeatBreachKey, templateDiff, type LimitDiff,
+  BREACH_CONSEQUENCE_KEYS, BREACH_REASON_KEYS, STAGE_TIER_KEYS,
+  breachConsequences, breachReasons, breachStats, normalizeBreachActions, repeatBreachKey, stageLabel, templateDiff, type LimitDiff,
 } from "../lib/curatorLogic";
 import { applyTierTemplate, loadTierTemplates } from "./scaling";
-import { badRequest, forbidden, unauthorized } from "../lib/http";
+import { badRequest, errorMessage, forbidden, notFound, unauthorized } from "../lib/http";
+import { langOf, type Lang } from "../i18n";
+import { riskT } from "../i18n/ns";
 
 const router: IRouter = Router();
 
@@ -391,8 +393,9 @@ const usd0 = (v: number) => `$${Math.round(Math.abs(v)).toLocaleString("en-US")}
  * Pure red-day stop state machine (exported for the offline check).
  * Priority: max drawdown ≥100% → weekly ≥100% → daily ≥100% (stop) → any ≥70% (warn) → ok.
  */
-export function computeStop(args: { todayLoss: number; weekLoss: number; currentDd: number; limits: Limits | null }): Stop {
+export function computeStop(args: { todayLoss: number; weekLoss: number; currentDd: number; limits: Limits | null }, lang: Lang = "ru"): Stop {
   const { todayLoss, weekLoss, currentDd, limits: L } = args;
+  const t = riskT.tFor(lang);
   const dailyPct = pctOf(todayLoss, L?.dailyLossLimit ?? null);
   const weeklyPct = pctOf(weekLoss, L?.weeklyLossLimit ?? null);
   const drawdownPct = pctOf(currentDd, L?.maxDrawdown ?? null);
@@ -406,39 +409,41 @@ export function computeStop(args: { todayLoss: number; weekLoss: number; current
     drawdownPct,
   };
   if (!L || (L.dailyLossLimit == null && L.weeklyLossLimit == null && L.maxDrawdown == null)) {
-    return { ...base, state: "no_limits", label: "Нет лимитов", message: "Лимиты убытка не заданы — попросите куратора задать их.", halted: false };
+    return { ...base, state: "no_limits", label: t("stop.no_limits.label"), message: t("stop.no_limits.message"), halted: false };
   }
   if (drawdownPct != null && drawdownPct >= 100) {
-    return { ...base, state: "drawdown", label: "Макс. просадка", halted: true,
-      message: `Макс. просадка достигнута: ${usd0(currentDd)} от пика при лимите ${usd0(L.maxDrawdown!)} — торговля остановлена до решения куратора.` };
+    return { ...base, state: "drawdown", label: t("stop.drawdown.label"), halted: true,
+      message: t("stop.drawdown.message", { used: usd0(currentDd), limit: usd0(L.maxDrawdown!) }) };
   }
   if (weeklyPct != null && weeklyPct >= 100) {
-    return { ...base, state: "weekly", label: "Недельный стоп", halted: true,
-      message: `Недельный лимит исчерпан: −${usd0(weekLoss)} из ${usd0(L.weeklyLossLimit!)} — до понедельника только наблюдение.` };
+    return { ...base, state: "weekly", label: t("stop.weekly.label"), halted: true,
+      message: t("stop.weekly.message", { used: usd0(weekLoss), limit: usd0(L.weeklyLossLimit!) }) };
   }
   if (dailyPct != null && dailyPct >= 100) {
-    return { ...base, state: "stop", label: "Дневной стоп", halted: true,
-      message: `Дневной стоп: −${usd0(todayLoss)} при лимите ${usd0(L.dailyLossLimit!)} — на сегодня всё.` };
+    return { ...base, state: "stop", label: t("stop.stop.label"), halted: true,
+      message: t("stop.stop.message", { used: usd0(todayLoss), limit: usd0(L.dailyLossLimit!) }) };
   }
   const worst = Math.max(dailyPct ?? -1, weeklyPct ?? -1, drawdownPct ?? -1);
   if (worst >= WARN_PCT) {
     const parts: string[] = [];
-    if (dailyPct != null && dailyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.dailyRemainingUsd ?? 0)} до дневного стопа (использовано ${Math.round(dailyPct)}%)`);
-    if (weeklyPct != null && weeklyPct >= WARN_PCT) parts.push(`осталось ${usd0(base.weeklyRemainingUsd ?? 0)} до недельного лимита (использовано ${Math.round(weeklyPct)}%)`);
-    if (drawdownPct != null && drawdownPct >= WARN_PCT) parts.push(`до макс. просадки ${usd0(base.drawdownRemainingUsd ?? 0)} (использовано ${Math.round(drawdownPct)}%)`);
+    if (dailyPct != null && dailyPct >= WARN_PCT) parts.push(t("stop.warn.daily", { left: usd0(base.dailyRemainingUsd ?? 0), pct: Math.round(dailyPct) }));
+    if (weeklyPct != null && weeklyPct >= WARN_PCT) parts.push(t("stop.warn.weekly", { left: usd0(base.weeklyRemainingUsd ?? 0), pct: Math.round(weeklyPct) }));
+    if (drawdownPct != null && drawdownPct >= WARN_PCT) parts.push(t("stop.warn.drawdown", { left: usd0(base.drawdownRemainingUsd ?? 0), pct: Math.round(drawdownPct) }));
     const msg = parts.join("; ");
-    return { ...base, state: "warn", label: "Близко к стопу", halted: false, message: msg.charAt(0).toUpperCase() + msg.slice(1) + "." };
+    return { ...base, state: "warn", label: t("stop.warn.label"), halted: false, message: msg.charAt(0).toUpperCase() + msg.slice(1) + "." };
   }
   const msg = base.dailyRemainingUsd != null
-    ? `Осталось ${usd0(base.dailyRemainingUsd)} до дневного стопа${dailyPct != null ? ` (использовано ${Math.round(dailyPct)}%)` : ""}.`
+    ? dailyPct != null
+      ? t("stop.ok.dailyPct", { left: usd0(base.dailyRemainingUsd), pct: Math.round(dailyPct) })
+      : t("stop.ok.daily", { left: usd0(base.dailyRemainingUsd) })
     : base.weeklyRemainingUsd != null
-      ? `Осталось ${usd0(base.weeklyRemainingUsd)} до недельного лимита.`
-      : `До макс. просадки ${usd0(base.drawdownRemainingUsd ?? 0)}.`;
-  return { ...base, state: "ok", label: "В норме", halted: false, message: msg };
+      ? t("stop.ok.weekly", { left: usd0(base.weeklyRemainingUsd) })
+      : t("stop.ok.drawdown", { left: usd0(base.drawdownRemainingUsd ?? 0) });
+  return { ...base, state: "ok", label: t("stop.ok.label"), halted: false, message: msg };
 }
 
 /** Pure (exported for the offline check). `extra` = hypothetical position for /risk/check. */
-export function computeMetrics(trader: string, days: DayRow[], positions: Position[], limits: Limits | null, today: string) {
+export function computeMetrics(trader: string, days: DayRow[], positions: Position[], limits: Limits | null, today: string, lang: Lang = "ru") {
   const ws = weekStart(today);
   const todayRow = days.find((d) => d.date === today);
   const weekRows = days.filter((d) => d.date >= ws && d.date <= today);
@@ -482,7 +487,8 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
   const weekLoss = Math.max(0, -(weekPnl ?? 0));
 
   const L = limits;
-  const stop = computeStop({ todayLoss, weekLoss, currentDd, limits: L });
+  const stop = computeStop({ todayLoss, weekLoss, currentDd, limits: L }, lang);
+  const AL = riskT.tFor(lang);
   const dailyRemaining = stop.dailyRemainingUsd;
 
   const alerts: Alert[] = [];
@@ -493,22 +499,22 @@ export function computeMetrics(trader: string, days: DayRow[], positions: Positi
     else if (pct >= WARN_PCT) alerts.push({ kind, label, level: "warn", used: round2(used), limit, pct, detail, tradeId });
   };
   if (L) {
-    check("daily", "Дневной лимит убытка", todayLoss, L.dailyLossLimit);
-    check("weekly", "Недельный лимит убытка", weekLoss, L.weeklyLossLimit);
-    check("drawdown", "Макс. просадка", currentDd, L.maxDrawdown);
-    check("overnight", "Овернайт-экспозиция", overnightExposure, L.maxOvernightExposure);
-    check("positions", "Открытые позиции", positions.length, L.maxOpenPositions);
+    check("daily", AL("alerts.daily"), todayLoss, L.dailyLossLimit);
+    check("weekly", AL("alerts.weekly"), weekLoss, L.weeklyLossLimit);
+    check("drawdown", AL("alerts.drawdown"), currentDd, L.maxDrawdown);
+    check("overnight", AL("alerts.overnight"), overnightExposure, L.maxOvernightExposure);
+    check("positions", AL("alerts.positions"), positions.length, L.maxOpenPositions);
     const worstRisk = positions.reduce<Position | null>((w, p) => ((p.riskUsd ?? 0) > (w?.riskUsd ?? 0) ? p : w), null);
-    if (worstRisk?.riskUsd != null) check("trade_risk", "Риск на сделку", worstRisk.riskUsd, L.maxRiskPerTrade, worstRisk.ticker, worstRisk.id);
+    if (worstRisk?.riskUsd != null) check("trade_risk", AL("alerts.trade_risk"), worstRisk.riskUsd, L.maxRiskPerTrade, worstRisk.ticker, worstRisk.id);
     const worstSize = positions.reduce<Position | null>((w, p) => ((p.exposureUsd ?? 0) > (w?.exposureUsd ?? 0) ? p : w), null);
-    if (worstSize?.exposureUsd != null) check("position_size", "Размер позиции", worstSize.exposureUsd, L.maxPositionUsd, worstSize.ticker, worstSize.id);
+    if (worstSize?.exposureUsd != null) check("position_size", AL("alerts.position_size"), worstSize.exposureUsd, L.maxPositionUsd, worstSize.ticker, worstSize.id);
     const on = positions.filter((p) => p.horizon === "overnight" || (p.horizon === "intraday" && p.carriedTonight));
     if (!L.allowOvernight && on.length) {
-      alerts.push({ kind: "overnight_not_allowed", label: "Овернайт запрещён", level: "breach", used: on.length, limit: 0, pct: null, detail: on.map((p) => p.ticker).join(", "), tradeId: on[0].id });
+      alerts.push({ kind: "overnight_not_allowed", label: AL("alerts.overnight_not_allowed"), level: "breach", used: on.length, limit: 0, pct: null, detail: on.map((p) => p.ticker).join(", "), tradeId: on[0].id });
     }
     const sw = positions.filter((p) => p.horizon === "swing");
     if (!L.allowSwing && sw.length) {
-      alerts.push({ kind: "swing_not_allowed", label: "Свинг запрещён", level: "breach", used: sw.length, limit: 0, pct: null, detail: sw.map((p) => p.ticker).join(", "), tradeId: sw[0].id });
+      alerts.push({ kind: "swing_not_allowed", label: AL("alerts.swing_not_allowed"), level: "breach", used: sw.length, limit: 0, pct: null, detail: sw.map((p) => p.ticker).join(", "), tradeId: sw[0].id });
     }
   }
   alerts.sort((a, b) => (a.level === b.level ? (b.pct ?? 999) - (a.pct ?? 999) : a.level === "breach" ? -1 : 1));
@@ -606,7 +612,8 @@ function groupBy<T extends { trader: string }>(rows: T[]): Map<string, T[]> {
  * in-app notifications table (trader + assigned curator / risk manager). Fire-and-forget; never throws.
  */
 async function recordStopAlerts(m: Metrics, limits: Limits | null, date: string): Promise<void> {
-  const s = m.stop;
+  // `m` may be rendered in the reader's language; the alert log stores the RU text (the history fallback).
+  const s = computeStop({ todayLoss: Math.max(0, -(m.today.pnlNet ?? 0)), weekLoss: Math.max(0, -(m.week.pnlNet ?? 0)), currentDd: m.drawdown.currentUsd, limits }, "ru");
   if (s.state === "ok" || s.state === "no_limits") return;
   const limit = s.state === "weekly" ? limits?.weeklyLossLimit : s.state === "drawdown" ? limits?.maxDrawdown : limits?.dailyLossLimit;
   const used = s.state === "weekly" ? Math.max(0, -(m.week.pnlNet ?? 0)) : s.state === "drawdown" ? m.drawdown.currentUsd : Math.max(0, -(m.today.pnlNet ?? 0));
@@ -623,7 +630,7 @@ async function recordStopAlerts(m: Metrics, limits: Limits | null, date: string)
     // Notifications only for the live trading day (a ?date= back-test must not alert anyone).
     if (date !== nyDate()) return;
     // Repeat breach within a week → head of desk (own dedup key; independent of the trader/curator notice below).
-    if (s.halted) inBackground("risk.repeat_breach", () => escalateRepeatBreach(m.trader, date, s.label, s.message));
+    if (s.halted) inBackground("risk.repeat_breach", () => escalateRepeatBreach(m.trader, date, { state: s.state, used: round2(used), limit: limit ?? 0 }));
     const notice = riskNotice({
       trader: m.trader, state: s.state, halted: s.halted,
       todayLoss: Math.max(0, -(m.today.pnlNet ?? 0)), weekLoss: Math.max(0, -(m.week.pnlNet ?? 0)), currentDd: m.drawdown.currentUsd,
@@ -634,10 +641,10 @@ async function recordStopAlerts(m: Metrics, limits: Limits | null, date: string)
     // At most one notification per type (risk_warn / risk_breach) per trader per trading day.
     if (!(await claimOnce(riskDedupKey(notice.type, m.trader, date)))) return;
     const common = { type: notice.type, link: notifLinks.risk(m.trader), entityType: "risk", entityId: `${m.trader}:${date}`, source: "risk" } as const;
-    await notifyUser({ ...common, userName: m.trader, title: notice.traderTitle, message: notice.traderBody });
+    await notifyUser({ ...common, userName: m.trader, params: { ...notice.params, variant: "trader" } });
     // Warn → assigned staff only; stop (100%) → assigned staff, or every curator when nobody is assigned.
     const staff = uniqueRecipients(s.halted ? await staffOrFallback(m.trader) : await assignedStaffOf(m.trader), m.trader);
-    for (const name of staff) await notifyUser({ ...common, userName: name, title: notice.staffTitle, message: notice.staffBody });
+    for (const name of staff) await notifyUser({ ...common, userName: name, params: { ...notice.params, variant: "staff" } });
   } catch (err) {
     logger.warn({ err, trader: m.trader }, "risk: stop alert notification failed");
   }
@@ -653,7 +660,7 @@ async function headsOfDesk(trader: string): Promise<string[]> {
 }
 
 /** Second (or later) breach day within 7 calendar days → one critical notification to the head of desk per day. */
-async function escalateRepeatBreach(trader: string, date: string, label: string, message: string): Promise<void> {
+async function escalateRepeatBreach(trader: string, date: string, stop: { state: string; used: number; limit: number }): Promise<void> {
   const from = addDays(date, -6);
   const { rows } = await pool.query<{ date: string }>(
     `SELECT DISTINCT date FROM risk_alert_log WHERE trader = $1 AND level = 'breach' AND date BETWEEN $2 AND $3`,
@@ -666,8 +673,7 @@ async function escalateRepeatBreach(trader: string, date: string, label: string,
   for (const name of heads) {
     await notifyUser({
       userName: name, type: "risk_repeat_breach", severity: "critical", source: "risk",
-      title: `${trader}: повторное нарушение за неделю (${stats.days7} дн.)`,
-      message: `${label}. ${message} Предыдущие нарушения: ${stats.prior.join(", ")}. Нужен разбор и решение по лимитам.`,
+      params: { trader, days: stats.days7, prior: stats.prior.join(", "), state: stop.state, used: stop.used, limit: stop.limit },
       link: `/curator?trader=${encodeURIComponent(trader)}&tab=risk`, entityType: "risk", entityId: `${trader}:${date}:repeat`,
     });
   }
@@ -681,7 +687,7 @@ router.get("/risk/me", asyncHandler(async (req, res): Promise<void> => {
   const today = clientDate(req.query.date);
   const [limitsMap, days, positions] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today)]);
   const limits = limitsMap.get(me) ?? null;
-  const m = computeMetrics(me, days, positions, limits, today);
+  const m = computeMetrics(me, days, positions, limits, today, langOf(req));
   void recordStopAlerts(m, limits, today);
   res.json({
     ...m,
@@ -720,7 +726,7 @@ router.get("/risk/desk", asyncHandler(async (req, res): Promise<void> => {
   const STATUS_ORDER = { breach: 0, warn: 1, ok: 2, no_limits: 3 } as const;
   const rows = [...names].map((name) => {
     const d = daysBy.get(name) ?? [];
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today);
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limitsMap.get(name) ?? null, today, langOf(req));
     void recordStopAlerts(m, limitsMap.get(name) ?? null, today);
     const last = d.length ? d[d.length - 1].date : null;
     return {
@@ -828,12 +834,9 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
   if (!trader || trader.length > 100) throw badRequest("INVALID_TRADER");
   if (!(await requireCap(req, res, "risk.limits.edit", { trader }))) return;
   const parsed = LimitsBody.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: "Validation failed", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [trader]);
-  if (!exists.length) { res.status(404).json({ error: "Trader not found" }); return; }
+  if (!exists.length) throw notFound("TRADER_NOT_FOUND");
 
   const before = (await loadLimits(trader)).get(trader) ?? null;
   const b = parsed.data;
@@ -899,8 +902,7 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
       if (!diff.length && !b.reason) return; // nothing the trader would notice
       await notifyUser({
         userName: trader, type: "limit_change", actor, source: "risk",
-        title: `Лимиты изменены: ${actor}`,
-        message: `${diff.length ? diff.join("; ") : "Обновлены настройки риска"}${b.reason ? `. Причина: ${b.reason.slice(0, 200)}` : ""}`,
+        params: { variant: "manual", actor, ...(b.reason ? { reason: b.reason.slice(0, 200) } : {}), ...limitsDiffParams(before, after) },
         link: notifLinks.risk(trader), entityType: "risk_limits", entityId: trader,
       });
     });
@@ -909,17 +911,17 @@ router.put("/risk/limits/:trader", asyncHandler(async (req, res): Promise<void> 
 }));
 
 /** Resolve ?trader= for self-or-team endpoints (risk.read.team). null trader = whole desk (desk scope only). */
-async function resolveTraderScope(req: Request, allowAll: boolean): Promise<{ ok: true; trader: string | null } | { ok: false; status: number; error: string }> {
+/** Throws 400 / 401 / 403 AppErrors. */
+async function resolveTraderScope(req: Request, allowAll: boolean): Promise<{ ok: true; trader: string | null }> {
   const raw = typeof req.query.trader === "string" ? req.query.trader.trim() : "";
-  if (raw.length > 100) return { ok: false, status: 400, error: "Invalid trader" };
+  if (raw.length > 100) throw badRequest("INVALID_TRADER");
   const scope = await resolveTraderParam(req, "risk.read.team", raw, { allowAll });
-  if (!scope.ok) return { ok: false, status: scope.status, error: scope.status === 403 ? "Forbidden" : scope.error };
+  if (!scope.ok) throw scope.appError;
   return { ok: true, trader: scope.trader };
 }
 
 router.get("/risk/history", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, false);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const trader = scope.trader!;
   const today = clientDate(req.query.date);
   const daysParam = Number(req.query.days ?? 60);
@@ -1004,7 +1006,6 @@ function positionTotals(positions: Position[]) {
 
 router.get("/risk/positions", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const today = clientDate(req.query.date);
   const positions = await loadPositions(scope.trader, today);
   res.json({
@@ -1023,7 +1024,6 @@ router.get("/risk/positions", asyncHandler(async (req, res): Promise<void> => {
  */
 router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const today = clientDate(req.query.date);
   const preview = req.query.all === "1" || req.query.all === "true";
   const [positions, limitsMap, days] = await Promise.all([
@@ -1053,7 +1053,7 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
   const posBy = groupBy(positions);
   const traders = [...new Set([...book.map((p) => p.trader)])].sort((a, b) => a.localeCompare(b)).map((name) => {
     const L = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today);
+    const m = computeMetrics(name, daysBy.get(name) ?? [], posBy.get(name) ?? [], L, today, langOf(req));
     const mine = book.filter((p) => p.trader === name);
     const exposure = round2(mine.reduce((s, p) => s + (p.exposureUsd ?? 0), 0));
     return {
@@ -1092,7 +1092,6 @@ router.get("/risk/overnight", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const daysRaw = Number(req.query.days ?? 14);
   const span = Number.isFinite(daysRaw) ? Math.min(180, Math.max(1, Math.round(daysRaw))) : 14;
   const from = addDays(nyDate(), -(span - 1));
@@ -1108,7 +1107,7 @@ router.get("/risk/alerts", asyncHandler(async (req, res): Promise<void> => {
     trader: scope.trader,
     alerts: rows.map((r: any) => ({
       id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), level: String(r.level),
-      used: num(r.used), limit: num(r.limit), message: String(r.message), createdAt: new Date(r.created_at).toISOString(),
+      used: num(r.used), limit: num(r.limit), message: alertMessage(r, langOf(req)), createdAt: new Date(r.created_at).toISOString(),
     })),
   });
 }));
@@ -1124,11 +1123,11 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
     ticker: z.string().trim().max(12).optional(),
     date: z.string().optional(),
   }).safeParse(req.query);
-  if (!q.success) { res.status(400).json({ error: "Validation failed", issues: q.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) }); return; }
+  if (!q.success) throw q.error;
   const today = clientDate(q.data.date);
   const [limitsMap, days, positions] = await Promise.all([loadLimits(me), loadDaily(me, today), loadPositions(me, today)]);
   const limits = limitsMap.get(me) ?? null;
-  const before = computeMetrics(me, days, positions, limits, today);
+  const before = computeMetrics(me, days, positions, limits, today, langOf(req));
   const horizon = q.data.horizon ?? "intraday";
   const hypothetical: Position = {
     id: -1, ticker: (q.data.ticker ?? "NEW").toUpperCase(), date: today, side: null, setup: null, trader: me, horizon,
@@ -1138,7 +1137,7 @@ router.get("/risk/check", asyncHandler(async (req, res): Promise<void> => {
     exposureUsd: q.data.exposureUsd ?? null, carried: horizon !== "intraday", carriedTonight: horizon !== "intraday" || afterKeyTime(today),
     noStatus: false, source: "manual", sector: null, atr: null,
   };
-  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today);
+  const after = computeMetrics(me, days, [...positions, hypothetical], limits, today, langOf(req));
   const newAlerts = after.alerts.filter((a) => !before.alerts.some((b) => b.kind === a.kind && b.level === a.level));
   const horizonBlocked = !!limits && ((horizon === "overnight" && !limits.allowOvernight) || (horizon === "swing" && !limits.allowSwing));
   const remainingAfter = after.today.dailyRemainingAfterOpenRiskUsd;
@@ -1170,7 +1169,7 @@ export type DeskSnapshotRow = {
  * Same roster and metrics as GET /risk/desk (active traders + anyone with limits, open positions or trades in the
  * last 60 days), as data for other endpoints. `trader` narrows to one person. Records stop alerts like /risk/desk.
  */
-export async function deskSnapshot(today: string, trader: string | null = null): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
+export async function deskSnapshot(today: string, trader: string | null = null, lang: Lang = "ru"): Promise<{ rows: DeskSnapshotRow[]; positions: Position[] }> {
   const [limitsMap, days, positions, usersRes] = await Promise.all([
     loadLimits(trader),
     loadDaily(trader, today),
@@ -1192,7 +1191,7 @@ export async function deskSnapshot(today: string, trader: string | null = null):
   const rows = [...names].map((name) => {
     const d = daysBy.get(name) ?? [];
     const limits = limitsMap.get(name) ?? null;
-    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today);
+    const m = computeMetrics(name, d, posBy.get(name) ?? [], limits, today, lang);
     void recordStopAlerts(m, limits, today);
     return { trader: name, role: users.get(name)?.role ?? null, banned: users.get(name)?.banned ?? false, metrics: m, limits, days: d, lastTradeDate: d.length ? d[d.length - 1].date : null };
   }).sort((a, b) => a.trader.localeCompare(b.trader, "ru"));
@@ -1210,7 +1209,7 @@ const limitFieldsOf = (l: Limits | null) => (l ? {
 export type TemplateStatus = { tier: string | null; tierName: string | null; hasLimits: boolean; drift: LimitDiff[] };
 
 /** Per-trader template status: tier, drift from the tier template (empty = matches), or no limits at all. */
-export async function templateStatus(traders: string[]): Promise<Map<string, TemplateStatus>> {
+export async function templateStatus(traders: string[], lang: Lang = "ru"): Promise<Map<string, TemplateStatus>> {
   const [tiers, limitsMap] = await Promise.all([loadTierTemplates().catch(() => [] as Awaited<ReturnType<typeof loadTierTemplates>>), loadLimits(null)]);
   const out = new Map<string, TemplateStatus>();
   for (const name of traders) {
@@ -1218,9 +1217,9 @@ export async function templateStatus(traders: string[]): Promise<Map<string, Tem
     const tier = l?.tier ? tiers.find((t) => t.key === l.tier) ?? null : null;
     out.set(name, {
       tier: l?.tier ?? null,
-      tierName: tier?.name ?? (l?.tier ? STAGE_LABELS[l.tier] ?? l.tier : null),
+      tierName: tier?.name ?? (l?.tier ? stageLabel(l.tier, lang) ?? l.tier : null),
       hasLimits: !!l && (l.dailyLossLimit != null || l.weeklyLossLimit != null || l.maxDrawdown != null),
-      drift: tier ? templateDiff(limitFieldsOf(l), tier) : [],
+      drift: tier ? templateDiff(limitFieldsOf(l), tier, lang) : [],
     });
   }
   return out;
@@ -1236,7 +1235,7 @@ router.get("/risk/templates", asyncHandler(async (req, res): Promise<void> => {
   const names = [...new Set([...users.map((u) => u.name), ...limitsMap.keys()])].sort((a, b) => a.localeCompare(b, "ru"));
   const status = await templateStatus(names);
   res.json({
-    tiers: tiers.map((t) => ({ ...t, stage: (STAGE_TIER_KEYS as readonly string[]).includes(t.key) ? t.key : null, stageLabel: STAGE_LABELS[t.key] ?? null })),
+    tiers: tiers.map((t) => ({ ...t, stage: (STAGE_TIER_KEYS as readonly string[]).includes(t.key) ? t.key : null, stageLabel: stageLabel(t.key, langOf(req)) ?? null })),
     traders: names.map((name) => ({ trader: name, limits: limitsMap.get(name) ?? null, ...status.get(name)! })),
     canEdit: await can(req, "risk.limits.edit"),
   });
@@ -1258,24 +1257,25 @@ const stripMeta = (l: Limits | null) => {
 router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.limits.edit"))) return;
   const parsed = ApplyTemplateBody.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: "Проверьте поля", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const actor = req.authUser!.name;
+  const lang = langOf(req);
   const { items, reason } = parsed.data;
   await ensureTables();
-  const results: { trader: string; ok: boolean; error?: string; tier?: string; fromTier?: string | null; resync?: boolean; changes?: string[] }[] = [];
+  const results: { trader: string; ok: boolean; error?: string; code?: string; tier?: string; fromTier?: string | null; resync?: boolean; changes?: string[] }[] = [];
   for (const it of items) {
-    if (!(await can(req, "risk.limits.edit", { trader: it.trader }))) { results.push({ trader: it.trader, ok: false, error: "Нет прав на этого трейдера" }); continue; }
+    if (!(await can(req, "risk.limits.edit", { trader: it.trader }))) { results.push({ trader: it.trader, ok: false, error: errorMessage("FORBIDDEN", lang), code: "FORBIDDEN" }); continue; }
     const { rows: exists } = await pool.query(`SELECT 1 FROM users WHERE name = $1 LIMIT 1`, [it.trader]);
-    if (!exists.length) { results.push({ trader: it.trader, ok: false, error: "Трейдер не найден" }); continue; }
+    if (!exists.length) { results.push({ trader: it.trader, ok: false, error: errorMessage("TRADER_NOT_FOUND", lang), code: "TRADER_NOT_FOUND" }); continue; }
     const before = (await loadLimits(it.trader)).get(it.trader) ?? null;
-    const applied = await applyTierTemplate(it.trader, it.tierKey, actor, reason);
+    const applied = await applyTierTemplate(it.trader, it.tierKey, actor, reason, lang);
     if (!applied.ok) { results.push({ trader: it.trader, ok: false, error: applied.error }); continue; }
     const after = (await loadLimits(it.trader)).get(it.trader) ?? null;
-    const changes = limitsDiff(before, after);
-    const logReason = `Шаблон тира «${applied.tier.name}»${applied.resync ? " (синхронизация)" : ""}${reason ? `: ${reason}` : ""}`;
+    const changes = limitsDiff(before, after, lang);
+    // Stored change-log reason: written in the curator's language (staff read the history).
+    const tl = riskT.tFor(lang);
+    const logHead = `${tl("template.logReason", { tier: applied.tier.name })}${applied.resync ? tl("template.logResync") : ""}`;
+    const logReason = reason ? tl("template.logWithReason", { text: logHead, reason }) : logHead;
     try {
       await pool.query(
         `INSERT INTO trader_risk_limit_events (trader, before, after, reason, changed_by) VALUES ($1, $2, $3, $4, $5)`,
@@ -1284,16 +1284,16 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
     } catch { /* change log is best-effort */ }
     await logAudit({
       actor, action: "risk.limits.template", targetType: "trader_risk_limits", targetId: it.trader,
-      details: { tierKey: applied.tier.key, fromTier: applied.fromTier, resync: applied.resync, historyId: applied.historyId, changes, reason },
+      details: { tierKey: applied.tier.key, fromTier: applied.fromTier, resync: applied.resync, historyId: applied.historyId, changes: limitsDiffItems(before, after), reason },
     });
     if (actor !== it.trader && (changes.length || !applied.resync)) {
       const trader = it.trader;
       const tierLabel = applied.tier.name;
       const resync = applied.resync;
+      const diffParams = limitsDiffParams(before, after);
       inBackground("risk.limits.template", () => notifyUser({
         userName: trader, type: "limit_change", actor, source: "risk",
-        title: resync ? `${actor} привёл ваши лимиты к шаблону «${tierLabel}»` : `Тир «${tierLabel}»: лимиты обновлены`,
-        message: `${changes.length ? changes.join("; ") : "Лимиты соответствуют шаблону тира"}${reason ? `. Причина: ${reason.slice(0, 200)}` : ""}`,
+        params: { variant: "template", actor, tier: tierLabel, resync: resync ? 1 : 0, ...(reason ? { reason: reason.slice(0, 200) } : {}), ...diffParams },
         link: notifLinks.risk(trader), entityType: "risk_limits", entityId: trader,
       }));
     }
@@ -1305,7 +1305,20 @@ router.post("/risk/templates/apply", asyncHandler(async (req, res): Promise<void
 
 // ─── «Разбор нарушения» ─────────────────────────────────────────────────────
 
-export const BREACH_KIND_LABELS: Record<string, string> = { stop: "Дневной стоп", weekly: "Недельный стоп", drawdown: "Макс. просадка" };
+/** Breach kind label in `lang` (risk namespace `breachKind.*`); unknown kinds pass through. */
+export function breachKindLabel(kind: string, lang: Lang = "ru"): string {
+  return riskT.tryFor(lang, `breachKind.${kind}`) ?? kind;
+}
+/** RU labels (kept for older imports). */
+export const BREACH_KIND_LABELS: Record<string, string> = { stop: breachKindLabel("stop"), weekly: breachKindLabel("weekly"), drawdown: breachKindLabel("drawdown") };
+
+/** Alert / breach log message in `lang`: halted kinds are re-rendered from their numbers, others keep the stored RU text. */
+function alertMessage(r: { kind: unknown; used: unknown; limit: unknown; message: unknown }, lang: Lang): string {
+  const used = num(r.used);
+  const limit = num(r.limit);
+  const text = lang !== "ru" && used != null && limit != null ? haltedStopText(String(r.kind), used, limit, lang) : null;
+  return text ? text.message : String(r.message ?? "");
+}
 
 async function canReviewBreach(req: Request, trader: string | null): Promise<boolean> {
   const target = trader ? { trader } : undefined;
@@ -1314,7 +1327,6 @@ async function canReviewBreach(req: Request, trader: string | null): Promise<boo
 
 router.get("/risk/breaches", asyncHandler(async (req, res): Promise<void> => {
   const scope = await resolveTraderScope(req, true);
-  if (!scope.ok) { res.status(scope.status).json({ error: scope.error }); return; }
   const daysRaw = Number(req.query.days ?? 30);
   const span = Number.isFinite(daysRaw) ? Math.min(365, Math.max(1, Math.round(daysRaw))) : 30;
   const today = nyDate();
@@ -1331,11 +1343,12 @@ router.get("/risk/breaches", asyncHandler(async (req, res): Promise<void> => {
   );
   const byTrader = new Map<string, string[]>();
   for (const r of rows) byTrader.set(String(r.trader), [...(byTrader.get(String(r.trader)) ?? []), String(r.date)]);
+  const lang = langOf(req);
   const breaches = rows.map((r: any) => {
     const st = breachStats(byTrader.get(String(r.trader)) ?? [], String(r.date));
     return {
-      id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), kindLabel: BREACH_KIND_LABELS[String(r.kind)] ?? String(r.kind),
-      used: num(r.used), limit: num(r.limit), message: String(r.message), createdAt: new Date(r.created_at).toISOString(),
+      id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), kindLabel: breachKindLabel(String(r.kind), lang),
+      used: num(r.used), limit: num(r.limit), message: alertMessage(r, lang), createdAt: new Date(r.created_at).toISOString(),
       repeat: st.repeat, breachDays7: st.days7,
       review: r.review ? rowToBreachReview(r.review) : null,
     };
@@ -1344,7 +1357,7 @@ router.get("/risk/breaches", asyncHandler(async (req, res): Promise<void> => {
     from, to: today, trader: scope.trader,
     breaches,
     unreviewed: breaches.filter((b) => !b.review).length,
-    reasons: BREACH_REASONS, consequences: BREACH_CONSEQUENCES,
+    reasons: breachReasons(lang), consequences: breachConsequences(lang),
     canReview: await canReviewBreach(req, scope.trader),
   });
 }));
@@ -1367,14 +1380,11 @@ router.post("/risk/breaches/:alertId/review", asyncHandler(async (req, res): Pro
   await Promise.all([ensureTables(), ensureCuratorTables()]);
   const { rows: al } = await pool.query(`SELECT id, trader, date, kind, level, message FROM risk_alert_log WHERE id = $1`, [alertId]);
   const alert = al[0];
-  if (!alert) { res.status(404).json({ error: "Нарушение не найдено" }); return; }
+  if (!alert) throw notFound("BREACH_NOT_FOUND");
   const trader = String(alert.trader);
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader }))) return;
   const parsed = ReviewBody.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    res.status(400).json({ error: "Проверьте поля", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
-  }
+  if (!parsed.success) throw parsed.error;
   const b = parsed.data;
   const actor = req.authUser!.name;
   const actions = normalizeBreachActions(b.actions);
@@ -1391,13 +1401,11 @@ router.post("/risk/breaches/:alertId/review", asyncHandler(async (req, res): Pro
   const created = rows[0].inserted === true;
   await logAudit({ actor, action: created ? "risk.breach.review" : "risk.breach.review.update", targetType: "risk_alert_log", targetId: String(alertId), details: { trader, reason: b.reason, consequence: b.consequence, actions: actions.length } });
   if (created && actor !== trader) {
-    const reasonLabel = BREACH_REASONS.find((r) => r.key === b.reason)?.label ?? b.reason;
-    const consLabel = BREACH_CONSEQUENCES.find((r) => r.key === b.consequence)?.label ?? b.consequence;
     const date = String(alert.date);
+    const agreed = actions.length ? actions.map((a) => a.title).join("; ").slice(0, 300) : null;
     inBackground("risk.breach.review", () => notifyUser({
       userName: trader, type: "risk_breach_review", actor, source: "risk",
-      title: `Разбор нарушения ${date}`,
-      message: `${actor}: ${reasonLabel}. ${actions.length ? `Договорились: ${actions.map((a) => a.title).join("; ").slice(0, 300)}. ` : ""}Решение: ${consLabel}.`,
+      params: { actor, date, reasonCode: b.reason, consequenceCode: b.consequence, actions: agreed },
       link: notifLinks.risk(trader), entityType: "risk_breach", entityId: String(alertId),
     }));
   }
@@ -1411,12 +1419,12 @@ router.post("/risk/breach-reviews/:id/action", asyncHandler(async (req, res): Pr
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT * FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
-  if (!ex[0]) { res.status(404).json({ error: "Разбор не найден" }); return; }
+  if (!ex[0]) throw notFound("BREACH_REVIEW_NOT_FOUND");
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader: String(ex[0].trader) }))) return;
   const parsed = ActionStatusBody.safeParse(req.body ?? {});
   if (!parsed.success) throw badRequest("VALIDATION");
   const actions = (Array.isArray(ex[0].actions) ? ex[0].actions : []) as { id: string; status: string }[];
-  if (!actions.some((a) => a.id === parsed.data.actionId)) { res.status(404).json({ error: "Договорённость не найдена" }); return; }
+  if (!actions.some((a) => a.id === parsed.data.actionId)) throw notFound("AGREEMENT_NOT_FOUND");
   const next = actions.map((a) => (a.id === parsed.data.actionId ? { ...a, status: parsed.data.status } : a));
   const { rows } = await pool.query(
     `UPDATE risk_breach_reviews SET actions = $2::jsonb, updated_by = $3, updated_at = NOW() WHERE id = $1 RETURNING *`,
@@ -1430,7 +1438,7 @@ router.post("/risk/breach-reviews/:id/archive", asyncHandler(async (req, res): P
   if (!Number.isInteger(id) || id <= 0) throw badRequest("INVALID_ID");
   await ensureCuratorTables();
   const { rows: ex } = await pool.query(`SELECT trader FROM risk_breach_reviews WHERE id = $1 AND archived_at IS NULL`, [id]);
-  if (!ex[0]) { res.status(404).json({ error: "Разбор не найден" }); return; }
+  if (!ex[0]) throw notFound("BREACH_REVIEW_NOT_FOUND");
   if (!(await requireAnyCap(req, res, ["risk.limits.edit", "journal.review"], { trader: String(ex[0].trader) }))) return;
   await pool.query(`UPDATE risk_breach_reviews SET archived_at = NOW(), archived_by = $2 WHERE id = $1`, [id, req.authUser!.name]);
   await logAudit({ actor: req.authUser!.name, action: "risk.breach.review.archive", targetType: "risk_breach_reviews", targetId: String(id), details: { trader: ex[0].trader } });
@@ -1442,7 +1450,8 @@ router.post("/risk/breach-reviews/:id/archive", asyncHandler(async (req, res): P
 router.get("/risk/summary", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "risk.read.team"))) return;
   const today = clientDate(req.query.date);
-  const { rows, positions } = await deskSnapshot(today);
+  const lang = langOf(req);
+  const { rows, positions } = await deskSnapshot(today, null, lang);
   await Promise.all([ensureTables(), ensureCuratorTables()]);
   const from7 = addDays(today, -6);
   const from14 = addDays(today, -13);
@@ -1457,14 +1466,14 @@ router.get("/risk/summary", asyncHandler(async (req, res): Promise<void> => {
   ]);
   const breachDates = new Map<string, string[]>();
   for (const r of breachRes.rows) breachDates.set(String(r.trader), [...(breachDates.get(String(r.trader)) ?? []), String(r.date)]);
-  const tpl = await templateStatus(rows.map((r) => r.trader));
+  const tpl = await templateStatus(rows.map((r) => r.trader), lang);
   const active = rows.filter((r) => r.role === "trader" || r.limits || r.metrics.today.trades > 0 || r.metrics.today.openPositions > 0);
   const pnlVals = active.map((r) => r.metrics.today.pnlNet).filter((v): v is number => v != null);
   const brief = (r: DeskSnapshotRow) => ({
     trader: r.trader, state: r.metrics.stop.state, label: r.metrics.stop.label, message: r.metrics.stop.message,
     pnlNet: r.metrics.today.pnlNet, dailyPct: r.metrics.stop.dailyPct, weeklyPct: r.metrics.stop.weeklyPct, drawdownPct: r.metrics.stop.drawdownPct,
   });
-  const kindLabel = (k: unknown) => BREACH_KIND_LABELS[String(k)] ?? String(k);
+  const kindLabel = (k: unknown) => breachKindLabel(String(k), lang);
   res.json({
     date: today,
     totals: {
@@ -1483,7 +1492,7 @@ router.get("/risk/summary", asyncHandler(async (req, res): Promise<void> => {
       .map(([trader, dates]) => ({ trader, days7: new Set(dates).size, dates: [...new Set(dates)].sort() }))
       .filter((x) => x.days7 >= 2)
       .sort((a, b) => b.days7 - a.days7),
-    unreviewedBreaches: unreviewedRes.rows.map((r: any) => ({ id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), kindLabel: kindLabel(r.kind), message: String(r.message) })),
+    unreviewedBreaches: unreviewedRes.rows.map((r: any) => ({ id: Number(r.id), trader: String(r.trader), date: String(r.date), kind: String(r.kind), kindLabel: kindLabel(r.kind), message: String(r.message) })), // RU log text (no numbers in this query)
     noLimits: active.filter((r) => !tpl.get(r.trader)?.hasLimits).map((r) => r.trader),
     templateDrift: active
       .map((r) => ({ trader: r.trader, tier: tpl.get(r.trader)?.tier ?? null, tierName: tpl.get(r.trader)?.tierName ?? null, fields: (tpl.get(r.trader)?.drift ?? []).map((d) => d.label) }))

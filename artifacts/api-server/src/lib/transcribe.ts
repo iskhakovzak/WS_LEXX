@@ -26,7 +26,7 @@ export type TranscribeConfig = {
 };
 
 const DEFAULT_WHISPER_URL = "http://127.0.0.1:8178";
-const DEFAULT_WHISPER_PROMPT =
+const DEFAULT_WHISPER_PROMPT = // i18n-ignore (speech-recognition vocabulary hint — model input)
   "Заметка трейдера: лонг, шорт, стоп, тейк, добор, перезаход, VWAP, премаркет, открытие, закрытие, MOC, OPG, 2R, NVDA, TSLA, AAPL.";
 const LOCAL_TIMEOUT_MS = 120_000;
 const OPENAI_TIMEOUT_MS = 60_000;

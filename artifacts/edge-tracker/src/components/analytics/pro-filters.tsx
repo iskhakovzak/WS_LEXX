@@ -6,6 +6,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { toneOf, toneText } from "@/components/ds";
+import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
 import {
   type Filters, type FilterKey, type Metric, type ValueFn, EMPTY_FILTERS,
   applyFilters, optionContribution,
@@ -14,18 +15,12 @@ import { fmtVal } from "./pro-format";
 
 export type FilterOption = { id: string; label: string };
 
-export const FILTER_GROUPS: { key: FilterKey; title: string }[] = [
-  { key: "accounts", title: "Трейдер" },
-  { key: "symbols", title: "Тикер" },
-  { key: "years", title: "Год" },
-  { key: "months", title: "Месяц" },
-  { key: "daysOfWeek", title: "День недели" },
-  { key: "timeBuckets", title: "Время входа" },
-  { key: "strategies", title: "Сетап" },
-  { key: "types", title: "Сторона" },
-  { key: "globalTags", title: "Теги" },
-  { key: "personalTags", title: "Личные теги" },
-];
+const tp = analyticsProI18n.t;
+const GROUP_KEYS: FilterKey[] = ["accounts", "symbols", "years", "months", "daysOfWeek", "timeBuckets", "strategies", "types", "globalTags", "personalTags"];
+/** Filter groups; titles are getters (read when rendered, so they follow the UI language). */
+export const FILTER_GROUPS: { key: FilterKey; readonly title: string }[] = GROUP_KEYS.map((key) => ({
+  key, get title() { return tp(`filters.group.${key}`); },
+}));
 
 function FilterPopover({
   title, group, options, filters, allTrades, onChange, metric, val,
@@ -67,7 +62,7 @@ function FilterPopover({
         <button
           type="button"
           data-active={active}
-          aria-label={active ? `${title}: выбрано ${selected.length}` : `Фильтр: ${title}`}
+          aria-label={active ? tp("filters.selected", { title, count: selected.length }) : tp("filters.filter", { title })}
           className="chip inline-flex min-h-8 max-w-[220px] items-center gap-1.5 px-3 text-sm font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="truncate">
@@ -78,9 +73,9 @@ function FilterPopover({
       </PopoverTrigger>
       <PopoverContent align="start" className="w-[min(18rem,calc(100vw-2rem))] p-0">
         <Command>
-          {options.length > 7 && <CommandInput placeholder={`Найти: ${title.toLowerCase()}…`} />}
+          {options.length > 7 && <CommandInput placeholder={tp("filters.find", { title: title.toLowerCase() })} />}
           <CommandList className="max-h-72">
-            <CommandEmpty>Ничего не найдено</CommandEmpty>
+            <CommandEmpty>{tp("filters.nothing")}</CommandEmpty>
             <CommandGroup>
               <CommandItem
                 value="__all__"
@@ -88,7 +83,7 @@ function FilterPopover({
                 className="flex items-center gap-2"
               >
                 <CheckBox checked={!active} />
-                <span className="flex-1">Все</span>
+                <span className="flex-1">{tp("filters.all")}</span>
                 <span className={cn("text-xs tabular-nums", toneText(toneOf(allNet)))}>{fmtVal(metric, allNet, { compact: true, sign: true })}</span>
               </CommandItem>
               {enriched.map((o) => {
@@ -117,7 +112,7 @@ function FilterPopover({
         {active && (
           <div className="flex justify-end border-t border-border p-2">
             <Button variant="ghost" size="sm" onClick={() => onChange({ ...filters, [group]: [] })}>
-              Очистить
+              {tp("filters.clear")}
             </Button>
           </div>
         )}
@@ -166,7 +161,7 @@ export function FilterBar({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Фильтры сделок">
+      <div className="flex flex-wrap items-center gap-2" role="group" aria-label={tp("filters.aria")}>
         {FILTER_GROUPS.filter((g) => options[g.key].length > 0 || (filters[g.key] as string[]).length > 0).map((g) => (
           <FilterPopover
             key={g.key}
@@ -183,12 +178,12 @@ export function FilterBar({
         {activeCount > 0 && (
           <Button variant="ghost" size="sm" onClick={() => onChange(EMPTY_FILTERS)} className="text-muted-foreground">
             <RotateCcw aria-hidden="true" />
-            Сбросить
+            {tp("filters.reset")}
           </Button>
         )}
       </div>
       {activeChips.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1.5" aria-label="Активные фильтры">
+        <div className="flex flex-wrap items-center gap-1.5" aria-label={tp("filters.activeAria")}>
           {activeChips.map((c) => (
             <span
               key={`${c.group}:${c.id}`}
@@ -199,7 +194,8 @@ export function FilterBar({
                 type="button"
                 onClick={() => onChange({ ...filters, [c.group]: (filters[c.group] as string[]).filter((x) => x !== c.id) })}
                 className="grid h-6 w-6 place-items-center rounded-full hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`Убрать фильтр ${c.title}: ${c.label}`}
+                aria-label={tp("filters.remove", { title: c.title, label: c.label })}
+
               >
                 <X className="h-3 w-3" aria-hidden="true" />
               </button>

@@ -5,7 +5,8 @@
 import type { Bar, Candle, DayLevels, ExcursionResult, Execution, Fill, MarketEventLite, PositionPoint, Side, TradeLike, TradeRole, TradeStructureDto, VolumeProfile } from "../types";
 import { barIndexForTime, etParts, etWallToEpoch, findBarIndex, isoToEpoch, sessionOfMinutes } from "./time";
 import { avgEntryPrice, avgExitPrice, excursion, firstEntryIdx, grossFromFills, isOpening, lastExitIdx, positionSeries, positionSize, resolveFills, riskPerShare, sideOf, toNum } from "./position";
-import { positionSteps, siblingTitle, type PositionStep } from "./structure";
+import { positionSteps, roleLabel, siblingTitle, type PositionStep } from "./structure";
+import { chartI18n } from "@/i18n/ns/chart";
 import { anchoredVwap, sessionVwap } from "./vwap";
 import { dayLevels } from "./levels";
 import { volumeProfile } from "./profile";
@@ -159,7 +160,7 @@ export function buildChain(bars: readonly Bar[], barSec: number, structure: Trad
       if (idx == null) continue;
       if (!firstLeg) firstLeg = { idx, price: l.price };
       lastLeg = { idx, price: l.price };
-      if (!s.isCurrent) marks.push({ tradeId: s.id, idx, price: l.price, role: l.role, opening: l.opening, label: `${l.label} · сделка #${s.id}` });
+      if (!s.isCurrent) marks.push({ tradeId: s.id, idx, price: l.price, role: l.role, opening: l.opening, label: chartI18n.t("structure.siblingMark", { label: roleLabel(l.role), id: s.id }) });
     }
     ends.push({ first: firstLeg, last: lastLeg, current: s.isCurrent, title: siblingTitle(s), flip: s.legs[0]?.role === "flip" });
   }

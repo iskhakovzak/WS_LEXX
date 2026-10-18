@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CLIENT_CODES, http, isApiError } from "@/lib/api/http";
 import { POLL, STALE } from "@/lib/api/keys";
+import { curatorI18n } from "@/i18n/ns/curator";
 
 /**
  * «Кабинет куратора» client: types + lib/api/http hooks for /api/curator/* and the risk-process endpoints
@@ -9,7 +10,7 @@ import { POLL, STALE } from "@/lib/api/keys";
  */
 
 export class NotAvailableError extends Error {
-  constructor() { super("Раздел ещё не подключён на сервере"); }
+  constructor() { super(curatorI18n.t("notAvailable")); }
 }
 
 /** Route missing (404 without a `code`: Express «Cannot GET», not a handler's NOT_FOUND) / SPA HTML fallback → `NotAvailableError`. */

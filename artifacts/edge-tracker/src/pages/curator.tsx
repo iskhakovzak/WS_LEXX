@@ -17,17 +17,20 @@ import { TodayView } from "@/components/curator/today-view";
 import { GroupView } from "@/components/curator/group-view";
 import { TraderProfile, PROFILE_TABS, type ProfileTab } from "@/components/curator/trader-profile";
 import { RiskProcessesView } from "@/components/curator/risk-processes-view";
+import { curatorI18n } from "@/i18n/ns/curator";
+import { shellI18n } from "@/i18n/ns/shell";
 
 type View = "today" | "traders" | "risk";
 const VIEWS: readonly View[] = ["today", "traders", "risk"];
 
 export default function CuratorPage() {
   const { isCurator } = useAuth();
+  const { t } = curatorI18n.useT();
   if (!isCurator) {
     return (
       <Page>
-        <PageHeader title="Кабинет куратора" icon={ClipboardList} />
-        <EmptyState icon={Lock} title="Раздел для кураторов" description="Кабинет куратора доступен кураторам и администраторам деска." />
+        <PageHeader title={shellI18n.t("nav.curator")} icon={ClipboardList} />
+        <EmptyState icon={Lock} title={t("page.staffOnly")} description={t("page.staffOnlyHint")} />
       </Page>
     );
   }
@@ -37,6 +40,7 @@ export default function CuratorPage() {
 function CuratorCabinet() {
   const search = useSearch();
   const [, navigate] = useLocation();
+  const { t } = curatorI18n.useT();
   const params = React.useMemo(() => new URLSearchParams(search), [search]);
   const trader = params.get("trader");
   const tabParam = params.get("tab") as ProfileTab | null;
@@ -80,13 +84,13 @@ function CuratorCabinet() {
   return (
     <Page>
       <PageHeader
-        title="Кабинет куратора"
+        title={shellI18n.t("nav.curator")}
         icon={ClipboardList}
-        description="Кто торгует, кто у стопа, что ждёт разбора и какой следующий шаг по каждому трейдеру"
+        description={t("page.description")}
         meta={d ? (
           <>
             <span title={PHASE_HINT[d.phase]}><Pill tone={d.phase === "session" ? "up" : d.phase === "weekend" ? "neutral" : "accent"} dot>{PHASE_LABEL[d.phase]}</Pill></span>
-            <span className="tabular-nums">торговый день {d.date} (NY)</span>
+            <span className="tabular-nums">{t("page.tradingDay", { date: d.date })}</span>
             <UpdatedAgo at={today.dataUpdatedAt} />
           </>
         ) : undefined}
@@ -95,10 +99,10 @@ function CuratorCabinet() {
             {wards > 0 && view !== "traders" && (
               <Segmented
                 size="sm"
-                ariaLabel="Чьи трейдеры"
+                ariaLabel={t("page.scopeAria")}
                 value={scope === "auto" ? effectiveScope : scope}
                 onChange={(v) => setScope(v)}
-                options={[{ value: "mine", label: `Мои · ${wards}` }, { value: "desk", label: "Весь деск" }]}
+                options={[{ value: "mine", label: t("page.scopeMine", { count: wards }) }, { value: "desk", label: t("page.scopeDesk") }]}
               />
             )}
             <Button
@@ -106,22 +110,22 @@ function CuratorCabinet() {
               variant="ghost"
               size="sm"
               onClick={() => void qc.invalidateQueries({ queryKey: curatorKeys.all })}
-              aria-label="Обновить"
+              aria-label={t("page.refresh")}
               disabled={fetching}
             >
-              <RefreshCw className={cn("h-4 w-4", fetching && "motion-safe:animate-spin")} /> Обновить
+              <RefreshCw className={cn("h-4 w-4", fetching && "motion-safe:animate-spin")} /> {t("page.refresh")}
             </Button>
           </>
         }
       >
         <SectionTabs
-          ariaLabel="Разделы кабинета"
+          ariaLabel={t("page.tabsAria")}
           value={view}
           onChange={(v) => setView(v)}
           tabs={[
-            { value: "today", label: "Сегодня", icon: Sun, count: d ? d.counts.queue + d.counts.halted || undefined : undefined },
-            { value: "traders", label: "Группа", icon: Users, count: d?.counts.traders },
-            { value: "risk", label: "Риск-процессы", icon: ShieldAlert, count: d ? d.counts.noLimits + d.counts.halted || undefined : undefined },
+            { value: "today", label: t("page.tabToday"), icon: Sun, count: d ? d.counts.queue + d.counts.halted || undefined : undefined },
+            { value: "traders", label: t("page.tabGroup"), icon: Users, count: d?.counts.traders },
+            { value: "risk", label: t("page.tabRisk"), icon: ShieldAlert, count: d ? d.counts.noLimits + d.counts.halted || undefined : undefined },
           ]}
         />
       </PageHeader>
@@ -129,18 +133,18 @@ function CuratorCabinet() {
       {notAvailable ? (
         <EmptyState
           icon={ServerOff}
-          title="Кабинет ещё не подключён на сервере"
-          description="Маршруты /api/curator появятся после регистрации роутера и перезапуска API. Риск-деск, дневник и недельные разборы работают как обычно."
+          title={t("page.notConnected")}
+          description={t("page.notConnectedHint")}
         />
       ) : view === "today" ? (
-        <QueryState query={today} skeleton={<StatGridSkeleton count={6} />} errorTitle="Сводка дня не загрузилась">
+        <QueryState query={today} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.todayFailed")}>
           {(data) => <TodayView data={data} scope={scope} onOpenTrader={openTrader} />}
         </QueryState>
       ) : view === "traders" ? (
         trader ? (
           <TraderProfile trader={trader} tab={profileTab} onTab={setProfileTab} onBack={() => navigate("/curator?view=traders")} />
         ) : (
-          <QueryState query={traders} skeleton={<StatGridSkeleton count={6} />} errorTitle="Список трейдеров не загрузился">
+          <QueryState query={traders} skeleton={<StatGridSkeleton count={6} />} errorTitle={t("page.tradersFailed")}>
             {(data) => <GroupView traders={data.traders} date={data.date} group={group} onGroupChange={setGroup} onOpenTrader={openTrader} />}
           </QueryState>
         )

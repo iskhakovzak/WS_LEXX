@@ -132,7 +132,7 @@ describe("submissions", () => {
   it("checkSubmission", () => {
     expect(checkSubmission({ text: " ", url: null, tradeIds: [] }, 0).ok).toBe(false);
     expect(checkSubmission({ text: "план", url: null, tradeIds: [] }, 0).ok).toBe(true);
-    expect(checkSubmission({ text: "разбор", url: null, tradeIds: [1, 2] }, 3)).toEqual({ ok: false, error: "Нужно привязать минимум 3 сделки" });
+    expect(checkSubmission({ text: "разбор", url: null, tradeIds: [1, 2] }, 3)).toEqual({ ok: false, code: "SUBMISSION_MIN_TRADES", params: { count: 3 } });
     expect(checkSubmission({ text: "", url: null, tradeIds: [1, 2, 3] }, 3).ok).toBe(true);
   });
   it("parseTradeIds", () => expect(parseTradeIds([1, "2", 2, -1, 1.5, "x", 3])).toEqual([1, 2, 3]));

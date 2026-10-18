@@ -25,6 +25,12 @@ import {
   type FeedAction, type OpenPosition, type Quote, type Stance,
 } from "./lib";
 import { fmtDate, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
+import { commonI18n } from "@/i18n/ns/common";
+import { analystI18n } from "@/i18n/ns/analyst";
+import { rich } from "@/i18n/rich";
+
+/** Translator reference (called at render time, never at module scope). */
+const tf = analystI18n.t;
 
 /** Latest action per firm in the last 12 months → street consensus. */
 function consensus(items: FeedAction[]) {
@@ -77,11 +83,11 @@ function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
         </colgroup>
         <thead>
           <tr className="text-2xs text-muted-foreground">
-            <SortableTh {...thProps("firm")} className="pb-1 text-left font-medium">Фирма</SortableTh>
-            <SortableTh {...thProps("events")} align="right" className="pb-1 font-medium">Событий</SortableTh>
-            <SortableTh {...thProps("power")} align="right" className="pb-1 font-medium">Сила</SortableTh>
-            <SortableTh {...thProps("hit")} align="right" className="pb-1 font-medium">В сторону</SortableTh>
-            <SortableTh {...thProps("last")} align="right" className="pb-1 font-medium">Последнее</SortableTh>
+            <SortableTh {...thProps("firm")} className="pb-1 text-left font-medium">{tf("firms.colFirm")}</SortableTh>
+            <SortableTh {...thProps("events")} align="right" className="pb-1 font-medium">{tf("sheet.colEvents")}</SortableTh>
+            <SortableTh {...thProps("power")} align="right" className="pb-1 font-medium">{tf("sheet.colPower")}</SortableTh>
+            <SortableTh {...thProps("hit")} align="right" className="pb-1 font-medium">{tf("firms.colHit")}</SortableTh>
+            <SortableTh {...thProps("last")} align="right" className="pb-1 font-medium">{tf("sheet.colLast")}</SortableTh>
           </tr>
         </thead>
         <tbody>
@@ -101,7 +107,7 @@ function FirmsOnTicker({ rows }: { rows: FirmOnTicker[] }) {
       </table>
       {rows.length > FIRMS_COLLAPSED && (
         <button type="button" className="mt-1 text-xs text-primary hover:underline" onClick={() => setAll((v) => !v)}>
-          {all ? "Свернуть" : `Показать все ${rows.length}`}
+          {all ? commonI18n.t("actions.collapse") : commonI18n.t("actions.showAllCount", { count: rows.length })}
         </button>
       )}
     </>
@@ -152,13 +158,13 @@ function ReactionTile({ kind, agg }: { kind: ReactionKind; agg: ReactionAgg | un
         <>
           <Delta value={agg!.avgDay} suffix="%" bare showIcon={false} className="text-sm font-semibold" />
           <span className="text-2xs tabular-nums text-muted-foreground">
-            гэп {fmtPct(agg!.avgGap, 1)}
+            {tf("sheet.gap", { value: fmtPct(agg!.avgGap, 1) })}
             {agg!.hitRate != null && <> · {fmtRate(agg!.hitRate)}</>}
           </span>
           <span className="text-2xs tabular-nums text-muted-foreground">n={agg!.n}{agg!.avgRatio != null ? ` · ×${agg!.avgRatio.toFixed(1)}` : ""}</span>
         </>
       ) : (
-        <span className="text-xs text-muted-foreground">нет событий</span>
+        <span className="text-xs text-muted-foreground">{tf("sheet.noEvents")}</span>
       )}
     </div>
   );
@@ -169,10 +175,10 @@ function ReactionOfEvent({ e }: { e: ReactionEvent | undefined }) {
   return (
     <span
       className="inline-flex items-center gap-1.5 text-2xs tabular-nums text-muted-foreground"
-      title={`День реакции ${e.reactionDay}: гэп ${fmtPct(e.gap, 1)}, итог дня ${fmtPct(e.day, 1)}, от открытия ${fmtPct(e.o2c, 1)}${e.volRatio != null ? `, объём ×${e.volRatio.toFixed(1)}` : ""}`}
+      title={`${tf("sheet.eventTitle", { day: fmtDate(e.reactionDay, "medium"), gap: fmtPct(e.gap, 1), close: fmtPct(e.day, 1), o2c: fmtPct(e.o2c, 1) })}${e.volRatio != null ? tf("sheet.eventVolume", { value: e.volRatio.toFixed(1) }) : ""}`}
     >
-      реакция <Delta value={e.day} suffix="%" bare showIcon={false} className="text-2xs" />
-      {e.gap != null && <span>гэп {fmtPct(e.gap, 1)}</span>}
+      {tf("sheet.reaction")} <Delta value={e.day} suffix="%" bare showIcon={false} className="text-2xs" />
+      {e.gap != null && <span>{tf("sheet.gap", { value: fmtPct(e.gap, 1) })}</span>}
       {e.ratio != null && <span className={cn(e.ratio >= 2 && "font-medium text-purple")}>×{e.ratio.toFixed(1)}</span>}
     </span>
   );
@@ -251,7 +257,7 @@ export function TickerSheet({
             {quote?.change != null && <Delta value={quote.change} suffix="%" />}
           </SheetTitle>
           <SheetDescription>
-            {head?.longName ?? quote?.name ?? "История рейтингов и реакция рынка"}
+            {head?.longName ?? quote?.name ?? tf("sheet.description")}
             {head?.marketCapNum != null ? ` · ${fmtUsd(head.marketCapNum, { compact: true })}` : ""}
             {head?.sector ? ` · ${head.sector}` : ""}
           </SheetDescription>
@@ -262,14 +268,14 @@ export function TickerSheet({
             {held.length > 0 && (
               <Pill tone="warn" title={held.map((h) => `${h.trader ?? "—"} · ${HORIZON_LABEL[h.horizon]}${h.side ? ` · ${h.side}` : ""}`).join("; ")}>
                 <Briefcase className="h-3 w-3" aria-hidden="true" />
-                Позиция команды · {held.map((h) => h.trader ?? "—").join(", ")}
+                {tf("sheet.held", { names: held.map((h) => h.trader ?? "—").join(", ") })}
               </Pill>
             )}
-            {watched && <Pill tone="accent"><BookmarkCheck className="h-3 w-3" aria-hidden="true" /> В вотчлисте</Pill>}
+            {watched && <Pill tone="accent"><BookmarkCheck className="h-3 w-3" aria-hidden="true" /> {tf("sheet.inWatchlist")}</Pill>}
             {traded && traded.trades > 0 && (
-              <Pill tone="neutral" title="Мои закрытые сделки по тикеру за год (нетто)">
+              <Pill tone="neutral" title={tf("sheet.tradedTitle")}>
                 <Repeat className="h-3 w-3" aria-hidden="true" />
-                Я торговал · {traded.trades} · <span className={traded.net >= 0 ? "text-up" : "text-down"}>{fmtUsd(traded.net, { signed: true, decimals: "auto" })}</span>
+                {rich(tf("sheet.traded", { count: traded.trades, net: "{net}" }), { net: <span className={traded.net >= 0 ? "text-up" : "text-down"}>{fmtUsd(traded.net, { signed: true, decimals: "auto" })}</span> })}
               </Pill>
             )}
           </div>
@@ -278,16 +284,16 @@ export function TickerSheet({
         <div className="flex flex-wrap gap-2">
           <Button variant="outline" size="sm" disabled={!canEdit || watched || addingWatch || !leadForAction} onClick={() => leadForAction && onAddWatch(leadForAction)}>
             {addingWatch ? <Loader2 className="animate-spin" aria-hidden="true" /> : watched ? <BookmarkCheck aria-hidden="true" /> : <BookmarkPlus aria-hidden="true" />}
-            {watched ? "В вотчлисте" : "В вотчлист"}
+            {watched ? tf("sheet.inWatchlist") : tf("sheet.toWatchlist")}
           </Button>
           <Button variant="outline" size="sm" disabled={!canEdit || inPlan || addingPlan || !leadForAction} onClick={() => leadForAction && onAddPlan(leadForAction)}>
             {addingPlan ? <Loader2 className="animate-spin" aria-hidden="true" /> : inPlan ? <CalendarCheck aria-hidden="true" /> : <CalendarPlus aria-hidden="true" />}
-            {inPlan ? "В плане дня" : "В план дня"}
+            {inPlan ? tf("sheet.inPlan") : tf("sheet.toPlan")}
           </Button>
           {ticker && (
             <Button variant="outline" size="sm" asChild>
               <Link href={links.newIdea(ticker)}>
-                <Lightbulb aria-hidden="true" /> Создать идею
+                <Lightbulb aria-hidden="true" /> {tf("sheet.newIdea")}
               </Link>
             </Button>
           )}
@@ -302,29 +308,31 @@ export function TickerSheet({
 
         {/* ── reaction ── */}
         {rx.data !== null && (
-          <section className="glass-panel rounded-2xl p-4" aria-label="Реакция на рейтинги">
+          <section className="glass-panel rounded-2xl p-4" aria-label={tf("sheet.reactionAria")}>
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <span className="micro-label inline-flex items-center gap-1">
-                Реакция на действия аналитиков · 2 года <TermTooltip term="reaction" icon />
+                {tf("sheet.reactionTitle")} <TermTooltip term="reaction" icon />
               </span>
               {rx.data?.typicalMove != null && (
-                <span className="text-2xs tabular-nums text-muted-foreground">обычный день ±{rx.data.typicalMove.toFixed(1)}%</span>
+                <span className="text-2xs tabular-nums text-muted-foreground">{tf("sheet.typical", { value: rx.data.typicalMove.toFixed(1) })}</span>
               )}
             </div>
             {rx.isLoading ? (
               <div className="grid grid-cols-5 gap-2">{Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-[76px] rounded-xl" />)}</div>
             ) : rx.isError ? (
-              <p className="text-xs text-muted-foreground">Не удалось загрузить свечи. Попробуйте позже.</p>
+              <p className="text-xs text-muted-foreground">{tf("sheet.candlesFailed")}</p>
             ) : rx.data && rx.data.bars.count === 0 ? (
-              <p className="text-xs text-muted-foreground">Нет дневных свечей по тикеру — реакцию посчитать нельзя.</p>
+              <p className="text-xs text-muted-foreground">{tf("sheet.noCandles")}</p>
             ) : rx.data ? (
               <>
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
                   {(["up", "down", "init", "ptUp", "ptDown"] as const).map((k) => <ReactionTile key={k} kind={k} agg={rx.data!.byKind[k]} />)}
                 </div>
                 <p className="mt-2 text-2xs text-muted-foreground">
-                  Средний ход в <TermTooltip term="reactionDay">день реакции</TermTooltip> к предыдущему закрытию; % — доля дней{" "}
-                  <TermTooltip term="ratingHit">в сторону рейтинга</TermTooltip>; ×N — во сколько раз сильнее обычного дня.
+                  {rich(tf("sheet.legend", { day: "{day}", hit: "{hit}" }), {
+                    day: <TermTooltip term="reactionDay">{tf("sheet.legendDay")}</TermTooltip>,
+                    hit: <TermTooltip term="ratingHit">{tf("sheet.legendHit")}</TermTooltip>,
+                  })}
                 </p>
               </>
             ) : null}
@@ -339,17 +347,17 @@ export function TickerSheet({
         ) : q.isError ? (
           <QueryError error={q.error} onRetry={() => q.refetch()} />
         ) : items.length === 0 ? (
-          <EmptyState icon={History} title="Нет истории по тикеру" />
+          <EmptyState icon={History} title={tf("sheet.noHistory")} />
         ) : (
           <>
             {/* ── price vs targets + consensus ── */}
-            <section className="glass-panel rounded-2xl p-4" aria-label="Консенсус и таргеты">
+            <section className="glass-panel rounded-2xl p-4" aria-label={tf("sheet.consensusAria")}>
               <div className="mb-3 flex items-baseline justify-between gap-2">
-                <span className="micro-label">Цена, таргеты и консенсус · 12 мес</span>
-                <span className="text-2xs text-muted-foreground">{c.firms} фирм</span>
+                <span className="micro-label">{tf("sheet.consensusTitle")}</span>
+                <span className="text-2xs text-muted-foreground">{tf("sheet.firmsCount", { count: c.firms })}</span>
               </div>
               {chart.length > 1 ? (
-                <div className="h-48 w-full" role="img" aria-label={`Цена ${ticker} за год и таргеты аналитиков`}>
+                <div className="h-48 w-full" role="img" aria-label={tf("sheet.chartAria", { ticker: ticker ?? "" })}>
                   <ResponsiveContainer width="100%" height="100%">
                     <ComposedChart data={chart} margin={{ top: 6, right: 8, bottom: 0, left: 0 }}>
                       <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
@@ -359,14 +367,14 @@ export function TickerSheet({
                         contentStyle={TOOLTIP_STYLE}
                         labelFormatter={(d) => fmtDate(String(d), "short")}
                         formatter={(v: number, name: string, p: { payload?: ChartRow }) =>
-                          name === "pt" ? [fmtUsd(v, { decimals: "trim" }), `PT · ${p.payload?.ptFirm ?? ""}`] : [fmtUsd(v, { decimals: "trim" }), "Цена"]}
+                          name === "pt" ? [fmtUsd(v, { decimals: "trim" }), `PT · ${p.payload?.ptFirm ?? ""}`] : [fmtUsd(v, { decimals: "trim" }), tf("sheet.price")]}
                       />
                       {c.avg != null && (
                         <ReferenceLine
                           y={c.avg}
                           stroke="hsl(var(--primary))"
                           strokeDasharray="4 4"
-                          label={{ value: `консенсус ${fmtUsd(c.avg, { decimals: "trim" })}`, position: "insideTopRight", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
+                          label={{ value: tf("sheet.consensus", { value: fmtUsd(c.avg, { decimals: "trim" }) }), position: "insideTopRight", fill: "hsl(var(--muted-foreground))", fontSize: 11 }}
                         />
                       )}
                       <Line type="monotone" dataKey="c" name="c" stroke="hsl(var(--foreground))" strokeWidth={1.5} dot={false} isAnimationActive={false} />
@@ -379,45 +387,45 @@ export function TickerSheet({
                   </ResponsiveContainer>
                 </div>
               ) : quote?.spark && quote.spark.length > 1 ? (
-                <Sparkline data={quote.spark} width={400} height={36} className="w-full" ariaLabel="Цена за месяц" />
+                <Sparkline data={quote.spark} width={400} height={36} className="w-full" ariaLabel={tf("sheet.sparkAria")} />
               ) : null}
               {totalStance > 0 && (
                 <div className="mt-3">
                   <div className="flex h-2 w-full overflow-hidden rounded-full bg-[var(--glass-bg)]" role="img"
-                    aria-label={`Покупать ${c.counts.buy}, держать ${c.counts.hold}, продавать ${c.counts.sell}`}>
+                    aria-label={tf("sheet.stanceAria", { buy: c.counts.buy, hold: c.counts.hold, sell: c.counts.sell })}>
                     <span className="h-full bg-up" style={{ width: `${(c.counts.buy / totalStance) * 100}%` }} />
                     <span className="h-full bg-muted-foreground/40" style={{ width: `${(c.counts.hold / totalStance) * 100}%` }} />
                     <span className="h-full bg-down" style={{ width: `${(c.counts.sell / totalStance) * 100}%` }} />
                   </div>
                   <div className="mt-1.5 flex justify-between text-2xs tabular-nums">
-                    <span className="text-up">Покупать {c.counts.buy}</span>
-                    <span className="text-muted-foreground">Держать {c.counts.hold}</span>
-                    <span className="text-down">Продавать {c.counts.sell}</span>
+                    <span className="text-up">{tf("sheet.buy", { count: c.counts.buy })}</span>
+                    <span className="text-muted-foreground">{tf("sheet.hold", { count: c.counts.hold })}</span>
+                    <span className="text-down">{tf("sheet.sell", { count: c.counts.sell })}</span>
                   </div>
                 </div>
               )}
               <div className="mt-3 grid grid-cols-2 gap-x-6">
-                <StatRow label="Средний PT" value={fmtUsd(c.avg, { decimals: "trim" })} />
-                <StatRow label="Медиана" value={fmtUsd(c.median, { decimals: "trim" })} />
-                <StatRow label="Мин / макс" value={`${fmtUsd(c.low, { decimals: "trim" })} / ${fmtUsd(c.high, { decimals: "trim" })}`} />
-                <StatRow label="Апсайд к цене" value={upside == null ? "—" : fmtPct(upside, 1)} tone={upside == null ? "neutral" : upside >= 0 ? "up" : "down"} />
+                <StatRow label={tf("sheet.avgPt")} value={fmtUsd(c.avg, { decimals: "trim" })} />
+                <StatRow label={tf("sheet.median")} value={fmtUsd(c.median, { decimals: "trim" })} />
+                <StatRow label={tf("sheet.minMax")} value={`${fmtUsd(c.low, { decimals: "trim" })} / ${fmtUsd(c.high, { decimals: "trim" })}`} />
+                <StatRow label={tf("sheet.upside")} value={upside == null ? "—" : fmtPct(upside, 1)} tone={upside == null ? "neutral" : upside >= 0 ? "up" : "down"} />
               </div>
             </section>
 
             {/* ── firms on this ticker ── */}
             {rx.data && rx.data.byFirm.length > 0 && (
-              <section aria-label="Фирмы по тикеру">
-                <div className="micro-label mb-2">Фирмы по тикеру</div>
+              <section aria-label={tf("sheet.firmsAria")}>
+                <div className="micro-label mb-2">{tf("sheet.firmsAria")}</div>
                 <FirmsOnTicker rows={rx.data.byFirm} />
                 {rx.data.byFirm.some((f) => f.all.n < WEIGHT_MIN_N) && (
-                  <p className="mt-1 text-2xs text-muted-foreground">Сила и «в сторону» по 2+ событиям с измеренной реакцией; меньше {WEIGHT_MIN_N} — ориентир, не статистика.</p>
+                  <p className="mt-1 text-2xs text-muted-foreground">{tf("sheet.firmsNote", { min: WEIGHT_MIN_N })}</p>
                 )}
               </section>
             )}
 
             {/* ── timeline ── */}
-            <section aria-label="История действий">
-              <div className="micro-label mb-2">История · {items.length}</div>
+            <section aria-label={tf("sheet.historyAria")}>
+              <div className="micro-label mb-2">{tf("sheet.history", { count: items.length })}</div>
               {months.map(({ month, list }) => (
                 <div key={month} className="mb-2">
                   <div className="border-b border-[var(--glass-border)] py-1 text-xs font-medium text-muted-foreground">{monthTitle(month)}</div>
@@ -444,7 +452,7 @@ export function TickerSheet({
                             href={a.sourceUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            aria-label={`Источник: ${a.source}`}
+                            aria-label={tf("sheet.sourceAria", { source: a.source })}
                             className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-hover-bg)] hover:text-foreground"
                           >
                             <ExternalLink className="h-3.5 w-3.5" aria-hidden="true" />
@@ -457,7 +465,7 @@ export function TickerSheet({
               ))}
               {items.length > limit && (
                 <Button variant="ghost" size="sm" onClick={() => setLimit((n) => n + TIMELINE_STEP)}>
-                  Показать ещё {Math.min(TIMELINE_STEP, items.length - limit)} из {items.length - limit}
+                  {tf("sheet.showMore", { count: Math.min(TIMELINE_STEP, items.length - limit), total: items.length - limit })}
                 </Button>
               )}
             </section>

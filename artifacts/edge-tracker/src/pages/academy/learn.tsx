@@ -14,6 +14,9 @@ import { ReviewQueue } from "@/components/academy/content/review-queue";
 import { ProgressMatrix } from "@/components/academy/content/progress-matrix";
 import { academyLinks } from "@/components/academy/content/links";
 import { PersonSelect } from "@/components/people/person-select";
+import { academyI18n } from "@/i18n/ns/academy";
+import { commonI18n } from "@/i18n/ns/common";
+import { shellI18n } from "@/i18n/ns/shell";
 
 /**
  * /academy/learn — «Обучение»: каталог программ с прогрессом, дерево модулей выбранной программы,
@@ -22,8 +25,15 @@ import { PersonSelect } from "@/components/people/person-select";
  */
 
 type Tab = "catalog" | "review" | "progress";
-const SEED_LABEL: Record<string, string> = { programs: "программ", modules: "модулей", lessons: "уроков", quizzes: "тестов", assignments: "заданий" };
+const SEED_KEYS = ["programs", "modules", "lessons", "quizzes", "assignments"] as const;
+/** «уроков: 6, тестов: 2» from the seed response (unknown keys are shown as is). */
+const seedSummary = (created: Record<string, number>) =>
+  Object.entries(created).filter(([, n]) => n).map(([k, n]) => {
+    const key = SEED_KEYS.find((x) => x === k);
+    return key ? academyI18n.t(`learn.seedCount.${key}`, { count: n }) : `${k}: ${n}`;
+  }).join(", ");
 const ME = "__me__";
+const cohortFormat = (f: string) => (f === "office" || f === "remote" || f === "hybrid" ? academyI18n.t(`learn.cohortFormat.${f}`) : f);
 const ALL = "__all__";
 
 export default function AcademyLearn() {
@@ -33,6 +43,7 @@ export default function AcademyLearn() {
   const { isCurator, dbUsers } = useAuth();
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { t } = academyI18n.useT();
   const meta = useAcademyMeta();
   const staff = isCurator || !!meta.data?.staff;
 
@@ -56,7 +67,8 @@ export default function AcademyLearn() {
   const selectedId = programParam && list.some((p) => p.id === programParam) ? programParam : list[0]?.id ?? null;
   const tree = useProgramTree(tab === "catalog" ? selectedId : null, viewUser || undefined);
 
-  const [cohortId, setCohortId] = useState<number | null>(null);
+  // undefined = not chosen yet → default to the viewer's own cohort when they mentor exactly one.
+  const [cohortPick, setCohortId] = useState<number | null | undefined>(undefined);
   const [progressProgram, setProgressProgram] = useState<number | null>(null);
   useEffect(() => { if (!progressProgram && selectedId) setProgressProgram(selectedId); }, [selectedId, progressProgram]);
 
@@ -70,11 +82,11 @@ export default function AcademyLearn() {
     setSeeding(true);
     try {
       const r = await api.seedDemo();
-      toast({ title: r.alreadySeeded ? "Демо-курс уже загружен" : "Демо-курс загружен", description: Object.entries(r.created).filter(([, n]) => n).map(([k, n]) => `${SEED_LABEL[k] ?? k}: ${n}`).join(", ") || "Новых элементов нет" });
+      toast({ title: r.alreadySeeded ? t("learn.demoAlready") : t("learn.demoLoaded"), description: seedSummary(r.created) || t("learn.noNewItems") });
       await invalidateAcademy(qc);
       setParams({ program: r.programId });
     } catch (e) {
-      toast({ title: "Не удалось загрузить демо-курс", description: (e as Error).message, variant: "destructive" });
+      toast({ title: t("learn.demoFailed"), description: (e as Error).message, variant: "destructive" });
     } finally {
       setSeeding(false);
     }
@@ -82,13 +94,15 @@ export default function AcademyLearn() {
 
   const pending = meta.data?.pendingReviews ?? 0;
   const cohorts = meta.data?.cohorts ?? [];
+  const ownCohorts = cohorts.filter((c) => c.mentor && c.mentor === meta.data?.me);
+  const cohortId = cohortPick !== undefined ? cohortPick : ownCohorts.length === 1 ? ownCohorts[0].id : null;
 
   const cohortSelect = meta.data?.cohortsAvailable ? (
     <Select value={cohortId ? String(cohortId) : ALL} onValueChange={(v) => setCohortId(v === ALL ? null : Number(v))}>
-      <SelectTrigger className="h-9 w-full rounded-full sm:w-[220px]" aria-label="Когорта"><SelectValue placeholder="Все когорты" /></SelectTrigger>
+      <SelectTrigger className="h-9 w-full rounded-full sm:w-[220px]" aria-label={t("learn.cohort")}><SelectValue placeholder={t("learn.allCohorts")} /></SelectTrigger>
       <SelectContent>
-        <SelectItem value={ALL}>Все ученики</SelectItem>
-        {cohorts.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}{c.format ? ` · ${c.format === "office" ? "офис" : c.format === "remote" ? "удалённо" : "гибрид"}` : ""}</SelectItem>)}
+        <SelectItem value={ALL}>{t("learn.allStudents")}</SelectItem>
+        {cohorts.map((c) => <SelectItem key={c.id} value={String(c.id)}>{c.name}{c.format ? ` · ${cohortFormat(c.format)}` : ""}</SelectItem>)}
       </SelectContent>
     </Select>
   ) : null;
@@ -96,24 +110,24 @@ export default function AcademyLearn() {
   return (
     <Page>
       <PageHeader
-        title="Обучение"
+        title={shellI18n.t("nav.academyLearn")}
         icon={GraduationCap}
-        description="Курсы деска: уроки, тесты с автопроверкой и практические задания на ваших сделках"
+        description={t("learn.description")}
         actions={staff ? (
           <>
-            <Button variant="outline" asChild><Link href={academyLinks.admin({ program: selectedId ?? undefined })}><PencilRuler aria-hidden="true" />Редактор контента</Link></Button>
+            <Button variant="outline" asChild><Link href={academyLinks.admin({ program: selectedId ?? undefined })}><PencilRuler aria-hidden="true" />{t("learn.contentEditor")}</Link></Button>
           </>
         ) : undefined}
       >
         {staff && (
           <SectionTabs
-            ariaLabel="Разделы обучения"
+            ariaLabel={t("learn.tabsAria")}
             value={tab}
             onChange={(v) => setParams({ tab: v === "catalog" ? null : v })}
             tabs={[
-              { value: "catalog", label: "Курсы", icon: BookOpenCheck },
-              { value: "review", label: "Проверка заданий", icon: Inbox, count: pending || undefined },
-              { value: "progress", label: "Прогресс учеников", icon: BarChart3 },
+              { value: "catalog", label: t("learn.tabCourses"), icon: BookOpenCheck },
+              { value: "review", label: t("learn.tabReview"), icon: Inbox, count: pending || undefined },
+              { value: "progress", label: t("learn.tabProgress"), icon: BarChart3 },
             ]}
           />
         )}
@@ -123,32 +137,32 @@ export default function AcademyLearn() {
         <>
           {staff && (
             <Toolbar>
-              <span className="px-2 text-sm text-muted-foreground">Смотреть как</span>
-              <PersonSelect value={viewUser || ME} onValueChange={(v) => setParams({ user: v === ME ? null : v })} allValue={ME} allLabel="Я (превью)" options={traders} ariaLabel="Чей прогресс показать" className="h-9 w-full sm:w-[220px]" />
+              <span className="px-2 text-sm text-muted-foreground">{t("learn.viewAs")}</span>
+              <PersonSelect value={viewUser || ME} onValueChange={(v) => setParams({ user: v === ME ? null : v })} allValue={ME} allLabel={t("learn.mePreview")} options={traders} ariaLabel={t("learn.whoseAria")} className="h-9 w-full sm:w-[220px]" />
             </Toolbar>
           )}
 
           {programs.isLoading ? (
             <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]"><Skeleton className="h-48 rounded-2xl" /><Skeleton className="h-96 rounded-2xl" /></div>
           ) : programs.isError ? (
-            <Panel><p className="text-sm text-down">Не удалось загрузить курсы: {(programs.error as Error).message}</p></Panel>
+            <Panel><p className="text-sm text-down">{t("learn.coursesFailed", { message: (programs.error as Error).message })}</p></Panel>
           ) : !list.length ? (
             <Panel>
               <EmptyState
                 icon={GraduationCap}
-                title="Курсов пока нет"
-                description={staff ? "Создайте программу в редакторе или загрузите демо-курс «Основы проп-трейдинга WS» (для стажёров)." : "Наставники ещё не опубликовали ни одной программы."}
+                title={t("learn.noCourses")}
+                description={staff ? t("learn.noCoursesStaff") : t("learn.noCoursesStudent")}
                 action={staff ? (
                   <div className="flex flex-wrap justify-center gap-2">
-                    <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}Загрузить демо-курс</Button>
-                    <Button variant="outline" asChild><Link href={academyLinks.admin()}>Открыть редактор</Link></Button>
+                    <Button onClick={seed} disabled={seeding}>{seeding ? <Loader2 className="animate-spin" aria-hidden="true" /> : <Database aria-hidden="true" />}{t("learn.loadDemo")}</Button>
+                    <Button variant="outline" asChild><Link href={academyLinks.admin()}>{t("learn.openEditor")}</Link></Button>
                   </div>
                 ) : undefined}
               />
             </Panel>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[340px_minmax(0,1fr)]">
-              <nav aria-label="Программы" className="flex flex-col gap-3">
+              <nav aria-label={t("learn.programsAria")} className="flex flex-col gap-3">
                 {list.map((p) => <ProgramCard key={p.id} p={p} active={p.id === selectedId} onSelect={() => setParams({ program: p.id })} />)}
               </nav>
               <div className="min-w-0">
@@ -156,9 +170,9 @@ export default function AcademyLearn() {
                   <Panel>
                     <EmptyState
                       icon={BookOpenCheck}
-                      title="Не удалось загрузить программу"
-                      description={(tree.error as Error | null)?.message ?? "Попробуйте ещё раз."}
-                      action={<Button variant="outline" onClick={() => void tree.refetch()} disabled={tree.isFetching}>Повторить</Button>}
+                      title={t("learn.programFailed")}
+                      description={(tree.error as Error | null)?.message ?? commonI18n.t("states.tryAgain")}
+                      action={<Button variant="outline" onClick={() => void tree.refetch()} disabled={tree.isFetching}>{commonI18n.t("actions.retry")}</Button>}
                     />
                   </Panel>
                 ) : tree.isLoading || !tree.data ? (
@@ -174,7 +188,7 @@ export default function AcademyLearn() {
 
       {tab === "review" && staff && (
         <>
-          {cohortSelect && <Toolbar><span className="px-2 text-sm text-muted-foreground">Когорта</span>{cohortSelect}</Toolbar>}
+          {cohortSelect && <Toolbar><span className="px-2 text-sm text-muted-foreground">{t("learn.cohort")}</span>{cohortSelect}</Toolbar>}
           <ReviewQueue cohortId={cohortId} />
         </>
       )}
@@ -182,9 +196,9 @@ export default function AcademyLearn() {
       {tab === "progress" && staff && (
         <>
           <Toolbar>
-            <span className="px-2 text-sm text-muted-foreground">Программа</span>
+            <span className="px-2 text-sm text-muted-foreground">{t("learn.program")}</span>
             <Select value={progressProgram ? String(progressProgram) : ""} onValueChange={(v) => setProgressProgram(Number(v))}>
-              <SelectTrigger className="h-9 w-full rounded-full sm:w-[280px]" aria-label="Программа"><SelectValue placeholder="Выберите программу" /></SelectTrigger>
+              <SelectTrigger className="h-9 w-full rounded-full sm:w-[280px]" aria-label={t("learn.program")}><SelectValue placeholder={t("learn.pickProgram")} /></SelectTrigger>
               <SelectContent>{list.map((p) => <SelectItem key={p.id} value={String(p.id)}>{p.title}</SelectItem>)}</SelectContent>
             </Select>
             {cohortSelect}

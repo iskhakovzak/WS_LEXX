@@ -1,9 +1,11 @@
 /**
  * «Академия» → когорты и наставничество: типы ответов (зеркало api-server/src/routes/academy-cohorts.ts и
- * lib/academyCohorts.ts) и raw-fetch хуки для /api/academy/* (orval-кодоген для новых эндпоинтов не запускается).
+ * lib/academyCohorts.ts), коды справочников с функциями-подписями (язык читается при вызове) и raw-fetch хуки для /api/academy/* (orval-кодоген для новых эндпоинтов не запускается).
  */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { http, type ApiError } from "@/lib/api/http";
+import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
+import { commonI18n } from "@/i18n/ns/common";
 
 /* ─── Справочники ─────────────────────────────────────────────────────────── */
 
@@ -20,16 +22,32 @@ export type MetricKey = "fee_share" | "loss_streak" | "win_rate" | "journal_days
 export type Comparator = "lt" | "lte" | "gte" | "gt";
 
 export const STAGES: Stage[] = ["trainee", "junior", "trader", "senior"];
-export const STAGE_LABELS: Record<Stage, string> = { trainee: "Стажёр", junior: "Джун", trader: "Трейдер", senior: "Сеньор" };
-export const STATUS_LABELS: Record<EnrollmentStatus, string> = { active: "Учится", paused: "Пауза", graduated: "Выпущен", dropped: "Отчислен" };
-export const FORMAT_LABELS: Record<CohortFormat, string> = { office: "Офис", remote: "Удалённо", hybrid: "Гибрид" };
-export const MODE_LABELS: Record<SessionMode, string> = { office: "Офлайн", online: "Онлайн", hybrid: "Гибрид" };
-export const KIND_LABELS: Record<SessionKind, string> = { briefing: "Брифинг", lecture: "Лекция", review: "Разбор", workshop: "Практикум", other: "Другое" };
-export const RECURRENCE_LABELS: Record<Recurrence, string> = { none: "Разово", daily: "Ежедневно", weekdays: "По будням", weekly: "По дням недели" };
-export const ATTENDANCE_LABELS: Record<AttendanceStatus, string> = { present: "Был", late: "Опоздал", absent: "Пропуск", excused: "Уважит." };
-export const GOAL_STATUS_LABELS: Record<GoalStatus, string> = { active: "В работе", achieved: "Достигнута", missed: "Сорвана", cancelled: "Отменена" };
+export const COHORT_FORMATS: CohortFormat[] = ["office", "remote", "hybrid"];
+export const ENROLLMENT_STATUSES: EnrollmentStatus[] = ["active", "paused", "graduated", "dropped"];
+export const SESSION_MODES: SessionMode[] = ["office", "online", "hybrid"];
+export const SESSION_KINDS: SessionKind[] = ["briefing", "lecture", "review", "workshop", "other"];
+export const RECURRENCES: Recurrence[] = ["none", "daily", "weekdays", "weekly"];
+export const GOAL_STATUSES: GoalStatus[] = ["active", "achieved", "missed", "cancelled"];
+export const ATTENDANCE_STATUSES: AttendanceStatus[] = ["present", "late", "absent", "excused"];
 export const COMPARATOR_SIGNS: Record<Comparator, string> = { lt: "<", lte: "≤", gte: "≥", gt: ">" };
-export const WEEKDAYS_SHORT = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+
+/* Display labels: read the current language at call time (never at module scope). Unknown codes fall back to the code. */
+const STAGE_TIER = { trainee: "intern", junior: "junior", trader: "trader", senior: "senior" } as const;
+const has = <T extends string>(list: readonly T[], v: string): v is T => (list as readonly string[]).includes(v);
+const t = academyCohortsI18n.t;
+
+/** Стажёр / Джун / Трейдер / Сеньор → common `tiers.*` (trainee = Intern / Stajyor). */
+export const stageLabel = (s: Stage | string): string => (has(STAGES, s) ? commonI18n.t(`tiers.${STAGE_TIER[s]}`) : s);
+export const statusLabel = (s: EnrollmentStatus | string): string => (has(ENROLLMENT_STATUSES, s) ? t(`enrollmentStatus.${s}`) : s);
+export const formatLabel = (f: CohortFormat | string): string => (has(COHORT_FORMATS, f) ? t(`format.${f}`) : f);
+export const modeLabel = (m: SessionMode | string): string => (has(SESSION_MODES, m) ? t(`mode.${m}`) : m);
+export const kindLabel = (k: SessionKind | string): string => (has(SESSION_KINDS, k) ? t(`kind.${k}`) : k);
+export const recurrenceLabel = (r: Recurrence): string => t(`recurrence.${r}`);
+/** Short chip label («Уважит.»); `attendanceTitle` is the full form for tooltips. */
+export const attendanceLabel = (a: AttendanceStatus): string => t(`attendance.${a}`);
+export const attendanceTitle = (a: AttendanceStatus): string => t(`attendanceFull.${a}`);
+export const goalStatusLabel = (g: GoalStatus | string): string => (has(GOAL_STATUSES, g) ? t(`goalStatus.${g}`) : g);
+export const meetingFormatLabel = (f: "office" | "online", inline = false): string => t(inline ? `meetingFormatInline.${f}` : `meetingFormat.${f}`);
 
 /* ─── Типы ответов ────────────────────────────────────────────────────────── */
 

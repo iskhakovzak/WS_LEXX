@@ -2,13 +2,7 @@ import * as React from "react";
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-
-const T = {
-  placeholder: "Имя: Закир, Zakir, zokir…",
-  hint: "Имя можно вводить по-русски, латиницей или по-узбекски — и даже в другой раскладке",
-  clear: "Очистить поиск",
-  label: "Поиск по имени",
-} as const;
+import { commonI18n } from "@/i18n/ns/common";
 
 /** Search box for people lists (cross-script matcher behind it). Esc clears, the × button too. */
 export const PeopleSearchInput = React.forwardRef<HTMLInputElement, {
@@ -20,7 +14,8 @@ export const PeopleSearchInput = React.forwardRef<HTMLInputElement, {
   inputClassName?: string;
   /** Rendered at the right edge when empty (e.g. a <Kbd>/</Kbd> hint). */
   trailing?: React.ReactNode;
-}>(function PeopleSearchInput({ value, onChange, placeholder = T.placeholder, ariaLabel = T.label, className, inputClassName, trailing }, ref) {
+}>(function PeopleSearchInput({ value, onChange, placeholder, ariaLabel, className, inputClassName, trailing }, ref) {
+  const { t } = commonI18n.useT();
   return (
     <div className={cn("relative w-full sm:w-64", className)}>
       <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
@@ -29,9 +24,9 @@ export const PeopleSearchInput = React.forwardRef<HTMLInputElement, {
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Escape" && value) { e.preventDefault(); e.stopPropagation(); onChange(""); } }}
-        placeholder={placeholder}
-        title={T.hint}
-        aria-label={ariaLabel}
+        placeholder={placeholder ?? t("people.placeholder")}
+        title={t("people.hint")}
+        aria-label={ariaLabel ?? t("people.label")}
         autoComplete="off"
         spellCheck={false}
         className={cn("h-9 pl-9 pr-9", inputClassName)}
@@ -40,7 +35,7 @@ export const PeopleSearchInput = React.forwardRef<HTMLInputElement, {
         <button
           type="button"
           onClick={() => onChange("")}
-          aria-label={T.clear}
+          aria-label={t("people.clear")}
           className="absolute right-2 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-muted-foreground hover:bg-[var(--glass-bg)] hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <X className="h-3.5 w-3.5" aria-hidden="true" />

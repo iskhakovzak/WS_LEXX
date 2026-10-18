@@ -12,17 +12,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { GROUP_LABELS, GROUP_ORDER, SEVERITY_LABEL, SEVERITY_TONE, TYPES, iconFor, type Pref, type Prefs } from "./model";
 import { useNotificationPrefs } from "./use-notifications";
+import { notificationsI18n } from "@/i18n/ns/notifications";
+import { commonI18n } from "@/i18n/ns/common";
 
 type MutePreset = "none" | "1h" | "4h" | "eod" | "1d" | "7d" | "forever";
-const MUTE_PRESETS: { value: MutePreset; label: string }[] = [
-  { value: "none", label: "Не выключать" },
-  { value: "1h", label: "На 1 час" },
-  { value: "4h", label: "На 4 часа" },
-  { value: "eod", label: "До конца дня" },
-  { value: "1d", label: "На сутки" },
-  { value: "7d", label: "На неделю" },
-  { value: "forever", label: "Пока не включу" },
-];
+const MUTE_PRESETS: MutePreset[] = ["none", "1h", "4h", "eod", "1d", "7d", "forever"];
+const presetLabel = (p: MutePreset) => notificationsI18n.t(`prefs.presets.${p}`);
 
 function presetToIso(p: MutePreset, now = new Date()): string | null {
   const d = new Date(now);
@@ -38,10 +33,10 @@ function presetToIso(p: MutePreset, now = new Date()): string | null {
 
 function muteLabel(iso: string | null): string | null {
   if (!iso) return null;
-  if (iso === "forever") return "выключено";
+  if (iso === "forever") return notificationsI18n.t("prefs.mutedForever");
   const t = Date.parse(iso);
   if (!Number.isFinite(t) || t <= Date.now()) return null;
-  return `тихо до ${fmtDate(t, "dateTime")}`;
+  return notificationsI18n.t("prefs.mutedUntil", { date: fmtDate(t, "dateTime") });
 }
 
 type Draft = { byType: Record<string, Pref>; muteAll: string | null };
@@ -61,6 +56,7 @@ function toPayload(d: Draft): Prefs {
 }
 
 export function NotificationPrefsPanel({ className }: { className?: string }) {
+  const { t: tn } = notificationsI18n.useT();
   const prefs = useNotificationPrefs();
   const [draft, setDraft] = useState<Draft | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
@@ -94,17 +90,17 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
 
   if (prefs.isLoading || !draft) {
     return (
-      <Panel title="Настройки уведомлений" className={className}>
+      <Panel title={tn("prefs.title")} className={className}>
         <div className="space-y-2" aria-busy="true"><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-full" /><Skeleton className="h-8 w-2/3" /></div>
       </Panel>
     );
   }
   if (prefs.isError) {
     return (
-      <Panel title="Настройки уведомлений" className={className}>
+      <Panel title={tn("prefs.title")} className={className}>
         <div className="flex items-center justify-between gap-2 text-sm text-muted-foreground">
-          <span>Не удалось загрузить настройки</span>
-          <button type="button" onClick={() => prefs.refetch()} className="chip h-8 px-3 text-xs font-medium">Повторить</button>
+          <span>{tn("prefs.loadFailed")}</span>
+          <button type="button" onClick={() => prefs.refetch()} className="chip h-8 px-3 text-xs font-medium">{commonI18n.t("actions.retry")}</button>
         </div>
       </Panel>
     );
@@ -116,14 +112,14 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
 
   return (
     <Panel
-      title="Настройки уведомлений"
-      description="Что показывать в колокольчике и на этой странице. Telegram-оповещения настраиваются в «Настройки → Уведомления»."
+      title={tn("prefs.title")}
+      description={tn("prefs.description")}
       className={className}
       actions={
         <div className="flex items-center gap-2">
           {dirty && (
             <button type="button" onClick={() => prefs.data && setDraft(toDraft(prefs.data))} className="chip inline-flex h-8 items-center gap-1 px-3 text-xs font-medium">
-              <RotateCcw className="h-3 w-3" aria-hidden="true" /> Сбросить
+              <RotateCcw className="h-3 w-3" aria-hidden="true" /> {commonI18n.t("actions.reset")}
             </button>
           )}
           <button
@@ -133,14 +129,14 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
             className="inline-flex h-8 items-center gap-1.5 rounded-full bg-primary-solid px-3.5 text-xs font-medium text-primary-foreground shadow-[inset_0_1px_0_rgb(255_255_255/0.25)] disabled:opacity-50"
           >
             {prefs.save.isPending ? <Loader2 className="h-3 w-3 animate-spin" aria-hidden="true" /> : <Check className="h-3 w-3" aria-hidden="true" />}
-            {prefs.save.isPending ? "Сохраняю…" : savedAt && !dirty ? "Сохранено" : "Сохранить"}
+            {prefs.save.isPending ? tn("prefs.saving") : savedAt && !dirty ? commonI18n.t("states.saved") : commonI18n.t("actions.save")}
           </button>
         </div>
       }
     >
       {prefs.save.isError && (
         <div role="alert" className="mb-3 rounded-xl border border-down/30 bg-down/10 px-3 py-2 text-xs text-down">
-          Не удалось сохранить: {(prefs.save.error as Error)?.message ?? "ошибка"}
+          {tn("prefs.saveFailed", { reason: (prefs.save.error as Error)?.message ?? commonI18n.t("states.error") })}
         </div>
       )}
 
@@ -150,14 +146,14 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
             {draft.muteAll ? <BellOff className="h-4 w-4" aria-hidden="true" /> : <BellRing className="h-4 w-4" aria-hidden="true" />}
           </span>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground">Не беспокоить</div>
-            <div className="text-xs text-muted-foreground">{muteAllText ? `Все уведомления ${muteAllText}` : "Все типы включены"}{offCount > 0 && !draft.muteAll ? ` · выключено типов: ${offCount}` : ""}</div>
+            <div className="text-sm font-semibold text-foreground">{tn("prefs.dnd")}</div>
+            <div className="text-xs text-muted-foreground">{muteAllText ? tn("prefs.allMuted", { state: muteAllText }) : tn("prefs.allOn")}{offCount > 0 && !draft.muteAll ? ` · ${tn("prefs.typesOff", { count: offCount })}` : ""}</div>
           </div>
         </div>
         <Select value={muteAllPreset} onValueChange={(v) => setDraft((d) => (d ? { ...d, muteAll: v === "forever" ? "forever" : presetToIso(v as MutePreset) } : d))}>
-          <SelectTrigger aria-label="Режим «не беспокоить»" className="h-9 w-[190px]"><SelectValue /></SelectTrigger>
+          <SelectTrigger aria-label={tn("prefs.dndAria")} className="h-9 w-[210px]"><SelectValue /></SelectTrigger>
           <SelectContent>
-            {MUTE_PRESETS.map((p) => <SelectItem key={p.value} value={p.value}>{p.value === "none" ? "Выключено" : p.label}</SelectItem>)}
+            {MUTE_PRESETS.map((p) => <SelectItem key={p} value={p}>{p === "none" ? tn("prefs.off") : presetLabel(p)}</SelectItem>)}
           </SelectContent>
         </Select>
       </div>
@@ -173,7 +169,7 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
               <div className="mb-1.5 flex items-center justify-between gap-2 px-1">
                 <h3 className="micro-label">{GROUP_LABELS[group]}</h3>
                 <button type="button" onClick={() => setGroup(group, !allOn)} className="text-2xs font-medium text-primary hover:underline">
-                  {allOn ? "Выключить группу" : noneOn ? "Включить группу" : "Включить все"}
+                  {allOn ? tn("prefs.disableGroup") : noneOn ? tn("prefs.enableGroup") : tn("prefs.enableAll")}
                 </button>
               </div>
               <ul className="divide-y divide-[var(--glass-border)] rounded-xl border border-[var(--glass-border)]">
@@ -197,13 +193,13 @@ export function NotificationPrefsPanel({ className }: { className?: string }) {
                       </div>
                       {p.inApp && (
                         <Select value={preset} onValueChange={(v) => setType(t.type, { muteUntil: presetToIso(v as MutePreset) })}>
-                          <SelectTrigger aria-label={`Заглушить: ${t.label}`} className="h-8 w-[150px] text-xs"><SelectValue /></SelectTrigger>
+                          <SelectTrigger aria-label={tn("prefs.muteAria", { type: t.label })} className="h-8 w-[170px] text-xs"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            {MUTE_PRESETS.filter((m) => m.value !== "forever").map((m) => <SelectItem key={m.value} value={m.value}>{m.value === "1h" && p.muteUntil ? muted ?? m.label : m.label}</SelectItem>)}
+                            {MUTE_PRESETS.filter((m) => m !== "forever").map((m) => <SelectItem key={m} value={m}>{m === "1h" && p.muteUntil ? muted ?? presetLabel(m) : presetLabel(m)}</SelectItem>)}
                           </SelectContent>
                         </Select>
                       )}
-                      <Switch checked={p.inApp} onCheckedChange={(v) => setType(t.type, { inApp: v, muteUntil: v ? p.muteUntil : null })} aria-label={`${t.label}: показывать в приложении`} />
+                      <Switch checked={p.inApp} onCheckedChange={(v) => setType(t.type, { inApp: v, muteUntil: v ? p.muteUntil : null })} aria-label={tn("prefs.showAria", { type: t.label })} />
                     </li>
                   );
                 })}

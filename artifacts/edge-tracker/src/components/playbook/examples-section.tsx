@@ -20,6 +20,8 @@ import { localDateString } from "@/lib/local-date";
 import { useToast } from "@/hooks/use-toast";
 import { http } from "@/lib/api/http";
 import { DocSection, InlineError } from "./setup-bits";
+import { commonI18n } from "@/i18n/ns/common";
+import { playbookExamplesI18n, type CaseStatus } from "@/i18n/ns/playbookExamples";
 
 type Example = {
   id: number; playbook_entry_id: number; ticker: string; side: string | null; entry_zone: string | null;
@@ -28,12 +30,14 @@ type Example = {
   beta: string | null; short_interest: string | null; sector: string | null; long_name: string | null;
 };
 
-const STATUS: Record<string, { label: string; tone: Tone }> = {
-  worked: { label: "Отработал", tone: "up" },
-  partial: { label: "Частично", tone: "warn" },
-  failed: { label: "Не отработал", tone: "down" },
-  studying: { label: "Изучаю", tone: "accent" },
-  watching: { label: "Наблюдаю", tone: "neutral" },
+/** Status code (stored) → tone; the label is read in the current UI language (getter). */
+const statusRow = (code: CaseStatus, tone: Tone) => ({ tone, get label() { return playbookExamplesI18n.t(`cases.status.${code}`); } });
+const STATUS: Record<string, { readonly label: string; tone: Tone }> = {
+  worked: statusRow("worked", "up"),
+  partial: statusRow("partial", "warn"),
+  failed: statusRow("failed", "down"),
+  studying: statusRow("studying", "accent"),
+  watching: statusRow("watching", "neutral"),
 };
 const CYCLE = ["worked", "partial", "failed", "studying"];
 
@@ -47,6 +51,7 @@ const blank = (): Form => ({
 });
 
 export function ExamplesSection({ entryId }: { entryId: number }) {
+  const { t } = playbookExamplesI18n.useT();
   const qc = useQueryClient();
   const { toast } = useToast();
   const [formOpen, setFormOpen] = useState(false);
@@ -93,12 +98,12 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
       () => editingId
         ? http.patch(`/api/playbook/${entryId}/ideas/${editingId}`, json)
         : http.post(`/api/playbook/${entryId}/ideas`, json),
-      editingId ? "Не удалось сохранить пример" : "Не удалось добавить пример",
+      editingId ? t("cases.saveFailed") : t("cases.addFailed"),
     );
     setSaving(false);
     if (!ok) return;
     refresh();
-    toast({ title: editingId ? "Пример сохранён" : "Пример добавлен" });
+    toast({ title: editingId ? t("cases.saved") : t("cases.added") });
     setFormOpen(false); setEditingId(null); setForm(blank());
   }
 
@@ -106,13 +111,13 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
     const next = CYCLE[(CYCLE.indexOf(idea.status) + 1) % CYCLE.length];
     // Full idea in the body so a status change can't clear other fields on older API builds.
     const json = { status: next, ticker: idea.ticker, side: idea.side, entryZone: idea.entry_zone, target: idea.target, stop: idea.stop, notes: idea.notes, date: idea.date };
-    if (await run(() => http.patch(`/api/playbook/${entryId}/ideas/${idea.id}`, json), "Не удалось изменить статус")) refresh();
+    if (await run(() => http.patch(`/api/playbook/${entryId}/ideas/${idea.id}`, json), t("cases.statusFailed"))) refresh();
   }
 
   async function remove(id: number) {
-    const ok = await run(() => http.del(`/api/playbook/${entryId}/ideas/${id}`), "Не удалось удалить пример");
+    const ok = await run(() => http.del(`/api/playbook/${entryId}/ideas/${id}`), t("cases.deleteFailed"));
     setDeleting(null);
-    if (ok) { refresh(); toast({ title: "Пример удалён" }); }
+    if (ok) { refresh(); toast({ title: t("cases.deleted") }); }
   }
 
   function startEdit(i: Example) {
@@ -132,14 +137,14 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
 
   return (
     <DocSection
-      title={<>Примеры {ideas.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{ideas.length}</span>}</>}
+      title={<>{t("cases.title")} {ideas.length > 0 && <span className="font-normal tabular-nums text-muted-foreground">{ideas.length}</span>}</>}
       icon={BookOpen}
       actions={
         <>
-          {judged > 0 && <span className="mr-1 text-xs tabular-nums text-muted-foreground">{worked}/{judged} отработали</span>}
+          {judged > 0 && <span className="mr-1 text-xs tabular-nums text-muted-foreground">{t("cases.workedOf", { worked, judged })}</span>}
           <WriteOnly>
             <Button size="sm" variant="outline" className="h-8" onClick={() => { setForm(blank()); setEditingId(null); setFormOpen((v) => !v); }}>
-              <Plus className="h-4 w-4" aria-hidden="true" /> Пример
+              <Plus className="h-4 w-4" aria-hidden="true" /> {t("cases.add")}
             </Button>
           </WriteOnly>
         </>
@@ -152,25 +157,25 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
         >
           <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-ticker`} className="text-xs text-muted-foreground">Тикер *</Label>
+              <Label htmlFor={`${fid}-ticker`} className="text-xs text-muted-foreground">{t("cases.ticker")}</Label>
               <Input id={`${fid}-ticker`} value={form.ticker} onChange={(e) => setF("ticker", e.target.value.toUpperCase())} placeholder="NVDA" className="h-9" autoFocus />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-side`} className="text-xs text-muted-foreground">Направление</Label>
+              <Label htmlFor={`${fid}-side`} className="text-xs text-muted-foreground">{t("cases.side")}</Label>
               <Select value={form.side} onValueChange={(v) => setF("side", v)}>
                 <SelectTrigger id={`${fid}-side`} className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Long">Long</SelectItem>
-                  <SelectItem value="Short">Short</SelectItem>
+                  <SelectItem value="Long">{commonI18n.t("trading.long")}</SelectItem>
+                  <SelectItem value="Short">{commonI18n.t("trading.short")}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-date`} className="text-xs text-muted-foreground">Дата</Label>
+              <Label htmlFor={`${fid}-date`} className="text-xs text-muted-foreground">{t("cases.date")}</Label>
               <Input id={`${fid}-date`} type="date" value={form.date} onChange={(e) => setF("date", e.target.value)} className="h-9" />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-status`} className="text-xs text-muted-foreground">Результат</Label>
+              <Label htmlFor={`${fid}-status`} className="text-xs text-muted-foreground">{t("cases.result")}</Label>
               <Select value={form.status} onValueChange={(v) => setF("status", v)}>
                 <SelectTrigger id={`${fid}-status`} className="h-9"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -179,37 +184,37 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
               </Select>
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-entry`} className="text-xs text-muted-foreground">Вход</Label>
+              <Label htmlFor={`${fid}-entry`} className="text-xs text-muted-foreground">{t("cases.entry")}</Label>
               <Input id={`${fid}-entry`} value={form.entryZone} onChange={(e) => setF("entryZone", e.target.value)} placeholder="142" className="h-9" />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-target`} className="text-xs text-muted-foreground">Цель</Label>
+              <Label htmlFor={`${fid}-target`} className="text-xs text-muted-foreground">{t("cases.target")}</Label>
               <Input id={`${fid}-target`} value={form.target} onChange={(e) => setF("target", e.target.value)} placeholder="150" className="h-9" />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fid}-stop`} className="text-xs text-muted-foreground">Стоп</Label>
+              <Label htmlFor={`${fid}-stop`} className="text-xs text-muted-foreground">{t("cases.stop")}</Label>
               <Input id={`${fid}-stop`} value={form.stop} onChange={(e) => setF("stop", e.target.value)} placeholder="138" className="h-9" />
             </div>
             <div className="col-span-2 space-y-1 md:col-span-4">
-              <Label htmlFor={`${fid}-notes`} className="text-xs text-muted-foreground">Что сработало, контекст</Label>
+              <Label htmlFor={`${fid}-notes`} className="text-xs text-muted-foreground">{t("cases.notes")}</Label>
               <Textarea id={`${fid}-notes`} value={form.notes} onChange={(e) => setF("notes", e.target.value)} rows={2} className="resize-none text-sm" />
             </div>
           </div>
           {form.ticker.length >= 1 && <TickerFundamentalsBar ticker={form.ticker} onLoaded={onFundamentals} />}
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="ghost" size="sm" onClick={() => { setFormOpen(false); setEditingId(null); setForm(blank()); }}>Отмена</Button>
+            <Button type="button" variant="ghost" size="sm" onClick={() => { setFormOpen(false); setEditingId(null); setForm(blank()); }}>{commonI18n.t("actions.cancel")}</Button>
             <Button type="submit" variant="outline" size="sm" disabled={!form.ticker.trim() || saving}>
-              {saving ? "Сохраняем…" : editingId ? "Сохранить" : "Добавить"}
+              {saving ? t("cases.saving") : editingId ? commonI18n.t("actions.save") : commonI18n.t("actions.add")}
             </Button>
           </div>
         </form>
       )}
 
       {isLoading && <div className="grid gap-2 sm:grid-cols-2"><Skeleton className="h-20 rounded-xl" /><Skeleton className="h-20 rounded-xl" /></div>}
-      {isError && <InlineError text="Не удалось загрузить примеры." onRetry={() => refetch()} />}
+      {isError && <InlineError text={t("cases.loadFailed")} onRetry={() => refetch()} />}
       {!isLoading && !isError && ideas.length === 0 && !formOpen && (
         <p className="text-sm text-muted-foreground">
-          Добавьте 2–3 реальных случая (тикер, дата, вход/стоп/цель) — так сетап легче узнать на графике.
+          {t("cases.empty")}
         </p>
       )}
 
@@ -223,7 +228,7 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                       <span className="text-sm font-semibold text-foreground">{i.ticker}</span>
-                      {i.side && <span className={i.side === "Long" ? "text-xs text-up" : "text-xs text-down"}>{i.side === "Long" ? "▲ Long" : "▼ Short"}</span>}
+                      {i.side && <span className={i.side === "Long" ? "text-xs text-up" : "text-xs text-down"}>{i.side === "Long" ? `▲ ${commonI18n.t("trading.long")}` : `▼ ${commonI18n.t("trading.short")}`}</span>}
                       {i.date && <span className="text-xs tabular-nums text-muted-foreground">{i.date}</span>}
                     </div>
                     {i.long_name && <div className="truncate text-xs text-muted-foreground">{i.long_name}</div>}
@@ -231,8 +236,8 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
                   <button
                     type="button"
                     onClick={() => cycleStatus(i)}
-                    aria-label={`Статус: ${st.label}. Нажмите, чтобы сменить`}
-                    title="Сменить статус"
+                    aria-label={t("cases.statusAria", { status: st.label })}
+                    title={t("cases.statusTitle")}
                     className="shrink-0 rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Pill tone={st.tone} dot>{st.label}</Pill>
@@ -240,9 +245,9 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
                 </div>
                 {(i.entry_zone || i.target || i.stop) && (
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-xs tabular-nums">
-                    {i.entry_zone && <span><span className="text-muted-foreground">Вход </span>{i.entry_zone}</span>}
-                    {i.target && <span><span className="text-muted-foreground">Цель </span><span className="text-up">{i.target}</span></span>}
-                    {i.stop && <span><span className="text-muted-foreground">Стоп </span><span className="text-down">{i.stop}</span></span>}
+                    {i.entry_zone && <span><span className="text-muted-foreground">{t("cases.entry")} </span>{i.entry_zone}</span>}
+                    {i.target && <span><span className="text-muted-foreground">{t("cases.target")} </span><span className="text-up">{i.target}</span></span>}
+                    {i.stop && <span><span className="text-muted-foreground">{t("cases.stop")} </span><span className="text-down">{i.stop}</span></span>}
                   </div>
                 )}
                 {i.notes && <p className="mt-1.5 line-clamp-3 whitespace-pre-wrap text-xs text-muted-foreground">{i.notes}</p>}
@@ -256,8 +261,8 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
                 )}
                 <WriteOnly>
                   <div className="mt-1 flex justify-end gap-0.5 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
-                    <IconAction aria-label={`Редактировать пример ${i.ticker}`} onClick={() => startEdit(i)}><Pencil /></IconAction>
-                    <IconAction aria-label={`Удалить пример ${i.ticker}`} onClick={() => setDeleting(i)} className="hover:text-down"><Trash2 /></IconAction>
+                    <IconAction aria-label={t("cases.edit", { ticker: i.ticker })} title={t("cases.edit", { ticker: i.ticker })} onClick={() => startEdit(i)}><Pencil /></IconAction>
+                    <IconAction aria-label={t("cases.delete", { ticker: i.ticker })} title={t("cases.delete", { ticker: i.ticker })} onClick={() => setDeleting(i)} className="hover:text-down"><Trash2 /></IconAction>
                   </div>
                 </WriteOnly>
               </li>
@@ -269,12 +274,12 @@ export function ExamplesSection({ entryId }: { entryId: number }) {
       <AlertDialog open={!!deleting} onOpenChange={(v) => { if (!v) setDeleting(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Удалить пример {deleting?.ticker}?</AlertDialogTitle>
-            <AlertDialogDescription>Пример будет удалён из этого сетапа.</AlertDialogDescription>
+            <AlertDialogTitle>{t("cases.deleteTitle", { ticker: deleting?.ticker ?? "" })}</AlertDialogTitle>
+            <AlertDialogDescription>{t("cases.deleteDesc")}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Отмена</AlertDialogCancel>
-            <AlertDialogAction onClick={() => deleting && remove(deleting.id)} className="bg-down text-white hover:bg-down/90">Удалить</AlertDialogAction>
+            <AlertDialogCancel>{commonI18n.t("actions.cancel")}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleting && remove(deleting.id)} className="bg-down text-white hover:bg-down/90">{commonI18n.t("actions.delete")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>

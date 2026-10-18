@@ -24,7 +24,9 @@ import {
   invalidatePermissionsCache, isEditableRole, requireCap, resolveActor,
   type Capability, type EffectiveMatrix, type Override, type Role,
 } from "../lib/permissions";
-import { unauthorized } from "../lib/http";
+import { badRequest, unauthorized } from "../lib/http";
+import { localizedCapabilityDefs } from "../lib/permissionsI18n";
+import { langOf, type Lang } from "../i18n";
 
 const router: IRouter = Router();
 
@@ -36,11 +38,12 @@ function scopesOf(matrix: EffectiveMatrix, role: Role): Record<string, "desk" | 
   return out;
 }
 
-async function matrixPayload() {
+async function matrixPayload(lang: Lang) {
   const state = await getMatrixState();
   return {
     roles: ROLES,
-    capabilities: CAPABILITY_DEFS,
+    // Labels, descriptions and group titles in the reader's language (keys and flags unchanged; + groupCode).
+    capabilities: localizedCapabilityDefs(lang),
     defaults: DEFAULT_MATRIX,
     defaultScope: DEFAULT_SCOPE,
     overrides: state.overrides,
@@ -73,7 +76,7 @@ router.get("/permissions/me", asyncHandler(async (req, res): Promise<void> => {
 
 router.get("/permissions/matrix", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireStaff(req, res))) return;
-  res.json(await matrixPayload());
+  res.json(await matrixPayload(langOf(req)));
 }));
 
 const CellSchema = z.object({
@@ -91,8 +94,7 @@ router.put("/permissions/matrix", asyncHandler(async (req, res): Promise<void> =
   if (!(await requireCap(req, res, "permissions.manage"))) return;
   const parsed = PutBody.safeParse(req.body ?? {});
   if (!parsed.success) {
-    res.status(400).json({ error: "Некорректный запрос", issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
-    return;
+    throw badRequest("VALIDATION", { issues: parsed.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })) });
   }
   const actor = req.authUser!.name;
   await ensureRolePermissionsTable();
@@ -103,19 +105,19 @@ router.put("/permissions/matrix", asyncHandler(async (req, res): Promise<void> =
     next = [];
   } else {
     const cells = parsed.data.cells ?? [];
-    const problems: string[] = [];
+    const problems: { kind: "unknown_capability" | "locked_role" | "admin_only"; role: string; capability: string }[] = [];
     // Start from the current effective matrix and apply the requested cells on top.
     const matrix = buildEffectiveMatrix(before);
     for (const c of cells) {
       const def = capabilityDef(c.capability);
-      if (!def) { problems.push(`неизвестная возможность: ${c.capability}`); continue; }
-      if (!isEditableRole(c.role)) { problems.push(`роль «${c.role}» нельзя менять`); continue; }
-      if (def.adminOnly) { problems.push(`«${def.label}» доступна только админам`); continue; }
+      if (!def) { problems.push({ kind: "unknown_capability", role: c.role, capability: c.capability }); continue; }
+      if (!isEditableRole(c.role)) { problems.push({ kind: "locked_role", role: c.role, capability: c.capability }); continue; }
+      if (def.adminOnly) { problems.push({ kind: "admin_only", role: c.role, capability: c.capability }); continue; }
       const cell = matrix[c.role][def.key as Capability];
       cell.allowed = c.allowed;
       if (def.team && (c.scope === "desk" || c.scope === "assigned")) cell.scope = c.scope;
     }
-    if (problems.length) { res.status(400).json({ error: problems.join("; "), problems }); return; }
+    if (problems.length) throw badRequest("PERMISSIONS_CELLS_REJECTED", { problems });
     next = diffFromDefaults(matrix);
   }
 
@@ -147,7 +149,7 @@ router.put("/permissions/matrix", asyncHandler(async (req, res): Promise<void> =
   await logAudit({ actor, action: "permissions.matrix.update", targetType: "permissions", targetId: "matrix", details: { reset: !!parsed.data.reset, changed } });
   logger.info({ actor, changed: changed.length, reset: !!parsed.data.reset }, "permissions matrix updated");
 
-  res.json({ ...(await matrixPayload()), changed: changed.length });
+  res.json({ ...(await matrixPayload(langOf(req))), changed: changed.length });
 }));
 
 export default router;

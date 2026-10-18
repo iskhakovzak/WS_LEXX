@@ -9,6 +9,7 @@ import { CHART_CURSOR, CHART_TOOLTIP } from "@/components/stats/equity-panel";
 import { type Bucket } from "./api";
 import { fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { behaviorI18n } from "@/i18n/ns/behavior";
 
 const AXIS = { stroke: "hsl(var(--muted-foreground))", fontSize: 12, tickLine: false, axisLine: false } as const;
 
@@ -24,10 +25,10 @@ export const BucketBars = React.memo(function BucketBars({ data, ariaLabel, heig
       <div className="flex items-center justify-end">
         <Segmented
           size="sm"
-          ariaLabel={`${ariaLabel}: средний или суммарный нетто`}
+          ariaLabel={behaviorI18n.t("chart.modeAria", { label: ariaLabel })}
           value={mode}
           onChange={setMode}
-          options={[{ value: "avg", label: "ср. на сделку" }, { value: "sum", label: "сумма" }]}
+          options={[{ value: "avg", label: behaviorI18n.t("chart.avg") }, { value: "sum", label: behaviorI18n.t("chart.sum") }]}
         />
       </div>
       {hasData ? (
@@ -42,7 +43,7 @@ export const BucketBars = React.memo(function BucketBars({ data, ariaLabel, heig
                 cursor={CHART_CURSOR}
                 formatter={(v: number, _n, item) => {
                   const b = item.payload as Bucket;
-                  return [`${fmtUsd(v, { signed: true, decimals: "auto" })} · ${commonI18n.t("units.trades", { count: b.n })} · WR ${fmtRate(b.winRate)}`, mode === "avg" ? "ср. нетто" : "Σ нетто"];
+                  return [`${fmtUsd(v, { signed: true, decimals: "auto" })} · ${commonI18n.t("units.trades", { count: b.n })} · WR ${fmtRate(b.winRate)}`, mode === "avg" ? behaviorI18n.t("chart.avgNet") : behaviorI18n.t("chart.sumNet")];
                 }}
               />
               <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={40} isAnimationActive={!reduce}>
@@ -52,7 +53,8 @@ export const BucketBars = React.memo(function BucketBars({ data, ariaLabel, heig
           </ResponsiveContainer>
         </div>
       ) : (
-        <p className="py-8 text-center text-sm text-muted-foreground">Нет данных</p>
+        <p className="py-8 text-center text-sm text-muted-foreground">{behaviorI18n.t("chart.noData")}</p>
+
       )}
       <div className="grid gap-1 text-xs text-muted-foreground tabular-nums" style={{ gridTemplateColumns: `repeat(${rows.length}, minmax(0, 1fr))` }} aria-hidden="true">
         {rows.map((r) => <span key={r.label} className="truncate text-center">{r.n ? `n=${r.n}` : ""}</span>)}

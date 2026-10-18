@@ -20,7 +20,10 @@ import {
   Zap,
 } from "lucide-react";
 import { isToday, isYesterday } from "date-fns";
-import { fmtDate, fmtWeekday, pluralRu } from "@/lib/format";
+import { fmtDate, fmtRelative, fmtWeekday } from "@/lib/format";
+import { activityI18n } from "@/i18n/ns/activity";
+import { commonI18n } from "@/i18n/ns/common";
+import ruActivity from "@/i18n/locales/ru/activity";
 import type { Tone } from "@/components/ds";
 import { links } from "@/lib/links";
 
@@ -62,43 +65,50 @@ export type ActivitySummary = {
 
 /**
  * Sections of the feed. `path` is the landing page; `highlight` means the entity id can be deep-linked
- * (`?highlight=`). Sections without a path (digest) are informational only.
+ * (`?highlight=`). Sections without a path (digest) are informational only. Labels: `sectionMeta(s).label`.
  */
-export const SECTION_META: Record<string, { label: string; icon: LucideIcon; path?: string; highlight?: boolean }> = {
-  trades: { label: "Сделки", icon: List, path: "/trades", highlight: true },
-  "trade-ideas": { label: "Идеи", icon: Lightbulb, path: "/trade-ideas" },
-  playbook: { label: "Плейбук", icon: BookMarked, path: "/playbook", highlight: true },
-  discussions: { label: "Обсуждения", icon: MessageSquare, path: "/discussions" },
-  research: { label: "Архив исследований", icon: BookOpen, path: "/research" },
-  dailyfeed: { label: "Дневной фид", icon: Clock, path: "/dailyfeed" },
-  events: { label: "Катализаторы", icon: Zap, path: "/events" },
-  watchlist: { label: "Вотчлист", icon: Eye, path: "/watchlist" },
-  digest: { label: "Дайджест", icon: Mail },
-  journal: { label: "Журнал дня", icon: NotebookPen, path: "/journal" },
-  eod: { label: "Закрытие дня", icon: CalendarCheck, path: "/journal" },
-  risk: { label: "Риск", icon: ShieldAlert, path: "/risk" },
-  "game-plan": { label: "Game plan", icon: ClipboardCheck, path: "/game-plan" },
-  ratings: { label: "Оценки", icon: Star, path: "/ratings" },
-  sync: { label: "Синхронизация", icon: RefreshCw, path: "/integrations" },
-  scaling: { label: "Масштабирование", icon: TrendingUp, path: "/scaling" },
-  "weekly-review": { label: "Недельный 1:1", icon: CalendarCheck, path: "/weekly-review" },
-  offerings: { label: "Офферинги", icon: Megaphone, path: "/offerings" },
+export const SECTION_META: Record<string, { icon: LucideIcon; path?: string; highlight?: boolean }> = {
+  trades: { icon: List, path: "/trades", highlight: true },
+  "trade-ideas": { icon: Lightbulb, path: "/trade-ideas" },
+  playbook: { icon: BookMarked, path: "/playbook", highlight: true },
+  discussions: { icon: MessageSquare, path: "/discussions" },
+  research: { icon: BookOpen, path: "/research" },
+  dailyfeed: { icon: Clock, path: "/dailyfeed" },
+  events: { icon: Zap, path: "/events" },
+  watchlist: { icon: Eye, path: "/watchlist" },
+  digest: { icon: Mail },
+  journal: { icon: NotebookPen, path: "/journal" },
+  eod: { icon: CalendarCheck, path: "/journal" },
+  risk: { icon: ShieldAlert, path: "/risk" },
+  "game-plan": { icon: ClipboardCheck, path: "/game-plan" },
+  ratings: { icon: Star, path: "/ratings" },
+  sync: { icon: RefreshCw, path: "/integrations" },
+  scaling: { icon: TrendingUp, path: "/scaling" },
+  "weekly-review": { icon: CalendarCheck, path: "/weekly-review" },
+  offerings: { icon: Megaphone, path: "/offerings" },
 };
 
-export function sectionMeta(section: string) {
-  return SECTION_META[section] ?? { label: section, icon: Activity };
+/** Section icon/path plus its label in the current language (unknown codes show as is). */
+export function sectionMeta(section: string): { label: string; icon: LucideIcon; path?: string; highlight?: boolean } {
+  const def = SECTION_META[section];
+  const label = activityI18n.tryT(`sections.${section}`) ?? section;
+  return def ? { ...def, label } : { label, icon: Activity };
 }
 
-/** Action groups used by the "Тип" filter (sent to the API as an `actions` list). */
+/** Action groups used by the "Тип" filter (sent to the API as an `actions` list). Labels: `actionGroupLabel`. */
 export const ACTION_GROUPS = {
-  all: { label: "Все", actions: [] as string[] },
-  new: { label: "Новое", actions: ["created", "published", "converted", "synced"] },
-  edit: { label: "Изменения", actions: ["updated", "resubmitted", "reopened", "reconciled"] },
-  social: { label: "Ревью и реакции", actions: ["reviewed", "liked", "reacted", "commented", "rated", "acknowledged"] },
-  desk: { label: "Деск и риск", actions: ["closed", "violation", "halted", "limit_warning", "approved", "rejected", "conflict"] },
-  removed: { label: "Удаления", actions: ["deleted"] },
+  all: { actions: [] as string[] },
+  new: { actions: ["created", "published", "converted", "synced"] },
+  edit: { actions: ["updated", "resubmitted", "reopened", "reconciled"] },
+  social: { actions: ["reviewed", "liked", "reacted", "commented", "rated", "acknowledged"] },
+  desk: { actions: ["closed", "violation", "halted", "limit_warning", "approved", "rejected", "conflict"] },
+  removed: { actions: ["deleted"] },
 } as const;
 export type ActionGroup = keyof typeof ACTION_GROUPS;
+
+export function actionGroupLabel(g: ActionGroup): string {
+  return activityI18n.t(`groups.${g}`);
+}
 
 export function actionTone(action: string): Tone {
   switch (action) {
@@ -134,156 +144,138 @@ export function actionTone(action: string): Tone {
   }
 }
 
-type Forms = [string, string, string];
-type Gender = "m" | "f" | "n";
-/**
- * Nouns of the feed: nominative singular + gender (for the passive participle) and nominative plural forms (bursts).
- * The feed never conjugates a verb by the actor — we don't know anyone's gender, so phrases read
- * «Ольга Н.: добавлена сделка», «Закир: закрыт торговый день».
+/*
+ * Phrases never conjugate a verb by the actor — we don't know anyone's gender, so they read
+ * «Ольга Н.: добавлена сделка» / «Olga N.: trade added» / «Olga N.: savdo qoʻshildi». RU participles agree with the
+ * NOUN (its gender lives in the dictionary: `nouns.<section>.gender`); EN/UZ verbs have one form.
  */
-const NOUNS: Record<string, { nom: string; g: Gender; forms: Forms }> = {
-  trades: { nom: "сделка", g: "f", forms: ["сделка", "сделки", "сделок"] },
-  "trade-ideas": { nom: "идея", g: "f", forms: ["идея", "идеи", "идей"] },
-  playbook: { nom: "сетап", g: "m", forms: ["сетап", "сетапа", "сетапов"] },
-  discussions: { nom: "обсуждение", g: "n", forms: ["обсуждение", "обсуждения", "обсуждений"] },
-  research: { nom: "исследование", g: "n", forms: ["исследование", "исследования", "исследований"] },
-  events: { nom: "событие", g: "n", forms: ["событие", "события", "событий"] },
-  watchlist: { nom: "тикер", g: "m", forms: ["тикер", "тикера", "тикеров"] },
-  dailyfeed: { nom: "запись", g: "f", forms: ["запись", "записи", "записей"] },
-  journal: { nom: "запись журнала", g: "f", forms: ["запись журнала", "записи журнала", "записей журнала"] },
-  eod: { nom: "торговый день", g: "m", forms: ["торговый день", "торговых дня", "торговых дней"] },
-  risk: { nom: "лимит", g: "m", forms: ["лимит", "лимита", "лимитов"] },
-  "game-plan": { nom: "game plan", g: "m", forms: ["game plan", "game plan", "game plan"] },
-  ratings: { nom: "оценка", g: "f", forms: ["оценка", "оценки", "оценок"] },
-  sync: { nom: "синхронизация", g: "f", forms: ["синхронизация", "синхронизации", "синхронизаций"] },
-  scaling: { nom: "шаг масштабирования", g: "m", forms: ["шаг масштабирования", "шага масштабирования", "шагов масштабирования"] },
-  "weekly-review": { nom: "недельный разбор", g: "m", forms: ["недельный разбор", "недельных разбора", "недельных разборов"] },
-  offerings: { nom: "офферинг", g: "m", forms: ["офферинг", "офферинга", "офферингов"] },
-};
-const NOUN_FALLBACK: { nom: string; g: Gender; forms: Forms } = { nom: "запись", g: "f", forms: ["запись", "записи", "записей"] };
+type NounKey = keyof typeof ruActivity.nouns;
+type VerbKey = keyof typeof ruActivity.verbs;
+type Gender = "m" | "f" | "n";
 
-/** Short passive participles [м, ж, ср]; the neuter form also serves counts («добавлено 12 сделок»). */
-const PARTICIPLES: Record<string, [string, string, string]> = {
-  created: ["добавлен", "добавлена", "добавлено"],
-  updated: ["обновлён", "обновлена", "обновлено"],
-  deleted: ["удалён", "удалена", "удалено"],
-  published: ["опубликован", "опубликована", "опубликовано"],
-  resubmitted: ["пересдан", "пересдана", "пересдано"],
-  acknowledged: ["подтверждён", "подтверждена", "подтверждено"],
-  rated: ["оценён", "оценена", "оценено"],
-  synced: ["синхронизирован", "синхронизирована", "синхронизировано"],
-  reconciled: ["сверен", "сверена", "сверено"],
-  closed: ["закрыт", "закрыта", "закрыто"],
-  reopened: ["переоткрыт", "переоткрыта", "переоткрыто"],
-  reviewed: ["разобран", "разобрана", "разобрано"],
-  approved: ["утверждён", "утверждена", "утверждено"],
-  rejected: ["отклонён", "отклонена", "отклонено"],
-};
-const G_IDX: Record<Gender, 0 | 1 | 2> = { m: 0, f: 1, n: 2 };
+const hasOwn = (o: object, k: string) => Object.prototype.hasOwnProperty.call(o, k);
+
+function nounKey(section: string): NounKey {
+  return (hasOwn(ruActivity.nouns, section) ? section : "fallback") as NounKey;
+}
+function isVerb(action: string): action is VerbKey {
+  return hasOwn(ruActivity.verbs, action);
+}
+function nounGender(k: NounKey): Gender {
+  const g = activityI18n.t(`nouns.${k}.gender`);
+  return g === "m" || g === "f" ? g : "n";
+}
 
 /** «добавлена сделка» — the participle agrees with the noun, never with the actor. */
 function passive(action: string, section: string): string {
-  const noun = NOUNS[section] ?? NOUN_FALLBACK;
-  const v = PARTICIPLES[action]?.[G_IDX[noun.g]];
-  return v ? `${v} ${noun.nom}` : `${action}: ${noun.nom}`;
+  const k = nounKey(section);
+  const noun = activityI18n.t(`nouns.${k}.word`);
+  if (!isVerb(action)) return activityI18n.t("phrase.unknown", { action, noun });
+  return activityI18n.t("phrase.single", { verb: activityI18n.t(`verbs.${action}.${nounGender(k)}`), noun });
 }
 
 /** Playbook rows that are really about a setup's examples («Эталоны (Tier 1): +2», «Эталон убран …»), not the setup. */
 export function isExampleChange(item: Pick<FeedItem, "section" | "details">): boolean {
-  return item.section === "playbook" && /^Эталон/.test(item.details ?? "");
+  // `details` is text the server logged in Russian; this only recognizes it, nothing is shown.
+  return item.section === "playbook" && /^Эталон/.test(item.details ?? ""); // i18n-ignore
 }
 
-const RATING_LABEL: Record<string, string> = { excellent: "отлично", good: "хорошо", needs_work: "есть над чем работать", poor: "плохо" };
-/** Curator rating key → Russian (unknown values pass through). */
+/** Curator rating key → text in the UI language (unknown values pass through). */
 export function ratingLabel(r: string): string {
-  return RATING_LABEL[r] ?? r;
+  return activityI18n.tryT(`ratings.${r}`) ?? r;
 }
 
-const REACTION_LABEL: Record<string, string> = { thumbs_up: "👍 За", thumbs_down: "👎 Против", warning: "⚠️ Осторожно" };
-/** Idea reactions are logged as «thumbs_down: comment» — show the reaction in Russian. */
+// Stored comment prefixes (discussions/lib.ts COMMENT_RE); data, matched in every UI language.
+const COMMENT_PREFIX = /^(\[(?:Observing|In Position|Exited|Наблюдаю|В позиции|Вышел)\]\s*)?(\[re:\d+\]\s*)?/; // i18n-ignore
+
+/** Idea reactions are logged as «thumbs_down: comment» — show the reaction in the UI language. */
 export function detailsText(item: Pick<FeedItem, "action" | "details">): string | null {
   const d = item.details;
+  // Comments are logged with their machine prefixes («[Наблюдаю] [re:12] text»): show what the person wrote.
+  if (d && item.action === "commented") return d.replace(COMMENT_PREFIX, "") || d;
   if (!d || item.action !== "reacted") return d;
   const m = /^(thumbs_up|thumbs_down|warning)(?::\s*(.*))?$/s.exec(d);
   if (!m) return d;
-  return m[2] ? `${REACTION_LABEL[m[1]!]}: ${m[2]}` : REACTION_LABEL[m[1]!]!;
+  const reaction = activityI18n.tryT(`reactions.${m[1]}`) ?? m[1]!;
+  return m[2] ? activityI18n.t("reactionWithText", { reaction, text: m[2] }) : reaction;
 }
 
 /**
- * Phrase shown after «Имя:» for a single feed item, e.g. «добавлена сделка».
- * Gender-neutral by construction: passive participles agree with the noun, never with the actor.
+ * Phrase shown after «Имя:» for a single feed item, e.g. «добавлена сделка» / «trade added».
+ * Gender-neutral by construction: RU participles agree with the noun, EN/UZ use the passive.
  */
 export function describe(item: FeedItem): string {
+  const t = activityI18n.t;
   const s = item.section;
   if (isExampleChange(item)) {
-    if (item.action === "created") return "добавлен эталон в сетап";
-    if (item.action === "deleted") return "убран эталон из сетапа";
-    if (item.action === "updated") return "изменён эталон в сетапе";
+    if (item.action === "created") return t("special.exampleAdded");
+    if (item.action === "deleted") return t("special.exampleRemoved");
+    if (item.action === "updated") return t("special.exampleChanged");
   }
   switch (item.action) {
     case "reviewed":
-      if (s === "trades") return "ревью на сделку";
-      if (s === "eod" || s === "journal") return "разобран торговый день";
-      if (s === "weekly-review") return "проведён недельный разбор";
+      if (s === "trades") return t("special.tradeReview");
+      if (s === "eod" || s === "journal") return t("special.dayReviewed");
+      if (s === "weekly-review") return t("special.weekReviewed");
       return passive("reviewed", s);
-    case "liked": return "реакция на сделку";
-    case "reacted": return "реакция на идею";
-    case "commented": return "комментарий в обсуждении";
-    case "converted": return "идея переведена в сделку";
-    case "digest_evening_sent": return "отправлен вечерний дайджест";
-    case "digest_morning_sent": return "отправлен утренний дайджест";
+    case "liked": return t("special.tradeReaction");
+    case "reacted": return t("special.ideaReaction");
+    case "commented": return t("special.comment");
+    case "converted": return t("special.ideaConverted");
+    case "digest_evening_sent": return t("special.digestEvening");
+    case "digest_morning_sent": return t("special.digestMorning");
     case "created":
-      if (s === "discussions") return "открыто обсуждение";
-      if (s === "game-plan") return "написан game plan";
-      if (s === "journal") return "заполнен журнал дня";
+      if (s === "discussions") return t("special.discussionOpened");
+      if (s === "game-plan") return t("special.gamePlanWritten");
+      if (s === "journal") return t("special.journalFilled");
       return passive("created", s);
     case "closed":
-      if (s === "eod" || s === "journal") return "закрыт торговый день";
+      if (s === "eod" || s === "journal") return t("special.dayClosed");
       return passive("closed", s);
     case "reopened":
-      if (s === "eod" || s === "journal") return "переоткрыт торговый день";
+      if (s === "eod" || s === "journal") return t("special.dayReopened");
       return passive("reopened", s);
     case "acknowledged":
-      if (s === "game-plan") return "прочитан game plan";
-      if (s === "risk") return "подтверждено нарушение";
+      if (s === "game-plan") return t("special.gamePlanRead");
+      if (s === "risk") return t("special.violationAcknowledged");
       return passive("acknowledged", s);
     case "rated":
-      return s === "ratings" || s === "trades" ? "поставлена оценка" : passive("rated", s);
+      return s === "ratings" || s === "trades" ? t("special.gradeGiven") : passive("rated", s);
     case "synced":
-      return s === "sync" ? "сделки синхронизированы из PropReports" : passive("synced", s);
-    case "reconciled": return "сделки сверены с брокером";
-    case "conflict": return "найдено расхождение с брокером";
-    case "violation": return "нарушение правила";
-    case "halted": return "остановка: дневной лимит";
-    case "limit_warning": return "близко к лимиту";
+      return s === "sync" ? t("special.tradesSynced") : passive("synced", s);
+    case "reconciled": return t("special.tradesReconciled");
+    case "conflict": return t("special.brokerMismatch");
+    case "violation": return t("special.ruleViolation");
+    case "halted": return t("special.halted");
+    case "limit_warning": return t("special.nearLimit");
     case "approved":
-      if (s === "scaling") return "утверждено масштабирование";
+      if (s === "scaling") return t("special.scalingApproved");
       return passive("approved", s);
     case "rejected":
-      if (s === "scaling") return "отклонено масштабирование";
+      if (s === "scaling") return t("special.scalingRejected");
       return passive("rejected", s);
     default:
-      return PARTICIPLES[item.action] ? passive(item.action, s) : item.action;
+      return isVerb(item.action) ? passive(item.action, s) : item.action;
   }
 }
 
-/** Phrase for a collapsed burst of N identical actions («добавлено 12 сделок»). */
+/** Phrase for a collapsed burst of N identical actions («добавлено: 12 сделок» / «12 trades added»). */
 export function describeBurst(action: string, section: string, n: number, examples = false): string {
-  const forms = (NOUNS[section] ?? NOUN_FALLBACK).forms;
-  if (examples && action === "created") return `добавлено эталонов: ${n}`;
-  if (examples && action === "deleted") return `убрано эталонов: ${n}`;
+  const t = activityI18n.t;
+  if (examples && action === "created") return t("bursts.examplesAdded", { count: n });
+  if (examples && action === "deleted") return t("bursts.examplesRemoved", { count: n });
+  const nouns = activityI18n.tryT(`nouns.${nounKey(section)}.count`, { count: n }) ?? String(n);
   switch (action) {
-    case "reviewed": return section === "trades" ? `${n} ревью на сделки` : `разобрано: ${n} ${pluralRu(n, ...forms)}`;
-    case "rated": return `поставлено оценок: ${n}`;
+    case "reviewed":
+      return section === "trades" ? t("bursts.tradeReviews", { count: n }) : t("phrase.burst", { verb: t("verbs.reviewed.n"), nouns });
+    case "rated": return t("bursts.grades", { count: n });
     case "liked":
-    case "reacted": return `${n} ${pluralRu(n, "реакция", "реакции", "реакций")}`;
-    case "commented": return `${n} ${pluralRu(n, "комментарий", "комментария", "комментариев")}`;
-    case "synced": return `синхронизировано сделок: ${n}`;
-    case "violation": return `${n} ${pluralRu(n, "нарушение правил", "нарушения правил", "нарушений правил")}`;
-    default: {
-      const v = PARTICIPLES[action]?.[2];
-      return v ? `${v}: ${n} ${pluralRu(n, ...forms)}` : `${action}: ${n} ${pluralRu(n, ...forms)}`;
-    }
+    case "reacted": return t("bursts.reactions", { count: n });
+    case "commented": return t("bursts.comments", { count: n });
+    case "synced": return t("bursts.tradesSynced", { count: n });
+    case "violation": return t("bursts.violations", { count: n });
+    default:
+      return t("phrase.burst", { verb: isVerb(action) ? t(`verbs.${action}.n`) : action, nouns });
   }
 }
 
@@ -342,8 +334,8 @@ export function dayKey(iso: string): string {
 
 export function dayLabel(iso: string): string {
   const d = new Date(iso);
-  if (isToday(d)) return "Сегодня";
-  if (isYesterday(d)) return "Вчера";
+  if (isToday(d)) return commonI18n.t("time.today");
+  if (isYesterday(d)) return commonI18n.t("time.yesterday");
   const sameYear = d.getFullYear() === new Date().getFullYear();
   return `${fmtDate(d, sameYear ? "dayMonthLong" : "long")}, ${fmtWeekday(d, "long")}`;
 }
@@ -360,11 +352,7 @@ export function timeLabel(iso: string): string {
 export function relTime(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "—";
-  const diff = Math.floor((Date.now() - d.getTime()) / 1000);
-  if (diff < 60) return "только что";
-  if (diff < 3600) return `${Math.floor(diff / 60)} мин назад`;
-  if (diff < 86400) return `${Math.floor(diff / 3600)} ч назад`;
-  return fmtDate(d, "dateTime");
+  return Date.now() - d.getTime() < 86_400_000 ? fmtRelative(d) : fmtDate(d, "dateTime");
 }
 
 export type Burst = { key: string; items: FeedItem[] };

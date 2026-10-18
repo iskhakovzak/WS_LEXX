@@ -17,6 +17,7 @@ import { divergingCell, strategyColor, useDark, yearColor } from "./palette";
 import type { Ctx } from "./overview";
 import { fmtCount } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { officeI18n } from "@/i18n/ns/officeStats";
 
 function Swatch({ s, dark }: { s: Strategy; dark: boolean }) {
   return <span className="h-2.5 w-2.5 shrink-0 rounded-[3px]" style={{ background: strategyColor(s, dark) }} aria-hidden="true" />;
@@ -34,6 +35,7 @@ export function StrategyLegend({ className }: { className?: string }) {
 /** Ranked contribution of each strategy per year — negatives in parentheses, like the partners' sheet. */
 export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[] }) {
   const { unit } = ctx;
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const shown = [...years].filter((y) => y.hasData).sort((a, b) => b.year - a.year);
   // Shared domain across years: zero sits where the most negative / most positive values leave it room.
@@ -43,8 +45,8 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
   const span = Math.max(1e-9, hi - lo);
   const zero = (-lo / span) * 100;
   return (
-    <Panel title="Итог по стратегиям" description="вклад каждой стратегии в результат года · убыток — в скобках" icon={ListOrdered} fill className="lg:col-span-6">
-      {!shown.length ? <EmptyState compact icon={ListOrdered} title="Нет сделок за выбранные годы" /> : (
+    <Panel title={t("strategies.totalTitle")} description={t("strategies.totalDesc")} icon={ListOrdered} fill className="lg:col-span-6">
+      {!shown.length ? <EmptyState compact icon={ListOrdered} title={t("strategies.noTradesYears")} /> : (
         // Split years side by side only when the panel itself is wide enough — a row needs ~13rem.
         <div className="@container">
         <div className={cn("grid gap-5", shown.length > 1 && "@md:grid-cols-2")}>
@@ -89,16 +91,17 @@ export function TotalNetByStrategy({ ctx, years }: { ctx: Ctx; years: YearView[]
 /** Net by Strategy — one small multiple per strategy, shared x (day of year), own y. */
 export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
   const { view, focus, unit } = ctx;
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const years = React.useMemo(() => [...view.years].filter((y) => y.year <= focus.year && y.hasData).sort((a, b) => b.year - a.year), [view, focus.year]);
   const fmtY = React.useCallback((v: number) => fmtAxis(v, unit), [unit]);
   return (
     <Panel
-      title="Результат по стратегиям"
-      description={`нарастающим итогом по дням года · ${years.map((y) => y.year).join(" и ") || "—"} · полоска — доля объёма`}
+      title={t("strategies.multiplesTitle")}
+      description={t("strategies.multiplesDesc", { years: years.map((y) => y.year).join(t("chart.yearsJoin")) || "—" })}
       icon={BarChart3}
     >
-      {!years.length ? <EmptyState compact icon={BarChart3} title="Нет сделок" /> : (
+      {!years.length ? <EmptyState compact icon={BarChart3} title={t("states.noTrades")} /> : (
         <>
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
             {years.map((y, rank) => (
@@ -132,7 +135,7 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
                       fmtY={fmtY}
                       height={96}
                       compact
-                      ariaLabel={`${k}: нарастающий результат по годам`}
+                      ariaLabel={t("strategies.multiplesAria", { strategy: k })}
                       renderTooltip={(_x, rows) => (
                         <div className="flex flex-col gap-0.5">
                           {rows[0]?.point && <p className="text-muted-foreground">{fmtDay(rows[0].point.date)}</p>}
@@ -146,16 +149,16 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
                       )}
                     />
                   ) : (
-                    <div className="grid h-[96px] place-items-center text-xs text-muted-foreground">нет сделок</div>
+                    <div className="grid h-[96px] place-items-center text-xs text-muted-foreground">{t("states.noTradesShort")}</div>
                   )}
                   <div className="flex items-center gap-2 text-2xs text-muted-foreground">
-                    <span className="shrink-0 whitespace-nowrap">объём {fmtShare(rowF?.volumeShare)}</span>
+                    <span className="shrink-0 whitespace-nowrap">{t("strategies.volumeShort", { share: fmtShare(rowF?.volumeShare) })}</span>
                     <span className="relative h-1.5 flex-1 rounded-full bg-[var(--glass-bg)]">
                       <span className="absolute inset-y-0 left-0 rounded-full" style={{ width: `${Math.min(100, (rowF?.volumeShare ?? 0) * 100)}%`, background: strategyColor(k, dark) }} />
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-x-3 text-2xs tabular-nums text-muted-foreground">
-                    <span>{rowF?.trades ?? 0} сд.</span>
+                    <span>{commonI18n.t("units.trades", { count: rowF?.trades ?? 0 })}</span>
                     <span>WR {fmtShare(rowF?.winRate)}</span>
                     <span>PF {rowF?.profitFactor != null ? rowF.profitFactor.toFixed(2) : "—"}</span>
                     {rowF?.avgR != null && <span>{rowF.avgR >= 0 ? "+" : "−"}{Math.abs(rowF.avgR).toFixed(2)}R</span>}
@@ -164,8 +167,8 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
               );
             })}
             <div className="tile flex min-w-0 flex-col justify-center gap-2 p-3 text-xs text-muted-foreground">
-              <p className="font-medium text-foreground">Как читать</p>
-              <p>Цветная линия — {focus.year}, серые — прошлые годы к тому же дню. У каждой мини‑диаграммы своя шкала: сравнивайте форму, а величину — по цифре справа сверху.</p>
+              <p className="font-medium text-foreground">{t("strategies.howToRead")}</p>
+              <p>{t("strategies.howToReadText", { year: focus.year })}</p>
             </div>
           </div>
         </>
@@ -176,12 +179,13 @@ export function StrategyMultiples({ ctx }: { ctx: Ctx }) {
 
 /** Share of volume by strategy per year — 100% stacked bars. */
 export function VolumeShare({ years }: { years: YearView[] }) {
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const shown = [...years].filter((y) => y.hasData).sort((a, b) => b.year - a.year);
   const [hover, setHover] = React.useState<string | null>(null);
   return (
-    <Panel title="Объём по стратегиям" description="доля акций, проторгованных каждой стратегией, по годам" icon={Layers} fill className="lg:col-span-6">
-      {!shown.length ? <EmptyState compact icon={Layers} title="Нет сделок" /> : (
+    <Panel title={t("strategies.volumeTitle")} description={t("strategies.volumeDesc")} icon={Layers} fill className="lg:col-span-6">
+      {!shown.length ? <EmptyState compact icon={Layers} title={t("states.noTrades")} /> : (
         <div className="flex flex-col gap-4">
           {shown.map((y) => {
             const parts = y.strategies.filter((s) => (s.volumeShare ?? 0) > 0);
@@ -200,7 +204,7 @@ export function VolumeShare({ years }: { years: YearView[] }) {
                         key={p.key}
                         onMouseEnter={() => setHover(id)}
                         onMouseLeave={() => setHover(null)}
-                        title={`${p.key} · ${fmtShare(p.volumeShare, 1)} объёма · ${commonI18n.t("units.trades", { count: p.trades })}`}
+                        title={t("strategies.volumeTip", { strategy: p.key, share: fmtShare(p.volumeShare, 1), trades: commonI18n.t("units.trades", { count: p.trades }) })}
                         className={cn("relative grid min-w-[3px] place-items-center overflow-hidden text-2xs font-semibold text-white transition-opacity first:rounded-l-md last:rounded-r-md", hover && hover !== id && "opacity-50")}
                         style={{ width: `${w}%`, background: strategyColor(p.key, dark) }}
                       >
@@ -222,14 +226,15 @@ export function VolumeShare({ years }: { years: YearView[] }) {
 /** Strategy × month matrix of the focus year. */
 export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMonth: (m: number) => void }) {
   const { focus, unit } = ctx;
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const rows = focus.strategies.filter((s) => s.trades > 0);
   const max = Math.max(1e-9, ...rows.flatMap((r) => r.monthly.map((v) => Math.abs(v ?? 0))));
   const lastMonth = focus.months.reduce((a, m) => (m.days ? m.month : a), 0);
   const cols = Math.max(1, lastMonth);
   return (
-    <Panel title={`Стратегии по месяцам · ${focus.year}`} description="где и когда офис зарабатывал · клик по месяцу — открыть период" icon={Grid3x3}>
-      {!rows.length ? <EmptyState compact icon={Grid3x3} title="Нет сделок" /> : (
+    <Panel title={t("strategies.matrixTitle", { year: focus.year })} description={t("strategies.matrixDesc")} icon={Grid3x3}>
+      {!rows.length ? <EmptyState compact icon={Grid3x3} title={t("states.noTrades")} /> : (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[560px] border-separate border-spacing-[3px] text-xs tabular-nums">
             <thead>
@@ -240,7 +245,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                     <button type="button" onClick={() => onPickMonth(i + 1)} className="rounded px-1 hover:text-foreground">{monthShort(i)}</button>
                   </th>
                 ))}
-                <th className="pl-2 text-right font-medium text-muted-foreground">Год</th>
+                <th className="pl-2 text-right font-medium text-muted-foreground">{t("strategies.year")}</th>
               </tr>
             </thead>
             <tbody>
@@ -254,7 +259,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                         key={i}
                         className="h-8 rounded-md text-center font-medium text-foreground"
                         style={{ background: v == null ? "transparent" : divergingCell(v, max) }}
-                        title={`${r.key} · ${monthShort(i)}: ${v == null ? "нет сделок" : fmtV(v, unit)}`}
+                        title={`${r.key} · ${monthShort(i)}: ${v == null ? t("states.noTradesShort") : fmtV(v, unit)}`}
                       >
                         {v == null ? <span className="text-muted-foreground/50">·</span> : fmtAxis(v, unit)}
                       </td>
@@ -264,7 +269,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
                 </tr>
               ))}
               <tr>
-                <td className="pr-2 pt-1 font-medium text-foreground">Офис</td>
+                <td className="pr-2 pt-1 font-medium text-foreground">{t("strategies.office")}</td>
                 {Array.from({ length: cols }, (_, i) => {
                   const v = focus.months[i]?.v;
                   return <td key={i} className={cn("pt-1 text-center font-semibold", (v ?? 0) > 0 ? "text-up" : (v ?? 0) < 0 ? "text-down" : "text-muted-foreground")}>{v == null ? "—" : fmtAxis(v, unit)}</td>;
@@ -283,6 +288,7 @@ export function StrategyMonthMatrix({ ctx, onPickMonth }: { ctx: Ctx; onPickMont
 type StrategyRowT = PeriodView["strategies"][number];
 
 export function StrategyTable({ period, prev, unit, periodLabel }: { period: PeriodView; prev: PrevPeriod | null; unit: Unit; periodLabel: string }) {
+  const { t } = officeI18n.useT();
   const dark = useDark();
   const prevBy = React.useMemo(() => new Map((prev?.strategies ?? []).map((s) => [s.key, s.net])), [prev]);
   const hasPrev = !!prev && prev.totals.trades > 0;
@@ -301,30 +307,30 @@ export function StrategyTable({ period, prev, unit, periodLabel }: { period: Per
   const exportCsv = () => {
     const u = unit === "usd" ? "$" : "%";
     downloadCsv(`office-strategies-${period.from}_${period.to}-${unit}.csv`, [
-      ["Стратегия", "Сделок", "WR", "PF", "Ср. R", `Нетто ${u}`, ...(hasPrev ? [`Δ к прошл. году ${u}`] : []), "Доля результата", "Доля объёма"],
+      [t("cols.strategy"), t("cols.trades"), "WR", "PF", commonI18n.t("trading.avgR"), t("cols.netUnit", { unit: u }), ...(hasPrev ? [t("cols.deltaPrevYearUnit", { unit: u })] : []), t("cols.netShare"), t("cols.volShare")],
       ...rows.map((s) => [s.key, s.trades, s.winRate, s.profitFactor, s.avgR, s.net, ...(hasPrev ? [accessors.delta(s)] : []), s.netShare, s.volumeShare]),
     ]);
   };
   return (
     <Panel
-      title="Качество стратегий"
-      description={`${periodLabel} · винрейт, профит‑фактор, средний R и доля в результате${hasPrev ? " · Δ — к тому же периоду прошлого года" : ""}`}
+      title={t("strategies.qualityTitle")}
+      description={t(hasPrev ? "strategies.qualityDescPrev" : "strategies.qualityDesc", { period: periodLabel })}
       icon={Rows3}
-      actions={<Button variant="ghost" size="sm" onClick={exportCsv} aria-label="Скачать таблицу стратегий CSV"><Download className="h-4 w-4" /> CSV</Button>}
+      actions={<Button variant="ghost" size="sm" onClick={exportCsv} aria-label={t("strategies.csvAria")}><Download className="h-4 w-4" /> CSV</Button>}
     >
-      <DataTable ariaLabel="Стратегии за период">
+      <DataTable ariaLabel={t("strategies.tableAria")}>
         <table>
           <thead>
             <tr>
-              <SortableTh {...thProps("key")}>Стратегия</SortableTh>
-              <SortableTh {...thProps("trades")} align="right">Сделок</SortableTh>
+              <SortableTh {...thProps("key")}>{t("cols.strategy")}</SortableTh>
+              <SortableTh {...thProps("trades")} align="right">{t("cols.trades")}</SortableTh>
               <SortableTh {...thProps("wr")} align="right">WR</SortableTh>
               <SortableTh {...thProps("pf")} align="right">PF</SortableTh>
-              <SortableTh {...thProps("r")} align="right">Ср. R</SortableTh>
-              <SortableTh {...thProps("net")} align="right">Нетто</SortableTh>
-              {hasPrev && <SortableTh {...thProps("delta")} align="right">Δ к прошл. году</SortableTh>}
-              <SortableTh {...thProps("netShare")} align="right">Доля результата</SortableTh>
-              <SortableTh {...thProps("volShare")} align="right">Доля объёма</SortableTh>
+              <SortableTh {...thProps("r")} align="right">{commonI18n.t("trading.avgR")}</SortableTh>
+              <SortableTh {...thProps("net")} align="right">{t("cols.net")}</SortableTh>
+              {hasPrev && <SortableTh {...thProps("delta")} align="right">{t("cols.deltaPrevYear")}</SortableTh>}
+              <SortableTh {...thProps("netShare")} align="right">{t("cols.netShare")}</SortableTh>
+              <SortableTh {...thProps("volShare")} align="right">{t("cols.volShare")}</SortableTh>
             </tr>
           </thead>
           <tbody>

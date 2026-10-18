@@ -7,7 +7,7 @@
  *
  *   // texts generated on read → the request language
  *   const t = commonT.tFor(langOf(req));
- *   res.status(403).json({ error: t("errors.forbidden"), code: "FORBIDDEN" });
+ *   res.json({ title: t("summary.title") });                 // (errors: throw AppError, see lib/http)
  *
  *   // texts stored or sent later (notifications, Telegram, digests) → the RECIPIENT's language
  *   const t = commonT.tFor(await localeOfUser(recipientName));
@@ -36,6 +36,8 @@ export type ServerNamespace<D extends Dict> = {
   tFor: (lang: Lang | null | undefined) => TFunction<D>;
   /** For keys built at runtime (enum codes): text or undefined. */
   tryFor: (lang: Lang | null | undefined, key: string, params?: Params) => string | undefined;
+  /** Raw template(s) of a key in `lang` (RU fallback); plural entries → every form. Undefined when missing. */
+  templatesFor: (lang: Lang | null | undefined, key: string) => string[] | undefined;
 };
 
 export function defineNamespace<D extends Dict>(ru: D, others: { en: Dict; uz: Dict }): ServerNamespace<D> {
@@ -51,7 +53,13 @@ export function defineNamespace<D extends Dict>(ru: D, others: { en: Dict; uz: D
     const base = lookup(ru, key);
     return base === undefined ? undefined : renderEntry(base, "ru", params);
   };
-  return { tFor, tryFor };
+  const templatesFor = (lang: Lang | null | undefined, key: string) => {
+    const l = isLang(lang) ? lang : DEFAULT_LANG;
+    const e = (l === "ru" ? undefined : lookup(dicts[l], key)) ?? lookup(ru, key);
+    if (e === undefined) return undefined;
+    return typeof e === "string" ? [e] : Object.values(e).filter((x): x is string => typeof x === "string");
+  };
+  return { tFor, tryFor, templatesFor };
 }
 
 /** "en", "EN", "en-US", "uz-Latn" → Lang; anything else → null. */

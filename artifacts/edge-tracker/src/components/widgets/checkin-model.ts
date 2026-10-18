@@ -1,4 +1,6 @@
 import type { Tone } from "@/components/ds";
+import { commonI18n } from "@/i18n/ns/common";
+import { liveLabels } from "@/i18n/live-labels";
 
 export type CheckinFlags = {
   sleepWell: boolean;
@@ -52,20 +54,18 @@ export function readinessTone(score: number | null | undefined): Tone {
 }
 
 export function readinessLabel(score: number): string {
-  if (score >= 80) return "Готов к сессии";
-  if (score >= 70) return "В рабочем состоянии";
-  if (score >= 50) return "Торгуй аккуратно";
-  if (score >= 30) return "Сократи размер";
-  return "Лучше пропустить сессию";
+  const t = (k: "ready" | "working" | "careful" | "cutSize" | "skip") => commonI18n.t(`widgets.readiness.${k}`);
+  if (score >= 80) return t("ready");
+  if (score >= 70) return t("working");
+  if (score >= 50) return t("careful");
+  if (score >= 30) return t("cutSize");
+  return t("skip");
 }
 
-export const FLAG_LABEL: Record<keyof CheckinFlags, string> = {
-  sleepWell: "Выспался",
-  focused: "В фокусе",
-  stressed: "Стресс",
-  anxious: "Тревога",
-  tilted: "Тильт",
-  revenge: "Хочу отыграться",
-};
+/** Flag names in the UI language (read on access). */
+export const FLAG_LABEL: Readonly<Record<keyof CheckinFlags, string>> = liveLabels(
+  ["sleepWell", "focused", "stressed", "anxious", "tilted", "revenge"] as const,
+  (k) => commonI18n.t(`widgets.flags.${k}`),
+);
 
 export const NEGATIVE_FLAGS = ["stressed", "anxious", "tilted", "revenge"] as const;

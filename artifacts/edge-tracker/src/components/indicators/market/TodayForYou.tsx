@@ -8,6 +8,7 @@ import { NetBar, type DimResult } from "./EdgeByRegime";
 import { dayLabel, toneOfMoney, usd } from "./format";
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { indicatorsI18n } from "@/i18n/ns/indicators";
 
 const TEXT = { up: "text-up", down: "text-down", neutral: "text-foreground" } as const;
 const tx = (v: number) => TEXT[toneOfMoney(v) as keyof typeof TEXT];
@@ -24,6 +25,7 @@ export function TodayForYou({
   alertsCount: number;
   sectors: { up: number; total: number; label: string } | null;
 }) {
+  const { t } = indicatorsI18n.useT();
   const n = analogues.length;
   const net = analogues.reduce((a, x) => a + x.day.net, 0);
   const avg = n ? net / n : 0;
@@ -39,35 +41,42 @@ export function TodayForYou({
   const max = Math.max(1, ...todayRows.map((x) => Math.abs(x.b.netPerDay)), Math.abs(base.netPerDay));
 
   return (
-    <Panel title="Что это значит для тебя" description={sessionLabel} icon={Compass} fill>
+    <Panel title={t("today.title")} description={sessionLabel} icon={Compass} fill>
       <div className="flex flex-col gap-4">
         <div className="tile flex flex-col gap-1 p-3">
-          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><History className="h-3.5 w-3.5" aria-hidden="true" />В похожих днях ты в среднем</span>
+          <span className="flex items-center gap-1.5 text-xs text-muted-foreground"><History className="h-3.5 w-3.5" aria-hidden="true" />{t("today.similarAvg")}</span>
           {n ? (
             <>
-              <span className={cn("text-2xl font-semibold leading-tight tabular-nums", tx(avg))}>{usd(avg)} <span className="text-sm font-normal text-muted-foreground">в день</span></span>
+              <span className={cn("text-2xl font-semibold leading-tight tabular-nums", tx(avg))}>{usd(avg)} <span className="text-sm font-normal text-muted-foreground">{t("today.perDay")}</span></span>
               <span className="text-xs text-muted-foreground tabular-nums">
-                {commonI18n.t("units.days", { count: n })} · в плюсе {green} из {n} · медиана {usd(median)} · WR {fmtRate(w + l ? w / (w + l) : null)} · обычно {usd(base.netPerDay)} в день
+                {t("today.summary", {
+                  days: commonI18n.t("units.days", { count: n }),
+                  green,
+                  n,
+                  median: usd(median),
+                  wr: fmtRate(w + l ? w / (w + l) : null),
+                  base: usd(base.netPerDay),
+                })}
               </span>
-              {n < MIN_DAYS && <Pill tone="warn" className="mt-1 self-start">мало похожих дней</Pill>}
+              {n < MIN_DAYS && <Pill tone="warn" className="mt-1 self-start">{t("today.fewSimilar")}</Pill>}
             </>
           ) : (
-            <span className="text-sm text-muted-foreground">Пока не с чем сравнить: нужно больше торговых дней.</span>
+            <span className="text-sm text-muted-foreground">{t("today.nothingYet")}</span>
           )}
         </div>
 
         {todayRows.length > 0 && (
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium text-muted-foreground">Твой результат при таких условиях</p>
+            <p className="text-xs font-medium text-muted-foreground">{t("today.yourResult")}</p>
             <ul className="flex flex-col gap-2">
               {todayRows.map(({ r, b }) => (
                 <li key={r.dim.id} className="grid grid-cols-[minmax(0,1fr)_4.5rem_5rem] items-center gap-2 text-sm tabular-nums">
                   <span className="min-w-0">
                     <span className="block truncate text-xs text-muted-foreground">{r.dim.label}</span>
-                    <span className="block truncate" title={`${b.label} · ${b.days} дн.`}>{b.label}<span className="text-xs text-muted-foreground"> · {b.days} дн.</span></span>
+                    <span className="block truncate" title={`${b.label} · ${t("today.daysShort", { count: b.days })}`}>{b.label}<span className="text-xs text-muted-foreground"> · {t("today.daysShort", { count: b.days })}</span></span>
                   </span>
                   <NetBar v={b.netPerDay} max={max} dim={b.days < MIN_DAYS} />
-                  <span className={cn("text-right font-medium", b.days < MIN_DAYS ? "text-muted-foreground" : tx(b.netPerDay))} title={b.days < MIN_DAYS ? "Меньше 8 дней — вывод ненадёжен" : undefined}>
+                  <span className={cn("text-right font-medium", b.days < MIN_DAYS ? "text-muted-foreground" : tx(b.netPerDay))} title={b.days < MIN_DAYS ? t("today.unreliable") : undefined}>
                     {b.days > 0 ? usd(b.netPerDay) : "—"}
                   </span>
                 </li>
@@ -85,8 +94,8 @@ export function TodayForYou({
                   <li key={f.id} className="flex items-center gap-2">
                     <BellRing className="h-3.5 w-3.5 shrink-0 text-warn" aria-hidden="true" />
                     <span className="min-w-0 truncate">
-                      <span className="font-medium">{def.label}</span> {f.rule.op === "above" ? "выше" : "ниже"} {def.format(f.rule.value)}
-                      <span className="text-muted-foreground"> · сейчас {f.reading.value != null ? def.format(f.reading.value) : "—"}</span>
+                      <span className="font-medium">{def.label}</span> {t(f.rule.op === "above" ? "mcard.above" : "mcard.below")} {def.format(f.rule.value)}
+                      <span className="text-muted-foreground"> · {t("today.firedNow", { value: f.reading.value != null ? def.format(f.reading.value) : "—" })}</span>
                     </span>
                   </li>
                 );
@@ -94,12 +103,12 @@ export function TodayForYou({
             </ul>
           ) : (
             <span className="text-muted-foreground">
-              {alertsCount ? `Сигналы не сработали (активных: ${alertsCount})` : "Поставь сигнал на любой карточке ниже — колокольчик в углу."}
+              {alertsCount ? t("today.noneFired", { count: alertsCount }) : t("today.setAlertHint")}
             </span>
           )}
           {sectors && (
             <span className="text-muted-foreground tabular-nums">
-              {sectors.label}: <span className="font-medium text-foreground">{sectors.up} из {sectors.total}</span> в плюсе
+              {sectors.label}: <span className="font-medium text-foreground">{t("today.sectorsUp", { up: sectors.up, total: sectors.total })}</span>
             </span>
           )}
         </div>
@@ -109,15 +118,16 @@ export function TodayForYou({
 }
 
 export function AnaloguesPanel({ analogues, trader }: { analogues: Analogue[]; trader: string }) {
+  const { t } = indicatorsI18n.useT();
   return (
     <Panel
-      title="Похожие дни"
-      description="Твои дни, когда рынок перед открытием был похож на нынешний: VIX, тренд SPY, широта, малые компании"
+      title={t("analogues.title")}
+      description={t("analogues.description")}
       icon={History}
       fill
     >
       {analogues.length === 0 ? (
-        <p className="text-sm text-muted-foreground">Недостаточно истории для сравнения.</p>
+        <p className="text-sm text-muted-foreground">{t("analogues.empty")}</p>
       ) : (
         <ul className="flex flex-col">
           {analogues.map((a) => (
@@ -125,7 +135,7 @@ export function AnaloguesPanel({ analogues, trader }: { analogues: Analogue[]; t
               <Link
                 href={links.journalDay(a.d, trader || undefined)}
                 className="grid grid-cols-[4.75rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-sm tabular-nums transition-colors duration-[var(--dur-1)] hover:bg-[var(--tile-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={`${dayLabel(a.d, true)}: сходство ${Math.round(a.similarity * 100)}%, результат ${usd(a.day.net)}. Открыть дневник`}
+                aria-label={t("analogues.rowAria", { day: dayLabel(a.d, true), pct: Math.round(a.similarity * 100), net: usd(a.day.net) })}
               >
                 <span className="flex flex-col">
                   <span className="font-medium">{dayLabel(a.d, true)}</span>
@@ -140,13 +150,13 @@ export function AnaloguesPanel({ analogues, trader }: { analogues: Analogue[]; t
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
                     SPY {a.spyChg != null ? `${a.spyChg >= 0.05 ? "+" : a.spyChg <= -0.05 ? "−" : ""}${Math.abs(a.spyChg).toFixed(1)}%` : "—"}
-                    {a.dayType ? ` · ${a.dayType === "trend" ? "трендовый" : "диапазон"}` : ""}
+                    {a.dayType ? ` · ${t(a.dayType === "trend" ? "analogues.trend" : "analogues.range")}` : ""}
                     {a.vix != null ? ` · VIX ${a.vix.toFixed(1)}` : ""}
                   </span>
                 </span>
                 <span className="flex flex-col items-end">
                   <span className={cn("font-medium", tx(a.day.net))}>{usd(a.day.net)}</span>
-                  <span className="text-xs text-muted-foreground">{a.day.trades} сд.</span>
+                  <span className="text-xs text-muted-foreground">{commonI18n.t("units.tradesShort", { count: a.day.trades })}</span>
                 </span>
               </Link>
             </li>

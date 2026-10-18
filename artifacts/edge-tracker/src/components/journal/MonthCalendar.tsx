@@ -5,6 +5,9 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type DayStats, addDays, fmtMonthTitle, localDateStr, monthBounds, parseDate, weekStart, weekdaysShortMonFirst } from "./utils";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
+import { journalI18n } from "@/i18n/ns/journal";
+import { rich as withNodes } from "@/i18n/rich";
+import { commonI18n } from "@/i18n/ns/common";
 
 export type CalMetric = "r" | "pnl" | "count";
 
@@ -14,12 +17,10 @@ export type CalMetric = "r" | "pnl" | "count";
  */
 export type ReviewMark = "missing" | "filled" | "closed" | "reviewed";
 
-const MARK_LABEL: Record<ReviewMark, string> = {
-  missing: "разбор не заполнен",
-  filled: "разбор заполнен",
-  closed: "день закрыт, ждёт куратора",
-  reviewed: "проверен куратором",
-};
+/** Review mark → label in the current language (read on access). */
+const MARK_LABEL = Object.defineProperties({} as Record<ReviewMark, string>, Object.fromEntries(
+  (["missing", "filled", "closed", "reviewed"] as const).map((m) => [m, { get: () => journalI18n.t(`calendar.mark.${m}`), enumerable: true }]),
+));
 
 function MarkDot({ mark }: { mark: ReviewMark }) {
   if (mark === "reviewed") return <CheckCheck className="h-3.5 w-3.5 text-up" aria-hidden="true" />;
@@ -135,10 +136,11 @@ export function MonthCalendar({
     return { net, trades, green, red, reviewed, traded };
   }, [statsByDate, marks, from, to]);
 
+  const { t } = journalI18n.useT();
   const metricOptions = [
-    { value: "pnl" as const, label: <span title={hasPnl ? "P&L нетто" : "Недоступно: не у всех сделок месяца указан P&L"}>P&L</span>, disabled: !hasPnl },
+    { value: "pnl" as const, label: <span title={hasPnl ? t("calendar.pnlNetTitle") : t("calendar.pnlUnavailable")}>P&L</span>, disabled: !hasPnl },
     ...(hasR || metric === "r" ? [{ value: "r" as const, label: "R" }] : []),
-    { value: "count" as const, label: "Сделки" },
+    { value: "count" as const, label: commonI18n.t("trading.trades") },
   ];
 
   return (
@@ -149,23 +151,26 @@ export function MonthCalendar({
           <span className="tabular-nums">
             {hasPnl && <span className={toneClass(month$.net, "pnl")}>{fmtUsd(month$.net, { signed: true, decimals: "auto" })}</span>}
             {hasPnl && " · "}
-            {month$.trades} сд. · дней <span className="text-up">{month$.green}</span>/<span className="text-down">{month$.red}</span> · разборов {month$.reviewed}/{month$.traded}
+            {withNodes(t("calendar.monthStats", { trades: month$.trades, green: "{green}", red: "{red}", reviewed: month$.reviewed, traded: month$.traded }), {
+              green: <span className="text-up">{month$.green}</span>,
+              red: <span className="text-down">{month$.red}</span>,
+            })}
           </span>
-        ) : "Нет сделок в этом месяце"
+        ) : t("calendar.noTrades")
       }
       actions={
         <div className="flex items-center gap-1.5">
           <Segmented<CalMetric>
             size="sm"
-            ariaLabel="Показатель календаря"
+            ariaLabel={t("calendar.metricAria")}
             value={metric}
             onChange={onMetricChange}
             options={metricOptions}
           />
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Предыдущий месяц" onClick={() => onMonthChange(-1)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("calendar.prevMonth")} title={t("calendar.prevMonth")} onClick={() => onMonthChange(-1)}>
             <ChevronLeft />
           </Button>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Следующий месяц" onClick={() => onMonthChange(1)}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("calendar.nextMonth")} title={t("calendar.nextMonth")} onClick={() => onMonthChange(1)}>
             <ChevronRight />
           </Button>
         </div>
@@ -175,7 +180,7 @@ export function MonthCalendar({
         {weekdaysShortMonFirst().map((w, i) => (
           <div key={w} className={cn("pb-1 text-center text-xs text-muted-foreground", i >= 5 && "opacity-80")}>{w}</div>
         ))}
-        <div className="hidden pb-1 text-center text-2xs text-muted-foreground sm:block">Неделя</div>
+        <div className="hidden pb-1 text-center text-2xs text-muted-foreground sm:block">{t("calendar.week")}</div>
 
         {weeks.map((row) => {
           let wSum: number | null = null;
@@ -201,7 +206,7 @@ export function MonthCalendar({
                 const weekend = wd === 0 || wd === 6;
                 const label = [
                   fmtDate(d, "long"),
-                  s ? `${s.trades} сделок` : "нет сделок",
+                  s ? t("calendar.dayTrades", { count: s.trades }) : t("calendar.dayNoTrades"),
                   s && v != null && metric !== "count" ? fmtMetric(v, metric) : null,
                   mark ? MARK_LABEL[mark] : null,
                 ].filter(Boolean).join(", ");
@@ -212,6 +217,7 @@ export function MonthCalendar({
                     onClick={() => onSelect(d)}
                     aria-pressed={isActive}
                     aria-label={label}
+                    title={label}
                     className={cn(
                       "relative flex min-h-[52px] min-w-0 flex-col items-start justify-between rounded-xl border border-transparent p-1.5 text-left transition-[background-color,border-color,box-shadow] duration-[var(--dur-1)] sm:min-h-[68px] sm:p-2",
                       "hover:border-[var(--glass-border)] hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -239,7 +245,7 @@ export function MonthCalendar({
                         </span>
                         {metric !== "count" && (
                           <span className="hidden truncate text-2xs text-muted-foreground tabular-nums sm:block">
-                            {s.trades} сд.
+                            {t("calendar.tradesShort", { count: s.trades })}
                           </span>
                         )}
                       </span>
@@ -249,13 +255,13 @@ export function MonthCalendar({
               })}
               <div
                 className="hidden min-w-0 flex-col justify-center rounded-xl bg-[var(--glass-bg)] p-1.5 text-right sm:flex"
-                title={wTrades > 0 ? `Неделя: ${fmtMetric(wSum, metric)} · ${wTrades} сд. · дней в плюс ${wGreen}, в минус ${wRed}` : undefined}
+                title={wTrades > 0 ? t("calendar.weekTitle", { sum: fmtMetric(wSum, metric), trades: wTrades, green: wGreen, red: wRed }) : undefined}
               >
                 <span className={cn("truncate text-xs font-semibold tabular-nums", toneClass(wSum, metric))}>
                   {wTrades > 0 && wSum != null ? fmtMetric(wSum, metric, true) : "—"}
                 </span>
                 <span className="truncate text-2xs text-muted-foreground tabular-nums">
-                  {wTrades > 0 ? (metric === "count" ? `${wGreen}/${wRed} дн.` : `${wTrades} сд.`) : ""}
+                  {wTrades > 0 ? (metric === "count" ? t("calendar.greenRedDays", { green: wGreen, red: wRed }) : t("calendar.tradesShort", { count: wTrades })) : ""}
                 </span>
               </div>
             </WeekRow>
@@ -267,9 +273,9 @@ export function MonthCalendar({
         {(["missing", "filled", "closed", "reviewed"] as const).map((m) => (
           <span key={m} className="inline-flex items-center gap-1.5"><MarkDot mark={m} />{MARK_LABEL[m]}</span>
         ))}
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-up/30" aria-hidden="true" />плюс</span>
-        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-down/30" aria-hidden="true" />минус</span>
-        {!hasPnl && metric !== "count" && <span title="Переключатель P&L отключён: не у всех сделок месяца указан P&L">P&L: нет данных</span>}
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-up/30" aria-hidden="true" />{t("calendar.plus")}</span>
+        <span className="inline-flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded bg-down/30" aria-hidden="true" />{t("calendar.minus")}</span>
+        {!hasPnl && metric !== "count" && <span title={t("calendar.pnlOffTitle")}>{t("calendar.pnlNoData")}</span>}
         {footer && <span className="ml-auto">{footer}</span>}
       </div>
     </Panel>
