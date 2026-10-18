@@ -1080,7 +1080,7 @@ Months: yanvar, fevral, mart, aprel, may, iyun, iyul, avgust, sentabr, oktabr, n
 | Стоп по риску | Risk stop | Risk boʻyicha stop | |
 | Теги-словарь (хранятся по-русски) | — | — | FOMO, Ранний вход, Страх… stay Russian codes in DB; shown via `tagLabel()` (trades `tag.*`) |
 
-# Server texts: notifications, feed, reconciliation, PropReports, reports (SERVER-B agent)
+## Server texts: notifications, feed, reconciliation, PropReports, reports (SERVER-B agent)
 
 Server dictionaries in `artifacts/api-server/src/i18n/{ru,en,uz}/*.ts`. Core terms follow GLOSSARY.md (Сверка = Reconciliation = Solishtirish, Расхождение = Difference = Farq, Переворот = Flip = Teskari ochish, Перезаход = Re-entry = Qayta kirish, Добор = Add = Qoʻshimcha kirish, Эталон = Example = Namuna, Офис / Мой = Office / Mine = Ofis / Meniki, Отыгрыш = Qaytarib olish, п.п. = pp = f.p.). Macro codes (FOMC, CPI, PPI, NFP, OPEX, SEP), ET and product names (PropReports) stay as is.
 
