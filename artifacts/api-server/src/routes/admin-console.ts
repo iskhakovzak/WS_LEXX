@@ -8,6 +8,7 @@
  *   • no secrets in responses — env var NAMES only, never values; passwords are never echoed or logged.
  */
 import { Router, type IRouter, type Request, } from "express";
+import { mountLatinNameRoutes } from "./adminConsoleLatin";
 import { z } from "zod";
 import { pool } from "@workspace/db";
 import { asyncHandler } from "../lib/asyncHandler";
@@ -16,7 +17,7 @@ import { bumpTokenVersion, hashPassword } from "../lib/auth";
 import { can, requireCap, resolveActor } from "../lib/permissions";
 import { nyDate, addDays } from "../lib/tradingDate";
 import { getSettings, setSetting, schedulerStatus, statusConfig } from "../lib/propreports";
-import { cleanNameLatin, ensureNameLatin } from "../lib/peopleDirectory";
+import { ensureNameLatin } from "../lib/peopleDirectory";
 import { jobsStatus, listJobs, runJobNow } from "../jobs/registry";
 import { AppError, errorMessage, notFound, unauthorized, type ErrorCode } from "../lib/http";
 import { adminT } from "../i18n/ns";
@@ -326,27 +327,8 @@ router.post("/admin/console/people/:id/curator", asyncHandler(async (req, res): 
   res.json({ ok: true, name: r.name });
 }));
 
-/** Latin alias for cross-script search (users.name_latin): {nameLatin: string | null}. Not a rename — names stay identifiers. */
-router.post("/admin/console/people/:id/name-latin", asyncHandler(async (req, res): Promise<void> => {
-  if (!(await requireCap(req, res, "users.manage"))) return;
-  const id = Number(req.params.id);
-  if (!Number.isInteger(id)) throw new AppError("INVALID_ID");
-  const cleaned = cleanNameLatin((req.body ?? {}).nameLatin);
-  if (!cleaned.ok) throw new AppError(cleaned.code, 400, cleaned.params);
-  const actor = await actorOf(req);
-  if (!actor) throw unauthorized();
-  await ensureNameLatin();
-  const u = await loadUser(id);
-  if (!u) throw notFound("USER_NOT_FOUND");
-  if (u.role === "admin" && u.id !== actor.id && !(await can(req, "users.manage.admins"))) throw new AppError("ADMIN_ONLY");
-  const { rows } = await pool.query<{ prev: string | null }>(
-    `UPDATE users u SET name_latin = $1 FROM (SELECT name_latin AS prev FROM users WHERE id = $2) p WHERE u.id = $2 RETURNING p.prev`, [cleaned.value, id]);
-  const prev = rows[0]?.prev ?? null;
-  if (prev !== cleaned.value) {
-    await logAudit({ actor: actor.name, action: "user.name_latin", targetType: "user", targetId: String(id), details: { name: u.name, from: prev, to: cleaned.value } });
-  }
-  res.json({ ok: true, name: u.name, nameLatin: cleaned.value });
-}));
+// Latin display names (single + bulk): routes/adminConsoleLatin.ts
+mountLatinNameRoutes(router);
 
 router.post("/admin/console/people/:id/role", asyncHandler(async (req, res): Promise<void> => {
   if (!(await requireCap(req, res, "users.manage"))) return;

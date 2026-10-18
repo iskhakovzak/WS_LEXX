@@ -10,6 +10,7 @@ export default {
     earnings_import: { one: "Earnings: {count} event for {days} d.", other: "Earnings: {count} events for {days} d." },
     autolink: "Trade auto-linking",
     example: "Example: {ticker}",
+    eod_reviewed: "{trader}, {date}",
   },
   details: {
     autolinked: "Trades linked: {count}",

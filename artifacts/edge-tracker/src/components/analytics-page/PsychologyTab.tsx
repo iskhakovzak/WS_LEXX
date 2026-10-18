@@ -14,6 +14,7 @@ import { cn } from "@/lib/utils";
 import { type AnalyticsFilters, periodRange, CHART_TOOLTIP_STYLE, CHART_CURSOR, AXIS, GRID } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
+import { personName } from "@/i18n";
 import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 
 /* ───────────── API types ───────────── */
@@ -148,7 +149,7 @@ export function PsychologyTab({
   return (
     <div className={cn("flex flex-col gap-4 sm:gap-5 transition-opacity", isFetching && "opacity-70")}>
       {!isOwn && (
-        <p className="text-sm text-muted-foreground">{t("psych.ofTrader", { name: userId })}</p>
+        <p className="text-sm text-muted-foreground">{t("psych.ofTrader", { name: personName(userId) })}</p>
       )}
 
       <StatGrid>

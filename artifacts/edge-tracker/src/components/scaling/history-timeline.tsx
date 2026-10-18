@@ -7,6 +7,7 @@ import type { HistoryEntry, Tier } from "./use-scaling";
 import { tierName } from "./format";
 import { fmtDate } from "@/lib/format";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 
 const META = {
   promote: { icon: ArrowUpRight, cls: "bg-up/15 text-up" },
@@ -53,7 +54,7 @@ export function HistoryTimeline({
               <Icon className="h-3.5 w-3.5" />
             </span>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-sm">
-              {showTrader && <span className="font-semibold text-foreground">{h.trader}</span>}
+              {showTrader && <span className="font-semibold text-foreground">{personName(h.trader)}</span>}
               <span className="text-foreground">{t(`history.${kind}`)}:</span>
               <span className="text-muted-foreground">{tierName(tiers, h.fromTier)}</span>
               <span className="text-muted-foreground" aria-hidden="true">→</span>
@@ -61,7 +62,7 @@ export function HistoryTimeline({
             </div>
             <div className="mt-0.5 flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
               <span>{fmtDate(h.createdAt, "dateTime")}</span>
-              <span>{h.actor}</span>
+              <span>{personName(h.actor)}</span>
               {h.proposalId != null && <span>{t("history.proposalRef", { id: h.proposalId })}</span>}
             </div>
             {h.comment && <p className="mt-1 text-xs text-muted-foreground/90">{h.comment}</p>}

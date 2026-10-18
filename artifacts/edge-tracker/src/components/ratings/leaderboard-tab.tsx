@@ -12,6 +12,7 @@ import { Avatar, RankDelta, Sparkline, StreakBadge, OutcomeBar, downloadCsv, use
 import { fmtCount, fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { comparePersonNames, personName } from "@/i18n";
 
 export type LeaderboardEntry = {
   trader: string;
@@ -75,7 +76,7 @@ function fmtMetric(m: Metric, v: number | null): string {
 }
 function rankBy<T extends MetricSource & { trader: string }>(list: T[], m: Metric): T[] {
   const val = (e: T) => metricOf(m, e) ?? Number.NEGATIVE_INFINITY; // unknown (null) sorts last
-  return [...list].sort((a, b) => (val(b) === val(a) ? 0 : val(b) - val(a)) || b.totalTrades - a.totalTrades || a.trader.localeCompare(b.trader));
+  return [...list].sort((a, b) => (val(b) === val(a) ? 0 : val(b) - val(a)) || b.totalTrades - a.totalTrades || comparePersonNames(a.trader, b.trader));
 }
 
 /** Whether any trade in the row has a P&L value (older API builds lack pnlCount). */
@@ -147,7 +148,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
     downloadCsv(
       `leaderboard-${period}.csv`,
       ["#", t("leaderboard.csv.trader"), t("leaderboard.csv.trades"), t("leaderboard.csv.winRatePct"), t("leaderboard.csv.totalR"), t("leaderboard.csv.expR"), "P&L $", t("leaderboard.csv.sharpe"), t("leaderboard.csv.streak"), t("leaderboard.csv.bestStreak")],
-      ranked.map((l) => [l.rank, l.trader, l.totalTrades, winPctOf(l), l.totalR, l.expectancyR ?? l.avgR, l.totalPnl, sharpeOf(l).value, l.currentStreak, l.bestStreak]),
+      ranked.map((l) => [l.rank, personName(l.trader), l.totalTrades, winPctOf(l), l.totalR, l.expectancyR ?? l.avgR, l.totalPnl, sharpeOf(l).value, l.currentStreak, l.bestStreak]),
     );
   }
 
@@ -207,7 +208,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span className="truncate text-sm font-semibold text-foreground">{l.trader}</span>
+                        <span className="truncate text-sm font-semibold text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
                         {l.trader === me && <Pill tone="accent">{t("shared.you")}</Pill>}
                       </div>
                       <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -252,7 +253,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                 icon={Flame}
                 value={team.hot ? `W${team.hot.currentStreak}` : team.streak.bestStreak > 0 ? `W${team.streak.bestStreak}` : "—"}
                 tone={team.hot || team.streak.bestStreak > 0 ? "up" : "neutral"}
-                hint={team.hot ? team.hot.trader : team.streak.bestStreak > 0 ? team.streak.trader : t("leaderboard.noStreaks")}
+                hint={team.hot ? personName(team.hot.trader) : team.streak.bestStreak > 0 ? personName(team.streak.trader) : t("leaderboard.noStreaks")}
               />
             </StatGrid>
           )}
@@ -303,7 +304,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                             <Avatar name={l.trader} highlight={mine} className="h-7 w-7" />
                             <div className="min-w-0">
                               <div className="flex items-center gap-1.5">
-                                <span className="font-medium text-foreground">{l.trader}</span>
+                                <span className="font-medium text-foreground">{personName(l.trader)}</span>
                                 {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                               </div>
                               <div className="text-xs text-muted-foreground tabular-nums">
@@ -353,7 +354,7 @@ export function LeaderboardTab({ me }: { me: string | null }) {
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      <span className="truncate font-medium text-foreground">{l.trader}</span>
+                      <span className="truncate font-medium text-foreground" title={personName(l.trader)}>{personName(l.trader)}</span>
                       {mine && <Pill tone="accent">{t("shared.you")}</Pill>}
                     </div>
                     <div className="flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground tabular-nums">

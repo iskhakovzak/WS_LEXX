@@ -31,6 +31,7 @@ import { buildQuickRows, defaultTier, undoSteps, type AddResponse, type QuickSet
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
 
+import { personName } from "@/i18n";
 const dt = playbookDialogsI18n.t; // called at render / call time only
 
 type ForTrade = {
@@ -47,7 +48,7 @@ type ForTrade = {
 export function spaceShort(s: Pick<QuickSetup, "space" | "mine" | "owner">) {
   if (s.space === "office") return dt("quick.spaceOffice");
   if (s.mine) return dt("quick.spaceMine");
-  return s.owner ?? dt("quick.spaceShared");
+  return s.owner ? personName(s.owner) : dt("quick.spaceShared");
 }
 
 /** Revert one save (see undoSteps). Errors surface as a toast by the caller. */

@@ -14,6 +14,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { mistakeLabel, severityMeta } from "./constants";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { mistakeDate } from "./discipline";
 import type { Mistake } from "./types";
@@ -134,7 +135,7 @@ export const MistakeLog = forwardRef<HTMLInputElement, {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${t("log.csv.file")}-${trader}-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `${t("log.csv.file")}-${personName(trader)}-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }

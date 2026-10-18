@@ -177,6 +177,7 @@ export default {
   USER_NAME_REQUIRED: "Enter a name",
   PASSWORD_TOO_SHORT: "The password must be at least {min} characters",
   NAME_LATIN_CHARS: "Only letters, digits, space, dot, hyphen and apostrophe",
+  NAME_LATIN_INVALID_FOR: "Check the Latin name for “{name}”: letters, digits, space, dot, hyphen and apostrophe, up to 80 characters",
   BREACH_NOT_FOUND: "Breach not found",
   BREACH_REVIEW_NOT_FOUND: "Review not found",
   AGREEMENT_NOT_FOUND: "Agreement not found",

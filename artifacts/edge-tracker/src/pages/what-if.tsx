@@ -10,7 +10,7 @@ import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import { commonI18n } from "@/i18n/ns/common";
 import { whatIfI18n } from "@/i18n/ns/whatIf";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { DEFAULT_FILTERS, type AnalyticsFilters } from "@/components/analytics-page/metrics";
 import {
   type Scope, type Suggestion, useDebounced, useDeleteScenario, useSaveScenario, useSavedScenarios, useWhatIfBase, useWhatIfFees, useWhatIfRun, useWhatIfSuggestions,
@@ -114,7 +114,7 @@ export default function WhatIf() {
   const costFilters = useMemo<AnalyticsFilters>(() => ({ ...DEFAULT_FILTERS, period, trader: scopeTrader }), [period, scopeTrader]);
 
   const traders = useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag())),
+    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
     [dbUsers],
   );
 
@@ -169,7 +169,7 @@ export default function WhatIf() {
           allValue={ALL}
           allLabel={t("wholeTeam")}
           options={[
-            ...(me && traders.includes(me) ? [{ value: me, label: t("myTrades", { name: me }) }] : []),
+            ...(me && traders.includes(me) ? [{ value: me, label: t("myTrades", { name: personName(me) }) }] : []),
             ...traders.filter((t) => t !== me),
             ...(trader && trader !== ALL && !traders.includes(trader) ? [trader] : []),
           ]}
@@ -232,7 +232,7 @@ export default function WhatIf() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title={scopeTrader ? t("empty.titleOf", { trader: scopeTrader, period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
+            title={scopeTrader ? t("empty.titleOf", { trader: personName(scopeTrader), period: periodPhrase }) : t("empty.title", { period: periodPhrase })}
             description={period !== "all" ? (isCurator ? t("empty.longerCurator") : t("empty.longer")) : (isCurator ? t("empty.syncCurator") : t("empty.sync"))}
             action={period !== "all" ? <Button className="rounded-full bg-primary-solid" onClick={() => setPeriod("all")}>{t("empty.showAll")}</Button> : undefined}
           />

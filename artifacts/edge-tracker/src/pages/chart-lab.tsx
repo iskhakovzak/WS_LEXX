@@ -33,6 +33,7 @@ import { fmtR, fmtUsd } from "@/lib/format";
 import { AddToPlaybookButton } from "@/components/add-to-playbook";
 import { useAuth } from "@/contexts/auth-context";
 import { chartLabI18n } from "@/i18n/ns/chartLab";
+import { personName } from "@/i18n";
 
 /** `movePct`: side-aware entry → exit move, % (training payload) — the result when neither $ nor R is available. */
 type TradeRow = TradeLike & { rMultiple?: number | string | null; movePct?: number | null };
@@ -147,7 +148,7 @@ function TradePicker({ label, onPick, onTickerDay }: { label: React.ReactNode; o
                 <li key={t.id}>
                   <button type="button" className="grid w-full grid-cols-[4.5rem_1fr_auto] items-center gap-2 px-3 py-1.5 text-left text-sm tabular-nums hover:bg-[var(--glass-hover-bg)]" onClick={() => { onPick(t); setOpen(false); }}>
                     <span className="font-semibold">{t.ticker}</span>
-                    <span className="truncate text-xs text-muted-foreground">{t.date.slice(0, 10)} · {String(t.side ?? "").toLowerCase() === "short" ? tl("picker.short") : tl("picker.long")}{t.trader ? ` · ${t.trader}` : ""}</span>
+                    <span className="truncate text-xs text-muted-foreground">{t.date.slice(0, 10)} · {String(t.side ?? "").toLowerCase() === "short" ? tl("picker.short") : tl("picker.long")}{t.trader ? ` · ${personName(t.trader)}` : ""}</span>
                     <ResultText t={t} />
                   </button>
                 </li>
@@ -267,7 +268,7 @@ export default function ChartLabPage() {
       <span className="font-semibold">{current.ticker}</span>
       <span className="text-muted-foreground">{current.date.slice(0, 10)}</span>
       {tradeId != null && !hideHints && <><span className="text-muted-foreground">{String(current.side ?? "").toLowerCase() === "short" ? tl("picker.short") : tl("picker.long")}</span><ResultText t={current} /></>}
-      {tradeId != null && !hideHints && current.trader && current.redacted && <span className="hidden text-muted-foreground sm:inline">· {current.trader}</span>}
+      {tradeId != null && !hideHints && current.trader && current.redacted && <span className="hidden text-muted-foreground sm:inline">· {personName(current.trader)}</span>}
       {training && tradeId == null && <span className="hidden text-muted-foreground sm:inline">· {tl("picker.noTrade")}</span>}
     </span>
   ) : <span className="text-muted-foreground">{tl("picker.pick")}</span>;

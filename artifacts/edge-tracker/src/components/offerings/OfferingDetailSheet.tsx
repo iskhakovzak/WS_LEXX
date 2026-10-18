@@ -27,6 +27,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { offeringsI18n } from "@/i18n/ns/offerings";
 import { rich } from "@/i18n/rich";
 
+import { personName } from "@/i18n";
 // The chart engine is heavy (lightweight-charts + primitives): load it only when a sheet opens.
 const WsChart = lazy(() => import("@/components/chart-engine").then((m) => ({ default: m.WsChart })));
 
@@ -284,7 +285,7 @@ export function OfferingDetailSheet({
               <div>
                 <p className="font-medium text-foreground">{t("sheet.openPosition", { ticker: o.ticker })}</p>
                 <p className="text-muted-foreground">
-                  {exposure.held.map((h) => [h.trader, h.side, HORIZON_LABEL[h.horizon ?? "intraday"], h.entry != null ? t("sheet.entry", { price: fmtPrice(h.entry, { dollar: true }) }) : null].filter(Boolean).join(" · ")).join("; ")}.
+                  {exposure.held.map((h) => [h.trader ? personName(h.trader) : null, h.side, HORIZON_LABEL[h.horizon ?? "intraday"], h.entry != null ? t("sheet.entry", { price: fmtPrice(h.entry, { dollar: true }) }) : null].filter(Boolean).join(" · ")).join("; ")}.
                   {" "}{t("sheet.offerTarget", { price: o.offerPrice != null ? ` ${fmtPrice(o.offerPrice, { dollar: true })}` : "" })}
                 </p>
               </div>

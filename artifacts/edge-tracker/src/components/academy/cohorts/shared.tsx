@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { fmtDate, fmtPct, fmtRate, fmtUsd } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
+import { comparePersonNames, personName } from "@/i18n";
 import {
   type AttendanceStatus, type AttendanceSummary, type EnrollmentStatus, type Goal, type GoalStatus, type SessionMode, type Stage,
   attendanceLabel, goalStatusLabel, modeLabel, stageLabel, statusLabel,
@@ -191,7 +192,7 @@ export function UserSelect({
         disabled={disabled}
         allValue={NONE}
         allLabel={allowNone ? noneLabel ?? t("shared.noUser") : undefined}
-        options={users.map((u) => u.name)}
+        options={users.map((u) => u.name).sort(comparePersonNames).map((n) => ({ value: n, label: personName(n) }))}
         placeholder={t("shared.pickUser")}
         ariaLabel={label}
       />

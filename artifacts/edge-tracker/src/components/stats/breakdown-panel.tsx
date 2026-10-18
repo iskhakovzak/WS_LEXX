@@ -8,6 +8,7 @@ import { EVENT_LABEL } from "@/components/trades/trade-utils";
 import { fmtValue, groupBy, sessionKey, sessionLabel, type GroupStat, type Metric } from "./metrics";
 import { fmtRate, localeTag } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
+import { comparePersonNames, personName } from "@/i18n";
 
 export type Dimension = "trader" | "setup" | "sector" | "ticker" | "session" | "conviction";
 
@@ -44,7 +45,10 @@ export function BreakdownPanel({
 
   const rows = useMemo(() => {
     const g = groupBy(trades, dim.key, metric);
-    if (sort.key === "key") return g.sort((a, b) => a.key.localeCompare(b.key, localeTag(), { numeric: true }) * sort.dir);
+    if (sort.key === "key") {
+      const byKey = dim.value === "trader" ? comparePersonNames : (a: string, b: string) => a.localeCompare(b, localeTag(), { numeric: true });
+      return g.sort((a, b) => byKey(a.key, b.key) * sort.dir);
+    }
     const val = (r: GroupStat) => (sort.key === "count" ? r.count : sort.key === "winRate" ? r.winRate : sort.key === "avg" ? r.avg : r.value);
     return g.sort((a, b) => {
       const va = val(a);
@@ -107,6 +111,7 @@ export function BreakdownPanel({
               {visible.map((r) => {
                 const w = maxAbs > 0 && r.value != null ? Math.max(4, (Math.abs(r.value) / maxAbs) * 100) : 0;
                 const clickable = dimension === "trader" && onPickTrader && r.key !== "—";
+                const label = dim.value === "trader" ? personName(r.key) : r.key;
                 return (
                   <tr key={r.key} className="border-b border-[hsl(var(--border)/0.5)] last:border-0">
                     <td className="max-w-[160px] px-2 py-2">
@@ -115,12 +120,12 @@ export function BreakdownPanel({
                           type="button"
                           className="truncate font-medium text-foreground underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
                           onClick={() => onPickTrader!(r.key)}
-                          title={t("breakdown.onlyOf", { name: r.key })}
+                          title={t("breakdown.onlyOf", { name: label })}
                         >
-                          {r.key}
+                          {label}
                         </button>
                       ) : (
-                        <span className="block truncate font-medium text-foreground" title={r.key}>{r.key}</span>
+                        <span className="block truncate font-medium text-foreground" title={label}>{label}</span>
                       )}
                     </td>
                     <td className="px-2 py-2 text-right tabular-nums text-muted-foreground">{r.count}</td>

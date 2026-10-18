@@ -22,6 +22,7 @@ import { academyLinks } from "@/components/academy/content/links";
 import { DualTime } from "@/components/academy/content/time";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /**
  * /academy/lesson — один элемент программы: ?id=<урок> | ?quiz=<тест> | ?assignment=<задание>
@@ -195,7 +196,7 @@ function Shell({ nav, current, user, staff, title, kind, meta, actions, children
         />
         {user && (
           <p className="flex items-center gap-2 rounded-xl border border-primary/30 bg-primary/5 px-3 py-2 text-sm">
-            <Eye className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{withName(t("lesson.viewingAs", { name: NAME_SLOT }), <b>{user}</b>)}</span>
+            <Eye className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" /><span>{withName(t("lesson.viewingAs", { name: NAME_SLOT }), <b>{personName(user)}</b>)}</span>
           </p>
         )}
         {children}
@@ -281,7 +282,7 @@ function LessonView({ id, user, staff }: { id: number; user?: string; staff: boo
                 {setups.map((s) => (
                   <li key={s.id}>
                     <Link href={links.setup(s.id)} className="inline-flex items-center gap-1.5 rounded-full border border-border/60 px-3 py-1 text-sm hover:border-primary/60 hover:text-primary">
-                      {s.name}{s.trader && <span className="text-xs text-muted-foreground">· {s.trader}</span>}
+                      {s.name}{s.trader && <span className="text-xs text-muted-foreground">· {personName(s.trader)}</span>}
                     </Link>
                   </li>
                 ))}

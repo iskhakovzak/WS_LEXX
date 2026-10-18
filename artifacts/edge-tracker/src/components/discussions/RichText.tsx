@@ -5,10 +5,15 @@
  */
 import * as React from "react";
 import { TickerLink } from "./TickerContext";
+import { mentionedName } from "./lib";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/contexts/auth-context";
+import { personName } from "@/i18n";
 
 type Ctx = {
   knownTickers: Set<string>;
+  /** Stored names of the desk: a mention chip covers the whole name («@Дмитрий К.»), as the server matches it. */
+  people: readonly string[];
   me?: string | null;
   highlight?: string;
   onTickerFilter?: (t: string) => void;
@@ -60,12 +65,15 @@ function renderInline(text: string, ctx: Ctx, re: RegExp, keyBase: string): Reac
       out.push(<a key={key} href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline decoration-primary/40 underline-offset-2 hover:decoration-primary [overflow-wrap:anywhere]">{label}</a>);
     } else if (m[5] != null) out.push(<TickerLink key={key} ticker={m[5].toUpperCase()} onFilter={ctx.onTickerFilter} />);
     else if (m[6] != null) {
-      const isMe = !!ctx.me && m[6].toLowerCase() === ctx.me.toLowerCase();
+      // The text keeps the stored name («@Закир»: the server matches mentions by it); the chip shows the display name.
+      const full = mentionedName(text, m.index + 1, ctx.people) ?? m[6];
+      const isMe = !!ctx.me && full.toLowerCase() === ctx.me.toLowerCase();
       out.push(
-        <span key={key} className={cn("rounded-full px-1.5 py-px text-[0.92em] font-medium", isMe ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary")}>@{m[6]}</span>,
+        <span key={key} title={personName(full) !== full ? `@${full}` : undefined} className={cn("rounded-full px-1.5 py-px text-[0.92em] font-medium", isMe ? "bg-primary text-primary-foreground" : "bg-primary/15 text-primary")}>@{personName(full)}</span>,
       );
+      if (full.length > m[6].length) re.lastIndex = m.index + 1 + full.length;
     } else if (m[7] != null) out.push(<TickerLink key={key} ticker={m[7]} onFilter={ctx.onTickerFilter} />);
-    last = m.index + m[0].length;
+    last = Math.max(m.index + m[0].length, re.lastIndex);
     if (m[0].length === 0) re.lastIndex++;
   }
   if (last < text.length) out.push(plain(text.slice(last)));
@@ -81,7 +89,9 @@ export function RichText({ text, className, knownTickers, me, highlight, onTicke
   onTickerFilter?: (t: string) => void;
   clamp?: boolean;
 }) {
-  const ctx: Ctx = { knownTickers: knownTickers ?? new Set(), me, highlight, onTickerFilter };
+  const { dbUsers } = useAuth();
+  const people = React.useMemo(() => dbUsers.map((u) => u.name).filter(Boolean), [dbUsers]);
+  const ctx: Ctx = { knownTickers: knownTickers ?? new Set(), people, me, highlight, onTickerFilter };
   const re = React.useMemo(() => buildInlineRe(ctx.knownTickers), [ctx.knownTickers]);
   const lines = text.replace(/\r\n/g, "\n").split("\n");
   const blocks: React.ReactNode[] = [];

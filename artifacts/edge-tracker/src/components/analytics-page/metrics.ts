@@ -7,6 +7,7 @@ import {
 } from "@/lib/trade-math";
 import { fmtNum, fmtWeekday } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
+import { personName } from "@/i18n";
 
 /*
  * All R / P&L numbers on the analytics page come from @/lib/trade-math (signedR, netPnl …) — the one
@@ -538,7 +539,7 @@ export const DIMENSIONS: Dimension[] = [
     labelOf: (k) => (k === NONE ? t("bucket.noFloat") : t(`bucket.float.${k as FloatCode}`)) },
   { key: "ticker", get label() { return t("dim.ticker"); }, keys: (tr) => [(tr.ticker ?? "—").toUpperCase()], drill: "ticker" },
   { key: "trader", get label() { return t("dim.trader"); }, keys: (tr) => [tr.trader || NONE], drill: "trader",
-    get labelOf() { return label(t("bucket.notSetM")); } },
+    get labelOf() { return label(t("bucket.notSetM"), personName); } },
   { key: "account", get label() { return t("dim.account"); }, keys: (tr) => [accountOf(tr) || NONE], drill: "account",
     get labelOf() { return label(t("bucket.noAccount")); },
     get emptyHint() { return t("dimEmpty.account"); } },

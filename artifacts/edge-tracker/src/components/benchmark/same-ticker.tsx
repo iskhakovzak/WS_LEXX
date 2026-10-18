@@ -9,6 +9,7 @@ import type { SameTickerCase, SameTickerResponse } from "./api";
 import { fmtClock, fmtMinutes } from "./format";
 import { fmtDate, fmtNum, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 
 function CaseCard({ c }: { c: SameTickerCase }) {
   const { t } = benchmarkI18n.useT();
@@ -48,7 +49,7 @@ function CaseCard({ c }: { c: SameTickerCase }) {
               <tr key={p.trader}>
                 <td className="text-muted-foreground">{p.rank ?? "—"}</td>
                 <td className="font-medium text-foreground">
-                  <Link href={links.journalDay(c.day, p.trader)} className="hover:underline">{p.trader}</Link>
+                  <Link href={links.journalDay(c.day, p.trader)} className="hover:underline">{personName(p.trader)}</Link>
                 </td>
                 <td>{p.side ? <Pill tone={p.side === "long" ? "up" : p.side === "short" ? "down" : "neutral"}>{t(`same.side.${p.side}`)}</Pill> : "—"}</td>
                 <td className="text-right">{p.trades}{p.qty != null && <span className="text-muted-foreground"> / {Math.round(p.qty)}</span>}</td>
@@ -107,7 +108,7 @@ export function SameTickerView({ data, loading, error }: { data: SameTickerRespo
         <FilterChip active={pair == null} onClick={() => setPair(null)} count={data.total}>{t("same.all")}</FilterChip>
         {data.pairs.slice(0, 12).map((p) => {
           const k = `${p.a}|${p.b}`;
-          return <FilterChip key={k} active={pair === k} onClick={() => setPair(pair === k ? null : k)} count={p.cases}>{p.a} × {p.b}</FilterChip>;
+          return <FilterChip key={k} active={pair === k} onClick={() => setPair(pair === k ? null : k)} count={p.cases}>{personName(p.a)} × {personName(p.b)}</FilterChip>;
         })}
         <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
         <FilterChip active={onlySameSide} onClick={() => setOnlySameSide((v) => !v)}>{t("same.onlySameSide")}</FilterChip>

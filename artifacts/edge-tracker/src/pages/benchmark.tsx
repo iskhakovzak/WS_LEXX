@@ -22,6 +22,7 @@ import { TrendView } from "@/components/benchmark/trend";
 import { SelfView } from "@/components/benchmark/self-view";
 import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 import { metricLabel } from "@/components/benchmark/format";
 
 type Tab = "table" | "heatmap" | "same" | "compare" | "trend";
@@ -42,7 +43,7 @@ function exportCsv(data: BenchmarkResponse) {
   const t = benchmarkI18n.t;
   const header = [t("csv.trader"), t("csv.trades"), t("csv.qualified"), ...data.metrics.map(metricLabel)];
   const rows = data.rows.map((r) => [
-    r.trader, r.trades, r.qualified ? t("csv.yes") : t("csv.no"),
+    personName(r.trader), r.trades, r.qualified ? t("csv.yes") : t("csv.no"),
     ...data.metrics.map((m) => { const v = r[m.key] as unknown; return typeof v === "number" && Number.isFinite(v) ? Math.round(v * 10000) / 10000 : ""; }),
   ]);
   downloadCsv(`benchmark_${data.period.from}_${data.period.to}.csv`, header, rows);

@@ -11,6 +11,7 @@ import {
 import { fmtDate, fmtNum } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { notesI18n } from "@/i18n/ns/notes";
+import { personName } from "@/i18n";
 
 /** Longest run of consecutive trading days with a note. */
 function bestStreak(dates: Set<string>): number {
@@ -172,7 +173,7 @@ export function JuniorBanners({
         <div key={r.id} role="status" className="flex flex-wrap items-center gap-3 rounded-2xl bg-[hsl(var(--chart-3)/0.12)] px-4 py-3">
           <BellRing className="h-4 w-4 shrink-0 text-[hsl(var(--chart-3))]" aria-hidden="true" />
           <p className="min-w-0 flex-1 text-sm">
-            <span className="font-medium">{r.curator}</span> {t("junior.banners.reminder", { date: fmtDate(r.note_date, "dayMonth") })}
+            <span className="font-medium">{personName(r.curator)}</span> {t("junior.banners.reminder", { date: fmtDate(r.note_date, "dayMonth") })}
             {r.message ? ` — «${r.message}»` : ""}
           </p>
           <Button size="sm" onClick={() => onWrite(r.note_date)}>{t("junior.banners.write")}</Button>
@@ -191,7 +192,7 @@ export function JuniorBanners({
           <MessageSquareQuote className="h-4 w-4 shrink-0 text-primary" aria-hidden="true" />
           <span className="min-w-0 flex-1 text-sm">
             <span className="font-medium">{t("junior.banners.feedback")}</span> {t("junior.banners.feedbackFor", { date: fmtDate(n.note_date, "dayMonth") })}
-            {unread.length > 1 ? ` ${t("junior.banners.andMore", { count: unread.length - 1 })}` : ""} — {n.reviewed_by}
+            {unread.length > 1 ? ` ${t("junior.banners.andMore", { count: unread.length - 1 })}` : ""} — {personName(n.reviewed_by)}
           </span>
           <span className="text-sm font-medium text-primary">{t("junior.banners.read")}</span>
         </button>

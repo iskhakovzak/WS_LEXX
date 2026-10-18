@@ -13,6 +13,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { RULE_PREFIX, VIOLATION_ARCHIVE, VIOLATION_RESOLUTION, VIOLATION_STATUS, severityMeta } from "./constants";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
 import { rich } from "./rich";
 import { fmtDate, fmtDateCustom, fmtR, fmtUsd } from "@/lib/format";
 import { countedViolations, violationDay, withArchive } from "./discipline";
@@ -281,11 +282,11 @@ export function ViolationsList({
                     {(v.comment || v.consequence || v.acknowledgedAt || v.resolvedAt) && !active && (
                       <div className="mt-2 flex flex-col gap-1 text-xs text-muted-foreground">
                         {v.acknowledgedAt && (
-                          <span>{[t("violations.acknowledged"), v.acknowledgedBy, fmtDate(v.acknowledgedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
+                          <span>{[t("violations.acknowledged"), personName(v.acknowledgedBy), fmtDate(v.acknowledgedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
                         )}
                         {v.comment && <p className="break-words text-foreground">«{v.comment}»</p>}
                         {v.resolvedAt && (
-                          <span>{[res?.label ?? VIOLATION_STATUS.resolved.label, v.resolvedBy, fmtDate(v.resolvedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
+                          <span>{[res?.label ?? VIOLATION_STATUS.resolved.label, personName(v.resolvedBy), fmtDate(v.resolvedAt, "dateTime", { timeZone: "America/New_York" })].filter(Boolean).join(" · ")}</span>
                         )}
                         {v.consequence && <p className="break-words"><span className="font-medium text-foreground">{t("violations.consequence")}</span> {v.consequence}</p>}
                       </div>

@@ -20,6 +20,7 @@ import { fmtDay, fmtValue, useSaveSelf, weekLabel, weekdayShort, type WeeklyRevi
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
 import type { BenchRow, Benchmark, BenchTrend } from "./insights-api";
 import type { WeekInsights } from "./use-week-insights";
 
@@ -247,7 +248,7 @@ export function GoalPanel({ doc, inject, className }: { doc: WeeklyReview; injec
       )}
       {curatorGoals.length > 0 && (
         <div className="mt-3 border-t border-[var(--glass-border)] pt-3">
-          <p className="micro-label mb-1 text-primary">{doc.review?.curatorReview.by ? t("panels.fromCuratorBy", { name: doc.review.curatorReview.by }) : t("panels.fromCurator")}</p>
+          <p className="micro-label mb-1 text-primary">{doc.review?.curatorReview.by ? t("panels.fromCuratorBy", { name: personName(doc.review.curatorReview.by) }) : t("panels.fromCurator")}</p>
           <ol className="list-decimal space-y-1 pl-5 text-sm text-foreground">{curatorGoals.map((g) => <li key={g.id}>{g.text}</li>)}</ol>
         </div>
       )}

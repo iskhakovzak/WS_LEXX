@@ -7,11 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { QueryError } from "@/components/query-error";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { gpApi, gpKeys, initials, type PlanDoc, type TraderPlan } from "./types";
+import { gpApi, gpKeys, type PlanDoc, type TraderPlan } from "./types";
 import { fmtDate } from "@/lib/format";
 import { PlanDocView } from "./plan-doc-view";
 import { shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { comparePersonNames, personInitials, personName } from "@/i18n";
 import { ApiError } from "@/lib/api/http";
 
 function collectMediaCount(doc: Partial<PlanDoc>): number {
@@ -28,7 +29,7 @@ export function TraderPlans({ date }: { date: string }) {
     retry: false,
   });
   const plans = useMemo(() => q.data?.plans ?? [], [q.data]);
-  const missing = q.data?.missing ?? [];
+  const missing = useMemo(() => [...(q.data?.missing ?? [])].sort(comparePersonNames), [q.data]);
   const [sel, setSel] = useState<string | null>(null);
   useEffect(() => {
     if (!plans.length) setSel(null);
@@ -51,7 +52,7 @@ export function TraderPlans({ date }: { date: string }) {
         <EmptyState
           icon={Users}
           title={t("traders.emptyTitle", { date: shortDay(date) })}
-          description={missing.length ? t("traders.emptyMissing", { names: missing.join(", ") }) : t("traders.emptyHint")}
+          description={missing.length ? t("traders.emptyMissing", { names: missing.map(personName).join(", ") }) : t("traders.emptyHint")}
         />
       </Panel>
     );
@@ -85,7 +86,7 @@ export function TraderPlans({ date }: { date: string }) {
             <ul className="mt-1.5 flex flex-wrap gap-1.5">
               {missing.map((n) => (
                 <li key={n}>
-                  <Pill tone="neutral">{n}</Pill>
+                  <Pill tone="neutral">{personName(n)}</Pill>
                 </li>
               ))}
             </ul>
@@ -97,7 +98,7 @@ export function TraderPlans({ date }: { date: string }) {
         <Panel
           title={
             <span className="flex items-center gap-2">
-              {current.trader}
+              {personName(current.trader)}
               <Pill tone={current.status === "ready" ? "accent" : "neutral"} dot>
                 {current.status === "ready" ? t("traders.ready") : t("traders.draft")}
               </Pill>
@@ -137,10 +138,10 @@ function TraderRow({ plan, active, onSelect }: { plan: TraderPlan; active: boole
         active ? "bg-primary/12" : "hover:bg-[var(--glass-hover-bg)]",
       )}
     >
-      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--glass-bg)] text-xs font-semibold">{initials(plan.trader)}</span>
+      <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[var(--glass-bg)] text-xs font-semibold">{personInitials(plan.trader)}</span>
       <span className="min-w-0 flex-1">
         <span className="flex items-center gap-1.5">
-          <span className="truncate text-sm font-medium">{plan.trader}</span>
+          <span className="truncate text-sm font-medium" title={personName(plan.trader)}>{personName(plan.trader)}</span>
           {plan.status === "ready" ? (
             <CircleCheck className="h-3.5 w-3.5 shrink-0 text-primary" aria-label={t("traders.ready")} />
           ) : (

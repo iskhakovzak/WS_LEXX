@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { TraderAvatar } from "./trader-avatar";
 import { fmtCount, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { teamI18n } from "@/i18n/ns/team";
+import { personName } from "@/i18n";
 import { METRIC_LABEL, SCORE_PART_LABEL, metricValue, type Metric, type ScorePart, type TraderRow } from "./leaderboard";
 
 /** Scaling tier keys from the API → the desk ladder names. */
@@ -84,10 +85,10 @@ export function Podium({ rows, metric, onSelect }: { rows: TraderRow[]; metric: 
                 type="button"
                 onClick={() => onSelect(r.trader)}
                 className="flex flex-col items-center gap-2 rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                aria-label={t("showDetails", { name: r.trader })}
+                aria-label={t("showDetails", { name: personName(r.trader) })}
               >
                 <TraderAvatar name={r.trader} size="lg" className={cn("ring-2 ring-offset-2 ring-offset-background", st.ring)} />
-                <span className="max-w-full truncate text-base font-semibold">{r.trader}</span>
+                <span className="max-w-full truncate text-base font-semibold" title={personName(r.trader)}>{personName(r.trader)}</span>
               </button>
               <div className="flex items-center gap-3">
                 <ScoreRing score={r.score} size={48} />
@@ -193,7 +194,7 @@ export function LeaderboardList({
               <TraderAvatar name={r.trader} size="sm" />
               <span className="min-w-0">
                 <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-sm font-medium">{r.trader}</span>
+                  <span className="truncate text-sm font-medium" title={personName(r.trader)}>{personName(r.trader)}</span>
                   {!r.qualified && (
                     <span title={t("unqualifiedTitle", { count: r.minTrades })}>
                       <Pill tone="neutral" className="px-1.5 text-2xs">{t("unqualified")}</Pill>
@@ -244,7 +245,7 @@ export function LeaderboardList({
                   </div>
                 )}
                 <ScoreParts r={r} weights={weights} />
-                <nav className="flex flex-wrap gap-1.5" aria-label={t("linksAria", { name: r.trader })}>
+                <nav className="flex flex-wrap gap-1.5" aria-label={t("linksAria", { name: personName(r.trader) })}>
                   <Link href={`${links.trades({ from, to })}&trader=${encodeURIComponent(r.trader)}`} className="chip inline-flex min-h-7 items-center px-2.5 text-xs">
                     {t("link.trades")}
                   </Link>

@@ -17,6 +17,7 @@ import { NotesPanel } from "./notes-panel";
 import { TemplateDialog } from "./template-dialog";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 export type ProfileTab = "overview" | "risk" | "journal" | "weekly" | "academy" | "notes";
@@ -57,7 +58,7 @@ export function TraderProfile({ trader, tab, onTab, onBack }: { trader: string; 
 
   return (
     <div className="flex flex-col gap-[var(--grid-gap)]">
-      <QueryState query={q} skeleton={<div className="glass-panel h-40 rounded-2xl" aria-hidden="true" />} errorTitle={t("profile.loadFailed", { name: trader })}>
+      <QueryState query={q} skeleton={<div className="glass-panel h-40 rounded-2xl" aria-hidden="true" />} errorTitle={t("profile.loadFailed", { name: personName(trader) })}>
         {(p) => (
           <>
             <ProfileHeader p={p} onBack={onBack} onGoal={() => setGoalOpen(true)} onTemplate={() => setTplOpen(true)} />
@@ -93,9 +94,9 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
   const s = p.signal;
   const { t } = curatorI18n.useT();
   const people = [
-    p.assigned.curator && t("profile.curatorIs", { name: p.assigned.curator }),
-    p.assigned.mentor && t("profile.mentorIs", { name: p.assigned.mentor }),
-    p.assigned.riskManager && t("profile.riskIs", { name: p.assigned.riskManager }),
+    p.assigned.curator && t("profile.curatorIs", { name: personName(p.assigned.curator) }),
+    p.assigned.mentor && t("profile.mentorIs", { name: personName(p.assigned.mentor) }),
+    p.assigned.riskManager && t("profile.riskIs", { name: personName(p.assigned.riskManager) }),
   ].filter(Boolean).join(" · ");
   return (
     <Panel>
@@ -106,7 +107,7 @@ function ProfileHeader({ p, onBack, onGoal, onTemplate }: { p: ProfilePayload; o
         <span className="tile grid h-10 w-10 shrink-0 place-items-center rounded-xl text-primary"><UserRound className="h-5 w-5" aria-hidden="true" /></span>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-lg font-semibold text-foreground">{p.trader}</h2>
+            <h2 className="truncate text-lg font-semibold text-foreground" title={personName(p.trader)}>{personName(p.trader)}</h2>
             {s.stage.label && <Pill tone="purple">{s.stage.label}</Pill>}
             {s.tierName && <Pill tone="neutral">{t("profile.tierIs", { name: s.tierName })}</Pill>}
             <Pill tone={riskTone(s.risk.state)} dot>{s.risk.hasLimits ? s.risk.label : t("noLimits")}</Pill>
@@ -269,7 +270,7 @@ function RiskTab({ p, onTemplate }: { p: ProfilePayload; onTemplate: () => void 
               <span className="micro-label">{t("profile.lastChanges")}</span>
               {p.limitEvents.map((e) => (
                 <p key={e.id} className="break-words text-xs text-muted-foreground">
-                  <span className="tabular-nums">{fmtDate(e.changedAt, "dateTime")}</span> · {e.changedBy ?? "—"}{e.reason ? ` · ${e.reason}` : ""}
+                  <span className="tabular-nums">{fmtDate(e.changedAt, "dateTime")}</span> · {e.changedBy ? personName(e.changedBy) : "—"}{e.reason ? ` · ${e.reason}` : ""}
                 </p>
               ))}
             </div>
@@ -352,7 +353,7 @@ function JournalTab({ p }: { p: ProfilePayload }) {
                   <tr key={d.id}>
                     <td className="whitespace-nowrap">{fmtDate(d.date, "dayMonth")}</td>
                     <td>
-                      {d.reviewedAt ? <Pill tone="up">{t("profile.reviewedBy", { name: d.reviewedBy ?? "—" })}</Pill> : d.closedAt ? <Pill tone="accent" dot>{t("profile.waitingReview")}</Pill> : <Pill tone="neutral">{t("profile.notClosed")}</Pill>}
+                      {d.reviewedAt ? <Pill tone="up">{t("profile.reviewedBy", { name: d.reviewedBy ? personName(d.reviewedBy) : "—" })}</Pill> : d.closedAt ? <Pill tone="accent" dot>{t("profile.waitingReview")}</Pill> : <Pill tone="neutral">{t("profile.notClosed")}</Pill>}
                     </td>
                     <td className={cn("text-right", d.discipline != null && toneText(d.discipline >= 4 ? "up" : d.discipline >= 3 ? "warn" : "down"))}>{d.discipline != null ? `${d.discipline}/5` : "—"}</td>
                     <td className="text-right">{d.curatorScore != null ? `${d.curatorScore}/5` : "—"}</td>
@@ -470,7 +471,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
                 <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm">
                   <StatusDot tone={a.status !== "open" ? "up" : a.overdue ? "down" : "accent"}><span className="sr-only">{actionStatus(a.status)}</span></StatusDot>
                   <span className={cn("line-clamp-2 min-w-0 flex-1 break-words", a.status !== "open" ? "text-muted-foreground line-through" : "text-foreground")} title={a.title}>{a.title}</span>
-                  <span className="shrink-0 text-xs text-muted-foreground">{a.owner === "student" || a.owner === p.trader ? t("profile.ownerTrader") : a.owner === "mentor" ? t("profile.ownerMentor") : a.owner}</span>
+                  <span className="shrink-0 text-xs text-muted-foreground">{a.owner === "student" || a.owner === p.trader ? t("profile.ownerTrader") : a.owner === "mentor" ? t("profile.ownerMentor") : personName(a.owner)}</span>
                   <span className={cn("w-16 shrink-0 text-right text-xs tabular-nums", a.overdue ? "text-down" : "text-muted-foreground")}>{a.dueOn ? fmtDate(a.dueOn, "dayMonth") : "—"}</span>
                 </li>
               ))}
@@ -502,7 +503,7 @@ function AcademyTab({ p, onGoal }: { p: ProfilePayload; onGoal: () => void }) {
             <ul className="flex flex-col gap-2">
               {p.meetings.map((m) => (
                 <li key={m.id} className="flex flex-col gap-0.5 text-sm">
-                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{fmtDate(m.metAt, "dateTime")}</span><span className="text-xs text-muted-foreground">{meetingFormat(m.format)} · {m.mentor}</span></span>
+                  <span className="flex items-center gap-2"><span className="tabular-nums text-foreground">{fmtDate(m.metAt, "dateTime")}</span><span className="text-xs text-muted-foreground">{meetingFormat(m.format)} · {personName(m.mentor)}</span></span>
                   {m.agenda && <span className="line-clamp-2 text-xs text-muted-foreground">{m.agenda}</span>}
                 </li>
               ))}

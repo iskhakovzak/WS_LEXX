@@ -9,6 +9,7 @@
 import { fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
 
 const t = weeklyI18n.t;
 const trades = (count: number) => commonI18n.t("units.trades", { count });
@@ -529,8 +530,8 @@ export function buildDeskConclusions(s: DeskSummary, rows: DeskRow[], limit = 5)
   if (top && (top.netPnl ?? 0) > 0) {
     const share = s.netPnl != null && s.netPnl > 0 && top.netPnl != null ? top.netPnl / s.netPnl : null;
     out.push(share != null && share >= 0.5 && byNet.length > 1
-      ? t("insights.desk.topShare", { name: top.trader, net: usd(top.netPnl), share: fmtRate(Math.min(share, 9.99)) })
-      : t("insights.desk.top", { name: top.trader, net: usd(top.netPnl) }));
+      ? t("insights.desk.topShare", { name: personName(top.trader), net: usd(top.netPnl), share: fmtRate(Math.min(share, 9.99)) })
+      : t("insights.desk.top", { name: personName(top.trader), net: usd(top.netPnl) }));
   }
   if (worst && worst !== top && (worst.netPnl ?? 0) < 0) {
     const why = worst.riskStatus === "breach" ? t("insights.desk.whyBreach") : worst.verdict === "worse" ? t("insights.desk.whyWorse") : worst.weakness ?? null;

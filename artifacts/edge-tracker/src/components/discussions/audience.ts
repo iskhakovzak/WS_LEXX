@@ -8,8 +8,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { http } from "@/lib/api/http";
 import { STALE } from "@/lib/api/keys";
-import { localeTag } from "@/lib/format";
 import { discussionsI18n } from "@/i18n/ns/discussions";
+import { comparePersonNames } from "@/i18n";
 
 export type AudienceGroup = { token: string; label: string; kind: "stage" | "staff" | "cohort"; members: string[] };
 export type AudienceViewerInfo = { name: string | null; stage: string | null; staff: boolean; moderator: boolean; cohorts: number[]; tokens: string[] };
@@ -76,7 +76,7 @@ export function audienceReach(audience: readonly string[], opts: AudienceOptions
   for (const g of opts.groups) if (audience.includes(g.token)) g.members.forEach((n) => names.add(n));
   names.delete(me ?? "");
   const moderators = opts.moderators.filter((n) => n !== me && !names.has(n));
-  return { count: names.size + moderators.length, names: [...names].sort((a, b) => a.localeCompare(b, localeTag())), moderators };
+  return { count: names.size + moderators.length, names: [...names].sort(comparePersonNames), moderators };
 }
 
 /** Restricted thread addressed to the viewer (their stage / curators / their cohort) — the «Для меня» tab. */

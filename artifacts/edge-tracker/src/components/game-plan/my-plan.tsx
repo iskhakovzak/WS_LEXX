@@ -17,6 +17,7 @@ import { PlanDocView } from "./plan-doc-view";
 import { TemplateMenu } from "./plan-templates";
 import { FocusBanner, shortDay } from "./plan-briefing";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
 import { ApiError } from "@/lib/api/http";
 
 type SaveState = { kind: "idle" } | { kind: "saving" } | { kind: "saved"; at: string } | { kind: "error"; message: string } | { kind: "invalid" };
@@ -416,7 +417,7 @@ function DeskSummary({ plan, taken, onAdd }: { plan: GamePlan | null; taken: Set
   const bias = MARKET_BIAS[plan.bias] ?? MARKET_BIAS.neutral;
   return (
     <aside aria-label={t("my.deskPlan")} className="flex min-w-0 flex-col gap-[var(--grid-gap)]">
-      <Panel title={t("my.deskPlan")} description={plan.author}>
+      <Panel title={t("my.deskPlan")} description={personName(plan.author)}>
         <div className="flex flex-col gap-3">
           <div className="flex flex-wrap items-center gap-2">
             <Pill tone={bias.tone} dot>

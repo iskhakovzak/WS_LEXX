@@ -17,6 +17,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { comparePersonNames, personName } from "@/i18n";
 
 /**
  * /academy/learn — «Обучение»: каталог программ с прогрессом, дерево модулей выбранной программы,
@@ -73,7 +74,7 @@ export default function AcademyLearn() {
   useEffect(() => { if (!progressProgram && selectedId) setProgressProgram(selectedId); }, [selectedId, progressProgram]);
 
   const traders = useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")),
+    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames).map((n) => ({ value: n, label: personName(n) })),
     [dbUsers],
   );
 

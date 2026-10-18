@@ -30,6 +30,7 @@ import { UndoToast } from "@/components/undo-toast";
 import { PersonSelect } from "@/components/people/person-select";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName, comparePersonNames } from "@/i18n";
 
 type View = "board" | "list";
 type Scope = "all" | "mine";
@@ -118,7 +119,7 @@ export default function TradeIdeas() {
   }, [ideas, tracking]);
 
   const authors = useMemo(
-    () => Array.from(new Set(ideas.map((i) => i.trader).filter((t): t is string => !!t))).sort((a, b) => a.localeCompare(b)),
+    () => Array.from(new Set(ideas.map((i) => i.trader).filter((t): t is string => !!t))).sort(comparePersonNames),
     [ideas],
   );
 
@@ -131,7 +132,7 @@ export default function TradeIdeas() {
       if (tickerFilter && i.ticker !== tickerFilter) return false;
       if (horizon !== "all" && ideaHorizon(i) !== horizon) return false;
       if (q) {
-        const hay = [i.ticker, i.setup, i.thesis, i.tags, i.trader, i.longName].filter(Boolean).join(" ").toLowerCase();
+        const hay = [i.ticker, i.setup, i.thesis, i.tags, i.trader, personName(i.trader), i.longName].filter(Boolean).join(" ").toLowerCase();
         if (!hay.includes(q)) return false;
       }
       return true;

@@ -5,6 +5,7 @@ import type { BenchRow } from "./api";
 import { fmtMinutes } from "./format";
 import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 import { PeopleSearchInput } from "@/components/people/people-search-input";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 
@@ -13,7 +14,7 @@ type Key =
   | "green" | "bestDay" | "streak" | "hold" | "first15" | "rcov";
 
 const ACCESSORS: Record<Key, (r: BenchRow) => number | string | null | undefined> = {
-  trader: (r) => r.trader,
+  trader: (r) => personName(r.trader),
   trades: (r) => r.trades,
   tpd: (r) => r.tradesPerDay,
   winRate: (r) => r.winRate,
@@ -95,11 +96,11 @@ export function BenchmarkTable({
                       className="mt-1 h-3.5 w-3.5 accent-[hsl(var(--primary))]"
                       checked={isSel}
                       onChange={() => onToggleSelect(r.trader)}
-                      aria-label={t("table.select", { name: r.trader })}
+                      aria-label={t("table.select", { name: personName(r.trader) })}
                     />
                     <div className="min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="font-medium text-foreground">{r.trader}</span>
+                        <span className="font-medium text-foreground">{personName(r.trader)}</span>
                         {r.trader === me && <Pill tone="accent">{t("table.you")}</Pill>}
                         {!r.qualified && <Pill title={t("table.fewTradesTitle")}>{t("table.fewTrades")}</Pill>}
                       </div>
@@ -122,7 +123,7 @@ export function BenchmarkTable({
                     width={96}
                     height={28}
                     baseline={0}
-                    ariaLabel={t("table.curveAria", { name: r.trader, value: usd ? fmtUsd(r.equity.at(-1)?.cum, { signed: true, decimals: "auto" }) : fmtR(r.equity.at(-1)?.cum) })}
+                    ariaLabel={t("table.curveAria", { name: personName(r.trader), value: usd ? fmtUsd(r.equity.at(-1)?.cum, { signed: true, decimals: "auto" }) : fmtR(r.equity.at(-1)?.cum) })}
                   />
                 </td>
                 <td className="text-right">

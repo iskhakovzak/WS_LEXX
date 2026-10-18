@@ -25,6 +25,8 @@ import { LanguageSelect } from "@/i18n/language-switcher";
 import { commonI18n } from "@/i18n/ns/common";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { fmtCount, fmtDate } from "@/lib/format";
+import { personName } from "@/i18n";
+import { LatinNameLine } from "./LatinNameLine";
 
 /** Interface language (also in the top bar and the login screen); saved to the profile by i18n/locale-sync. */
 function LanguagePanel() {
@@ -40,6 +42,8 @@ function LanguagePanel() {
 export type MyProfile = {
   id: number;
   name: string;
+  /** Own Latin name (users.name_latin); absent on an API build before the self-service edit. */
+  nameLatin?: string | null;
   role: string;
   theme: string;
   createdAt: string | null;
@@ -79,7 +83,7 @@ function TeamLine({ label, name }: { label: string; name: string | null | undefi
       {name ? (
         <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-foreground">
           <Avatar name={name} role="curator" size="sm" />
-          <span className="truncate">{name}</span>
+          <span className="truncate" title={personName(name)}>{personName(name)}</span>
         </span>
       ) : (
         <span className="text-sm text-muted-foreground">{settingsI18n.t("profile.notAssigned")}</span>
@@ -212,12 +216,13 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
             <Avatar name={name} role={role} size="lg" />
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
-                <h2 className="truncate text-xl font-semibold text-foreground">{name}</h2>
+                <h2 className="truncate text-xl font-semibold text-foreground" title={personName(name)}>{personName(name)}</h2>
                 <Pill tone={ROLE_TONE[role] ?? "accent"}>{ROLE_LABEL[role] ?? role}</Pill>
               </div>
               <p className="mt-0.5 text-sm text-muted-foreground">
                 {profile?.createdAt ? t("profile.memberSince", { date: fmtDate(profile.createdAt, "long") }) : t("profile.member")}
               </p>
+              <LatinNameLine name={name} fallback={profile?.nameLatin} />
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -268,7 +273,7 @@ export function ProfileSection({ onNavigate }: { onNavigate: (id: SectionId) => 
                   <div className="micro-label mb-2">{t("profile.myWards")}</div>
                   {profile.wards.length ? (
                     <div className="flex flex-wrap gap-1.5">
-                      {profile.wards.map((w) => <Pill key={w}>{w}</Pill>)}
+                      {profile.wards.map((w) => <Pill key={w}>{personName(w)}</Pill>)}
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">{t("profile.noWards")}</p>

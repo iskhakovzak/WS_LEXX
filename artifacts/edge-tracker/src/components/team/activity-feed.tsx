@@ -10,11 +10,13 @@ import { KPI_FORMULAS } from "@/lib/trade-math";
 import { TraderAvatar } from "./trader-avatar";
 import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import {
   actionTone,
   describe,
   describeBurst,
   itemHref,
+  itemTitle,
   relTime,
   sectionMeta,
   timeLabel,
@@ -30,7 +32,7 @@ import { activityI18n } from "@/i18n/ns/activity";
 const SOCIAL = new Set(["reviewed", "commented", "reacted", "liked", "rated", "acknowledged"]);
 
 function actorName(t: string | null) {
-  return !t || t === "system" ? activityI18n.t("system") : t;
+  return !t || t === "system" ? activityI18n.t("system") : personName(t);
 }
 
 function UnreadDot({ show }: { show: boolean }) {
@@ -48,7 +50,7 @@ export function FeedRow({ item, unread }: { item: FeedItem; unread: boolean }) {
   const tone = actionTone(item.action);
   const Icon = meta.icon;
   const social = SOCIAL.has(item.action);
-  const title = item.entityTitle?.trim();
+  const title = itemTitle(item);
   return (
     <li className={cn("relative flex items-start gap-3 rounded-xl py-2.5 pl-4 pr-2 transition-colors hover:bg-[var(--glass-hover-bg)]", unread && "bg-primary/[0.06]")}>
       <UnreadDot show={unread} />
@@ -122,7 +124,7 @@ export function BurstRow({ burst, isUnread }: { burst: Burst; isUnread: (it: Fee
   const meta = sectionMeta(first.section);
   const Icon = meta.icon;
   const unread = burst.items.some(isUnread);
-  const titles = burst.items.map((i) => i.entityTitle?.trim()).filter(Boolean) as string[];
+  const titles = burst.items.map(itemTitle).filter(Boolean) as string[];
   const uniq = [...new Set(titles)];
   return (
     <li className="relative">
@@ -258,10 +260,10 @@ export function DigestCard({
                     type="button"
                     onClick={() => onPickTrader(x.trader)}
                     className="chip inline-flex min-h-8 items-center gap-1.5 py-0.5 pl-0.5 pr-2.5 text-xs"
-                    aria-label={tr("digest.traderChipAria", { name: x.trader, count: x.count })}
+                    aria-label={tr("digest.traderChipAria", { name: personName(x.trader), count: x.count })}
                   >
                     <TraderAvatar name={x.trader} size="xs" />
-                    <span className="font-medium text-foreground">{x.trader}</span>
+                    <span className="font-medium text-foreground">{personName(x.trader)}</span>
                     <span className="tabular-nums">{fmtCount(x.count)}</span>
                   </button>
                 ))}
@@ -313,7 +315,7 @@ export function DigestCard({
               <Trophy className="h-3.5 w-3.5 text-[hsl(var(--chart-3))]" aria-hidden="true" />
               {tr("digest.bestTrade")} <span className="font-semibold text-foreground">{t.best.ticker}</span>
               <span className={cn("tabular-nums", toneText(toneOf(t.best.rMultiple)))}>{fmtR(t.best.rMultiple)}</span>
-              {t.best.trader && <span>· {t.best.trader}</span>}
+              {t.best.trader && <span>· {personName(t.best.trader)}</span>}
             </Link>
           )}
           </span>

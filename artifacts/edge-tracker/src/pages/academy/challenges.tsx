@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { shellI18n } from "@/i18n/ns/shell";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { type ChallengeStatus, useChallenges, usePathConfig } from "@/components/academy/path/api";
 import { ChallengeCard, ChallengeDetailView, CreateChallengeDialog } from "@/components/academy/path/challenge-views";
 import { defaultStageName } from "@/components/academy/path/labels";
@@ -39,7 +39,8 @@ export default function AcademyChallengesPage() {
 
   const list = useChallenges(isCurator ? who || null : null, filter === "archived");
   const config = usePathConfig();
-  const people = React.useMemo(() => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag())), [dbUsers]);
+  const people = React.useMemo(() => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames), [dbUsers]);
+  const personOptions = React.useMemo(() => people.map((n) => ({ value: n, label: personName(n) })), [people]);
   const pathHref = React.useCallback((u: string) => (isCurator ? `/academy/path?user=${encodeURIComponent(u)}` : "/academy/path"), [isCurator]);
 
   const items = (list.data?.challenges ?? []).filter((c) =>
@@ -78,7 +79,7 @@ export default function AcademyChallengesPage() {
           {isCurator && (
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{t("page.student")}</span>
-              <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={people} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
+              <PersonSelect value={who} onValueChange={(v) => { setWho(v); setSelected(null); }} options={personOptions} allLabel={t("page.allStudents")} ariaLabel={t("page.student")} className="h-9 w-48" />
             </label>
           )}
         </div>

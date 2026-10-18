@@ -8,6 +8,7 @@ import type { TradeIdea } from "./model";
 import { fmtDate } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type Decision = "approved" | "needs_work" | "rejected";
 
@@ -45,7 +46,7 @@ export function ReviewVerdict({ idea }: { idea: TradeIdea }) {
     )}>
       <div className="flex flex-wrap items-center gap-2">
         <Pill tone={v.tone}><ShieldCheck className="h-3 w-3" aria-hidden="true" />{v.label}</Pill>
-        {idea.reviewed_by && <span className="text-xs text-muted-foreground">{idea.reviewed_by}{idea.reviewed_at ? ` · ${fmtDate(idea.reviewed_at, "dayMonth")}` : ""}</span>}
+        {idea.reviewed_by && <span className="text-xs text-muted-foreground">{personName(idea.reviewed_by)}{idea.reviewed_at ? ` · ${fmtDate(idea.reviewed_at, "dayMonth")}` : ""}</span>}
       </div>
       {idea.review_reason && <p className="mt-1.5 whitespace-pre-wrap text-foreground">{idea.review_reason}</p>}
     </div>

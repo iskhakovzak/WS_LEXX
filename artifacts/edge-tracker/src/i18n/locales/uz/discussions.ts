@@ -104,7 +104,7 @@ export default {
     updated: "Mavzu yangilandi",
     editTitle: "Mavzuni tahrirlash",
     newTitle: "Yangi mavzu",
-    description: "Muallif: {author}. $TICKER va @ism havolaga aylanadi; @eslatish bildirishnoma yuboradi.",
+    description: "Muallif: {author} · $TICKER va @ism havolaga aylanadi; @eslatish bildirishnoma yuboradi.",
     contextPill: "Kontekst: {context}",
     topic: "Mavzu",
     topicPlaceholder: "NVDA: earnings oldidan foydani olishmi?",

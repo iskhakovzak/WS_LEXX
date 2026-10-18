@@ -25,6 +25,7 @@ import { stepWeekday } from "./utils";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
+import { personName } from "@/i18n";
 import { tagLabel } from "@/components/shared/trade-labels";
 import { MOOD_LABELS, DISCIPLINE_LABELS } from "./vocab";
 
@@ -262,7 +263,7 @@ export function DayJournalEditor({
     <Panel
       title={t("editor.title")}
       icon={NotebookPen}
-      description={editable ? (isFuture ? t("editor.descFuture") : t("editor.descToday")) : t("editor.descReadOnly", { trader })}
+      description={editable ? (isFuture ? t("editor.descFuture") : t("editor.descToday")) : t("editor.descReadOnly", { trader: personName(trader) })}
       actions={<SaveIndicator status={status} mode={mode} editable={editable} onRetry={() => persist(draftRef.current, false)} />}
     >
       {isLoading ? (
@@ -284,7 +285,7 @@ export function DayJournalEditor({
           {isFuture ? (
             <p className="text-sm text-muted-foreground">{t("editor.reviewLater")}</p>
           ) : !editable && isEntryEmpty(entry) ? (
-            <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader })}</p>
+            <p className="py-4 text-center text-sm text-muted-foreground">{t("editor.notFilledBy", { trader: personName(trader) })}</p>
           ) : (
             <>
               {fromLegacy && (
@@ -573,7 +574,7 @@ function CuratorFeedback({ day }: { day: NonNullable<EodDayPayload["day"]> }) {
     <section className="rounded-xl border border-primary/30 bg-primary/5 p-3" aria-label={t("editor.curatorFeedback")}>
       <div className="flex flex-wrap items-center gap-2 text-xs">
         <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
-        <span className="font-semibold">{t("editor.curatorFeedbackBy", { name: day.reviewedBy ?? "—" })}</span>
+        <span className="font-semibold">{t("editor.curatorFeedbackBy", { name: personName(day.reviewedBy) || "—" })}</span>
         <Pill tone="accent">{t("editor.curatorScore", { score: day.curatorScore ?? "—" })}</Pill>
         {day.reviewedAt && <span className="text-muted-foreground">{fmtDate(day.reviewedAt, "dateTime")}</span>}
       </div>

@@ -7,6 +7,7 @@ import type { TrendResult, } from "./api";
 import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 
 const VERDICT_TONE = { better: "up", worse: "down", flat: "neutral", nodata: "neutral" } as const;
 const PP = () => ` ${commonI18n.t("units.percentPoints", { value: "" }).trim()}`;
@@ -29,7 +30,7 @@ const COLS: Col[] = [
 const VERDICT_ORDER: Record<string, number | null> = { worse: 0, flat: 1, better: 2, nodata: null };
 /** Columns sort by the current 4-week value; «Вердикт» by worse → flat → better (no data sinks). */
 const TREND_ACCESSORS: Record<string, (t: TrendResult) => number | string | null> = {
-  trader: (t) => t.trader,
+  trader: (t) => personName(t.trader),
   verdict: (t) => VERDICT_ORDER[t.verdict] ?? null,
   ...Object.fromEntries(COLS.map((c) => [c.key, (t: TrendResult) => (t.curM[c.key] as number | null) ?? null])),
 };
@@ -41,7 +42,7 @@ function WeekBars({ weeks, trader }: { weeks: TrendResult["weeks"]; trader: stri
   const max = Math.max(1e-9, ...vals.map(Math.abs));
   const W = 8 * weeks.length + 2 * (weeks.length - 1), H = 28;
   return (
-    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={t("trend.weeksAria", { trader, list: weeks.map((w) => `${fmtDate(w.week, "shortYY")} ${w.net != null ? fmtUsd(w.net, { signed: true, decimals: "auto" }) : fmtR(w.r)}`).join("; ") })} className="overflow-visible">
+    <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} role="group" aria-label={t("trend.weeksAria", { trader: personName(trader), list: weeks.map((w) => `${fmtDate(w.week, "shortYY")} ${w.net != null ? fmtUsd(w.net, { signed: true, decimals: "auto" }) : fmtR(w.r)}`).join("; ") })} className="overflow-visible">
       <line x1={0} x2={W} y1={H / 2} y2={H / 2} stroke="hsl(var(--border))" />
       {weeks.map((w, i) => {
         const v = vals[i];
@@ -93,7 +94,7 @@ function TrendTable({ trend, t0 }: { trend: TrendResult[]; t0: TrendResult }) {
           <tbody>
             {rows.map((tr) => (
               <tr key={tr.trader}>
-                <td className="font-medium text-foreground">{tr.trader}</td>
+                <td className="font-medium text-foreground">{personName(tr.trader)}</td>
                 <td><Pill tone={VERDICT_TONE[tr.verdict]} dot>{t(`trend.verdict.${tr.verdict}`)}</Pill></td>
                 <td><WeekBars weeks={tr.weeks} trader={tr.trader} /></td>
                 {COLS.map((c) => {

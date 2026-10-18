@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 import type { Action, Evaluation, TraderEval } from "./use-scaling";
 import { useEvaluation, useProposals } from "./use-scaling";
 import { ProposalCard } from "./proposal-card";
@@ -19,7 +20,7 @@ type Filter = "all" | "action" | "pending";
 const FILTERS: readonly Filter[] = ["all", "action", "pending"];
 
 const ACCESSORS = {
-  trader: (r: TraderEval) => r.trader,
+  trader: (r: TraderEval) => personName(r.trader),
   tier: (r: TraderEval) => r.tier?.order ?? -1,
   action: (r: TraderEval) => ({ demote: 0, promote: 1, assign: 2, hold: 3 } as Record<Action, number>)[r.recommendation.action],
   progress: (r: TraderEval) => r.progress,
@@ -82,7 +83,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return all.filter((r) => {
-      if (q && !r.trader.toLowerCase().includes(q)) return false;
+      if (q && !r.trader.toLowerCase().includes(q) && !personName(r.trader).toLowerCase().includes(q)) return false;
       if (filter === "action") return r.recommendation.action !== "hold" || r.recommendation.warning;
       if (filter === "pending") return !!r.pendingProposal;
       return true;
@@ -176,7 +177,7 @@ export function DeskView({ onUpdatedAt, focusTrader = null }: {
                   return (
                     <tr key={r.trader} className="group">
                       <td>
-                        <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setSelected(r.trader)}>{r.trader}</button>
+                        <button type="button" className="font-medium text-foreground hover:underline" onClick={() => setSelected(r.trader)}>{personName(r.trader)}</button>
                       </td>
                       <td><Pill tone="purple">{tierLabel(r.tier)}</Pill></td>
                       <td>

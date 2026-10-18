@@ -219,8 +219,3 @@ export const IMPACT: Record<Impact, { readonly label: string; tone: Tone }> = {
   medium: { get label() { return L("labels.impact.medium"); }, tone: "warn" },
   low: { get label() { return L("labels.impact.low"); }, tone: "neutral" },
 };
-
-export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
-}

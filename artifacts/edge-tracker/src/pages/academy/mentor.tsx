@@ -23,6 +23,7 @@ import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 
 /**
  * /academy/mentor — дашборд наставника: мои студенты и кто отстаёт (с причинами), сегодняшние занятия с отметкой,
@@ -120,7 +121,7 @@ const sevTone = (s: "warn" | "critical"): Tone => (s === "critical" ? "down" : "
 type StudentRow = MentorDashboard["students"][number];
 const STAGE_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
 const STUDENT_ACCESSORS = {
-  name: (s: StudentRow) => s.enrollment.userName,
+  name: (s: StudentRow) => personName(s.enrollment.userName),
   stage: (s: StudentRow) => STAGE_ORDER[s.enrollment.stage] ?? 9,
   att: (s: StudentRow) => s.attendance30.rate,
   goals: (s: StudentRow) => {
@@ -163,7 +164,7 @@ function Students({ d, selected, onSelect, onMeeting }: { d: MentorDashboard; se
                   <tr key={s.enrollment.id} aria-selected={selected === u} className={cn("cursor-pointer", selected === u && "bg-[var(--glass-bg)]")}
                     onClick={() => onSelect(selected === u ? null : u)}>
                     <td>
-                      <button type="button" className="text-left font-medium text-foreground hover:underline" onClick={(e) => { e.stopPropagation(); onSelect(u); }}>{u}</button>
+                      <button type="button" className="text-left font-medium text-foreground hover:underline" onClick={(e) => { e.stopPropagation(); onSelect(u); }}>{personName(u)}</button>
                       <div className="text-xs text-muted-foreground">{s.cohortName}{s.enrollment.status === "paused" ? ` · ${t("mentorPage.students.paused")}` : ""}</div>
                     </td>
                     <td><StagePill stage={s.enrollment.stage} /></td>
@@ -271,7 +272,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
   };
   return (
     <div ref={boxRef} className="scroll-mt-[var(--sticky-top)]">
-    <Panel title={`${u} · ${student.cohortName}`} icon={Target}
+    <Panel title={`${personName(u)} · ${student.cohortName}`} icon={Target}
       description={t("mentorPage.detail.since", { date: fmtYmd(student.enrollment.joinedOn, true), rate: fmtRate(student.attendance.rate) })}
       actions={<>
         <StagePill stage={student.enrollment.stage} />
@@ -318,7 +319,7 @@ function StudentDetail({ student, onClose, onMeeting }: { student: MentorStudent
           <ul className="flex flex-col gap-2">
             {meetings.data?.meetings.slice(0, allMeetings ? undefined : 6).map((m) => (
               <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
-                <div className="flex flex-wrap gap-2"><b className="tabular-nums">{dateTimeLocal(m.metAt)}</b><span className="text-muted-foreground">{m.mentor}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""}</span></div>
+                <div className="flex flex-wrap gap-2"><b className="tabular-nums">{dateTimeLocal(m.metAt)}</b><span className="text-muted-foreground">{personName(m.mentor)}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""}</span></div>
                 {m.agenda && <p className="mt-1">{m.agenda}</p>}
                 {m.notes && <p className="mt-1 whitespace-pre-line text-muted-foreground">{m.notes}</p>}
                 {m.privateNotes && <p className="mt-1 whitespace-pre-line text-xs text-warn">{t("mentorPage.detail.privately", { text: m.privateNotes })}</p>}
@@ -361,7 +362,7 @@ function OpenActions({ items }: { items: ActionItem[] }) {
             <Checkbox id={`ma-${a.id}`} checked={a.status === "done"} aria-label={t("mentorPage.openActions.doneAria", { title: a.title })} className="mt-0.5"
               onCheckedChange={(c) => upd.mutate({ id: a.id, status: c ? "done" : "open" }, { onError: failed })} />
             <label htmlFor={`ma-${a.id}`} className="min-w-0 flex-1 text-sm">
-              <span className="font-medium">{a.student}</span>: {a.title}
+              <span className="font-medium">{personName(a.student)}</span>: {a.title}
               <span className="mt-0.5 flex flex-wrap gap-2 text-xs text-muted-foreground">
                 {a.owner === "mentor" && <span>{t("mentorPage.openActions.onMentor")}</span>}
                 {a.dueOn && <span className={cn(a.overdue && "font-medium text-down")}>{t("shared.due", { date: fmtYmd(a.dueOn) })}{a.overdue ? ` · ${t("mentorPage.openActions.overdue")}` : ""}</span>}
@@ -391,8 +392,8 @@ function MeetingLog({ d }: { d: MentorDashboard }) {
           <li key={m.id} className="glass-field rounded-xl px-3 py-2 text-sm">
             <div className="flex flex-wrap items-center gap-2">
               <b className="tabular-nums">{dateTimeLocal(m.metAt)}</b>
-              <span className="font-medium">{m.student}</span>
-              <span className="text-xs text-muted-foreground">{t("mentorPage.log.with", { mentor: m.mentor, format: meetingFormatLabel(m.format, true) })}</span>
+              <span className="font-medium">{personName(m.student)}</span>
+              <span className="text-xs text-muted-foreground">{t("mentorPage.log.with", { mentor: personName(m.mentor), format: meetingFormatLabel(m.format, true) })}</span>
             </div>
             {m.agenda && <p className="mt-1 text-muted-foreground">{m.agenda}</p>}
           </li>

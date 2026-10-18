@@ -43,7 +43,11 @@ import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookSetupI18n } from "@/i18n/ns/playbookSetup";
 
+import { personName } from "@/i18n";
 const st = playbookSetupI18n.t; // called at render / call time only
+/** «Copy from …»: a person (Latin name in EN/UZ) or the office space, which the API stores as the label «Офис». */
+const OFFICE_AUTHOR = "Офис"; // i18n-ignore (stored copied_from_author of the office space)
+const copiedFromLabel = (author: string) => (author === OFFICE_AUTHOR ? st("view.spaceOffice") : personName(author));
 
 export type SetupTab = "about" | "examples" | "stats" | "history";
 export const SETUP_TABS: SetupTab[] = ["about", "examples", "stats", "history"];
@@ -130,7 +134,7 @@ export function SetupView({
     );
   }
 
-  const author = access.space === "office" ? null : entry.trader ?? entry.createdBy ?? null;
+  const author = access.space === "office" ? null : personName(entry.trader ?? entry.createdBy) || null;
   const proposed = !!entry.officeProposedAt;
   const canCopy = live && !access.mine && viewer.canEdit && !!viewer.name;
 
@@ -165,9 +169,9 @@ export function SetupView({
           {entry.ticker && <Pill tone="neutral">{entry.ticker}</Pill>}
           {access.shared && <Pill tone="accent"><Users className="h-3 w-3" aria-hidden="true" /> {entry.visibility === "all" ? t("view.openToOffice") : t("view.openToSelected")}</Pill>}
           {proposed && access.space === "personal" && (
-            <Pill tone="warn" title={entry.officeProposedNote ?? undefined}><Send className="h-3 w-3" aria-hidden="true" /> {entry.officeProposedBy && !access.mine ? t("view.proposedPillBy", { name: entry.officeProposedBy }) : t("view.proposedPill")}</Pill>
+            <Pill tone="warn" title={entry.officeProposedNote ?? undefined}><Send className="h-3 w-3" aria-hidden="true" /> {entry.officeProposedBy && !access.mine ? t("view.proposedPillBy", { name: personName(entry.officeProposedBy) }) : t("view.proposedPill")}</Pill>
           )}
-          {entry.copiedFromAuthor && <Pill tone="neutral" title={entry.copiedFromId ? t("view.copyOf", { id: entry.copiedFromId }) : undefined}>{t("view.copyPill", { author: entry.copiedFromAuthor })}</Pill>}
+          {entry.copiedFromAuthor && <Pill tone="neutral" title={entry.copiedFromId ? t("view.copyOf", { id: entry.copiedFromId }) : undefined}>{t("view.copyPill", { author: copiedFromLabel(entry.copiedFromAuthor) })}</Pill>}
           {entry.sourceType && <Pill tone="neutral">{SOURCE_LABELS[entry.sourceType] || entry.sourceType}</Pill>}
           {access.space === "office" && (isCurator ? (
             <button
@@ -175,7 +179,7 @@ export function SetupView({
               aria-pressed={entry.reviewed}
               onClick={() => reviewedMut.mutate(!entry.reviewed)}
               className="rounded-full focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              title={entry.reviewed ? (entry.reviewedBy ? t("view.reviewedByTitle", { name: entry.reviewedBy }) : t("view.reviewedTitle")) : t("view.markReviewed")}
+              title={entry.reviewed ? (entry.reviewedBy ? t("view.reviewedByTitle", { name: personName(entry.reviewedBy) }) : t("view.reviewedTitle")) : t("view.markReviewed")}
             >
               <Pill tone={entry.reviewed ? "up" : "neutral"}>
                 {entry.reviewed ? <CheckCircle2 className="h-3 w-3" aria-hidden="true" /> : <Circle className="h-3 w-3" aria-hidden="true" />}
@@ -496,14 +500,14 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
     staleTime: 30_000,
   });
   const facts: [string, string][] = [
-    [st("history.created"), `${fmtDate(entry.createdAt, "long")}${entry.createdBy ? ` · ${entry.createdBy}` : entry.trader ? ` · ${entry.trader}` : ""}`],
+    [st("history.created"), `${fmtDate(entry.createdAt, "long")}${entry.createdBy ? ` · ${personName(entry.createdBy)}` : entry.trader ? ` · ${personName(entry.trader)}` : ""}`],
   ];
   if (entry.updatedAt) facts.push([st("history.updated"), timeAgo(entry.updatedAt) ?? ""]);
-  if (entry.copiedFromAuthor) facts.push([st("history.copiedFrom"), `${entry.copiedFromAuthor}${entry.copiedFromId ? ` (#${entry.copiedFromId})` : ""}`]);
+  if (entry.copiedFromAuthor) facts.push([st("history.copiedFrom"), `${copiedFromLabel(entry.copiedFromAuthor)}${entry.copiedFromId ? ` (#${entry.copiedFromId})` : ""}`]);
   if (entry.promotedFromId) facts.push([st("history.promotedFrom"), `#${entry.promotedFromId}`]);
-  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "short")}${entry.sharedBy ? ` · ${entry.sharedBy}` : ""}`]);
-  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "short")}${entry.officeProposedBy ? ` · ${entry.officeProposedBy}` : ""}`]);
-  if (entry.reviewed && entry.reviewedBy) facts.push([st("history.reviewedBy"), entry.reviewedBy]);
+  if (entry.sharedAt && entry.visibility && entry.visibility !== "private") facts.push([st("history.shared"), `${fmtDate(entry.sharedAt, "short")}${entry.sharedBy ? ` · ${personName(entry.sharedBy)}` : ""}`]);
+  if (entry.officeProposedAt) facts.push([st("history.proposed"), `${fmtDate(entry.officeProposedAt, "short")}${entry.officeProposedBy ? ` · ${personName(entry.officeProposedBy)}` : ""}`]);
+  if (entry.reviewed && entry.reviewedBy) facts.push([st("history.reviewedBy"), personName(entry.reviewedBy)]);
 
   return (
     <div className="grid gap-[var(--grid-gap)] xl:grid-cols-[minmax(0,1fr)_340px]">
@@ -519,7 +523,7 @@ function HistoryPanel({ entry }: { entry: PlaybookEntry }) {
                 <time dateTime={a.createdAt} className="w-24 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDate(a.createdAt, "numericDateTime")}</time>
                 <span className="min-w-0 flex-1">
                   <span className="text-foreground">{activityText(a)}</span>
-                  {a.trader && <span className="text-muted-foreground"> · {a.trader}</span>}
+                  {a.trader && <span className="text-muted-foreground"> · {personName(a.trader)}</span>}
                 </span>
               </li>
             ))}

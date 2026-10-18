@@ -21,6 +21,7 @@ import { BreachHistory, useBreaches } from "./breaches";
 import { cn } from "@/lib/utils";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
 import { positionsCount, stopMessage } from "./labels";
@@ -92,7 +93,7 @@ function LimitsHistory({ trader }: { trader: string }) {
           <li key={e.id} className="rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-xs ring-1 ring-inset ring-[var(--field-border)]">
             <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-muted-foreground">
               <span className="tabular-nums">{fmtDate(e.changedAt, "shortDateTime")}</span>
-              {e.changedBy && <span>· {e.changedBy}</span>}
+              {e.changedBy && <span>· {personName(e.changedBy)}</span>}
               {!e.before && <Pill tone="accent">{t("sheet.firstLimits")}</Pill>}
             </div>
             {e.reason && <div className="mt-0.5 font-medium text-foreground">{e.reason}</div>}
@@ -146,7 +147,7 @@ export function TraderSheet({
           <div className="flex flex-col gap-5">
             <SheetHeader className="pr-10 text-left">
               <div className="flex flex-wrap items-center gap-3">
-                <SheetTitle className="text-xl">{row.trader}</SheetTitle>
+                <SheetTitle className="text-xl">{personName(row.trader)}</SheetTitle>
                 <LevelBadge level={level} />
                 <TierPill tier={row.limits?.tier} />
               </div>

@@ -404,6 +404,23 @@ export function useSetNameLatin() {
   });
 }
 
+export type LatinNameChange = { id: number; name: string; nameLatin: string | null };
+
+/** Many Latin names in one call (one transaction, one audit entry per changed person): «Fill Latin names». */
+export function useSetNamesLatinBulk() {
+  const qc = useQueryClient();
+  return useMutation<{ ok: true; changed: LatinNameChange[]; unchanged: number }, Error, { id: number; nameLatin: string | null }[]>({
+    mutationFn: async (items) => {
+      const r = await send<{ ok: true; changed: LatinNameChange[]; unchanged: number }>("POST", "/admin/console/people/name-latin/bulk", { items });
+      if (isNotFound(r)) throw new NotDeployedError(adminI18n.t("fallback.action.latin"));
+      return r;
+    },
+    onSettled: () => {
+      for (const k of [consoleKeys.people, consoleKeys.audit, ["people-directory"]]) void qc.invalidateQueries({ queryKey: k });
+    },
+  });
+}
+
 export function useCreatePerson() {
   const qc = useQueryClient();
   return useMutation<{ id: number; name: string }, Error, { name: string; password: string; role: string; curator: string | null; reason: string }>({

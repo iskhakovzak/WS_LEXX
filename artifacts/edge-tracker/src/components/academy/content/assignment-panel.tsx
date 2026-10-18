@@ -20,6 +20,7 @@ import { DualTime } from "./time";
 import { fmtR, fmtUsd } from "@/lib/format";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export function RubricTable({ rubric, scores }: { rubric: RubricCriterion[]; scores?: Record<string, number> | null }) {
   const { t } = academyI18n.useT();
@@ -186,10 +187,10 @@ function SubmissionForm({ assignmentId, minTrades, editing, onDone }: { assignme
 export function SubmissionCard({ s, rubric, showUser, actions }: { s: Submission; rubric: RubricCriterion[]; showUser?: boolean; actions?: React.ReactNode }) {
   const { t } = academyI18n.useT();
   return (
-    <article className="glass-panel flex flex-col gap-3 rounded-2xl p-4" aria-label={t("assignment.submissionFrom", { name: s.userName })}>
+    <article className="glass-panel flex flex-col gap-3 rounded-2xl p-4" aria-label={t("assignment.submissionFrom", { name: personName(s.userName) })}>
       <header className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2 text-sm">
-          {showUser && <b className="text-foreground">{s.userName}</b>}
+          {showUser && <b className="text-foreground">{personName(s.userName)}</b>}
           <SubmissionPill status={s.status} passed={s.passed} />
           <span className="text-xs text-muted-foreground">{t("assignment.sent")} <DualTime iso={s.createdAt} /></span>
         </div>
@@ -205,7 +206,7 @@ export function SubmissionCard({ s, rubric, showUser, actions }: { s: Submission
       {(s.status === "graded" || s.status === "returned") && (
         <div className="rounded-xl bg-[var(--glass-bg)] p-3">
           <p className="mb-2 text-xs text-muted-foreground">
-            {s.gradedBy ?? commonI18n.t("roles.mentor")} · <DualTime iso={s.gradedAt} />
+            {s.gradedBy ? personName(s.gradedBy) : commonI18n.t("roles.mentor")} · <DualTime iso={s.gradedAt} />
             {s.status === "graded" && s.pct != null && <> · <b className="tabular-nums text-foreground">{s.total} / {s.maxTotal} ({Math.round(s.pct)}%)</b></>}
           </p>
           {s.status === "graded" && s.scores && rubric.length > 0 && <RubricTable rubric={rubric} scores={s.scores} />}
@@ -239,7 +240,7 @@ export function GradeForm({ submission, rubric, passPct, onDone }: { submission:
         scores: decision === "graded" ? Object.fromEntries(rubric.map((c, i) => [c.key, nums[i]])) : undefined,
         comment,
       });
-      toast({ title: decision === "graded" ? t("assignment.gradeSaved") : t("assignment.returned"), description: t("assignment.willBeNotified", { name: submission.userName }) });
+      toast({ title: decision === "graded" ? t("assignment.gradeSaved") : t("assignment.returned"), description: t("assignment.willBeNotified", { name: personName(submission.userName) }) });
       void invalidateAcademy(qc);
       onDone?.();
     } catch (e) {

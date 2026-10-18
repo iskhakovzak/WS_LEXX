@@ -29,6 +29,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
 import { rich } from "@/i18n/rich";
 
+import { personName } from "@/i18n";
 /** Translator reference (called at render time, never at module scope). */
 const tf = analystI18n.t;
 
@@ -266,9 +267,9 @@ export function TickerSheet({
         {(held.length > 0 || watched || (traded && traded.trades > 0)) && (
           <div className="flex flex-wrap items-center gap-1.5">
             {held.length > 0 && (
-              <Pill tone="warn" title={held.map((h) => `${h.trader ?? "—"} · ${HORIZON_LABEL[h.horizon]}${h.side ? ` · ${h.side}` : ""}`).join("; ")}>
+              <Pill tone="warn" title={held.map((h) => `${h.trader ? personName(h.trader) : "—"} · ${HORIZON_LABEL[h.horizon]}${h.side ? ` · ${h.side}` : ""}`).join("; ")}>
                 <Briefcase className="h-3 w-3" aria-hidden="true" />
-                {tf("sheet.held", { names: held.map((h) => h.trader ?? "—").join(", ") })}
+                {tf("sheet.held", { names: held.map((h) => (h.trader ? personName(h.trader) : "—")).join(", ") })}
               </Pill>
             )}
             {watched && <Pill tone="accent"><BookmarkCheck className="h-3 w-3" aria-hidden="true" /> {tf("sheet.inWatchlist")}</Pill>}

@@ -19,6 +19,8 @@ import { fmtCount, fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 import { adminI18n } from "@/i18n/ns/admin";
+import { actorName } from "./audit-text";
+import { personName } from "@/i18n";
 import { JobsPanel } from "./JobsPanel";
 
 /** Export table keys (sent to the server as is; labels: adminI18n `data.exportTables.*`). */
@@ -180,8 +182,8 @@ function ImportHistoryCard() {
                   <tr key={r.id}>
                     <td className="max-w-[11rem]">
                       <div className="whitespace-nowrap tabular-nums" title={fmtDate(r.startedAt, "shortDateTimeSeconds")}>{fmtDate(r.startedAt, "numericDateTime")}</div>
-                      <div className="truncate text-2xs text-muted-foreground" title={[r.fileName, r.actor].filter(Boolean).join(" · ") || undefined}>
-                        {r.source === "file" ? (r.fileName ?? t("data.history.file")) : "API"}{r.actor ? ` · ${r.actor}` : ""}
+                      <div className="truncate text-2xs text-muted-foreground" title={[r.fileName, r.actor ? actorName(r.actor) : null].filter(Boolean).join(" · ") || undefined}>
+                        {r.source === "file" ? (r.fileName ?? t("data.history.file")) : "API"}{r.actor ? ` · ${actorName(r.actor)}` : ""}
                       </div>
                     </td>
                     <td>
@@ -214,9 +216,9 @@ const CHECK_LINK: Record<string, { href: string; label: "linkAccounts" | "linkRe
 
 function sampleText(row: Record<string, unknown>): string {
   const t = adminI18n.t;
-  if (Array.isArray(row.ids)) return t("data.quality.sampleDup", { trader: String(row.trader ?? "?"), ticker: String(row.ticker ?? ""), date: String(row.date ?? ""), count: Number(row.n) || 0, ids: `#${(row.ids as unknown[]).join(", #")}` });
+  if (Array.isArray(row.ids)) return t("data.quality.sampleDup", { trader: row.trader ? personName(String(row.trader)) : "?", ticker: String(row.ticker ?? ""), date: String(row.date ?? ""), count: Number(row.n) || 0, ids: `#${(row.ids as unknown[]).join(", #")}` });
   if (row.account && row.n != null) return t("data.quality.sampleAccount", { account: String(row.account), trades: commonI18n.t("units.trades", { count: Number(row.n) }) });
-  const parts = [row.date, row.ticker, row.trader ?? t("data.quality.noTrader")];
+  const parts = [row.date, row.ticker, row.trader ? personName(String(row.trader)) : t("data.quality.noTrader")];
   if (row.openedDate) parts.push(t("data.quality.opened", { date: String(row.openedDate) }));
   if (row.exitDate) parts.push(t("data.quality.exit", { date: String(row.exitDate) }));
   return parts.filter(Boolean).map(String).join(" · ");

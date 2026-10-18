@@ -187,6 +187,7 @@ Source of truth: `ERROR_CODES` in `errors.ts` (status) and `src/i18n/ru/errors.t
 | `USER_NAME_REQUIRED` | 400 | Creating a user without a name. | validation issues |
 | `PASSWORD_TOO_SHORT` | 400 | Creating a user with a too short password (schema minimum). | validation issues |
 | `NAME_LATIN_CHARS` | 400 | Latin name alias with other characters. | — |
+| `NAME_LATIN_INVALID_FOR` | 400 | Bulk Latin names (POST /admin/console/people/name-latin/bulk): one item fails cleanNameLatin; nothing is saved. | `{ id, code }` of the item |
 | `BREACH_NOT_FOUND` | 404 | Risk breach (risk_alert_log row). | — |
 | `BREACH_REVIEW_NOT_FOUND` | 404 | Breach review (risk_breach_reviews). | — |
 | `AGREEMENT_NOT_FOUND` | 404 | An agreed action of a breach review. | — |

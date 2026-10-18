@@ -17,6 +17,7 @@ import { timeAgo } from "./model";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
 
+import { personName } from "@/i18n";
 const destructive = "bg-down text-white hover:bg-down/90";
 
 /** Rename; when the target exists the server answers 409 and we ask before merging. */
@@ -186,7 +187,7 @@ export function ActivitySheet({ open, onOpenChange }: { open: boolean; onOpenCha
                     <span className="min-w-0 flex-1 truncate text-sm font-medium">{a.entityTitle ?? "—"}</span>
                   </div>
                   <div className="mt-0.5 flex flex-wrap gap-x-2 text-xs text-muted-foreground">
-                    {a.trader && <span>{a.trader}</span>}
+                    {a.trader && <span>{personName(a.trader)}</span>}
                     <span>{timeAgo(a.createdAt)}</span>
                     {a.details && <span className="min-w-0 truncate" title={a.details}>· {a.details}</span>}
                   </div>

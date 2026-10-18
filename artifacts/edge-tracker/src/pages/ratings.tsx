@@ -20,6 +20,7 @@ import { MyProgressTab } from "@/components/ratings/my-progress-tab";
 import { RatingDialog } from "@/components/ratings/rating-dialog";
 import { weekLabel, weekOf, type Rating } from "@/components/ratings/scorecard-model";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 type Tab = "leaderboard" | "curator" | "me";
@@ -152,7 +153,7 @@ export default function RatingsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>{t("page.deleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              {deleting ? t("page.deleteDescription", { trader: deleting.trader, week: weekLabel(deleting.week) }) : ""}
+              {deleting ? t("page.deleteDescription", { trader: personName(deleting.trader), week: weekLabel(deleting.week) }) : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

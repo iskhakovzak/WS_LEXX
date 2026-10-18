@@ -26,6 +26,7 @@ import { fmtDate, fmtNum, fmtR, fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { rich, slots } from "@/i18n/rich";
+import { personName, comparePersonNames } from "@/i18n";
 
 const PERIODS = [
   { value: "30", key: "d30" },
@@ -55,7 +56,7 @@ const BASES: OutcomeBasis[] = ["price", "trades"];
 
 /** Column accessors for the authors table; empty values sink to the bottom (useTableSort). */
 const AUTHOR_ACCESSORS: Record<SortKey | "trader" | "best", (a: AuthorStats) => number | string | null> = {
-  trader: (a) => a.trader,
+  trader: (a) => personName(a.trader),
   ideas: (a) => a.ideas,
   conversion: (a) => a.conversion,
   hitRate: (a) => a.hitRate,
@@ -125,7 +126,7 @@ export default function TradeIdeaStats() {
   const verdict = calibVerdict(calib);
   const authorList = useMemo(() => authorStats(inPeriod).sort((a, b) => b.ideas - a.ideas), [inPeriod]);
   const { rows: authors, thProps } = useTableSort(authorList, AUTHOR_ACCESSORS, "ideas");
-  const authorNames = useMemo(() => [...new Set(all.map((i) => i.trader ?? noAuthor))].sort(), [all, noAuthor]);
+  const authorNames = useMemo(() => [...new Set(all.map((i) => i.trader ?? noAuthor))].sort(comparePersonNames), [all, noAuthor]);
 
   const ranked = useMemo(() => {
     const withR = scoped.filter((i) => i.r != null);
@@ -145,7 +146,7 @@ export default function TradeIdeaStats() {
         ? [t("stats.csv.author"), t("stats.csv.ideas"), t("stats.csv.published"), t("stats.csv.converted"), t("stats.csv.conversionPct"), t("stats.csv.target"), t("stats.csv.stop"), "—", t("stats.csv.targetFirstPct"), t("stats.csv.avgR"), "Σ R", t("stats.csv.avgScore"), t("stats.csv.calibR")]
         : [t("stats.csv.author"), t("stats.csv.ideas"), t("stats.csv.published"), t("stats.csv.converted"), t("stats.csv.conversionPct"), t("stats.csv.profit"), t("stats.csv.loss"), t("stats.csv.breakeven"), t("stats.csv.hitRatePct"), t("stats.csv.avgR"), "Σ R", t("stats.csv.avgScore"), t("stats.csv.calibR")],
       authors.map((a) => [
-        a.trader, a.ideas, a.published, a.converted,
+        personName(a.trader), a.ideas, a.published, a.converted,
         a.conversion == null ? "" : Math.round(a.conversion * 100), a.wins, a.losses, a.be,
         a.hitRate == null ? "" : Math.round(a.hitRate * 100),
         a.avgR == null ? "" : a.avgR.toFixed(2), a.sumR.toFixed(2),
@@ -182,7 +183,7 @@ export default function TradeIdeaStats() {
           )}
           {author !== "all" && (
             <button type="button" className="chip inline-flex min-h-9 items-center gap-1 px-3 text-sm" aria-pressed="true" onClick={() => setAuthor("all")}>
-              {author} <X className="h-3.5 w-3.5" aria-label={t("stats.resetAuthor")} />
+              {personName(author)} <X className="h-3.5 w-3.5" aria-label={t("stats.resetAuthor")} />
             </button>
           )}
           {trackingPending && <span className="text-xs text-muted-foreground" role="status">{t("stats.loadingPrices")}</span>}
@@ -255,7 +256,7 @@ export default function TradeIdeaStats() {
             <Panel>
               <EmptyState
                 icon={Lightbulb}
-                title={author !== "all" ? t("stats.noIdeasPeriodAuthor", { period: periodText, author }) : t("stats.noIdeasPeriod", { period: periodText })}
+                title={author !== "all" ? t("stats.noIdeasPeriodAuthor", { period: periodText, author: personName(author) }) : t("stats.noIdeasPeriod", { period: periodText })}
                 action={<Button variant="outline" size="sm" onClick={() => { setPeriod("all"); setAuthor("all"); }}>{tc("actions.resetFilters")}</Button>}
               />
             </Panel>
@@ -301,7 +302,7 @@ export default function TradeIdeaStats() {
                               {i.setupQuality && <Pill tone="purple" className="px-1.5 py-0 text-2xs">{i.setupQuality}</Pill>}
                             </div>
                             {(() => {
-                              const meta = `${i.trader ?? "—"} · ${fmtDate(i.date, "dayMonth")}${i.score != null ? ` · ${t("stats.scoreMeta", { score: i.score })}` : ""}${i.setup ? ` · ${i.setup}` : ""}`;
+                              const meta = `${i.trader ? personName(i.trader) : "—"} · ${fmtDate(i.date, "dayMonth")}${i.score != null ? ` · ${t("stats.scoreMeta", { score: i.score })}` : ""}${i.setup ? ` · ${i.setup}` : ""}`;
                               return <div className="truncate text-xs text-muted-foreground" title={meta}>{meta}</div>;
                             })()}
                           </div>
@@ -346,7 +347,7 @@ export default function TradeIdeaStats() {
                           >
                             <td className="px-5 py-2.5">
                               <button type="button" aria-pressed={active} className="flex flex-col text-left" onClick={(e) => { e.stopPropagation(); setAuthor(active ? "all" : a.trader); }}>
-                                <span className="font-medium text-foreground">{a.trader}{a.trader === me && <span className="ml-1.5 text-xs text-primary">{t("stats.youShort")}</span>}</span>
+                                <span className="font-medium text-foreground">{personName(a.trader)}{a.trader === me && <span className="ml-1.5 text-xs text-primary">{t("stats.youShort")}</span>}</span>
                                 <span className="text-xs text-muted-foreground tabular-nums">{t("stats.authorSub", { published: a.published, converted: a.converted })}</span>
                               </button>
                             </td>
@@ -374,7 +375,7 @@ export default function TradeIdeaStats() {
                                 </span>
                               ) : <span className="text-muted-foreground">—</span>}
                             </td>
-                            <td className="px-5 py-2.5"><div className="flex justify-end"><Sparkline values={a.sparkR} width={72} height={24} label={t("stats.sparkAria", { name: a.trader })} /></div></td>
+                            <td className="px-5 py-2.5"><div className="flex justify-end"><Sparkline values={a.sparkR} width={72} height={24} label={t("stats.sparkAria", { name: personName(a.trader) })} /></div></td>
                           </tr>
                         );
                       })}
@@ -393,7 +394,7 @@ export default function TradeIdeaStats() {
                           className={cn("flex w-full flex-col gap-2 rounded-xl bg-[var(--glass-bg)] p-3 text-left", active && "ring-1 ring-primary/60")}
                         >
                           <div className="flex items-center justify-between gap-2">
-                            <span className="font-medium text-foreground">{a.trader}</span>
+                            <span className="font-medium text-foreground">{personName(a.trader)}</span>
                             <span className={cn("font-semibold tabular-nums", toneText(toneOf(a.avgR)))}>{fmtR(a.avgR)}</span>
                           </div>
                           <OutcomeBar wins={a.wins} losses={a.losses} be={a.be} open={a.open} />

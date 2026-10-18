@@ -25,6 +25,7 @@ import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
+import { personName } from "@/i18n";
 type Period = "30" | "90" | "365" | "all";
 type PickKey = "ticker" | "date" | "trader" | "auto" | "setup" | "net";
 /** Net column: $ for own trades, R for someone else's (redacted) — sorted by what the cell shows. */
@@ -220,7 +221,7 @@ export function TradePickerDialog({
                         {t.side && <span className={cn("ml-1.5 text-xs font-normal", t.side.toLowerCase().startsWith("s") ? "text-down" : "text-up")}>{t.side.toLowerCase().startsWith("s") ? "S" : "L"}</span>}
                       </td>
                       <td className="px-2 py-2 tabular-nums text-muted-foreground">{fmtDate(t.closeDate ?? t.date, "dayMonthNumeric")}</td>
-                      {isCurator && <td className="px-2 py-2 text-muted-foreground">{t.trader ?? "—"}</td>}
+                      {isCurator && <td className="px-2 py-2 text-muted-foreground">{t.trader ? personName(t.trader) : "—"}</td>}
                       <td className="px-2 py-2">
                         {t.autoSetup ? (
                           <span className={cn("inline-flex items-center gap-1 text-xs", t.autoMatch ? "text-primary" : "text-muted-foreground")}>

@@ -10,7 +10,8 @@ import { securityT } from "../lib/security/i18n";
 import { can, requireCap } from "../lib/permissions";
 import { logger } from "../lib/logger";
 import { ensureLocaleColumn, langOf, parseLang, rememberLocale } from "../i18n";
-import { ensureNameLatin, loadDirectory, searchPeople } from "../lib/peopleDirectory";
+import { cleanNameLatin, ensureNameLatin, loadDirectory, saveLatinNames, searchPeople } from "../lib/peopleDirectory";
+import { reloadLatinNames } from "../lib/people/latinNames";
 import { AppError, badRequest, forbidden, notFound, unauthorized } from "../lib/http";
 
 const router: IRouter = Router();
@@ -127,8 +128,9 @@ router.get("/users/me/profile", asyncHandler(async (req, res): Promise<void> => 
   const me = req.authUser;
   if (!me) throw unauthorized();
   await ensureLocaleColumn().catch(() => {});
+  const latinCol = await ensureNameLatin().then(() => `name_latin AS "nameLatin",`, () => "");
   const { rows } = await pool.query<any>(
-    `SELECT id, name, role, active,
+    `SELECT id, name, role, active, ${latinCol}
             COALESCE(theme, 'dark') AS theme,
             COALESCE(locale, 'ru') AS locale,
             created_at AS "createdAt",
@@ -181,6 +183,20 @@ router.patch("/users/me/locale", asyncHandler(async (req, res): Promise<void> =>
   await pool.query(`UPDATE users SET locale = $1 WHERE id = $2`, [locale, me.id]);
   rememberLocale({ id: me.id, name: me.name }, locale);
   res.json({ locale });
+}));
+
+// ─── Own Latin name (users.name_latin) ──────────────────────────────────────
+// PATCH /users/me/name-latin { nameLatin: string | null } → { ok, name, nameLatin }. Members only: people know their
+// own spelling. Same validation as the admin edit (cleanNameLatin); audit «user.name_latin» with the user as actor.
+router.patch("/users/me/name-latin", asyncHandler(async (req, res): Promise<void> => {
+  if (!requireMember(req, res)) return;
+  const cleaned = cleanNameLatin((req.body as { nameLatin?: unknown } | undefined)?.nameLatin);
+  if (!cleaned.ok) throw new AppError(cleaned.code, 400, cleaned.params);
+  await ensureNameLatin();
+  const me = req.authUser!;
+  const changed = await saveLatinNames([{ id: me.id, name: me.name, nameLatin: cleaned.value }], me.name, { bulk: false });
+  if (changed.length) await reloadLatinNames();
+  res.json({ ok: true, name: me.name, nameLatin: cleaned.value });
 }));
 
 // ─── Personal settings (users.settings JSONB) — audit P1-7 ─────────────────────

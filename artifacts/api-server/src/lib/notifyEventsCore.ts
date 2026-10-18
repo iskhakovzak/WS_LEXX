@@ -9,6 +9,7 @@
 import { riskT, propreportsT } from "../i18n/ns";
 import { rulesT } from "./rulesI18n";
 import type { Lang } from "../i18n";
+import { personNameFor } from "./people/latinNames";
 
 // ─── formatting ─────────────────────────────────────────────────────────────
 
@@ -176,8 +177,8 @@ export function riskNotice(s: RiskSnapshot, lang: Lang = "ru"): RiskNotice | nul
     core,
     traderTitle: cap(label),
     traderBody: t(`notify.traderBody.${bodyKey}`, { core: cap(core) }),
-    staffTitle: t("notify.staffTitle", { trader: s.trader, label }),
-    staffBody: t("notify.staffBody", { trader: s.trader, core }),
+    staffTitle: t("notify.staffTitle", { trader: personNameFor(s.trader, lang), label }),
+    staffBody: t("notify.staffBody", { trader: personNameFor(s.trader, lang), core }),
     params: riskNoticeParams(s),
   };
 }
@@ -398,17 +399,18 @@ export function violationNotice(
   if (!items.length) return null;
   const t = rulesT.tFor(lang);
   const q = (x: string) => (lang === "en" ? `“${x}”` : `«${x}»`);
+  const who = personNameFor(trader, lang);
   const severity = items.some((v) => v.severity === "high" || v.severity === "critical") ? "critical" : "warn";
   if (items.length === 1) {
     const v = items[0];
     const rule = preview(v.ruleName, 60);
-    return { title: forStaff ? t("notify.oneStaff", { rule, trader }) : t("notify.one", { rule }), message: preview(v.message, 160), severity };
+    return { title: forStaff ? t("notify.oneStaff", { rule, trader: who }) : t("notify.one", { rule }), message: preview(v.message, 160), severity };
   }
   const rules = [...new Set(items.map((v) => v.ruleName))];
   const shown = rules.slice(0, 3).map((r) => q(preview(r, 40))).join(", ");
   const count = items.length;
   return {
-    title: forStaff ? t("notify.manyStaff", { count, trader }) : t("notify.many", { count }),
+    title: forStaff ? t("notify.manyStaff", { count, trader: who }) : t("notify.many", { count }),
     message: rules.length > 3 ? t("notify.rulesMore", { rules: shown, more: rules.length - 3 }) : shown,
     severity,
   };

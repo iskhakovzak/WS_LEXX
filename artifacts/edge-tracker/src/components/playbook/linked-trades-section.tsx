@@ -22,6 +22,7 @@ import { fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
+import { personName } from "@/i18n";
 const et = playbookExamplesI18n.t; // called at render / call time only
 
 type PickRow = LinkedTrade & { matchesSetup: boolean };
@@ -68,13 +69,16 @@ function RStrip({ trades }: { trades: LinkedTrade[] }) {
   );
 }
 
+/** «Setup · trader» line (the trader in the display language). */
+const whoText = (t: LinkedTrade) => [t.setup, t.trader ? personName(t.trader) : null].filter(Boolean).join(" · ");
+
 type LinkedKey = "ticker" | "date" | "horizon" | "who" | "r" | "result";
 /** «Итог» sorts by net $ when it is shown, else by the result (win > be > loss). */
 const LINKED_ACCESSORS: Record<LinkedKey, (t: LinkedTrade) => number | string | null | undefined> = {
   ticker: (t) => t.ticker,
   date: (t) => (t.exitDate || t.date || "").slice(0, 10),
   horizon: (t) => horizonOf(t),
-  who: (t) => [t.setup, t.trader].filter(Boolean).join(" · ") || null,
+  who: (t) => whoText(t) || null,
   r: (t) => rOf(t),
   result: (t) => { const n = t.redacted ? null : netPnl(t); if (n != null) return n; const r = resultOf(t); return r === "win" ? 1 : r === "loss" ? -1 : r === "be" ? 0 : null; },
 };
@@ -191,7 +195,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
         {t.side && <span className={cn("shrink-0 text-xs", t.side === "Long" ? "text-up" : "text-down")}>{t.side === "Long" ? "▲" : "▼"}</span>}
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">{t.date?.slice(0, 10)}</span>
         {hz !== "intraday" && <span className="shrink-0 text-xs text-muted-foreground">{HORIZON_LABEL[hz] ?? hz}</span>}
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{[t.setup, t.trader].filter(Boolean).join(" · ")}</span>
+        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{whoText(t)}</span>
         {r != null && <span className={cn("shrink-0 text-xs tabular-nums", toneText(r > 0 ? "up" : r < 0 ? "down" : "neutral"))}>{r > 0 ? "+" : ""}{r.toFixed(1)}R</span>}
         <Pill tone={tone} className="shrink-0"><span title={t.redacted ? redactedHint() : netPnl(t) != null ? commonI18n.t("trading.netPnl") : undefined}>{resultLabel(t)}</span></Pill>
       </>
@@ -275,7 +279,7 @@ export function LinkedTradesSection({ entry }: { entry: PlaybookEntry }) {
                       </td>
                       <td className="px-2 py-1.5 text-xs tabular-nums text-muted-foreground">{(t.exitDate || t.date)?.slice(0, 10)}</td>
                       <td className="px-2 py-1.5 text-xs text-muted-foreground">{HORIZON_LABEL[hz] ?? hz}</td>
-                      <td className="max-w-[220px] truncate px-2 py-1.5 text-xs text-muted-foreground" title={[t.setup, t.trader].filter(Boolean).join(" · ") || undefined}>{[t.setup, t.trader].filter(Boolean).join(" · ") || "—"}</td>
+                      <td className="max-w-[220px] truncate px-2 py-1.5 text-xs text-muted-foreground" title={whoText(t) || undefined}>{whoText(t) || "—"}</td>
                       <td className={cn("px-2 py-1.5 text-right text-xs tabular-nums", toneText(r == null ? "neutral" : r > 0 ? "up" : r < 0 ? "down" : "neutral"))}>{r == null ? "—" : `${r > 0 ? "+" : ""}${r.toFixed(1)}R`}</td>
                       <td className="px-2 py-1.5 text-right"><Pill tone={resultTone(t)}><span title={t.redacted ? redactedHint() : netPnl(t) != null ? commonI18n.t("trading.netPnl") : undefined}>{resultLabel(t)}</span></Pill></td>
                       <td className="px-1 py-1 text-right">

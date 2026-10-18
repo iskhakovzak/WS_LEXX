@@ -19,6 +19,7 @@ import { QUEUE_LABEL, QUEUE_TONE, actionTone, curatorLinks, profileHref, riskTon
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { TemplateDialog } from "./template-dialog";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** Which limit the risk tile should show: the one that triggered the state (drawdown / week), otherwise the daily one. */
@@ -150,7 +151,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
               {(showAll.next ? data.nextActions : data.nextActions.slice(0, 10)).map((a) => (
                 <li key={a.trader} className="tile flex min-w-0 items-center gap-3 px-3 py-2">
                   <button type="button" onClick={() => onOpenTrader(a.trader)} className="w-28 shrink-0 truncate text-left text-sm font-medium text-foreground hover:text-primary">
-                    {a.trader}
+                    {personName(a.trader)}
                   </button>
                   <StatusDot tone={actionTone(a.kind)} className="min-w-0 flex-1"><span className="text-sm text-foreground">{a.label}</span></StatusDot>
                   {a.kind === "no_limits" ? (
@@ -184,7 +185,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
               return (
                 <Tile key={r.trader} onClick={() => onOpenTrader(r.trader, "risk")} className="flex flex-col gap-2">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium text-foreground">{r.trader}</span>
+                    <span className="text-sm font-medium text-foreground">{personName(r.trader)}</span>
                     <Pill tone={riskTone(r.state)} dot>{r.label}</Pill>
                     <span className={cn("ml-auto text-sm tabular-nums", (r.pnlNet ?? 0) < 0 ? "text-down" : "text-muted-foreground")} title={t("today.pnlToday")}>
                       {r.pnlNet == null ? t("today.noTradesToday") : fmtUsd(r.pnlNet, { signed: true, decimals: 0 })}
@@ -202,7 +203,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                 <ul className="flex flex-col">
                   {data.trading.map((x) => (
                     <li key={x.trader} className="flex items-center gap-2 border-b border-border/50 py-1.5 text-sm last:border-b-0">
-                      <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary" onClick={() => onOpenTrader(x.trader)}>{x.trader}</button>
+                      <button type="button" className="min-w-0 flex-1 truncate text-left text-foreground hover:text-primary" onClick={() => onOpenTrader(x.trader)} title={personName(x.trader)}>{personName(x.trader)}</button>
                       <span className="text-xs tabular-nums text-muted-foreground">{t("tradesShort", { count: x.trades })}{x.openPositions ? ` · ${t("openShort", { count: x.openPositions })}` : ""}</span>
                       <span className={cn("w-20 text-right tabular-nums", (x.pnlNet ?? 0) > 0 ? "text-up" : (x.pnlNet ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(x.pnlNet, { signed: true, decimals: 0 })}</span>
                     </li>
@@ -218,7 +219,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                     <Layers className="h-3.5 w-3.5" /> {t("today.applyTemplate")}
                   </Button>
                 </div>
-                <p className="text-xs text-muted-foreground">{t("today.noLimitsHint", { names: data.risk.noLimits.join(", ") })}</p>
+                <p className="text-xs text-muted-foreground">{t("today.noLimitsHint", { names: data.risk.noLimits.map(personName).join(", ") })}</p>
               </div>
             )}
           </div>
@@ -279,7 +280,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
               {(showAll.queue ? queue : queue.slice(0, 12)).map((q) => (
                 <li key={q.id} className="tile grid min-w-0 grid-cols-[7rem_minmax(0,8rem)_minmax(0,1fr)_5rem_auto] items-center gap-x-3 px-3 py-1.5">
                   <Pill tone={QUEUE_TONE[q.kind]} className="w-full min-w-0 justify-center" title={QUEUE_LABEL[q.kind]}><span className="truncate">{QUEUE_LABEL[q.kind]}</span></Pill>
-                  <span className="truncate text-sm font-medium text-foreground" title={q.trader}>{q.trader}</span>
+                  <span className="truncate text-sm font-medium text-foreground" title={personName(q.trader)}>{personName(q.trader)}</span>
                   <span className="truncate text-sm text-muted-foreground" title={q.title}>{q.title.replace(/\d{4}-\d{2}-\d{2}/g, (d) => fmtDate(d, "dayMonth"))}</span>
                   <span
                     className={cn("text-right text-xs tabular-nums", q.overdue ? "font-medium text-down" : "text-muted-foreground")}
@@ -328,16 +329,16 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
             <GapList
               title={t("today.notClosedOn", { date: fmtDate(data.prevDay, "dayMonth") })}
               empty={t("today.allClosed")}
-              items={data.missingEod.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))}
+              items={data.missingEod.map((m) => ({ key: m.trader, label: personName(m.trader), href: curatorLinks.journalDay(m.trader, m.date) }))}
             />
             {data.openToday.length > 0 && (
-              <GapList title={t("today.openToday")} items={data.openToday.map((m) => ({ key: m.trader, label: m.trader, href: curatorLinks.journalDay(m.trader, m.date) }))} />
+              <GapList title={t("today.openToday")} items={data.openToday.map((m) => ({ key: m.trader, label: personName(m.trader), href: curatorLinks.journalDay(m.trader, m.date) }))} />
             )}
             {data.plansAvailable && data.phase !== "weekend" && (
               <GapList
                 title={t("today.noPlanToday")}
                 empty={t("today.allPlans")}
-                items={data.missingPlan.map((m) => ({ key: m.trader, label: m.trader, meta: m.status === "draft" ? t("today.draft") : undefined }))}
+                items={data.missingPlan.map((m) => ({ key: m.trader, label: personName(m.trader), meta: m.status === "draft" ? t("today.draft") : undefined }))}
                 onOpen={(t) => onOpenTrader(t, "journal")}
               />
             )}
@@ -349,7 +350,7 @@ export function TodayView({ data, scope = "auto", onOpenTrader }: { data: TodayP
                 <ul className="flex flex-col gap-1">
                   {(showAll.overdue ? data.overdueActions : data.overdueActions.slice(0, 6)).map((a) => (
                     <li key={a.id} className="flex min-w-0 items-center gap-2 text-sm">
-                      <button type="button" title={a.trader} className="w-24 shrink-0 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(a.trader, "academy")}>{a.trader}</button>
+                      <button type="button" title={personName(a.trader)} className="w-24 shrink-0 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(a.trader, "academy")}>{personName(a.trader)}</button>
                       <span className="min-w-0 flex-1 truncate text-muted-foreground" title={a.title}>{a.title}</span>
                       <span className="shrink-0 text-xs tabular-nums text-down">{t("today.overdueDays", { count: a.daysOverdue })}</span>
                     </li>

@@ -11,6 +11,7 @@ import {
 import { fmtDate, fmtMonth, fmtNum, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { askI18n } from "@/i18n/ns/ask";
+import { personName } from "@/i18n";
 
 const t = askI18n.t;
 const nTrades = (n: number) => commonI18n.t("units.trades", { count: n });
@@ -331,7 +332,7 @@ export function groupKey(tr: AskTrade, dim: AskDim, idx: BookIndex): { key: stri
     case "side": { const s = tr.side === "Long" ? "Long" : tr.side === "Short" ? "Short" : null; return s ? { key: s, label: sideOne(s), ask: sidePl(s) } : null; }
     case "trade": return { key: String(tr.id), label: `${tr.ticker} ${dm(tr.date)}`, ask: tr.ticker };
     case "setup": { const s = (tr.setup ?? "").trim(); return s ? { key: s.toLowerCase(), label: s, ask: t("q.setup", { name: s }) } : { key: "—", label: t("noSetup"), ask: "" }; }
-    case "trader": return tr.trader ? { key: tr.trader, label: tr.trader, ask: tr.trader } : null;
+    case "trader": return tr.trader ? { key: tr.trader, label: personName(tr.trader), ask: tr.trader } : null;
     case "slot": {
       if (m.min == null) return null;
       const s = SLOTS.find((x) => m.min! >= x.from && m.min! < x.to) ?? SLOTS[SLOTS.length - 1];

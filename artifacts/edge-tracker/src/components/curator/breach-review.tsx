@@ -10,6 +10,7 @@ import { nyDate } from "@/lib/trading-date";
 import { curatorApi, useCuratorMutation, type Breach, type BreachAction } from "./api";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 // Mirrors lib/curatorLogic.ts (server validates the keys).
@@ -66,7 +67,7 @@ function BreachItem({ breach, canReview, showTrader }: { breach: Breach; canRevi
     <li className={cn("tile flex flex-col gap-3 p-3", !r && "ring-1 ring-down/30")}>
       <div className="flex flex-wrap items-center gap-2">
         <Pill tone="down">{breach.kindLabel}</Pill>
-        {showTrader && breach.trader && <span className="text-sm font-semibold text-foreground">{breach.trader}</span>}
+        {showTrader && breach.trader && <span className="text-sm font-semibold text-foreground">{personName(breach.trader)}</span>}
         <span className="text-sm font-medium tabular-nums text-foreground">{fmtDate(breach.date, "dayMonth")}</span>
         {breach.used != null && breach.limit != null && (
           <span className="text-xs tabular-nums text-muted-foreground">{t("breach.usedOfLimit", { used: fmtUsd(-Math.abs(breach.used), { signed: true, decimals: 0 }), limit: fmtUsd(breach.limit, { decimals: 0 }) })}</span>
@@ -123,7 +124,7 @@ function ReviewSummary({ breach, canReview, onEdit }: { breach: Breach; canRevie
         </ul>
       )}
       <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-        <span>{r.createdBy}, {fmtDate(r.createdAt, "dateTime")}{r.updatedBy && r.updatedAt !== r.createdAt ? t("breach.editedBy", { name: r.updatedBy }) : ""}</span>
+        <span>{personName(r.createdBy)}, {fmtDate(r.createdAt, "dateTime")}{r.updatedBy && r.updatedAt !== r.createdAt ? t("breach.editedBy", { name: personName(r.updatedBy) }) : ""}</span>
         {canReview && <Button type="button" variant="ghost" size="sm" className="ml-auto h-7" onClick={onEdit}>{commonI18n.t("actions.edit")}</Button>}
       </div>
     </div>

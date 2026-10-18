@@ -21,6 +21,7 @@ import {
 import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /* ── wizard ───────────────────────────────────────────────────────────────── */
 
@@ -235,7 +236,7 @@ export function UnmatchedAccounts({ status, accounts }: { status: Status; accoun
   const asNew = async (name: string) => {
     const trader = pick[`t:${name}`];
     if (!trader) return;
-    try { await saveAccounts.mutateAsync([{ account: name, trader, active: true, aliases: [] }]); toast({ title: t("setup.unmatched.mapped", { name, trader }) }); }
+    try { await saveAccounts.mutateAsync([{ account: name, trader, active: true, aliases: [] }]); toast({ title: t("setup.unmatched.mapped", { name, trader: personName(trader) }) }); }
     catch (e) { toast({ title: commonI18n.t("states.saveFailed"), description: e instanceof Error ? e.message : String(e), variant: "destructive" }); }
   };
   const asAlias = async (name: string) => {
@@ -275,7 +276,7 @@ export function UnmatchedAccounts({ status, accounts }: { status: Status; accoun
               <span className="text-xs text-muted-foreground">{t("setup.unmatched.orAlias")}</span>
               <Select value={pick[`a:${name}`] ?? NONE} onValueChange={(v) => setPick((p) => ({ ...p, [`a:${name}`]: v === NONE ? "" : v }))}>
                 <SelectTrigger className="h-8 w-48 text-xs"><SelectValue placeholder={t("setup.unmatched.account")} /></SelectTrigger>
-                <SelectContent><SelectItem value={NONE}>{t("setup.unmatched.accountPick")}</SelectItem>{accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.account}{a.trader ? ` — ${a.trader}` : ""}</SelectItem>)}</SelectContent>
+                <SelectContent><SelectItem value={NONE}>{t("setup.unmatched.accountPick")}</SelectItem>{accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.account}{a.trader ? ` — ${personName(a.trader)}` : ""}</SelectItem>)}</SelectContent>
               </Select>
               <Button size="sm" variant="outline" onClick={() => asAlias(name)} disabled={busy || !pick[`a:${name}`]}>{t("setup.unmatched.addAlias")}</Button>
               <Button size="sm" variant="ghost" onClick={() => dismiss(name)} disabled={busy}>{commonI18n.t("actions.hide")}</Button>

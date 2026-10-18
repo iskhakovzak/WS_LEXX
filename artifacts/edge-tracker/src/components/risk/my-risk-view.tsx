@@ -19,6 +19,7 @@ import { BreachHistory } from "./breaches";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { fmtR, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { stopMessage } from "./labels";
 
@@ -199,7 +200,7 @@ export function MyRiskView({ trader, onUpdatedAt, canEditLimits = false }: {
         <Sheet open={limitsOpen} onOpenChange={setLimitsOpen}>
           <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
             <SheetHeader>
-              <SheetTitle>{t("me.sheetTitle", { name: trader })}</SheetTitle>
+              <SheetTitle>{t("me.sheetTitle", { name: personName(trader) })}</SheetTitle>
               <SheetDescription>{t("me.sheetDesc")}</SheetDescription>
             </SheetHeader>
             <div className="mt-4">

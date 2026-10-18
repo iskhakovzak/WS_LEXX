@@ -32,6 +32,8 @@ import {
   fmtClock, joinList, metricBy, outcomeAdj, sideOne, targetTitle, weekdayNames,
 } from "./phrases";
 import { askI18n } from "@/i18n/ns/ask";
+import { personName } from "@/i18n";
+import { latinNameOf } from "@/lib/people/latin-names";
 
 export type { AskAfter, AskCompare, AskCompareDim, AskCompareSide, AskDateRange, AskDim, AskFilter, AskIntent, AskMetric, AskNumRange, AskOutcome, AskQuery, AskSide, AskTimeRange, AskToken, AskTokenKind, ParseContext } from "./types";
 import type { AskCompare, AskCompareSide, AskDateRange, AskDim, AskFilter, AskIntent, AskMetric, AskQuery, AskSide, AskTimeRange, AskToken, ParseContext } from "./types";
@@ -132,14 +134,16 @@ function escapeRe(s: string) {
 function matchTraders(st: State) {
   const names = [...st.traders].filter(Boolean).sort((a, b) => b.length - a.length);
   for (const name of names) {
-    const forms = [...new Set([normWord(name), ...latinNames(normWord(name))])].filter((n) => n.length >= 2);
+    // The Latin display name too (users.name_latin): follow-up questions are written with personName in EN / UZ.
+    const latin = latinNameOf(name);
+    const forms = [...new Set([normWord(name), ...latinNames(normWord(name)), ...(latin ? [normWord(latin)] : [])])].filter((n) => n.length >= 2);
     for (const n of forms) {
       runRule(st, {
         re: re(`(?:${NAME_PREFIX})?${escapeRe(n)}${NAME_SUFFIX}`),
         fn: (_m, s) => {
           if (s.d.traders.includes(name)) return null;
           s.d.traders.push(name);
-          return { kind: "trader", label: askI18n.t("tok.trader", { name }), phrase: name };
+          return { kind: "trader", label: askI18n.t("tok.trader", { name: personName(name) }), phrase: name };
         },
       });
     }
@@ -241,7 +245,7 @@ function pickCompare(d: Draft): AskCompare | null {
     // «лонг и шорт» always means a comparison, unless the user compares two tickers.
     if (!(flag && d.tickers.length >= 2)) return { dim: "side", a: sideA("Long"), b: sideA("Short") };
   }
-  if (d.traders.length >= 2) return { dim: "trader", a: { label: d.traders[0], patch: { trader: d.traders[0] } }, b: { label: d.traders[1], patch: { trader: d.traders[1] } } };
+  if (d.traders.length >= 2) return { dim: "trader", a: { label: personName(d.traders[0]), patch: { trader: d.traders[0] } }, b: { label: personName(d.traders[1]), patch: { trader: d.traders[1] } } };
   if (!flag) return null;
   if (d.tickers.length >= 2) return { dim: "ticker", a: { label: d.tickers[0], patch: { tickers: [d.tickers[0]] } }, b: { label: d.tickers[1], patch: { tickers: [d.tickers[1]] } } };
   if (d.times.length >= 2) {

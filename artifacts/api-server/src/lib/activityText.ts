@@ -3,13 +3,17 @@
  *
  * logActivity() stores `entity_title` / `details` as the Russian fallback plus `params` (text as data):
  * `{ titleKey?, detailsKey?, …values }`. Keys live in the `activity` namespace (`title.*` / `details.*`); a key
- * prefixed `setups.` belongs to the setups namespace (routes/setups-auto). Rows written before params existed are
- * matched by their Russian pattern so the feed reads in one language. User content (setup / folder names, tickers,
- * people) is never translated.
+ * prefixed `setups.` / `rules.` / `behavior.` belongs to that area's namespace. Rows written before params existed are
+ * matched by their Russian pattern so the feed reads in one language. User content (setup / folder names, tickers)
+ * is never translated; people (`trader`, `user`… values, the accessCustom list) show their Latin name to EN / UZ
+ * readers (lib/people/latinNames), the stored params keep the stored name.
  */
 import { activityT } from "../i18n/ns";
 import type { Lang } from "../i18n";
 import { setupsT } from "./setupsI18n";
+import { rulesT } from "./rulesI18n";
+import { behaviorT } from "./behaviorI18n";
+import { personNameFor } from "./people/latinNames";
 
 export type ActivityParams = Record<string, string | number | boolean | null>;
 type Vals = Record<string, string | number>;
@@ -20,9 +24,26 @@ function vals(p: ActivityParams): Vals {
   return out;
 }
 
+/** Values that carry a person's stored name: shown as the Latin name to EN / UZ readers (params keep the stored name). */
+const PERSON_VALUES = ["trader", "user", "actor", "author", "curator", "owner", "who"] as const;
+
+function withPeople(p: Vals, lang: Lang): Vals {
+  if (lang === "ru") return p;
+  let out: Vals | null = null;
+  for (const k of PERSON_VALUES) {
+    const v = p[k];
+    if (typeof v === "string" && v) (out ??= { ...p })[k] = personNameFor(v, lang);
+  }
+  return out ?? p;
+}
+
 function renderKey(group: "title" | "details", key: string, p: Vals, lang: Lang): string | undefined {
-  if (key.startsWith("setups.")) return setupsT.tryFor(lang, key.slice("setups.".length), p);
-  return activityT.tryFor(lang, `${group}.${key}`, p);
+  const shown = withPeople(p, lang);
+  if (key.startsWith("setups.")) return setupsT.tryFor(lang, key.slice("setups.".length), shown);
+  // Keys of other areas' namespaces (routes/rules.ts, routes/behavior.ts write `rules.activity.*` / `behavior.activity.*`).
+  if (key.startsWith("rules.")) return rulesT.tryFor(lang, key.slice("rules.".length), shown);
+  if (key.startsWith("behavior.")) return behaviorT.tryFor(lang, key.slice("behavior.".length), shown);
+  return activityT.tryFor(lang, `${group}.${key}`, shown);
 }
 
 type Legacy = { re: RegExp; key: string; map?: (m: RegExpMatchArray) => Vals };
@@ -35,6 +56,8 @@ const LEGACY_TITLE: Legacy[] = [
   { re: /^Отчёты: (\d+) событий на (\d+) дн\.$/, key: "earnings_import", map: (m) => ({ count: Number(m[1]), days: m[2]! }) }, // i18n-ignore (legacy row pattern)
   { re: /^Автопривязка сделок$/, key: "autolink" }, // i18n-ignore (legacy row pattern)
   { re: /^Пример: (.+)$/, key: "example", map: (m) => ({ ticker: m[1]! }) }, // i18n-ignore (legacy row pattern)
+  // «Закир, 2026-10-12» (eod reviewed, before params): any other title of this shape renders unchanged.
+  { re: /^(.+), (\d{4}-\d{2}-\d{2})$/, key: "eod_reviewed", map: (m) => ({ trader: m[1]!, date: m[2]! }) },
 ];
 const LEGACY_DETAILS: Legacy[] = [
   { re: /^Привязано сделок: (\d+)$/, key: "autolinked", map: (m) => ({ count: m[1]! }) }, // i18n-ignore (legacy row pattern)
@@ -79,7 +102,7 @@ function legacy(group: "title" | "details", text: string, lang: Lang): string | 
 
 function accessCustomText(items: string[], cohortFlags: boolean[], lang: Lang): string {
   const t = activityT.tFor(lang);
-  return t("details.accessCustom", { list: items.map((x, i) => (cohortFlags[i] ? t("details.cohort", { id: x }) : x)).join(", ") });
+  return t("details.accessCustom", { list: items.map((x, i) => (cohortFlags[i] ? t("details.cohort", { id: x }) : personNameFor(x, lang))).join(", ") });
 }
 
 /** «Открыт: Умид, когорта #3» as data: params for logActivity + the RU fallback text. */

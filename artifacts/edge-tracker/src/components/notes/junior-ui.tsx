@@ -9,6 +9,7 @@ import {
 } from "./junior-lib";
 import { notesI18n } from "@/i18n/ns/notes";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName, personInitials } from "@/i18n";
 
 /** Wraps case-insensitive matches of `q` in <mark>. */
 export function Highlight({ text, q }: { text: string; q?: string }) {
@@ -156,7 +157,7 @@ export function FeedbackCard({ note, fresh, className }: { note: JuniorNote; fre
         <p className="text-sm text-muted-foreground">{t("junior.feedbackNoComment")}</p>
       )}
       <p className="mt-2 text-xs text-muted-foreground">
-        {note.reviewed_by ?? t("junior.mentorFallback")} · {relTime(note.reviewed_at)}
+        {note.reviewed_by ? personName(note.reviewed_by) : t("junior.mentorFallback")} · {relTime(note.reviewed_at)}
       </p>
     </div>
   );
@@ -184,7 +185,7 @@ export function Initial({ name, className }: { name: string; className?: string 
       aria-hidden="true"
       className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary", className)}
     >
-      {name.slice(0, 1).toUpperCase()}
+      {personInitials(name).slice(0, 1)}
     </span>
   );
 }

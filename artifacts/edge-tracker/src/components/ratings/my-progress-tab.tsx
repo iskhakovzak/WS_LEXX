@@ -21,6 +21,7 @@ import { useTracking } from "@/components/ideas/hooks";
 import { tradeIdeasQuery } from "@/lib/api/queries";
 import { fmtNum, fmtPct, fmtR, fmtUsd } from "@/lib/format";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
 
@@ -169,7 +170,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                 <>
                   <p className="text-sm text-foreground">{curatorFocus.text}</p>
                   <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    <span>{t("progress.curatorWeek", { curator: curatorFocus.curator, week: weekLabel(curatorFocus.week) })}</span>
+                    <span>{t("progress.curatorWeek", { curator: personName(curatorFocus.curator), week: weekLabel(curatorFocus.week) })}</span>
                     {curatorFocus.acknowledged ? (
                       <Pill tone="up" className="ml-auto"><Check className="h-3 w-3" aria-hidden="true" />{t("progress.accepted")}</Pill>
                     ) : (
@@ -239,7 +240,7 @@ export function MyProgressTab({ me, ratings, ratingsLoading }: { me: string | nu
                 {myRatings.map((r) => (
                   <li key={r.id} className="rounded-xl bg-[var(--glass-bg)] p-3">
                     <div className="mb-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                      <span className="font-medium text-foreground">{r.curator}</span>
+                      <span className="font-medium text-foreground">{personName(r.curator)}</span>
                       <span>{t("shared.week", { label: weekLabel(r.week) })}</span>
                       {r.tier && <Pill tone="purple">{tierLabel(r.tier)}</Pill>}
                       <Pill tone={r.overall >= 8 ? "up" : r.overall >= 5 ? "warn" : "down"} className="ml-auto">{r.overall}/10</Pill>

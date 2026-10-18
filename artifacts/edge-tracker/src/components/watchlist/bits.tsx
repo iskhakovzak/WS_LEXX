@@ -16,6 +16,7 @@ import { fmtDate, fmtNum, fmtPct, fmtPrice, fmtRate, fmtUsd, fmtWeekday } from "
 import { watchlistI18n } from "@/i18n/ns/watchlist";
 import { commonI18n } from "@/i18n/ns/common";
 
+import { personName } from "@/i18n";
 const wt = watchlistI18n.t;
 
 /* ── Inline note ─────────────────────────────────────────────────────────── */
@@ -271,7 +272,7 @@ export function EventMarks({
   }
   if ((item.openPositions ?? 0) > 0) {
     marks.push(
-      <span key="p" className="inline-flex h-5 items-center gap-0.5 text-xs text-primary" title={wt("marks.openPosition", { traders: (item.openTraders ?? []).join(", ") || "—" })}>
+      <span key="p" className="inline-flex h-5 items-center gap-0.5 text-xs text-primary" title={wt("marks.openPosition", { traders: (item.openTraders ?? []).map(personName).join(", ") || "—" })}>
         <Briefcase className="h-3 w-3" aria-hidden="true" />{(item.openPositions ?? 0) > 1 ? item.openPositions : ""}
         <span className="sr-only">{wt("marks.inPosition")}</span>
       </span>,

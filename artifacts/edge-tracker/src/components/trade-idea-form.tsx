@@ -21,6 +21,7 @@ import { fmtNum, fmtPrice } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
 import { AlertTriangle, BookOpen, Sparkles, User } from "lucide-react";
+import { personName } from "@/i18n";
 
 const SETUP_QUALITIES = ["A+", "A", "B+", "B", "C", "D"] as const;
 
@@ -204,7 +205,7 @@ export function TradeIdeaForm({ initial, onSubmit, onCancel, submitting, submitL
       {autoTrader && (
         <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <User className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-          {t("form.author")} <span className="font-medium text-foreground">{form.trader || autoTrader}</span>
+          {t("form.author")} <span className="font-medium text-foreground">{personName(form.trader || autoTrader)}</span>
         </div>
       )}
 

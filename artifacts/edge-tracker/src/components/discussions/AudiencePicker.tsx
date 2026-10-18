@@ -3,6 +3,7 @@ import { FilterChip } from "@/components/ds";
 import { cn } from "@/lib/utils";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { type AudienceOptions, audienceReach, isRestricted, sortTokens, tokenLabel } from "./audience";
+import { personName } from "@/i18n";
 
 /**
  * «Кому видна тема»: «Всем» or any union of stages / curators / cohorts, with a live «увидят N человек» hint.
@@ -27,7 +28,7 @@ export function AudiencePicker({ value, onChange, options, me, loading }: {
     onChange(sortTokens(next));
   }
 
-  const shown = reach?.names.slice(0, 6) ?? [];
+  const shown = (reach?.names.slice(0, 6) ?? []).map(personName);
   const more = (reach?.names.length ?? 0) - shown.length;
 
   return (

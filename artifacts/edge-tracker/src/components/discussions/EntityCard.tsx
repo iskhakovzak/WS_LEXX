@@ -13,6 +13,7 @@ import { fmtPct, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import type { Thread } from "./lib";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /* `GET /api/discussions/:id/entity` — the thing a contextual thread is about.
  * Numbers come from the shared API math (net = gross − |fees|, signed R). */
@@ -84,7 +85,7 @@ export function EntityCard({ thread }: { thread: Thread }) {
           <span className="tabular-nums text-muted-foreground">{t.date}{t.exitDate && t.exitDate !== t.date ? ` → ${t.exitDate}` : ""}</span>
           {t.setup && <span className="truncate text-muted-foreground">{t.setup}</span>}
           {t.horizon && <Pill tone="neutral" className="py-0 text-2xs">{t.horizon}</Pill>}
-          {t.trader && <span className="text-muted-foreground">{t.trader}</span>}
+          {t.trader && <span className="text-muted-foreground">{personName(t.trader)}</span>}
           {t.entry != null && <span className="tabular-nums text-muted-foreground">{tr("entity.entry", { price: fmtPrice(t.entry) })}{t.stop != null ? ` · ${tr("entity.stop", { price: fmtPrice(t.stop) })}` : ""}{t.exit != null ? ` · ${tr("entity.exit", { price: fmtPrice(t.exit) })}` : ""}</span>}
           {t.signedR != null && <span className={cn("font-semibold tabular-nums", toneText(toneOf(t.signedR)))}>{fmtR(t.signedR, 1)}</span>}
           {t.netPnl != null && <span className={cn("tabular-nums", toneText(toneOf(t.netPnl)))} title={tr("entity.netTitle", { gross: fmtUsd(t.pnl, { decimals: 0 }), fees: fmtUsd(t.fees, { decimals: 0 }) })}>{tr("entity.net", { value: fmtUsd(t.netPnl, { decimals: 0 }) })}</span>}
@@ -106,7 +107,7 @@ export function EntityCard({ thread }: { thread: Thread }) {
           {d.idea.side && <Pill tone={isShort(d.idea.side) ? "down" : "up"} className="py-0 text-2xs">{sideLabel(d.idea.side)}</Pill>}
           {d.idea.setup && <span className="truncate text-muted-foreground">{d.idea.setup}</span>}
           {d.idea.status && <span className="text-muted-foreground">{discussionsI18n.tryT(`ticker.ideaStatus.${d.idea.status}`) ?? d.idea.status}</span>}
-          {d.idea.trader && <span className="text-muted-foreground">{d.idea.trader}</span>}
+          {d.idea.trader && <span className="text-muted-foreground">{personName(d.idea.trader)}</span>}
         </Row>
       )}
       {d.playbook && (

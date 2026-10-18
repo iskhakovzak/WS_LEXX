@@ -9,6 +9,7 @@ import { Pill, toneText } from "@/components/ds";
 import { Ring, Bar, readinessTone } from "@/components/playbook-sub/bits";
 import { playbookToolsI18n } from "@/i18n/ns/playbookTools";
 
+import { personName } from "@/i18n";
 export type ChecklistItem = { id: string; text: string };
 
 function itemIdFromText(text: string): string {
@@ -220,7 +221,7 @@ export function MarkChecklist({
                   role="checkbox"
                   aria-checked={personalOn}
                   aria-label={t("marks.personalAria", { text: it.text })}
-                  title={t("marks.personalTitle", { name: trader })}
+                  title={t("marks.personalTitle", { name: personName(trader) })}
                   onClick={() => toggle(it, "personal")}
                   className="group/cb grid h-8 w-8 shrink-0 place-items-center rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >

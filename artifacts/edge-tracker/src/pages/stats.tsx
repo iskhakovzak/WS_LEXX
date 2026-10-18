@@ -23,7 +23,8 @@ import {
   type HorizonFilter, type Metric, type PeriodKey, type Range,
 } from "@/components/stats/metrics";
 import { PersonSelect } from "@/components/people/person-select";
-import { fmtDateCustom, localeTag } from "@/lib/format";
+import { fmtDateCustom } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
 
@@ -97,7 +98,7 @@ export default function Stats() {
 
   const traders = useMemo(
     () => [...new Set([...(teamFacets.data?.traders ?? []), ...allTrades.map((tr) => tr.trader ?? "")].map((x) => x.trim()).filter(Boolean))]
-      .sort((a, b) => a.localeCompare(b, localeTag())),
+      .sort(comparePersonNames),
     [allTrades, teamFacets.data],
   );
   // Trades in the scope regardless of the period (for the empty states).
@@ -144,7 +145,7 @@ export default function Stats() {
   // A trader's book holds only own trades: no team picker, and the scope reads «Мои сделки».
   const solo = !isCurator && traders.length <= 1 && reportTraders.length === 0;
   const scopeLabel =
-    (prefs.trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : prefs.trader) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
+    (prefs.trader === "all" ? (solo ? t("myTrades") : t("wholeTeam")) : personName(prefs.trader)) + (prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : "");
 
   const reportMeta = () => ({
     title: t("reportTitle", { scope: scopeLabel }),
@@ -267,7 +268,7 @@ export default function Stats() {
           allValue="all"
           allLabel={t("wholeTeam")}
           options={[
-            ...(me && traders.includes(me) ? [{ value: me, label: t("myTradesOf", { name: me }) }] : []),
+            ...(me && traders.includes(me) ? [{ value: me, label: t("myTradesOf", { name: personName(me) }) }] : []),
             ...traders.filter((t) => t !== me),
             ...reportTraders,
             ...(prefs.trader !== "all" && !traders.includes(prefs.trader) && !reportTraders.includes(prefs.trader) ? [prefs.trader] : []),
@@ -296,11 +297,11 @@ export default function Stats() {
         <Panel>
           <EmptyState
             icon={SearchX}
-            title={`${prefs.trader !== "all" ? t("noTradesTitleOf", { period: periodOpt.long, trader: prefs.trader }) : t("noTradesTitle", { period: periodOpt.long })}${prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : ""}`}
+            title={`${prefs.trader !== "all" ? t("noTradesTitleOf", { period: periodOpt.long, trader: personName(prefs.trader) }) : t("noTradesTitle", { period: periodOpt.long })}${prefs.horizon !== "all" ? ` · ${horizonLabel(prefs.horizon)}` : ""}`}
             description={[
               bookTotal != null
                 ? prefs.trader !== "all"
-                  ? t("inJournalOf", { trader: prefs.trader, trades: commonI18n.t("units.trades", { count: bookTotal }) })
+                  ? t("inJournalOf", { trader: personName(prefs.trader), trades: commonI18n.t("units.trades", { count: bookTotal }) })
                   : t("inJournal", { trades: commonI18n.t("units.trades", { count: bookTotal }) })
                 : "",
               prefs.trader !== "all" || prefs.horizon !== "all" ? t("pickLongerOrClear") : t("pickLonger"),

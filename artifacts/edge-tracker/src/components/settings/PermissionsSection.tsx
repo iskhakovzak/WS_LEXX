@@ -23,6 +23,7 @@ import { cn } from "@/lib/utils";
 import { PERM_GROUP_CODE, groupedCapabilities, type Capability, type CapabilityDef, type Role, type Scope } from "@/lib/permissions";
 import { capabilityText, settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import { Callout, InlineError, ROLE_LABEL } from "./shared";
 import { fmtDate } from "@/lib/format";
 
@@ -300,7 +301,7 @@ export function PermissionsSection() {
                     </ul>
                   </>
                 )}
-                {user?.traderName && <p className="mt-2">{t("permissions.audit", { name: user.traderName })}</p>}
+                {user?.traderName && <p className="mt-2">{t("permissions.audit", { name: personName(user.traderName) })}</p>}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>

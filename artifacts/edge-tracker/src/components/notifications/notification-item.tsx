@@ -7,6 +7,7 @@ import { SEVERITY_LABEL, SEVERITY_TILE, SEVERITY_TONE, iconFor, notificationTitl
 import { fmtDate } from "@/lib/format";
 import { notificationsI18n } from "@/i18n/ns/notifications";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type NotificationItemProps = {
   n: Notification;
@@ -83,7 +84,7 @@ export const NotificationItem = React.memo(function NotificationItem({
             <span className="mt-1.5 flex flex-wrap items-center gap-1.5">
               <Pill tone="neutral" className="text-2xs">{typeLabelOf(n.type)}</Pill>
               {n.severity !== "info" && <Pill tone={SEVERITY_TONE[n.severity]} dot className="text-2xs">{SEVERITY_LABEL[n.severity]}</Pill>}
-              {n.actor && <span className="text-2xs text-muted-foreground">{t("item.from", { name: n.actor })}</span>}
+              {n.actor && <span className="text-2xs text-muted-foreground">{t("item.from", { name: personName(n.actor) })}</span>}
               {n.link && (
                 <span className="inline-flex items-center gap-0.5 text-2xs text-primary">
                   {t("item.open")} <ArrowUpRight className="h-3 w-3" aria-hidden="true" />

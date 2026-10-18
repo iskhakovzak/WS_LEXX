@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 import type { Proposal, Tier } from "./use-scaling";
 import { useDecideProposal } from "./use-scaling";
 import { ACTION_TONE, actionLabel, proposalStatusMeta, tierName } from "./format";
@@ -38,7 +39,7 @@ function DecisionPopover({
     try {
       await decide.mutateAsync({ id: proposal.id, decision, comment: comment.trim() || undefined });
       toast({
-        title: approve ? t("proposal.approvedToast", { trader: proposal.trader, tier: to }) : t("proposal.rejectedToast", { trader: proposal.trader }),
+        title: approve ? t("proposal.approvedToast", { trader: personName(proposal.trader), tier: to }) : t("proposal.rejectedToast", { trader: personName(proposal.trader) }),
         description: approve ? t("proposal.limitsWritten") : undefined,
       });
       setOpen(false);
@@ -61,7 +62,7 @@ function DecisionPopover({
           <div>
             <p className="text-sm font-semibold text-foreground">{approve ? t(`proposal.approveTitle.${proposal.action}`) : t(`proposal.rejectTitle.${proposal.action}`)}</p>
             <p className="text-xs text-muted-foreground">
-              {proposal.trader}: {from} → {to}
+              {personName(proposal.trader)}: {from} → {to}
               {approve && <> {t("proposal.approveNote")}</>}
             </p>
           </div>
@@ -103,10 +104,10 @@ export function ProposalCard({
         <div className="flex min-w-0 flex-wrap items-center gap-2">
           {onOpenTrader ? (
             <button type="button" className="text-sm font-semibold text-foreground hover:underline" onClick={() => onOpenTrader(proposal.trader)}>
-              {proposal.trader}
+              {personName(proposal.trader)}
             </button>
           ) : (
-            <span className="text-sm font-semibold text-foreground">{proposal.trader}</span>
+            <span className="text-sm font-semibold text-foreground">{personName(proposal.trader)}</span>
           )}
           <Pill tone={ACTION_TONE[proposal.action]} dot>{actionLabel(proposal.action)}</Pill>
           <span className="text-xs text-muted-foreground">{tierName(tiers, proposal.fromTier)}</span>
@@ -128,8 +129,8 @@ export function ProposalCard({
         </ul>
       )}
       <div className="flex flex-wrap gap-x-3 text-2xs text-muted-foreground">
-        <span>{proposal.source === "auto" ? t("proposal.byRules") : t("proposal.manual")} · {proposal.createdBy} · {fmtDate(proposal.createdAt, "dateTime")}</span>
-        {proposal.decidedBy && <span>{t("proposal.decidedBy", { name: proposal.decidedBy })} · {fmtDate(proposal.decidedAt, "dateTime")}</span>}
+        <span>{proposal.source === "auto" ? t("proposal.byRules") : t("proposal.manual")} · {personName(proposal.createdBy)} · {fmtDate(proposal.createdAt, "dateTime")}</span>
+        {proposal.decidedBy && <span>{t("proposal.decidedBy", { name: personName(proposal.decidedBy) })} · {fmtDate(proposal.decidedAt, "dateTime")}</span>}
         {proposal.decisionComment && <span className="basis-full break-words text-foreground/80">{t("proposal.quoted", { text: proposal.decisionComment })}</span>}
       </div>
     </article>

@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { useAuth } from "@/contexts/auth-context";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { shellI18n } from "@/i18n/ns/shell";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { pathKeys, usePathConfig, useRequests } from "@/components/academy/path/api";
 import { ladderText } from "@/components/academy/path/labels";
 import { PersonView } from "@/components/academy/path/person-view";
@@ -35,8 +35,8 @@ export default function AcademyPathPage() {
   const config = usePathConfig();
   const pending = useRequests("pending", isCurator);
   const people = React.useMemo(() => {
-    const names = dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag()));
-    return me ? [me, ...names.filter((n) => n !== me)] : names;
+    const names = dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames);
+    return (me ? [me, ...names.filter((n) => n !== me)] : names).map((n) => ({ value: n, label: personName(n) }));
   }, [dbUsers, me]);
   const open = (u: string) => { setTarget(u); setView("person"); };
 

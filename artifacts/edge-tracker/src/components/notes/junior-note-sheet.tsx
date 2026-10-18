@@ -18,6 +18,7 @@ import { FeedbackCard, MarkdownText, MoodPill, ScorePicker, SectionsView } from 
 import { PrevFocusCard, ReviewContextRail } from "./junior-review-context";
 import { notesI18n } from "@/i18n/ns/notes";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type SheetNav = {
   /** 0-based position in the list being reviewed. */
@@ -175,7 +176,7 @@ export function JuniorNoteSheet({
       setRestored(false);
       setCurrent(updated);
       syncCaches(updated);
-      toast({ title: updated.reviewed_at ? t("junior.sheet.sentTo", { name: n.trader }) : t("junior.sheet.scoreRemoved") });
+      toast({ title: updated.reviewed_at ? t("junior.sheet.sentTo", { name: personName(n.trader) }) : t("junior.sheet.scoreRemoved") });
       if (updated.reviewed_at) onReviewed?.(updated);
     } catch (e) {
       toast({ title: e instanceof Error ? e.message : tc("states.saveFailed"), variant: "destructive" });
@@ -227,7 +228,7 @@ export function JuniorNoteSheet({
           <>
             <SheetHeader className="space-y-2 border-b border-border p-5 pr-12 text-left">
               <SheetTitle className="text-lg first-letter:uppercase">
-                {mode === "owner" ? fmtDate(n.note_date, "weekdayDayMonthLong") : `${n.trader} · ${fmtDate(n.note_date, "weekdayDayMonthLong")}`}
+                {mode === "owner" ? fmtDate(n.note_date, "weekdayDayMonthLong") : `${personName(n.trader)} · ${fmtDate(n.note_date, "weekdayDayMonthLong")}`}
               </SheetTitle>
               <SheetDescription asChild>
                 <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
@@ -300,7 +301,7 @@ export function JuniorNoteSheet({
                         </button>
                       </span>
                     ) : n.reviewed_at ? (
-                      `${n.reviewed_by} · ${relTime(n.reviewed_at)} · ${n.feedback_seen_at ? t("junior.sheet.seen") : t("junior.sheet.notSeen")}`
+                      `${personName(n.reviewed_by)} · ${relTime(n.reviewed_at)} · ${n.feedback_seen_at ? t("junior.sheet.seen") : t("junior.sheet.notSeen")}`
                     ) : null}
                   </span>
                 </div>

@@ -8,6 +8,7 @@ export default {
     earnings_import: { one: "Отчёты: {count} событие на {days} дн.", few: "Отчёты: {count} события на {days} дн.", many: "Отчёты: {count} событий на {days} дн.", other: "Отчёты: {count} события на {days} дн." },
     autolink: "Автопривязка сделок",
     example: "Пример: {ticker}",
+    eod_reviewed: "{trader}, {date}",
   },
   details: {
     autolinked: "Привязано сделок: {count}",

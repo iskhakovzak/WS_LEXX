@@ -1,5 +1,6 @@
 import { cn } from "@/lib/utils";
-import { avatarTone, initials } from "./utils";
+import { personInitials } from "@/i18n";
+import { avatarTone } from "./utils";
 
 const SIZES = {
   xs: "h-6 w-6 text-2xs",
@@ -32,7 +33,7 @@ export function TraderAvatar({
         className,
       )}
     >
-      {isSystem ? "WS" : initials(name)}
+      {isSystem ? "WS" : personInitials(name)}
     </span>
   );
 }

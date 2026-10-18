@@ -7,6 +7,7 @@
 //    go back through the parser, so each language's wording must parse (tests: lib/ask/__tests__/i18n-*.test.ts).
 
 import { askI18n } from "@/i18n/ns/ask";
+import { personName } from "@/i18n";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import type { AskAfter, AskDim, AskFilter, AskMetric, AskNumRange, AskOutcome, AskQuery, AskSide } from "./types";
 
@@ -146,7 +147,7 @@ export function filterTail(q: AskFilter, opts: { tickers?: boolean } = {}): stri
 }
 
 const withTail = (base: string, tail: string) => (base && tail ? t("subj.withTail", { base, tail }) : base || tail);
-const withTrader = (main: string, trader: string | null) => (trader ? t("subj.withTrader", { main, trader }) : main);
+const withTrader = (main: string, trader: string | null) => (trader ? t("subj.withTrader", { main, trader: personName(trader) }) : main);
 
 /** Short noun phrase for the filtered set: «Шорты INTC в октябре после 11:00». */
 export function describeFilter(q: AskFilter): string {
@@ -233,7 +234,7 @@ export function canonicalText(f: AskFilter, opts: { allTraders?: boolean } = {})
   }
   if (f.after) p.push(afterPhrase(f.after));
   if (f.lastN) p.push(t("q.lastN", { n: f.lastN }));
-  if (f.trader) p.push(f.trader);
+  if (f.trader) p.push(personName(f.trader));
   else if (opts.allTraders) p.push(t("q.desk"));
   return p.join(" ");
 }

@@ -18,6 +18,7 @@ import { http } from "@/lib/api/http";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 import { ChallengeStatusPill, ChallengeTimeline, Field, RuleBar, selectCls } from "./bits";
 import { challengeName, failureText, rulesSummary, stageName, templateDescription, templateName } from "./labels";
 import { PersonSelect } from "@/components/people/person-select";
@@ -42,7 +43,7 @@ export function ChallengeCard({ c, active, onOpen, showUser, templates }: {
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="truncate text-sm font-semibold text-foreground" title={name}>{name}</p>
-          <p className="text-xs text-muted-foreground">{showUser ? `${c.user} · ` : ""}{fmtDate(c.startsOn)} – {fmtDate(c.endsOn)}</p>
+          <p className="text-xs text-muted-foreground">{showUser ? `${personName(c.user)} · ` : ""}{fmtDate(c.startsOn)} – {fmtDate(c.endsOn)}</p>
         </div>
         <ChallengeStatusPill status={r.status} />
       </div>
@@ -74,7 +75,7 @@ export function ChallengeDetailView({ id, onArchived, pathHref }: { id: number; 
     <div className="flex flex-col gap-4">
       <Panel
         title={challengeName(c, template ? [template] : null)}
-        description={t("challenge.detailMeta", { user: c.user, from: fmtDate(c.startsOn), to: fmtDate(c.endsOn), by: c.createdBy })}
+        description={t("challenge.detailMeta", { user: personName(c.user), from: fmtDate(c.startsOn), to: fmtDate(c.endsOn), by: personName(c.createdBy) })}
         icon={Flag}
         actions={
           <>
@@ -150,6 +151,7 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
     for (const col of funnel.data?.columns ?? []) for (const p of col.people) if (p.stage) m.set(p.user, p.stage);
     return m;
   }, [funnel.data]);
+  const personOptions = React.useMemo(() => people.map((n) => ({ value: n, label: personName(n) })), [people]);
   const userStage = stageOf.get(user) ?? null;
   const suggested = suggestedTemplate(templates, userStage);
   React.useEffect(() => { if (open && suggested) setTplKey(suggested.key); }, [open, user, suggested?.key]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -159,8 +161,8 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
   const create = usePathMutation((body: unknown) => http.post<{ id: number }>("/api/academy/challenges", body));
   const stageHint = userStage
     ? (suggested
-      ? t("create.hintSuggested", { user, stage: stageName(funnel.data?.stages, userStage), template: templateName(suggested) })
-      : t("create.hintNone", { user, stage: stageName(funnel.data?.stages, userStage) }))
+      ? t("create.hintSuggested", { user: personName(user), stage: stageName(funnel.data?.stages, userStage), template: templateName(suggested) })
+      : t("create.hintNone", { user: personName(user), stage: stageName(funnel.data?.stages, userStage) }))
     : undefined;
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -176,13 +178,13 @@ export function CreateChallengeDialog({ open, onOpenChange, templates, people, d
             e.preventDefault();
             if (!user || !tpl) return;
             create.mutate({ user, templateKey: tpl.key, startsOn, endsOn: endsOn || undefined, comment: comment.trim() || undefined }, {
-              onSuccess: (out) => { toast({ title: t("create.assigned"), description: t("create.assignedDescription", { name: templateName(tpl), user }) }); onOpenChange(false); setComment(""); setEndsOn(""); onCreated(out.id); },
+              onSuccess: (out) => { toast({ title: t("create.assigned"), description: t("create.assignedDescription", { name: templateName(tpl), user: personName(user) }) }); onOpenChange(false); setComment(""); setEndsOn(""); onCreated(out.id); },
               onError: (err) => toast({ title: t("create.failed"), description: (err as Error).message, variant: "destructive" }),
             });
           }}
         >
           <Field label={t("create.student")} htmlFor="ch-user">
-            <PersonSelect id="ch-user" value={user} onValueChange={setUser} options={people} placeholder={t("create.studentPlaceholder")} ariaLabel={t("create.student")} />
+            <PersonSelect id="ch-user" value={user} onValueChange={setUser} options={personOptions} placeholder={t("create.studentPlaceholder")} ariaLabel={t("create.student")} />
           </Field>
           <Field label={t("create.template")} htmlFor="ch-tpl" hint={stageHint}>
             <select id="ch-tpl" className={selectCls} value={tplKey} onChange={(e) => setTplKey(e.target.value)}>

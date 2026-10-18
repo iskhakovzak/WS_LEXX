@@ -12,6 +12,7 @@ import { links } from "@/lib/links";
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
+import { personName } from "@/i18n";
 import { useJournalRange } from "@/components/journal/use-journal-days";
 import { eodApi, hoursText, slaText, useBrokerDaily, useEodDay, useEodMutation, type QueueItem } from "./eod-api";
 import { EodDayReadOnly } from "./EodDayReadOnly";
@@ -42,7 +43,7 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
   const review = useEodMutation((b: { id: number; comment: string; score: number; next: boolean }) =>
     eodApi.curatorReview(b.id, { comment: b.comment, score: b.score }).then((out) => ({ ...out, goNext: b.next })),
   (out) => {
-    toast({ title: eodI18n.t("sheet.reviewedToast", { trader: out.day.trader, date: fmtDate(out.day.date, "dayMonth") }) });
+    toast({ title: eodI18n.t("sheet.reviewedToast", { trader: personName(out.day.trader), date: fmtDate(out.day.date, "dayMonth") }) });
     if (out.goNext) onNext(out.next);
     else onClose();
   });
@@ -60,9 +61,9 @@ export function EodReviewSheet({ item, onClose, onNext }: { item: QueueItem | nu
       <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-hidden p-0 sm:max-w-2xl">
         <SheetHeader className="border-b border-[var(--glass-border)] px-5 py-4 text-left">
           <SheetTitle className="flex flex-wrap items-center gap-2">
-            {item?.trader} · {item ? fmtDate(item.date, "long") : ""}
+            {personName(item?.trader)} · {item ? fmtDate(item.date, "long") : ""}
             {item && !reviewed && <Pill tone={item.overdue ? "warn" : "neutral"}>{t("sheet.waiting", { time: hoursText(item.hoursWaiting), sla: slaText(item.hoursWaiting, 24) })}</Pill>}
-            {reviewed && <Pill tone="up">{item?.reviewedBy ? t("sheet.reviewedBy", { name: item.reviewedBy }) : t("sheet.reviewed")}</Pill>}
+            {reviewed && <Pill tone="up">{item?.reviewedBy ? t("sheet.reviewedBy", { name: personName(item.reviewedBy) }) : t("sheet.reviewed")}</Pill>}
           </SheetTitle>
           <SheetDescription className="flex flex-wrap items-center gap-x-3">
             <span>{t("sheet.closedAt", { trades: tc("units.trades", { count: tradesN }), date: item?.closedAt ? fmtDate(item.closedAt, "shortDateTimeSeconds") : "—" })}</span>

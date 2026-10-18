@@ -16,10 +16,12 @@ import React, { Fragment, useLayoutEffect, useMemo, useRef, useSyncExternalStore
 import { useQueryClient } from "@tanstack/react-query";
 import { translate, lookup, renderEntry, isLang, type Dict, type Lang, type Params, type TFunction } from "./core";
 import { applyLang, getLang, getVersion, notify, subscribe, type LangSource } from "./state";
+import { latinNamesVersion, subscribeLatinNames } from "@/lib/people/latin-names";
 
 export * from "./core";
 export { getLang, onLangChange, LANG_STORAGE_KEY, LANG_PENDING_KEY, type LangSource } from "./state";
 export { liveLabels } from "./live-labels";
+export { personName, personNameFor, personInitials, comparePersonNames } from "./person-name";
 
 type Loader = () => Promise<{ default: Dict }>;
 export type NamespaceLoaders = Record<Exclude<Lang, "ru">, Loader>;
@@ -149,6 +151,8 @@ export function useLang(): Lang {
  */
 export function I18nProvider({ children }: { children: React.ReactNode }) {
   const lang = useLang();
+  // Latin display names (person-name.ts) only matter outside Russian: re-mount when they change there.
+  const namesV = useSyncExternalStore(subscribeLatinNames, latinNamesVersion, latinNamesVersion);
   const qc = useQueryClient();
   const prev = useRef(lang);
   useLayoutEffect(() => {
@@ -172,5 +176,5 @@ export function I18nProvider({ children }: { children: React.ReactNode }) {
     }
     void qc.invalidateQueries({ predicate: (q) => (q.meta as { i18n?: boolean } | undefined)?.i18n !== false });
   }, [lang, qc]);
-  return React.createElement(Fragment, { key: lang }, children);
+  return React.createElement(Fragment, { key: lang === "ru" ? lang : `${lang}:${namesV}` }, children);
 }

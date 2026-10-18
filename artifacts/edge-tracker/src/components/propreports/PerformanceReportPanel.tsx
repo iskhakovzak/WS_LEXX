@@ -24,6 +24,7 @@ import { fmtDate, fmtNum, fmtPct, fmtUsd, fmtWeekday } from "@/lib/format";
 import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const WEEKDAY_IDX: Record<string, number> = { sunday: 0, monday: 1, tuesday: 2, wednesday: 3, thursday: 4, friday: 5, saturday: 6 };
 
@@ -281,7 +282,7 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
         t("perf.descAccount", { account: latest.account }),
         periodText(latest),
         latest.traderName ?? "",
-        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "short"), by: latest.uploadedBy }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "short") }),
+        latest.uploadedBy ? t("perf.descUploadedBy", { date: fmtDate(latest.uploadedAt, "short"), by: personName(latest.uploadedBy) }) : t("perf.descUploaded", { date: fmtDate(latest.uploadedAt, "short") }),
       ].filter(Boolean).join(" · ")
     : t("perf.descEmpty");
 
@@ -300,7 +301,7 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
             <Select value={String(latest?.id ?? reports[0]?.id ?? "")} onValueChange={(v) => setReportId(Number(v))}>
               <SelectTrigger className="h-8 w-64 text-xs" aria-label={t("perf.periodAria")}><SelectValue placeholder={t("perf.periodPlaceholder")} /></SelectTrigger>
               <SelectContent>
-                {reports.map((r) => <SelectItem key={r.id} value={String(r.id)}>{periodText(r)} · {r.account}{r.traderName ? ` · ${r.traderName}` : ""}</SelectItem>)}
+                {reports.map((r) => <SelectItem key={r.id} value={String(r.id)}>{periodText(r)} · {r.account}{r.traderName ? ` · ${personName(r.traderName)}` : ""}</SelectItem>)}
               </SelectContent>
             </Select>
           )}
@@ -327,7 +328,7 @@ export function PerformanceReportPanel({ trader, staff = false, compact = false,
         <EmptyState
           icon={BarChart3}
           title={t("perf.emptyTitle")}
-          description={trader ? t("perf.emptyTrader", { name: trader }) : t("perf.emptyStaff")}
+          description={trader ? t("perf.emptyTrader", { name: personName(trader) }) : t("perf.emptyStaff")}
         />
       ) : (
         <PerformanceReportBody data={latest.data} compact={compact} />

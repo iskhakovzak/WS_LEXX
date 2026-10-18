@@ -19,6 +19,7 @@ import {
 } from "./types";
 import { fmtDate, fmtPrice } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
 
 export function longDate(date: string) {
   const s = fmtDate(dateObj(date), "full");
@@ -72,8 +73,8 @@ export function PlanHero({ plan, readSlot }: { plan: GamePlan; readSlot?: React.
               {longDate(plan.date)}
             </h2>
             <p className="mt-1 text-xs text-muted-foreground">
-              {plan.author}
-              {edited ? t("briefing.editedBy", { name: plan.updatedBy ?? "", time: fmtDate(plan.updatedAt, "time") }) : t("briefing.publishedAt", { time: fmtDate(plan.createdAt, "time") })}
+              {personName(plan.author)}
+              {edited ? t("briefing.editedBy", { name: personName(plan.updatedBy), time: fmtDate(plan.updatedAt, "time") }) : t("briefing.publishedAt", { time: fmtDate(plan.createdAt, "time") })}
             </p>
           </div>
           {readSlot}

@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { toneOf, toneText, type Tone } from "@/components/ds";
 import { fmtNum } from "@/lib/format";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personInitials } from "@/i18n";
 
 // Money / R / percent / signed numbers: @/lib/format (fmtUsd, fmtR, fmtPct, fmtNum).
 
@@ -184,7 +185,6 @@ export function OutcomeBar({ wins, losses, be, open = 0, className }: { wins: nu
 
 /** Two-letter avatar circle. */
 export function Avatar({ name, className, highlight }: { name: string; className?: string; highlight?: boolean }) {
-  const initials = name.split(/\s+/).map((p) => p[0]).join("").slice(0, 2).toUpperCase();
   return (
     <span
       className={cn(
@@ -194,7 +194,7 @@ export function Avatar({ name, className, highlight }: { name: string; className
       )}
       aria-hidden="true"
     >
-      {initials}
+      {personInitials(name)}
     </span>
   );
 }

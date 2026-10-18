@@ -43,6 +43,7 @@ import { fmtDate } from "@/lib/format";
 import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
+import { personName } from "@/i18n";
 
 /** Date + time with seconds ("17.10.2026, 14:05:09" in RU), the shape of the old bare toLocaleString(). */
 
@@ -92,7 +93,7 @@ function buildPlaybookPayload(feed: DailyFeed): PlaybookPayload {
   };
 }
 
-const itemHay = (it: StreamItem) => [it.title, it.subtitle, it.ticker, it.trader, it.actor].map((x) => (x ?? "").toLowerCase()).join("\n");
+const itemHay = (it: StreamItem) => [it.title, it.subtitle, it.ticker, it.trader, it.actor, personName(it.trader), personName(it.actor)].map((x) => (x ?? "").toLowerCase()).join("\n");
 const postHay = (f: DailyFeed) =>
   [f.marketTheme, f.bestTickers, f.whatWorksNow, f.whatDoesntWork, f.notes, f.tags, f.screenshotNotes].map((x) => (x ?? "").toLowerCase()).join("\n");
 

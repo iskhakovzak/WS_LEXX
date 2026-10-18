@@ -9,6 +9,7 @@ import {
 import { fmtPrice } from "@/lib/format";
 import { offeringsI18n } from "@/i18n/ns/offerings";
 
+import { personName } from "@/i18n";
 type Match = { o: Offering; e: Exposure };
 
 function holdLine(e: Exposure): string {
@@ -18,7 +19,7 @@ function holdLine(e: Exposure): string {
     // Side is stored as a code or legacy Russian text — parse both.
     const side = t.side ? (/short|шорт/i.test(t.side) ? tr("holdings.short") : tr("holdings.long")) : null; // i18n-ignore
     const hz = HORIZON_LABEL[t.horizon ?? "intraday"] ?? HORIZON_LABEL.intraday;
-    return [side, hz, t.trader].filter(Boolean).join(" · ");
+    return [side, hz, t.trader ? personName(t.trader) : null].filter(Boolean).join(" · ");
   });
   return tr("holdings.position", { list: `${parts.join("; ")}${e.held.length > 3 ? ` +${e.held.length - 3}` : ""}` });
 }

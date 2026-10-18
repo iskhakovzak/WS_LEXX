@@ -21,6 +21,7 @@ import { Pill } from "@/components/ds";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
 import { TYPES, TYPE_LABELS, TEMPLATES, type Thread, type ThreadContext, splitNotes, joinNotes, userTags, hasTag, TAG_PINNED, TAG_RESOLVED } from "./lib";
+import { personName } from "@/i18n";
 
 type FormState = { topic: string; type: string; ticker: string; notes: string; tags: string[]; screenshotUrls: string[]; audience: string[] };
 
@@ -134,7 +135,7 @@ export function ThreadFormDialog({ open, editing, author, defaultTicker, default
       <DialogContent className="max-h-[92vh] w-[calc(100vw-2rem)] max-w-2xl overflow-y-auto rounded-2xl">
         <DialogHeader>
           <DialogTitle>{editing ? t("form.editTitle") : t("form.newTitle")}</DialogTitle>
-          <DialogDescription>{t("form.description", { author: editing?.trader ?? author })}</DialogDescription>
+          <DialogDescription>{t("form.description", { author: personName(editing?.trader ?? author) })}</DialogDescription>
           {!editing && contextLabel(context) && <Pill tone="accent" className="w-fit text-2xs">{t("form.contextPill", { context: contextLabel(context) ?? "" })}</Pill>}
         </DialogHeader>
         <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); save(); }}>

@@ -18,6 +18,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { STALE } from "@/lib/api/keys";
 import { fmtDate, fmtRelative } from "@/i18n/format";
 import { appErrorsI18n } from "@/i18n/ns/appErrors";
+import { personName } from "@/i18n";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -295,7 +296,7 @@ function ErrorDetailSheet({ id, onClose }: { id: number | null; onClose: () => v
                     {detail.data!.occurrences.map((o) => (
                       <li key={o.id} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 py-1.5">
                         <span className="tabular-nums text-muted-foreground" title={fmtDate(o.at, "dateTime")}>{fmtRelative(o.at)}</span>
-                        {o.userName && <span className="font-medium text-foreground">{o.userName}</span>}
+                        {o.userName && <span className="font-medium text-foreground">{personName(o.userName)}</span>}
                         {o.status && <span className="tabular-nums text-muted-foreground">{o.status}</span>}
                         {o.requestId && <span className="truncate font-mono text-2xs text-muted-foreground" title={o.requestId}>{o.requestId}</span>}
                       </li>

@@ -19,6 +19,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { playbookToolsI18n, type RevisionFieldKey } from "@/i18n/ns/playbookTools";
 import { HORIZON_LABEL, STRUCTURED, timeOfDayLabel, type StructuredKey } from "@/components/playbook/model";
 
+import { personName } from "@/i18n";
 type Revision = {
   id: number;
   playbookId: number;
@@ -293,7 +294,7 @@ export function PlaybookRevisionsButton({
                           />
                           <span className="min-w-0 flex-1">
                             <span className="block text-sm font-medium text-foreground">{fmtRelative(rev.createdAt) || fmtDateCustom(rev.createdAt, REV_STAMP)}</span>
-                            <span className="block truncate text-xs text-muted-foreground">{fmtDateCustom(rev.createdAt, REV_STAMP)} · {rev.trader ?? t("revisions.system")}</span>
+                            <span className="block truncate text-xs text-muted-foreground">{fmtDateCustom(rev.createdAt, REV_STAMP)} · {rev.trader ? personName(rev.trader) : t("revisions.system")}</span>
                             <span className="mt-1 flex flex-wrap gap-1">
                               {changes.length === 0
                                 ? <span className="text-xs text-muted-foreground">{t("revisions.noVisible")}</span>

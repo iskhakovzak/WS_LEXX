@@ -100,7 +100,7 @@ export function AuditLog({ actor, tierNames }: { actor: string; tierNames?: Reco
   const actors = useMemo(() => {
     const v = new Set((data?.facets.actors ?? []).map((f) => f.value));
     if (who !== ALL) v.add(who);
-    return [...v].sort((a, b) => a.localeCompare(b, lang));
+    return [...v].sort((a, b) => actorName(a).localeCompare(actorName(b), lang));
   }, [data, who, lang]);
   const actions = useMemo(() => {
     const v = new Map<string, string>();

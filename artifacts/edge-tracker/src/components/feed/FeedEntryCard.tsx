@@ -9,6 +9,7 @@ import { hasServerAcks, parseShots, parseTickers, splitList, type AckKind, type 
 import { fmtTimeNY } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
+import { personName } from "@/i18n";
 
 /** «Принято» / «Торгую это» — per-trader acks from the server; names on hover. */
 function AckChip({ kind, icon: Icon, label, acks, me, onAck }: {
@@ -19,7 +20,7 @@ function AckChip({ kind, icon: Icon, label, acks, me, onAck }: {
   const n = acks.counts[kind] ?? 0;
   const users = acks.users[kind] ?? [];
   const others = users.filter((u) => u !== me);
-  const title = n === 0 ? label : `${label}: ${[on ? feedI18n.t("card.you") : null, ...others].filter(Boolean).join(", ")}`;
+  const title = n === 0 ? label : `${label}: ${[on ? feedI18n.t("card.you") : null, ...others.map(personName)].filter(Boolean).join(", ")}`;
   return (
     <button
       type="button"
@@ -177,11 +178,11 @@ export function FeedEntryCard(p: FeedEntryCardProps) {
             {time && <span className="text-xs tabular-nums text-muted-foreground">{t("card.added", { time })}</span>}
             {feed.createdBy && (
               <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("card.author")}>
-                <UserRound className="h-3 w-3" aria-hidden="true" />{feed.createdBy === me ? t("card.you") : feed.createdBy}
+                <UserRound className="h-3 w-3" aria-hidden="true" />{feed.createdBy === me ? t("card.you") : personName(feed.createdBy)}
               </span>
             )}
             {readers.length > 0 && (
-              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("card.readBy", { names: readers.join(", ") })}>
+              <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" title={t("card.readBy", { names: readers.map(personName).join(", ") })}>
                 <Eye className="h-3 w-3" aria-hidden="true" />{t("card.readers", { count: readers.length })}
               </span>
             )}

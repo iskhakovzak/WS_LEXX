@@ -17,6 +17,7 @@ import { http } from "@/lib/api/http";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 import { CriterionRow, Field, StageLadder, selectCls } from "./bits";
 import { criterionLabel, headlineText, noteText, stageName, stageTitle } from "./labels";
 
@@ -87,7 +88,7 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
           <div className="min-w-0 flex-1">
             <p className={cn("text-lg font-semibold", r.ready ? "text-up" : "text-foreground")} role="status">{headline}</p>
             <p className="text-sm text-muted-foreground">
-              {[r.user, stagePart, t("person.meta.asOf", { date: fmtDate(r.today) })].join(" · ")}
+              {[personName(r.user), stagePart, t("person.meta.asOf", { date: fmtDate(r.today) })].join(" · ")}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -149,7 +150,7 @@ export function PersonView({ user, config, isStaff, me }: { user: string | null;
                 <span className="font-medium text-foreground">
                   {t("person.historyLine", { action: academyPathI18n.tryT(`person.actions.${h.action}`) ?? h.action, from: stageName(stages, h.fromStage), to: stageName(stages, h.toStage) })}
                 </span>
-                <span className="text-xs text-muted-foreground">({h.actor})</span>
+                <span className="text-xs text-muted-foreground">({personName(h.actor)})</span>
                 {h.comment && <span className="w-full text-xs text-muted-foreground">«{h.comment}»</span>}
               </li>
             ))}
@@ -201,7 +202,7 @@ export function PendingRequest({ req, canDecide, isSelf, stages }: { req: Promot
     });
   return (
     <Panel title={t("request.title", { from: stageName(stages, req.fromStage), to: stageName(stages, req.toStage) })} icon={ShieldCheck}
-      description={t("request.description", { by: req.requestedBy, at: fmtInstant(req.createdAt), passed: req.passed, count: req.total })}>
+      description={t("request.description", { by: personName(req.requestedBy), at: fmtInstant(req.createdAt), passed: req.passed, count: req.total })}>
       {req.comment && <p className="mb-3 text-sm text-foreground">«{req.comment}»</p>}
       {canDecide ? (
         <div className="flex flex-col gap-2">

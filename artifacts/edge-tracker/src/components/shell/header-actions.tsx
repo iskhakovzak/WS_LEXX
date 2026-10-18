@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personInitials, personName } from "@/i18n";
 
 export { LanguageMenu } from "@/i18n/language-switcher";
 import { LanguageMenuItems } from "@/i18n/language-switcher";
@@ -62,13 +63,14 @@ export function UserMenu() {
   const [, navigate] = useLocation();
   const { t } = commonI18n.useT();
   const { t: ts } = shellI18n.useT();
-  const name = user && user.role !== "guest" ? (user.traderName ?? t("roles.user")) : t("roles.guest");
+  const member = user && user.role !== "guest" ? user.traderName ?? null : null;
+  const name = member ? personName(member) : user && user.role !== "guest" ? t("roles.user") : t("roles.guest");
   const role = roleLabel(user?.role ?? "guest");
-  const initial = name.trim().charAt(0).toUpperCase() || "?";
+  const initial = member ? personInitials(member) : name.trim().charAt(0).toUpperCase() || "?";
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <button type="button" data-i18n-focus="user-menu" className={cn(iconBtn, "font-semibold text-foreground")} aria-label={ts("header.userMenuAria", { name })}>
+        <button type="button" data-i18n-focus="user-menu" className={cn(iconBtn, "font-semibold text-foreground")} aria-label={ts("header.userMenuAria", { name })} title={name}>
           <span aria-hidden="true" className="text-sm">{initial}</span>
         </button>
       </DropdownMenuTrigger>
@@ -78,7 +80,7 @@ export function UserMenu() {
             <User className="h-4 w-4" aria-hidden="true" />
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-foreground">{name}</span>
+            <span className="block truncate text-sm font-semibold text-foreground" title={name}>{name}</span>
             <span className="block text-xs font-normal text-muted-foreground">{role}</span>
           </span>
         </DropdownMenuLabel>

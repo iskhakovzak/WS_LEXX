@@ -11,6 +11,7 @@ import { links } from "@/lib/links";
 import { HORIZON_LABEL, isTypingTarget } from "@/components/journal/utils";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { eodI18n } from "@/i18n/ns/eod";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { tagLabel } from "@/components/shared/trade-labels";
 import {
@@ -97,7 +98,7 @@ export function EodFlow({ trader, date, onExit }: { trader: string; date: string
     return (
       <Panel
         title={<span className="inline-flex items-center gap-2"><Lock className="h-4 w-4 text-up" aria-hidden="true" />{t("flow.dayClosed", { date: fmtDate(date, "long") })}</span>}
-        description={data.day?.reviewedAt ? t("flow.reviewedBy", { name: data.day.reviewedBy ?? "—" }) : t("flow.awaitingReview")}
+        description={data.day?.reviewedAt ? t("flow.reviewedBy", { name: personName(data.day.reviewedBy) || "—" }) : t("flow.awaitingReview")}
         actions={exitBtn}
       >
         <EodDayReadOnly data={data} broker={brokerQ.data ?? null} />

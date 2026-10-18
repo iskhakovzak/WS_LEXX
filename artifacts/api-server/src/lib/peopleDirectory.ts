@@ -40,6 +40,44 @@ export function cleanNameLatin(raw: unknown):
   return { ok: true, value: v };
 }
 
+export type LatinNameChange = { id: number; name: string; nameLatin: string | null };
+
+/**
+ * Write Latin names (already cleaned) in one transaction, with one audit entry («user.name_latin», details
+ * {name, from, to, bulk?}) per user whose value actually changed, in the same transaction. Returns the changes.
+ * The caller reloads the display table (lib/people/latinNames → reloadLatinNames) when something changed.
+ */
+export async function saveLatinNames(items: readonly LatinNameChange[], actor: string, opts: { bulk?: boolean } = { bulk: true }): Promise<LatinNameChange[]> {
+  if (!items.length) return [];
+  const client = await pool.connect();
+  const changed: LatinNameChange[] = [];
+  try {
+    await client.query("BEGIN");
+    for (const it of items) {
+      const { rows } = await client.query<{ prev: string | null }>(
+        `UPDATE users u SET name_latin = $1 FROM (SELECT name_latin AS prev FROM users WHERE id = $2 FOR UPDATE) p
+          WHERE u.id = $2 RETURNING p.prev`,
+        [it.nameLatin, it.id],
+      );
+      if (!rows[0]) continue;
+      const prev = rows[0].prev ?? null;
+      if (prev === it.nameLatin) continue;
+      await client.query(
+        `INSERT INTO audit_log (actor, action, target_type, target_id, details) VALUES ($1, 'user.name_latin', 'user', $2, $3)`,
+        [actor, String(it.id), JSON.stringify({ name: it.name, from: prev, to: it.nameLatin, ...(opts.bulk ? { bulk: true } : {}) })],
+      );
+      changed.push(it);
+    }
+    await client.query("COMMIT");
+  } catch (e) {
+    await client.query("ROLLBACK").catch(() => undefined);
+    throw e;
+  } finally {
+    client.release();
+  }
+  return changed;
+}
+
 export type DirectoryPerson = {
   id: number;
   name: string;

@@ -21,6 +21,7 @@ import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
 import { SelfMarkButtons } from "./RulesOverview";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
 import { rich } from "./rich";
 import type { RuleReport, SideStats } from "./types";
 
@@ -116,7 +117,7 @@ export function RuleDetailSheet({
             {!r.enabled && <Pill>{t("row.disabled")}</Pill>}
           </div>
           <SheetTitle className="text-lg leading-snug">{r.name}</SheetTitle>
-          <SheetDescription>{[r.summary, r.createdBy && origin !== "personal" ? t("detail.setBy", { name: r.createdBy }) : null].filter(Boolean).join(" · ")}</SheetDescription>
+          <SheetDescription>{[r.summary, r.createdBy && origin !== "personal" ? t("detail.setBy", { name: personName(r.createdBy) }) : null].filter(Boolean).join(" · ")}</SheetDescription>
           {r.note && <p className="text-sm italic text-muted-foreground">«{r.note}»</p>}
         </SheetHeader>
 

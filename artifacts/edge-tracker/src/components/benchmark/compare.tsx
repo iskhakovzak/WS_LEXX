@@ -8,6 +8,7 @@ import { SERIES_COLORS, fmtMetric, metricHint, metricLabel } from "./format";
 import { PersonSelect } from "@/components/people/person-select";
 import { commonI18n } from "@/i18n/ns/common";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 
 /** Two traders side by side: percentile radar, equity curves, metric-by-metric table with the winner marked. */
 export function CompareView({
@@ -82,8 +83,8 @@ export function CompareView({
           <thead>
             <tr className="text-xs text-muted-foreground">
               <th className="px-3 py-2 text-left font-medium">{t("compare.colMetric")}</th>
-              <th className="px-3 py-2 text-right font-medium">{ra.trader}</th>
-              <th className="px-3 py-2 text-right font-medium">{rb.trader}</th>
+              <th className="px-3 py-2 text-right font-medium">{personName(ra.trader)}</th>
+              <th className="px-3 py-2 text-right font-medium">{personName(rb.trader)}</th>
               <th className="px-3 py-2 text-left font-medium">{t("compare.colBetter")}</th>
             </tr>
           </thead>
@@ -98,7 +99,7 @@ export function CompareView({
                   <td className={cn("px-3 py-1.5 text-right", win === "a" && cn("font-semibold", toneText("up")))}>{fmtMetric(m, va)}</td>
                   <td className={cn("px-3 py-1.5 text-right", win === "b" && cn("font-semibold", toneText("up")))}>{fmtMetric(m, vb)}</td>
                   <td className="px-3 py-1.5 text-xs text-muted-foreground">{m.neutral ? t("compare.style") : win === "a"
- ? ra.trader : win === "b" ? rb.trader : "—"}</td>
+ ? personName(ra.trader) : win === "b" ? personName(rb.trader) : "—"}</td>
                 </tr>
               );
             })}

@@ -24,6 +24,7 @@ import { PeopleSearchInput } from "@/components/people/people-search-input";
 import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people/search";
 import { notesI18n } from "@/i18n/ns/notes";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName, comparePersonNames } from "@/i18n";
 
 const SCOPE_KEY = "ws_lexx_junior_scope";
 const SORT_KEY = "ws_lexx_junior_roster_sort";
@@ -108,7 +109,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
   const shownRows = React.useMemo(() => {
     const pq = prepareQuery(who);
     const base = (flaggedOnly ? rows.filter((r) => (r.attention ?? []).length > 0) : rows).filter((r) => pq.empty || matchPerson(pq, r.trader, aliases));
-    return sort === "attention" ? byAttention(base) : [...base].sort((a, b) => a.trader.localeCompare(b.trader));
+    return sort === "attention" ? byAttention(base) : [...base].sort((a, b) => comparePersonNames(a.trader, b.trader));
   }, [rows, sort, flaggedOnly, who, aliases]);
   const teamAvg = (() => {
     const s = rows.filter((r) => r.avg_score != null).map((r) => r.avg_score!);
@@ -130,7 +131,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
       } catch { /* counted below */ }
     }
     setReminding((s) => { const n = new Set(s); traders.forEach((t) => n.delete(t)); return n; });
-    if (ok === traders.length) toast({ title: ok === 1 ? t("junior.team.remindedOne", { name: traders[0]! }) : t("junior.team.remindedMany", { count: ok }), description: t("junior.team.remindedDesc") });
+    if (ok === traders.length) toast({ title: ok === 1 ? t("junior.team.remindedOne", { name: personName(traders[0]!) }) : t("junior.team.remindedMany", { count: ok }), description: t("junior.team.remindedDesc") });
     else toast({ title: t("junior.team.remindedPartial", { ok, total: traders.length }), variant: "destructive" });
   };
 
@@ -202,7 +203,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
         <div className="ml-auto flex flex-wrap items-center gap-2">
           {rows.length > 6 && <PeopleSearchInput value={who} onChange={setWho} className="sm:w-52" />}
           {isMentor && (
-            <Pill tone="purple" title={t("junior.team.mentorTitle", { names: mineList.join(", ") })}>
+            <Pill tone="purple" title={t("junior.team.mentorTitle", { names: mineList.map(personName).join(", ") })}>
               <GraduationCap className="h-3 w-3" aria-hidden="true" />{t("junior.team.mentor", { count: mineList.length })}
             </Pill>
           )}
@@ -287,7 +288,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                         >
                           <span className="w-14 shrink-0 text-xs tabular-nums text-muted-foreground">{fmtDate(n.note_date, "dayMonth")}</span>
                           <Initial name={n.trader} className="h-7 w-7" />
-                          <span className="shrink-0 text-sm font-medium">{n.trader}</span>
+                          <span className="shrink-0 text-sm font-medium">{personName(n.trader)}</span>
                           <span className="min-w-0 flex-1 basis-full truncate text-sm text-muted-foreground sm:basis-auto" title={previewSections(sectionsOf(n)) || n.raw_text}>{previewSections(sectionsOf(n)) || n.raw_text}</span>
                           {hasDraft(n.id) && <Pill tone="purple"><PenLine className="h-3 w-3" aria-hidden="true" />{t("draftPill")}</Pill>}
                           {wait >= 2 && <Pill tone={wait >= 4 ? "down" : "warn"}>{t("junior.team.waitsDays", { days: wait })}</Pill>}
@@ -408,14 +409,14 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                   >
                     <div className={cn("flex flex-wrap items-center gap-2", mayReview && "pr-9")}>
                       <Initial name={n.trader} />
-                      <span className="text-sm font-semibold">{n.trader}</span>
+                      <span className="text-sm font-semibold">{personName(n.trader)}</span>
                       <MoodPill mood={n.mood} />
                     </div>
                     <p className="line-clamp-3 text-sm text-muted-foreground">{text || n.raw_text}</p>
                     <div className="mt-auto flex flex-wrap items-center gap-2 pt-1 text-xs text-muted-foreground">
                       {n.reviewed_at ? (
                         <>
-                          <Pill tone="up"><MessageSquareQuote className="h-3 w-3" aria-hidden="true" />{t("junior.team.answerBy", { name: n.reviewed_by ?? "" })}</Pill>
+                          <Pill tone="up"><MessageSquareQuote className="h-3 w-3" aria-hidden="true" />{t("junior.team.answerBy", { name: personName(n.reviewed_by) })}</Pill>
                           <ScoreStars score={n.curator_score} />
                         </>
                       ) : (
@@ -429,7 +430,7 @@ export function JuniorTeam({ reviewer, me }: { reviewer: ReviewerInfo | null; me
                     <button
                       type="button"
                       aria-pressed={isSel}
-                      aria-label={t("junior.team.selectAria", { name: n.trader })}
+                      aria-label={t("junior.team.selectAria", { name: personName(n.trader) })}
                       onClick={() => setSelected((p) => { const s = new Set(p); if (s.has(n.id)) s.delete(n.id); else s.add(n.id); return s; })}
                       className={cn(
                         "absolute right-3 top-3 grid h-8 w-8 place-items-center rounded-full border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -478,7 +479,7 @@ function RosterRow({
       <Initial name={r.trader} />
       <div className="min-w-0 flex-1 basis-48">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{r.trader}</span>
+          <span className="text-sm font-semibold">{personName(r.trader)}</span>
           {showMine && r.mine && <Pill tone="purple">{t("junior.team.mine")}</Pill>}
           {n ? (
             <Pill tone={n.reviewed_at ? "up" : "accent"} dot>{n.reviewed_at ? t("answered") : t("waiting")}{n.words ? ` · ${t("wordsShort", { count: n.words })}` : ""}</Pill>
@@ -512,11 +513,11 @@ function RosterRow({
           </span>
         )}
         {n ? (
-          <Button size="sm" variant={n.reviewed_at ? "ghost" : "outline"} onClick={onOpen} aria-label={t(n.reviewed_at ? "junior.team.openAria" : "junior.team.replyAria", { name: r.trader })}>
+          <Button size="sm" variant={n.reviewed_at ? "ghost" : "outline"} onClick={onOpen} aria-label={t(n.reviewed_at ? "junior.team.openAria" : "junior.team.replyAria", { name: personName(r.trader) })}>
             {n.reviewed_at ? t("junior.team.open") : t("junior.team.reply")}
           </Button>
         ) : (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={onRemind} aria-label={t("junior.team.remindAria", { name: r.trader })}>
+          <Button size="sm" variant="ghost" disabled={busy} onClick={onRemind} aria-label={t("junior.team.remindAria", { name: personName(r.trader) })}>
             {busy ? <Loader2 className="animate-spin" aria-hidden="true" /> : <BellRing aria-hidden="true" />}
             {r.reminder ? t("junior.team.again") : t("junior.team.remind")}
           </Button>

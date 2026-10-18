@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { motion, useReducedMotion } from "framer-motion";
 import { useGetTopPatterns } from "@workspace/api-client-react";
 import { useTradesBookFacets, useTradesWindow } from "@/hooks/use-trades-window";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { BarChart3, Brain, Dices, FlaskConical, Grid3x3, LayoutDashboard, Layers, LineChart, RefreshCw, SearchX, Users } from "lucide-react";
 import { useAuth } from "@/contexts/auth-context";
 import { Page, PageHeader, Panel, Segmented, EmptyState, StatGrid } from "@/components/ds";
@@ -142,7 +142,7 @@ export default function Analytics() {
 
   const options: FilterOptions = useMemo(() => {
     const traders = [...new Set([...(facets.data?.traders ?? []), ...trades.map((tr) => tr.trader ?? "")].filter((x) => !!x))]
-      .sort((a, b) => a.localeCompare(b, localeTag()));
+      .sort(comparePersonNames);
     const scope = applyNonPeriodFilters(trades, { ...DEFAULT_FILTERS, trader: filters.trader });
     const setups = [...new Set(scope.map((tr) => tr.setup?.trim()).filter((x): x is string => !!x))].sort();
     const counts = new Map<string, number>();
@@ -164,7 +164,7 @@ export default function Analytics() {
 
   const summary = useMemo(() => {
     const parts = [commonI18n.t("units.trades", { count: current.length })];
-    parts.push(filters.trader || (isCurator ? t("summary.team") : t("summary.mine")));
+    parts.push(personName(filters.trader) || (isCurator ? t("summary.team") : t("summary.mine")));
     parts.push(t(`period.${filters.period}`).toLowerCase());
     if (filters.horizon) parts.push(horizonLabel(filters.horizon).toLowerCase());
     if (!hasPnl && hasR) parts.push(t("summary.rOnly"));

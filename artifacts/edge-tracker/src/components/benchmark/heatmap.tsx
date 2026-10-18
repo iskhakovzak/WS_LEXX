@@ -5,6 +5,7 @@ import type { BenchRow, MetricDef } from "./api";
 import { fmtMetric, heatStyle, metricHint, metricLabel } from "./format";
 import { commonI18n } from "@/i18n/ns/common";
 import { benchmarkI18n } from "@/i18n/ns/benchmark";
+import { personName } from "@/i18n";
 
 type Mode = "value" | "pct";
 
@@ -41,13 +42,13 @@ export function BenchmarkHeatmap({ rows, metrics, median }: { rows: BenchRow[]; 
           <tbody>
             {ranked.map((r) => (
               <tr key={r.trader}>
-                <td className="font-medium text-foreground">{r.trader}<div className="text-2xs font-normal text-muted-foreground">{commonI18n.t("units.tradesShort", { count: r.trades })}</div></td>
+                <td className="font-medium text-foreground">{personName(r.trader)}<div className="text-2xs font-normal text-muted-foreground">{commonI18n.t("units.tradesShort", { count: r.trades })}</div></td>
                 {metrics.map((m) => {
                   const p = r.percentiles?.[m.key] ?? null;
                   const v = r[m.key] as number | null;
                   return (
                     <td key={m.key} className="!px-1.5 text-center text-xs" style={heatStyle(p, m.neutral)}
-                      title={`${r.trader} · ${metricLabel(m)}: ${fmtMetric(m, v)}${p != null ? t("heatmap.percentile", { value: Math.round(p * 100) }) : ""}`}>
+                      title={`${personName(r.trader)} · ${metricLabel(m)}: ${fmtMetric(m, v)}${p != null ? t("heatmap.percentile", { value: Math.round(p * 100) }) : ""}`}>
                       {p == null ? <span className="text-muted-foreground">—</span> : mode === "pct" ? Math.round(p * 100) : fmtMetric(m, v)}
                     </td>
                   );

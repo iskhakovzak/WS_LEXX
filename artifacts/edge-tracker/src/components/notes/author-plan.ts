@@ -9,6 +9,7 @@
 import { SECTIONS, parseNote, type AuthorNote, type DayTrade, type SectionKey } from "./author-model";
 import { fmtDate, fmtR } from "@/lib/format";
 import { notesI18n } from "@/i18n/ns/notes";
+import { personName } from "@/i18n";
 
 /* ───────────────────────── Previous plan ───────────────────────── */
 
@@ -154,6 +155,7 @@ export function matchesSearch(n: Searchable, query: string): boolean {
   if (!q) return true;
   return (
     n.trader.toLowerCase().includes(q) ||
+    personName(n.trader).toLowerCase().includes(q) ||
     (n.raw_text ?? "").toLowerCase().includes(q) ||
     (n.refined_text ?? "").toLowerCase().includes(q) ||
     !!n.day?.tickers.some((t) => t.toLowerCase() === q)

@@ -23,6 +23,7 @@
  * spread it into CUSTOM below.
  */
 import { notificationsT } from "../i18n/ns";
+import { personNameFor } from "./people/latinNames";
 import { fmtDateFor } from "../i18n/format";
 import type { Lang, Params } from "../i18n";
 import { rulesRenderers } from "./notificationRenderers/rules";
@@ -76,8 +77,23 @@ function hasAllParams(lang: Lang, key: string, p: Params): boolean {
 }
 
 /** Expand the `<name>Code` / `<name>Date` conventions. Null when a code has no text. */
+/** Params that carry a person's stored name: shown as the Latin name for EN/UZ readers (lib/people/latinNames). */
+const PERSON_PARAMS = new Set(["actor", "user", "author", "trader", "who", "curator", "mentor", "student", "reviewer", "owner", "sender", "acker"]);
+
+function withPersonNames(params: NotificationParams, lang: Lang): NotificationParams {
+  if (lang === "ru") return params;
+  let out: NotificationParams | null = null;
+  for (const k of PERSON_PARAMS) {
+    const v = params[k];
+    if (typeof v !== "string" || !v) continue;
+    const shown = personNameFor(v, lang);
+    if (shown !== v) (out ??= { ...params })[k] = shown;
+  }
+  return out ?? params;
+}
+
 function expand(type: string, params: NotificationParams, lang: Lang, html: boolean, strict = true): Params | null {
-  const out = clean(params, html);
+  const out = clean(withPersonNames(params, lang), html);
   for (const [k, v] of Object.entries(params)) {
     if (typeof v !== "string" || !v) continue;
     const code = /^(\w+)Code$/.exec(k);
@@ -182,9 +198,10 @@ export function renderNotification(type: string, params: NotificationParams | nu
   // Custom renderers resolve their own codes: a `<name>Code` without a dictionary entry is not an error here.
   const p = expand(type, params, lang, false, false)!;
   const h = expand(type, params, lang, true, false)!;
+  // Custom renderers read `params` directly: hand them the person names as this reader sees them (stored row unchanged).
   const r = custom({
     type,
-    params,
+    params: withPersonNames(params, lang),
     lang,
     p,
     h,

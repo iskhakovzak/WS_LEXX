@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { curatorApi, useCuratorMutation, useIdpMetrics } from "./api";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** «Назначить цель»: an IDP goal through the Academy API (POST /api/academy/idp) — progress is tracked there. */
@@ -49,7 +50,7 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
   const submit = () => {
     if (!valid || save.isPending) return;
     save.mutate(undefined, {
-      onSuccess: () => { toast({ title: t("goal.assigned"), description: t("goal.assignedHint", { name: trader }) }); onOpenChange(false); },
+      onSuccess: () => { toast({ title: t("goal.assigned"), description: t("goal.assignedHint", { name: personName(trader) }) }); onOpenChange(false); },
       onError: (e) => toast({ title: t("goal.failed"), description: (e as Error).message, variant: "destructive" }),
     });
   };
@@ -59,7 +60,7 @@ export function GoalDialog({ open, onOpenChange, trader, presetTitle }: { open: 
       <DialogContent className="sm:max-w-lg">
         <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); submit(); }}>
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><Target className="h-4 w-4 text-primary" aria-hidden="true" />{t("goal.title", { name: trader })}</DialogTitle>
+            <DialogTitle className="flex items-center gap-2"><Target className="h-4 w-4 text-primary" aria-hidden="true" />{t("goal.title", { name: personName(trader) })}</DialogTitle>
             <DialogDescription>{t("goal.hint")}</DialogDescription>
           </DialogHeader>
           <QueryState query={q} skeleton={<div className="h-40" />}>

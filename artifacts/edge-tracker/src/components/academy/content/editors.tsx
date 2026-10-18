@@ -29,6 +29,7 @@ import { academyLinks } from "./links";
 import { ApiError } from "@/lib/api/http";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /* ─── helpers ───────────────────────────────────────────────────────────── */
 
@@ -374,7 +375,7 @@ function SetupPicker({ selected, onChange }: { selected: number[]; onChange: (v:
               <label className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 text-sm hover:bg-[var(--glass-bg)]">
                 <Checkbox checked={sel.has(s.id)} onCheckedChange={() => toggle(s.id)} />
                 <span className="min-w-0 flex-1 truncate" title={s.name}>{s.name}</span>
-                {(s.folder || s.trader) && <span className="truncate text-xs text-muted-foreground" title={[s.folder, s.trader].filter(Boolean).join(" · ")}>{[s.folder, s.trader].filter(Boolean).join(" · ")}</span>}
+                {(s.folder || s.trader) && <span className="truncate text-xs text-muted-foreground" title={[s.folder, personName(s.trader)].filter(Boolean).join(" · ")}>{[s.folder, personName(s.trader)].filter(Boolean).join(" · ")}</span>}
               </label>
             </li>
           ))}

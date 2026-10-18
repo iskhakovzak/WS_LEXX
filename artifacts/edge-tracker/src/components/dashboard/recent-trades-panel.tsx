@@ -12,6 +12,7 @@ import { fmtR, fmtUsd } from "@/lib/format";
 import type { RecentTrade } from "./use-dashboard";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 /** Lower-case horizon tag for multi-day trades (empty for intraday). */
 const horizonShort = (h: string) => (h === "overnight" || h === "swing" ? dashboardI18n.t(`recent.horizon.${h}`) : "");
@@ -117,7 +118,7 @@ export function RecentTradesPanel({
                       {shortDate(t.closeDate)}
                       {multiDay ? ` ${td("recent.entered", { date: shortDate(t.date) })}` : ""}
                       {t.setup ? ` · ${t.setup}` : ""}
-                      {showTrader && t.trader ? ` · ${t.trader}` : ""}
+                      {showTrader && t.trader ? ` · ${personName(t.trader)}` : ""}
                     </span>
                   </span>
                   <span className="flex flex-col items-end">

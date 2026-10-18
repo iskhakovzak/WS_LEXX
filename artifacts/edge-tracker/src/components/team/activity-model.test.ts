@@ -1,7 +1,8 @@
 import { afterAll, describe as suite, expect, it } from "vitest";
 import { setLang, type Lang } from "@/i18n";
 import { activityI18n } from "@/i18n/ns/activity";
-import { describe, describeBurst, itemHref, sectionMeta, type FeedItem } from "./activity-model";
+import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
+import { describe, describeBurst, itemHref, itemTitle, sectionMeta, type FeedItem } from "./activity-model";
 
 const item = (p: Partial<FeedItem>): FeedItem => ({
   uid: "log:1", action: "created", section: "trades", entityId: null, entityTitle: null, trader: "Ольга Н.", details: null, rating: null,
@@ -95,5 +96,20 @@ suite("eod links", () => {
   it("a curator's review links to the trader's day, not the curator's", () => {
     expect(itemHref(item({ action: "reviewed", section: "eod", entityId: "2026-10-09|Кирилл Б.", trader: "Ольга Н." })))
       .toBe(itemHref(item({ action: "closed", section: "eod", entityId: "2026-10-09", trader: "Кирилл Б." })));
+  });
+});
+
+suite("itemTitle", () => {
+  it("shows the reviewed trader's name in the UI language; other titles stay as written", async () => {
+    setLatinNames([["Кирилл Б.", "Kirill B."]]);
+    const review = item({ section: "eod", action: "reviewed", entityId: "2026-10-09|Кирилл Б.", entityTitle: "Кирилл Б., 2026-10-09" });
+    await setLang("ru", { source: "init" });
+    expect(itemTitle(review)).toBe("Кирилл Б., 2026-10-09");
+    await setLang("uz", { source: "init" });
+    expect(itemTitle(review)).toBe("Kirill B., 2026-10-09");
+    expect(itemTitle(item({ section: "playbook", entityTitle: "Кирилл Б. сетап" }))).toBe("Кирилл Б. сетап");
+    expect(itemTitle(item({ entityTitle: "  " }))).toBeUndefined();
+    clearLatinNames();
+    await setLang("ru", { source: "init" });
   });
 });

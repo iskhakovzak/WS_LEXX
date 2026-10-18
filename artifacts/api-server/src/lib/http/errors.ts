@@ -17,6 +17,7 @@ import type { Request, Response } from "express";
 import type { Capability } from "../permissionsMatrix";
 import { langOf, type Lang, type Params } from "../../i18n";
 import { errorsT } from "../../i18n/ns";
+import { personNameFor } from "../people/latinNames";
 import type ruErrors from "../../i18n/ru/errors";
 
 /** Default HTTP status of every code. Keys must match src/i18n/ru/errors.ts exactly (tsc checks both ways). */
@@ -196,6 +197,7 @@ export const ERROR_CODES = {
   USER_NAME_REQUIRED: 400,
   PASSWORD_TOO_SHORT: 400,
   NAME_LATIN_CHARS: 400,
+  NAME_LATIN_INVALID_FOR: 400,
   BREACH_NOT_FOUND: 404,
   BREACH_REVIEW_NOT_FOUND: 404,
   AGREEMENT_NOT_FOUND: 404,
@@ -384,9 +386,23 @@ export const tooLarge = (code: ErrorCode = "TOO_LARGE") => new AppError(code, 41
 
 export type ErrorBody = { error: string; code: ErrorCode; details?: unknown; requestId?: string };
 
+/** Error params that carry a person's stored name (ALREADY_ENROLLED, ACCOUNT_LINKED_TO_OTHER, CURATOR_NOT_ACTIVE…). */
+const PERSON_ERROR_PARAMS = ["user", "owner", "trader", "curator", "actor", "author", "who"] as const;
+
+/** Person names in error params as the reader sees them (Latin for EN / UZ); `details` keep the stored names. */
+function withPersonNames(params: Params | undefined, lang: Lang | null | undefined): Params | undefined {
+  if (!params || !lang || lang === "ru") return params;
+  let out: Params | null = null;
+  for (const k of PERSON_ERROR_PARAMS) {
+    const v = params[k];
+    if (typeof v === "string" && v) (out ??= { ...params })[k] = personNameFor(v, lang);
+  }
+  return out ?? params;
+}
+
 /** Localized text of a code. */
 export function errorMessage(code: ErrorCode, lang: Lang | null | undefined, params?: Params): string {
-  return errorsT.tryFor(lang, code, params) ?? code;
+  return errorsT.tryFor(lang, code, withPersonNames(params, lang)) ?? code;
 }
 
 /** The response body for an AppError in `lang`. `requestId` is added for 5xx (the user can quote it). */

@@ -4,15 +4,15 @@
   "description": "files over 600 lines and functions over 300 lines (values = current line counts; may only shrink)",
   "metrics": {
     "web-files>600": {
-      "total": 23836,
+      "total": 23813,
       "byKey": {
         "artifacts/edge-tracker/src/components/academy/cohorts/dialogs.tsx": 635,
         "artifacts/edge-tracker/src/components/academy/content/editors.tsx": 657,
-        "artifacts/edge-tracker/src/components/admin/PeoplePanel.tsx": 721,
+        "artifacts/edge-tracker/src/components/admin/PeoplePanel.tsx": 699,
         "artifacts/edge-tracker/src/components/analytics-page/metrics.ts": 663,
         "artifacts/edge-tracker/src/components/calculator/ChainAdvisor.tsx": 660,
         "artifacts/edge-tracker/src/components/chart-engine/WsChart.tsx": 1076,
-        "artifacts/edge-tracker/src/components/curator/group-view.tsx": 661,
+        "artifacts/edge-tracker/src/components/curator/group-view.tsx": 660,
         "artifacts/edge-tracker/src/components/dashboard/use-dashboard.ts": 605,
         "artifacts/edge-tracker/src/components/ds.tsx": 1299,
         "artifacts/edge-tracker/src/components/equity-chart/render.ts": 684,

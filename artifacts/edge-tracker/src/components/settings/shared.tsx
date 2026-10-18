@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { Tone } from "@/components/ds";
 import { commonI18n } from "@/i18n/ns/common";
 import { settingsI18n } from "@/i18n/ns/settings";
+import { personInitials } from "@/i18n";
 
 /** Role names in the UI language (getters: read at render). Unknown roles: index returns undefined → show the code. */
 export const ROLE_LABEL: Readonly<Record<string, string>> = {
@@ -37,11 +38,7 @@ export function fmtDaysAgo(ymd: string | null | undefined): string {
   return t("shared.overYear");
 }
 
-export function initials(name: string): string {
-  return name.trim().split(/\s+/).map((p) => p[0] ?? "").join("").slice(0, 2).toUpperCase() || "?";
-}
-
-/** Round avatar with initials (tinted by role). */
+/** Round avatar with the person's initials (display name: Latin in EN / UZ when set), tinted by role. */
 export function Avatar({ name, role, size = "md" }: { name: string; role?: string; size?: "sm" | "md" | "lg" }) {
   const tone = ROLE_TONE[role ?? "trader"] ?? "accent";
   const toneCls =
@@ -53,7 +50,7 @@ export function Avatar({ name, role, size = "md" }: { name: string; role?: strin
   const sizeCls = size === "lg" ? "h-14 w-14 text-lg" : size === "sm" ? "h-7 w-7 text-2xs" : "h-9 w-9 text-xs";
   return (
     <span aria-hidden="true" className={cn("grid shrink-0 place-items-center rounded-full font-semibold", toneCls, sizeCls)}>
-      {initials(name)}
+      {personInitials(name)}
     </span>
   );
 }

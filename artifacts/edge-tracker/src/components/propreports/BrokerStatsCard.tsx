@@ -11,6 +11,7 @@ import { usePerformance } from "./api";
 import { fmtCount, fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const toneOf = (v: number | null | undefined): Tone => (v == null || v === 0 ? "neutral" : v > 0 ? "up" : "down");
 
@@ -31,7 +32,7 @@ export function BrokerStatsCard({ trader, title, className }: { trader: string |
   return (
     <Panel
       title={title ?? t("broker.title")}
-      description={`${t("broker.period", { account: latest.account, from: fmtDate(latest.periodFrom, "medium"), to: fmtDate(latest.periodTo, "medium") })}${latest.traderName ? ` · ${latest.traderName}` : ""}`}
+      description={`${t("broker.period", { account: latest.account, from: fmtDate(latest.periodFrom, "medium"), to: fmtDate(latest.periodTo, "medium") })}${latest.traderName ? ` · ${personName(latest.traderName)}` : ""}`}
       icon={Building2}
       className={className}
       actions={

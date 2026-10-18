@@ -187,6 +187,7 @@ export default {
   USER_NAME_REQUIRED: "Укажите имя",
   PASSWORD_TOO_SHORT: "Пароль — минимум {min} символа",
   NAME_LATIN_CHARS: "Только буквы, цифры, пробел, точка, дефис и апостроф",
+  NAME_LATIN_INVALID_FOR: "Проверьте латинское имя для «{name}»: буквы, цифры, пробел, точка, дефис и апостроф, до 80 символов",
   BREACH_NOT_FOUND: "Нарушение не найдено",
   BREACH_REVIEW_NOT_FOUND: "Разбор не найден",
   AGREEMENT_NOT_FOUND: "Договорённость не найдена",

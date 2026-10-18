@@ -10,6 +10,7 @@ import type { Discussion, Comment } from "@workspace/api-client-react";
 import { matchesAny, prepareQuery } from "@workspace/text-search";
 import { fmtDate, fmtDateCustom, fmtRelative } from "@/lib/format";
 import { discussionsI18n } from "@/i18n/ns/discussions";
+import { personInitials } from "@/i18n";
 
 /** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
 function liveLabels<K extends string>(keys: readonly K[], label: (k: K) => string): Record<K, string> {
@@ -233,6 +234,19 @@ export function mentions(text: string, name: string | null | undefined): boolean
   return text.toLowerCase().includes(`@${name.toLowerCase()}`);
 }
 
+/**
+ * The stored name written right after «@» at `at` (case-insensitive, whole word, longest of `names` first — like the
+ * server's extractMentions), or null. Lets a chip cover a multi-word name («@Дмитрий К.») and show its display name.
+ */
+export function mentionedName(text: string, at: number, names: readonly string[]): string | null {
+  const rest = text.slice(at).toLowerCase();
+  let best: string | null = null;
+  for (const n of names) {
+    if ((!best || n.length > best.length) && rest.startsWith(n.toLowerCase()) && !/[\p{L}\p{N}_]/u.test(rest[n.length] ?? "")) best = n;
+  }
+  return best;
+}
+
 export function threadMentions(t: Thread, me: string | null | undefined): boolean {
   if (t.mentionsMe !== undefined) return t.mentionsMe;
   if (!me) return false;
@@ -332,9 +346,9 @@ export function absTime(iso: string): string {
   const d = new Date(iso);
   return Number.isFinite(d.getTime()) ? fmtDateCustom(d, { dateStyle: "medium", timeStyle: "short", hourCycle: "h23" }) : iso;
 }
+/** Avatar initials of the person's display name (Latin in EN/UZ when set). */
 export function initials(name?: string | null): string {
-  if (!name) return "?";
-  return name.trim().slice(0, 2).toUpperCase();
+  return personInitials(name);
 }
 /** Stable chart-token colour per name (for avatars). */
 export function avatarTone(name?: string | null): string {

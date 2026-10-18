@@ -9,6 +9,7 @@ import { type AnalyticsFilters, type Unit } from "./metrics";
 import { fmtR, fmtRate, fmtRatio, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsI18n } from "@/i18n/ns/analytics";
+import { personName } from "@/i18n";
 import { useEdgeMatrix, type EdgeCell } from "./edge-api";
 import { percentileRank, maxDrawdownOf, quantile } from "./edge-stats";
 
@@ -40,7 +41,7 @@ const MIN_N = 5;
 const DESK_ACCESSORS = {
   // Hidden default: reliable samples first; ties keep the expectancy-desc pre-sort.
   rank: (r: TraderRow) => (r.closed >= MIN_N ? 0 : 1),
-  trader: (r: TraderRow) => r.trader,
+  trader: (r: TraderRow) => personName(r.trader),
   closed: (r: TraderRow) => r.closed,
   winRate: (r: TraderRow) => r.winRate,
   expectancy: (r: TraderRow) => r.expectancy,
@@ -85,7 +86,7 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
       <Panel title={t("desk.vsTitle")} description={t("desk.vsHint", { traders: commonI18n.t("units.traders", { count: rows.length }), min: minN })} icon={Users}>
         <Select value={focus.trader} onValueChange={setPicked}>
           <SelectTrigger aria-label={t("filters.trader")} className="mb-3 h-9 w-full"><SelectValue /></SelectTrigger>
-          <SelectContent>{rows.map((r) => <SelectItem key={r.trader} value={r.trader}>{r.trader} · {commonI18n.t("units.trades", { count: r.closed })}</SelectItem>)}</SelectContent>
+          <SelectContent>{rows.map((r) => <SelectItem key={r.trader} value={r.trader}>{personName(r.trader)} · {commonI18n.t("units.trades", { count: r.closed })}</SelectItem>)}</SelectContent>
         </Select>
         <ul className="flex flex-col gap-2">
           {METRICS.map((m) => {
@@ -137,7 +138,7 @@ export function DeskTab({ filters, unit }: { filters: AnalyticsFilters; unit: Un
                 return (
                   <tr key={r.trader} className={cn("border-t border-border/50 tabular-nums", isFocus && "bg-primary/5", r.closed < minN && "text-muted-foreground")}>
                     <td className="px-2 py-1.5 font-medium">
-                      <button type="button" className="hover:underline" onClick={() => setPicked(r.trader)}>{r.trader}</button>
+                      <button type="button" className="hover:underline" onClick={() => setPicked(r.trader)}>{personName(r.trader)}</button>
                       {r.closed < minN && <span className="ml-1 text-2xs text-muted-foreground">{t("desk.few")}</span>}
                     </td>
                     <td className="px-2 py-1.5 text-right">{r.closed}<span className="text-muted-foreground/60"> / {r.n}</span></td>

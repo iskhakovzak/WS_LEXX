@@ -28,6 +28,7 @@ import {
 import { fmtDate, fmtNum, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const numOrNull = (v: string | number | null | undefined): number | null => {
   if (v == null || v === "") return null;
@@ -179,7 +180,7 @@ function Reactions({ idea, me }: { idea: TradeIdea; me: string }) {
               aria-pressed={mine === o.key}
               disabled={!me || react.isPending}
               onClick={() => react.mutate(mine === o.key ? { id: idea.id, remove: true } : { id: idea.id, reaction: o.key })}
-              title={who.length ? who.map((r) => r.trader).join(", ") : o.label}
+              title={who.length ? who.map((r) => personName(r.trader)).join(", ") : o.label}
               className={cn("chip flex min-h-10 items-center justify-center gap-1.5 px-2 text-xs font-medium disabled:opacity-60", o.cls)}
             >
               <Icon className="h-4 w-4" aria-hidden="true" />
@@ -194,7 +195,7 @@ function Reactions({ idea, me }: { idea: TradeIdea; me: string }) {
           {idea.reactions.map((r, i) => (
             <span key={r.id}>
               {i > 0 && ", "}
-              <span className={r.reaction === "thumbs_up" ? "text-up" : r.reaction === "thumbs_down" ? "text-down" : "text-[hsl(var(--chart-3))]"}>{r.trader}</span>
+              <span className={r.reaction === "thumbs_up" ? "text-up" : r.reaction === "thumbs_down" ? "text-down" : "text-[hsl(var(--chart-3))]"}>{personName(r.trader)}</span>
               {r.comment && <span> ({r.comment})</span>}
             </span>
           ))}
@@ -334,7 +335,7 @@ export function IdeaDetailSheet({
           <SheetDescription asChild>
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
               <Avatar name={idea.trader} />
-              <span className="text-foreground">{idea.trader ?? t("sheet.noAuthor")}</span>
+              <span className="text-foreground">{idea.trader ? personName(idea.trader) : t("sheet.noAuthor")}</span>
               <span>· {relTime(idea.publishedAt ?? idea.createdAt)}</span>
               {idea.setup && <span>· {idea.setup}</span>}
               {idea.longName && <span className="truncate">· {idea.longName}</span>}

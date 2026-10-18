@@ -2,11 +2,13 @@
  * Human-readable audit entries: «Ориф синхронизировал PropReports: файл …, обновлено 536» instead of
  * `propreports.sync {"runId":3,…}`. Pure functions — unit-tested in audit-text.test.ts.
  * Language-aware: actions, objects, counters and diffs come from the `adminAudit` namespace (current UI language);
- * user content (names, reasons, file names, topics) passes through untouched.
+ * user content (reasons, file names, topics) passes through untouched; people's names go through personName (Latin in
+ * EN / UZ when set), the stored name stays in the data.
  */
 import type { Tone } from "@/components/ds";
 import { fmtCount, fmtNum, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import { adminAuditI18n } from "@/i18n/ns/adminAudit";
 import { adminJobsI18n } from "@/i18n/ns/adminJobs";
 import RU from "@/i18n/locales/ru/adminAudit";
@@ -44,9 +46,9 @@ type LimitFieldKey = keyof Dict["limitField"];
 const t = adminAuditI18n.t;
 const has = <O extends object>(o: O, k: string): k is Extract<keyof O, string> => Object.prototype.hasOwnProperty.call(o, k);
 
-/** Service actors («import-script», «system», «cron») get a translated name; people keep theirs. */
+/** Service actors («import-script», «system», «cron») get a translated name; people get their display name. */
 export function actorName(a: string): string {
-  return has(RU.actor, a) ? t(`actor.${a as ActorKey}`) : a;
+  return has(RU.actor, a) ? t(`actor.${a as ActorKey}`) : personName(a);
 }
 
 /** Object type label for the filter / pill; unknown codes show as is. */
@@ -70,6 +72,8 @@ function parse(raw: string | null): Record<string, any> {
 }
 
 const s = (v: unknown): string => (v == null ? "" : String(v));
+/** A person's stored name → display name (empty stays empty). */
+const pn = (v: unknown): string => personName(s(v));
 const n = (v: unknown): number => (typeof v === "number" ? v : Number(v) || 0);
 const reasonOf = (d: Record<string, any>) => s(d.reason || d.comment || d.resolution).trim() || undefined;
 const joinDetail = (parts: (string | undefined | null | false)[]) => parts.filter(Boolean).join(" · ") || undefined;
@@ -90,8 +94,8 @@ export function objectLabel(targetType: string | null, targetId: string | null, 
   if (!targetType) return "";
   const id = targetId ?? "";
   switch (targetType) {
-    case "user": return d?.name ? t("object.user", { name: s(d.name) }) : t("object.userId", { id });
-    case "trader_risk_limits": return t("object.trader", { id });
+    case "user": return d?.name ? t("object.user", { name: pn(d.name) }) : t("object.userId", { id });
+    case "trader_risk_limits": return t("object.trader", { id: personName(id) });
     case "propreports_sync_runs": return id ? t("object.syncRun", { id }) : t("object.syncRuns");
     case "propreports_accounts": return id ? t("object.account", { id }) : t("object.accounts");
     case "propreports_performance_report": return t("object.perfReport", { id });
@@ -107,7 +111,7 @@ export function objectLabel(targetType: string | null, targetId: string | null, 
     case "curator_queue_acks": return t("object.queue");
     case "office_capital": return t("object.officeCapital", { id });
     case "scaling_proposal": return t("object.scalingProposal", { id });
-    case "academy_trader_stage": return t("object.stage", { id });
+    case "academy_trader_stage": return t("object.stage", { id: personName(id) });
     case "academy_challenge":
     case "academy_challenges": return id ? t("object.challenge", { id }) : t("object.challenges");
     default: return id ? t("object.generic", { type: objectTypeLabel(targetType), id }) : objectTypeLabel(targetType);
@@ -154,7 +158,7 @@ function limitChanges(raw: unknown, tier: (k: unknown) => string): string[] {
 export function describeAudit(e: AuditLike, tierNames?: Record<string, string>): AuditText {
   const d = parse(e.details);
   const reason = reasonOf(d);
-  const who = s(d.name) || (e.targetType === "user" ? `#${s(e.targetId)}` : s(e.targetId));
+  const who = pn(d.name) || (e.targetType === "user" ? `#${s(e.targetId)}` : pn(e.targetId));
   const tier = (k: unknown): string => {
     if (!k) return t("tier.none");
     const key = s(k);
@@ -166,7 +170,8 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
   };
   const bulk = d.bulk ? t("bulk") : "";
   const L = (k: keyof Dict["label"]) => t(`label.${k}`);
-  const was = (v: unknown) => (v ? t("detail.was", { value: s(v) }) : "");
+  // Previous value of a person field (curator, trader).
+  const wasPerson = (v: unknown) => (v ? t("detail.was", { value: pn(v) }) : "");
 
   switch (e.action) {
     case "user.ban": return { label: L("ban"), tone: "down", text: t("text.ban", { who }), detail: reason };
@@ -179,7 +184,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "user.create": return {
       label: L("newAccount"), tone: "accent",
       text: t("text.create", { who, role: roleName(d.role || "trader") }),
-      detail: joinDetail([d.curator ? t("detail.curator", { name: s(d.curator) }) : "", reason]),
+      detail: joinDetail([d.curator ? t("detail.curator", { name: pn(d.curator) }) : "", reason]),
     };
     case "user.role.change": return {
       label: L("role"), tone: "purple",
@@ -188,7 +193,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     };
     case "user.curator.assign":
       return d.to
-        ? { label: L("curator"), tone: "accent", text: t("text.curatorAssign", { curator: s(d.to), who, bulk }), detail: joinDetail([was(d.from), reason]) }
+        ? { label: L("curator"), tone: "accent", text: t("text.curatorAssign", { curator: pn(d.to), who, bulk }), detail: joinDetail([wasPerson(d.from), reason]) }
         : { label: L("curator"), tone: "neutral", text: t("text.curatorRemove", { who, bulk }), detail: reason };
 
     case "report.resolve": {
@@ -196,16 +201,16 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       return { label: L("report"), tone: "up", text: id ? t("text.reportResolve", { id }) : t("text.reportResolveNoId"), detail: reason };
     }
     case "report.dismiss": return { label: L("report"), tone: "neutral", text: e.targetId ? t("text.reportDismiss", { id: e.targetId }) : t("text.reportDismissNoId"), detail: reason };
-    case "report.ban_author": return { label: L("banByReport"), tone: "down", text: d.author ? t("text.banAuthor", { author: s(d.author) }) : t("text.banAuthorNoName"), detail: reason };
+    case "report.ban_author": return { label: L("banByReport"), tone: "down", text: d.author ? t("text.banAuthor", { author: pn(d.author) }) : t("text.banAuthorNoName"), detail: reason };
     case "discussion.delete": {
-      const topic = s(d.topic), author = s(d.author);
+      const topic = s(d.topic), author = pn(d.author);
       const text = topic && author ? t("text.discussionDeleteTopicAuthor", { topic, author })
         : topic ? t("text.discussionDeleteTopic", { topic })
         : author ? t("text.discussionDeleteAuthor", { author })
         : t("text.discussionDelete");
       return { label: L("moderation"), tone: "down", text };
     }
-    case "comment.delete": return { label: L("moderation"), tone: "down", text: d.author ? t("text.commentDeleteAuthor", { author: s(d.author) }) : t("text.commentDelete") };
+    case "comment.delete": return { label: L("moderation"), tone: "down", text: d.author ? t("text.commentDeleteAuthor", { author: pn(d.author) }) : t("text.commentDelete") };
 
     case "propreports.sync": {
       const text = d.source === "file" ? (d.fileName ? t("text.syncFile", { file: s(d.fileName) }) : t("text.syncFileNoName"))
@@ -213,7 +218,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       return { label: "PropReports", tone: n(d.errors) ? "down" : "accent", text, detail: syncCounters(d) + (d.errorText ? ` · ${d.errorText}` : "") };
     }
     case "propreports.import": return { label: "PropReports", tone: "accent", text: t("text.import"), detail: syncCounters(d) };
-    case "propreports.account.map": return { label: L("accounts"), tone: "accent", text: t("text.accountMap", { account: s(d.account) || s(e.targetId), trader: s(d.trader) }), detail: joinDetail([was(d.from), reason]) };
+    case "propreports.account.map": return { label: L("accounts"), tone: "accent", text: t("text.accountMap", { account: s(d.account) || s(e.targetId), trader: pn(d.trader) }), detail: joinDetail([wasPerson(d.from), reason]) };
     case "propreports.accounts.update": {
       const list: string[] = Array.isArray(d.accounts) ? d.accounts.map(String) : [];
       return { label: L("accounts"), tone: "accent", text: t("text.accountsUpdate", { count: list.length }), detail: list.slice(0, 6).join(", ") || undefined };
@@ -229,7 +234,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "propreports.performance.import":
     case "propreports.performance.upload": {
       const sum = d.summary ?? {};
-      const trader = s(d.trader);
+      const trader = pn(d.trader);
       const period = d.periodFrom ? { from: s(d.periodFrom), to: s(d.periodTo) } : null;
       const text = trader && period ? t("text.perfUploadTraderPeriod", { trader, ...period })
         : trader ? t("text.perfUploadTrader", { trader })
@@ -249,11 +254,11 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     }
     case "db.backup": return { label: L("backup"), tone: "accent", text: e.actor === "system" ? t("text.backupSystem") : t("text.backupManual"), detail: d.sizeKb ? t("detail.sizeKb", { size: fmtCount(n(d.sizeKb)) }) : undefined };
 
-    case "scaling.assign": return { label: L("tier"), tone: "purple", text: t("text.tierAssign", { tier: tier(d.toTier), trader: s(e.targetId) }), detail: joinDetail([d.fromTier ? t("detail.wasTier", { tier: tier(d.fromTier) }) : "", reason]) };
-    case "scaling.proposal.create": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalCreateFor", { trader: s(d.trader) }) : t("text.proposalCreate"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
-    case "scaling.proposal.auto": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalAutoFor", { trader: s(d.trader) }) : t("text.proposalAuto"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
-    case "scaling.proposal.approve": return { label: L("tier"), tone: "up", text: d.trader ? t("text.proposalApproveFor", { trader: s(d.trader) }) : t("text.proposalApprove"), detail: d.toTier ? `→ ${tier(d.toTier)}` : reason };
-    case "scaling.proposal.reject": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalRejectFor", { trader: s(d.trader) }) : t("text.proposalReject"), detail: reason };
+    case "scaling.assign": return { label: L("tier"), tone: "purple", text: t("text.tierAssign", { tier: tier(d.toTier), trader: pn(e.targetId) }), detail: joinDetail([d.fromTier ? t("detail.wasTier", { tier: tier(d.fromTier) }) : "", reason]) };
+    case "scaling.proposal.create": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalCreateFor", { trader: pn(d.trader) }) : t("text.proposalCreate"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
+    case "scaling.proposal.auto": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalAutoFor", { trader: pn(d.trader) }) : t("text.proposalAuto"), detail: d.toTier ? `→ ${tier(d.toTier)}` : undefined };
+    case "scaling.proposal.approve": return { label: L("tier"), tone: "up", text: d.trader ? t("text.proposalApproveFor", { trader: pn(d.trader) }) : t("text.proposalApprove"), detail: d.toTier ? `→ ${tier(d.toTier)}` : reason };
+    case "scaling.proposal.reject": return { label: L("tier"), tone: "neutral", text: d.trader ? t("text.proposalRejectFor", { trader: pn(d.trader) }) : t("text.proposalReject"), detail: reason };
     case "scaling.tiers.update": return { label: L("tiers"), tone: "neutral", text: t("text.tiersUpdate") };
     case "scaling.rules.update": return { label: L("tiers"), tone: "neutral", text: t("text.rulesUpdate") };
 
@@ -263,7 +268,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       const count = Array.isArray(d.created) ? d.created.length : 0;
       return { label: L("academy"), tone: "neutral", text: count ? t("text.seedDemoCount", { count }) : t("text.seedDemo") };
     }
-    case "academy.challenge.create": return { label: L("academy"), tone: "neutral", text: d.user ? t("text.challengeCreateFor", { user: s(d.user) }) : t("text.challengeCreate"), detail: d.startsOn ? t("detail.startsOn", { date: s(d.startsOn) }) : undefined };
+    case "academy.challenge.create": return { label: L("academy"), tone: "neutral", text: d.user ? t("text.challengeCreateFor", { user: pn(d.user) }) : t("text.challengeCreate"), detail: d.startsOn ? t("detail.startsOn", { date: s(d.startsOn) }) : undefined };
     case "academy.challenge.archive": return { label: L("academy"), tone: "neutral", text: t("text.challengeArchive") };
     case "academy.promotion.request": return { label: L("academy"), tone: "neutral", text: t("text.promotionRequest") };
     case "academy.promotion.approve": return { label: L("academy"), tone: "up", text: t("text.promotionApprove"), detail: reason };
@@ -273,7 +278,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
 
     case "risk.limits.template": {
       const changes = limitChanges(d.changes, tier);
-      const target = s(e.targetId) || s(d.trader);
+      const target = pn(e.targetId) || pn(d.trader);
       return {
         label: L("limits"), tone: "purple",
         text: d.resync ? t("text.limitsResync", { target, tier: tier(d.tierKey) }) : t("text.limitsApply", { tier: tier(d.tierKey), target }),
@@ -287,7 +292,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "risk.breach.review":
     case "risk.breach.review.update": {
       const update = e.action !== "risk.breach.review";
-      const trader = s(d.trader);
+      const trader = pn(d.trader);
       const text = update
         ? (trader ? t("text.breachReviewUpdateFor", { trader }) : t("text.breachReviewUpdate"))
         : (trader ? t("text.breachReviewFor", { trader }) : t("text.breachReview"));
@@ -300,8 +305,8 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
         ]),
       };
     }
-    case "risk.breach.review.archive": return { label: L("breachReview"), tone: "neutral", text: d.trader ? t("text.breachReviewArchiveFor", { trader: s(d.trader) }) : t("text.breachReviewArchive") };
-    case "curator.note.archive": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteArchiveFor", { trader: s(d.trader) }) : t("text.noteArchive"), detail: d.author ? t("detail.author", { name: s(d.author) }) : undefined };
+    case "risk.breach.review.archive": return { label: L("breachReview"), tone: "neutral", text: d.trader ? t("text.breachReviewArchiveFor", { trader: pn(d.trader) }) : t("text.breachReviewArchive") };
+    case "curator.note.archive": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteArchiveFor", { trader: pn(d.trader) }) : t("text.noteArchive"), detail: d.author ? t("detail.author", { name: pn(d.author) }) : undefined };
     case "curator.queue.archive_old": {
       const by = d.byKind && typeof d.byKind === "object"
         ? Object.entries(d.byKind as Record<string, unknown>).map(([k, v]) => `${has(RU.queueKind, k) ? t(`queueKind.${k as QueueKindKey}`) : k} ${n(v)}`)
@@ -323,7 +328,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
     case "academy.stage.promote":
     case "academy.stage.demote": {
       const kind = e.action.endsWith("promote") ? "promote" : e.action.endsWith("demote") ? "demote" : "assign";
-      const params = { who: s(e.targetId), stage: tier(d.to) };
+      const params = { who: pn(e.targetId), stage: tier(d.to) };
       const text = kind === "promote" ? t("text.stagePromote", params) : kind === "demote" ? t("text.stageDemote", params) : t("text.stageAssign", params);
       return {
         label: L("stage"), tone: kind === "demote" ? "warn" : kind === "promote" ? "up" : "accent",
@@ -340,7 +345,7 @@ export function describeAudit(e: AuditLike, tierNames?: Record<string, string>):
       return { label: L("jobs"), tone: "neutral", text: t("text.jobRun", { job: adminJobsI18n.tryT(`names.${id}`) ?? id }) };
     }
     case "curator.queue.restore": return { label: L("queue"), tone: "neutral", text: t("text.queueRestore", { count: n(d.restored) }) };
-    case "curator.note.restore": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteRestoreFor", { trader: s(d.trader) }) : t("text.noteRestore") };
+    case "curator.note.restore": return { label: L("note"), tone: "neutral", text: d.trader ? t("text.noteRestoreFor", { trader: pn(d.trader) }) : t("text.noteRestore") };
     case "auth.lockout": return { label: L("login"), tone: "warn", text: t("text.lockout", { minutes: n(d.minutes) }), detail: e.targetType === "user" ? undefined : s(e.targetId) || undefined };
 
     case "daily_quote.regenerate": return { label: L("dailyQuote"), tone: "neutral", text: t("text.quoteRegenerate") };

@@ -9,6 +9,7 @@ import { fmtDate, fmtNum, fmtR, fmtRate, fmtUsd, fmtWeekday } from "@/lib/format
 import type { Horizon } from "@/lib/trade-math";
 import { commonI18n } from "@/i18n/ns/common";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
 
 // ── Types (mirror of routes/weekly-review.ts) ────────────────────────────────
 export type Unit = "usd" | "r";
@@ -307,7 +308,7 @@ export function reviewToText(doc: WeeklyReview, md: boolean): string {
   const t = weeklyI18n.t;
   const trades = (count: number) => commonI18n.t("units.trades", { count });
   const lines: string[] = [];
-  lines.push(h(t("export.title", { week: weekLabel(doc.week.key), trader: doc.trader }), 1), "");
+  lines.push(h(t("export.title", { week: weekLabel(doc.week.key), trader: personName(doc.trader) }), 1), "");
   lines.push(h(t("export.summary")));
   lines.push(li(t("export.netLine", { label: b(t("export.netPnl")), net: fmtUsd(k.netPnl, { signed: true, decimals: "auto" }), delta: delta(k.netPnl, p.netPnl, "usd"), fees: fmtUsd(k.fees, { decimals: "auto" }) })));
   if (k.rCount > 0) lines.push(li(t("export.rLine", { label: b("R"), total: fmtR(k.totalR), delta: delta(k.totalR, p.totalR, "r"), exp: fmtR(k.expectancyR), pf: fmtNum(k.profitFactorR, { suffix: "×" }) })));
@@ -377,7 +378,7 @@ export function reviewToText(doc: WeeklyReview, md: boolean): string {
   const c = doc.review?.curatorReview;
   if (c && (c.comment || c.score != null)) {
     lines.push("", h(t("export.curatorReview")));
-    if (c.score != null) lines.push(li(c.by ? t("export.scoreBy", { score: c.score, by: c.by }) : t("export.score", { score: c.score })));
+    if (c.score != null) lines.push(li(c.by ? t("export.scoreBy", { score: c.score, by: personName(c.by) }) : t("export.score", { score: c.score })));
     if (c.comment) lines.push(c.comment);
   }
   const goals = doc.review?.goals ?? [];

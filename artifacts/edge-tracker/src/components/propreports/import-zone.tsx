@@ -16,6 +16,7 @@ import { PerformanceReportBody } from "./PerformanceReportPanel";
 import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import { fmtCount, fmtNum } from "@/lib/format";
 
 type Kind = ImportKind;
@@ -68,7 +69,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
       setPerf(r);
       toast({
         title: r.replaced ? t("import.reportReplaced") : t("import.reportSaved"),
-        description: t("import.reportToast", { account: r.account, from: r.periodFrom, to: r.periodTo, trader: r.trader ?? t("import.noTrader"), net: fmtNum(r.summary.net) }),
+        description: t("import.reportToast", { account: r.account, from: r.periodFrom, to: r.periodTo, trader: r.trader ? personName(r.trader) : t("import.noTrader"), net: fmtNum(r.summary.net) }),
       });
     } catch (e) {
       toast({ title: t("import.reportNotSaved"), description: e instanceof Error ? e.message : String(e), variant: "destructive" });
@@ -150,7 +151,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
               <Select value={account} onValueChange={(v) => { setAccount(v); setPreview(null); }}>
                 <SelectTrigger className="w-60"><SelectValue placeholder={t("import.pickAccount")} /></SelectTrigger>
                 <SelectContent>
-                  {accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.trader ? `${a.account} — ${a.trader}` : t("import.accountUnmapped", { account: a.account })}</SelectItem>)}
+                  {accounts.map((a) => <SelectItem key={a.id} value={a.account}>{a.trader ? `${a.account} — ${personName(a.trader)}` : t("import.accountUnmapped", { account: a.account })}</SelectItem>)}
                   {!accounts.length && <SelectItem value="__none" disabled>{t("import.addAccountFirst")}</SelectItem>}
                 </SelectContent>
               </Select>
@@ -201,7 +202,7 @@ export function ImportZone({ accounts, staff, viewerName, onGoTab }: { accounts:
                 {staff ? (
                   <PersonSelect value={perfTrader} onValueChange={setPerfTrader} options={(users.data ?? []).filter((u) => u.active).map((u) => u.name)} placeholder={t("import.pickTrader")} ariaLabel={t("import.trader")} className="w-56" />
                 ) : (
-                  <div className="text-sm font-medium">{perfTrader || viewerName}</div>
+                  <div className="text-sm font-medium">{personName(perfTrader || viewerName)}</div>
                 )}
               </div>
               <Button onClick={runApplyPerformance} disabled={!perfTrader || importFile.isPending || perf.dryRun === false}>

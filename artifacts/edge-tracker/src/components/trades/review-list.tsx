@@ -22,6 +22,7 @@ import type { TradesView } from "./use-trade-filters";
 import { fmtCount, fmtDateCustom, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { tradesI18n } from "@/i18n/ns/trades";
+import { personName } from "@/i18n";
 
 /** Counts with locale grouping: «45 211» / «45,211», not «45211». */
 const num = (v: number) => fmtCount(v);
@@ -324,7 +325,7 @@ export function ReviewTradeRow({
           </button>
           <SidePill side={t.side} compact />
         </span>
-        {showTrader && t.trader && <span className="truncate text-xs text-muted-foreground">{t.trader}</span>}
+        {showTrader && t.trader && <span className="truncate text-xs text-muted-foreground" title={personName(t.trader)}>{personName(t.trader)}</span>}
         {!showTrader && t.qty != null && <span className="truncate text-xs tabular-nums text-muted-foreground">{commonI18n.t("units.shares", { count: fmtCount(t.qty) })}</span>}
       </span>
       <span className="flex items-center" aria-hidden="true">

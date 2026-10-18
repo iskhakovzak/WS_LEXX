@@ -8,11 +8,12 @@ import { cn } from "@/lib/utils";
 import { MARKET_BIAS, dateObj, gpApi, gpKeys, type GamePlanSummary } from "./types";
 import { fmtDate } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 function matches(p: GamePlanSummary, q: string) {
   if (!q) return true;
-  const hay = `${p.date} ${p.author} ${p.marketView} ${p.tickers.join(" ")} ${fmtDate(dateObj(p.date), "dayMonthLong")}`.toLowerCase();
+  const hay = `${p.date} ${p.author} ${personName(p.author)} ${p.marketView} ${p.tickers.join(" ")} ${fmtDate(dateObj(p.date), "dayMonthLong")}`.toLowerCase();
   return q
     .toLowerCase()
     .split(/\s+/)

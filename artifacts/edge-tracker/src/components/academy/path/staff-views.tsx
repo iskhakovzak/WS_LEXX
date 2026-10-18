@@ -14,6 +14,7 @@ import { http } from "@/lib/api/http";
 import { academyPathI18n } from "@/i18n/ns/academyPath";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 import { StageLadder, selectCls } from "./bits";
 import { PendingRequest } from "./person-view";
 import { criterionLabel, criterionLabelByText, headlineText, metricHint, metricLabel, stageName, stageTitle } from "./labels";
@@ -51,10 +52,10 @@ export function FunnelView({ onOpen }: { onOpen: (user: string) => void }) {
                   onClick={() => onOpen(p.user)}
                   className={cn("flex flex-col gap-1.5 rounded-xl border p-2.5 text-left transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                     p.ready ? "border-up/50" : "border-[var(--field-border)]")}
-                  aria-label={`${p.user}: ${headlineText({ stage: cur, next, passed: p.passed, total: p.total, ready: p.ready })}`}
+                  aria-label={`${personName(p.user)}: ${headlineText({ stage: cur, next, passed: p.passed, total: p.total, ready: p.ready })}`}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-foreground" title={p.user}>{p.user}</span>
+                    <span className="truncate text-sm font-medium text-foreground" title={personName(p.user)}>{personName(p.user)}</span>
                     {p.pendingRequestId ? <Pill tone="accent" className="shrink-0">{t("funnel.pill.request")}</Pill> : p.ready ? <Pill tone="up" className="shrink-0">{t("funnel.pill.ready")}</Pill> : null}
                   </div>
                   {p.stage && (
@@ -103,7 +104,7 @@ export function RequestsView({ config, me, onOpen }: { config: PathConfig | unde
       {pending.data?.requests.length
         ? pending.data.requests.map((r) => (
           <div key={r.id} className="flex flex-col gap-1">
-            <button type="button" className="self-start text-sm font-semibold text-primary hover:underline" onClick={() => onOpen(r.user)}>{t("requests.openReport", { user: r.user })}</button>
+            <button type="button" className="self-start text-sm font-semibold text-primary hover:underline" onClick={() => onOpen(r.user)}>{t("requests.openReport", { user: personName(r.user) })}</button>
             <PendingRequest req={r} canDecide={r.user !== me} isSelf={r.user === me} stages={stages} />
           </div>
         ))
@@ -115,9 +116,9 @@ export function RequestsView({ config, me, onOpen }: { config: PathConfig | unde
               <li key={r.id} className="flex flex-wrap items-baseline gap-x-2">
                 <Pill tone={r.status === "approved" ? "up" : r.status === "rejected" ? "down" : "neutral"} className="shrink-0">{t(`requests.status.${r.status}`)}</Pill>
                 <button type="button" className="font-medium text-foreground hover:underline" onClick={() => onOpen(r.user)}>
-                  {r.user}: {stageName(stages, r.fromStage)} → {stageName(stages, r.toStage)}
+                  {personName(r.user)}: {stageName(stages, r.fromStage)} → {stageName(stages, r.toStage)}
                 </button>
-                <span className="text-xs text-muted-foreground">{r.decidedBy ?? ""} · {fmtInstant(r.decidedAt)}</span>
+                <span className="text-xs text-muted-foreground">{personName(r.decidedBy)} · {fmtInstant(r.decidedAt)}</span>
                 {r.decisionComment && <span className="w-full text-xs text-muted-foreground">«{r.decisionComment}»</span>}
               </li>
             ))}

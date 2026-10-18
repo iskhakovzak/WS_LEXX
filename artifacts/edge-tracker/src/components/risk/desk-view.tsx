@@ -15,6 +15,7 @@ import { TraderSheet } from "./trader-sheet";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { rich, slots } from "@/i18n/rich";
 import { alertLabel, positionsCount, stopMessage } from "./labels";
 
@@ -51,7 +52,7 @@ function ActionStrip({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (t: strin
                 )}
               >
                 <LevelBadge level={t.level} className="min-w-[6rem]" />
-                <span className="font-semibold">{r.trader}</span>
+                <span className="font-semibold">{personName(r.trader)}</span>
                 <span className={cn("min-w-0 flex-1 truncate text-xs tabular-nums", t.level === "stop" ? "text-down" : "text-muted-foreground")} title={reason}>{reason}</span>
                 <span className="shrink-0 whitespace-nowrap text-xs text-primary">{tr("desk.openCard")}</span>
               </button>
@@ -122,7 +123,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
   const filtered = React.useMemo(() => {
     const q = query.trim().toLowerCase();
     return tableRows.filter((t) => {
-      if (q && !t.row.trader.toLowerCase().includes(q)) return false;
+      if (q && !t.row.trader.toLowerCase().includes(q) && !personName(t.row.trader).toLowerCase().includes(q)) return false;
       if (statusFilter === "attention") return attention(t);
       if (statusFilter === "no_limits") return t.level === "none";
       return true;
@@ -184,7 +185,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
             label={t("desk.kpiStops")}
             icon={ShieldAlert}
             value={<span><span className={stops.length ? "text-down" : ""}>{stops.length}</span><span className="text-muted-foreground"> / </span><span className={nears.length ? "text-warn" : ""}>{nears.length}</span></span>}
-            hint={stops.length || nears.length ? [...stops, ...nears].map((x) => x.row.trader).join(", ") : t("desk.allOk")}
+            hint={stops.length || nears.length ? [...stops, ...nears].map((x) => personName(x.row.trader)).join(", ") : t("desk.allOk")}
             onClick={stops.length || nears.length ? () => setStatusFilter("attention") : undefined}
           />
           <StatCard
@@ -243,7 +244,7 @@ export function DeskView({ onUpdatedAt, focusTrader, focusTab = "overview", onSh
               <span className="min-w-0 flex-1 tabular-nums">
                 {rich(t("desk.noLimitsLine", slots("head", "names")), {
                   head: <span className="font-medium text-foreground">{t("desk.noLimitsHead", { count: noLimitRows.length, total: tableRows.length })}</span>,
-                  names: `${noLimitRows.slice(0, 6).map((x) => x.row.trader).join(", ")}${noLimitRows.length > 6 ? "…" : ""}`,
+                  names: `${noLimitRows.slice(0, 6).map((x) => personName(x.row.trader)).join(", ")}${noLimitRows.length > 6 ? "…" : ""}`,
                 })}
                 {foldIdle && idleRows.length > 0 && <> · {t("desk.idleFolded", { count: idleRows.length })}</>}
               </span>

@@ -33,7 +33,7 @@ import { Highlight } from "@/components/people/highlight";
 import { shellI18n } from "@/i18n/ns/shell";
 import { commonI18n } from "@/i18n/ns/common";
 import { fmtUsd } from "@/lib/format";
-import { LANGS, LANG_META, setLang, useLang } from "@/i18n";
+import { LANGS, LANG_META, personName, setLang, useLang } from "@/i18n";
 
 const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD = IS_MAC ? "⌘" : "Ctrl";
@@ -94,7 +94,8 @@ type ResultItem = {
   highlight?: number;
 };
 
-type RecentItem = { id: string; title: string; subtitle?: string; path: string; kind: string; highlight?: number };
+/** `person`: the stored name of a person result (shown through personName, so it follows the UI language). */
+type RecentItem = { id: string; title: string; subtitle?: string; path: string; kind: string; highlight?: number; person?: string };
 
 const SECTION_ICON: Record<Section, React.ElementType> = {
   trades: CandlestickChart,
@@ -139,6 +140,7 @@ function saveRecent(item: RecentItem) {
 
 /** A recent page shows its name in the current language (the stored title is from the language at save time). */
 function recentTitle(r: RecentItem): string {
+  if (r.person) return personName(r.person);
   return r.id.startsWith("page-") ? (ALL_NAV_ITEMS.find((i) => `page-${i.href}` === r.id)?.name ?? r.title) : r.title;
 }
 
@@ -337,7 +339,7 @@ export function GlobalSearch() {
       id: `idea-${i.id}`,
       section: "ideas",
       title: i.ticker ?? "—",
-      subtitle: notesOnly ? clip(i.notes || i.description) : [i.setup, i.trader].filter(Boolean).join(" · ") || undefined,
+      subtitle: notesOnly ? clip(i.notes || i.description) : [i.setup, personName(i.trader)].filter(Boolean).join(" · ") || undefined,
       badge: ideaStatusLabel(i.status),
       badgeTone: IDEA_STATUS_TONE[i.status] ?? "neutral",
       meta: i.createdAt?.substring?.(0, 10),
@@ -419,7 +421,14 @@ export function GlobalSearch() {
   // ── People ──
   const peopleHits = useMemo(() => {
     if (!q || notesOnly) return [];
-    return rankPeople(directory, raw, (p) => p.name, new Map(directory.filter((p) => p.nameLatin).map((p) => [p.name, p.nameLatin!])), (p) => [p.curator], 6)
+    // Field 0 is the name as shown (Latin in EN/UZ when set), field 1 the other spelling, field 2 the curator.
+    const other = new Map<string, string>();
+    for (const p of directory) {
+      const shown = personName(p.name);
+      const alt = shown !== p.name ? p.name : p.nameLatin;
+      if (alt && alt !== shown) other.set(shown, alt);
+    }
+    return rankPeople(directory, raw, (p) => personName(p.name), other, (p) => [p.curator], 6)
       // a curator match (secondary field) only when it is a strong one
       .filter((h) => h.field !== 2 || h.tier === "exact" || h.tier === "prefix");
   }, [q, raw, notesOnly, directory]);
@@ -445,8 +454,9 @@ export function GlobalSearch() {
   };
   const personSubtitle = (p: DirectoryPerson) => [
     PEOPLE.role[p.role] ?? p.role,
-    p.role === "trader" ? (p.curator ? PEOPLE.curatorOf(p.curator) : PEOPLE.noCurator) : null,
-    p.nameLatin ? PEOPLE.latin(p.nameLatin) : null,
+    p.role === "trader" ? (p.curator ? PEOPLE.curatorOf(personName(p.curator)) : PEOPLE.noCurator) : null,
+    // The Latin alias only when it is not already the name shown (RU, or a Latin name that differs).
+    p.nameLatin && p.nameLatin !== personName(p.name) ? PEOPLE.latin(p.nameLatin) : null,
   ].filter(Boolean).join(" · ");
   const topPerson = peopleHits[0]?.item ?? null;
   const topActions = topPerson ? personActions(topPerson).slice(1) : [];
@@ -629,7 +639,7 @@ export function GlobalSearch() {
                       icon={History}
                       title={recentTitle(r)}
                       subtitle={[kindLabel(r.kind), r.subtitle].filter(Boolean).join(" · ")}
-                      onSelect={() => go(r.path, { id: r.id, title: r.title, subtitle: r.subtitle, kind: r.kind }, r.highlight)}
+                      onSelect={() => go(r.path, { id: r.id, title: r.title, subtitle: r.subtitle, kind: r.kind, person: r.person }, r.highlight)}
                     />
                   ))}
                 </CommandPrimitive.Group>
@@ -645,10 +655,10 @@ export function GlobalSearch() {
                         key={`person-${h.item.id}`}
                         value={`person-${h.item.id}`}
                         icon={h.item.role === "trader" ? UserRound : UsersRound}
-                        title={h.field === 0 ? <Highlight text={h.item.name} ranges={h.ranges} /> : h.item.name}
+                        title={h.field === 0 ? <Highlight text={personName(h.item.name)} ranges={h.ranges} /> : personName(h.item.name)}
                         subtitle={personSubtitle(h.item)}
                         right={main ? <span className="hidden shrink-0 text-2xs text-muted-foreground sm:inline">{main.label}</span> : undefined}
-                        onSelect={() => main ? go(main.path, { id: `person-${h.item.id}`, title: h.item.name, subtitle: main.label, kind: "people" }) : setQuery(h.item.name)}
+                        onSelect={() => main ? go(main.path, { id: `person-${h.item.id}`, title: h.item.name, subtitle: main.label, kind: "people", person: h.item.name }) : setQuery(personName(h.item.name))}
                       />
                     );
                   })}
@@ -656,15 +666,15 @@ export function GlobalSearch() {
               )}
 
               {topPerson && topActions.length > 0 && (
-                <CommandPrimitive.Group heading={PEOPLE.actionsFor(topPerson.name)} className={groupCls}>
+                <CommandPrimitive.Group heading={PEOPLE.actionsFor(personName(topPerson.name))} className={groupCls}>
                   {topActions.map((a) => (
                     <Item
                       key={a.id}
                       value={`person-act-${a.id}`}
                       icon={a.icon}
                       title={a.label}
-                      subtitle={topPerson.name}
-                      onSelect={() => go(a.path, { id: `person-${topPerson.id}-${a.id}`, title: `${topPerson.name} · ${a.label}`, kind: "people" })}
+                      subtitle={personName(topPerson.name)}
+                      onSelect={() => go(a.path, { id: `person-${topPerson.id}-${a.id}`, title: topPerson.name, subtitle: a.label, kind: "people", person: topPerson.name })}
                     />
                   ))}
                 </CommandPrimitive.Group>

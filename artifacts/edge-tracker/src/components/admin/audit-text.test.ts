@@ -1,6 +1,7 @@
 import { afterAll, describe, expect, it } from "vitest";
 import { setLang } from "@/i18n";
 import { adminAuditI18n } from "@/i18n/ns/adminAudit";
+import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
 import { actorName, auditSentence, describeAudit, objectLabel, type AuditLike } from "./audit-text";
 
 const entry = (action: string, details: Record<string, unknown> | string | null = null, extra: Partial<AuditLike> = {}): AuditLike => ({
@@ -115,5 +116,21 @@ describe("describeAudit in EN / UZ", () => {
     await adminAuditI18n.ready();
     expect(describeAudit(entry("user.freeze", { name: "Umid" })).text).toBe("Umid akkauntini muzlatdi");
     expect(describeAudit(entry("curator.queue.archive_old", { archived: 5, byKind: { eod: 5 } }, { targetType: "curator_queue_acks", targetId: null })).detail).toBe("kunlar 5");
+
+    // People's names show their Latin name in EN / UZ when one is set; the stored name stays in RU.
+    setLatinNames([["Умид", "Umid"], ["Ориф", "Orif"], ["Антон", "Anton"]]);
+    try {
+      expect(describeAudit(entry("user.freeze", { name: "Умид" })).text).toBe("Umid akkauntini muzlatdi");
+      await setLang("en");
+      await adminAuditI18n.ready();
+      expect(auditSentence(entry("user.curator.assign", { name: "Умид", to: "Антон", from: "Ориф" }))).toContain("Orif");
+      expect(describeAudit(entry("user.curator.assign", { name: "Умид", to: "Антон" })).text).toContain("Anton");
+      expect(actorName("Ориф")).toBe("Orif");
+      expect(objectLabel("trader_risk_limits", "Умид")).toContain("Umid");
+      await setLang("ru");
+      expect(actorName("Ориф")).toBe("Ориф");
+    } finally {
+      clearLatinNames();
+    }
   });
 });

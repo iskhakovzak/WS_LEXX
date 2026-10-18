@@ -43,6 +43,8 @@ import { secretMinFor } from "@/lib/secret-policy";
 import { authI18n } from "@/i18n/ns/auth";
 import { adminI18n } from "@/i18n/ns/admin";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
+import { FillLatinButton, LatinSuggestion, NameLatinDialog } from "./latin-names";
 
 export type PeopleView = "manage" | "activity";
 type Filter = "all" | "traders" | "staff" | "active" | "frozen" | "archived" | "nocurator" | "noaccount";
@@ -79,10 +81,10 @@ function roleTone(role: string): Tone {
 
 type Row = Person & { seen: string | null };
 const ACCESSORS = {
-  name: (p: Row) => p.name,
+  name: (p: Row) => personName(p.name),
   role: (p: Row) => (p.role === "admin" ? 0 : p.role === "curator" ? 1 : 2),
   tier: (p: Row) => p.tier ?? null,
-  curator: (p: Row) => p.curator ?? null,
+  curator: (p: Row) => (p.curator ? personName(p.curator) : null),
   status: (p: Row) => p.status,
   seen: (p: Row) => (p.seen ? Date.parse(p.seen) : null),
   trades: (p: Row) => p.trades30,
@@ -175,6 +177,9 @@ export function PeoplePanel({
     return m;
   }, [all, pq]);
   const filtered = useMemo(() => all.filter((p) => matches(p, filter) && (pq.empty || hitBy.has(p.id))), [all, filter, pq, hitBy]);
+  // Main line: the name as shown (Latin in EN/UZ when set); second line: the other spelling, if any.
+  const nameOf = (p: Person) => { const main = personName(p.name); return { main, latinMain: main !== p.name, other: main !== p.name ? p.name : p.nameLatin || null }; };
+  const rangesOf = (p: Person, main: boolean) => { const h = hitBy.get(p.id); return h && h.latin === (nameOf(p).latinMain === main) ? h.ranges : null; };
   const groupSize = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of all) if (p.role === "trader" && p.status === "active" && p.curator) m.set(p.curator, (m.get(p.curator) ?? 0) + 1);
@@ -206,10 +211,10 @@ export function PeoplePanel({
         if (r.skipped.length) {
           toast({
             title: t("people.partial", { action: success, done: r.done.length, total: r.done.length + r.skipped.length }),
-            description: r.skipped.slice(0, 4).map((s) => `${s.name ?? "?"} — ${s.error}`).join("; "),
+            description: r.skipped.slice(0, 4).map((s) => `${s.name ? personName(s.name) : "?"} — ${s.error}`).join("; "),
           });
         } else {
-          toast({ title: success, description: r.done.length > 1 ? r.done.join(", ") : r.done[0] });
+          toast({ title: success, description: r.done.map(personName).join(", ") });
         }
       },
       onError: (e) => {
@@ -220,11 +225,12 @@ export function PeoplePanel({
   };
 
   const ask = (kind: PeopleActionKind, targets: Person[], opts: { curator?: string | null; role?: string; tierKey?: string } = {}) => {
-    const who = targets.length === 1 ? targets[0]!.name : t("people.who", { count: targets.length });
+    const who = targets.length === 1 ? personName(targets[0]!.name) : t("people.who", { count: targets.length });
     const simple = (k: "freeze" | "unfreeze" | "archive" | "restore" | "sessions") => ({
       title: t(`people.ask.${k}.title`, { who }), description: t(`people.ask.${k}.text`), confirm: t(`people.ask.${k}.confirm`), success: t(`people.ask.${k}.done`),
     });
-    const curatorFor = t("people.ask.curatorFor", { names: targets.map((x) => x.name).join(", ") });
+    const curatorFor = t("people.ask.curatorFor", { names: targets.map((x) => personName(x.name)).join(", ") });
+    const curatorShown = personName(opts.curator);
     const meta: Record<PeopleActionKind, { title: string; description: string; confirm: string; destructive?: boolean; success: string }> = {
       freeze: { ...simple("freeze"), destructive: true },
       unfreeze: simple("unfreeze"),
@@ -232,7 +238,7 @@ export function PeoplePanel({
       restore: simple("restore"),
       sessions: simple("sessions"),
       curator: opts.curator
-        ? { title: t("people.ask.curatorSet.title", { curator: opts.curator }), description: curatorFor, confirm: t("people.ask.curatorSet.confirm"), success: t("people.ask.curatorSet.done", { curator: opts.curator }) }
+        ? { title: t("people.ask.curatorSet.title", { curator: curatorShown }), description: curatorFor, confirm: t("people.ask.curatorSet.confirm"), success: t("people.ask.curatorSet.done", { curator: curatorShown }) }
         : { title: t("people.ask.curatorClear.title"), description: curatorFor, confirm: t("people.ask.curatorClear.confirm"), success: t("people.ask.curatorClear.done") },
       role: { title: t("people.ask.role.title", { who }), description: t("people.ask.role.text", { from: roleLabel(targets[0]?.role), to: roleLabel(opts.role) }), confirm: t("people.ask.role.confirm"), success: t("people.ask.role.done") },
       tier: { title: t("people.ask.tier.title", { tier: tierName[opts.tierKey ?? ""] ?? opts.tierKey ?? "", who }), description: t("people.ask.tier.text"), confirm: t("people.ask.tier.confirm"), success: t("people.ask.tier.done") },
@@ -249,12 +255,12 @@ export function PeoplePanel({
   };
 
   const askMap = (account: string, trader: string) => setDialog({
-    title: t("people.map.title", { account, trader }),
+    title: t("people.map.title", { account, trader: personName(trader) }),
     description: t("people.map.text"),
     confirmLabel: t("people.map.confirm"),
     input: { label: t("people.reasonLabel"), kind: "textarea", required: true, minLength: 3, presets: presets("map"), placeholder: t("people.reasonPlaceholder") },
     onConfirm: (reason) => mapAccount.mutate({ account, trader, reason }, {
-      onSuccess: (r) => { setDialog(null); toast({ title: t("people.map.done", { account, trader }), description: r.legacy ? t("people.map.legacy") : undefined }); },
+      onSuccess: (r) => { setDialog(null); toast({ title: t("people.map.done", { account, trader: personName(trader) }), description: r.legacy ? t("people.map.legacy") : undefined }); },
       onError: (e) => toast({ title: tc("states.error"), description: e.message, variant: "destructive" }),
     }),
   });
@@ -264,7 +270,7 @@ export function PeoplePanel({
 
   const exportCsv = () => downloadCsv(
     (["name", "latin", "role", "tier", "curator", "accounts", "status", "seen", "trades", "lastTrade", "created"] as const).map((k) => t(`people.csv.${k}`)),
-    rows.map((p) => [p.name, p.nameLatin ?? "", roleLabel(p.role), p.tier ? tierName[p.tier] ?? p.tier : "", p.curator ?? "", p.accounts.join(" "), statusLabel(p.status), p.seen ?? "", p.trades30, p.lastTrade ?? "", p.createdAt ?? ""]),
+    rows.map((p) => [p.name, p.nameLatin ?? "", roleLabel(p.role), p.tier ? tierName[p.tier] ?? p.tier : "", personName(p.curator), p.accounts.join(" "), statusLabel(p.status), p.seen ?? "", p.trades30, p.lastTrade ?? "", p.createdAt ?? ""]),
     `people-${new Date().toISOString().slice(0, 10)}.csv`,
   );
 
@@ -274,18 +280,18 @@ export function PeoplePanel({
     return (
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("people.menu.aria", { name: p.name })} disabled={!touch && !canTier}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("people.menu.aria", { name: personName(p.name) })} disabled={!touch && !canTier}>
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-60">
-          <DropdownMenuLabel className="text-xs text-muted-foreground">{p.name}</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">{personName(p.name)}</DropdownMenuLabel>
           {touch && p.role === "trader" && (
             <DropdownMenuSub>
-              <DropdownMenuSubTrigger><UserCog /> {t("people.menu.curator", { name: p.curator ?? t("people.menu.none") })}</DropdownMenuSubTrigger>
+              <DropdownMenuSubTrigger><UserCog /> {t("people.menu.curator", { name: p.curator ? personName(p.curator) : t("people.menu.none") })}</DropdownMenuSubTrigger>
               <DropdownMenuSubContent>
                 <DropdownMenuRadioGroup value={p.curator ?? ""} onValueChange={(c) => { if (c !== (p.curator ?? "")) ask("curator", [p], { curator: c || null }); }}>
-                  {curators.map((c) => <DropdownMenuRadioItem key={c} value={c}>{c}</DropdownMenuRadioItem>)}
+                  {curators.map((c) => <DropdownMenuRadioItem key={c} value={c}>{personName(c)}</DropdownMenuRadioItem>)}
                   <DropdownMenuSeparator />
                   <DropdownMenuRadioItem value="">{t("people.menu.noCurator")}</DropdownMenuRadioItem>
                 </DropdownMenuRadioGroup>
@@ -383,6 +389,7 @@ export function PeoplePanel({
             description={t("people.description")}
             actions={
               <>
+                {canManage && <FillLatinButton people={all.filter(canTouch)} />}
                 <Button variant="outline" size="sm" onClick={exportCsv} disabled={!rows.length}><Download /> CSV</Button>
                 {canManage && <Button size="sm" onClick={() => setAddOpen(true)}><UserPlus /> {t("people.add")}</Button>}
               </>
@@ -469,35 +476,35 @@ export function PeoplePanel({
                               <Checkbox
                                 checked={selected.has(p.id)}
                                 onCheckedChange={(v) => setSelected((prev) => { const n = new Set(prev); if (v) n.add(p.id); else n.delete(p.id); return n; })}
-                                aria-label={t("people.selectOne", { name: p.name })}
+                                aria-label={t("people.selectOne", { name: personName(p.name) })}
                               />
                             </td>
                           )}
                           <td>
                             <div className="flex min-w-0 items-center gap-1.5">
                               {p.role === "trader" ? (
-                                <Link href={profileHref(p.name)} className="truncate rounded font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t("people.profileTitle", { name: p.name })}>
-                                  <Highlight text={p.name} ranges={hitBy.get(p.id)?.latin ? null : hitBy.get(p.id)?.ranges} />
+                                <Link href={profileHref(p.name)} className="truncate rounded font-medium text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t("people.profileTitle", { name: nameOf(p).main })}>
+                                  <Highlight text={nameOf(p).main} ranges={rangesOf(p, true)} />
                                 </Link>
                               ) : (
-                                <span className="truncate font-medium text-foreground"><Highlight text={p.name} ranges={hitBy.get(p.id)?.latin ? null : hitBy.get(p.id)?.ranges} /></span>
+                                <span className="truncate font-medium text-foreground" title={nameOf(p).main}><Highlight text={nameOf(p).main} ranges={rangesOf(p, true)} /></span>
                               )}
                               {isSelf(p) && <span className="text-2xs text-muted-foreground">{t("you")}</span>}
                               {p.role !== "trader" && (groupSize.get(p.name) ?? 0) > 0 && (
-                                <Link href={`/curator?view=traders&group=${encodeURIComponent(p.name)}`} title={t("people.groupTitle", { name: p.name })} className="chip inline-flex h-6 shrink-0 items-center gap-1 px-2 text-2xs tabular-nums">
+                                <Link href={`/curator?view=traders&group=${encodeURIComponent(p.name)}`} title={t("people.groupTitle", { name: personName(p.name) })} className="chip inline-flex h-6 shrink-0 items-center gap-1 px-2 text-2xs tabular-nums">
                                   <UsersRound className="h-3 w-3" aria-hidden="true" />{t("people.group", { count: groupSize.get(p.name) ?? 0 })}
                                 </Link>
                               )}
                             </div>
-                            {p.nameLatin && (
-                              <div className="truncate text-2xs text-muted-foreground" title={t("people.latinHint")}>
-                                <Highlight text={p.nameLatin} ranges={hitBy.get(p.id)?.latin ? hitBy.get(p.id)?.ranges : null} />
+                            {nameOf(p).other ? (
+                              <div className="truncate text-2xs text-muted-foreground" title={nameOf(p).latinMain ? undefined : t("people.latinHint")}>
+                                <Highlight text={nameOf(p).other!} ranges={rangesOf(p, false)} />
                               </div>
-                            )}
+                            ) : canTouch(p) && <LatinSuggestion person={p} onEdit={() => setLatinFor(p)} />}
                           </td>
                           <td><Pill tone={roleTone(p.role)}>{roleLabel(p.role)}</Pill></td>
                           <td>{p.role === "trader" ? (p.tier ? <span>{tierName[p.tier] ?? p.tier}</span> : <span className="text-muted-foreground">—</span>) : <span className="text-muted-foreground">—</span>}</td>
-                          <td>{p.role === "trader" ? (p.curator ?? <span className="whitespace-nowrap text-[hsl(var(--chart-3))]">{t("people.curatorNotSet")}</span>) : <span className="text-muted-foreground">—</span>}</td>
+                          <td>{p.role === "trader" ? (p.curator ? personName(p.curator) : <span className="whitespace-nowrap text-[hsl(var(--chart-3))]">{t("people.curatorNotSet")}</span>) : <span className="text-muted-foreground">—</span>}</td>
                           <td>
                             {p.accounts.length
                               ? <span className="font-mono text-xs tabular-nums" title={p.accounts.join(", ")}>{p.accounts.slice(0, 2).join(", ")}{p.accounts.length > 2 ? ` +${p.accounts.length - 2}` : ""}</span>
@@ -527,7 +534,7 @@ export function PeoplePanel({
         busy={setLatin.isPending}
         onClose={() => setLatinFor(null)}
         onSave={(value) => latinFor && setLatin.mutate({ id: latinFor.id, nameLatin: value }, {
-          onSuccess: (r) => { setLatinFor(null); refreshUsers(); toast({ title: r.nameLatin ? t("people.latin.saved", { name: r.name }) : t("people.latin.removed", { name: r.name }) }); },
+          onSuccess: (r) => { setLatinFor(null); refreshUsers(); toast({ title: r.nameLatin ? t("people.latin.saved", { name: personName(r.name) }) : t("people.latin.removed", { name: personName(r.name) }) }); },
           onError: (e) => toast({ title: e instanceof NotDeployedError ? t("needRestart") : tc("states.error"), description: e.message, variant: "destructive" }),
         })}
       />
@@ -539,7 +546,7 @@ export function PeoplePanel({
         canAdmins={canAdmins}
         busy={create.isPending}
         onSubmit={(body) => create.mutate(body, {
-          onSuccess: (u) => { setAddOpen(false); refreshUsers(); toast({ title: t("people.addDialog.done", { name: u.name }), description: t("people.addDialog.doneHint") }); },
+          onSuccess: (u) => { setAddOpen(false); refreshUsers(); toast({ title: t("people.addDialog.done", { name: personName(u.name) }), description: t("people.addDialog.doneHint") }); },
           onError: (e) => toast({ title: e instanceof NotDeployedError ? t("needRestart") : tc("states.error"), description: e instanceof NotDeployedError ? t("people.addDialog.fallbackHint", { message: e.message }) : e.message, variant: "destructive" }),
         })}
       />
@@ -559,35 +566,6 @@ function AccountMatchRow({ account, isNew, traders, onMap }: { account: string; 
         <Button size="sm" disabled={!trader} onClick={() => onMap(account, trader)}>{t("people.unmatched.map")}</Button>
       </div>
     </li>
-  );
-}
-
-function NameLatinDialog({ person, busy, onClose, onSave }: { person: Person | null; busy: boolean; onClose: () => void; onSave: (value: string | null) => void }) {
-  const { t } = adminI18n.useT();
-  const [value, setValue] = useState("");
-  useEffect(() => { if (person) setValue(person.nameLatin ?? ""); }, [person]);
-  const trimmed = value.replace(/\s+/g, " ").trim();
-  const changed = trimmed !== (person?.nameLatin ?? "");
-  return (
-    <Dialog open={!!person} onOpenChange={(v) => { if (!v && !busy) onClose(); }}>
-      <DialogContent className="sm:max-w-md">
-        <form onSubmit={(e) => { e.preventDefault(); if (changed && !busy) onSave(trimmed || null); }} className="flex flex-col gap-4" autoComplete="off">
-          <DialogHeader>
-            <DialogTitle>{person ? t("people.latin.title", { name: person.name }) : ""}</DialogTitle>
-            <DialogDescription>{t("people.latin.description")}</DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-1.5">
-            <Label htmlFor="nl-value" className="text-xs text-muted-foreground">{t("people.latin.label")}</Label>
-            <Input id="nl-value" value={value} onChange={(e) => setValue(e.target.value)} maxLength={80} placeholder={t("people.latin.placeholder")} autoFocus spellCheck={false} />
-          </div>
-          <DialogFooter className="gap-2">
-            {person?.nameLatin && <Button type="button" variant="ghost" className="mr-auto" disabled={busy} onClick={() => onSave(null)}>{t("people.latin.clear")}</Button>}
-            <Button type="button" variant="outline" onClick={onClose} disabled={busy}>{commonI18n.t("actions.cancel")}</Button>
-            <Button type="submit" disabled={!changed || busy}>{busy ? t("reason.saving") : commonI18n.t("actions.save")}</Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -613,7 +591,7 @@ function BulkBar({
           <DropdownMenu>
             <DropdownMenuTrigger asChild><Button variant="outline" size="sm"><UserCog /> {t("people.bulk.curator")}</Button></DropdownMenuTrigger>
             <DropdownMenuContent>
-              {curators.map((c) => <DropdownMenuItem key={c} onSelect={() => onAction("curator", { curator: c })}>{c}</DropdownMenuItem>)}
+              {curators.map((c) => <DropdownMenuItem key={c} onSelect={() => onAction("curator", { curator: c })}>{personName(c)}</DropdownMenuItem>)}
               <DropdownMenuSeparator />
               <DropdownMenuItem onSelect={() => onAction("curator", { curator: null })}>{t("people.menu.noCurator")}</DropdownMenuItem>
             </DropdownMenuContent>
@@ -699,7 +677,7 @@ function AddPersonDialog({
                   <SelectTrigger aria-label={t("people.addDialog.curator")}><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__none">{t("people.addDialog.noCurator")}</SelectItem>
-                    {curators.map((c) => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                    {curators.map((c) => <SelectItem key={c} value={c}>{personName(c)}</SelectItem>)}
                   </SelectContent>
                 </Select>
               </div>

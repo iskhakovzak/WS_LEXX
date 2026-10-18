@@ -30,6 +30,7 @@ import { ET_SESSION_LABEL, etWallToIso, fmtDuration, sessionOfEt, type EtSession
 import { fmtCount, fmtDate, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 
 type TradeTiming = {
@@ -263,7 +264,7 @@ export function TradeDetailSheet(p: Props) {
                         · {timing.openedWall}{timing.closedWall ? ` → ${timing.closedWall}` : ""} ET{timing.holdSeconds != null ? ` · ${fmtDuration(timing.holdSeconds)}` : ""}
                       </span>
                     )}
-                    {t.trader && <span>· {t.trader}</span>}
+                    {t.trader && <span>· {personName(t.trader)}</span>}
                     {(t.setup || t.eventType) && <span>· {t.setup || eventLabel(t.eventType)}</span>}
                     {t.session && <span>· {sessionLabel(t.session, { full: true })}</span>}
                     {timing?.exitSession && timing.exitSession !== "regular" && timing.exitSession !== timing.entrySession && (

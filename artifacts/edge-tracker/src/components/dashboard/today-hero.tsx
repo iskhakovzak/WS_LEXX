@@ -13,6 +13,7 @@ import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import type { DashboardToday, RiskDesk, RiskMe, Scope } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { personName } from "@/i18n";
 
 function greeting(d: Date) {
   const h = d.getHours();
@@ -224,7 +225,7 @@ export function DashboardHeader({
             </p>
             <h1 id="dash-hero-title" className="line-clamp-2 text-xl font-semibold leading-7 tracking-tight [overflow-wrap:anywhere]">
               {greeting(now)}
-              {userName ? `, ${userName}` : ""}
+              {userName ? `, ${personName(userName)}` : ""}
             </h1>
             {canChooseScope && !guest && (
               <Segmented<Scope>

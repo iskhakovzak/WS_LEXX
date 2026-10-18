@@ -4,7 +4,7 @@
  */
 import { prepareQuery, searchItems, type MatchResult, type PreparedQuery } from "@workspace/text-search";
 import type { TraderSignal } from "./api";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { curatorI18n } from "@/i18n/ns/curator";
 
 /** "all" — every group as sections; "none" — «Без куратора»; any other value — that curator's name. */
@@ -58,16 +58,25 @@ export type SearchMark = Pick<MatchResult, "ranges"> & { field: number };
 
 /**
  * Cross-script search over the trader's name, Latin alias (primary) and curator / stage / tier (secondary).
+ * Fields hold the names as shown first, so the highlight lands on the displayed text: 0 the trader as shown
+ * (personName: Latin in EN / UZ when set), 1 the other spelling (Latin alias in Russian, stored name otherwise),
+ * 2 the curator as shown; 5 the stored curator name and 6 a differing Latin alias are searched without display.
  * Returns matching traders in input order plus the highlight info per trader.
  */
 export function searchTraders(list: readonly TraderSignal[], query: string | PreparedQuery): { list: TraderSignal[]; marks: Map<string, SearchMark> } {
   const pq = typeof query === "string" ? prepareQuery(query) : query;
   const marks = new Map<string, SearchMark>();
   if (pq.empty) return { list: [...list], marks };
-  const hits = searchItems(list, pq, (s) => [
-    s.trader, s.nameLatin ?? null,
-    { text: s.curator ?? null, weight: 0.5 }, { text: s.stage.label, weight: 0.5 }, { text: s.tierName, weight: 0.5 },
-  ]);
+  const hits = searchItems(list, pq, (s) => {
+    const shown = personName(s.trader);
+    const other = shown === s.trader ? s.nameLatin ?? null : s.trader;
+    return [
+      shown, other,
+      { text: s.curator ? personName(s.curator) : null, weight: 0.5 }, { text: s.stage.label, weight: 0.5 }, { text: s.tierName, weight: 0.5 },
+      { text: s.curator && personName(s.curator) !== s.curator ? s.curator : null, weight: 0.5 },
+      s.nameLatin && s.nameLatin !== shown && s.nameLatin !== other ? s.nameLatin : null,
+    ];
+  });
   for (const h of hits) marks.set(h.item.trader, { ranges: h.ranges, field: h.field });
   return { list: list.filter((s) => marks.has(s.trader)), marks };
 }
@@ -111,7 +120,7 @@ export function buildGroups(list: readonly TraderSignal[], curators: readonly st
     if (arr) arr.push(s); else by.set(c, [s]);
   }
   for (const c of curators) if (!by.has(c)) by.set(c, []);
-  const names = [...by.keys()].sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, localeTag())));
+  const names = [...by.keys()].sort((a, b) => (a === me ? -1 : b === me ? 1 : comparePersonNames(a, b)));
   const out: Group[] = names.map((c) => ({ key: c, curator: c, traders: by.get(c)! }));
   out.push({ key: NO_CURATOR, curator: null, traders: none });
   return out;
@@ -126,8 +135,8 @@ export function tradersOf(list: readonly TraderSignal[], key: GroupKey): TraderS
 
 /** Sort accessors for the group table (numbers ascend; null last). */
 export const GROUP_SORT = {
-  trader: (s: TraderSignal) => s.trader,
-  curator: (s: TraderSignal) => s.curator ?? null,
+  trader: (s: TraderSignal) => personName(s.trader),
+  curator: (s: TraderSignal) => (s.curator ? personName(s.curator) : null),
   tier: (s: TraderSignal) => s.tierName ?? null,
   stage: (s: TraderSignal) => s.stage.label ?? null,
   today: (s: TraderSignal) => (s.risk.todayTrades ? s.risk.todayPnl : null),
@@ -150,7 +159,7 @@ export function csvHead(): string[] {
 
 export function csvRow(s: TraderSignal): (string | number | null)[] {
   return [
-    s.trader, s.nameLatin ?? "", s.curator ?? "", s.tierName ?? "", s.stage.label ?? "",
+    s.trader, s.nameLatin ?? "", personName(s.curator), s.tierName ?? "", s.stage.label ?? "",
     s.risk.todayTrades ? s.risk.todayPnl : null, s.risk.todayTrades, s.risk.weekPnl, s.month?.pnl ?? null, s.month?.trades ?? null,
     breachesWeek(s), s.breaches.unreviewed, pendingReviews(s), s.lastTradeDate ?? "", s.lastActivityAt ?? "",
     s.risk.hasLimits ? s.risk.label : curatorI18n.t("noLimits"), s.nextAction.label,

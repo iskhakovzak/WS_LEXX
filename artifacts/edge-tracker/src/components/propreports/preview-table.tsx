@@ -15,6 +15,7 @@ import {
 import { fmtUsd } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const ACTION_TONE: Record<PlanAction, Tone> = { insert: "up", update: "accent", unchanged: "neutral", adopt: "purple", conflict: "warn", skip: "down" };
 type Filter = "all" | PlanAction;
@@ -193,7 +194,7 @@ export function PreviewTable({ preview }: { preview: Preview }) {
                     </td>
                     <td className="whitespace-nowrap">
                       <div className="text-xs">{it.account}</div>
-                      <div className={cn("text-2xs", it.trader ? "text-muted-foreground" : "text-[hsl(var(--chart-3))]")}>{it.trader ?? t("notMapped")}</div>
+                      <div className={cn("text-2xs", it.trader ? "text-muted-foreground" : "text-[hsl(var(--chart-3))]")}>{it.trader ? personName(it.trader) : t("notMapped")}</div>
                     </td>
                     <td className="whitespace-nowrap">{tr.date}{tr.exitDate && tr.exitDate !== tr.date ? <span className="text-muted-foreground"> → {tr.exitDate}</span> : null}</td>
                     <td className="font-medium">{tr.symbol}</td>

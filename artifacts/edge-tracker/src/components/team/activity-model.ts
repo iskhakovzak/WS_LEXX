@@ -23,6 +23,7 @@ import { isToday, isYesterday } from "date-fns";
 import { fmtDate, fmtRelative, fmtWeekday } from "@/lib/format";
 import { activityI18n } from "@/i18n/ns/activity";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import ruActivity from "@/i18n/locales/ru/activity";
 import type { Tone } from "@/components/ds";
 import { links } from "@/lib/links";
@@ -280,6 +281,18 @@ export function describeBurst(action: string, section: string, n: number, exampl
 }
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Entity title as shown. A curator's day review is logged with the title «трейдер, YYYY-MM-DD» (entity
+ * «YYYY-MM-DD|трейдер»): the name part follows the UI language (personName); other titles are user content.
+ */
+export function itemTitle(item: Pick<FeedItem, "section" | "entityId" | "entityTitle">): string | undefined {
+  const title = item.entityTitle?.trim();
+  if (!title) return undefined;
+  if (item.section !== "journal" && item.section !== "eod") return title;
+  const owner = (item.entityId ?? "").split("|")[1]?.trim();
+  return owner && title.startsWith(owner) ? personName(owner) + title.slice(owner.length) : title;
+}
 
 /** In-app link for an item, or null if the entity is gone / has no page. Built with @/lib/links. */
 export function itemHref(item: FeedItem): string | null {

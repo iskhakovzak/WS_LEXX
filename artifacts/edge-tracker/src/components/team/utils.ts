@@ -10,14 +10,6 @@ export function parseYmd(s: string): Date {
   return new Date(y, (m || 1) - 1, d || 1);
 }
 
-export function initials(name: string | null | undefined): string {
-  const n = (name ?? "").trim();
-  if (!n) return "?";
-  const parts = n.split(/\s+/).filter(Boolean);
-  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
-  return n.slice(0, 2).toUpperCase();
-}
-
 const AVATAR_TONES = [
   "bg-[hsl(var(--chart-1)/0.18)] text-[hsl(var(--chart-1))]",
   "bg-[hsl(var(--chart-2)/0.18)] text-[hsl(var(--chart-2))]",

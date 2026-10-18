@@ -13,7 +13,8 @@ import { Segmented, Pill } from "@/components/ds";
 import { useToast } from "@/hooks/use-toast";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
-import { fmtWeekday, localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
+import { fmtWeekday } from "@/lib/format";
 import { addDays, nyDate } from "@/lib/trading-date";
 import { cn } from "@/lib/utils";
 import {
@@ -133,7 +134,7 @@ export function EnrollDialog({ open, onOpenChange, cohort, existing }: { open: b
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!user) return;
-    enroll.mutate({ cohortId: cohort.id, userName: user, stage, joinedOn, note }, { onSuccess: () => { ok(t("enroll.done"), t("enroll.doneDesc", { user, cohort: cohort.name })); onOpenChange(false); } });
+    enroll.mutate({ cohortId: cohort.id, userName: user, stage, joinedOn, note }, { onSuccess: () => { ok(t("enroll.done"), t("enroll.doneDesc", { user: personName(user), cohort: cohort.name })); onOpenChange(false); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -176,14 +177,14 @@ export function EnrollmentEditDialog({ open, onOpenChange, enrollment }: { open:
   const changed = stage !== enrollment.stage || status !== enrollment.status;
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    upd.mutate({ id: enrollment.id, stage, status, reason: reason.trim() || undefined }, { onSuccess: () => { ok(t("enrollmentEdit.saved"), enrollment.userName); onOpenChange(false); } });
+    upd.mutate({ id: enrollment.id, stage, status, reason: reason.trim() || undefined }, { onSuccess: () => { ok(t("enrollmentEdit.saved"), personName(enrollment.userName)); onOpenChange(false); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>{t("enrollmentEdit.title", { name: enrollment.userName })}</DialogTitle>
+            <DialogTitle>{t("enrollmentEdit.title", { name: personName(enrollment.userName) })}</DialogTitle>
             <DialogDescription>{t("enrollmentEdit.description")}</DialogDescription>
           </DialogHeader>
           <Field label={t("cols.stage")}>
@@ -341,7 +342,7 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
     if (!sessionId || !changes.length) return;
     mark.mutate({ sessionId, date, marks: changes.map(([userName, status]) => ({ userName, status })) }, {
       onSuccess: (r) => {
-        ok(t("roster.saved"), r.skipped.length ? t("roster.savedDescSkipped", { saved: r.saved, names: r.skipped.join(", ") }) : t("roster.savedDesc", { saved: r.saved }));
+        ok(t("roster.saved"), r.skipped.length ? t("roster.savedDescSkipped", { saved: r.saved, names: r.skipped.map((n) => personName(n)).join(", ") }) : t("roster.savedDesc", { saved: r.saved }));
         onOpenChange(false);
       },
     });
@@ -374,11 +375,11 @@ export function RosterDialog({ open, onOpenChange, sessionId, date, title }: { o
                 return (
                   <li key={u} className="flex flex-wrap items-center justify-between gap-2 py-2">
                     <div className="min-w-0">
-                      <span className="text-sm font-medium text-foreground">{u}</span>{" "}
+                      <span className="text-sm font-medium text-foreground">{personName(u)}</span>{" "}
                       <span className="text-xs text-muted-foreground">{stageLabel(r.enrollment.stage)}{r.enrollment.status === "paused" ? ` · ${t("roster.paused")}` : ""}</span>
                       {r.source === "self" && <span className="ml-2"><AttendancePill status={r.status} self /></span>}
                     </div>
-                    <div role="radiogroup" aria-label={t("roster.markAria", { name: u })} className="flex flex-wrap gap-1">
+                    <div role="radiogroup" aria-label={t("roster.markAria", { name: personName(u) })} className="flex flex-wrap gap-1">
                       {ATTENDANCE_STATUSES.map((s) => (
                         <button key={s} type="button" role="radio" aria-checked={cur === s} disabled={!started && s !== "excused"}
                           onClick={() => setDraft((d) => ({ ...d, [u]: s }))} title={attendanceTitle(s)}
@@ -441,7 +442,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
     setAgenda(""); setNotes(""); setPrivateNotes(""); setItems([{ title: "", dueOn: addDays(nyDate(), 7), owner: "student" }]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, defaultStudent]);
-  const names = useMemo(() => [...new Set(students.map((s) => s.name))].sort((a, b) => a.localeCompare(b, localeTag())), [students]);
+  const names = useMemo(() => [...new Set(students.map((s) => s.name))].sort(comparePersonNames).map((n) => ({ value: n, label: personName(n) })), [students]);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!student) return;
@@ -449,7 +450,7 @@ export function MeetingDialog({ open, onOpenChange, students, defaultStudent, me
     create.mutate({
       student, mentor: mentor ?? undefined, cohortId, metAt: new Date(metAt).toISOString(), durationMin: duration || null, format, agenda, notes, privateNotes,
       actionItems: items.filter((i) => i.title.trim()).map((i) => ({ title: i.title.trim(), dueOn: i.dueOn || null, owner: i.owner })),
-    }, { onSuccess: () => { ok(t("meeting.saved"), student); onOpenChange(false); } });
+    }, { onSuccess: () => { ok(t("meeting.saved"), personName(student)); onOpenChange(false); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -516,13 +517,13 @@ export function ActionDialog({ open, onOpenChange, student }: { open: boolean; o
   useEffect(() => { if (open) { create.reset(); setTitle(""); setDueOn(addDays(nyDate(), 7)); setOwner("student"); } /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [open]);
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    create.mutate({ student, title: title.trim(), dueOn: dueOn || null, owner }, { onSuccess: () => { ok(t("action.added"), student); onOpenChange(false); } });
+    create.mutate({ student, title: title.trim(), dueOn: dueOn || null, owner }, { onSuccess: () => { ok(t("action.added"), personName(student)); onOpenChange(false); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <form onSubmit={submit} className="flex flex-col gap-4">
-          <DialogHeader><DialogTitle>{t("action.title", { student })}</DialogTitle><DialogDescription>{t("action.description")}</DialogDescription></DialogHeader>
+          <DialogHeader><DialogTitle>{t("action.title", { student: personName(student) })}</DialogTitle><DialogDescription>{t("action.description")}</DialogDescription></DialogHeader>
           <Field id="a-title" label={t("action.what")}><Input id="a-title" value={title} onChange={(e) => setTitle(e.target.value)} required maxLength={300} /></Field>
           <div className="grid grid-cols-2 gap-3">
             <Field id="a-due" label={t("action.due")}><Input id="a-due" type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} /></Field>
@@ -577,14 +578,14 @@ export function GoalDialog({ open, onOpenChange, student }: { open: boolean; onO
       student, title: title.trim() || def?.label || t("goal.fallbackTitle"), metric, comparator: metric === "manual" ? undefined : comparator, target,
       window: def && windowLabel(def) ? (win === "" ? null : Number(win)) : null, startDate, dueOn: dueOn || null, note,
       manualProgress: metric === "manual" ? 0 : undefined,
-    }, { onSuccess: () => { ok(t("goal.added"), student); onOpenChange(false); } });
+    }, { onSuccess: () => { ok(t("goal.added"), personName(student)); onOpenChange(false); } });
   };
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[90vh] max-w-xl overflow-y-auto">
         <form onSubmit={submit} className="flex flex-col gap-4">
           <DialogHeader>
-            <DialogTitle>{t("goal.title", { student })}</DialogTitle>
+            <DialogTitle>{t("goal.title", { student: personName(student) })}</DialogTitle>
             <DialogDescription>{t("goal.description")}</DialogDescription>
           </DialogHeader>
           <Field label={t("goal.metric")}>

@@ -9,6 +9,7 @@ import { type ContextTrade, type ReviewContext, type ScoreTrend } from "./junior
 import { ScoreStars } from "./junior-ui";
 import { notesI18n } from "@/i18n/ns/notes";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const hLabel = (h: string) =>
   h === "intraday" || h === "overnight" || h === "swing" ? commonI18n.t(`trading.${h}`).toLowerCase() : h;
@@ -192,7 +193,7 @@ export function ReviewContextRail({
               <li key={f.note_date} className="rounded-lg bg-[var(--glass-bg)] px-3 py-2">
                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
                   <span className="tabular-nums">{fmtDate(f.note_date, "dayMonth")}</span>
-                  {f.reviewed_by && <span>· {f.reviewed_by}</span>}
+                  {f.reviewed_by && <span>· {personName(f.reviewed_by)}</span>}
                   <ScoreStars score={f.score} className="ml-auto" />
                 </div>
                 {f.feedback && <p className="mt-1 line-clamp-3 whitespace-pre-wrap text-sm text-foreground/85">{f.feedback}</p>}

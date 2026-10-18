@@ -16,6 +16,7 @@ import { useSaveLimits } from "./use-risk";
 import { TIERS, tierLabel } from "./primitives";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** Scaling plan: default limits per tier (curator can override any field). */
@@ -158,7 +159,7 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
     };
     save.mutate(body, {
       onSuccess: () => {
-        toast({ title: t("form.saved"), description: trader });
+        toast({ title: t("form.saved"), description: personName(trader) });
         onSaved?.();
       },
       onError: (e) => {
@@ -304,8 +305,8 @@ export function LimitsForm({ trader, limits, onSaved }: { trader: string; limits
           <span className="text-xs text-muted-foreground">
             {limits?.updatedBy
               ? limits.updatedAt
-                ? t("form.changedAt", { name: limits.updatedBy, date: fmtDate(limits.updatedAt, "shortDateTime") })
-                : t("form.changed", { name: limits.updatedBy })
+                ? t("form.changedAt", { name: personName(limits.updatedBy), date: fmtDate(limits.updatedAt, "shortDateTime") })
+                : t("form.changed", { name: personName(limits.updatedBy) })
               : t("form.notSetYet")}
           </span>
           <div className="flex gap-2">

@@ -15,7 +15,8 @@ import {
   fmtDayLong, fmtDayShort, isTradingDay, isYmd, lastTradingDay, shiftTradingDay, useDayReport, useMarketHolidays,
   type DayReport,
 } from "@/components/day-report/api";
-import { fmtDate, fmtRate, fmtUsd, localeTag } from "@/lib/format";
+import { fmtDate, fmtRate, fmtUsd } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { dayReportI18n } from "@/i18n/ns/dayReport";
 import { shellI18n } from "@/i18n/ns/shell";
@@ -124,7 +125,7 @@ export default function DayReportPage() {
   const traders = React.useMemo(() => {
     const list = [...(doc?.traders ?? [])];
     if (trader && !list.includes(trader)) list.push(trader);
-    return list.sort((a, b) => a.localeCompare(b, localeTag()));
+    return list.sort(comparePersonNames);
   }, [doc?.traders, trader]);
 
   const nonTrading = holidays ? !isTradingDay(date, holidays) : false;
@@ -133,7 +134,7 @@ export default function DayReportPage() {
   const header = (
     <PageHeader
       title={shellI18n.t("nav.dayReport")}
-      description={t("page.desc", { trader: trader ?? "—", date: fmtDayLong(date) })}
+      description={t("page.desc", { trader: personName(trader) || "—", date: fmtDayLong(date) })}
       icon={ClipboardList}
       actions={
         <div className="flex flex-wrap items-center gap-2" data-print-hide>
@@ -210,7 +211,7 @@ function Report({ doc, stale }: { doc: DayReport; stale: boolean }) {
   const { t } = dayReportI18n.useT();
   return (
     <div data-day-report className={stale ? "flex flex-col gap-4 opacity-70 transition-opacity sm:gap-5" : "flex flex-col gap-4 transition-opacity sm:gap-5"}>
-      <p data-print-title className="hidden text-lg font-semibold">{t("page.printTitle", { trader: doc.trader, date: fmtDayLong(doc.date) })}</p>
+      <p data-print-title className="hidden text-lg font-semibold">{t("page.printTitle", { trader: personName(doc.trader), date: fmtDayLong(doc.date) })}</p>
       <section aria-label={t("page.summaryAria")} className="flex flex-col gap-3">
         <p className="text-sm text-muted-foreground">{headline(doc)}</p>
         <SummaryBento doc={doc} />

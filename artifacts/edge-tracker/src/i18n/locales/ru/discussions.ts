@@ -107,7 +107,7 @@ export default {
     updated: "Тема обновлена",
     editTitle: "Редактировать тему",
     newTitle: "Новая тема",
-    description: "Автор: {author}. Используйте $TICKER и @имя — они станут ссылками; @упоминание придёт в уведомления.",
+    description: "Автор: {author} · Используйте $TICKER и @имя — они станут ссылками; @упоминание придёт в уведомления.",
     contextPill: "Контекст: {context}",
     topic: "Тема",
     topicPlaceholder: "NVDA: фиксировать перед отчётом?",

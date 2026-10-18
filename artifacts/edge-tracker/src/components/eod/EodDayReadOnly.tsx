@@ -7,6 +7,7 @@ import { HORIZON_LABEL } from "@/components/journal/utils";
 import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
+import { personName } from "@/i18n";
 import { journalI18n } from "@/i18n/ns/journal";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { tagLabel } from "@/components/shared/trade-labels";
@@ -125,7 +126,7 @@ export function EodDayReadOnly({
         <section className="rounded-xl border border-primary/30 bg-primary/5 p-3">
           <div className="flex flex-wrap items-center gap-2 text-xs">
             <MessageSquareText className="h-4 w-4 text-primary" aria-hidden="true" />
-            <span className="font-semibold">{t("readOnly.curator", { name: data.day.reviewedBy ?? "—" })}</span>
+            <span className="font-semibold">{t("readOnly.curator", { name: personName(data.day.reviewedBy) || "—" })}</span>
             <Pill tone="accent">{t("readOnly.score", { score: data.day.curatorScore ?? "—" })}</Pill>
             <span className="text-muted-foreground">{fmtDate(data.day.reviewedAt, "shortDateTimeSeconds")}</span>
           </div>

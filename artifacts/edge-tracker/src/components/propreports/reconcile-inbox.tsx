@@ -12,6 +12,7 @@ import { fmtPrice, horizonLabel, resultLabel, useDismissPending, useKeepSeparate
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 import { ExecutionsList, FeesBreakdown, resultTone } from "./preview-table";
 
 function Side({ title, tone, children }: { title: React.ReactNode; tone: "accent" | "neutral"; children: React.ReactNode }) {
@@ -66,7 +67,7 @@ function PendingCard({ p, staff }: { p: PendingTrade; staff: boolean }) {
           <span className="font-semibold">{p.ticker}</span>
           <span className={t.side === "Long" ? "text-up" : "text-down"}>{commonI18n.t(t.side === "Long" ? "trading.long" : "trading.short")}</span>
           <span className="text-muted-foreground">{p.date}{t.exitDate && t.exitDate !== p.date ? ` → ${t.exitDate}` : ""}</span>
-          <Pill tone="neutral">{p.trader}</Pill>
+          <Pill tone="neutral">{personName(p.trader)}</Pill>
           {p.account && <Pill tone="neutral">{p.account}</Pill>}
           <Pill tone={resultTone(t.result)}>{fmtUsd(t.netPnl, { signed: true })} net</Pill>
         </div>

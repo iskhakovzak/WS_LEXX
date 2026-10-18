@@ -4,6 +4,7 @@ import { config } from "../config";
 import { getLatestReview } from "./aiReview";
 import { nyDate } from "./tradingDate";
 import { digestT } from "../i18n/ns";
+import { personNameFor } from "./people/latinNames";
 import { localeOfUser, localeTagFor, type Lang } from "../i18n";
 
 /** Outbound request budget for Telegram / Resend sends (a hung API must not stall the digest job). */
@@ -523,7 +524,7 @@ export async function sendDigestToTrader(trader: string): Promise<{ sent: boolea
   const { text, html } = await buildDigest(trader, sub.tradesWindowHours);
   const now = new Date();
   const lang = await localeOfUser(trader);
-  const subject = digestT.tFor(lang)("subject", { date: now.toLocaleDateString(localeTagFor(lang)), trader });
+  const subject = digestT.tFor(lang)("subject", { date: now.toLocaleDateString(localeTagFor(lang)), trader: personNameFor(trader, lang) });
 
   const channelsSent: string[] = [];
   const errors: string[] = [];
@@ -630,7 +631,7 @@ export async function runDigestIfNeeded(period: "morning" | "evening"): Promise<
       const { html } = await buildDigest(sub.trader, sub.tradesWindowHours);
       const now = new Date();
       const subLang = await localeOfUser(sub.trader);
-      const subject = digestT.tFor(subLang)("subject", { date: now.toLocaleDateString(localeTagFor(subLang)), trader: sub.trader });
+      const subject = digestT.tFor(subLang)("subject", { date: now.toLocaleDateString(localeTagFor(subLang)), trader: personNameFor(sub.trader, subLang) });
       await sendEmail(sub.email!, subject, html);
       logger.info({ trader: sub.trader, period }, "Email digest sent");
     } catch (e: any) {

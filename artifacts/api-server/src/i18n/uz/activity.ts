@@ -10,6 +10,7 @@ export default {
     earnings_import: { one: "Hisobotlar: {days} kunga {count} ta voqea", other: "Hisobotlar: {days} kunga {count} ta voqea" },
     autolink: "Savdolarni avtomatik bogʻlash",
     example: "Misol: {ticker}",
+    eod_reviewed: "{trader}, {date}",
   },
   details: {
     autolinked: "Bogʻlangan savdolar: {count}",

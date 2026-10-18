@@ -1,7 +1,7 @@
 import type { Tone } from "@/components/ds";
 import type { NextActionKind, Phase, QueueKind, TraderSignal } from "./api";
 import { matchesAny } from "@workspace/text-search";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames } from "@/i18n";
 import { curatorI18n } from "@/i18n/ns/curator";
 
 /** `{ key: label }` whose labels are read in the current language on every access (safe at module scope). */
@@ -66,7 +66,7 @@ export type TraderSort = "attention" | "name" | "pnl" | "discipline";
 /** Attention first: priority of the next action, then the worst limit usage, then name. */
 export function sortTraders(list: readonly TraderSignal[], by: TraderSort): TraderSignal[] {
   const arr = [...list];
-  const name = (a: TraderSignal, b: TraderSignal) => a.trader.localeCompare(b.trader, localeTag());
+  const name = (a: TraderSignal, b: TraderSignal) => comparePersonNames(a.trader, b.trader);
   if (by === "name") return arr.sort(name);
   if (by === "pnl") return arr.sort((a, b) => (a.risk.weekPnl ?? 0) - (b.risk.weekPnl ?? 0) || name(a, b));
   if (by === "discipline") return arr.sort((a, b) => (a.discipline.value ?? 99) - (b.discipline.value ?? 99) || name(a, b));

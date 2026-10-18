@@ -15,6 +15,7 @@ import { relTime, type TradeIdea } from "./model";
 import { fmtDate } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const MAX_LEN = 5000;
 
@@ -108,7 +109,7 @@ export function CommentsThread({
                   )}
                 >
                   <div className="mb-0.5 flex flex-wrap items-center gap-1.5 text-2xs text-muted-foreground">
-                    <span className="font-semibold text-foreground">{c.author_name}</span>
+                    <span className="font-semibold text-foreground">{personName(c.author_name)}</span>
                     {isAuthor && <Pill tone="accent" className="px-1.5 py-0 text-2xs">{t("comments.author")}</Pill>}
                     {c.is_private && <span className="flex items-center gap-0.5 text-[hsl(var(--chart-3))]"><Lock className="h-3 w-3" aria-hidden="true" />{t("comments.private")}</span>}
                     {c.source === "telegram" && <span>· Telegram</span>}

@@ -27,9 +27,9 @@ import {
 } from "@/components/team/activity-model";
 import { isTypingTarget, lsGet, lsSet } from "@/components/team/utils";
 import { PersonSelect } from "@/components/people/person-select";
-import { localeTag } from "@/lib/format";
 import { activityI18n } from "@/i18n/ns/activity";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName, comparePersonNames } from "@/i18n";
 
 const FILTER_KEY = "ws_activity_filters";
 const SEEN_KEY = "ws_activity_seen_at";
@@ -95,7 +95,7 @@ async function legacyFeed(params: string): Promise<FeedPage> {
         (!sections || sections.includes(i.section)) &&
         (!actions || actions.includes(i.action)) &&
         (!trader || i.trader === trader) &&
-        (!q || [i.entityTitle, i.details, i.trader].some((v) => v?.toLowerCase().includes(q))),
+        (!q || [i.entityTitle, i.details, i.trader, personName(i.trader)].some((v) => v?.toLowerCase().includes(q))),
     );
   return { items: limit < PAGE_SIZE ? items.slice(0, limit) : items, nextCursor: null };
 }
@@ -262,7 +262,7 @@ export default function ActivityPage() {
     const set = new Set((facets?.traders ?? []).filter((t) => t && t !== "system"));
     if (filters.trader) set.add(filters.trader);
     if (me) set.add(me);
-    return [...set].sort((a, b) => a.localeCompare(b, localeTag()));
+    return [...set].sort(comparePersonNames);
   }, [facets, filters.trader, me]);
 
   const activeFilterCount =

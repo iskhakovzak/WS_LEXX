@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { curatorApi, useCuratorMutation, useRiskTemplates, type TierTemplate } from "./api";
 import { fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 const LADDER = ["trainee", "junior", "trader", "senior"];
@@ -57,7 +58,7 @@ export function TemplateDialog({
         const failed = r.results.filter((x) => !x.ok);
         toast({
           title: r.applied ? t("template.applied", { name: tier.name, count: r.applied }) : t("template.notApplied"),
-          description: failed.length ? failed.map((f) => `${f.trader}: ${f.error}`).join("; ") : t("template.notified"),
+          description: failed.length ? failed.map((f) => `${personName(f.trader)}: ${f.error}`).join("; ") : t("template.notified"),
           variant: r.applied ? undefined : "destructive",
         });
         if (r.applied) onOpenChange(false);
@@ -72,7 +73,7 @@ export function TemplateDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Layers className="h-4 w-4 text-primary" aria-hidden="true" />{t("template.title")}</DialogTitle>
           <DialogDescription>
-            {traders.length === 1 ? t("template.descOne", { name: traders[0] }) : t("template.descMany", { count: traders.length })} {t("template.descTail")}
+            {traders.length === 1 ? t("template.descOne", { name: personName(traders[0]) }) : t("template.descMany", { count: traders.length })} {t("template.descTail")}
           </DialogDescription>
         </DialogHeader>
         <QueryState query={q} skeleton={<div className="h-48" />}>
@@ -106,7 +107,7 @@ export function TemplateDialog({
                         return (
                           <li key={name} className="tile flex flex-col gap-1 p-2.5">
                             <div className="flex items-center gap-2 text-sm">
-                              <span className="font-medium text-foreground">{name}</span>
+                              <span className="font-medium text-foreground">{personName(name)}</span>
                               <span className="text-xs text-muted-foreground">{row?.tierName ?? t("template.noTier")}{row?.tier && row.tier !== tier.key ? ` → ${tier.stageLabel ?? tier.name}` : ""}</span>
                               <span className="ml-auto">{!cur ? <Pill tone="warn">{t("template.noLimits")}</Pill> : changed.length ? <Pill tone="accent">{t("template.changes", { count: changed.length })}</Pill> : <Pill tone="up">{t("template.matches")}</Pill>}</span>
                             </div>

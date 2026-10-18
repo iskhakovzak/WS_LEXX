@@ -4,6 +4,7 @@ import type { Tone } from "@/components/ds";
 import { fmtDate, fmtRelative } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personInitials } from "@/i18n";
 
 export type Reaction = { id: number; tradeIdeaId: number; trader: string; reaction: string; comment: string | null; createdAt: string };
 /** Trade linked to an idea. `r`/`net`/`outcome` are computed server-side with the shared trade math (R signed, net = gross − |fees|). */
@@ -221,9 +222,9 @@ export function relTime(iso: string | null | undefined): string {
   return diff < 7 * 86_400_000 ? fmtRelative(d) : fmtDate(d, "dayMonth");
 }
 
+/** Avatar initials of the person's display name (Latin in EN/UZ when set). */
 export function initials(name: string | null | undefined): string {
-  if (!name) return "?";
-  return name.trim().slice(0, 2).toUpperCase();
+  return personInitials(name);
 }
 
 /** Safe localStorage access (private mode / blocked storage). */

@@ -18,6 +18,7 @@ import {
 import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { behaviorI18n } from "@/i18n/ns/behavior";
+import { comparePersonNames } from "@/i18n";
 
 const tb = behaviorI18n.t;
 import { TraderProfilePanel } from "@/components/behavior/trader-profile";
@@ -100,7 +101,7 @@ export default function BehaviorPage() {
   const traders = React.useMemo(() => {
     const list = dbUsers.filter((u) => u.active && !u.banned && (u.role === "trader" || u.name === trader));
     if (trader && !list.some((u) => u.name === trader)) list.push({ id: -1, name: trader, role: "trader", active: true, theme: "default" } as (typeof dbUsers)[number]);
-    return list.sort((a, b) => a.name.localeCompare(b.name, "ru"));
+    return list.sort((a, b) => comparePersonNames(a.name, b.name));
   }, [dbUsers, trader]);
 
   const range = React.useMemo(() => rangeOf(period), [period]);

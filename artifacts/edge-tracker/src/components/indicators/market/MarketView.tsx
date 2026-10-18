@@ -23,6 +23,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { commonI18n } from "@/i18n/ns/common";
 import { indicatorsI18n } from "@/i18n/ns/indicators";
 
+import { personName } from "@/i18n";
 const SYMBOL_NAME: Record<string, string> = { qqq: "QQQ", iwm: "IWM", rsp: "RSP", vix: "VIX", vix3m: "VIX3M" };
 const symbolName = (k: string) => SYMBOL_NAME[k] ?? indicatorsI18n.tryT(`market.symbols.${k}`) ?? k;
 
@@ -176,7 +177,7 @@ export function MarketView() {
           {tradesQ.isLoading ? (
             <PanelSkeleton height={260} className="h-full" />
           ) : (
-            <TodayForYou sessionLabel={trader ? t("market.traderDays", { trader, days: commonI18n.t("units.days", { count: joined.length }) }) : ""} analogues={analogues} pre={pre} base={base} fired={fired} alertsCount={Object.keys(alerts).length} sectors={sectors} />
+            <TodayForYou sessionLabel={trader ? t("market.traderDays", { trader: personName(trader), days: commonI18n.t("units.days", { count: joined.length }) }) : ""} analogues={analogues} pre={pre} base={base} fired={fired} alertsCount={Object.keys(alerts).length} sectors={sectors} />
           )}
         </div>
       </BentoGrid>
@@ -198,7 +199,7 @@ export function MarketView() {
         <EmptyState
           icon={CalendarX}
           title={t("market.noDaysTitle")}
-          description={trader ? t("market.noDaysTrader", { trader }) : t("market.noDaysPick")}
+          description={trader ? t("market.noDaysTrader", { trader: personName(trader) }) : t("market.noDaysPick")}
         />
       ) : (
         <BentoGrid>

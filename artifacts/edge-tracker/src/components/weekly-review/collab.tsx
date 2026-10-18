@@ -15,6 +15,7 @@ import {
   type Goal, type GoalStatus, type Review, type ReviewStatus, type WeeklyReview,
 } from "./api";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
+import { personName } from "@/i18n";
 
 const STATUS_TONE: Record<ReviewStatus | "none", Tone> = { none: "neutral", draft: "neutral", submitted: "accent", reviewed: "up" };
 const GOAL_TONE: Record<GoalStatus, Tone> = { open: "neutral", done: "up", partial: "warn", missed: "down" };
@@ -205,7 +206,7 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
       {
         onSuccess: () => {
           setDirty(false);
-          toast({ title: finalize ? t("collab.reviewSaved", { trader: doc.trader }) : t("collab.reviewDraftSaved"), description: finalize ? t("collab.goalsForNext", { count: cleanGoals.length }) : undefined });
+          toast({ title: finalize ? t("collab.reviewSaved", { trader: personName(doc.trader) }) : t("collab.reviewDraftSaved"), description: finalize ? t("collab.goalsForNext", { count: cleanGoals.length }) : undefined });
         },
         onError: (e) => toast({ title: t("collab.reviewFailed"), description: errMsg(e), variant: "destructive" }),
       },
@@ -218,7 +219,7 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
   if (!editable) {
     const filled = !!(c.comment || c.score != null || (review?.goals.length ?? 0) > 0);
     return (
-      <Panel title={t("collab.curatorTitle")} description={c.by ? `${c.by}${review?.reviewedAt ? ` · ${fmtDay(review.reviewedAt.slice(0, 10))}` : ""}` : undefined} icon={MessageSquareText} className={cn("min-w-0", className)} actions={c.score != null ? <ScorePill score={c.score} /> : undefined}>
+      <Panel title={t("collab.curatorTitle")} description={c.by ? `${personName(c.by)}${review?.reviewedAt ? ` · ${fmtDay(review.reviewedAt.slice(0, 10))}` : ""}` : undefined} icon={MessageSquareText} className={cn("min-w-0", className)} actions={c.score != null ? <ScorePill score={c.score} /> : undefined}>
         {!filled ? (
           <p className="py-3 text-sm text-muted-foreground">{t("collab.curatorEmpty")}</p>
         ) : (
@@ -284,7 +285,7 @@ export function CuratorReviewPanel({ doc, className, readOnly = false }: { doc: 
             <CheckCircle2 className="h-4 w-4" aria-hidden="true" /> {status === "reviewed" ? t("collab.updateReview") : t("collab.finishReview")}
           </Button>
           <Button type="button" variant="outline" onClick={() => save(false)} disabled={saveMut.isPending || !dirty}>{t("collab.saveDraft")}</Button>
-          {status === "reviewed" && review?.reviewedAt && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("collab.reviewedOn", { date: fmtDay(review.reviewedAt.slice(0, 10)) })}{c.by ? ` · ${c.by}` : ""}</span>}
+          {status === "reviewed" && review?.reviewedAt && <span className="inline-flex items-center gap-1 text-xs text-muted-foreground"><Check className="h-3.5 w-3.5" aria-hidden="true" /> {t("collab.reviewedOn", { date: fmtDay(review.reviewedAt.slice(0, 10)) })}{c.by ? ` · ${personName(c.by)}` : ""}</span>}
         </div>
       </div>
     </Panel>

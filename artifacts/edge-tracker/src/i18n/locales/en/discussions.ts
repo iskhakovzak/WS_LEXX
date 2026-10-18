@@ -104,7 +104,7 @@ export default {
     updated: "Thread updated",
     editTitle: "Edit thread",
     newTitle: "New thread",
-    description: "Author: {author}. $TICKER and @name become links; an @mention sends a notification.",
+    description: "Author: {author} · $TICKER and @name become links; an @mention sends a notification.",
     contextPill: "Context: {context}",
     topic: "Title",
     topicPlaceholder: "NVDA: take profit before earnings?",

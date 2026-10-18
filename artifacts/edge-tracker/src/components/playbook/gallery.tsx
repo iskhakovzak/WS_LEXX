@@ -19,6 +19,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n } from "@/i18n/ns/playbook";
 
+import { comparePersonNames, personName } from "@/i18n";
 type TierF = "1" | "2" | "3" | "all";
 type PeriodF = "30" | "90" | "365" | "all";
 export type GalleryScope = SpaceTab | "all";
@@ -69,7 +70,7 @@ export function Gallery({
     return all.filter((x) => x.setupSpace === "personal" && x.setupOwner !== viewerName);
   }, [q.data, scope, viewerName]);
   // Trader filter for everyone, built from what the scope shows (R-only for other people's trades).
-  const traders = React.useMemo(() => [...new Set(scoped.map((x) => x.trader).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b, "ru")), [scoped]);
+  const traders = React.useMemo(() => [...new Set(scoped.map((x) => x.trader).filter(Boolean) as string[])].sort(comparePersonNames), [scoped]);
   const items = React.useMemo(() => (trader ? scoped.filter((x) => x.trader === trader) : scoped), [scoped, trader]);
   const setups = React.useMemo(() => {
     const ids = new Set((q.data ?? []).map((x) => x.playbookId));
@@ -163,7 +164,7 @@ export function Gallery({
                       {ex.setupName ?? setup?.name ?? t("setupN", { id: ex.playbookId })}
                     </button>
                     <span className="ml-auto shrink-0 rounded-full bg-[var(--glass-bg)] px-2 py-0.5 text-xs text-muted-foreground">
-                      {ex.setupSpace === "office" ? t("gallery.spaceOffice") : ex.setupOwner === viewerName ? t("gallery.spaceMine") : ex.setupOwner ?? t("gallery.spacePersonal")}
+                      {ex.setupSpace === "office" ? t("gallery.spaceOffice") : ex.setupOwner === viewerName ? t("gallery.spaceMine") : ex.setupOwner ? personName(ex.setupOwner) : t("gallery.spacePersonal")}
                     </span>
                   </div>
                 }

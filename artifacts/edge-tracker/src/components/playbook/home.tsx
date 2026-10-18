@@ -28,6 +28,7 @@ import { fmtDate, fmtR, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n } from "@/i18n/ns/playbook";
 
+import { personName } from "@/i18n";
 type Days = "7" | "14" | "30";
 
 const ACCESSORS = {
@@ -281,7 +282,7 @@ export function Tier1Strip({
                     className="-mx-1 truncate rounded px-1 text-left text-sm font-medium text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     {ex.setupName ?? setup?.name ?? t("setupN", { id: ex.playbookId })}
-                    {ex.setupSpace === "personal" && ex.setupOwner && ex.setupOwner !== viewerName && <span className="font-normal text-muted-foreground"> · {ex.setupOwner}</span>}
+                    {ex.setupSpace === "personal" && ex.setupOwner && ex.setupOwner !== viewerName && <span className="font-normal text-muted-foreground"> · {personName(ex.setupOwner)}</span>}
                   </button>
                 }
               />

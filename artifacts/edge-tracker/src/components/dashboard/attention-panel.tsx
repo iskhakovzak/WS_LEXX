@@ -31,6 +31,7 @@ import { fmtUsd } from "@/lib/format";
 import type { DashboardToday, EodStatus, EventsToday, MiniTrade, RecentTrade, RiskDesk, RiskMe } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { personName } from "@/i18n";
 
 /** One actionable line. Lower `rank` = more urgent; the first item becomes «Следующий шаг». */
 type Item = {
@@ -262,7 +263,7 @@ export function AttentionPanel({
       rank: halted.length > 0 ? 0 : 3,
       icon: ShieldAlert,
       tone: halted.length > 0 ? "down" : "warn",
-      title: halted.length > 0 ? t("attention.riskStop", { traders: halted.map((b) => b.trader).join(", ") }) : t("attention.nearLimit", { label: desk.banner.map((b) => b.trader).join(", ") }),
+      title: halted.length > 0 ? t("attention.riskStop", { traders: halted.map((b) => personName(b.trader)).join(", ") }) : t("attention.nearLimit", { label: desk.banner.map((b) => personName(b.trader)).join(", ") }),
       detail: desk.banner[0]?.message,
       href: links.risk(desk.banner[0]?.trader),
       cta: t("attention.riskDesk"),
@@ -304,7 +305,7 @@ export function AttentionPanel({
         icon: ClipboardCheck,
         tone: "warn",
         title: t("attention.teamNotClosed", { count: open.length }),
-        detail: open.map((x) => x.trader).slice(0, 5).join(", "),
+        detail: open.map((x) => personName(x.trader)).slice(0, 5).join(", "),
         href: links.journalDay(today),
         cta: t("attention.toJournal"),
       });
@@ -423,7 +424,7 @@ export function AttentionPanel({
       icon: UserCheck,
       tone: "purple",
       title: t("attention.curatorQueue", { count: q.count }),
-      detail: q.items.map((x) => `${x.ticker}${x.trader ? ` (${x.trader})` : ""}`).slice(0, 3).join(", "),
+      detail: q.items.map((x) => `${x.ticker}${x.trader ? ` (${personName(x.trader)})` : ""}`).slice(0, 3).join(", "),
       href: links.trades({ ids: q.items.map((x) => x.id) }),
       cta: t("attention.reviewIt"),
     });

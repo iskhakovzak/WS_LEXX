@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  damerauLevenshtein, highlightSegments, literal, matchText, matchesAny, prepareQuery, searchItems, skeleton, switchLayout,
+  damerauLevenshtein, latinizeName, highlightSegments, literal, matchText, matchesAny, prepareQuery, searchItems, skeleton, switchLayout,
   tokenize, translit, translitVariants,
 } from "./index";
 
@@ -195,5 +195,18 @@ describe("helpers", () => {
     const t0 = performance.now();
     for (const q of ["zokir", "Рахмт", "Pfrbh", "ol"]) searchItems(big, q, (n) => [n]);
     expect(performance.now() - t0).toBeLessThan(400);
+  });
+});
+
+describe("latinizeName", () => {
+  it("keeps case and punctuation of a display name", () => {
+    expect(latinizeName("Дмитрий К.")).toBe("Dmitriy K.");
+    expect(latinizeName("Артём Г.")).toBe("Artyom G.");
+    expect(latinizeName("Рахматулло")).toBe("Rahmatullo");
+    expect(latinizeName("Илья Ш.")).toBe("Ilya Sh.");
+  });
+  it("leaves Latin words as written", () => {
+    expect(latinizeName("Zakir Ishakov")).toBe("Zakir Ishakov");
+    expect(latinizeName("Закир Ishakov")).toBe("Zakir Ishakov");
   });
 });

@@ -20,6 +20,7 @@ import { fmtRate } from "@/lib/format";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 
 /**
  * /academy/cohorts — управление когортами деска (офис / удалённо / гибрид): состав и ступени
@@ -108,7 +109,7 @@ function CohortCard({ c, active, onClick }: { c: CohortListItem; active: boolean
         <Pill tone={c.format === "office" ? "accent" : c.format === "remote" ? "purple" : "neutral"}>{formatLabel(c.format)}</Pill>
       </div>
       <div className="mt-1 text-xs text-muted-foreground">
-        {c.mentor ? t("cohortsPage.mentorBy", { name: c.mentor }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn)}{c.endsOn ? ` – ${fmtYmd(c.endsOn)}` : ""}
+        {c.mentor ? t("cohortsPage.mentorBy", { name: personName(c.mentor) }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn)}{c.endsOn ? ` – ${fmtYmd(c.endsOn)}` : ""}
       </div>
       <div className="mt-1.5 flex flex-wrap gap-1 text-xs tabular-nums">
         <Pill tone="up">{t("cohortsPage.activeCount", { n: c.counts.active })}</Pill>
@@ -147,7 +148,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
     <div className="flex min-w-0 flex-col gap-4">
       <Panel title={c.name} icon={Users}
         description={<>
-          {formatLabel(c.format)} · {c.mentor ? t("cohortsPage.mentorBy", { name: c.mentor }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn, true)}{c.endsOn ? ` – ${fmtYmd(c.endsOn, true)}` : ""} · {c.timezone}
+          {formatLabel(c.format)} · {c.mentor ? t("cohortsPage.mentorBy", { name: personName(c.mentor) }) : t("cohortsPage.noMentor")} · {fmtYmd(c.startsOn, true)}{c.endsOn ? ` – ${fmtYmd(c.endsOn, true)}` : ""} · {c.timezone}
           {isArchived && <> · <b>{t("cohortsPage.inArchive")}</b></>}
         </>}
         actions={staff ? <>
@@ -188,7 +189,7 @@ function Detail({ id, staff }: { id: number; staff: boolean }) {
 type MemberRow = CohortDetail["enrollments"][number];
 const STAGE_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
 const MEMBER_ACCESSORS = {
-  name: (e: MemberRow) => e.userName,
+  name: (e: MemberRow) => personName(e.userName),
   stage: (e: MemberRow) => STAGE_ORDER[e.stage] ?? 9,
   status: (e: MemberRow) => statusLabel(e.status),
   joined: (e: MemberRow) => e.joinedOn,
@@ -196,7 +197,7 @@ const MEMBER_ACCESSORS = {
   att30: (e: MemberRow) => e.attendance30?.rate ?? null,
 };
 const ATT_ACCESSORS = {
-  name: (e: MemberRow) => e.userName,
+  name: (e: MemberRow) => personName(e.userName),
   total: (e: MemberRow) => e.attendance?.total ?? null,
   present: (e: MemberRow) => e.attendance?.present ?? null,
   late: (e: MemberRow) => e.attendance?.late ?? null,
@@ -216,9 +217,9 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
   const { toast } = useToast();
   const { rows: members, thProps } = useTableSort(d.enrollments, MEMBER_ACCESSORS, "name", "asc");
   const remove = (e: Enrollment) => {
-    if (!window.confirm(t("cohortsPage.members.removeConfirm", { name: e.userName }))) return;
+    if (!window.confirm(t("cohortsPage.members.removeConfirm", { name: personName(e.userName) }))) return;
     archive.mutate(e.id, {
-      onSuccess: () => toast({ title: t("cohortsPage.members.removed"), description: e.userName }),
+      onSuccess: () => toast({ title: t("cohortsPage.members.removed"), description: personName(e.userName) }),
       onError: (err) => toast({ title: t("cohortsPage.failed"), description: err.message, variant: "destructive" }),
     });
   };
@@ -241,8 +242,8 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
               {members.map((e) => (
                 <tr key={e.id}>
                   <td>
-                    {staff ? <Link href={`/academy/mentor?student=${encodeURIComponent(e.userName)}`} className="font-medium text-foreground hover:underline">{e.userName}</Link>
-                      : <span className="font-medium">{e.userName}</span>}
+                    {staff ? <Link href={`/academy/mentor?student=${encodeURIComponent(e.userName)}`} className="font-medium text-foreground hover:underline">{personName(e.userName)}</Link>
+                      : <span className="font-medium">{personName(e.userName)}</span>}
                     {e.note && <div className="text-xs text-muted-foreground">{e.note}</div>}
                   </td>
                   <td><StagePill stage={e.stage} /></td>
@@ -253,7 +254,7 @@ function Members({ d, staff }: { d: CohortDetail; staff: boolean }) {
                   {staff && (
                     <td className="whitespace-nowrap text-right">
                       <Button size="sm" variant="ghost" onClick={() => setEdit(e)}>{t("cohortsPage.members.stageStatus")}</Button>
-                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={t("cohortsPage.members.removeAria", { name: e.userName })} title={t("cohortsPage.members.removeTitle")}><Archive className="h-4 w-4" /></Button>
+                      <Button size="sm" variant="ghost" onClick={() => remove(e)} aria-label={t("cohortsPage.members.removeAria", { name: personName(e.userName) })} title={t("cohortsPage.members.removeTitle")}><Archive className="h-4 w-4" /></Button>
                     </td>
                   )}
                 </tr>
@@ -306,7 +307,7 @@ function Schedule({ d, staff }: { d: CohortDetail; staff: boolean }) {
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-medium text-foreground">{s.title}</span>
                   <Pill tone="neutral">{kindLabel(s.kind)}</Pill>
-                  {s.host && <span className="text-xs text-muted-foreground">{t("cohortsPage.schedule.host", { name: s.host })}</span>}
+                  {s.host && <span className="text-xs text-muted-foreground">{t("cohortsPage.schedule.host", { name: personName(s.host) })}</span>}
                 </div>
                 <div className="mt-0.5 text-xs text-muted-foreground">
                   {s.ruleText} · {ct("time.minutesShort", { count: s.durationMin })}{s.endDate ? ` · ${ct("time.until", { date: fmtYmd(s.endDate) })}` : ""}
@@ -395,7 +396,7 @@ function AttendanceTab({ d }: { d: CohortDetail }) {
                   const a = e.attendance!;
                   return (
                     <tr key={e.id}>
-                      <td className="font-medium">{e.userName}</td><td>{a.total}</td><td>{a.present}</td><td>{a.late}</td><td>{a.absent}</td><td>{a.excused}</td><td>{a.unmarked}</td>
+                      <td className="font-medium">{personName(e.userName)}</td><td>{a.total}</td><td>{a.present}</td><td>{a.late}</td><td>{a.absent}</td><td>{a.excused}</td><td>{a.unmarked}</td>
                       <td className={cn(a.rate != null && (a.rate >= 0.9 ? "text-up" : a.rate >= 0.75 ? "text-warn" : "text-down"))}>{fmtRate(a.rate)}</td>
                       <td>{fmtRate(e.attendance30?.rate ?? null)}</td>
                       <td className={cn(a.absentStreak > 1 && "text-down")}>{a.absentStreak || "—"}</td>
@@ -420,10 +421,10 @@ function HistoryTab({ d }: { d: CohortDetail }) {
         {d.history.map((h) => (
           <li key={h.id} className="flex flex-wrap items-baseline gap-x-3 py-1.5 text-sm">
             <span className="tabular-nums text-muted-foreground">{dateTimeLocal(h.changedAt)}</span>
-            <span className="font-medium">{h.userName}</span>
+            <span className="font-medium">{personName(h.userName)}</span>
             {h.fromStage !== h.toStage && h.toStage && <span>{h.fromStage ? stageLabel(h.fromStage) : "—"} → <b>{stageLabel(h.toStage)}</b></span>}
             {h.fromStatus !== h.toStatus && h.toStatus && <span>{h.fromStatus ? statusLabel(h.fromStatus) : "—"} → <b>{statusLabel(h.toStatus)}</b></span>}
-            {h.changedBy && <span className="text-xs text-muted-foreground">({h.changedBy})</span>}
+            {h.changedBy && <span className="text-xs text-muted-foreground">({personName(h.changedBy)})</span>}
             {h.note && <span className="w-full text-xs text-muted-foreground">{h.note}</span>}
           </li>
         ))}

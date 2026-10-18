@@ -1,7 +1,9 @@
 /**
  * PersonSelect — a searchable drop-in for the trader <Select>: type a name in Russian, English or Uzbek Latin
  * («zokir», «Rakhmatullo», «Pfrbh» on the EN layout) and the list ranks people with the shared matcher.
- * Latin aliases (users.name_latin) are searched and shown as a hint. Same look and height as SelectTrigger.
+ * Options show the display name (personName: Latin in EN/UZ when set); the value stays the stored name. The other
+ * spelling (Latin alias in RU) is searched and shown as a hint only when it differs from the label. Same look and
+ * height as SelectTrigger.
  *
  *   <PersonSelect value={trader} onValueChange={setTrader} options={traders} allLabel="Все трейдеры" self={me} />
  */
@@ -13,7 +15,9 @@ import { cn } from "@/lib/utils";
 import { Highlight } from "./highlight";
 import { prepareQuery, rankPeople, usePeopleAliases } from "./search";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
+/** A stored name, or {value, label?, hint?}; a missing label (or one equal to the value) shows personName(value). */
 export type PersonOption = string | { value: string; label?: string; hint?: string };
 
 type Props = {
@@ -40,7 +44,11 @@ type Props = {
 
 type Opt = { value: string; label: string; hint?: string };
 
-const norm = (o: PersonOption): Opt => (typeof o === "string" ? { value: o, label: o } : { value: o.value, label: o.label ?? o.value, hint: o.hint });
+const norm = (o: PersonOption): Opt => {
+  if (typeof o === "string") return { value: o, label: personName(o) };
+  const label = !o.label || o.label === o.value ? personName(o.value) : o.label;
+  return { value: o.value, label, hint: o.hint };
+};
 
 export function PersonSelect({
   value, onValueChange, options, allLabel, allValue = "", icon: Icon, placeholder: placeholderProp, self, selfSuffix: selfSuffixProp, ariaLabel, className, contentClassName,
@@ -54,10 +62,19 @@ export function PersonSelect({
   const aliases = usePeopleAliases();
   const opts = React.useMemo(() => options.map(norm), [options]);
   const isAll = !value || value === allValue;
-  const current = !isAll && value ? opts.find((o) => o.value === value) ?? { value, label: value } : null;
+  const current = !isAll && value ? opts.find((o) => o.value === value) ?? { value, label: personName(value) } : null;
+  // label → the other spelling (the Latin alias in RU), only when it is not what the label already shows.
+  const altOf = React.useMemo(() => {
+    const m = new Map<string, string>();
+    for (const o of opts) {
+      const alias = aliases.get(o.value);
+      if (alias && alias !== o.label) m.set(o.label, alias);
+    }
+    return m;
+  }, [opts, aliases]);
 
   const pq = React.useMemo(() => prepareQuery(query), [query]);
-  const hits = React.useMemo(() => rankPeople(opts, pq, (o) => o.label, aliases, (o) => [o.value !== o.label ? o.value : null, o.hint]), [opts, pq, aliases]);
+  const hits = React.useMemo(() => rankPeople(opts, pq, (o) => o.label, altOf, (o) => [o.value !== o.label ? o.value : null, o.hint]), [opts, pq, altOf]);
 
   React.useEffect(() => { if (!open) setQuery(""); }, [open]);
 
@@ -88,7 +105,7 @@ export function PersonSelect({
           )}
         >
           {Icon && <Icon className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-          <span className={cn("min-w-0 flex-1 truncate text-left", !current && !allLabel && "text-muted-foreground")}>
+          <span className={cn("min-w-0 flex-1 truncate text-left", !current && !allLabel && "text-muted-foreground")} title={current ? labelOf(current) : undefined}>
             {current ? labelOf(current) : allLabel ?? placeholder}
           </span>
           <ChevronDown className="h-4 w-4 shrink-0 opacity-50" aria-hidden="true" />
@@ -114,10 +131,10 @@ export function PersonSelect({
               <Row value="__all" selected={isAll} onSelect={() => pick(allValue)}>{allLabel}</Row>
             )}
             {hits.map((h) => {
-              const alias = aliases.get(h.item.label);
+              const alias = altOf.get(h.item.label);
               return (
                 <Row key={h.item.value} value={`p:${h.item.value}`} selected={h.item.value === value} onSelect={() => pick(h.item.value)}>
-                  <span className="min-w-0 truncate">
+                  <span className="min-w-0 truncate" title={labelOf(h.item)}>
                     {h.field === 0 ? <Highlight text={labelOf(h.item)} ranges={h.ranges} /> : labelOf(h.item)}
                   </span>
                   {(alias || h.item.hint) && (

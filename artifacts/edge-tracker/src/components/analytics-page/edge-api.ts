@@ -10,6 +10,7 @@ import { riskMeQuery } from "@/lib/api/queries";
 import { signedR, netPnl, isOpen, horizonOf } from "@/lib/trade-math";
 import { fmtDateCustom, fmtWeekday, localeTag } from "@/lib/format";
 import { analyticsI18n } from "@/i18n/ns/analytics";
+import { comparePersonNames, personName } from "@/i18n";
 import { type AnalyticsFilters, NONE, periodRange, day, sortChrono } from "./metrics";
 import type { SimTrade } from "./edge-stats";
 
@@ -175,9 +176,9 @@ export function edgeKeyLabel(dim: EdgeDimension, key: string, tod: number): stri
   }
   if (dim === "horizon") return key === "intraday" || key === "overnight" || key === "swing" ? analyticsI18n.t(`horizon.${key}`) : key;
   if (dim === "month" && /^\d{4}-\d{2}$/.test(key)) return fmtDateCustom(`${key}-01`, { month: "short", year: "numeric" });
-  // Setup / ticker / trader / account names are user data — only the server's own bucket labels are translated.
+  // Setup / ticker / account names are user data — only the server's own bucket labels are translated; a trader shows by display name.
   const id = SERVER_KEYS[key];
-  return id ? keyIdLabel(id) : key;
+  return id ? keyIdLabel(id) : dim === "trader" ? personName(key) : key;
 }
 
 /* Fixed orders, as server keys (data). */
@@ -203,7 +204,7 @@ export function sortEdgeKeys(dim: EdgeDimension, keys: string[]): string[] {
     if (fixed) { const i = fixed.indexOf(k); return i < 0 ? fixed.length : i; }
     return isEmptyServerKey(k) ? 1 : 0;
   };
-  return [...keys].sort((a, b) => rank(a) - rank(b) || a.localeCompare(b, localeTag()));
+  return [...keys].sort((a, b) => rank(a) - rank(b) || (dim === "trader" ? comparePersonNames(a, b) : a.localeCompare(b, localeTag())));
 }
 
 /* ─── Trade → SimTrade ───────────────────────────────────────────────────── */

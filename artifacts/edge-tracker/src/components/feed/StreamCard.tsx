@@ -12,6 +12,7 @@ import { formatDayLong, relativeDayLabel } from "./feed-utils";
 import { fmtCount, fmtTimeNY } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { feedI18n } from "@/i18n/ns/feed";
+import { personName } from "@/i18n";
 
 const KIND_ICON: Record<FeedKind, LucideIcon> = {
   day_result: TrendingUp,
@@ -126,7 +127,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
       icon: prefix === "desk-day" ? Users : CalendarRange,
       tone: toneOf(sum) === "neutral" ? "accent" : toneOf(sum),
       title: t(prefix === "desk-day" ? "stream.deskDay" : "stream.deskWeek", { traders: commonI18n.t("units.traders", { count: n }) }),
-      subtitle: [priced.length ? t("stream.greenOf", { green, total: priced.length }) : null, top?.trader && top.value != null && top.value > 0 ? t("stream.best", { name: top.trader, value: fmtValue(top.value, "usd") ?? "" }) : null]
+      subtitle: [priced.length ? t("stream.greenOf", { green, total: priced.length }) : null, top?.trader && top.value != null && top.value > 0 ? t("stream.best", { name: personName(top.trader), value: fmtValue(top.value, "usd") ?? "" }) : null]
         .filter(Boolean).join(" · ") || null,
       value: sum,
       valueFmt: sum == null ? null : "usd",
@@ -136,7 +137,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     return { icon: Lightbulb, tone: "accent", title: t("stream.ideas", { count: n }), subtitle: tickers.length ? listShort(tickers) : null, value: null, valueFmt: null };
   }
   if (prefix === "playbook") {
-    const authors = uniq(items.map((i) => i.actor ?? i.trader));
+    const authors = uniq(items.map((i) => i.actor ?? i.trader)).map(personName);
     return {
       icon: BookOpen, tone: "neutral",
       title: t("stream.playbook", { count: n }),
@@ -151,7 +152,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     return { icon: Zap, tone: "neutral", title: t("stream.events", { events: commonI18n.t("units.events", { count: n }) }), subtitle: tickers.length ? listShort(tickers, 6) : null, value: null, valueFmt: null };
   }
   if (prefix === "ratings") {
-    const curators = uniq(items.map((i) => i.actor));
+    const curators = uniq(items.map((i) => i.actor)).map(personName);
     const scored = items.filter((i) => i.value != null);
     const avg = scored.length ? Math.round((scored.reduce((sum, i) => sum + (i.value ?? 0), 0) / scored.length) * 10) / 10 : null;
     return {
@@ -162,7 +163,7 @@ function summarize(group: string, items: StreamItem[]): GroupSummary {
     };
   }
   if (prefix === "reviews") {
-    const who = uniq(items.map((i) => i.actor));
+    const who = uniq(items.map((i) => i.actor)).map(personName);
     return { icon: MessageSquareText, tone: "accent", title: t("stream.reviews", { count: n }), subtitle: who.length ? listShort(who, 2) : null, value: null, valueFmt: null };
   }
   const first = items[0];

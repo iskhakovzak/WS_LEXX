@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { UndoToast } from "@/components/undo-toast";
 import { downloadCsv } from "@/components/admin/api";
-import { Highlight } from "@/components/people/highlight";
 import { PeopleSearchInput } from "@/components/people/people-search-input";
 import { PersonSelect } from "@/components/people/person-select";
 import { useAuth } from "@/contexts/auth-context";
@@ -47,7 +46,9 @@ import {
   type GroupFilters, type GroupKey, type GroupTotals, type SearchMark,
 } from "./group-model";
 import { TraderCard } from "./trader-card";
-import { fmtDate, fmtUsd, localeTag } from "@/lib/format";
+import { CuratorNameHL, LatinHintHL, TraderNameHL } from "./name-highlight";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { curatorI18n } from "@/i18n/ns/curator";
 import { commonI18n } from "@/i18n/ns/common";
 
@@ -60,7 +61,7 @@ const T = {
   get mineSuffix() { return t("group.mineSuffix"); },
   get noCurator() { return t("group.noCurator"); },
   groupOf: (c: string) => t("group.groupOf", { name: c }),
-  myGroupNamed: (c: string) => t("group.myGroupNamed", { name: c }),
+  myGroupNamed: (c: string) => t("group.myGroupNamed", { name: personName(c) }),
   get groupPicker() { return t("group.groupPicker"); },
   get risk() { return t("group.risk"); },
   get violations() { return t("group.violations"); },
@@ -111,8 +112,8 @@ const T = {
   get noTraders() { return t("group.noTraders"); },
   get noTradersHint() { return t("group.noTradersHint"); },
   actions: {
-    menu: (n: string) => t("group.actions.menu", { name: n }),
-    withName: (action: string, n: string) => t("group.actions.withName", { action, name: n }),
+    menu: (n: string) => t("group.actions.menu", { name: personName(n) }),
+    withName: (action: string, n: string) => t("group.actions.withName", { action, name: personName(n) }),
     get profile() { return t("profileLink"); },
     get journal() { return t("group.actions.journal"); },
     get day() { return t("group.actions.day"); },
@@ -120,14 +121,14 @@ const T = {
     get notes() { return t("group.actions.notes"); },
     get discussions() { return t("group.actions.discussions"); },
     get move() { return t("group.actions.move"); },
-    moveTitle: (who: string, to: string | null) => (to ? t("group.actions.moveTitleTo", { name: who, to }) : t("group.actions.moveTitleOut", { name: who })),
-    moveDesc: (from: string | null) => (from ? t("group.actions.moveDescFrom", { from }) : t("group.actions.moveDescNone")),
+    moveTitle: (who: string, to: string | null) => (to ? t("group.actions.moveTitleTo", { name: personName(who), to: personName(to) }) : t("group.actions.moveTitleOut", { name: personName(who) })),
+    moveDesc: (from: string | null) => (from ? t("group.actions.moveDescFrom", { from: personName(from) }) : t("group.actions.moveDescNone")),
     get reason() { return t("group.actions.reason"); },
     get reasonDefault() { return t("group.actions.reasonDefault"); },
     get confirm() { return t("group.actions.confirm"); },
     get moving() { return t("group.actions.moving"); },
-    moved: (who: string) => who,
-    movedText: (to: string | null) => (to ? t("group.actions.movedTo", { to }) : t("group.actions.movedOut")),
+    moved: (who: string) => personName(who),
+    movedText: (to: string | null) => (to ? t("group.actions.movedTo", { to: personName(to) }) : t("group.actions.movedOut")),
     get undoReason() { return t("group.actions.undoReason"); },
     get failed() { return t("group.actions.failed"); },
     get noAccount() { return t("group.actions.noAccount"); },
@@ -162,7 +163,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
 
   const myCount = React.useMemo(() => traders.filter((s) => s.curator === me).length, [traders, me]);
   const curators = React.useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && (u.role === "curator" || u.role === "admin")).map((u) => u.name).sort((a, b) => a.localeCompare(b, localeTag())),
+    () => dbUsers.filter((u) => u.active && !u.banned && (u.role === "curator" || u.role === "admin")).map((u) => u.name).sort(comparePersonNames),
     [dbUsers],
   );
   const groupCounts = React.useMemo(() => {
@@ -244,11 +245,11 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
 
   const exportCsv = () => downloadCsv(csvHead(), shown.map(csvRow), `group-${group === ALL_GROUPS ? "all" : group === NO_CURATOR ? "none" : group}-${date}.csv`);
 
-  const groupLabel = (k: GroupKey) => (k === ALL_GROUPS ? T.allGroups : k === NO_CURATOR ? T.noCurator : k === me ? T.myGroupNamed(k) : k);
+  const groupLabel = (k: GroupKey) => (k === ALL_GROUPS ? T.allGroups : k === NO_CURATOR ? T.noCurator : k === me ? T.myGroupNamed(k) : personName(k));
   const groupOptions = [
     ...[...new Set([...curators, ...[...groupCounts.keys()].filter((k) => k !== NO_CURATOR)])]
-      .sort((a, b) => (a === me ? -1 : b === me ? 1 : a.localeCompare(b, localeTag())))
-      .map((c) => ({ value: c, label: c, hint: String(groupCounts.get(c) ?? 0) })),
+      .sort((a, b) => (a === me ? -1 : b === me ? 1 : comparePersonNames(a, b)))
+      .map((c) => ({ value: c, label: personName(c), hint: String(groupCounts.get(c) ?? 0) })),
     { value: NO_CURATOR, label: T.noCurator, hint: String(groupCounts.get(NO_CURATOR) ?? 0) },
   ];
 
@@ -359,7 +360,7 @@ export function GroupView({ traders, date, group: groupParam, onGroupChange, onO
                 <TraderCard
                   key={s.trader}
                   s={s}
-                  title={<Highlight text={s.trader} ranges={searched.marks.get(s.trader)?.field === 0 ? searched.marks.get(s.trader)?.ranges : null} />}
+                  title={<TraderNameHL s={s} mark={searched.marks.get(s.trader)} />}
                   showPatterns={patterns === "on"}
                   patterns={topPatterns.data?.[s.trader] ?? null}
                   patternsLoading={topPatterns.isLoading}
@@ -472,7 +473,7 @@ function AllGroups({
       {visible.map((g) => {
         const open = isOpen(g.key);
         const totals = groupTotals(g.traders, row.date, idleDays);
-        const label = g.curator ?? T.noCurator;
+        const label = g.curator ? personName(g.curator) : T.noCurator;
         return (
           <section key={g.key} className="glass-panel min-w-0 overflow-hidden rounded-2xl" aria-label={T.groupOf(label)}>
             <header className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 px-[var(--panel-p)] py-2.5">
@@ -484,7 +485,7 @@ function AllGroups({
                 className="flex min-w-0 items-center gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
               >
                 {open ? <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" /> : <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />}
-                <span className={cn("truncate text-sm font-semibold", g.curator ? "text-foreground" : "text-warn")}>{label}</span>
+                <span className={cn("truncate text-sm font-semibold", g.curator ? "text-foreground" : "text-warn")} title={label}>{label}</span>
                 {g.curator === me && <Pill tone="accent">{T.myGroupBadge}</Pill>}
                 {narrowed && <span className="text-xs tabular-nums text-muted-foreground">{T.shown(g.traders.length, sizes.get(g.key) ?? 0)}</span>}
               </button>
@@ -503,7 +504,7 @@ function AllGroups({
           {emptyCurators.map((c, i) => (
             <React.Fragment key={c}>
               {i > 0 && ", "}
-              <button type="button" className="rounded text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenGroup(c)}>{c}</button>
+              <button type="button" className="rounded text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" onClick={() => onOpenGroup(c)}>{personName(c)}</button>
             </React.Fragment>
           ))}
         </p>
@@ -566,16 +567,14 @@ const GroupRow = React.memo(function GroupRow({ s, showCurator, row }: { s: Trad
       <td className="max-w-[16rem]">
         <button type="button" onClick={() => row.onOpenTrader(s.trader)} className="block min-w-0 max-w-full rounded text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={T.actions.withName(T.actions.profile, s.trader)}>
           <span className="block truncate font-medium text-foreground hover:text-primary">
-            <Highlight text={s.trader} ranges={mark?.field === 0 ? mark.ranges : null} />
+            <TraderNameHL s={s} mark={mark} />
           </span>
-          {s.nameLatin && (
-            <span className="block truncate text-2xs text-muted-foreground"><Highlight text={s.nameLatin} ranges={mark?.field === 1 ? mark.ranges : null} /></span>
-          )}
+          <LatinHintHL s={s} mark={mark} />
         </button>
       </td>
       {showCurator && (
         <td className="whitespace-nowrap">
-          {s.curator ? <Highlight text={s.curator} ranges={mark?.field === 2 ? mark.ranges : null} /> : <span className="text-warn">{T.noCurator}</span>}
+          {s.curator ? <CuratorNameHL name={s.curator} mark={mark} /> : <span className="text-warn">{T.noCurator}</span>}
         </td>
       )}
       <td className="whitespace-nowrap">
@@ -629,7 +628,7 @@ function RowMenu({ s, row }: { s: TraderSignal; row: RowCommon }) {
         <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={T.actions.menu(s.trader)}><MoreHorizontal /></Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-60">
-        <DropdownMenuLabel className="text-xs text-muted-foreground">{s.trader}</DropdownMenuLabel>
+        <DropdownMenuLabel className="text-xs text-muted-foreground">{personName(s.trader)}</DropdownMenuLabel>
         <DropdownMenuItem onSelect={() => row.onOpenTrader(s.trader)}><UserRound /> {T.actions.profile}</DropdownMenuItem>
         <DropdownMenuItem asChild><Link href={`/journal?trader=${enc}`}><BookText /> {T.actions.journal}</Link></DropdownMenuItem>
         <DropdownMenuItem asChild><Link href={`/day-report?trader=${enc}`}><ClipboardList /> {T.actions.day}</Link></DropdownMenuItem>
@@ -643,7 +642,7 @@ function RowMenu({ s, row }: { s: TraderSignal; row: RowCommon }) {
             <DropdownMenuSub>
               <DropdownMenuSubTrigger><UserRoundCog /> {T.actions.move}</DropdownMenuSubTrigger>
               <DropdownMenuSubContent className="max-h-[min(60dvh,24rem)] overflow-y-auto">
-                {targets.map((c) => <DropdownMenuItem key={c} onSelect={() => row.onMove(s, c)}>{c}</DropdownMenuItem>)}
+                {targets.map((c) => <DropdownMenuItem key={c} onSelect={() => row.onMove(s, c)}>{personName(c)}</DropdownMenuItem>)}
                 {s.curator && (
                   <>
                     {targets.length > 0 && <DropdownMenuSeparator />}

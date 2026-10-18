@@ -10,6 +10,7 @@ import { stageLabel, type Audience, type AudienceMember, type AudienceStage } fr
 import { commonI18n } from "@/i18n/ns/common";
 import { notesI18n } from "@/i18n/ns/notes";
 import { rich, slots } from "@/i18n/rich";
+import { personName, personInitials } from "@/i18n";
 
 const STAGE_TONE: Record<AudienceStage, Tone> = { trainee: "warn", junior: "accent", trader: "neutral", senior: "purple" };
 
@@ -29,9 +30,9 @@ function MemberRow({ m }: { m: AudienceMember }) {
         )}
         aria-hidden="true"
       >
-        {m.name.slice(0, 1).toUpperCase()}
+        {personInitials(m.name).slice(0, 1)}
       </span>
-      <span className="min-w-0 flex-1 truncate text-sm">{m.name}</span>
+      <span className="min-w-0 flex-1 truncate text-sm" title={personName(m.name)}>{personName(m.name)}</span>
       <MemberBadge m={m} />
       {m.readAt && (
         <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -68,7 +69,7 @@ export function AuthorAudience({
 
   const copyUnread = async () => {
     try {
-      await navigator.clipboard.writeText(unread.map((m) => m.name).join(", "));
+      await navigator.clipboard.writeText(unread.map((m) => personName(m.name)).join(", "));
       toast({ title: t("author.audience.copied"), description: t("author.audience.copiedDesc") });
     } catch {
       toast({ title: tc("states.copyFailed"), variant: "destructive" });

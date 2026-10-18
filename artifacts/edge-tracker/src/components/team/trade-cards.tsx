@@ -14,6 +14,7 @@ import { fmtR, fmtUsd } from "@/lib/format";
 import { setupOf } from "./leaderboard";
 import { teamI18n } from "@/i18n/ns/team";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export function ResultPill({ result }: { result: string }) {
   const tone = result === "win" ? "up" : result === "loss" ? "down" : result === "open" ? "accent" : "neutral";
@@ -70,7 +71,7 @@ export function BestTradeCard({
       type="button"
       onClick={() => onOpen(trade)}
       className="glass-panel lift group flex min-w-0 flex-col overflow-hidden rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      aria-label={t("card.openAria", { ticker: trade.ticker, r: fmtR(r), trader: trade.trader ?? "" })}
+      aria-label={t("card.openAria", { ticker: trade.ticker, r: fmtR(r), trader: personName(trade.trader) })}
     >
       <div className="relative aspect-[16/9] w-full overflow-hidden border-b border-border">
         <ScreenshotThumb url={shot} alt={t("card.chartAlt", { ticker: trade.ticker })} className="h-full w-full" />
@@ -90,7 +91,7 @@ export function BestTradeCard({
         <div className="mt-auto flex items-center justify-between gap-2 text-xs">
           <span className="flex min-w-0 items-center gap-1.5">
             <TraderAvatar name={trade.trader} size="xs" />
-            <span className="truncate">{trade.trader ?? "—"}</span>
+            <span className="truncate">{trade.trader ? personName(trade.trader) : "—"}</span>
           </span>
           <span className={cn("tabular-nums", toneText(toneOf(net)))} title={net != null ? `${KPI_FORMULAS.netPnl}` : undefined}>
             {net != null ? t("netSuffix", { value: fmtUsd(net, { signed: true }) }) : closeDate(trade) ?? trade.date}
@@ -124,7 +125,7 @@ export function TradeDetailSheet({ trade, onClose }: { trade: Trade | null; onCl
               </SheetTitle>
               <SheetDescription className="flex items-center gap-2">
                 <TraderAvatar name={trade.trader} size="xs" />
-                {trade.trader ?? "—"} · {trade.date}
+                {trade.trader ? personName(trade.trader) : "—"} · {trade.date}
                 {trade.exitDate && trade.exitDate !== trade.date ? ` → ${trade.exitDate}` : ""} · {setupOf(trade)}
               </SheetDescription>
             </SheetHeader>

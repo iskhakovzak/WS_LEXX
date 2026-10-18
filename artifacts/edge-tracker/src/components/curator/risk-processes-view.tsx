@@ -13,6 +13,7 @@ import { BreachReviewPanel } from "./breach-review";
 import { TemplateDialog } from "./template-dialog";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 
 /**
  * «Риск-процессы»: daily risk summary (GET /api/risk/summary), tier limit templates with bulk apply
@@ -69,14 +70,14 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
               {s.repeatBreachers.map((r) => (
                 <li key={`rep-${r.trader}`} className="flex items-center gap-2 text-sm">
                   <Pill tone="warn">{t("risk.repeat")}</Pill>
-                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button>
+                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button>
                   <span className="min-w-0 flex-1 truncate text-xs tabular-nums text-muted-foreground">{t("risk.repeatDays", { count: r.days7, dates: r.dates.map((d) => fmtDate(d, "dayMonth")).join(", ") })}</span>
                 </li>
               ))}
               {s.unreviewedBreaches.slice(0, 8).map((b) => (
                 <li key={`b-${b.id}`} className="flex items-center gap-2 text-sm">
                   <Pill tone="down" dot>{b.kindLabel}</Pill>
-                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(b.trader, "risk")}>{b.trader}</button>
+                  <button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(b.trader, "risk")}>{personName(b.trader)}</button>
                   <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{fmtDate(b.date, "dayMonth")} · {t("risk.needsReview")}</span>
                 </li>
               ))}
@@ -90,7 +91,7 @@ function SummaryBlock({ s, onOpenTrader }: { s: RiskSummary; onOpenTrader: (trad
               <ul className="flex flex-col gap-1.5">
                 {s.overnight.map((o) => (
                   <li key={o.trader} className="flex items-center gap-2 text-sm">
-                    <button type="button" className="w-28 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(o.trader, "risk")}>{o.trader}</button>
+                    <button type="button" className="w-28 truncate text-left font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(o.trader, "risk")} title={personName(o.trader)}>{personName(o.trader)}</button>
                     <span className="text-xs tabular-nums text-muted-foreground">{t("risk.overnightPositions", { count: o.positions, amount: fmtUsd(o.exposureUsd, { decimals: 0 }) })}{o.limitUsd != null ? t("risk.ofLimit", { limit: fmtUsd(o.limitUsd, { decimals: 0 }) }) : ""}</span>
                     <span className="ml-auto">{o.allowed === false ? <Pill tone="down">{t("risk.notAllowed")}</Pill> : o.allowed ? <Pill tone="up">{t("risk.allowed")}</Pill> : <Pill tone="neutral">{t("risk.noLimits")}</Pill>}</span>
                   </li>
@@ -108,7 +109,7 @@ type TemplateRow = TemplatesPayload["traders"][number];
 const TIER_ORDER: Record<string, number> = { trainee: 0, junior: 1, trader: 2, senior: 3 };
 /** Проблемные строки (нет лимитов → нет тира → расхождение) поднимаются наверх при сортировке по возрастанию. */
 const TEMPLATE_ACCESSORS = {
-  trader: (r: TemplateRow) => r.trader,
+  trader: (r: TemplateRow) => personName(r.trader),
   tier: (r: TemplateRow) => (r.tier ? TIER_ORDER[r.tier] ?? 9 : null),
   daily: (r: TemplateRow) => r.limits?.dailyLossLimit ?? null,
   weekly: (r: TemplateRow) => r.limits?.weeklyLossLimit ?? null,
@@ -176,9 +177,9 @@ function TemplatesBlock({ t, onOpenTrader }: { t: TemplatesPayload; onOpenTrader
                 {rows.map((r) => (
                   <tr key={r.trader} className={cn(selected.has(r.trader) && "bg-primary/5")}>
                     {t.canEdit && (
-                      <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={tr("risk.selectOne", { name: r.trader })} /></td>
+                      <td><Checkbox checked={selected.has(r.trader)} onCheckedChange={() => toggle(r.trader)} aria-label={tr("risk.selectOne", { name: personName(r.trader) })} /></td>
                     )}
-                    <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{r.trader}</button></td>
+                    <td><button type="button" className="font-medium text-foreground hover:text-primary" onClick={() => onOpenTrader(r.trader, "risk")}>{personName(r.trader)}</button></td>
                     <td className="text-muted-foreground">{r.tierName ?? "—"}</td>
                     <td className="text-right">{fmtUsd(r.limits?.dailyLossLimit, { decimals: 0 })}</td>
                     <td className="text-right">{fmtUsd(r.limits?.weeklyLossLimit, { decimals: 0 })}</td>

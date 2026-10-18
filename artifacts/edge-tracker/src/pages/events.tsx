@@ -32,6 +32,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { eventsI18n } from "@/i18n/ns/events";
 import { commonI18n } from "@/i18n/ns/common";
 
+import { personName, comparePersonNames } from "@/i18n";
 type View = "today" | "week" | "edge";
 const VIEWS: View[] = ["today", "week", "edge"];
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
@@ -62,7 +63,7 @@ export default function Events() {
   const [traderPick, setTraderPick] = useState<string>(() => user?.traderName ?? DESK);
   const trader = isStaff ? (traderPick === DESK ? null : traderPick) : (user?.traderName ?? null);
   const traderOptions = useMemo(
-    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort((a, b) => a.localeCompare(b, "ru")),
+    () => dbUsers.filter((u) => u.active && !u.banned && u.role !== "guest").map((u) => u.name).sort(comparePersonNames),
     [dbUsers],
   );
 
@@ -214,7 +215,7 @@ export default function Events() {
   ];
 
   const tradesError = data.trades.isError;
-  const scopeLabel = trader ?? t("page.wholeDesk");
+  const scopeLabel = trader ? personName(trader) : t("page.wholeDesk");
 
   return (
     <Page>

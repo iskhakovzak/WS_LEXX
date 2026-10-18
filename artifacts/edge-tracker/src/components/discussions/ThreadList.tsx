@@ -8,11 +8,12 @@ import {
   isPinned, isResolved, relTime, absTime, initials, avatarTone, parseComment, splitNotes, isLiveNow,
 } from "./lib";
 import { discussionsI18n } from "@/i18n/ns/discussions";
+import { personName } from "@/i18n";
 
 export function Avatar({ name, size = "sm", className }: { name?: string | null; size?: "xs" | "sm" | "md"; className?: string }) {
   const dim = size === "xs" ? "h-6 w-6 text-2xs" : size === "sm" ? "h-7 w-7 text-2xs" : "h-8 w-8 text-xs";
   return (
-    <span title={name ?? undefined} aria-hidden="true" className={cn("inline-grid shrink-0 place-items-center rounded-full font-semibold ring-2 ring-background", dim, avatarTone(name), className)}>
+    <span title={personName(name) || undefined} aria-hidden="true" className={cn("inline-grid shrink-0 place-items-center rounded-full font-semibold ring-2 ring-background", dim, avatarTone(name), className)}>
       {initials(name)}
     </span>
   );
@@ -84,12 +85,12 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
         </div>
         {pv.text && (
           <div className="mt-0.5 truncate pl-2 text-xs text-muted-foreground">
-            {pv.who && <span className="text-foreground/80">{pv.who}: </span>}
+            {pv.who && <span className="text-foreground/80">{personName(pv.who)}: </span>}
             <Highlight text={pv.text} q={q} />
           </div>
         )}
         <div className="mt-1.5 flex items-center gap-3 pl-2 text-xs text-muted-foreground">
-          <span className="flex -space-x-1.5" aria-label={tr("list.participantsAria", { names: people.join(", ") })}>
+          <span className="flex -space-x-1.5" aria-label={tr("list.participantsAria", { names: people.map(personName).join(", ") })}>
             {people.slice(0, 4).map((p) => <Avatar key={p} name={p} size="xs" />)}
             {people.length > 4 && <span className="grid h-6 w-6 place-items-center rounded-full bg-[var(--glass-bg)] text-2xs">+{people.length - 4}</span>}
           </span>
@@ -99,7 +100,7 @@ export function ThreadListItem({ t, selected, unread, mentionsMe, fresh = false,
           <span className="inline-flex items-center gap-1 tabular-nums" aria-label={tr("list.repliesAria", { count: replies })}>
             <MessageSquare className="h-3.5 w-3.5" aria-hidden="true" />{replies}
           </span>
-          {lastActivityBy(t) && <span className="ml-auto truncate">{lastActivityBy(t)}</span>}
+          {lastActivityBy(t) && <span className="ml-auto truncate">{personName(lastActivityBy(t))}</span>}
         </div>
       </button>
     </li>

@@ -14,6 +14,7 @@ import { fmtVal, heatClass } from "./pro-format";
 import { fmtDate, fmtWeekday } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
+import { personName } from "@/i18n";
 
 const tp = analyticsProI18n.t;
 
@@ -440,7 +441,7 @@ function DayDetail({
                   </Pill>
                 )}
                 <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                  {[time, t.setup, t.trader].filter(Boolean).join(" · ")}
+                  {[time, t.setup, personName(t.trader)].filter(Boolean).join(" · ")}
                 </span>
                 <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(v)))}>{fmtVal(metric, v, { sign: true })}</span>
                 <Link

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { simI18n } from "@/i18n/ns/simulator";
 import { boardQuery, myStatsQuery, simApi, simKeys, type Difficulty, type FinishedGame, type SimMode, type Snapshot } from "./api";
 
+import { personName } from "@/i18n";
 const LEVELS: Difficulty[] = ["easy", "medium", "hard"];
 const PLAY_BARS: Record<SimMode, Record<Difficulty, number>> = {
   intraday: { easy: 78, medium: 90, hard: 180 },
@@ -212,7 +213,7 @@ export function WeeklyBoard() {
                 {b.rows.map((r, i) => (
                   <tr key={r.userId} className={cn(r.me && "bg-primary/[0.07]")}>
                     <td className="tabular-nums text-muted-foreground">{i + 1}</td>
-                    <td className="max-w-[12rem] truncate font-medium" title={r.name}>{r.name}{r.me && <span className="ml-1.5 text-2xs font-normal text-muted-foreground">{t("board.you")}</span>}</td>
+                    <td className="max-w-[12rem] truncate font-medium" title={personName(r.name)}>{personName(r.name)}{r.me && <span className="ml-1.5 text-2xs font-normal text-muted-foreground">{t("board.you")}</span>}</td>
                     <td className="text-right tabular-nums">{fmtCount(r.games)}</td>
                     <td className={cn("text-right font-semibold tabular-nums", toneText(toneOf(r.r)))}>{fmtR(r.r)}</td>
                     <td className="text-right tabular-nums">{fmtRate(r.games ? r.wins / r.games : 0)}</td>

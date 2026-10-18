@@ -7,9 +7,10 @@ import { useEodStatus, type EodStatus } from "@/components/eod/eod-api";
 import { MOOD_LABELS } from "./vocab";
 import { type JournalEntry, hasReview } from "./use-journal-days";
 import { netPnl, type Trade } from "./utils";
-import { fmtDate, fmtUsd, localeTag } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
+import { comparePersonNames, personName } from "@/i18n";
 
 type TradeLike = Trade;
 
@@ -59,7 +60,7 @@ export function TeamDay({
     }
     for (const e of entries) get(e.trader).entry = e;
     const rank = (r: Row) => (r.trades > 0 && r.status !== "closed" && r.status !== "reviewed" ? 0 : r.status === "closed" ? 1 : 2);
-    return Array.from(m.values()).sort((a, b) => rank(a) - rank(b) || a.trader.localeCompare(b.trader, localeTag()));
+    return Array.from(m.values()).sort((a, b) => rank(a) - rank(b) || comparePersonNames(a.trader, b.trader));
   }, [trades, statusQ.data, entries]);
 
   const notClosed = rows.filter((r) => r.trades > 0 && (r.status === "open" || r.status == null)).length;
@@ -93,7 +94,7 @@ export function TeamDay({
                   onClick={() => onPick(r.trader)}
                   className="tile tile-interactive grid w-full grid-cols-[minmax(0,9rem)_minmax(0,6rem)_minmax(0,1fr)_auto] items-center gap-3 px-3 py-2.5 text-left text-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
-                  <span className="truncate text-sm font-semibold">{r.trader}</span>
+                  <span className="truncate text-sm font-semibold" title={personName(r.trader)}>{personName(r.trader)}</span>
                   <span className="tabular-nums">
                     {r.trades > 0 ? (
                       <>

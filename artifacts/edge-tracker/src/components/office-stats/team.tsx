@@ -25,13 +25,14 @@ import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people
 import { fmtCount, fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { officeI18n } from "@/i18n/ns/officeStats";
+import { personName } from "@/i18n";
 
 /** Columns that only fit from ~1400px (the sparkline): hidden on a 1280 screen so the table needs no sideways scroll. */
 const WIDE_ONLY = "hidden min-[1400px]:table-cell";
 
 type TraderKey = "trader" | "net" | "share" | "trades" | "winRate" | "profitFactor" | "consistency" | "volume" | "maxDrawdown";
 const TRADER_ACCESSORS: Record<TraderKey, (r: TraderRow) => number | string | null> = {
-  trader: (r) => r.trader,
+  trader: (r) => personName(r.trader),
   net: (r) => r.net,
   share: (r) => r.share,
   trades: (r) => r.trades,
@@ -62,7 +63,7 @@ export function TradersTable({ view, unit, periodLabel }: { view: OfficeView; un
     downloadCsv(`office-traders-${view.period.from}_${view.period.to}-${unit}.csv`, [
       [t("cols.trader"), t("cols.netUnit", { unit: u }), t("cols.netShare"), t("cols.trades"), "WR", "PF", t("cols.greenDays"), t("cols.volume"), t("cols.volShare"), t("cols.maxDdUnit", { unit: u }),
         t("cols.bestDay"), t("cols.bestDayUnit", { unit: u }), t("cols.worstDay"), t("cols.worstDayUnit", { unit: u }), t("cols.topStrategy")],
-      ...sorted.map((r) => [r.trader, r.net, r.share, r.trades, r.winRate, r.profitFactor, r.consistency, r.volume, r.volumeShare, r.maxDrawdown,
+      ...sorted.map((r) => [personName(r.trader), r.net, r.share, r.trades, r.winRate, r.profitFactor, r.consistency, r.volume, r.volumeShare, r.maxDrawdown,
         r.bestDay?.date, r.bestDay?.v, r.worstDay?.date, r.worstDay?.v, r.topStrategy]),
     ]);
   };
@@ -102,9 +103,9 @@ export function TradersTable({ view, unit, periodLabel }: { view: OfficeView; un
               {sorted.map((r) => (
                 <tr key={r.trader}>
                   <td className="whitespace-nowrap font-medium">
-                    <Link href={profileHref(r.trader)} className="rounded text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t("team.profile", { name: r.trader })}>{r.trader}</Link>
+                    <Link href={profileHref(r.trader)} className="rounded text-foreground hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" title={t("team.profile", { name: personName(r.trader) })}>{personName(r.trader)}</Link>
                   </td>
-                  <td className={cn("!px-1.5", WIDE_ONLY)}><Sparkline data={r.spark} width={64} height={22} baseline={0} ariaLabel={t("team.curveOf", { name: r.trader })} /></td>
+                  <td className={cn("!px-1.5", WIDE_ONLY)}><Sparkline data={r.spark} width={64} height={22} baseline={0} ariaLabel={t("team.curveOf", { name: personName(r.trader) })} /></td>
                   <td className={cn("whitespace-nowrap text-right font-semibold", r.net >= 0 ? "text-up" : "text-down")}>{fmtV(r.net, unit)}</td>
                   <td className={cn("text-right font-medium", r.share != null && r.share < 0 && "text-down")}>{fmtShare(r.share)}</td>
                   <td className="text-right">{fmtCount(r.trades)}</td>
@@ -193,7 +194,7 @@ function CapitalRow({ s, onSaved }: { s: AdminSetting; onSaved: () => void }) {
           <span className="text-destructive">{t("capital.capitalInvalid")}</span>
         ) : null}
         {!goalValid && <span className="text-destructive">{t("capital.goalInvalid")}</span>}
-        {s.updatedBy && <span>{t("capital.changedBy", { name: s.updatedBy })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "short")}` : ""}</span>}
+        {s.updatedBy && <span>{t("capital.changedBy", { name: personName(s.updatedBy) })}{s.updatedAt ? ` · ${fmtDate(s.updatedAt, "short")}` : ""}</span>}
       </p>
     </form>
   );
@@ -237,7 +238,7 @@ export function exportCsv(data: AdminResponse, unit: Unit) {
   for (const s of view.period.strategies) row(s.key, s.trades, s.winRate, s.profitFactor, s.avgR, s.net, s.netShare, s.volumeShare, s.volume);
   row();
   row(t("csv.traders")); row(t("cols.trader"), t("cols.trades"), t("cols.netUnit", { unit: u }), t("cols.share"), "WR", "PF", t("cols.greenDays"), t("cols.volume"), t("cols.maxDdUnit", { unit: u }), t("cols.strategy"));
-  for (const r of view.period.traders ?? []) row(r.trader, r.trades, r.net, r.share, r.winRate, r.profitFactor, r.consistency, r.volume, r.maxDrawdown, r.topStrategy);
+  for (const r of view.period.traders ?? []) row(personName(r.trader), r.trades, r.net, r.share, r.winRate, r.profitFactor, r.consistency, r.volume, r.maxDrawdown, r.topStrategy);
   row();
   row(t("csv.months")); row(t("cols.year"), t("cols.month"), t("cols.netUnit", { unit: u }), t("cols.days"), t("cols.green"), t("cols.red"));
   for (const y of view.years) for (const m of y.months) if (m.days) row(y.year, m.month, m.v, m.days, m.green, m.red);

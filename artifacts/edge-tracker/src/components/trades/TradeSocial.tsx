@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { fmtDate } from "@/lib/format";
 import { tradesI18n } from "@/i18n/ns/trades";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type Reaction = { id: number; tradeId: number; trader: string; reactionType: string };
 type Review = { id: number; tradeId: number; curator: string; comment: string; rating?: string; createdAt: string };
@@ -112,7 +113,7 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
           {hasLiked ? t("social.liked") : t("social.like")}
           {reactions.length > 0 && <span className="tabular-nums opacity-80">{reactions.length}</span>}
         </button>
-        {reactions.length > 0 && <span className="text-xs text-muted-foreground">{reactions.map((r) => r.trader).join(", ")}</span>}
+        {reactions.length > 0 && <span className="text-xs text-muted-foreground">{reactions.map((r) => personName(r.trader)).join(", ")}</span>}
       </div>
 
       {showReviews && (
@@ -124,7 +125,7 @@ export function TradeSocial({ tradeId, traderName, isCurator, onCount, showRevie
             reviews.map((r) => (
               <div key={r.id} className="rounded-xl border border-border/70 bg-[var(--glass-bg)] p-3 shadow-[inset_3px_0_0_hsl(var(--chart-5))]">
                 <div className="mb-1 flex flex-wrap items-center gap-2 text-xs">
-                  <span className="inline-flex items-center gap-1 font-semibold text-[hsl(var(--chart-5))]"><Shield className="h-3 w-3" aria-hidden="true" />{r.curator}</span>
+                  <span className="inline-flex items-center gap-1 font-semibold text-[hsl(var(--chart-5))]"><Shield className="h-3 w-3" aria-hidden="true" />{personName(r.curator)}</span>
                   {r.rating && <Pill tone={RATING[r.rating]?.tone ?? "neutral"}>{RATING[r.rating]?.label ?? r.rating}</Pill>}
                   <span className="tabular-nums text-muted-foreground">{fmtDate(r.createdAt.substring(0, 10), "short")}</span>
                   {r.curator === traderName && (

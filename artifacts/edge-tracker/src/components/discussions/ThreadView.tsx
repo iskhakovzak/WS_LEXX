@@ -35,6 +35,7 @@ import {
 import { rankPeople, usePeopleAliases } from "@/components/people/search";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type StatusChoice = PositionStatus | "none";
 
@@ -80,9 +81,9 @@ function CommentItem({
       <Avatar name={c.trader} size={compact ? "sm" : "md"} className="mt-0.5" />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold text-foreground">{c.trader ?? tc("roles.guest")}</span>
+          <span className="text-sm font-semibold text-foreground">{c.trader ? personName(c.trader) : tc("roles.guest")}</span>
           {parsed.status && <Pill tone={STATUS_TONE[parsed.status]} dot className="py-0 text-2xs">{STATUS_LABELS[parsed.status]}</Pill>}
-          {replyToAuthor && <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><CornerDownRight className="h-3 w-3" aria-hidden="true" />{replyToAuthor}</span>}
+          {replyToAuthor && <span className="inline-flex items-center gap-0.5 text-xs text-muted-foreground"><CornerDownRight className="h-3 w-3" aria-hidden="true" />{personName(replyToAuthor)}</span>}
           <span className="text-xs text-muted-foreground tabular-nums" title={absTime(c.createdAt)}>{pending ? t("thread.sending") : relTime(c.createdAt)}</span>
           {isNew && <Pill tone="accent" className="py-0 text-2xs">{t("thread.new")}</Pill>}
           {accepted && <Pill tone="up" className="py-0 text-2xs"><Award className="h-3 w-3" aria-hidden="true" />{t("thread.accepted")}</Pill>}
@@ -377,7 +378,7 @@ export function ThreadView({
             </div>
             <h2 className="mt-1.5 text-lg font-semibold leading-snug tracking-tight text-foreground sm:text-xl">{thread.topic}</h2>
             <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ?? tc("roles.guest")}</span>
+              <span className="inline-flex items-center gap-1.5"><Avatar name={thread.trader} size="xs" />{thread.trader ? personName(thread.trader) : tc("roles.guest")}</span>
               <span title={absTime(thread.createdAt)}>{relTime(thread.createdAt)}</span>
               <span>· {t("thread.replies", { count: comments.length })}</span>
             </div>
@@ -443,7 +444,7 @@ export function ThreadView({
                     <Pill tone={STATUS_TONE[s]} dot className="py-0 text-2xs">{STATUS_LABELS[s]}</Pill>
                     <span className="tabular-nums text-muted-foreground">{positions[s].length}</span>
                   </div>
-                  <div className="mt-1 truncate text-xs text-foreground/80" title={positions[s].join(", ")}>{positions[s].join(", ") || "—"}</div>
+                  <div className="mt-1 truncate text-xs text-foreground/80" title={positions[s].map(personName).join(", ")}>{positions[s].map(personName).join(", ") || "—"}</div>
                 </div>
               ))}
             </div>
@@ -496,7 +497,7 @@ export function ThreadView({
           {replyTo && (
             <div className="mb-2 flex items-center gap-2 rounded-xl bg-primary/10 px-3 py-1.5 text-xs">
               <Reply className="h-3.5 w-3.5 shrink-0 text-primary" aria-hidden="true" />
-              <span className="min-w-0 flex-1 truncate">{t("thread.replyTo", { name: replyTo.trader ?? tc("roles.guest"), preview: plainPreview(parseBody(replyTo.text), 80) })}</span>
+              <span className="min-w-0 flex-1 truncate">{t("thread.replyTo", { name: replyTo.trader ? personName(replyTo.trader) : tc("roles.guest"), preview: plainPreview(parseBody(replyTo.text), 80) })}</span>
               <button type="button" aria-label={t("thread.cancelReply")} onClick={() => setReplyTo(null)} className="grid h-7 w-7 place-items-center rounded-full hover:bg-[var(--glass-hover-bg)]"><X className="h-3.5 w-3.5" /></button>
             </div>
           )}
@@ -525,9 +526,10 @@ export function ThreadView({
                   aria-selected={n === activeMention}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => insertMention(n)}
+                  title={personName(n) !== n ? `@${n}` : undefined}
                   className={cn("chip inline-flex min-h-7 items-center gap-1.5 px-2.5 text-xs", n === activeMention && "!border-primary/50 !bg-primary/15 text-foreground")}
                 >
-                  <Avatar name={n} size="xs" />@{n}
+                  <Avatar name={n} size="xs" />@{personName(n)}
                 </button>
               ))}
             </div>

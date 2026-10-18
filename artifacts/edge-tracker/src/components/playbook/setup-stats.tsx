@@ -18,6 +18,7 @@ import { fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
+import { personName } from "@/i18n";
 const et = playbookExamplesI18n.t; // called at render time only
 const slotLabel = (s: string) => (s === "pre" ? et("stats.slotPre") : s === "post" ? et("stats.slotPost") : `${s}–${endOf(s)}`);
 function endOf(s: string) {
@@ -170,7 +171,7 @@ export function SetupStatsPanel({ setupId, summary, children }: { setupId: numbe
           <UsdTable head={t("stats.ticker")} rows={s.tickers.map((x) => ({ key: x.ticker, label: x.ticker, u: x }))} />
         </DocSection>
         <DocSection title={s.traders ? t("stats.tradersHorizon") : t("stats.horizon")}>
-          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable head={t("stats.trader")} rows={s.traders.map((x) => ({ key: x.trader, label: x.trader, u: x }))} /></div>}
+          {s.traders && s.traders.length > 0 && <div className="mb-3"><UsdTable head={t("stats.trader")} rows={s.traders.map((x) => ({ key: x.trader, label: personName(x.trader), u: x }))} /></div>}
           <UsdTable head={t("stats.horizon")} rows={Object.entries(s.byHorizon).map(([k, v]) => ({ key: k, label: HORIZON_LABEL[k] ?? k, u: v }))} />
         </DocSection>
       </div>

@@ -15,6 +15,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { notesI18n } from "@/i18n/ns/notes";
 import { http } from "@/lib/api/http";
 import { matchesSearch } from "./author-plan";
+import { personName, personInitials, comparePersonNames } from "@/i18n";
 
 export type FeedRange = "day" | "week" | "month";
 const RANGE_DAYS: Record<FeedRange, number> = { day: 0, week: 6, month: 29 };
@@ -39,7 +40,7 @@ function Avatar({ name, className }: { name: string; className?: string }) {
       className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-full bg-primary/15 text-sm font-semibold text-primary", className)}
       aria-hidden="true"
     >
-      {name.slice(0, 1).toUpperCase()}
+      {personInitials(name).slice(0, 1)}
     </span>
   );
 }
@@ -61,7 +62,7 @@ function ReadReceipts({ note }: { note: FeedNote }) {
         </span>
       </TooltipTrigger>
       <TooltipContent className="whitespace-pre-line">
-        {note.reads.map((r) => `${r.reader} · ${fmtDate(r.read_at, "dateTime")}`).join("\n")}
+        {note.reads.map((r) => `${personName(r.reader)} · ${fmtDate(r.read_at, "dateTime")}`).join("\n")}
       </TooltipContent>
     </Tooltip>
   );
@@ -137,7 +138,7 @@ function FeedCard({
         "glass-panel relative flex flex-col gap-3 rounded-2xl p-4 sm:p-5 transition-shadow",
         selected && "ring-2 ring-primary/50",
       )}
-      aria-label={t("author.feed.cardAria", { name: note.trader, date: fmtDate(note.note_date, "dayMonth") })}
+      aria-label={t("author.feed.cardAria", { name: personName(note.trader), date: fmtDate(note.note_date, "dayMonth") })}
     >
       {unread && <span className="absolute left-0 top-6 h-6 w-1 rounded-r-full bg-primary" aria-hidden="true" />}
       <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -146,7 +147,7 @@ function FeedCard({
             type="button"
             onClick={onToggleSelect}
             aria-pressed={selected}
-            aria-label={t("author.feed.selectAria", { name: note.trader })}
+            aria-label={t("author.feed.selectAria", { name: personName(note.trader) })}
             className={cn(
               "grid h-6 w-6 place-items-center rounded-md border transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               selected ? "border-primary bg-primary text-primary-foreground" : "border-[var(--field-border)]",
@@ -158,7 +159,7 @@ function FeedCard({
         <Avatar name={note.trader} />
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
-            {note.trader}
+            {personName(note.trader)}
             {mine && <Pill>{t("author.feed.mine")}</Pill>}
             {unread && <Pill tone="accent" dot>{t("author.feed.new")}</Pill>}
           </span>
@@ -251,7 +252,7 @@ export function AuthorFeed({
   React.useEffect(() => { setSelected(new Set()); setSummary(null); }, [from, to]);
 
   const notes = q.data ?? [];
-  const authors = React.useMemo(() => Array.from(new Set(notes.map((n) => n.trader))).sort((a, b) => a.localeCompare(b)), [notes]);
+  const authors = React.useMemo(() => Array.from(new Set(notes.map((n) => n.trader))).sort(comparePersonNames), [notes]);
   const visible = notes.filter((n) =>
     (!author || n.trader === author) && (!unreadOnly || (!n.read_by_me && n.trader !== me)) && matchesSearch(n, search),
   );
@@ -329,7 +330,7 @@ export function AuthorFeed({
           </div>
           <FilterChip active={unreadOnly} onClick={() => setUnreadOnly((v) => !v)} count={unread.length}>{t("author.feed.unread")}</FilterChip>
           {authors.length > 1 && authors.map((a) => (
-            <FilterChip key={a} active={author === a} onClick={() => setAuthor(author === a ? null : a)}>{a}</FilterChip>
+            <FilterChip key={a} active={author === a} onClick={() => setAuthor(author === a ? null : a)}>{personName(a)}</FilterChip>
           ))}
         </div>
         <div className="flex flex-wrap items-center gap-2">

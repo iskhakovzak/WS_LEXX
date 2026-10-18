@@ -19,7 +19,7 @@ import { PartnersView } from "@/components/weekly-review/partners-view";
 import { PersonSelect } from "@/components/people/person-select";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { shellI18n } from "@/i18n/ns/shell";
-import { localeTag } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 
 type View = "trader" | "curator" | "partners";
 const VIEWS: View[] = ["trader", "curator", "partners"];
@@ -104,14 +104,14 @@ export default function WeeklyReviewPage() {
   const traders = React.useMemo(() => {
     const list = dbUsers.filter((u) => u.active && !u.banned && (u.role === "trader" || u.name === trader || u.name === me));
     if (trader && !list.some((u) => u.name === trader)) list.push({ id: -1, name: trader, role: "trader", active: true, theme: "default" } as (typeof dbUsers)[number]);
-    return list.sort((a, b) => a.name.localeCompare(b.name, localeTag()));
+    return list.sort((a, b) => comparePersonNames(a.name, b.name));
   }, [dbUsers, trader, me]);
 
   const copy = async (md: boolean) => {
     if (!doc) return;
     try {
       await navigator.clipboard.writeText(reviewToText(doc, md));
-      toast({ title: md ? t("page.copiedMd") : t("page.copiedText"), description: `${weekLabel(doc.week.key)} · ${doc.trader}` });
+      toast({ title: md ? t("page.copiedMd") : t("page.copiedText"), description: `${weekLabel(doc.week.key)} · ${personName(doc.trader)}` });
     } catch {
       toast({ title: t("page.copyFailed"), description: t("page.copyFailedDesc"), variant: "destructive" });
     }
@@ -140,7 +140,7 @@ export default function WeeklyReviewPage() {
   const description = !perTrader
     ? t("page.descDesk")
     : trader
-      ? t("page.descTrader", { trader, range: doc ? `${fmtDay(doc.week.start)} — ${fmtDay(doc.week.end, true)}` : weekLabel(week) })
+      ? t("page.descTrader", { trader: personName(trader), range: doc ? `${fmtDay(doc.week.start)} — ${fmtDay(doc.week.end, true)}` : weekLabel(week) })
       : t("page.descDefault");
 
   const header = (
@@ -207,7 +207,7 @@ export default function WeeklyReviewPage() {
         ) : (
           <div className={q.isPlaceholderData ? "opacity-70 transition-opacity duration-[var(--dur-2)]" : "transition-opacity duration-[var(--dur-2)]"}>
             <p data-print-title className="mb-3 hidden text-lg font-semibold">
-              {t(effectiveView === "curator" ? "page.printTitleCurator" : "page.printTitle", { week: weekLabel(doc.week.key), trader: doc.trader })}
+              {t(effectiveView === "curator" ? "page.printTitleCurator" : "page.printTitle", { week: weekLabel(doc.week.key), trader: personName(doc.trader) })}
             </p>
             {effectiveView === "curator" ? <CuratorView key={`${doc.trader}:${doc.week.key}`} doc={doc} /> : <TraderView key={`${doc.trader}:${doc.week.key}`} doc={doc} />}
           </div>

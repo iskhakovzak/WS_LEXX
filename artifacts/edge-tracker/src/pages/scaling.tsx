@@ -16,7 +16,9 @@ import { DeskView } from "@/components/scaling/desk-view";
 import { MyView } from "@/components/scaling/my-view";
 import { ConfigSheet } from "@/components/scaling/config-sheet";
 import { scalingKeys, useAutoProposals, useScalingConfig } from "@/components/scaling/use-scaling";
+import { tierName } from "@/components/scaling/format";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 import { shellI18n } from "@/i18n/ns/shell";
 
 type View = "desk" | "me";
@@ -66,7 +68,7 @@ export default function ScalingPage() {
   const runAuto = async () => {
     try {
       const r = await auto.mutateAsync();
-      toast({ title: r.created ? t("page.autoCreated", { count: r.created }) : t("page.autoNone"), description: r.created ? r.proposals.map((p) => `${p.trader} → ${p.toTier}`).join(", ") : t("page.autoNoneHint") });
+      toast({ title: r.created ? t("page.autoCreated", { count: r.created }) : t("page.autoNone"), description: r.created ? r.proposals.map((p) => `${personName(p.trader)} → ${tierName(config.data?.tiers ?? [], p.toTier)}`).join(", ") : t("page.autoNoneHint") });
     } catch (e) {
       toast({ title: t("page.autoFailed"), description: (e as Error).message, variant: "destructive" });
     }

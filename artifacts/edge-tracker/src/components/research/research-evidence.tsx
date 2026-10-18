@@ -20,6 +20,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { researchI18n } from "@/i18n/ns/research";
 
+import { personName } from "@/i18n";
 /* Evidence for a research note: trades linked through `trades.pattern_id`
  * (`GET /api/research/:id/trades`, scoped to the viewer) and the playbook setups promoted from it.
  * All numbers come from the shared API math — WR excludes BE, net = gross − |fees|. */
@@ -188,7 +189,7 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                       <span className="text-xs tabular-nums text-muted-foreground">{t.date}</span>
                       {t.side && <span className="text-xs text-muted-foreground">{t.side}</span>}
                       {t.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.setup}</span> : <span className="flex-1" />}
-                      {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{t.trader}</span>}
+                      {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{personName(t.trader)}</span>}
                       {t.brokerAccount && <span className="hidden text-2xs text-muted-foreground lg:inline">{t.brokerAccount}</span>}
                       {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{fmtR(rr, 1)}</span>}
                       {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={tr("evidence.grossFees", { gross: fmtUsd(t.pnl, { decimals: 0 }), fees: fmtUsd(t.fees, { decimals: 0 }) })}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}
@@ -226,7 +227,7 @@ export function ResearchEvidence({ r }: { r: ResearchNote }) {
                         <span className="text-xs tabular-nums text-muted-foreground">{c.date}</span>
                         {c.side && <span className="text-xs text-muted-foreground">{c.side}</span>}
                         {c.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground" title={c.setup}>{c.setup}</span> : <span className="flex-1" />}
-                        {c.trader && <span className="hidden text-xs text-muted-foreground xl:inline">{c.trader}</span>}
+                        {c.trader && <span className="hidden text-xs text-muted-foreground xl:inline">{personName(c.trader)}</span>}
                         {rr != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(rr)))}>{fmtR(rr, 1)}</span>}
                         {c.netPnl != null && <span className={cn("w-16 text-right text-xs tabular-nums", toneText(toneOf(c.netPnl)))}>{fmtUsd(c.netPnl, { decimals: 0 })}</span>}
                       </Link>

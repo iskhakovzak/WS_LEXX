@@ -8,6 +8,7 @@ import { runStatusLabel, type SyncRun } from "./api";
 import { fmtDate } from "@/lib/format";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const STATUS_TONE: Record<SyncRun["status"], Tone> = { running: "accent", ok: "up", partial: "warn", error: "down" };
 
@@ -24,7 +25,7 @@ const RUN_ACCESSORS = {
   conflicts: (r: SyncRun) => r.conflicts,
   skipped: (r: SyncRun) => r.skipped,
   errors: (r: SyncRun) => r.errors,
-  actor: (r: SyncRun) => r.actor,
+  actor: (r: SyncRun) => (r.actor ? personName(r.actor) : r.actor),
 };
 const RUN_FIRST_DIR = { source: "asc", period: "asc", actor: "asc" } as const;
 
@@ -84,7 +85,7 @@ export function SyncHistory({ runs, loading }: { runs: SyncRun[]; loading: boole
                       <td className="text-right">{r.conflicts ? <span className="text-[hsl(var(--chart-3))]">{r.conflicts}</span> : 0}</td>
                       <td className="text-right text-muted-foreground">{r.skipped}</td>
                       <td className="text-right">{r.errors ? <span className="text-down">{r.errors}</span> : 0}</td>
-                      <td className="text-xs">{r.actor ?? "—"}</td>
+                      <td className="text-xs">{r.actor ? personName(r.actor) : "—"}</td>
                     </tr>
                     {isOpen && (
                       <tr>

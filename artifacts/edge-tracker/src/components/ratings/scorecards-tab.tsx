@@ -11,6 +11,7 @@ import { PersonSelect } from "@/components/people/person-select";
 import { fmtDate, fmtNum } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { comparePersonNames, personName } from "@/i18n";
 
 function Delta({ cur, prev, className }: { cur: number; prev: number | null | undefined; className?: string }) {
   if (prev == null) return null;
@@ -30,12 +31,12 @@ export function ScorecardCard({ card, onHistory, onRate, highlight }: {
   const stale = latest.week < shiftWeek(weekOf(), -1);
   const overallTone = latest.overall >= 8 ? "up" : latest.overall >= 5 ? "warn" : "down";
   return (
-    <article className={cn("glass-panel flex flex-col gap-4 rounded-2xl p-4", highlight && "ring-1 ring-primary/50")} aria-label={t("scorecards.cardAria", { name: card.trader })}>
+    <article className={cn("glass-panel flex flex-col gap-4 rounded-2xl p-4", highlight && "ring-1 ring-primary/50")} aria-label={t("scorecards.cardAria", { name: personName(card.trader) })}>
       <header className="flex items-start gap-3">
         <Avatar name={card.trader} highlight={highlight} />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5">
-            <h3 className="truncate text-sm font-semibold text-foreground">{card.trader}</h3>
+            <h3 className="truncate text-sm font-semibold text-foreground" title={personName(card.trader)}>{personName(card.trader)}</h3>
             {highlight && <Pill tone="accent">{t("shared.you")}</Pill>}
           </div>
           <p className="flex flex-wrap items-center gap-x-1.5 text-xs text-muted-foreground">
@@ -99,7 +100,7 @@ export function ScorecardCard({ card, onHistory, onRate, highlight }: {
           <div className="min-w-0 flex-1">
             <p className="line-clamp-2 [overflow-wrap:anywhere]">{card.lastFocus.text}</p>
             <p className="mt-1 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {t("scorecards.focusMeta", { curator: card.lastFocus.curator, week: weekLabel(card.lastFocus.week) })}
+              {t("scorecards.focusMeta", { curator: personName(card.lastFocus.curator), week: weekLabel(card.lastFocus.week) })}
               {card.lastFocus.acknowledged
                 ? <Pill tone="up" className="ml-auto"><Check className="h-3 w-3" aria-hidden="true" />{t("scorecards.traderAccepted")}</Pill>
                 : <Pill tone="neutral" className="ml-auto">{t("scorecards.notRead")}</Pill>}
@@ -113,7 +114,7 @@ export function ScorecardCard({ card, onHistory, onRate, highlight }: {
           <MessageSquareQuote className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden="true" />
           <div className="min-w-0">
             <p className="line-clamp-3 whitespace-pre-wrap [overflow-wrap:anywhere]">{card.lastComment.text}</p>
-            <footer className="mt-1 text-xs text-muted-foreground">{card.lastComment.curator} · {t("shared.week", { label: weekLabel(card.lastComment.week) })}</footer>
+            <footer className="mt-1 text-xs text-muted-foreground">{personName(card.lastComment.curator)} · {t("shared.week", { label: weekLabel(card.lastComment.week) })}</footer>
           </div>
         </blockquote>
       )}
@@ -176,7 +177,7 @@ export function ScorecardsTab({
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]));
   }, [ratings, filter]);
 
-  const traderOptions = useMemo(() => [...new Set([...traders, ...ratings.map((r) => r.trader)])].sort(), [traders, ratings]);
+  const traderOptions = useMemo(() => [...new Set([...traders, ...ratings.map((r) => r.trader)])].sort(comparePersonNames).map((n) => ({ value: n, label: personName(n) })), [traders, ratings]);
 
   function showHistory(trader: string) {
     setFilter(trader);
@@ -208,12 +209,12 @@ export function ScorecardsTab({
             <div className="flex flex-wrap gap-1.5">
               {pending.map((name) => (
                 <button key={name} type="button" onClick={() => onRate(name)} className="chip inline-flex min-h-8 items-center gap-1.5 px-3 text-sm">
-                  <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {name}
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" /> {personName(name)}
                 </button>
               ))}
               {traders.filter((name) => ratedThisWeek.has(name)).map((name) => (
                 <span key={name} className="inline-flex min-h-8 items-center gap-1.5 rounded-full bg-up/15 px-3 text-sm text-up">
-                  ✓ {name}{mineThisWeek.has(name) ? "" : t("scorecards.byOtherCurator")}
+                  ✓ {personName(name)}{mineThisWeek.has(name) ? "" : t("scorecards.byOtherCurator")}
                 </span>
               ))}
             </div>
@@ -272,8 +273,8 @@ export function ScorecardsTab({
                           <li key={r.id} className="flex flex-col gap-2 p-3 sm:flex-row sm:items-start">
                             <div className="flex min-w-0 flex-1 flex-col gap-1.5">
                               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                                <span className="font-medium text-foreground">{r.trader}</span>
-                                <span className="text-xs text-muted-foreground">{t("scorecards.by", { curator: r.curator })}</span>
+                                <span className="font-medium text-foreground">{personName(r.trader)}</span>
+                                <span className="text-xs text-muted-foreground">{t("scorecards.by", { curator: personName(r.curator) })}</span>
                                 <Pill tone={r.overall >= 8 ? "up" : r.overall >= 5 ? "warn" : "down"}>{r.overall}/10</Pill>
                               </div>
                               <div className="flex flex-wrap gap-1">
@@ -288,10 +289,10 @@ export function ScorecardsTab({
                             </div>
                             {canManage && (
                               <div className="flex shrink-0 gap-1 self-end sm:self-start">
-                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("scorecards.editAria", { name: r.trader })} onClick={() => onEdit(r)}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("scorecards.editAria", { name: personName(r.trader) })} onClick={() => onEdit(r)}>
                                   <Pencil className="h-4 w-4" aria-hidden="true" />
                                 </Button>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label={t("scorecards.deleteAria", { name: r.trader })} onClick={() => onDelete(r)}>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 hover:text-down" aria-label={t("scorecards.deleteAria", { name: personName(r.trader) })} onClick={() => onDelete(r)}>
                                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                                 </Button>
                               </div>

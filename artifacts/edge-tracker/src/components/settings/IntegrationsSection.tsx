@@ -20,6 +20,7 @@ import { useTeam } from "./team-api";
 import { PROFILE_QUERY_KEY } from "./ProfileSection";
 import { settingsI18n } from "@/i18n/ns/settings";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type TgStatus = { connected: boolean; linked_at: string | null };
 type LinkData = { token: string; deep_link: string; bot_username: string; expires_in?: number };
@@ -293,7 +294,7 @@ function TelegramBroadcast() {
         )}
         {unbalanced && <Callout tone="warn">{t("broadcast.unbalanced")}</Callout>}
         {recipients && recipients.length > 0 && (
-          <p className="text-xs text-muted-foreground">{t("broadcast.receivers", { names: recipients.map((r) => r.name).join(", ") })}</p>
+          <p className="text-xs text-muted-foreground">{t("broadcast.receivers", { names: recipients.map((r) => personName(r.name)).join(", ") })}</p>
         )}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <span className="text-xs tabular-nums text-muted-foreground" aria-live="polite">

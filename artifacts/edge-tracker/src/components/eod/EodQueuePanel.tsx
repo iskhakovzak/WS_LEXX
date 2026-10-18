@@ -4,7 +4,8 @@ import { EmptyState, Panel, Pill, Segmented, toneOf, toneText } from "@/componen
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import { fmtDate, fmtUsd, localeTag } from "@/lib/format";
+import { fmtDate, fmtUsd } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { eodI18n } from "@/i18n/ns/eod";
 import { DISCIPLINE_LABELS, MOOD_LABELS, hoursText, slaText, useEodQueue, useEodReviewed, type QueueItem } from "./eod-api";
@@ -35,7 +36,7 @@ export function EodQueuePanel({ enabled }: { enabled: boolean }) {
   const source = tab === "pending" ? pending : reviewed;
 
   const traders = useMemo(
-    () => Array.from(new Set([...pending, ...reviewed].map((i) => i.trader))).sort((a, b) => a.localeCompare(b, localeTag())),
+    () => Array.from(new Set([...pending, ...reviewed].map((i) => i.trader))).sort(comparePersonNames),
     [pending, reviewed],
   );
 
@@ -147,7 +148,7 @@ function QueueRow({ it, sla, mode, onOpen }: { it: QueueItem; sla: number; mode:
         )}
       >
         <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-          <span className="text-sm font-semibold">{it.trader}</span>
+          <span className="text-sm font-semibold">{personName(it.trader)}</span>
           <span className="tabular-nums text-muted-foreground">{fmtDate(it.date, "dayMonth")}</span>
           <span className="tabular-nums">{commonI18n.t("units.trades", { count: it.trades })}</span>
           {it.net != null && <span className={cn("tabular-nums font-medium", toneText(toneOf(it.net)))}>{fmtUsd(it.net, { signed: true, decimals: "auto" })}</span>}
@@ -168,7 +169,7 @@ function QueueRow({ it, sla, mode, onOpen }: { it: QueueItem; sla: number; mode:
           ) : (
             <>
               {it.curatorScore != null && <Pill tone={it.curatorScore >= 4 ? "up" : it.curatorScore <= 2 ? "down" : "accent"}>{it.curatorScore}/5</Pill>}
-              <span className="text-muted-foreground">{it.reviewedBy}</span>
+              <span className="text-muted-foreground">{personName(it.reviewedBy)}</span>
               <span className={cn("tabular-nums", it.hoursWaiting > sla ? "text-warn" : "text-muted-foreground")}>{t("queue.reviewedIn", { time: hoursText(it.hoursWaiting) })}</span>
             </>
           )}

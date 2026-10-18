@@ -17,10 +17,13 @@ import type { TraderFilter } from "./TradersTable";
 import { fmtCount, fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { adminI18n } from "@/i18n/ns/admin";
+import { personName } from "@/i18n";
 
 export type AdminTab = "overview" | "people" | "moderation" | "roles" | "data" | "audit" | "errors";
 
-function names(list: string[], max = 4) {
+/** People (display names) or accounts (unchanged: personName leaves non-names as they are). */
+function names(raw: string[], max = 4) {
+  const list = raw.map(personName);
   if (list.length <= max) return list.join(", ");
   return adminI18n.t("namesMore", { names: list.slice(0, max).join(", "), count: list.length - max });
 }

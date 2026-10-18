@@ -23,6 +23,7 @@ import { matchPerson, prepareQuery, usePeopleAliases } from "@/components/people
 import { fmtDate } from "@/lib/format";
 import { adminI18n } from "@/i18n/ns/admin";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type TraderFilter = "all" | "traders" | "staff" | "nojournal" | "violations" | "stale" | "banned";
 
@@ -46,7 +47,7 @@ function matches(u: PulseUser, f: TraderFilter) {
 }
 
 const ACCESSORS = {
-  name: (u: PulseUser) => u.name,
+  name: (u: PulseUser) => personName(u.name),
   lastSeen: (u: PulseUser) => (u.lastSeen ? Date.parse(u.lastSeen) : null),
   today: (u: PulseUser) => u.tradesToday,
   week: (u: PulseUser) => u.tradesWeek,
@@ -179,7 +180,7 @@ export function TradersTable({
     downloadCsv(
       (["name", "role", "status", "lastSeen", "today", "week", "lastTrade", "journalToday", "streak", "journal30", "violationsToday", "violationsWeek", "violationsTotal"] as const).map((k) => t(`activity.csv.${k}`)),
       rows.map((u) => [
-        u.name, roleLabel(u.role), u.banned ? t("activity.csv.banned") : u.active ? t("activity.csv.active") : t("activity.csv.inactive"),
+        personName(u.name), roleLabel(u.role), u.banned ? t("activity.csv.banned") : u.active ? t("activity.csv.active") : t("activity.csv.inactive"),
         u.lastSeen ?? "", u.tradesToday, u.tradesWeek, u.lastTradeDate ?? "", commonI18n.t(u.journalToday ? "yes" : "no").toLowerCase(),
         u.notesStreak, u.journal30, u.violationsToday, u.violationsWeek, u.violationsTotal,
       ]),
@@ -198,14 +199,14 @@ export function TradersTable({
             variant="ghost"
             size="icon"
             className="h-8 w-8 opacity-100 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 data-[state=open]:opacity-100"
-            aria-label={t("people.menu.aria", { name: u.name })}
+            aria-label={t("people.menu.aria", { name: personName(u.name) })}
             onClick={(e) => e.stopPropagation()}
           >
             <MoreHorizontal />
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-56" onClick={(e) => e.stopPropagation()}>
-          <DropdownMenuLabel className="text-xs text-muted-foreground">{u.name}</DropdownMenuLabel>
+          <DropdownMenuLabel className="text-xs text-muted-foreground">{personName(u.name)}</DropdownMenuLabel>
           <DropdownMenuItem onSelect={() => setOpenName(u.name)}><UserCog /> {t("activity.menu.card")}</DropdownMenuItem>
           {canTouch && <DropdownMenuItem onSelect={() => actions.setPassword(u)}><KeyRound /> {t("activity.menu.password")}</DropdownMenuItem>}
           {canTouch && !isSelf && (
@@ -314,7 +315,7 @@ export function TradersTable({
                     >
                       <td>
                         <div className="flex min-w-0 items-center gap-2">
-                          <span className="truncate font-medium text-foreground">{u.name}</span>
+                          <span className="truncate font-medium text-foreground" title={personName(u.name)}>{personName(u.name)}</span>
                           {u.name === actor && <span className="text-2xs text-muted-foreground">{t("you")}</span>}
                           {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>}
                           {u.banned && <Pill tone="down">{t("activity.banTag")}</Pill>}
@@ -346,7 +347,7 @@ export function TradersTable({
                   <div className="flex items-start justify-between gap-2">
                     <button type="button" onClick={() => setOpenName(u.name)} className="min-w-0 text-left">
                       <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="truncate font-medium">{u.name}</span>
+                        <span className="truncate font-medium" title={personName(u.name)}>{personName(u.name)}</span>
                         {u.role !== "trader" && <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>}
                       </div>
                       <div className="mt-0.5 text-xs text-muted-foreground">{timeAgo(u.lastSeen)}</div>
@@ -417,7 +418,7 @@ function TraderSheet({
           <>
             <SheetHeader className="gap-2 border-b border-[var(--glass-border)] p-5 text-left">
               <div className="flex flex-wrap items-center gap-2">
-                <SheetTitle className="text-lg">{u.name}</SheetTitle>
+                <SheetTitle className="text-lg">{personName(u.name)}</SheetTitle>
                 <Pill tone={roleTone(u.role)}>{roleLabel(u.role)}</Pill>
                 <StatusPill u={u} />
               </div>

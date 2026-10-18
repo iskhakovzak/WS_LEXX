@@ -158,60 +158,9 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/academy/cohorts/dialogs.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/academy/cohorts/shared.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/academy/content/progress-matrix.tsx",
     "to": "src/components/analytics-page/metrics.ts",
     "unresolvedTo": "@/components/analytics-page/metrics",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/academy/path/challenge-views.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -260,57 +209,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/admin/PeoplePanel.tsx",
-    "to": "src/components/people/highlight.tsx",
-    "unresolvedTo": "@/components/people/highlight",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/admin/PeoplePanel.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/admin/PeoplePanel.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/admin/RolesPanel.tsx",
     "to": "src/components/settings/PermissionsSection.tsx",
     "unresolvedTo": "@/components/settings/PermissionsSection",
@@ -328,43 +226,9 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/admin/TradersTable.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/analyst/api.ts",
     "to": "src/components/game-plan/types.ts",
     "unresolvedTo": "@/components/game-plan/types",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/analytics-page/FilterBar.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -416,57 +280,6 @@
     "from": "src/components/behavior/behavior-charts.tsx",
     "to": "src/components/stats/equity-panel.tsx",
     "unresolvedTo": "@/components/stats/equity-panel",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/benchmark/benchmark-table.tsx",
-    "to": "src/components/people/people-search-input.tsx",
-    "unresolvedTo": "@/components/people/people-search-input",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/benchmark/benchmark-table.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/benchmark/compare.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -584,57 +397,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/curator/group-view.tsx",
-    "to": "src/components/people/highlight.tsx",
-    "unresolvedTo": "@/components/people/highlight",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/curator/group-view.tsx",
-    "to": "src/components/people/people-search-input.tsx",
-    "unresolvedTo": "@/components/people/people-search-input",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/curator/group-view.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/dashboard/equity-panel.tsx",
     "to": "src/components/equity-chart/index.ts",
     "unresolvedTo": "@/components/equity-chart",
@@ -672,23 +434,6 @@
     "from": "src/components/day-report/sections.tsx",
     "to": "src/components/weekly-review/api.ts",
     "unresolvedTo": "@/components/weekly-review/api",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/discussions/ThreadView.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -775,23 +520,6 @@
     "from": "src/components/eod/EodFlow.tsx",
     "to": "src/components/journal/utils.ts",
     "unresolvedTo": "@/components/journal/utils",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/eod/EodQueuePanel.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -994,23 +722,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/indicators/market/MarketView.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/journal/DayJournalEditor.tsx",
     "to": "src/components/day-report/api.ts",
     "unresolvedTo": "@/components/day-report/api",
@@ -1065,40 +776,6 @@
     "from": "src/components/journal/TeamDay.tsx",
     "to": "src/components/eod/eod-api.ts",
     "unresolvedTo": "@/components/eod/eod-api",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/notes/junior-team.tsx",
-    "to": "src/components/people/people-search-input.tsx",
-    "unresolvedTo": "@/components/people/people-search-input",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/notes/junior-team.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -1181,40 +858,6 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/office-stats/team.tsx",
-    "to": "src/components/people/people-search-input.tsx",
-    "unresolvedTo": "@/components/people/people-search-input",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/office-stats/team.tsx",
-    "to": "src/components/people/search.ts",
-    "unresolvedTo": "@/components/people/search",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/playbook/compare-dialog.tsx",
     "to": "src/components/playbook-sub/bits.tsx",
     "unresolvedTo": "@/components/playbook-sub/bits",
@@ -1269,23 +912,6 @@
     "from": "src/components/playbook/folder-tree.tsx",
     "to": "src/components/playbook-sub/bits.tsx",
     "unresolvedTo": "@/components/playbook-sub/bits",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/playbook/gallery.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -1470,145 +1096,9 @@
   },
   {
     "type": "dependency",
-    "from": "src/components/playbook/trade-picker-dialog.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/propreports/accounts-editor.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/propreports/import-zone.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/propreports/PerformanceReportPanel.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/propreports/ReconcilePanel.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/propreports/setup-panel.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
     "from": "src/components/ratings/my-progress-tab.tsx",
     "to": "src/components/ideas/hooks.ts",
     "unresolvedTo": "@/components/ideas/hooks",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/ratings/rating-dialog.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/ratings/scorecards-tab.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",
@@ -1865,40 +1355,6 @@
     "from": "src/components/trades/TradeDetailSheet.tsx",
     "to": "src/components/trade-chart-parts/chart-utils.ts",
     "unresolvedTo": "@/components/trade-chart-parts/chart-utils",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/trades/TradeFilterBar.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
-    "dependencyTypes": [
-      "aliased",
-      "aliased-tsconfig",
-      "aliased-tsconfig-paths",
-      "local",
-      "import"
-    ],
-    "rule": {
-      "severity": "error",
-      "name": "no-feature-to-feature"
-    }
-  },
-  {
-    "type": "dependency",
-    "from": "src/components/trades/TradeFormDialog.tsx",
-    "to": "src/components/people/person-select.tsx",
-    "unresolvedTo": "@/components/people/person-select",
     "dependencyTypes": [
       "aliased",
       "aliased-tsconfig",

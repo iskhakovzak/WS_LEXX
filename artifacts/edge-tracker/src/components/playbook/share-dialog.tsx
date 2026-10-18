@@ -18,6 +18,7 @@ import { fmtDate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookDialogsI18n } from "@/i18n/ns/playbookDialogs";
 
+import { personName } from "@/i18n";
 const OPTIONS: { value: Visibility; icon: typeof Lock }[] = [
   { value: "private", icon: Lock },
   { value: "all", icon: Globe2 },
@@ -60,7 +61,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
     }
   }
 
-  const people = (targets.data?.users ?? []).filter((u) => !filter.trim() || u.name.toLowerCase().includes(filter.trim().toLowerCase()));
+  const people = (targets.data?.users ?? []).filter((u) => !filter.trim() || [u.name, personName(u.name)].some((n) => n.toLowerCase().includes(filter.trim().toLowerCase())));
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -119,7 +120,7 @@ export function ShareDialog({ open, onOpenChange, entry }: { open: boolean; onOp
                     {people.map((u) => (
                       <li key={u.name} className="flex min-h-9 items-center gap-2 rounded-lg px-1 text-sm hover:bg-[var(--glass-hover-bg)]">
                         <Checkbox id={`sh-${u.name}`} checked={users.has(u.name)} onCheckedChange={() => setUsers((s) => toggle(s, u.name))} />
-                        <label htmlFor={`sh-${u.name}`} className="flex min-h-9 flex-1 cursor-pointer items-center">{u.name}</label>
+                        <label htmlFor={`sh-${u.name}`} className="flex min-h-9 flex-1 cursor-pointer items-center">{personName(u.name)}</label>
                         <span className="text-xs text-muted-foreground">{u.role === "curator" ? commonI18n.t("roles.curator") : u.role === "admin" ? commonI18n.t("roles.admin") : ""}</span>
                       </li>
                     ))}

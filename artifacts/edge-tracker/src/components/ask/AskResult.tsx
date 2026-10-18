@@ -18,6 +18,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { dm, type Agg, type AskAnswer, type AskTrade, type BookIndex } from "@/lib/ask/aggregate";
 import { AskChart } from "./AskChart";
 
+import { personName } from "@/i18n";
 // ── «Не понял» ────────────────────────────────────────────────────────────────
 
 export function AskNotUnderstood({ query, tickers, onAsk }: { query: AskQuery; tickers: string[]; onAsk: (text: string) => void }) {
@@ -129,7 +130,7 @@ function WhyAnswer({ query, answer, defaultTrader, isStaff, tickers, setups, onR
           <TokenChip key={t.key} token={t} alternatives={chipAlternatives(t.kind, { tickers, setups })} onReplace={onReplace} onRemove={onRemove} />
         ))}
         {defaultTrader && (
-          <Pill title={t("result.defaultTraderHint")}>{t("result.trader", { name: defaultTrader })}</Pill>
+          <Pill title={t("result.defaultTraderHint")}>{t("result.trader", { name: personName(defaultTrader) })}</Pill>
         )}
         {defaultTrader && isStaff && (
           <button type="button" className="chip min-h-7 px-2.5 text-xs" onClick={() => onAsk(t("q.withDesk", { text: query.raw.trim() }))}>{t("result.addDesk")}</button>
@@ -155,19 +156,21 @@ type GroupKey = "order" | "label" | "n" | "wr" | "net" | "avg" | "fees";
 function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]>; onAsk: (text: string) => void }) {
   const { t } = askI18n.useT();
   const hl = new Set(groups.highlight ?? []);
+  // Trader groups are keyed by the stored name; show it in the UI language.
+  const labelOf = React.useCallback((r: Agg) => (groups.dim === "trader" ? personName(r.label) : r.label), [groups.dim]);
   // Default keeps the answer's own order (hours / weekdays read top-down); headers re-sort.
   const accessors = React.useMemo<Record<GroupKey, (r: Agg) => number | string | null>>(() => {
     const order = new Map(groups.rows.map((r, i) => [r.key, i]));
     return {
       order: (r) => order.get(r.key) ?? null,
-      label: (r) => r.label,
+      label: (r) => labelOf(r),
       n: (r) => r.n,
       wr: (r) => r.winRate,
       net: (r) => r.net,
       avg: (r) => r.avgNet,
       fees: (r) => r.fees,
     };
-  }, [groups.rows]);
+  }, [groups.rows, labelOf]);
   const { rows, thProps } = useTableSort(groups.rows, accessors, "order", "asc");
   return (
     <div className="min-w-0">
@@ -192,7 +195,7 @@ function GroupTable({ groups, onAsk }: { groups: NonNullable<AskAnswer["groups"]
                 onClick={r.ask ? () => onAsk(r.ask!) : undefined}
                 title={r.ask ? t("result.askRow", { text: r.ask }) : undefined}
               >
-                <td className="max-w-[260px] truncate font-medium" title={r.label}>{r.label}</td>
+                <td className="max-w-[260px] truncate font-medium" title={labelOf(r)}>{labelOf(r)}</td>
                 <td className="text-right">{r.n}</td>
                 <td className="text-right">{fmtRate(r.winRate)}</td>
                 <td className={cn("text-right font-medium", toneText(toneOf(r.net)))}>{fmtUsd(r.net, { signed: true })}</td>
@@ -224,7 +227,7 @@ function TradeTable({ title, trades, index, showTrader }: { title: string; trade
       date: (tr) => { const m = index.get(tr.id); return `${m?.day ?? tr.date ?? ""} ${String(m?.min ?? 0).padStart(4, "0")}`; },
       time: (tr) => index.get(tr.id)?.min ?? null,
       ticker: (tr) => tr.ticker,
-      trader: (tr) => tr.trader ?? null,
+      trader: (tr) => (tr.trader ? personName(tr.trader) : null),
       side: (tr) => tr.side ?? null,
       qty: (tr) => index.get(tr.id)?.qty ?? null,
       entry: (tr) => (tr.entry == null ? null : Number(tr.entry)),
@@ -271,7 +274,7 @@ function TradeTable({ title, trades, index, showTrader }: { title: string; trade
                   </td>
                   <td>{m?.min == null ? "—" : fmtClock(m.min)}</td>
                   <td className="font-medium">{tr.ticker}</td>
-                  {showTrader && <td className="max-w-[140px] truncate text-muted-foreground" title={tr.trader ?? undefined}>{tr.trader ?? "—"}</td>}
+                  {showTrader && <td className="max-w-[140px] truncate text-muted-foreground" title={tr.trader ? personName(tr.trader) : undefined}>{tr.trader ? personName(tr.trader) : "—"}</td>}
                   <td>{tr.side === "Short" ? "Short" : tr.side === "Long" ? "Long" : "—"}</td>
                   <td className="text-right">{m?.qty == null ? "—" : fmtCount(m.qty)}</td>
                   <td className="text-right">{tr.entry == null ? "—" : `$${Number(tr.entry).toFixed(2)}`}</td>

@@ -2,6 +2,7 @@ import { BookOpen, Shield, Sparkles, Star, Target, TrendingUp, type LucideIcon }
 import { nyDate, addDays } from "@/lib/trading-date";
 import { fmtDate } from "@/lib/format";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { comparePersonNames } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 export type Rating = {
@@ -126,7 +127,7 @@ export function buildScorecards(ratings: Rating[], currentWeek = weekOf(), maxWe
       weakest, strongest,
     });
   }
-  return out.sort((a, b) => (b.latest?.overall ?? 0) - (a.latest?.overall ?? 0) || a.trader.localeCompare(b.trader));
+  return out.sort((a, b) => (b.latest?.overall ?? 0) - (a.latest?.overall ?? 0) || comparePersonNames(a.trader, b.trader));
 }
 
 export function criterionLabel(k: CriterionKey): string {

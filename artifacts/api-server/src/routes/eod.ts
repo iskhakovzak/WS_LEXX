@@ -14,6 +14,7 @@ import { QUEUE_DEFAULT_DAYS } from "../lib/curatorLogic";
 import { can, requireCap } from "../lib/permissions";
 import { notifyUser, notifyUsers } from "../lib/notifyUtils";
 import { logActivity } from "../lib/activity";
+import { activityTitle } from "../lib/activityText";
 import { notifLinks } from "../lib/notificationCore";
 import { claimOnce, inBackground, staffOrFallback } from "../lib/notifyEvents";
 import { eodOverdueKey, fmtSignedUsd, preview as textPreview, selectOverdue } from "../lib/notifyEventsCore";
@@ -754,7 +755,8 @@ router.post("/eod/days/:id/review", asyncHandler(async (req, res): Promise<void>
   if (reviewed) {
     const reviewer = me.name;
     inBackground("eod.reviewed.activity", () => logActivity({
-      action: "reviewed", section: "eod", entityId: `${reviewed.date}|${reviewed.trader}`, entityTitle: `${reviewed.trader}, ${reviewed.date}`,
+      action: "reviewed", section: "eod", entityId: `${reviewed.date}|${reviewed.trader}`, entityTitle: activityTitle("eod_reviewed", { trader: reviewed.trader, date: reviewed.date }),
+      params: { titleKey: "eod_reviewed", trader: reviewed.trader, date: reviewed.date },
       trader: reviewer, details: `${reviewed.curatorScore ?? "—"}/5${reviewed.curatorComment ? ` · ${textPreview(reviewed.curatorComment, 200)}` : ""}`,
     }));
   }

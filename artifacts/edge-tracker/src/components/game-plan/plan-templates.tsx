@@ -10,6 +10,7 @@ import { useAuth } from "@/contexts/auth-context";
 import { gpApi, gpKeys, type PlanDoc } from "./types";
 import { BUILTIN_TEMPLATES } from "./plan-draft";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /**
@@ -108,7 +109,7 @@ export function TemplateMenu({
                   className="flex min-w-0 flex-1 flex-col rounded-lg px-2 py-1.5 text-left hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <span className="truncate text-sm font-medium">{t.name}</span>
-                  <span className="text-xs text-muted-foreground">{t.author === me ? (t.shared ? tr("templates.mineShared") : tr("templates.mine")) : t.author}</span>
+                  <span className="text-xs text-muted-foreground">{t.author === me ? (t.shared ? tr("templates.mineShared") : tr("templates.mine")) : personName(t.author)}</span>
                 </button>
                 {t.author === me && (
                   <Button

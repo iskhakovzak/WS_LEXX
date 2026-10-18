@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef } from "react";
+import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
 import { BASE } from "@/lib/api";
 import { setAuthTokenGetter } from "@workspace/api-client-react";
 import { AUTH_EXPIRED_EVENT } from "@/lib/install-fetch-auth";
@@ -123,6 +124,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (sessionToken && !pendingChange) fetchUsers();
     else if (!sessionToken) setDbUsers([]);
   }, [sessionToken, pendingChange, fetchUsers]);
+
+  // Latin display names for EN/UZ (i18n/person-name.ts). Kept across reloads; dropped on sign-out.
+  useEffect(() => {
+    if (!sessionToken) { clearLatinNames(); return; }
+    if (dbUsers.length) setLatinNames(dbUsers.map((u) => [u.name, u.nameLatin] as const));
+  }, [sessionToken, dbUsers]);
 
   // Effective permissions for the signed-in session (role defaults until the API answers).
   const [permState, setPermState] = useState<{ token: string | null; me: PermissionsMe | null }>({ token: null, me: null });

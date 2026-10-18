@@ -33,6 +33,7 @@ import {
 } from "@/components/discussions/lib";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 function readIntParam(name: string): number | null {
   const n = Number(readParam(name));
@@ -406,7 +407,7 @@ export default function Discussions() {
         <StatCard label={t("page.unreadCard")} value={unreadIds.size} tone={unreadIds.size ? "accent" : "neutral"} icon={Bell}
           hint={freshIds.size ? t("page.freshHint", { count: freshIds.size }) : unreadIds.size ? t("page.clickToShow") : t("page.allReadHint")} onClick={() => setPrefs((p) => ({ ...p, view: "unread" }))} />
         <StatCard label={t("page.mentionsCard")} value={mentionIds.size} tone={unreadMentions ? "accent" : "neutral"} icon={AtSign}
-          hint={unreadMentions ? t("page.unreadMentions", { count: unreadMentions }) : `@${me}`} onClick={() => setPrefs((p) => ({ ...p, view: "mentions" }))} />
+          hint={unreadMentions ? t("page.unreadMentions", { count: unreadMentions }) : `@${personName(me)}`} onClick={() => setPrefs((p) => ({ ...p, view: "mentions" }))} />
         <StatCard label={t("page.liveCard")} value={active24} tone={active24 ? "warn" : "neutral"} icon={Activity}
           hint={t("page.liveHint", { count: threads.length })} onClick={() => setPrefs((p) => ({ ...p, view: "live", sort: "hot" }))} />
         <StatCard label={t("page.positionsCard")} value={myPositionIds.size} tone={myPositionIds.size ? "up" : "neutral"} icon={Briefcase}

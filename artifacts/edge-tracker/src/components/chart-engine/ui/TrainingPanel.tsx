@@ -19,6 +19,7 @@ import {
 } from "../lib/training-sim";
 import { AsideCard } from "./TradePanels";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const tone = (n: number | null | undefined) => (n == null || !Number.isFinite(n) || Math.abs(n) < 1e-12 ? "text-foreground" : n > 0 ? "text-up" : "text-down");
 const QTY_CHIPS = [100, 500, 1000] as const;
@@ -222,7 +223,7 @@ export function TrainingOutcomeCard({
         <dd className="text-right">{o.idealPerShare != null ? <><b className="text-up">{fmtPerShare(o.idealPerShare)}</b> <span className="text-muted-foreground">{o.idealSide === "short" ? t("training.toShort") : t("training.toLong")}</span></> : "—"}</dd>
         {traderName !== null && (
           <>
-            <dt className="truncate text-muted-foreground">{traderName ? t("training.tradeOf", { name: traderName }) : t("training.realTrade")}</dt>
+            <dt className="truncate text-muted-foreground">{traderName ? t("training.tradeOf", { name: personName(traderName) }) : t("training.realTrade")}</dt>
             <dd className="text-right">{o.realPerShare != null ? <><b className={tone(o.realPerShare)}>{fmtPerShare(o.realPerShare)}</b>{o.realR != null && <b className={cn("ml-1.5", tone(o.realR))}>{fmtR(o.realR)}</b>}</> : "—"}</dd>
           </>
         )}

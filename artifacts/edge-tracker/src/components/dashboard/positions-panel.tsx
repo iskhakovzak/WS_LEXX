@@ -9,6 +9,7 @@ import { fmtCount, fmtPrice, fmtR, fmtUsd } from "@/lib/format";
 import type { DashboardToday, Horizon, OpenPosition } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
+import { personName } from "@/i18n";
 import { HORIZON_LABEL as TRADES_HORIZON_LABEL } from "@/components/shared/trade-labels";
 
 /** Horizon code → label (current language); the trades area owns the labels. */
@@ -33,7 +34,7 @@ function PositionRow({ p, showTrader, today }: { p: OpenPosition; showTrader: bo
               {isShort ? commonI18n.t("trading.short") : commonI18n.t("trading.long")}
             </Pill>
           )}
-          {showTrader && p.trader && <span className="truncate text-xs text-muted-foreground">{p.trader}</span>}
+          {showTrader && p.trader && <span className="truncate text-xs text-muted-foreground" title={personName(p.trader)}>{personName(p.trader)}</span>}
           {p.nextEvent && (
             <Link
               href={links.events(p.ticker)}

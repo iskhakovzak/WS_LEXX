@@ -18,6 +18,7 @@ import { VERDICT_LABEL, VERDICT_TONE } from "./insight-panels";
 import { useRiskDeskNow, useWeekBenchmark, type BenchTrend } from "./insights-api";
 import { weeklyI18n } from "@/i18n/ns/weeklyReview";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const RISK_META: Record<RiskStatus, { readonly label: string; tone: Tone }> = {
   ok: { get label() { return weeklyI18n.t("partners.risk.ok"); }, tone: "up" },
@@ -31,7 +32,7 @@ type Row = OverviewRow & { trend: BenchTrend | null; riskStatus: RiskStatus | nu
 const RISK_ORDER: Record<RiskStatus, number> = { breach: 0, warn: 1, ok: 2, none: 3 };
 const VERDICT_ORDER: Record<BenchTrend["verdict"], number | null> = { worse: 0, flat: 1, better: 2, nodata: null };
 const PARTNER_ACCESSORS = {
-  trader: (r: Row) => r.trader,
+  trader: (r: Row) => personName(r.trader),
   net: (r: Row) => r.netPnl,
   trend: (r: Row) => (r.trend ? VERDICT_ORDER[r.trend.verdict] : null),
   risk: (r: Row) => (r.riskStatus ? RISK_ORDER[r.riskStatus] : null),
@@ -88,7 +89,7 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
   const deskPf = s.posNet != null && s.negNet != null && s.negNet < 0 ? s.posNet / Math.abs(s.negNet) : null;
 
   const deskRows: DeskRow[] = rows.map((r) => ({
-    trader: r.trader, trades: r.trades, netPnl: r.netPnl, fees: r.fees, grossPnl: r.grossPnl ?? null,
+    trader: personName(r.trader), trades: r.trades, netPnl: r.netPnl, fees: r.fees, grossPnl: r.grossPnl ?? null,
     riskStatus: r.riskStatus, verdict: r.trend?.verdict ?? null, weakness: r.note && !r.curatorComment ? r.note : null,
   }));
   const conclusions = buildDeskConclusions(
@@ -159,7 +160,7 @@ export function PartnersView({ week, onOpen }: { week: string; onOpen: (trader: 
         )}
         {idle.length > 0 && (
           <p className="border-t border-[var(--glass-border)] px-[var(--panel-p)] py-2.5 text-xs text-muted-foreground">
-            {t("partners.idle", { names: idle.map((r) => r.trader).join(", ") })}
+            {t("partners.idle", { names: idle.map((r) => personName(r.trader)).join(", ") })}
           </p>
         )}
       </Panel>
@@ -187,14 +188,14 @@ function PartnersTable({ rows, onOpen }: { rows: Row[]; onOpen: (trader: string)
           {sorted.map((r) => (
             <tr key={r.trader}>
               <td>
-                <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{r.trader}</button>
+                <button type="button" onClick={() => onOpen(r.trader)} className="text-left font-medium text-foreground hover:text-primary hover:underline">{personName(r.trader)}</button>
                 <div className="text-xs text-muted-foreground">{t("partners.rowMeta", { trades: commonI18n.t("units.tradesShort", { count: r.trades }), wr: fmtRate(r.winRate) })} · <span title={STATUS_LABEL[r.status]}>{STATUS_LABEL[r.status].toLowerCase()}</span></div>
               </td>
               <td className={cn("text-right font-semibold", (r.netPnl ?? 0) > 0 ? "text-up" : (r.netPnl ?? 0) < 0 ? "text-down" : "text-foreground")}>{fmtUsd(r.netPnl, { signed: true, decimals: "auto" })}</td>
               <td>
                 {r.trend ? (
                   <div className="flex items-center gap-2">
-                    <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={t("partners.sparkAria", { name: r.trader })} />
+                    <Sparkline data={r.trend.weeks.map((w) => w.net)} width={88} height={24} baseline={0} ariaLabel={t("partners.sparkAria", { name: personName(r.trader) })} />
                     <Pill tone={VERDICT_TONE[r.trend.verdict]}>{VERDICT_LABEL[r.trend.verdict]}</Pill>
                   </div>
                 ) : <span className="text-xs text-muted-foreground">—</span>}
@@ -232,7 +233,7 @@ function TraderTile({ row, kind, onOpen }: { row: Row; kind: "top" | "problem"; 
       </span>
       <div className="min-w-0 flex-1">
         <p className="text-xs text-muted-foreground">{kind === "top" ? t("partners.leader") : t("partners.attention")}</p>
-        <p className="truncate text-sm font-semibold text-foreground">{row.trader}</p>
+        <p className="truncate text-sm font-semibold text-foreground" title={personName(row.trader)}>{personName(row.trader)}</p>
         {(() => {
           const line = why.filter(Boolean).join(" · ") || commonI18n.t("units.trades", { count: row.trades });
           return <p className="truncate text-xs text-muted-foreground" title={line}>{line}</p>;

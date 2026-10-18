@@ -15,6 +15,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { rulesI18n } from "@/i18n/ns/rules";
+import { personName } from "@/i18n";
 import { rich } from "./rich";
 import { autoName, type RuleDraft } from "./templates";
 import type { Rule, RuleField, RuleGroup, RuleKindDef, RuleReport } from "./types";
@@ -286,7 +287,7 @@ export function RuleDialog({
                   value={scope}
                   onChange={setScope}
                   options={[
-                    { value: "trader", label: canManageTeam ? t("dialog.officeRuleFor", { name: trader }) : trader },
+                    { value: "trader", label: canManageTeam ? t("dialog.officeRuleFor", { name: personName(trader) }) : personName(trader) },
                     ...(canManageDesk ? [{ value: "desk" as const, label: <span className="inline-flex items-center gap-1"><Building2 className="h-3.5 w-3.5" aria-hidden="true" />{t("dialog.wholeDesk")}</span> }] : []),
                   ]}
                 />

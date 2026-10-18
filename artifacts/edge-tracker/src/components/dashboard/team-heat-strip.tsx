@@ -7,7 +7,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { KPI_FORMULAS } from "@/lib/trade-math";
 import { links } from "@/lib/links";
 import { cn } from "@/lib/utils";
-import { fmtR, fmtUsd, localeTag } from "@/lib/format";
+import { fmtR, fmtUsd } from "@/lib/format";
+import { comparePersonNames, personName } from "@/i18n";
 import type { RiskDesk, RiskDeskRow } from "./use-dashboard";
 import { commonI18n } from "@/i18n/ns/common";
 import { dashboardI18n } from "@/i18n/ns/dashboard";
@@ -28,7 +29,7 @@ function limitUse(r: RiskDeskRow): number | null {
 const DESK_ACCESSORS = {
   // Default: stopped first, then breach → warn → ok → no limits (alphabetical inside a status).
   status: (r: RiskDeskRow) => (r.halted ? -1 : RANK[r.status]),
-  trader: (r: RiskDeskRow) => r.trader,
+  trader: (r: RiskDeskRow) => personName(r.trader),
   today: (r: RiskDeskRow) => r.today.pnlNet ?? (r.today.trades ? r.today.r : null),
   week: (r: RiskDeskRow) => r.week.pnlNet ?? (r.week.trades ? r.week.r : null),
   limit: limitUse,
@@ -50,10 +51,10 @@ function TraderRow({ r }: { r: RiskDeskRow }) {
       <Link
         href={links.risk(r.trader)}
         className={cn(COLS, "rounded-lg px-2 py-1.5 transition-colors hover:bg-[var(--glass-hover-bg)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring")}
-        aria-label={t("desk.rowAria", { trader: r.trader, amount: money(pnl, r.today.r, r.today.trades), status: r.halted ? t("desk.stop") : statusLabel(r.status) })}
+        aria-label={t("desk.rowAria", { trader: personName(r.trader), amount: money(pnl, r.today.r, r.today.trades), status: r.halted ? t("desk.stop") : statusLabel(r.status) })}
       >
         <span className="min-w-0">
-          <span className="block truncate text-sm font-medium">{r.trader}</span>
+          <span className="block truncate text-sm font-medium" title={personName(r.trader)}>{personName(r.trader)}</span>
           <span className="block truncate text-2xs text-muted-foreground tabular-nums">
             {commonI18n.t("units.trades", { count: r.today.trades })}
             {r.today.carriedTonight > 0 ? ` · ${t("desk.overnight", { count: r.today.carriedTonight })}` : ""}
@@ -94,7 +95,7 @@ function DeskTodayBody({ data, fill }: { data: RiskDesk; fill?: boolean }) {
   const { t } = dashboardI18n.useT();
   const s = data.summary;
   const base = React.useMemo(
-    () => data.traders.filter((r) => !r.banned).sort((a, b) => a.trader.localeCompare(b.trader, localeTag())),
+    () => data.traders.filter((r) => !r.banned).sort((a, b) => comparePersonNames(a.trader, b.trader)),
     [data.traders],
   );
   const { rows, thProps } = useTableSort(base, DESK_ACCESSORS, "status", "asc");

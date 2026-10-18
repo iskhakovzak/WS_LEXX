@@ -15,6 +15,7 @@ import { commonI18n } from "@/i18n/ns/common";
 import { researchI18n } from "@/i18n/ns/research";
 import { rich } from "@/i18n/rich";
 
+import { personName } from "@/i18n";
 function Section({
   label,
   text,
@@ -95,7 +96,7 @@ export function ResearchPreview({
       <header className="flex flex-col gap-3">
         <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
           <span className="first-letter:uppercase" title={t("preview.tradingDay", { date: noteDay(r) })}>{formatDay(noteDay(r))}</span>
-          {r.createdBy && <><span aria-hidden="true">·</span><span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" aria-hidden="true" />{r.createdBy}</span></>}
+          {r.createdBy && <><span aria-hidden="true">·</span><span className="inline-flex items-center gap-1"><UserRound className="h-3 w-3" aria-hidden="true" />{personName(r.createdBy)}</span></>}
           {r.sector && <><span aria-hidden="true">·</span><span>{r.sector}</span></>}
           {pinned && <Pill tone="accent"><Pin className="h-3 w-3" aria-hidden="true" />{t("preview.pinned")}</Pill>}
         </div>

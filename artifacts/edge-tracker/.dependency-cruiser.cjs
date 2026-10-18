@@ -42,8 +42,9 @@ module.exports = {
       comment: "A feature (components/<feature>/) never imports another feature; promote shared code to components/shared.",
       severity: "error",
       from: { path: "^src/components/([^/]+)/", pathNot: "^src/components/(ui|ds|shared)/" },
-      // chart-engine is shared by design (ARCHITECTURE.md §1); phase E moves it to components/shared/charts.
-      to: { path: "^src/components/[^/]+/", pathNot: ["^src/components/$1/", "^src/components/(ui|ds|shared|chart-engine)/"] },
+      // chart-engine and people (person search, pickers, highlight) are shared by design (ARCHITECTURE.md §1); phase E
+      // moves them to components/shared/{charts,people}. people/** imports only ui, lib, i18n and contexts.
+      to: { path: "^src/components/[^/]+/", pathNot: ["^src/components/$1/", "^src/components/(ui|ds|shared|chart-engine|people)/"] },
     },
     {
       name: "no-page-to-page",

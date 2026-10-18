@@ -36,6 +36,7 @@ import { downloadCsv, isTypingTarget, lsGet, lsSet } from "@/components/team/uti
 import { fmtNum, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { ratingsI18n } from "@/i18n/ns/ratings";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const VIEW_KEY = "ws_top_results_view_v2";
 type SavedView = { period: Period; metric: Metric; minTrades: number };
@@ -166,7 +167,7 @@ export default function TopResultsPage() {
       [t("top.csv.place"), t("top.csv.trader"), t("top.csv.qualified"), "Desk score", t("top.csv.closed"), t("top.csv.wins"), t("top.csv.losses"), "Win rate", t("top.csv.net"), t("top.csv.gross"), t("top.csv.fees"), t("top.csv.totalR"), t("top.csv.expR"), "Profit factor", t("top.csv.greenDays"), t("top.csv.tradingDays"), t("top.csv.maxDdNet"), t("top.csv.maxDdR"), t("top.csv.violations"), t("top.csv.mentorRating"), "Δ score"],
       ...rows.map((r) => [
         r.rank ?? "",
-        r.trader,
+        personName(r.trader),
         r.qualified ? tc("yes") : tc("no"),
         r.score != null ? r.score.toFixed(1) : "",
         r.closed,
@@ -372,7 +373,7 @@ export default function TopResultsPage() {
                   >
                     <TraderAvatar name={mostImproved.trader} size="md" />
                     <span className="min-w-0 flex-1">
-                      <span className="block truncate text-sm font-semibold">{mostImproved.trader}</span>
+                      <span className="block truncate text-sm font-semibold" title={personName(mostImproved.trader)}>{personName(mostImproved.trader)}</span>
                       <span className="block text-xs text-muted-foreground tabular-nums">
                         score {mostImproved.prevScore != null ? Math.round(mostImproved.prevScore) : "—"} → {mostImproved.score != null ? Math.round(mostImproved.score) : "—"} · {fmtMetric(mostImproved.net ?? mostImproved.totalR, mostImproved.net != null ? "net" : "r")}
                       </span>
@@ -405,7 +406,7 @@ export default function TopResultsPage() {
                             <span className="block text-sm font-semibold">{t.ticker}</span>
                             <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
                               <TraderAvatar name={t.trader} size="xs" />
-                              <span className="truncate" title={`${t.trader ?? "—"} · ${closeDate(t) ?? t.date}`}>{t.trader ?? "—"} · {closeDate(t) ?? t.date}</span>
+                              <span className="truncate" title={`${t.trader ? personName(t.trader) : "—"} · ${closeDate(t) ?? t.date}`}>{t.trader ? personName(t.trader) : "—"} · {closeDate(t) ?? t.date}</span>
                             </span>
                           </span>
                           <span className={cn("text-sm font-semibold tabular-nums", toneText(toneOf(tradeValue(t, prefer))))}>

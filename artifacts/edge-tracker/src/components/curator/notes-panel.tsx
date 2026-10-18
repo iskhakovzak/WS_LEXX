@@ -11,6 +11,7 @@ import { curatorApi, useCuratorMutation, type CuratorNote, type NoteKind } from 
 import { NOTE_KIND_LABEL, NOTE_KIND_TONE } from "./curator-math";
 import { fmtDate } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 const kindOptions = () => (Object.keys(NOTE_KIND_LABEL) as NoteKind[]).map((k) => ({ value: k, label: NOTE_KIND_LABEL[k] }));
@@ -78,7 +79,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
         <Textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
-          placeholder={t("notes.placeholder", { name: trader })}
+          placeholder={t("notes.placeholder", { name: personName(trader) })}
           rows={compact ? 2 : 3}
           maxLength={4000}
           aria-label={t("notes.newAria")}
@@ -99,7 +100,7 @@ export function NotesPanel({ trader, notes, compact = false, onShowAll }: { trad
             <article key={n.id} className={cn("tile flex flex-col gap-1.5 p-3", n.pinned && "ring-1 ring-primary/30")}>
               <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
                 <Pill tone={NOTE_KIND_TONE[n.kind] ?? "neutral"}>{NOTE_KIND_LABEL[n.kind] ?? n.kind}</Pill>
-                <span className="font-medium text-foreground">{n.author}</span>
+                <span className="font-medium text-foreground">{personName(n.author)}</span>
                 <span className="tabular-nums">{fmtDate(n.createdAt, "dateTime")}</span>
                 {n.pinned && <span className="inline-flex items-center gap-1 text-primary"><Pin className="h-3 w-3" aria-hidden="true" />{t("notes.pinned")}</span>}
                 {!compact && (

@@ -29,6 +29,7 @@ import { fmtDate, fmtWeekday } from "@/lib/format";
 import { journalI18n } from "@/i18n/ns/journal";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { comparePersonNames } from "@/i18n";
 import { EodFlow } from "@/components/eod/EodFlow";
 import { EodStatusBadge } from "@/components/eod/EodStatusCard";
 import { EodQueuePanel } from "@/components/eod/EodQueuePanel";
@@ -135,7 +136,7 @@ export default function JournalPage() {
   const allTraders = useMemo(() => {
     const names = new Set<string>(dbUsers.filter((u) => u.role === "trader" || u.name === traderName).map((u) => u.name));
     for (const t of trades) if (t.trader) names.add(t.trader);
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "ru"));
+    return Array.from(names).sort(comparePersonNames);
   }, [dbUsers, traderName, trades]);
 
   // Days are keyed by the day the result is realised (exit day for overnight/swing), never by the entry day.

@@ -13,6 +13,7 @@ import { agoText, useDeleteAccount, useRefreshAccounts, useSaveAccounts, useUser
 import { PersonSelect } from "@/components/people/person-select";
 import { propreportsI18n } from "@/i18n/ns/propreports";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const NONE = "__none";
 
@@ -24,7 +25,7 @@ type Indexed = { r: Row; i: number };
 const ACCOUNT_ACCESSORS = {
   account: (x: Indexed) => x.r.account,
   external: (x: Indexed) => [x.r.accountId, x.r.accountName].filter(Boolean).join(" · ") || null,
-  trader: (x: Indexed) => x.r.trader,
+  trader: (x: Indexed) => (x.r.trader ? personName(x.r.trader) : x.r.trader),
   active: (x: Indexed) => (x.r.active ? 1 : 0),
   lastFill: (x: Indexed) => (x.r.lastFillAt ? Date.parse(x.r.lastFillAt) || null : null),
   synced: (x: Indexed) => (x.r.lastSyncedAt ? Date.parse(x.r.lastSyncedAt) || null : null),

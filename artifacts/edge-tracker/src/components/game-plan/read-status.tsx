@@ -6,9 +6,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Panel, Pill } from "@/components/ds";
 import { toast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { gpApi, gpKeys, initials, type GamePlan, type GamePlanResponse } from "./types";
+import { gpApi, gpKeys, type GamePlan, type GamePlanResponse } from "./types";
 import { fmtDate } from "@/lib/format";
 import { gpI18n } from "@/i18n/ns/gamePlan";
+import { personInitials, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 /** Trader-side: "Отметить прочитанным" / read confirmation (optimistic). */
@@ -118,7 +119,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               <ul className="flex flex-wrap gap-1.5">
                 {d.read.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${r.trader} · ${fmtDate(r.readAt, "time")}${r.stale ? t("reads.beforeUpdate") : ""}`} />
+                    <Avatar name={r.trader} state={r.stale ? "stale" : "read"} hint={`${personName(r.trader)} · ${fmtDate(r.readAt, "time")}${r.stale ? t("reads.beforeUpdate") : ""}`} />
                   </li>
                 ))}
               </ul>
@@ -130,7 +131,7 @@ export function ReadStatusPanel({ planId }: { planId: number }) {
               <ul className="flex flex-wrap gap-1.5">
                 {d.unread.map((r) => (
                   <li key={r.trader}>
-                    <Avatar name={r.trader} state="unread" hint={`${r.trader} · ${commonI18n.t(r.role === "trader" ? "roles.trader" : r.role === "curator" ? "roles.curator" : "roles.admin")}`} />
+                    <Avatar name={r.trader} state="unread" hint={`${personName(r.trader)} · ${commonI18n.t(r.role === "trader" ? "roles.trader" : r.role === "curator" ? "roles.curator" : "roles.admin")}`} />
                   </li>
                 ))}
               </ul>
@@ -156,7 +157,7 @@ function Avatar({ name, state, hint }: { name: string; state: "read" | "stale" |
             state === "unread" && "border border-dashed border-[var(--field-border)] text-muted-foreground",
           )}
         >
-          {initials(name)}
+          {personInitials(name)}
         </span>
       </TooltipTrigger>
       <TooltipContent>{hint}</TooltipContent>

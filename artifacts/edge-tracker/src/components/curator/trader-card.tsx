@@ -8,6 +8,7 @@ import type { PatternBrief, TraderSignal } from "./api";
 import { actionTone, disciplineTone, riskTone, worstUsage } from "./curator-math";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { curatorI18n } from "@/i18n/ns/curator";
+import { personName } from "@/i18n";
 
 /** One trader in «Мои трейдеры»: trend, discipline, risk usage, patterns, last review, stage and the next action. */
 export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading = false, title }: {
@@ -38,7 +39,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
     >
       <header className="flex min-w-0 items-start gap-2">
         <button type="button" onClick={() => onOpen()} className="min-w-0 flex-1 text-left">
-          <span className="block truncate text-base font-semibold text-foreground hover:text-primary" title={s.nameLatin ? `${s.trader} · ${s.nameLatin}` : s.trader}>{title ?? s.trader}</span>
+          <span className="block truncate text-base font-semibold text-foreground hover:text-primary" title={s.nameLatin && s.nameLatin !== personName(s.trader) ? `${personName(s.trader)} · ${s.nameLatin}` : personName(s.trader)}>{title ?? personName(s.trader)}</span>
           <span className="block truncate text-xs text-muted-foreground" title={stageLine}>
             {stageLine}
           </span>
@@ -102,7 +103,7 @@ export function TraderCard({ s, onOpen, showPatterns, patterns, patternsLoading 
       {s.lastNote && (
         <button type="button" onClick={() => onOpen("notes")} className="tile flex min-w-0 items-start gap-2 p-2 text-left text-xs">
           <NotebookPen className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-          <span className="line-clamp-2 min-w-0 text-muted-foreground"><span className="font-medium text-foreground">{s.lastNote.author}:</span> {s.lastNote.body}</span>
+          <span className="line-clamp-2 min-w-0 text-muted-foreground"><span className="font-medium text-foreground">{personName(s.lastNote.author)}:</span> {s.lastNote.body}</span>
         </button>
       )}
 

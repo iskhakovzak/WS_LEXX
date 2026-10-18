@@ -17,6 +17,7 @@ import type { Mistake, MistakePrefill, Rule, RuleReport } from "@/components/rul
 import { PersonSelect } from "@/components/people/person-select";
 import { rulesI18n } from "@/i18n/ns/rules";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 
 type Tab = "overview" | "mistakes" | "violations";
 const TABS: Tab[] = ["overview", "mistakes", "violations"];
@@ -155,7 +156,7 @@ export default function RulesTracker() {
       <PageHeader
         title={shellI18n.t("nav.rules")}
         description={isStaff && traderName && traderName !== self
-          ? t("page.descTrader", { name: traderName })
+          ? t("page.descTrader", { name: personName(traderName) })
           : t("page.descSelf")}
         icon={ShieldCheck}
         actions={

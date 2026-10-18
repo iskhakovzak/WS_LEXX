@@ -10,6 +10,7 @@ import { useAssignTier, useCreateProposal } from "./use-scaling";
 import { actionLabel, actionVerb, tierLabel } from "./format";
 import { commonI18n } from "@/i18n/ns/common";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 
 /** «Предложить» — turns the current recommendation into a proposal (curator). */
 export function ProposeButton({ row, size = "sm" }: { row: TraderEval; size?: "sm" | "default" }) {
@@ -22,13 +23,13 @@ export function ProposeButton({ row, size = "sm" }: { row: TraderEval; size?: "s
   const submit = async () => {
     try {
       await create.mutateAsync({ trader: row.trader });
-      toast({ title: t("curator.created", { trader: row.trader }), description: `${actionLabel(a)} → ${(row.recommendation.toTier ? tierLabel(row.recommendation.toTier) : "")}` });
+      toast({ title: t("curator.created", { trader: personName(row.trader) }), description: `${actionLabel(a)} → ${(row.recommendation.toTier ? tierLabel(row.recommendation.toTier) : "")}` });
     } catch (e) {
       toast({ title: t("curator.createFailed"), description: (e as Error).message, variant: "destructive" });
     }
   };
   return (
-    <Button size={size} variant={a === "promote" ? "default" : "outline"} onClick={submit} disabled={create.isPending} aria-label={t("curator.actionAria", { action: actionVerb(a), trader: row.trader })}>
+    <Button size={size} variant={a === "promote" ? "default" : "outline"} onClick={submit} disabled={create.isPending} aria-label={t("curator.actionAria", { action: actionVerb(a), trader: personName(row.trader) })}>
       <Icon className="h-3.5 w-3.5" aria-hidden="true" />
       {actionVerb(a)}
     </Button>
@@ -70,10 +71,10 @@ export function TierPopover({
     try {
       if (mode === "assign") {
         await assign.mutateAsync({ trader: row.trader, tierKey, comment: comment.trim() || undefined });
-        toast({ title: t("curator.assigned", { trader: row.trader }), description: t("curator.assignedHint") });
+        toast({ title: t("curator.assigned", { trader: personName(row.trader) }), description: t("curator.assignedHint") });
       } else {
         await create.mutateAsync({ trader: row.trader, toTier: tierKey, comment: comment.trim() || undefined });
-        toast({ title: t("curator.created", { trader: row.trader }) });
+        toast({ title: t("curator.created", { trader: personName(row.trader) }) });
       }
       setOpen(false);
       setComment("");
@@ -85,7 +86,7 @@ export function TierPopover({
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <Button size={size} variant={variant} aria-label={t("curator.actionAria", { action: label, trader: row.trader })}>
+        <Button size={size} variant={variant} aria-label={t("curator.actionAria", { action: label, trader: personName(row.trader) })}>
           {mode === "assign" ? <Flag className="h-3.5 w-3.5" aria-hidden="true" /> : <Send className="h-3.5 w-3.5" aria-hidden="true" />}
           {label}
         </Button>
@@ -93,7 +94,7 @@ export function TierPopover({
       <PopoverContent align="end" className="w-80">
         <div className="flex flex-col gap-3">
           <div>
-            <p className="text-sm font-semibold text-foreground">{t("curator.actionAria", { action: label, trader: row.trader })}</p>
+            <p className="text-sm font-semibold text-foreground">{t("curator.actionAria", { action: label, trader: personName(row.trader) })}</p>
             <p className="text-xs text-muted-foreground">
               {mode === "assign" ? t("curator.assignHint") : t("curator.proposeHint")}
             </p>

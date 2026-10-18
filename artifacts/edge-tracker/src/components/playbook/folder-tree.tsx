@@ -18,6 +18,7 @@ import { fmtRate } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { setupTypeLabel } from "@/i18n/ns/dataCodes";
 import { playbookI18n } from "@/i18n/ns/playbook";
+import { personName } from "@/i18n";
 const pt = playbookI18n.t; // called at render time only
 
 /** Optional row decorations: the author for personal/shared setups, and a drop-target highlight while dragging an example. */
@@ -81,7 +82,7 @@ const SetupRow = memo(function SetupRow({
           <span className="flex min-w-0 items-center gap-1.5">
             <EdgeMini s={s} />
             {showOwner && spaceOf(e) === "personal" && e.trader ? (
-              <span className="truncate text-xs text-muted-foreground">· {e.trader}</span>
+              <span className="truncate text-xs text-muted-foreground" title={personName(e.trader)}>· {personName(e.trader)}</span>
             ) : e.setupType ? (
               <span className="truncate text-xs text-muted-foreground">· {setupTypeLabel(e.setupType)}</span>
             ) : null}

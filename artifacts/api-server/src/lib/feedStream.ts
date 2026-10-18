@@ -25,6 +25,7 @@ import { feedT } from "../i18n/ns";
 import { fmtDateFor } from "../i18n/format";
 import type { Lang } from "../i18n";
 import { violationMessage } from "./rulesI18n";
+import { personNameFor } from "./people/latinNames";
 
 export type FeedTone = "up" | "down" | "warn" | "accent" | "purple" | "neutral";
 export type FeedCategory = "mine" | "desk" | "achievement" | "market" | "announcement";
@@ -237,6 +238,8 @@ export function clearFeedStreamCache(): void {
 
 async function compute(viewer: FeedViewer, from: string, to: string, now: Date, lang: Lang): Promise<FeedStreamResult> {
   const t = feedT.tFor(lang);
+  /** A person's name as this reader sees it (Latin for EN/UZ); `trader` / `actor` fields keep the stored name. */
+  const pn = (n: string | null | undefined) => personNameFor(n, lang);
   const SEP = t("sep");
   const today = nyDate(now);
   const afterClose = nyMinutes(now) >= 960;
@@ -465,7 +468,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           id: `day:${trader}:${r.d}`, kind: "day_result", cats: ownCats(trader), date: r.d, at, trader, actor: null,
           title: isMine(trader)
             ? (r.net == null ? t("day.result") : r.net >= 0 ? t("day.green") : t("day.red"))
-            : t("day.ofTrader", { trader }),
+            : t("day.ofTrader", { trader: pn(trader) }),
           subtitle: parts.join(SEP),
           tone: r.net == null ? "neutral" : r.net > 0 ? "up" : r.net < 0 ? "down" : "neutral",
           value: r.net, valueFmt: r.net == null ? null : "usd", ticker: (b?.ticker as string) ?? null,
@@ -485,7 +488,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           items.push({
             id: `streak:${trader}:${r.d}`, kind: "streak", cats: ownCats(trader, "achievement"), date: r.d, at, trader, actor: null,
             title: t("streak.title", { count: streak }),
-            subtitle: isMine(trader) ? t("streak.mine") : trader,
+            subtitle: isMine(trader) ? t("streak.mine") : pn(trader),
             tone: "up", value: streak, valueFmt: "int", ticker: null, href: href.journal(r.d, isMine(trader) ? null : trader),
             group: null, visibility: "own", meta: { streak },
           });
@@ -494,7 +497,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           items.push({
             id: `best-day:${trader}:${r.d}`, kind: "best_day", cats: ownCats(trader, "achievement"), date: r.d, at, trader, actor: null,
             title: t("bestDay.title"),
-            subtitle: `${isMine(trader) ? "" : `${trader}${SEP}`}${t("bestDay.previous", { value: usd(Number.isFinite(maxNet) ? r2(maxNet) : null) })}`,
+            subtitle: `${isMine(trader) ? "" : `${pn(trader)}${SEP}`}${t("bestDay.previous", { value: usd(Number.isFinite(maxNet) ? r2(maxNet) : null) })}`,
             tone: "up", value: r.net, valueFmt: "usd", ticker: null, href: href.dayReport(r.d, isMine(trader) ? null : trader),
             group: null, visibility: "own", meta: { previous: Number.isFinite(maxNet) ? r2(maxNet) : null },
           });
@@ -510,7 +513,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           items.push({
             id: `clean:${trader}:${r.d}`, kind: "clean_streak", cats: ownCats(trader, "achievement"), date: r.d, at, trader, actor: null,
             title: t("clean.title", { count: clean }),
-            subtitle: isMine(trader) ? t("clean.mine") : trader, tone: "accent", value: clean, valueFmt: "int", ticker: null,
+            subtitle: isMine(trader) ? t("clean.mine") : pn(trader), tone: "accent", value: clean, valueFmt: "int", ticker: null,
             href: href.errors(isMine(trader) ? null : trader), group: null, visibility: "own", meta: { clean },
           });
         }
@@ -519,7 +522,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
         const cost = num(v.cost);
         items.push({
           id: `vio:${trader}:${r.d}`, kind: "violations", cats: ownCats(trader), date: r.d, at: iso(v.at) ?? at, trader, actor: null,
-          title: `${t("vio.title", { count: vioN })}${isMine(trader) ? "" : `${SEP}${trader}`}`,
+          title: `${t("vio.title", { count: vioN })}${isMine(trader) ? "" : `${SEP}${pn(trader)}`}`,
           subtitle: [v.last_message ? violationMessage(String(v.last_message), v.last_details, lang) : null, cost ? t("vio.cost", { value: usd(-Math.abs(cost)) }) : null].filter(Boolean).join(SEP) || null,
           tone: Number(v.severe) > 0 ? "down" : "warn", value: vioN, valueFmt: "int", ticker: null, href: href.errors(isMine(trader) ? null : trader),
           group: null, visibility: "own", meta: { severe: Number(v.severe), cost },
@@ -535,7 +538,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
           const kinds = Array.from(new Set(logged.map((a) => String(a.message ?? a.kind)))).slice(0, 3);
           items.push({
             id: `risk:${trader}:${r.d}`, kind: "risk_breach", cats: ["desk"], date: r.d, at, trader, actor: null,
-            title: t("risk.title", { trader }),
+            title: t("risk.title", { trader: pn(trader) }),
             subtitle: lossBreach ? [t("risk.dailyLimit", { value: usd(-lim!) }), ...kinds].join(SEP) : kinds.join(SEP) || null,
             tone: "down", value: r.net, valueFmt: r.net == null ? null : "usd", ticker: null, href: href.risk(trader),
             group: null, visibility: "staff", meta: { limit: lim ?? null, alerts: logged.length },
@@ -558,7 +561,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
         if (w.best?.net != null && w.best.net > 0) parts.push(t("week.bestDay", { weekday: weekdayShort(w.best.d, lang), net: usd(w.best.net) }));
         items.push({
           id: `week:${trader}:${w.week}`, kind: "weekly_summary", cats: ownCats(trader), date: friday, at, trader, actor: null,
-          title: isMine(trader) ? t("week.mine", { week: w.week.slice(-3) }) : t("week.ofTrader", { trader, week: w.week.slice(-3) }),
+          title: isMine(trader) ? t("week.mine", { week: w.week.slice(-3) }) : t("week.ofTrader", { trader: pn(trader), week: w.week.slice(-3) }),
           subtitle: parts.join(SEP), tone: w.net == null ? "neutral" : w.net >= 0 ? "up" : "down",
           value: w.net, valueFmt: w.net == null ? null : "usd", ticker: null, href: href.weekly(w.week, isMine(trader) ? null : trader),
           group: isMine(trader) ? null : `desk-week:${w.week}`, visibility: "own",
@@ -575,7 +578,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
         if (show && w.net > 0 && pricedWeeks >= MIN_WEEKS_FOR_BEST_WEEK && w.net > maxWeek) {
           items.push({
             id: `best-week:${trader}:${w.week}`, kind: "best_week", cats: ownCats(trader, "achievement"), date: friday, at, trader, actor: null,
-            title: t("week.bestTitle"), subtitle: `${isMine(trader) ? "" : `${trader}${SEP}`}${t("week.previous", { week: w.week, value: usd(r2(maxWeek)) })}`,
+            title: t("week.bestTitle"), subtitle: `${isMine(trader) ? "" : `${pn(trader)}${SEP}`}${t("week.previous", { week: w.week, value: usd(r2(maxWeek)) })}`,
             tone: "up", value: w.net, valueFmt: "usd", ticker: null, href: href.weekly(w.week, isMine(trader) ? null : trader),
             group: null, visibility: "own", meta: { previous: r2(maxWeek) },
           });
@@ -594,7 +597,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     items.push({
       id: `desk-week:${dw.week}`, kind: "weekly_summary", cats: ["desk"], date: friday, at: nyInstant(friday, 16, 6), trader: null, actor: null,
       title: t("week.deskTitle", { week: dw.week.slice(-3) }),
-      subtitle: [t("week.traders", { count: dw.traders.length }), t("trades", { count: dw.n }), top?.net != null ? t("week.bestTrader", { trader: top.trader, net: usd(top.net) }) : null].filter(Boolean).join(SEP),
+      subtitle: [t("week.traders", { count: dw.traders.length }), t("trades", { count: dw.n }), top?.net != null ? t("week.bestTrader", { trader: pn(top.trader), net: usd(top.net) }) : null].filter(Boolean).join(SEP),
       tone: dw.net == null ? "neutral" : dw.net >= 0 ? "up" : "down", value: dw.net, valueFmt: dw.net == null ? null : "usd",
       ticker: null, href: href.weekly(dw.week), group: null, visibility: "staff", meta: { week: dw.week, traders: dw.traders.length },
     });
@@ -605,7 +608,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const tr = String(a.user_name);
     items.push({
       id: `quiz:${a.id}`, kind: "exam", cats: ownCats(tr, "achievement"), date: String(a.d), at: iso(a.at)!, trader: tr, actor: null,
-      title: a.title ? t("academy.quizWith", { title: String(a.title) }) : t("academy.quiz"), subtitle: isMine(tr) ? t("academy.label") : tr, tone: "purple",
+      title: a.title ? t("academy.quizWith", { title: String(a.title) }) : t("academy.quiz"), subtitle: isMine(tr) ? t("academy.label") : pn(tr), tone: "purple",
       value: num(a.pct), valueFmt: num(a.pct) == null ? null : "pct", ticker: null, href: "/academy/learn", group: null, visibility: "own",
     });
   }
@@ -613,7 +616,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const tr = String(s.user_name);
     items.push({
       id: `sub:${s.id}`, kind: "exam", cats: ownCats(tr, "achievement"), date: String(s.d), at: iso(s.at)!, trader: tr, actor: s.graded_by ? String(s.graded_by) : null,
-      title: s.title ? t("academy.assignmentWith", { title: String(s.title) }) : t("academy.assignment"), subtitle: [isMine(tr) ? null : tr, s.graded_by ? t("academy.gradedBy", { name: String(s.graded_by) }) : null].filter(Boolean).join(SEP) || t("academy.label"),
+      title: s.title ? t("academy.assignmentWith", { title: String(s.title) }) : t("academy.assignment"), subtitle: [isMine(tr) ? null : pn(tr), s.graded_by ? t("academy.gradedBy", { name: pn(String(s.graded_by)) }) : null].filter(Boolean).join(SEP) || t("academy.label"),
       tone: "purple", value: num(s.pct), valueFmt: num(s.pct) == null ? null : "pct", ticker: null, href: "/academy/learn", group: null, visibility: "own",
     });
   }
@@ -621,7 +624,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const tr = String(c.user_name);
     items.push({
       id: `challenge:${c.id}`, kind: "exam", cats: ownCats(tr, "achievement"), date: String(c.d).slice(0, 10), at: iso(c.at)!, trader: tr, actor: null,
-      title: t("academy.exam", { name: c.name ? String(c.name) : t("academy.examDefault") }), subtitle: isMine(tr) ? t("academy.examMine") : tr, tone: "purple",
+      title: t("academy.exam", { name: c.name ? String(c.name) : t("academy.examDefault") }), subtitle: isMine(tr) ? t("academy.examMine") : pn(tr), tone: "purple",
       value: null, valueFmt: null, ticker: null, href: "/academy/challenges", group: null, visibility: "own",
     });
   }
@@ -629,7 +632,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const tr = String(h.user_name);
     items.push({
       id: `stage:${h.id}`, kind: "promotion", cats: ownCats(tr, "achievement"), date: String(h.d), at: iso(h.at)!, trader: tr, actor: h.actor ? String(h.actor) : null,
-      title: t("academy.stage", { stage: String(h.to_name ?? h.to_stage) }), subtitle: [isMine(tr) ? null : tr, `${h.from_name ?? h.from_stage ?? "—"} → ${h.to_name ?? h.to_stage}`].filter(Boolean).join(SEP),
+      title: t("academy.stage", { stage: String(h.to_name ?? h.to_stage) }), subtitle: [isMine(tr) ? null : pn(tr), `${h.from_name ?? h.from_stage ?? "—"} → ${h.to_name ?? h.to_stage}`].filter(Boolean).join(SEP),
       tone: "purple", value: null, valueFmt: null, ticker: null, href: "/academy/path", group: null, visibility: "own",
     });
   }
@@ -637,7 +640,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const tr = String(h.trader);
     items.push({
       id: `tier:${h.id}`, kind: "promotion", cats: ownCats(tr, "achievement"), date: String(h.d), at: iso(h.at)!, trader: tr, actor: h.actor ? String(h.actor) : null,
-      title: t("academy.tier", { tier: String(h.to_tier) }), subtitle: [isMine(tr) ? null : tr, h.from_tier ? `${h.from_tier} → ${h.to_tier}` : null, t("academy.moreBp")].filter(Boolean).join(SEP),
+      title: t("academy.tier", { tier: String(h.to_tier) }), subtitle: [isMine(tr) ? null : pn(tr), h.from_tier ? `${h.from_tier} → ${h.to_tier}` : null, t("academy.moreBp")].filter(Boolean).join(SEP),
       tone: "purple", value: null, valueFmt: null, ticker: null, href: href.scaling(isMine(tr) ? null : tr), group: null, visibility: "own",
     });
   }
@@ -648,10 +651,10 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const curator = r.curator ? String(r.curator) : t("review.curator");
     items.push({
       id: `trade-review:${r.id}`, kind: "review", cats: ownCats(tr), date: String(r.d), at: iso(r.at)!, trader: tr, actor: curator,
-      title: t("review.trade", { curator, ticker: String(r.ticker ?? "") }).trim() + (isMine(tr) ? "" : `${SEP}${tr}`),
+      title: t("review.trade", { curator: pn(curator), ticker: String(r.ticker ?? "") }).trim() + (isMine(tr) ? "" : `${SEP}${pn(tr)}`),
       subtitle: r.comment ? String(r.comment).slice(0, 160) : r.rating ? t("review.rating", { value: String(r.rating) }) : null,
       tone: "accent", value: null, valueFmt: null, ticker: (r.ticker as string) ?? null, href: href.trade(Number(r.trade_id)),
-      group: `reviews:${r.d}:${t}`, visibility: "own",
+      group: `reviews:${r.d}:${tr}`, visibility: "own",
     });
   }
   for (const r of dayReviews) {
@@ -659,7 +662,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const score = num(r.curator_score);
     items.push({
       id: `day-review:${r.id}`, kind: "review", cats: ownCats(tr), date: String(r.d), at: iso(r.at)!, trader: tr, actor: r.reviewed_by ? String(r.reviewed_by) : null,
-      title: `${t("review.day", { curator: r.reviewed_by ? String(r.reviewed_by) : t("review.curator"), date: fmtDateFor(lang, String(r.date).slice(0, 10), "dayMonthNumeric") })}${isMine(tr) ? "" : `${SEP}${tr}`}`,
+      title: `${t("review.day", { curator: r.reviewed_by ? pn(String(r.reviewed_by)) : t("review.curator"), date: fmtDateFor(lang, String(r.date).slice(0, 10), "dayMonthNumeric") })}${isMine(tr) ? "" : `${SEP}${pn(tr)}`}`,
       subtitle: r.curator_comment ? String(r.curator_comment).slice(0, 160) : null,
       tone: "accent", value: score, valueFmt: score == null ? null : "int", ticker: null, href: href.dayReport(String(r.date), isMine(tr) ? null : tr),
       group: null, visibility: "own", meta: { score },
@@ -671,7 +674,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const score = num(cr.score);
     items.push({
       id: `week-review:${r.id}`, kind: "review", cats: ownCats(tr), date: String(r.d), at: iso(r.at)!, trader: tr, actor: (cr.by as string) ?? (cr.curator as string) ?? null,
-      title: `${t("review.week", { week: String(r.week).slice(-3) })}${isMine(tr) ? "" : `${SEP}${tr}`}`,
+      title: `${t("review.week", { week: String(r.week).slice(-3) })}${isMine(tr) ? "" : `${SEP}${pn(tr)}`}`,
       subtitle: typeof cr.comment === "string" ? cr.comment.slice(0, 160) : null,
       tone: "accent", value: score, valueFmt: score == null ? null : "int", ticker: null, href: href.weekly(String(r.week), isMine(tr) ? null : tr),
       group: null, visibility: "own",
@@ -687,7 +690,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const overall = num(r.overall);
     items.push({
       id: `rating:${r.id}`, kind: "review", cats: ownCats(tr), date: String(r.d), at: iso(r.at)!, trader: tr, actor: r.curator ? String(r.curator) : null,
-      title: `${(() => { const c = r.curator ? String(r.curator) : t("review.curator"); const d = weekShort(r.week); return d ? t("review.weekRatingFrom", { curator: c, date: d }) : t("review.weekRating", { curator: c }); })()}${isMine(tr) ? "" : `${SEP}${tr}`}`,
+      title: `${(() => { const c = r.curator ? pn(String(r.curator)) : t("review.curator"); const d = weekShort(r.week); return d ? t("review.weekRatingFrom", { curator: c, date: d }) : t("review.weekRating", { curator: c }); })()}${isMine(tr) ? "" : `${SEP}${pn(tr)}`}`,
       subtitle: r.comment ? String(r.comment).slice(0, 160) : null, tone: "accent", value: overall, valueFmt: overall == null ? null : "int",
       // Staff see a rating per trader every week: fold the day's ratings of others into one card.
       ticker: null, href: "/ratings", group: isMine(tr) ? null : `ratings:${r.d}`, visibility: "own",
@@ -701,7 +704,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     items.push({
       id: `idea:${i.id}`, kind: "idea", cats: isMine(author) ? ["desk", "mine"] : ["desk"], date: String(i.d), at: iso(i.at)!, trader: author, actor: author,
       title: `${t("idea.title", { ticker: String(i.ticker) })}${side ? ` ${side}` : ""}${i.setup ? `${SEP}${i.setup}` : ""}`,
-      subtitle: [author ? (isMine(author) ? t("idea.mine") : author) : null, i.horizon && i.horizon !== "intraday" ? String(i.horizon) : null, i.status === "converted" ? t("idea.traded") : null].filter(Boolean).join(SEP) || null,
+      subtitle: [author ? (isMine(author) ? t("idea.mine") : pn(author)) : null, i.horizon && i.horizon !== "intraday" ? String(i.horizon) : null, i.status === "converted" ? t("idea.traded") : null].filter(Boolean).join(SEP) || null,
       tone: "accent", value: num(i.score), valueFmt: num(i.score) == null ? null : "int", ticker: (i.ticker as string) ?? null, href: href.idea(Number(i.id)),
       group: `ideas:${i.d}`, visibility: "public",
     });
@@ -710,7 +713,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const author = p.trader ? String(p.trader) : null;
     items.push({
       id: `setup:${p.id}`, kind: "playbook", cats: isMine(author) ? ["desk", "mine"] : ["desk"], date: String(p.d), at: iso(p.at)!, trader: author, actor: author,
-      title: t("setup.new", { name: String(p.name) }), subtitle: [p.folder ? String(p.folder) : null, author ? (isMine(author) ? t("setup.you") : author) : null].filter(Boolean).join(SEP) || null,
+      title: t("setup.new", { name: String(p.name) }), subtitle: [p.folder ? String(p.folder) : null, author ? (isMine(author) ? t("setup.you") : pn(author)) : null].filter(Boolean).join(SEP) || null,
       tone: "neutral", value: null, valueFmt: null, ticker: null, href: href.setup(Number(p.id)), group: `playbook:${p.d}`, visibility: setupFeedVis(p, isMine(author)),
     });
   }
@@ -720,7 +723,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     items.push({
       id: `example:${e.id}`, kind: "playbook", cats: isMine(author) ? ["desk", "mine", ...(worked ? ["achievement" as const] : [])] : ["desk"],
       date: String(e.d), at: iso(e.at)!, trader: author, actor: author,
-      title: t(worked ? "setup.exampleWorked" : "setup.example", { ticker: String(e.ticker) }), subtitle: `${e.setup}${author ? `${SEP}${isMine(author) ? t("setup.you") : author}` : ""}`,
+      title: t(worked ? "setup.exampleWorked" : "setup.example", { ticker: String(e.ticker) }), subtitle: `${e.setup}${author ? `${SEP}${isMine(author) ? t("setup.you") : pn(author)}` : ""}`,
       tone: worked ? "up" : "neutral", value: null, valueFmt: null, ticker: (e.ticker as string) ?? null, href: href.setup(Number(e.playbook_id)),
       group: `playbook:${e.d}`, visibility: setupFeedVis(e, isMine(author)),
     });
@@ -730,7 +733,7 @@ async function compute(viewer: FeedViewer, from: string, to: string, now: Date, 
     const n = Number(d.comments ?? 0);
     items.push({
       id: `thread:${d.id}`, kind: "thread", cats: isMine(author) ? ["desk", "mine"] : ["desk"], date: String(d.d), at: iso(d.at)!, trader: author, actor: author,
-      title: t("thread.title", { topic: String(d.topic) }), subtitle: [author, d.ticker ? String(d.ticker) : null, n ? t("thread.replies", { count: n }) : null].filter(Boolean).join(SEP) || null,
+      title: t("thread.title", { topic: String(d.topic) }), subtitle: [pn(author), d.ticker ? String(d.ticker) : null, n ? t("thread.replies", { count: n }) : null].filter(Boolean).join(SEP) || null,
       tone: "neutral", value: null, valueFmt: null, ticker: (d.ticker as string) ?? null, href: href.thread(Number(d.id)), group: `threads:${d.d}`, visibility: "public",
     });
   }

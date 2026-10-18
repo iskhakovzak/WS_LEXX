@@ -21,6 +21,7 @@ import { isNotFound } from "@/lib/api/errors";
 import { adminUrl, isTypingTarget, roleLabel, timeAgo, useReports, type ContentReport } from "./api";
 import { adminI18n } from "@/i18n/ns/admin";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type Status = "open" | "resolved" | "dismissed" | "all";
 
@@ -100,7 +101,7 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
     onMutate: ({ id }) => { setDialog(null); dropOptimistic([id]); },
     onSuccess: (d, v) => {
       invalidate();
-      toast({ title: t("moderation.authorBanned", { name: v.author }), description: t("moderation.reportsClosed", { count: d.closedReports?.length ?? 1 }) });
+      toast({ title: t("moderation.authorBanned", { name: personName(v.author) }), description: t("moderation.reportsClosed", { count: d.closedReports?.length ?? 1 }) });
     },
     onError,
   });
@@ -139,8 +140,8 @@ export function ModerationQueue({ actor, openCount }: { actor: string; openCount
       if (!author) { toast({ title: t("moderation.noAuthor"), description: t("moderation.noAuthorHint"), variant: "destructive" }); return; }
       const more = (r.openReportsOnTarget ?? 1) - 1;
       setDialog({
-        title: t("moderation.ban.title", { name: author }),
-        description: more > 0 ? t("moderation.ban.textMore", { name: author, count: more }) : t("moderation.ban.text", { name: author }),
+        title: t("moderation.ban.title", { name: personName(author) }),
+        description: more > 0 ? t("moderation.ban.textMore", { name: personName(author), count: more }) : t("moderation.ban.text", { name: personName(author) }),
         confirmLabel: t("moderation.ban.confirm"),
         destructive: true,
         input: { label: t("moderation.ban.reason"), kind: "textarea", required: true, presets: banPresets() },
@@ -352,7 +353,7 @@ function ReportCard({
             )}
           {t?.author && (
             <footer className="mt-1.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
-              {tr("moderation.author")} <span className="font-medium text-foreground">{t.author}</span>
+              {tr("moderation.author")} <span className="font-medium text-foreground">{personName(t.author)}</span>
               {t.authorRole && t.authorRole !== "trader" && <Pill tone="accent">{roleLabel(t.authorRole)}</Pill>}
               {t.authorBanned && <Pill tone="down">{tr("moderation.banned")}</Pill>}
             </footer>
@@ -361,7 +362,7 @@ function ReportCard({
       )}
 
       <div className="text-sm">
-        <span className="text-muted-foreground">{r.reporter}: </span>
+        <span className="text-muted-foreground">{personName(r.reporter)}: </span>
         <span className="break-words">«{r.reason}»</span>
       </div>
 

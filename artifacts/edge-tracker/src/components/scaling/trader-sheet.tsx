@@ -13,6 +13,7 @@ import { ProposeButton, TierPopover } from "./curator-actions";
 import { ACTION_TONE, actionLabel, tierLabel } from "./format";
 import { commonI18n } from "@/i18n/ns/common";
 import { scalingI18n } from "@/i18n/ns/scaling";
+import { personName } from "@/i18n";
 
 type Tab = "rules" | "metrics" | "limits" | "history";
 
@@ -45,7 +46,7 @@ export function TraderSheet({
           <div className="flex flex-col gap-5">
             <SheetHeader className="pr-10 text-left">
               <div className="flex flex-wrap items-center gap-2">
-                <SheetTitle className="text-xl">{row.trader}</SheetTitle>
+                <SheetTitle className="text-xl">{personName(row.trader)}</SheetTitle>
                 <Pill tone="purple">{tierLabel(row.tier)}</Pill>
                 <Pill tone={ACTION_TONE[row.recommendation.action]} dot>{actionLabel(row.recommendation.action)}</Pill>
                 {row.recommendation.warning && <Pill tone="warn">{t("sheet.needsReview")}</Pill>}

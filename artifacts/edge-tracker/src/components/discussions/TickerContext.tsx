@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { fmtCount, fmtPrice } from "@/lib/format";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 type TickerContextData = {
   ticker: string;
@@ -75,7 +76,7 @@ function TickerContextBody({ ticker, onFilter }: { ticker: string; onFilter?: (t
                   {i.side && <Pill tone={isShort(i.side) ? "down" : "up"}>{isShort(i.side) ? tc("trading.short") : tc("trading.long")}</Pill>}
                   <span className="truncate">{i.setup || tc("trading.noSetup")}</span>
                 </span>
-                <span className="shrink-0 text-muted-foreground">{i.trader ?? ""} · {discussionsI18n.tryT(`ticker.ideaStatus.${i.status}`) ?? i.status}</span>
+                <span className="shrink-0 text-muted-foreground">{personName(i.trader)} · {discussionsI18n.tryT(`ticker.ideaStatus.${i.status}`) ?? i.status}</span>
               </div>
             ))}
           </section>

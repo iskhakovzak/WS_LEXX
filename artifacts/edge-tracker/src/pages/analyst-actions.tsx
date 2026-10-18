@@ -34,6 +34,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { commonI18n } from "@/i18n/ns/common";
 import { analystI18n } from "@/i18n/ns/analyst";
 
+import { personName } from "@/i18n";
 type SortState = { key: SortKey; dir: SortDir };
 const DEFAULT_SORT: SortState = { key: "time", dir: "desc" };
 const SORT_KEYS: SortKey[] = ["score", "time", "pt", "gap", "weight", "ticker"];
@@ -388,7 +389,7 @@ export default function AnalystActionsPage() {
   }, [sheetTicker, firmsOpen, filters.todayOnly, filters.mineOnly, setFilters, hasFilters, resetFilters, tableRows, focusedIndex, addToWatch, addToPlan, inPlan]);
 
   const periodLabel = PERIODS.find((p) => p.value === filters.period)?.label ?? tf("period.d", { count: period });
-  const scopeLabel = traderName ? traderName : tf("page.wholeTeam");
+  const scopeLabel = traderName ? personName(traderName) : tf("page.wholeTeam");
   const sheetRow = sheetTicker ? sheetTicker.toUpperCase() : null;
 
   /* ── render ─────────────────────────────────────────────────────────── */

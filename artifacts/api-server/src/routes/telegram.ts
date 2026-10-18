@@ -24,6 +24,7 @@ import { config } from "../config";
 import { AppError, notFound, unauthorized } from "../lib/http";
 import { localeOfUser, parseLang, type Lang } from "../i18n";
 import { telegramT } from "../i18n/ns";
+import { personNameFor } from "../lib/people/latinNames";
 import { notifyUser } from "../lib/notifyUtils";
 import { notifLinks } from "../lib/notificationCore";
 
@@ -119,7 +120,8 @@ async function handleUpdate(update: TelegramUpdate): Promise<void> {
 async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promise<void> {
   const chatId = String(msg.chat.id);
   const text = (msg.text ?? "").trim();
-  const L = tg(await chatLang(chatId, msg.from));
+  const chatL = await chatLang(chatId, msg.from);
+  const L = tg(chatL);
 
   // /start TOKEN — link flow
   if (text.startsWith("/start")) {
@@ -142,7 +144,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [chatId],
     );
     if ((existing[0] as { name: string } | undefined)?.name && (existing[0] as { name: string }).name !== userName) {
-      await sendMessage(chatId, L("start.linkedElsewhere", { name: escHtml((existing[0] as { name: string }).name) }));
+      await sendMessage(chatId, L("start.linkedElsewhere", { name: escHtml(personNameFor((existing[0] as { name: string }).name, chatL)) }));
       return;
     }
     await pool.query(
@@ -150,7 +152,8 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       [chatId, userName],
     );
     await pool.query(`UPDATE telegram_link_tokens SET used = TRUE WHERE token = $1`, [token]);
-    await sendMessage(chatId, tg(await localeOfUser(userName))("start.linked", { name: escHtml(userName) }));
+    const linkedLang = await localeOfUser(userName);
+    await sendMessage(chatId, tg(linkedLang)("start.linked", { name: escHtml(personNameFor(userName, linkedLang)) }));
     logger.info({ userName, chatId }, "Telegram account linked");
     return;
   }
@@ -221,8 +224,9 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
       }
       await sendMessage(chatId, L("done.replyPrivate", idParams(ideaId, idea.ticker)));
       if (idea.trader) {
+        const traderLang = await localeOfUser(idea.trader);
         await notifyTraderTelegram(idea.trader,
-          tg(await localeOfUser(idea.trader))("privateReply", { ...idParams(ideaId, idea.ticker), author: escHtml(sender.name), text: escHtml(text.slice(0, 300)) }),
+          tg(traderLang)("privateReply", { ...idParams(ideaId, idea.ticker), author: escHtml(personNameFor(sender.name, traderLang)), text: escHtml(text.slice(0, 300)) }),
           { ideaId });
       }
     } else if (action === "reject_reason") {
@@ -258,7 +262,7 @@ async function handleMessage(msg: NonNullable<TelegramUpdate["message"]>): Promi
         if (rChatId) {
           const rLang = await localeOfUser(reviewerName);
           await sendMessage(rChatId,
-            tg(rLang)("traderReplyToStaff", { ...idParams(ideaId, idea.ticker), trader: escHtml(sender.name), text: escHtml(text.slice(0, 300)) }),
+            tg(rLang)("traderReplyToStaff", { ...idParams(ideaId, idea.ticker), trader: escHtml(personNameFor(sender.name, rLang)), text: escHtml(text.slice(0, 300)) }),
             { reply_markup: { inline_keyboard: buildIdeaKeyboard(ideaId, rLang) } });
         }
         await notifyUser({
@@ -461,7 +465,7 @@ async function handleMenuCallback(
     } else {
       body = "\n\n" + rows.map((r) => {
         const side = r.side ? ` ${escHtml(r.side)}` : "";
-        const trader = r.trader ? ` · <b>${escHtml(r.trader)}</b>` : "";
+        const trader = r.trader ? ` · <b>${escHtml(personNameFor(r.trader, lang))}</b>` : "";
         return `${statusEmoji(r.status)} <code>#${r.id}</code> ${escHtml(r.ticker)}${side}${trader}`;
       }).join("\n");
     }
@@ -483,7 +487,7 @@ async function handleMenuCallback(
        ORDER BY trader`,
     );
     const btns = chunkButtons(
-      rows.map((r) => ({ text: r.name, callback_data: `menu:trader:${r.name}` })),
+      rows.map((r) => ({ text: personNameFor(r.name, lang), callback_data: `menu:trader:${r.name}` })),
       2,
     );
     await render(
@@ -518,7 +522,7 @@ async function handleMenuCallback(
       return `  ${statusEmoji(r.status)} <code>#${r.id}</code> ${escHtml(r.ticker)}${side}`;
     };
 
-    let body = `👤 <b>${escHtml(traderName)}</b>\n`;
+    let body = `👤 <b>${escHtml(personNameFor(traderName, lang))}</b>\n`;
     if (todayRows.length > 0) {
       body += `\n${L("menu.todayCount", { count: todayRows.length })}\n${todayRows.map(fmtRow).join("\n")}`;
     } else {

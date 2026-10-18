@@ -9,6 +9,7 @@ import { entryKey, fmtValue, valueOf, type Metric } from "./metrics";
 import { commonI18n } from "@/i18n/ns/common";
 import { statsI18n } from "@/i18n/ns/stats";
 import { fmtDate } from "@/lib/format";
+import { personName } from "@/i18n";
 
 export function resultTone(r: string) {
   const n = normalizeResult(r);
@@ -51,7 +52,7 @@ export function TradeLinkRow({
             </Pill>
           </div>
           <div className="truncate text-xs text-muted-foreground">
-            {[showDate ? date : null, trade.setup || (trade.eventType ? EVENT_LABEL[trade.eventType] ?? trade.eventType : null), trade.trader].filter(Boolean).join(" · ") || "—"}
+            {[showDate ? date : null, trade.setup || (trade.eventType ? EVENT_LABEL[trade.eventType] ?? trade.eventType : null), personName(trade.trader)].filter(Boolean).join(" · ") || "—"}
           </div>
         </div>
         <span className={cn("shrink-0 text-sm font-semibold tabular-nums", v == null ? "text-muted-foreground" : toneOf(v) === "up" ? "text-up" : toneOf(v) === "down" ? "text-down" : "text-foreground")}>

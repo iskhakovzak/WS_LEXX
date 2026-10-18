@@ -10,6 +10,7 @@ import {
 import { fmtDate, fmtNum, fmtPrice, fmtR } from "@/lib/format";
 import { ideasI18n } from "@/i18n/ns/ideas";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 const ACCENT_BAR: Record<Tone, string> = {
   up: "bg-up",
@@ -123,7 +124,7 @@ export function IdeaCard({
       data-idea-id={idea.id}
       onClick={() => onOpen(idea)}
       aria-label={idea.trader
-        ? t("card.ariaAuthor", { ticker: idea.ticker, side: sideLabel(idea.side), stage: st.label, author: idea.trader })
+        ? t("card.ariaAuthor", { ticker: idea.ticker, side: sideLabel(idea.side), stage: st.label, author: personName(idea.trader) })
         : t("card.aria", { ticker: idea.ticker, side: sideLabel(idea.side), stage: st.label })}
       className={cn(
         "glass-panel lift group relative flex w-full min-w-0 flex-col gap-2.5 overflow-hidden rounded-xl p-3 pl-4 text-left",
@@ -186,7 +187,7 @@ export function IdeaCard({
       <div className="flex items-center justify-between gap-2 pt-0.5 text-xs text-muted-foreground">
         <span className="flex min-w-0 items-center gap-1.5">
           <Avatar name={idea.trader} />
-          <span className="truncate text-foreground/90" title={idea.trader ?? undefined}>{idea.trader ?? "—"}</span>
+          <span className="truncate text-foreground/90" title={idea.trader ? personName(idea.trader) : undefined}>{idea.trader ? personName(idea.trader) : "—"}</span>
           <span className="shrink-0">· {relTime(idea.publishedAt ?? idea.createdAt)}</span>
         </span>
         <span className="flex shrink-0 items-center gap-2 tabular-nums">

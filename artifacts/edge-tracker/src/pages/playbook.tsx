@@ -60,6 +60,7 @@ import { useMoveToFolder } from "@/components/playbook/move-to-folder";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookI18n } from "@/i18n/ns/playbook";
 
+import { personName } from "@/i18n";
 type View = "library" | "gallery" | "grid";
 const VIEWS: View[] = ["library", "gallery", "grid"];
 const UNFILED = "__unfiled";
@@ -987,7 +988,7 @@ export default function Playbook() {
               title={e.officeProposedNote ?? undefined}
             >
               <span className="min-w-0 flex-1 truncate">{e.name}</span>
-              <span className="shrink-0 text-xs text-muted-foreground">{e.officeProposedBy ?? e.trader}</span>
+              <span className="shrink-0 text-xs text-muted-foreground">{personName(e.officeProposedBy ?? e.trader)}</span>
             </button>
           </li>
         ))}

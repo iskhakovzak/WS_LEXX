@@ -17,6 +17,7 @@ import { academyLinks } from "./links";
 import { relativeDays } from "./time";
 import { academyI18n } from "@/i18n/ns/academy";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 function cellTone(pct: number, total: number) {
   if (!total) return "text-muted-foreground";
@@ -36,7 +37,7 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
   const d = q.data;
   const rows = d?.students ?? [];
   const sorter = useMemo(() => ({
-    name: (r: ProgressStudent) => r.userName,
+    name: (r: ProgressStudent) => personName(r.userName),
     pct: (r: ProgressStudent) => r.pct,
     activity: (r: ProgressStudent) => r.lastActivity ?? "",
     pending: (r: ProgressStudent) => r.pendingReviews,
@@ -57,7 +58,7 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
         <StatCard label={t("matrix.students")} value={s.students} />
         <StatCard label={t("matrix.avg")} value={s.avgPct != null ? `${s.avgPct}%` : "—"} hint={s.medianPct != null ? t("matrix.median", { pct: s.medianPct }) : undefined} />
         <StatCard label={t("matrix.finished")} value={s.completed} tone={s.completed ? "up" : "neutral"} />
-        <StatCard label={t("matrix.stale")} value={s.stale.length} tone={s.stale.length ? "warn" : "neutral"} hint={s.stale.slice(0, 3).join(", ") || undefined} />
+        <StatCard label={t("matrix.stale")} value={s.stale.length} tone={s.stale.length ? "warn" : "neutral"} hint={s.stale.slice(0, 3).map((n) => personName(n)).join(", ") || undefined} />
       </StatGrid>
 
       {!rows.length ? (
@@ -71,7 +72,7 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
                 `academy_progress_${d.program!.id}.csv`,
                 [t("matrix.student"), t("matrix.stage"), t("matrix.progressPct"), ...d.modules.map((m, i) => t("matrix.moduleShort", { n: i + 1, title: m.title })), ...quizzes.map((qz) => qz.title), t("matrix.pending"), t("matrix.lastActivity"), t("matrix.next")],
                 sort.rows.map((r) => [
-                  r.userName, stageLabelOf(r.stage), Math.round(r.pct),
+                  personName(r.userName), stageLabelOf(r.stage), Math.round(r.pct),
                   ...r.modules.map((m) => (m.total ? commonI18n.t("states.ofTotal", { value: m.done, total: m.total }) : "")), // «4/4» would turn into a date in Excel
                   ...quizzes.map((qz) => { const v = r.quizBest[String(qz.id)]; return v == null ? "" : Math.round(v); }),
                   r.pendingReviews, r.lastActivity ?? "", r.next?.title ?? t("matrix.courseDone"),
@@ -98,12 +99,12 @@ export function ProgressMatrix({ programId, cohortId }: { programId: number | nu
                 {sort.rows.map((r) => (
                   <tr key={r.userName}>
                     <td>
-                      <Link href={academyLinks.learn({ program: d.program!.id, user: r.userName })} className="font-medium text-foreground hover:text-primary">{r.userName}</Link>
+                      <Link href={academyLinks.learn({ program: d.program!.id, user: r.userName })} className="font-medium text-foreground hover:text-primary">{personName(r.userName)}</Link>
                       {r.stage && <span className="ml-2 text-xs text-muted-foreground">{stageLabelOf(r.stage)}</span>}
                     </td>
                     <td className="min-w-[9rem]">
                       <div className="flex items-center gap-2">
-                        <PctBar pct={r.pct} className="w-20" label={t("matrix.rowProgress", { name: r.userName })} />
+                        <PctBar pct={r.pct} className="w-20" label={t("matrix.rowProgress", { name: personName(r.userName) })} />
                         <span className="tabular-nums">{Math.round(r.pct)}%</span>
                       </div>
                     </td>

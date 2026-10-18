@@ -10,6 +10,7 @@ import { humanizeApiError } from "@/lib/api/errors";
 import { useToast } from "@/hooks/use-toast";
 import { discussionsI18n } from "@/i18n/ns/discussions";
 import { commonI18n } from "@/i18n/ns/common";
+import { personName } from "@/i18n";
 
 export type ReportTarget = { type: "discussion" | "comment"; id: number; preview: string; author?: string | null };
 
@@ -56,7 +57,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Flag className="h-4 w-4 text-down" aria-hidden="true" />{shown?.type === "comment" ? t("report.titleComment") : t("report.titleThread")}</DialogTitle>
           <DialogDescription className="line-clamp-2">
-            {shown?.author ? `${shown.author}: ` : ""}{shown?.preview}
+            {shown?.author ? `${personName(shown.author)}: ` : ""}{shown?.preview}
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -76,7 +77,7 @@ export function ReportDialog({ target, onClose }: { target: ReportTarget | null;
               rows={3}
               maxLength={1500}
               placeholder={t("report.placeholder")}
-              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); submit(); } }}
+              onKeyDown={(e) => { if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) { e.preventDefault(); void submit(); } }}
             />
           </div>
         </div>

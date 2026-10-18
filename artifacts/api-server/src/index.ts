@@ -2,6 +2,7 @@ import { loadBootConfig, ConfigError } from "./config";
 import app from "./app";
 import { logger } from "./lib/logger";
 import { runMigrations } from "./lib/migrate";
+import { reloadLatinNames } from "./lib/people/latinNames";
 import { ensureTradeStructureSchema } from "./lib/tradeStructureStore";
 import { registerWebhook } from "./lib/telegramBot";
 import { telegramWebhookSecret } from "./routes/telegram";
@@ -109,6 +110,8 @@ async function startServer(attempt = 1): Promise<void> {
     } catch (error) {
       logger.error({ err: error }, "Failed to ensure trade-structure columns, continuing anyway");
     }
+    // Latin display names for EN/UZ readers (lib/people/latinNames): warm the table before the first render.
+    await reloadLatinNames();
   }
 
   return new Promise((resolve, reject) => {

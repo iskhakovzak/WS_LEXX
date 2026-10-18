@@ -8,6 +8,7 @@ import { rankLevel, riskScore, worstUsage, type RankInput, type RankLevel, type 
 import { LevelBadge, UsageCell, tierLabel } from "./primitives";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { alertLabel, stopMessage, stopStateLabel } from "./labels";
 
@@ -53,7 +54,7 @@ function statusDetail(t: DeskTableRow): string | null {
 
 const ACCESSORS = {
   risk: (t: DeskTableRow) => t.score,
-  trader: (t: DeskTableRow) => t.row.trader,
+  trader: (t: DeskTableRow) => personName(t.row.trader),
   daily: (t: DeskTableRow) => t.row.stop.dailyPct,
   weekly: (t: DeskTableRow) => t.row.stop.weeklyPct,
   drawdown: (t: DeskTableRow) => t.row.stop.drawdownPct,
@@ -115,7 +116,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                     onClick={(ev) => { ev.stopPropagation(); onOpen(r.trader); }}
                     className="whitespace-nowrap rounded-md text-left font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
-                    {r.trader}
+                    {personName(r.trader)}
                   </button>
                   <div className="text-xs text-muted-foreground">{tierLabel(L?.tier) ?? c("tiers.noTier")}</div>
                 </td>
@@ -125,9 +126,9 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                     <div className={cn("mt-0.5 max-w-[170px] truncate text-xs", row.level === "stop" ? "text-down" : "text-muted-foreground")} title={message ?? detail}>{detail}</div>
                   )}
                 </td>
-                <td><UsageCell label={t("table.usageDaily", { name: r.trader })} pct={r.stop.dailyPct} used={todayLoss} limit={L?.dailyLossLimit} /></td>
-                <td><UsageCell label={t("table.usageWeekly", { name: r.trader })} pct={r.stop.weeklyPct} used={weekLoss} limit={L?.weeklyLossLimit} /></td>
-                <td><UsageCell label={t("table.usageDrawdown", { name: r.trader })} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
+                <td><UsageCell label={t("table.usageDaily", { name: personName(r.trader) })} pct={r.stop.dailyPct} used={todayLoss} limit={L?.dailyLossLimit} /></td>
+                <td><UsageCell label={t("table.usageWeekly", { name: personName(r.trader) })} pct={r.stop.weeklyPct} used={weekLoss} limit={L?.weeklyLossLimit} /></td>
+                <td><UsageCell label={t("table.usageDrawdown", { name: personName(r.trader) })} pct={r.stop.drawdownPct} used={r.drawdown.currentUsd} limit={L?.maxDrawdown} /></td>
                 <td className="text-right">
                   <div className={cn("font-semibold", pnl == null ? "text-muted-foreground" : pnl > 0 ? "text-up" : pnl < 0 ? "text-down" : "")}>
                     {pnl != null ? fmtUsd(pnl, { signed: true, decimals: 0 }) : "—"}
@@ -173,7 +174,7 @@ export function DeskTable({ rows, onOpen }: { rows: DeskTableRow[]; onOpen: (tra
                     variant="ghost"
                     size="icon"
                     className="h-8 w-8"
-                    aria-label={t("table.cardAria", { name: r.trader })}
+                    aria-label={t("table.cardAria", { name: personName(r.trader) })}
                     title={t("table.cardTitle")}
                     onClick={(ev) => { ev.stopPropagation(); onOpen(r.trader); }}
                   >

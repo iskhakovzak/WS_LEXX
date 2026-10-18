@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
+import { setLang } from "@/i18n";
+import { clearLatinNames, setLatinNames } from "@/lib/people/latin-names";
 import type { TraderSignal } from "./api";
 import {
   ALL_GROUPS, DEFAULT_FILTERS, NO_CURATOR, activeFilterCount, applyFilters, buildGroups, csvRow, daysSinceTrade, groupTotals,
-  pendingReviews, searchTraders, tradersOf,
+  GROUP_SORT, pendingReviews, searchTraders, tradersOf,
 } from "./group-model";
 
 const TODAY = "2026-10-16";
@@ -86,5 +88,40 @@ describe("group model", () => {
     const row = csvRow(DESK[1]!);
     expect(row.slice(0, 3)).toEqual(["Кирилл Б.", "", "Ольга Н."]);
     expect(row[10]).toBe(2);
+  });
+});
+
+describe("group model with Latin display names (EN / UZ)", () => {
+  afterEach(async () => {
+    clearLatinNames();
+    await setLang("ru", { source: "init" });
+  });
+
+  it("orders groups by the shown name, me first; Russian keeps the stored order", async () => {
+    setLatinNames([["Шерзод", "Sherzod"], ["Эльдор", "Eldor"], ["Юлдуз", "Yulduz"]]);
+    const curators = ["Шерзод", "Эльдор", "Юлдуз"];
+    expect(buildGroups([], curators, null).map((g) => g.key)).toEqual(["Шерзод", "Эльдор", "Юлдуз", NO_CURATOR]);
+    await setLang("en", { source: "init" });
+    expect(buildGroups([], curators, null).map((g) => g.key)).toEqual(["Эльдор", "Шерзод", "Юлдуз", NO_CURATOR]);
+    expect(buildGroups([], curators, "Юлдуз").map((g) => g.key)).toEqual(["Юлдуз", "Эльдор", "Шерзод", NO_CURATOR]);
+    expect(GROUP_SORT.trader(sig("Шерзод"))).toBe("Sherzod");
+  });
+
+  it("curator search highlights the shown (Latin) name; the stored name still matches", async () => {
+    setLatinNames([["Ольга Н.", "Olga N."]]);
+    await setLang("uz", { source: "init" });
+    const latin = searchTraders(DESK, "olga");
+    expect(latin.list.map((s) => s.trader)).toEqual(["Никита С.", "Кирилл Б.", "Евгений Л."]);
+    expect(latin.marks.get("Никита С.")).toMatchObject({ field: 2, ranges: [[0, 4]] });
+    expect(searchTraders(DESK, "Ольга").list).toHaveLength(3);
+    expect(csvRow(DESK[1]!)[2]).toBe("Olga N.");
+  });
+
+  it("trader search highlights the shown name first (field 0), whichever script was typed", async () => {
+    setLatinNames([["Кирилл Б.", "Kirill B."]]);
+    expect(searchTraders(DESK, "kiril").marks.get("Кирилл Б.")?.field).toBe(0);
+    await setLang("en", { source: "init" });
+    expect(searchTraders(DESK, "kiril").marks.get("Кирилл Б.")).toMatchObject({ field: 0, ranges: [[0, 6]] }); // «Kirill» in «Kirill B.»
+    expect(searchTraders(DESK, "Кирил").list.map((s) => s.trader)).toEqual(["Кирилл Б."]);
   });
 });

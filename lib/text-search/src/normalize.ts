@@ -124,3 +124,19 @@ export function tokenize(s: string): Token[] {
 
 export const hasCyrillic = (s: string) => /[Ѐ-ӿ]/.test(s);
 export const hasLatin = (s: string) => /[a-z]/i.test(s);
+
+/**
+ * Latin spelling of a person's name for display, keeping case and punctuation: «Дмитрий К.» → «Dmitriy K.»,
+ * «Артём Г.» → «Artyom G.», «Рахматулло» → «Rahmatullo». Words already in Latin stay as written. Used to suggest
+ * users.name_latin to an admin (a suggestion only: the admin confirms or corrects it).
+ */
+export function latinizeName(s: string): string {
+  return s.replace(/[\p{L}ʻʼ‘’'`]+/gu, (w) => {
+    if (!hasCyrillic(w)) return w;
+    const lat = translitVariants(w)[0] ?? w;
+    const upper = w[0] === w[0].toUpperCase() && w[0] !== w[0].toLowerCase();
+    const allUpper = w.length > 1 && w === w.toUpperCase();
+    if (allUpper) return lat.toUpperCase();
+    return upper ? lat.charAt(0).toUpperCase() + lat.slice(1) : lat;
+  });
+}

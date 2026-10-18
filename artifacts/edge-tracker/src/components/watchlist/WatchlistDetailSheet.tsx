@@ -31,6 +31,7 @@ import { fmtCompact, fmtDate, fmtPct, fmtPrice, fmtR, fmtRate, fmtRelative, fmtU
 import type { RowActions } from "./WatchlistRow";
 import type { WlRow } from "./WatchlistTable";
 
+import { personName } from "@/i18n";
 const LazyNewsFeed = React.lazy(() => import("@/components/news-feed").then((m) => ({ default: m.NewsFeed })));
 
 type IdeaLite = { id: number; ticker: string; side: string | null; setup: string | null; status: string; createdAt: string; trader: string | null };
@@ -409,7 +410,7 @@ export function WatchlistDetailSheet({
                         <Link href={links.idea(i.id)} className="flex items-center gap-2 rounded-xl bg-[var(--glass-bg)] px-3 py-2 text-sm hover:bg-[var(--glass-hover-bg)]">
                           <span className="inline-flex w-16 items-center gap-1 text-muted-foreground">{s.Icon && <s.Icon className="h-3.5 w-3.5" aria-hidden="true" />}{s.text}</span>
                           <span className="min-w-0 flex-1 truncate text-foreground">{i.setup || t("sheet.noSetup")}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">{i.trader ? `${i.trader} · ` : ""}{fmtRelative(i.createdAt)}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">{i.trader ? `${personName(i.trader)} · ` : ""}{fmtRelative(i.createdAt)}</span>
                         </Link>
                       </li>
                     );

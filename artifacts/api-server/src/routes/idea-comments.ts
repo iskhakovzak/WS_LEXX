@@ -10,6 +10,7 @@ import { can } from "../lib/permissions";
 import { AppError, badRequest, notFound, unauthorized } from "../lib/http";
 import { localeOfUser } from "../i18n";
 import { telegramT } from "../i18n/ns";
+import { personNameFor } from "../lib/people/latinNames";
 import { escHtml } from "../lib/telegramBot";
 
 const router: IRouter = Router();
@@ -91,7 +92,7 @@ router.post("/trade-ideas/:id/comments", asyncHandler(async (req, res): Promise<
       }));
       const lang = await localeOfUser(idea.trader);
       await notifyTraderTelegram(idea.trader,
-        telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(author), text: escHtml(preview) }));
+        telegramT.tFor(lang)("privateReply", { id: ideaId, ticker: escHtml(idea.ticker), author: escHtml(personNameFor(author, lang)), text: escHtml(preview) }));
     }
   } else {
     // Public comment — fan-out to creator + curator + risk manager + prior commenters

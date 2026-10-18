@@ -12,6 +12,7 @@ import { fmtCount, fmtDate, fmtR, fmtRate, fmtUsd } from "@/lib/format";
 import { commonI18n } from "@/i18n/ns/common";
 import { journalI18n } from "@/i18n/ns/journal";
 import { tradesI18n } from "@/i18n/ns/trades";
+import { personName } from "@/i18n";
 import { RESULT_LABEL, sessionLabel } from "@/components/shared/trade-labels";
 import { tagLabel } from "@/components/shared/trade-labels";
 
@@ -304,7 +305,7 @@ function TradeItem({
             )}
           </span>
           <span className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-2xs text-muted-foreground tabular-nums">
-            {showTrader && t.trader && <span className="text-foreground/80">{t.trader}</span>}
+            {showTrader && t.trader && <span className="text-foreground/80">{personName(t.trader)}</span>}
             {t.session && <span>{sessionLabel(t.session, { full: true })}</span>}
             <span>
               {t.entry ?? "—"} → {t.exit ?? "…"}

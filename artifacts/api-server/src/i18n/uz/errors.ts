@@ -177,6 +177,7 @@ export default {
   USER_NAME_REQUIRED: "Ismni kiriting",
   PASSWORD_TOO_SHORT: "Parol kamida {min} ta belgidan iborat boʻlishi kerak",
   NAME_LATIN_CHARS: "Faqat harflar, raqamlar, boʻsh joy, nuqta, defis va apostrof",
+  NAME_LATIN_INVALID_FOR: "«{name}» uchun lotincha ismni tekshiring: harflar, raqamlar, boʻsh joy, nuqta, defis va apostrof, 80 belgigacha",
   BREACH_NOT_FOUND: "Qoidabuzarlik topilmadi",
   BREACH_REVIEW_NOT_FOUND: "Tahlil topilmadi",
   AGREEMENT_NOT_FOUND: "Kelishuv topilmadi",

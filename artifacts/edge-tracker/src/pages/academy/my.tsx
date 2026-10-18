@@ -25,6 +25,7 @@ import { academyLinks } from "@/components/academy/content/links";
 import { academyCohortsI18n } from "@/i18n/ns/academyCohorts";
 import { commonI18n } from "@/i18n/ns/common";
 import { shellI18n } from "@/i18n/ns/shell";
+import { personName } from "@/i18n";
 
 /**
  * /academy/my — «Моё обучение»: когорта и ступень, ближайшие занятия с самоотметкой (удалённо: окно −10…+15 мин,
@@ -46,7 +47,7 @@ export default function AcademyMyPage() {
       <PageHeader
         icon={GraduationCap}
         title={shellI18n.t("nav.academyMy")}
-        description={d?.viewingOther ? t("myPage.viewing", { name: d.user ?? "" }) : t("myPage.description")}
+        description={d?.viewingOther ? t("myPage.viewing", { name: personName(d.user) }) : t("myPage.description")}
         actions={isCurator ? (
           <div className="w-56">
             <UserSelect id="my-view-user" label={t("myPage.openAs")} value={viewUser || null}
@@ -59,7 +60,7 @@ export default function AcademyMyPage() {
       {d && !d.user && <EmptyState icon={GraduationCap} title={t("myPage.signIn")} description={t("myPage.guest")} />}
       {d && d.user && d.enrollments.length === 0 && (
         <Panel>
-          <EmptyState icon={Users} title={d.viewingOther ? t("myPage.notEnrolledOther", { name: d.user }) : t("myPage.notEnrolled")}
+          <EmptyState icon={Users} title={d.viewingOther ? t("myPage.notEnrolledOther", { name: personName(d.user) }) : t("myPage.notEnrolled")}
             description={t("myPage.notEnrolledDesc")} />
         </Panel>
       )}
@@ -89,7 +90,7 @@ function Dashboard({ d, readOnly }: { d: MyDashboard; readOnly: boolean }) {
           const date = fmtYmd(e.joinedOn, true);
           return (
             <Panel key={e.id} title={e.cohort.name} icon={Users}
-              description={e.cohort.mentor ? t("myPage.cohortDesc", { format, mentor: e.cohort.mentor, date }) : t("myPage.cohortDescNoMentor", { format, date })}
+              description={e.cohort.mentor ? t("myPage.cohortDesc", { format, mentor: personName(e.cohort.mentor), date }) : t("myPage.cohortDescNoMentor", { format, date })}
               actions={<><StagePill stage={e.stage} /><StatusPill status={e.status} /></>}>
               <Ladder stage={e.stage} />
               {e.note && <p className="mt-2 text-xs text-muted-foreground">{e.note}</p>}
@@ -376,7 +377,7 @@ function Meetings({ d }: { d: MyDashboard }) {
             <div className="flex flex-wrap items-center gap-2 text-sm">
               <span className="font-medium tabular-nums text-foreground">{dateTimeLocal(m.metAt)}</span>
               <span className="text-muted-foreground">
-                {t("myPage.meetings.with", { mentor: m.mentor })}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""} · {meetingFormatLabel(m.format, true)}
+                {t("myPage.meetings.with", { mentor: personName(m.mentor) })}{m.durationMin ? ` · ${ct("time.minutesShort", { count: m.durationMin })}` : ""} · {meetingFormatLabel(m.format, true)}
               </span>
             </div>
             {m.agenda && <p className="mt-1 text-sm text-foreground"><span className="text-muted-foreground">{t("myPage.meetings.agenda")} </span>{m.agenda}</p>}
@@ -401,7 +402,7 @@ function History({ d }: { d: MyDashboard }) {
             <span className="tabular-nums text-muted-foreground">{dateTimeLocal(r.changedAt)}</span>
             {r.fromStage !== r.toStage && r.toStage && <span>{r.fromStage ? stageLabel(r.fromStage) : "—"} → <b>{stageLabel(r.toStage)}</b></span>}
             {r.fromStatus !== r.toStatus && r.toStatus && <span>{r.fromStatus ? statusLabel(r.fromStatus) : "—"} → <b>{statusLabel(r.toStatus)}</b></span>}
-            {r.changedBy && <span className="text-xs text-muted-foreground">({r.changedBy})</span>}
+            {r.changedBy && <span className="text-xs text-muted-foreground">({personName(r.changedBy)})</span>}
             {r.note && <span className="w-full text-xs text-muted-foreground">{r.note}</span>}
           </li>
         ))}

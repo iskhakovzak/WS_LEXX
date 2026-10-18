@@ -24,6 +24,7 @@ import { MoveValue, ReactionPill, SessionPill, TagChips, TypePill } from "./even
 import { eventsI18n } from "@/i18n/ns/events";
 import { commonI18n } from "@/i18n/ns/common";
 
+import { personName } from "@/i18n";
 type Candle = { t: number; o: number; h: number; l: number; c: number; v: number };
 type ReactionResult =
   | { kind: "ok"; gap: number | null; day: number | null; openToClose: number; range: number; volume: number; close: number; prevClose: number | null }
@@ -238,7 +239,7 @@ function TradesBlock({ event }: { event: MarketEvent }) {
           <span className="font-semibold text-foreground">{t.ticker}</span>
           {t.side && <span className="text-xs text-muted-foreground">{t.side}</span>}
           {t.setup ? <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{t.setup}</span> : <span className="flex-1" />}
-          {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{t.trader}</span>}
+          {t.trader && <span className="hidden text-xs text-muted-foreground sm:inline">{personName(t.trader)}</span>}
           {t.brokerAccount && <span className="hidden text-2xs text-muted-foreground lg:inline">{t.brokerAccount}</span>}
           {r != null && <span className={cn("text-xs font-semibold tabular-nums", toneText(toneOf(r)))}>{fmtR(r, 1)}</span>}
           {t.netPnl != null && <span className={cn("text-xs tabular-nums", toneText(toneOf(t.netPnl)))} title={tr("detail.grossFees", { gross: fmtUsd(t.pnl, { decimals: 0 }), fees: fmtUsd(t.fees, { decimals: 0 }) })}>{fmtUsd(t.netPnl, { decimals: 0 })}</span>}

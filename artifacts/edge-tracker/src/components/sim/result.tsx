@@ -9,6 +9,7 @@ import { simI18n } from "@/i18n/ns/simulator";
 import type { DeskTrader, Mistake, Reveal, SimTrade } from "./api";
 import type { GameView } from "./use-sim-game";
 
+import { personName } from "@/i18n";
 function dayText(r: Reveal): string {
   const t = simI18n.t;
   return r.dayTo ? t("result.daySwing", { from: fmtDate(r.day, "medium"), to: fmtDate(r.dayTo, "medium") }) : t("result.dayIntraday", { date: fmtDate(r.day, "full") });
@@ -165,7 +166,7 @@ export function ResultDetails({ game, hiddenDesk, toggleDesk }: { game: GameView
 
 function DeskRow({ d, hidden, onToggle }: { d: DeskTrader; hidden: boolean; onToggle: () => void }) {
   const { t } = simI18n.useT();
-  const name = d.own ? t("result.deskMe") : d.name ?? t("result.deskAnon", { label: d.label });
+  const name = d.own ? t("result.deskMe") : d.name ? personName(d.name) : t("result.deskAnon", { label: d.label });
   const sumR = d.trades.reduce((s, x) => s + (x.r ?? 0), 0);
   const anyR = d.trades.some((x) => x.r != null);
   const net = d.trades.every((x) => x.net != null) ? d.trades.reduce((s, x) => s + (x.net ?? 0), 0) : null;

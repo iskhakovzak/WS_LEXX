@@ -2,6 +2,7 @@ import { logger } from "./logger";
 import { config } from "../config";
 import { telegramT } from "../i18n/ns";
 import type { Lang } from "../i18n";
+import { personNameFor } from "./people/latinNames";
 
 /** Outbound request budget (a hung Telegram API call must not hold the caller forever). */
 const FETCH_TIMEOUT_MS = 15_000;
@@ -129,7 +130,7 @@ export function buildIdeaHtml(idea: {
   const includeLink = opts?.includeScreenshotLink ?? true;
 
   // ── Trader name FIRST — most visible line ──
-  lines.push(`👤 <b>${escHtml(idea.trader ?? t("idea.unknownTrader"))}</b>`);
+  lines.push(`👤 <b>${escHtml(idea.trader ? personNameFor(idea.trader, opts?.lang ?? "ru") : t("idea.unknownTrader"))}</b>`);
   lines.push("");
 
   // Screenshot link — Telegram previews the FIRST link in the message

@@ -24,6 +24,7 @@ import {
 } from "./risk-math";
 import { fmtDate, fmtPct, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { comparePersonNames, personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { rich, slots } from "@/i18n/rich";
 import { positionsCount, sideLabel } from "./labels";
@@ -135,7 +136,7 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
     const m = new Map<string, Row[]>();
     for (const r of rows) (m.get(r.p.trader) ?? m.set(r.p.trader, []).get(r.p.trader)!).push(r);
     for (const arr of m.values()) arr.sort((a, b) => (b.m.marketValueUsd ?? 0) - (a.m.marketValueUsd ?? 0));
-    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+    return [...m.entries()].sort((a, b) => comparePersonNames(a[0], b[0]));
   }, [rows]);
 
   const totals = React.useMemo(() => {
@@ -167,7 +168,7 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
     const h = (k: "date" | "trader" | "ticker" | "side" | "horizon" | "daysHeld" | "qty" | "avgPrice" | "lastPrice" | "unrealUsd" | "unrealPct" | "stop" | "riskToStop" | "marketValue" | "pctOfMax" | "atr" | "atrSource" | "sector" | "catalysts" | "source" | "tradeId") => t(`overnight.csv.${k}`);
     const head = [h("date"), h("trader"), h("ticker"), h("side"), h("horizon"), h("daysHeld"), h("qty"), h("avgPrice"), h("lastPrice"), h("unrealUsd"), h("unrealPct"), h("stop"), h("riskToStop"), h("marketValue"), h("pctOfMax"), h("atr"), h("atrSource"), h("sector"), h("catalysts"), h("source"), h("tradeId")];
     const body = rows.map(({ p, m, cats, pctOfMax }) => [
-      today, p.trader, p.ticker, p.side ? sideLabel(p.side) : "", HORIZON_LABEL[p.horizon], p.daysHeld, p.qty, p.entry, m.last, m.unrealizedUsd, m.unrealizedPct, p.stop, m.riskToStopUsd, m.marketValueUsd,
+      today, personName(p.trader), p.ticker, p.side ? sideLabel(p.side) : "", HORIZON_LABEL[p.horizon], p.daysHeld, p.qty, p.entry, m.last, m.unrealizedUsd, m.unrealizedPct, p.stop, m.riskToStopUsd, m.marketValueUsd,
       pctOfMax == null ? "" : Math.round(pctOfMax), m.atr, m.atrSource ?? "", p.sector ?? "", cats.map((c) => c.label).join(", "), p.source, p.id,
     ]);
     const scen: (string | number | null | undefined)[][] = [
@@ -175,11 +176,11 @@ export function OvernightView({ trader, isCurator, onUpdatedAt }: { trader: stri
       [t("overnight.csv.scenarios"), shockMode === "market" ? t("overnight.csv.modeMarket") : t("overnight.csv.modeAdverse")],
       [h("trader"), ...results.map((r) => t("overnight.csv.shockPnl", { shock: r.shock.label })), ...results.map((r) => t("overnight.csv.shockLeft", { shock: r.shock.label }))],
     ];
-    const traders = [...new Set(rows.map((r) => r.p.trader))].sort();
+    const traders = [...new Set(rows.map((r) => r.p.trader))].sort(comparePersonNames);
     for (const t of traders) {
       const cells = results.map((r) => r.traders.find((x) => x.trader === t)?.pnlUsd ?? "");
       const rem = results.map((r) => r.traders.find((x) => x.trader === t)?.remainingAfterUsd ?? "");
-      scen.push([t, ...cells, ...rem]);
+      scen.push([personName(t), ...cells, ...rem]);
     }
     scen.push([t("overnight.csv.desk"), ...results.map((r) => r.desk.pnlUsd), ...results.map(() => "")]);
     downloadCsv(`overnight-book-${today}.csv`, toCsv([head, ...body, ...scen]));
@@ -377,10 +378,10 @@ function TraderBlock({ name, t: tr, rows: data, showTrader }: { name: string; t:
   const short = (v: number) => fmtUsd(v, { decimals: 0, compact: 10_000 });
   const strong = (node: React.ReactNode, cls = "text-foreground") => <span className={cn("font-medium", cls)}>{node}</span>;
   return (
-    <section aria-label={t("overnight.blockAria", { name })} className="rounded-xl bg-[var(--glass-bg)] p-3 ring-1 ring-inset ring-[var(--field-border)]">
+    <section aria-label={t("overnight.blockAria", { name: personName(name) })} className="rounded-xl bg-[var(--glass-bg)] p-3 ring-1 ring-inset ring-[var(--field-border)]">
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
         <div className="flex items-center gap-2">
-          {showTrader ? <Link href={links.risk(name)} className="font-semibold hover:text-primary">{name}</Link> : <span className="font-semibold">{name}</span>}
+          {showTrader ? <Link href={links.risk(name)} className="font-semibold hover:text-primary">{personName(name)}</Link> : <span className="font-semibold">{personName(name)}</span>}
           {tr && <StopPill state={tr.stop.state} />}
           {forbidden && <Pill tone="down" dot>{t("alertKind.overnight_not_allowed")}</Pill>}
           {forbiddenSwing && <Pill tone="down" dot>{t("alertKind.swing_not_allowed")}</Pill>}
@@ -464,7 +465,7 @@ function TraderBlock({ name, t: tr, rows: data, showTrader }: { name: string; t:
 }
 
 function ScenarioTable({ results, rooms, shockMode }: { results: ShockResult[]; rooms: TraderRoom[]; shockMode: ShockMode }) {
-  const traders = React.useMemo(() => [...new Set(results.flatMap((r) => r.traders.map((t) => t.trader)))].sort(), [results]);
+  const traders = React.useMemo(() => [...new Set(results.flatMap((r) => r.traders.map((t) => t.trader)))].sort(comparePersonNames), [results]);
   const roomBy = new Map(rooms.map((r) => [r.trader, r]));
   const breachers = new Map<string, string[]>();
   for (const r of results) for (const name of r.desk.breaches) breachers.set(name, [...(breachers.get(name) ?? []), r.shock.label]);
@@ -476,7 +477,7 @@ function ScenarioTable({ results, rooms, shockMode }: { results: ShockResult[]; 
           <AlertTriangle className="h-4 w-4 shrink-0 text-down" aria-hidden="true" />
           <span className="font-medium text-down">{tr("overnight.scen.breachTitle")}</span>
           {[...breachers.entries()].map(([name, labels]) => (
-            <Pill key={name} tone="down">{name} · {labels.length > 1 ? tr("overnight.scen.more", { label: labels[0], count: labels.length - 1 }) : labels[0]}</Pill>
+            <Pill key={name} tone="down">{personName(name)} · {labels.length > 1 ? tr("overnight.scen.more", { label: labels[0], count: labels.length - 1 }) : labels[0]}</Pill>
           ))}
         </div>
       ) : (
@@ -498,7 +499,7 @@ function ScenarioTable({ results, rooms, shockMode }: { results: ShockResult[]; 
               const room = roomBy.get(name);
               return (
                 <TableRow key={name}>
-                  <TableCell className="font-medium">{name}</TableCell>
+                  <TableCell className="font-medium">{personName(name)}</TableCell>
                   <TableCell className="text-right tabular-nums text-muted-foreground">{room?.dailyRemainingUsd != null ? fmtUsd(room.dailyRemainingUsd, { decimals: 0 }) : "—"}</TableCell>
                   {results.map((r) => {
                     const x = r.traders.find((y) => y.trader === name);
@@ -596,7 +597,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
               value: b.grossUsd,
               pct: b.pctOfGross,
               tone: b.traders.length > 1 ? "accent" : "neutral",
-              sub: b.traders.length > 1 ? t("overnight.conc.tradersSub", { traders: commonI18n.t("units.traders", { count: b.traders.length }), names: b.traders.join(", ") }) : undefined,
+              sub: b.traders.length > 1 ? t("overnight.conc.tradersSub", { traders: commonI18n.t("units.traders", { count: b.traders.length }), names: b.traders.map(personName).join(", ") }) : undefined,
             }))}
           />
         </div>
@@ -625,7 +626,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
             {c.sharedTickers.map((s) => (
               <li key={s.ticker}>
                 <Pill tone={s.sameSide ? "warn" : "neutral"}>
-                  {s.ticker} · {s.traders.join(", ")} · {s.sameSide ? t("overnight.conc.allSide", { side: commonI18n.t(s.sides[0] === "long" ? "trading.long" : "trading.short") }) : t("overnight.conc.mixedSides")} · {short(s.grossUsd)}
+                  {s.ticker} · {s.traders.map(personName).join(", ")} · {s.sameSide ? t("overnight.conc.allSide", { side: commonI18n.t(s.sides[0] === "long" ? "trading.long" : "trading.short") }) : t("overnight.conc.mixedSides")} · {short(s.grossUsd)}
                 </Pill>
               </li>
             ))}
@@ -643,7 +644,7 @@ function ConcentrationPanel({ c }: { c: ReturnType<typeof concentration> }) {
               <li key={g.sector} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-lg bg-warn/10 px-2 py-1.5">
                 <span className="font-medium">{g.sector}</span>
                 <span className="tabular-nums text-muted-foreground">{short(g.longUsd)} · {t("overnight.conc.ofBook", { pct: pct0(g.pctOfGross) })}</span>
-                <span className="text-muted-foreground">{g.tickers.join(", ")} · {g.traders.join(", ")}</span>
+                <span className="text-muted-foreground">{g.tickers.join(", ")} · {g.traders.map(personName).join(", ")}</span>
               </li>
             ))}
           </ul>

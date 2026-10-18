@@ -23,6 +23,7 @@ import {
 } from "./scorecard-model";
 import { PersonSelect } from "@/components/people/person-select";
 import { ratingsI18n } from "@/i18n/ns/ratings";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 
 type Form = Record<ScoreKey, number> & { trader: string; week: string; comment: string; focus: string; tier: string };
@@ -152,6 +153,7 @@ export function RatingDialog({
   const { t: tc } = commonI18n.useT();
   const [form, setForm] = useState<Form>(() => blank("", weekOf()));
   const [overallTouched, setOverallTouched] = useState(false);
+  const traderOptions = useMemo(() => traders.map((n) => ({ value: n, label: personName(n) })), [traders]);
 
   useEffect(() => {
     if (!open) return;
@@ -219,7 +221,7 @@ export function RatingDialog({
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["ratings"] });
       onOpenChange(false);
-      toast({ title: ratingsI18n.t(editing || res?.updated ? "dialog.updated" : "dialog.saved"), description: `${form.trader} · ${weekLabel(form.week)}` });
+      toast({ title: ratingsI18n.t(editing || res?.updated ? "dialog.updated" : "dialog.saved"), description: `${personName(form.trader)} · ${weekLabel(form.week)}` });
     },
     onError: (e: Error) => toast({ title: ratingsI18n.t("dialog.saveError"), description: humanizeApiError(e, ratingsI18n.t("dialog.saveFailed")), variant: "destructive" }),
   });
@@ -258,7 +260,7 @@ export function RatingDialog({
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rating-trader" className="text-xs text-muted-foreground">{t("dialog.trader")}</label>
-              <PersonSelect id="rating-trader" value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing} options={traders} placeholder={t("dialog.pickTrader")} ariaLabel={t("dialog.trader")} />
+              <PersonSelect id="rating-trader" value={form.trader} onValueChange={(v) => setForm((f) => ({ ...f, trader: v }))} disabled={!!editing} options={traderOptions} placeholder={t("dialog.pickTrader")} ariaLabel={t("dialog.trader")} />
             </div>
             <div className="flex flex-col gap-1.5">
               <label htmlFor="rating-week" className="text-xs text-muted-foreground">{t("dialog.week")}</label>
@@ -277,7 +279,7 @@ export function RatingDialog({
           )}
           {existing && (
             <p className="rounded-xl bg-[hsl(var(--chart-3)/0.12)] px-3 py-2 text-xs text-foreground">
-              {t("dialog.existing", { trader: form.trader, overall: existing.overall })}
+              {t("dialog.existing", { trader: personName(form.trader), overall: existing.overall })}
             </p>
           )}
 

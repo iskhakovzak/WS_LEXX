@@ -1,6 +1,7 @@
 import type { CSSProperties } from "react";
 import { fmtRelative } from "@/lib/format";
 import { notesI18n } from "@/i18n/ns/notes";
+import { comparePersonNames } from "@/i18n";
 
 /* ───────────────────────── Types ───────────────────────── */
 
@@ -494,7 +495,7 @@ export function nextUnanswered<T extends { id: number; reviewed_at?: string | nu
 
 /** Roster order for the senior: attention priority first, then name. */
 export function byAttention<T extends { trader: string; priority?: number }>(rows: readonly T[]): T[] {
-  return [...rows].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || a.trader.localeCompare(b.trader));
+  return [...rows].sort((a, b) => (b.priority ?? 0) - (a.priority ?? 0) || comparePersonNames(a.trader, b.trader));
 }
 
 /** Whole calendar days between a note date and today (for «ждёт 3 дн.»). */

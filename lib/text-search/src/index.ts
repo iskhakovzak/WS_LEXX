@@ -5,7 +5,7 @@
  *   matchesAny("Rakhmatullo", "Рахматулло")                       → true
  *   matchText("Pfrbh", "Закир")                                   → keyboard-layout slip, matched
  */
-export { literal, translit, translitVariants, skeleton, tokenize, hasCyrillic, hasLatin, type Token } from "./normalize";
+export { literal, translit, translitVariants, latinizeName, skeleton, tokenize, hasCyrillic, hasLatin, type Token } from "./normalize";
 export { switchLayout } from "./layout";
 export { damerauLevenshtein } from "./distance";
 export {

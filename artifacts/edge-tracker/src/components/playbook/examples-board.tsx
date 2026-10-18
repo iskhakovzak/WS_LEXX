@@ -37,6 +37,7 @@ import { redactedHint, RedactedHint } from "./setup-bits";
 import { commonI18n } from "@/i18n/ns/common";
 import { playbookExamplesI18n } from "@/i18n/ns/playbookExamples";
 
+import { personName } from "@/i18n";
 const et = playbookExamplesI18n.t; // called at render / call time only
 
 /** dataTransfer type for dragging an example card (the page's sidebar accepts it to move between setups). */
@@ -529,8 +530,8 @@ export function ExampleCard({
             </PopoverContent>
           </Popover>
         )}
-        {ex.trader && <span className="text-xs text-muted-foreground">{ex.trader}</span>}
-        {ex.addedBy && ex.addedBy !== ex.trader && <span className="text-xs text-muted-foreground">{et("card.addedBy", { name: ex.addedBy })}</span>}
+        {ex.trader && <span className="text-xs text-muted-foreground">{personName(ex.trader)}</span>}
+        {ex.addedBy && ex.addedBy !== ex.trader && <span className="text-xs text-muted-foreground">{et("card.addedBy", { name: personName(ex.addedBy) })}</span>}
         {/* Redacted cards already show R as the headline figure. */}
         {ex.signedR != null && !ex.redacted && <Pill tone="neutral" className="ml-auto">{ex.signedR > 0 ? "+" : ""}{ex.signedR.toFixed(1)}R</Pill>}
       </div>

@@ -10,6 +10,7 @@ import { HORIZON_LABEL, HORIZON_TONE, SortableTableHead, useStoredState } from "
 import { rich, slots } from "@/i18n/rich";
 import { fmtDate, fmtUsd } from "@/lib/format";
 import { riskI18n } from "@/i18n/ns/risk";
+import { personName } from "@/i18n";
 import { commonI18n } from "@/i18n/ns/common";
 import { sideLabel } from "./labels";
 
@@ -25,7 +26,7 @@ const FILTERS: readonly HorizonFilter[] = ["all", "carried", "intraday", "overni
 const HORIZON_ORDER: Record<string, number> = { intraday: 0, overnight: 1, swing: 2 };
 const POSITION_ACCESSORS = {
   ticker: (p: RiskPosition) => p.ticker,
-  trader: (p: RiskPosition) => p.trader,
+  trader: (p: RiskPosition) => personName(p.trader),
   horizon: (p: RiskPosition) => HORIZON_ORDER[p.horizon] ?? 9,
   side: (p: RiskPosition) => p.side,
   qty: (p: RiskPosition) => p.qty,
@@ -94,10 +95,10 @@ export function PositionsTable({
   const traderCell = (name: string) =>
     onTraderClick ? (
       <button type="button" onClick={() => onTraderClick(name)} className="rounded-full font-medium hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
-        {name}
+        {personName(name)}
       </button>
     ) : (
-      <span className="font-medium">{name}</span>
+      <span className="font-medium">{personName(name)}</span>
     );
 
   return (
@@ -224,7 +225,7 @@ export function PositionsTable({
                       <TableCell>
                         <Link
                           href={links.journalDay(p.date, p.trader)}
-                          aria-label={t("positions.journalAria", { trader: p.trader, date: fmtDate(p.date.slice(0, 10), "dayMonthNumeric") })}
+                          aria-label={t("positions.journalAria", { trader: personName(p.trader), date: fmtDate(p.date.slice(0, 10), "dayMonthNumeric") })}
                           title={t("positions.journalTitle", { date: fmtDate(p.date.slice(0, 10), "dayMonthNumeric") })}
                           className="inline-flex rounded-full p-1 text-muted-foreground hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                         >

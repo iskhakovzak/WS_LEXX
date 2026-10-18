@@ -19,6 +19,7 @@ import { BreakdownPanel } from "./pro-breakdown";
 import { ExtremesPanel, KpiGrid, TradingDaysInfo, WeeksPanel, type JumpKind } from "./pro-stats";
 import { loadPref, savePref } from "./pro-format";
 import { analyticsProI18n } from "@/i18n/ns/analyticsPro";
+import { comparePersonNames, personName } from "@/i18n";
 
 type Props = { trades: Trade[] };
 
@@ -85,7 +86,7 @@ function uniqSorted(values: Iterable<string>): FilterOption[] {
 
 function buildOptions(trades: Trade[], key: FilterKey): FilterOption[] {
   switch (key) {
-    case "accounts": return uniqSorted(trades.map((t) => t.trader ?? "—"));
+    case "accounts": return [...new Set(trades.map((t) => t.trader ?? "—"))].sort(comparePersonNames).map((v) => ({ id: v, label: personName(v) }));
     case "symbols": return uniqSorted(trades.map((t) => t.ticker ?? "—"));
     case "years": return uniqSorted(trades.map(yearOf).filter((v) => v !== "—"));
     case "months": return monthOptions();

@@ -5,6 +5,7 @@ import {
 } from "./metrics";
 import { fmtDate, fmtRate, fmtRatio, localeTag } from "@/lib/format";
 import { statsI18n } from "@/i18n/ns/stats";
+import { personName } from "@/i18n";
 
 export type ReportMeta = { title: string; periodLabel: string; scopeLabel: string; metric: Metric; generatedAt: Date; fees?: FeeStats };
 
@@ -59,7 +60,7 @@ export function downloadReportCsv(trades: Trade[], k: Kpis, prev: Kpis | null, m
   row();
   row("ID", tr("csv.date"), tr("csv.exitDate"), tr("csv.ticker"), tr("csv.trader"), tr("csv.horizon"), tr("csv.side"), tr("csv.setup"), tr("csv.session"), tr("csv.result"), "R", "P&L gross", tr("csv.fees"), "P&L net");
   chrono(trades).forEach((t) =>
-    row(t.id, dayKey(t), tx(t).exitDate ? String(tx(t).exitDate).substring(0, 10) : "", t.ticker, t.trader ?? "", horizonLabel(horizonOf(t)),
+    row(t.id, dayKey(t), tx(t).exitDate ? String(tx(t).exitDate).substring(0, 10) : "", t.ticker, personName(t.trader), horizonLabel(horizonOf(t)),
       t.side ?? "", t.setup || t.eventType || "", sessionLabel(sessionKey(t)), t.result,
       t.rMultiple ?? "", t.pnl ?? "", feesOf(t) || "", valueOf(t, "net") ?? ""),
   );
@@ -90,7 +91,7 @@ export function openPrintReport(trades: Trade[], k: Kpis, prev: Kpis | null, met
   const list = chrono(trades)
     .map((t) => {
       const val = valueOf(t, meta.metric);
-      return `<tr><td>${esc(dayKey(t))}</td><td><b>${esc(t.ticker)}</b></td><td>${esc(t.trader ?? "")}</td><td>${esc(horizonLabel(horizonOf(t)))}</td>
+      return `<tr><td>${esc(dayKey(t))}</td><td><b>${esc(t.ticker)}</b></td><td>${esc(personName(t.trader))}</td><td>${esc(horizonLabel(horizonOf(t)))}</td>
 <td>${esc(t.setup || t.eventType || "")}</td><td>${esc(t.result)}</td><td class="n">${esc(val == null ? "—" : fmtValue(val, meta.metric))}</td></tr>`;
     })
     .join("");
