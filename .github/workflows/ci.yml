@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch: # manual re-run from the Actions tab (a run that failed to start cannot be retried)
 
 concurrency:
   group: ci-${{ github.ref }}
